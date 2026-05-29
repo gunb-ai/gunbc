@@ -446,8 +446,9 @@ data canonical_tag_byte_offset_overflow_residual_discarded_high_truncated: Symbo
 data canonical_tag_byte_offset_residual_quotient_limb_pair: Symbol = canonical_tag_byte_offset_residual_quotient_limb_pair
 data canonical_tag_byte_offset_residual_quotient_magnitude: Symbol = canonical_tag_byte_offset_residual_quotient_magnitude
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
-// Post-ceiling residual quotients for offsets up to ~256^29 need shift 20 (29 - 9 limb ceiling).
-data byte_offset_residual_quotient_magnitude_max_shift: Int = 20
+// Interim magnitude ceiling: post-ceiling residual 256^(9+k) needs shift k (claim band through k=28 / offset 256^37).
+// Full P2 on unbounded Int offsets requires dissolve-on bounded ByteOffset carrier (coproduct marks above).
+data byte_offset_residual_quotient_magnitude_max_shift: Int = 28
 data canonical_tag_byte_offset_cache_digest_ineligible: Symbol = canonical_tag_byte_offset_cache_digest_ineligible
 data byte_offset_cache_digest_max_limbs: Int = 9
 // Bounded overflow tail after the 9-limb ceiling — P4-safe remainder encoding for over-ceiling offsets (also caps overflow_quotient_peel).
@@ -520,9 +521,18 @@ fn byte_offset_quotient_divide_by_256_steps(quotient: Int, steps: Int) -> Int {
 
 
 fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_steps: Int) -> Hash {
-  byte_offset_residual_quotient_limb_pair_digest(
-    quotient: byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: shift_steps)
-  )
+  let shifted = byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: shift_steps)
+  if shift_steps == byte_offset_residual_quotient_magnitude_max_shift && shifted >= 256 * 256 {
+    combine_hash(
+      a: byte_offset_residual_quotient_limb_pair_digest(quotient: shifted),
+      b: byte_offset_overflow_quotient_high_band_terminal_digest(
+        quotient: shifted / 65536,
+        limbs_remaining: byte_offset_cache_digest_overflow_limbs
+      )
+    )
+  } else {
+    byte_offset_residual_quotient_limb_pair_digest(quotient: shifted)
+  }
 }
 
 
@@ -547,7 +557,7 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
 }
 
 
-// P4: fixed windows over residual quotient (0..20 by 4) — distinguishes 256^21 vs 2·256^21 and 256^29 vs 2·256^29 bands.
+// P4: fixed windows over residual quotient (0..max_shift by 4) — interim distinctness for ineligible witnesses.
 fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
   combine_hash(
     a: atom_identity_hash(s: canonical_tag_byte_offset_residual_quotient_magnitude),
@@ -564,9 +574,15 @@ fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
             a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 12),
             b: combine_hash(
               a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 16),
-              b: byte_offset_residual_quotient_magnitude_window_digest(
-                quotient: quotient,
-                shift_steps: byte_offset_residual_quotient_magnitude_max_shift
+              b: combine_hash(
+                a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 20),
+                b: combine_hash(
+                  a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 24),
+                  b: byte_offset_residual_quotient_magnitude_window_digest(
+                    quotient: quotient,
+                    shift_steps: byte_offset_residual_quotient_magnitude_max_shift
+                  )
+                )
               )
             )
           )
@@ -574,6 +590,36 @@ fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
       )
     )
   )
+}
+
+
+// P4: terminal high-band peel only — never re-enters magnitude_digest (fixed-window ceiling).
+fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> Hash {
+  if limbs_remaining == 0 {
+    if quotient == 0 {
+      atom_identity_hash(s: canonical_tag_byte_offset_zero)
+    } else if quotient < 256 * 256 {
+      combine_hash(
+        a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_peel_exhausted),
+        b: combine_hash(
+          a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
+          b: byte_offset_byte_digest(b: quotient / 256)
+        )
+      )
+    } else {
+      byte_offset_residual_quotient_limb_pair_digest(quotient: quotient)
+    }
+  } else if quotient == 0 {
+    atom_identity_hash(s: canonical_tag_byte_offset_zero)
+  } else {
+    combine_hash(
+      a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
+      b: byte_offset_overflow_quotient_high_band_terminal_digest(
+        quotient: quotient / 256,
+        limbs_remaining: limbs_remaining - 1
+      )
+    )
+  }
 }
 
 
@@ -591,7 +637,10 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
         )
       )
     } else {
-      byte_offset_residual_quotient_magnitude_digest(quotient: quotient)
+      byte_offset_overflow_quotient_high_band_terminal_digest(
+        quotient: quotient,
+        limbs_remaining: byte_offset_cache_digest_overflow_limbs
+      )
     }
   } else if quotient == 0 {
     atom_identity_hash(s: canonical_tag_byte_offset_zero)

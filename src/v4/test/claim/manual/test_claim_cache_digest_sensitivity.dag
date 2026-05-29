@@ -332,6 +332,14 @@ fn tcc_cache_byte_offset_pow_29() -> Int {
   int_mul(a: tcc_cache_byte_offset_pow_28(), b: tcc_cache_byte_limb_base)
 }
 
+fn tcc_cache_byte_offset_pow_36() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_28(), b: tcc_cache_byte_offset_pow_8())
+}
+
+fn tcc_cache_byte_offset_pow_37() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_36(), b: tcc_cache_byte_limb_base)
+}
+
 // 256^9 - 1 — largest within-ceiling offset (9 base-256 limbs).
 fn tcc_cache_byte_offset_exact_ceiling() -> Int {
   int_add(a: tcc_cache_byte_offset_pow_9(), b: int_negate(a: tcc_cache_int_one))
