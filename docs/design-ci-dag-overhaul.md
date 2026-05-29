@@ -159,7 +159,7 @@ Exact CLI lands in A0/A2 with T-38. **There is no S1, S2, or S3 in this lane.**
 |----------|--------|-------|
 | `CiPipeline` / `CiJob` / `CiCommand` | **modeled** | Policy graph exists; GHA still schedules via hand `ci.yml` buckets |
 | `affected_set_rerun_nodes` / `RerunNodeSet` | **modeled** (`v4.lens.affected_set`) | Feeds T-21 rerun frontier |
-| `ci_select_from_affected_set` | **modeled — TestClaim roster only** | `fn` at `ci.dag` ~L585; wired to `TestClaimCorpusEvalCommand.selection_fn` |
+| `ci_select_from_affected_set` | **modeled — TestClaim roster only** | Declared: `fn ci_select_from_affected_set` (`ci.dag` L585–590); symbol `ci_testclaim_corpus_selection_fn` (= that fn, L121); `TestClaimCorpusEvalCommand { selection_fn }` arm (L77) used in `ci_pipeline` (L170). T-38 host eval still gated — **A12** lands execution |
 | `ci_select_ci_jobs_from_affected_set` (or equivalent) | **not yet** | Required to replace GHA `if: v2/v3/v4` with interpreter schedule over `ci_pipeline` |
 | `CiComponentAffected` | **not in `ci.dag`** | Shell/YAML bucket authority only — **A1** deletes outputs; **A2** makes buckets unnecessary |
 
