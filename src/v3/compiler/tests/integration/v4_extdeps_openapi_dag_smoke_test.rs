@@ -2,8 +2,8 @@
 //!
 //! T-4.6 / SL-3229-OPENAPI-WIRECONTRACT-COORDINATION ratchet for
 //! `src/v4/extdeps/formats/openapi.dag`: `OpenApiOperationWireContractFacts`
-//! composes `coordination.dag` `WireContractFacts`; exchange authority routes
-//! through `coordination_effect_obligation(Http)`.
+//! composes `coordination.dag` `WireContractFacts`; exchange / settlement /
+//! consistency authority routes through `coordination_effect_obligation(Http)`.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
@@ -88,6 +88,23 @@ fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
         OPENAPI_DAG.contains("fn openapi_operation_exchange_authority() -> ExchangePattern")
             && OPENAPI_DAG.contains("coordination_effect_obligation(effect: Http).required_exchange"),
         "OpenAPI operation exchange must route through Http obligation row, not a parallel RequestReply witness"
+    );
+    assert!(
+        OPENAPI_DAG.contains("fn openapi_operation_settlement_authority() -> SettlementGuarantee<SettleBound>")
+            && OPENAPI_DAG.contains("wire_contract_settlement_from_obligation(")
+            && OPENAPI_DAG.contains("coordination_effect_obligation(effect: Http).required_settlement"),
+        "OpenAPI operation settlement must route through Http obligation row via bound coercion, not inline ImmediateSettlement"
+    );
+    assert!(
+        OPENAPI_DAG.contains("fn openapi_operation_consistency_authority() -> ConsistencyGuarantee<ConvergeBound>")
+            && OPENAPI_DAG.contains("wire_contract_consistency_from_obligation(")
+            && OPENAPI_DAG.contains("coordination_effect_obligation(effect: Http).required_consistency"),
+        "OpenAPI operation consistency must route through Http obligation row via bound coercion, not inline NoReplicaConvergence"
+    );
+    assert!(
+        !OPENAPI_DAG.contains("settlement: ImmediateSettlement,")
+            && !OPENAPI_DAG.contains("consistency: NoReplicaConvergence"),
+        "openapi_http_wire_contract_facts must not restate Http obligation settlement/consistency as inline literals"
     );
     assert!(
         OPENAPI_DAG.contains("fn openapi_operation_wire_contract(")

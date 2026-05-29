@@ -553,13 +553,25 @@ fn openapi_operation_exchange_authority() -> ExchangePattern {
   coordination_effect_obligation(effect: Http).required_exchange
 }
 
+fn openapi_operation_settlement_authority() -> SettlementGuarantee<SettleBound> {
+  wire_contract_settlement_from_obligation(
+    settlement: coordination_effect_obligation(effect: Http).required_settlement
+  )
+}
+
+fn openapi_operation_consistency_authority() -> ConsistencyGuarantee<ConvergeBound> {
+  wire_contract_consistency_from_obligation(
+    consistency: coordination_effect_obligation(effect: Http).required_consistency
+  )
+}
+
 fn openapi_http_wire_contract_facts(from: EndpointRef, to: EndpointRef) -> WireContractFacts {
   WireContractFacts {
     from: from,
     to: to,
     exchange: openapi_operation_exchange_authority(),
-    settlement: ImmediateSettlement,
-    consistency: NoReplicaConvergence
+    settlement: openapi_operation_settlement_authority(),
+    consistency: openapi_operation_consistency_authority()
   }
 }
 
