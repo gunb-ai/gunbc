@@ -239,10 +239,7 @@ data ts_production_wave2a_let_decl: Symbol = ts_production_wave2a_let_decl
 data ts_production_wave2a_const_decl: Symbol = ts_production_wave2a_const_decl
 data ts_production_wave2a_record_field: Symbol = ts_production_wave2a_record_field
 data ts_production_wave2a_record_fields: Symbol = ts_production_wave2a_record_fields
-<<<<<<< HEAD
 data ts_production_wave2a_record_type: Symbol = ts_production_wave2a_record_type
-=======
->>>>>>> 205683573 (T-11 typescript ext PR-1: record-type grammar production)
 data ts_production_wave2a_type_alias_decl: Symbol = ts_production_wave2a_type_alias_decl
 data ts_production_wave2a_item: Symbol = ts_production_wave2a_item
 
@@ -259,10 +256,7 @@ data ts_surface_let_decl: Symbol = ts_surface_let_decl
 data ts_surface_const_decl: Symbol = ts_surface_const_decl
 data ts_surface_record_field: Symbol = ts_surface_record_field
 data ts_surface_record_fields: Symbol = ts_surface_record_fields
-<<<<<<< HEAD
 data ts_surface_record_type: Symbol = ts_surface_record_type
-=======
->>>>>>> 205683573 (T-11 typescript ext PR-1: record-type grammar production)
 data ts_surface_type_alias_decl: Symbol = ts_surface_type_alias_decl
 data ts_surface_item: Symbol = ts_surface_item
 
@@ -1220,7 +1214,6 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
       ]
     ),
     grammar_formal_production(
-<<<<<<< HEAD
       lhs: ts_production_wave2a_record_type,
       rhs: [
         grammar_formal_terminal(identity: ts_token_lbrace),
@@ -1233,21 +1226,13 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_record_type)]
     ),
     grammar_formal_production(
-=======
->>>>>>> 205683573 (T-11 typescript ext PR-1: record-type grammar production)
       lhs: ts_production_wave2a_type_alias_decl,
       rhs: [
         grammar_formal_terminal(identity: ts_token_kw_type),
         grammar_formal_terminal(identity: ts_token_ident),
-<<<<<<< HEAD
         grammar_formal_terminal(identity: ts_token_eq),
         grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_annotation),
         grammar_formal_terminal(identity: ts_token_semicolon)
-=======
-        grammar_formal_terminal(identity: ts_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_record_fields),
-        grammar_formal_terminal(identity: ts_token_rbrace)
->>>>>>> 205683573 (T-11 typescript ext PR-1: record-type grammar production)
       ]
     ),
     grammar_formal_production(
