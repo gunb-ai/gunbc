@@ -128,6 +128,14 @@ fn main() -> ExitCode {
         "workflow_policy (Gate #103 surface): {}",
         if flags.workflow_policy { "yes" } else { "no" }
     );
+    eprintln!(
+        "release_distribution (RELEASE §5 parity smoke): {}",
+        if flags.release_distribution {
+            "yes"
+        } else {
+            "no"
+        }
+    );
 
     if let Err(e) = write_github_output(&output_file, flags) {
         eprintln!("error: write {output_file}: {e}");

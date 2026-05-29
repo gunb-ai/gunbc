@@ -90,6 +90,13 @@ pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
         || path.starts_with("scripts/workflow-path-regex-forbidden-substrings")
 }
 
+pub fn ci_changed_path_affects_release_distribution(path: &str) -> bool {
+    path == "install.sh"
+        || path == "scripts/release-target-triples.sh"
+        || path == "src/v4/workflow/release.dag"
+        || path == ".github/workflows/release.yml"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
