@@ -333,6 +333,7 @@ fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
     })
 }
 
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` `ci_command_authority_ok` / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-rolled `ReleaseCommand` property helpers; forbidden: new `match` predicates over `ReleaseCommand` without disposition.
 fn release_command_authority_ok(c: ReleaseCommand) -> Bool {
   match c {
     CrossMuslGunbcBuild { target: t } =>
@@ -350,6 +351,7 @@ fn release_all_commands_authority_ok(jobs: List<ReleaseJob>) -> Bool {
   })
 }
 
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (same trigger as `ReleaseCommand` coproduct).
 fn release_command_builds_target(c: ReleaseCommand, target: String) -> Bool {
   match c {
     CrossMuslGunbcBuild { target: t } => t == target
@@ -371,6 +373,7 @@ fn release_pipeline_jobs_cover_matrix(jobs: List<ReleaseJob>, rows: List<Release
   })
 }
 
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (mechanical `is_upload` over `ReleaseCommand`; same bounded posture as `ci.dag`).
 fn release_command_is_upload(c: ReleaseCommand) -> Bool {
   match c {
     UploadGunbcMatrixArtifact => true
