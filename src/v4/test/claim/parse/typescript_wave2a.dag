@@ -40,13 +40,7 @@ fn ts_wave2a_bool_atom(b: Bool) -> Node {
   }
 }
 
-// 🟡 predicate-dissolution scaffold — feature:std-outcome-accepted-predicate —
-// matches the same shape already present in rust/kotlin/python/swift/lean wave2a
-// parse-claim files; promote-and-replace once std/diagnostic.dag exports a
-// canonical `outcome_accepted_predicate` (or equivalent). Dissolve-on-arrival:
-// when std grows the helper, every wave2a parse-claim file replaces its local
-// copy with the canonical import in one pass; until then this file follows the
-// established sibling shape rather than authoring a new local-authority idiom.
+// 🟡 feature:std-outcome-accepted-predicate owner:cool-moth-495 lane:node://adhoc-ece453af-47e tracker:#3900 dissolve-on: std/diagnostic.dag exports canonical outcome_accepted_predicate (one-pass replace across all wave2a parse-claim files).
 fn ts_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
