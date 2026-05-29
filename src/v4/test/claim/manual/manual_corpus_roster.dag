@@ -2,13 +2,16 @@
 // Scope: T-38 — explicit roster of manual TestClaimRun rows for corpus evaluation.
 // Status: wedge — three TestClaimRun<Node, RuntimeValue> rows (eval_runtime_mvp +
 //   rust_language_model dissolution receipts); expand as additional rows ship with
-//   the same evaluator-actual type parameter. Heterogeneous-A rows (Node, InferredTree)
-//   land via separate per-A rosters folded into the same CorpusEvalReport in
-//   testclaim_corpus_runner.dag.
+//   the same evaluator-actual type parameter. Heterogeneous-A rows (Node,
+//   InferredTree) land via separate per-A rosters folded into the same
+//   CorpusEvalReport in testclaim_corpus_runner.dag.
 //
 // Roster join is explicit import/concat (Practice 10: single authority — no
 // reflection over the .dag item registry until T-19 testclaim-coproduct-reflection
-// lands; same posture as manual_anchor_manifest.dag).
+// lands; same posture as manual_anchor_manifest.dag). The roster carries the
+// TestClaimRun rows directly; per-row label/claim are reached through the
+// run's cache.key.eval_subject.claim path so the TestClaim definition stays
+// the single authority for label/anchor/classification (P2).
 //
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 —
 // dissolve-on-arrival: roster reflection replaces explicit import list when T-19
@@ -28,28 +31,12 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
 import v4.test.claim.manual.eval_runtime_mvp { run_eval_mvp2_test_claim_route }
 
 
-// A labeled corpus row pairs a row label (the claim's label, lifted at roster
-// declaration) with the produced TestClaimRun. Labels are surfaced verbatim in
-// the host JSON verdict report; the run carries the verdict the host inspects.
-type ManualCorpusRow<A> {
-  label: String
-  run: TestClaimRun<Node, A>
-}
-
-
 // Wedge roster: TestClaimRun rows whose actual-type parameter is RuntimeValue.
-// All three rows route through eval (T-22) on Node-typed inputs.
-data manual_corpus_node_runtime_value_rows: List<ManualCorpusRow<RuntimeValue>> = [
-  ManualCorpusRow {
-    label: "eval routes TestClaim through runtime interpretation",
-    run: run_eval_mvp2_test_claim_route
-  },
-  ManualCorpusRow {
-    label: "rust language model emit mechanical reverification",
-    run: run_rust_language_model_emit_mechanical_reverification_claim
-  },
-  ManualCorpusRow {
-    label: "rust language model emit subsumption reverifies",
-    run: run_rust_language_model_emit_subsumption_reverifies
-  }
+// All three rows route through v4.compiler.eval.eval (T-22) on Node-typed
+// inputs. Per-row label/claim live on the TestClaim reachable via
+// run.cache.key.eval_subject.claim (single authority — no roster-side mirror).
+data manual_corpus_node_runtime_value_runs: List<TestClaimRun<Node, RuntimeValue>> = [
+  run_eval_mvp2_test_claim_route,
+  run_rust_language_model_emit_mechanical_reverification_claim,
+  run_rust_language_model_emit_subsumption_reverifies
 ]
