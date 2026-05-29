@@ -228,10 +228,15 @@ jobs:
     - name: Lens-CI registry activation smoke
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_lens_registry_dag_smoke_test -- --quiet
-    # M1 model↔ci.yml binding — v3 integration harness uses gunbc#846 zero-test-filter; run here.
+    # M1 + bankruptcy Tier-0 model↔ci.yml binding — v3 integration harness uses gunbc#846 zero-test-filter; run here.
     - name: M1 v4 workflow CI model/YAML binding smoke
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      run: cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
+      run: |
+        set -euo pipefail
+        cargo test -p v3-compiler --test integration \
+          v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml \
+          v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted \
+          -- --exact --quiet
     # v4 bootstrap viability — load-bearing compile runs in this `ci` job (40m budget).
     # MVP-1 + v4 bootstrap share the v2-compiler binary; workflow_policy PRs that
     # touch gate wiring must still build/run the MVP-1 and host-eval receipts.
