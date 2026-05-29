@@ -72,8 +72,8 @@ missing 1 gate in `docs/v4-compilation-milestones.md`
 | --- | --- | --- | ---: |
 | **A. Distinct gate names** (all `feature:` + `consumer:` forms) | how many *gates* exist? | `{ git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/feature://'; git grep -hoE 'feature: [a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/feature: //'; git grep -hoE 'consumer:[a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/consumer://'; } \| sort -u \| wc -l` | **140** |
 | **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -c '🟡 gated' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **280** |
-| **C. Per-gate annotation rows for gate X (all forms — header + field)** | how many annotation rows carry gate X? | `git grep -cE 'gated[ —:]+(feature: )?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` (substitute X) | e.g. `formatter-cross-field-constraints` = 7; `formatter-int-refinement` = 66 |
-| **C′. Per-gate FIELD annotations only (excludes `feature:` header rows)** — historical/informational only | how many *field* annotations carry gate X (header declaration rows excluded)? | `git grep -cE 'gated: ?X\|gated consumer: ?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` | e.g. `formatter-int-refinement` = 63; `formatter-cross-field-constraints` = 3 (clang_format only — black/ktfmt/rustfmt carry only the `feature:` header for this gate) |
+| **C. Per-gate annotation rows for gate X (all forms — header + field; covers `feature:X`, `feature: X`, `consumer:X`, `consumer: X`, and field shorthand `gated: X`)** | how many annotation rows carry gate X? | `git grep -cE 'gated[ —:]+(feature:\|consumer:)? ?X' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| awk -F: '{s+=\$NF}END{print s}'` (substitute X) | e.g. `formatter-int-refinement` = 66; `config-patch-record-projection` = 12; `formatter-cross-field-constraints` = 7; `rustfmt-deprecated-alias` = 3; `lean4-option-closed-set` = 3 |
+| **C′. Per-gate FIELD annotations only (excludes `feature:`/`consumer:` header rows)** — historical/informational only | how many *field* annotations carry gate X (declaration rows excluded)? | `git grep -cE 'gated: ?X\|gated consumer: ?X' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| awk -F: '{s+=\$NF}END{print s}'` | e.g. `formatter-int-refinement` = 63; `formatter-cross-field-constraints` = 3 (clang_format only — black/ktfmt/rustfmt carry only the `feature:` header for this gate) |
 
 **§1.x and §A all use Population C** (all-forms, includes both header
 declarations and field annotations) as the canonical per-gate row
@@ -156,8 +156,11 @@ audit and inverts the headline.
 `refinement.dag` (action §A8 below). The bind line reads correctly; the
 upstream-status check was wrong.
 
-### §1.2 `config-patch-record-projection`  (13 sites · `std/patch.dag` +
-9 formatter files)
+### §1.2 `config-patch-record-projection`  (12 annotation rows under
+Population C: 1 `feature:` header in `std/patch.dag` + 11 `consumer:`
+tags across 9 formatter files including 3 in prettier.dag — corrected
+2026-05-29; the original "13 sites" included a non-gated prose
+mention in `TASKS.md:T-4.16`)
 
 **Bind:** T-4.16 record-field map → `*ConfigPatch` + `*_layer` projection
 (`src/v4/std/patch.dag:11`).
@@ -192,7 +195,9 @@ substrate gap.
 not a structural reorder. The validator can be authored against existing
 Witness primitives in the same PR that defines the config.
 
-### §1.4 `rustfmt-deprecated-alias`  (2 sites · rustfmt only)
+### §1.4 `rustfmt-deprecated-alias`  (3 annotation rows · rustfmt only;
+1 `feature:` header + 2 field annotations — corrected 2026-05-29 from
+"2 sites" per Population C)
 
 **Bind:** T-4.16 follow-on. Dissolve-on: precedence rule "canonical field
 wins when both are set" for `merge_imports → imports_granularity` and
@@ -235,7 +240,9 @@ present, the migration is in-scope T-4.16 work.
 deferred "emit-side guard" is a workaround for not doing the carrier
 migration that T-4.16 itself was supposed to do.
 
-### §1.7 `lean4-option-closed-set`  (1 site · lean4_format)
+### §1.7 `lean4-option-closed-set`  (3 annotation rows · lean4_format —
+corrected 2026-05-29 from "1 site" per Population C; 2 `feature:`
+headers + 1 field)
 
 **Bind:** T-4.16 follow-on. Dissolve-on: replace `lake_lean_options` open
 list with typed fields **once Lean4 documents a fixed set of formatter-
@@ -446,8 +453,8 @@ under-counted the route by omitting §1.2 and §1.3.
 
 | Population | Sites | NECESSARY | UNNECESSARY |
 | --- | ---: | ---: | ---: |
-| `🟡 gated — feature:*` distinct gates | 130 | 123 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
-| `🟡 gated` annotation occurrences | 279 | ~200 | **~79** (§1.1 alone is 66 rows under Population C; +2 long-tail T-25-core binds; §1.3 = 7 rows across 4 formatter files; §1.4 = 2; §1.5 = 1; §1.6 = 1 — see §0 for canonical commands) |
+| `🟡 gated — feature:*` distinct gates | 140 (full scope incl. docs/) | 133 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
+| `🟡 gated` annotation occurrences (Population C, all forms, full scope) | 280 | ~200 | **~80** (§1.1 = 66 + §1.3 = 7 + §1.4 = 3 + §1.5 = 1 + §1.6 = 1 + 2 long-tail T-25-core binds = 80; all derived from §0 Population C — single authority) |
 | `🟡 needs-more-work` | 53 | 36 | 17 (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
 
@@ -461,8 +468,9 @@ honest. Combined with the smaller T-4.16 follow-on gates (§1.3, §1.4, §1.6 �
 §1.5 already folded into §A1's 69-site set), there is a clear T-4.16
 close-out opportunity to dissolve **~79 yellow marks** against
 substrate that already exists: 69 (§A1 landed-T-25-core set under
-Population C) + 7 (§1.3 cross-field) + 2 (§1.4 deprecated-alias) +
-1 (§1.6 unstable-option-validity) = **79**. Matches §5's ~79 row.
+Population C) + 7 (§1.3 cross-field) + 3 (§1.4 deprecated-alias under
+Population C) + 1 (§1.6 unstable-option-validity) = **80**. Matches §5's
+~80 row.
 
 The misclassifications cluster in **two places**:
 
