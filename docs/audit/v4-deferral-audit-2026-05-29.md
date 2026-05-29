@@ -187,16 +187,39 @@ not a T-4.16 follow-on; it is a v4-language-level substrate gap.
 Recommend retagging the bind to `bind v4-lang:map-primitive`
 (action §A3).
 
-### §1.9  Long-tail single-site gates (75 distinct gates)
+### §1.9  Long-tail gates — remaining 89 distinct gates
 
-Sampled across the long tail: every gate is bound to a named upstream task
-(T-3, T-9, T-21, T-22, T-25-core, T-34, T-4-wave-2b, …) whose substrate is
-not yet present.  Representative examples (none were found to be
-intra-task slicing):
+**Census (corrected 2026-05-29 per codex + inline review):** the original
+draft's "75 single-occurrence gates" heading was wrong — the long tail
+contains both singletons and un-tabulated multi-site gates. True
+distribution across all 97 `feature:NAME` gate names (from
+`grep -rhoE 'feature:[a-z][a-z0-9_-]+' src/v4/ | sort | uniq -c`):
+
+| Site count | # of gates | Status |
+| ---: | ---: | --- |
+| 13 sites | 1 | tabulated as §1.2 (`config-patch-record-projection`) |
+| 7 sites  | 1 | long tail (`canonical-b-grounding-consumer`) |
+| 6 sites  | 1 | long tail (`free-monoid-entry-generic-inference`) |
+| 5 sites  | 1 | long tail (`section-ref-identity-evidence`) |
+| 4 sites  | 2 | long tail (`python-wave2a-decimal-int-literal`, `model-core-law-expression-carrier`) |
+| 3 sites  | 2 | long tail (`testclaim-coproduct-reflection`, `t19-claim-anchor-split`) |
+| 2 sites  | 17 | long tail (14 NECESSARY long-tail; 3 already tabulated in §1.3/§1.4) |
+| 1 site   | 72 | long tail singletons (§1.5–§1.8 are four of these) |
+| **Total** | **97** | — |
+
+Tabulated by name in §1.1–§1.8: **8 gates** (5 multi-site, 3 singletons).
+**Remaining 89 long-tail gates** are summarized below; representative
+examples (multi-site first, then singleton patterns):
 
 * `feature:canonical-b-grounding-consumer` (7 sites) — bind T-9 algebra-ref
   grounding; T-9 not landed.
 * `feature:free-monoid-entry-generic-inference` (6 sites) — bind T-2/T-9.
+* `feature:section-ref-identity-evidence` (5 sites) — bind not yet landed.
+* `feature:python-wave2a-decimal-int-literal` (4 sites) — bind T-4 wave-2a.
+* `feature:model-core-law-expression-carrier` (4 sites) — bind T-2/T-9.
+* `feature:testclaim-coproduct-reflection` (3 sites) — bind T-19 follow-up;
+  matches the T-19 Phase-2 trigger (same authority as
+  `t19-claim-anchor-split` below).
 * `feature:t11-grammar-from-token-row` (2 sites) — bind T-11; not landed.
 * `feature:network-validated-components` (2 sites) — bind T-26 boundary
   carriers; not landed.
@@ -207,6 +230,10 @@ intra-task slicing):
   TestClaim rows … the union dissolves"); `std/verification.dag:196` still
   carries the matching `RULING-1: needs-more-work` mark. The original audit
   draft mis-read this as stale. **The bind is correctly active.**
+
+The remaining un-listed long-tail gates (≈75 singletons + ≈10 doubles)
+each bind to a named upstream task (T-3, T-21, T-22, T-34, T-4-wave-2b,
+…) whose substrate is not yet present.
 
 **Long-tail classification:** **NECESSARY** across the long tail
 (`t19-claim-anchor-split` included — corrected per above), **with two
