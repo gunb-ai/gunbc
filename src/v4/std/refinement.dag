@@ -56,3 +56,15 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
 fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
+
+
+// Upstream-documented defaults and other author-known-valid substrate constants:
+// discharge Validation at the authoritative boundary (not user/config input).
+// User/config input must use refine/make_* with a real Locus.
+// 🟡 gated — feature: refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival: Rejected arm becomes structurally unreachable when Refined is opaque and only refine exports carriers; forbidden: retaining direct Refined { base } construction for invalid bases.
+fn refined_for_authoritative_constant<B>(base: B, by: Validation<B>) -> Refined<B> {
+  match refine(base: base, by: by, at: refinement_authoritative_locus()) {
+    Accepted { value: refined, diagnostics: _ } => refined
+    Rejected { diagnostics: _ } => Refined { base: base }
+  }
+}

@@ -9,7 +9,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
 import v4.std.patch { FieldPatch, apply_field_patch }
-import v4.std.refinement { Refined, Validation, refine }
+import v4.std.refinement { Refined, Validation, refine, refined_for_authoritative_constant }
 
 
 type SwiftFormatPositiveInt = Refined<Int>
@@ -135,12 +135,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: Refined { base: 1 },
-  line_length: Refined { base: 100 },
-  indentation: SwiftFormatSpaces { count: Refined { base: 2 } },
-  tab_width: Refined { base: 8 },
-  maximum_blank_lines: Refined { base: 1 },
-  spaces_before_end_of_line_comments: Refined { base: 2 },
+  version: refined_for_authoritative_constant(base: 1, by: swift_format_config_version_validation),
+  line_length: refined_for_authoritative_constant(base: 100, by: swift_format_positive_int_validation),
+  indentation: SwiftFormatSpaces { count: refined_for_authoritative_constant(base: 2, by: swift_format_positive_int_validation) },
+  tab_width: refined_for_authoritative_constant(base: 8, by: swift_format_positive_int_validation),
+  maximum_blank_lines: refined_for_authoritative_constant(base: 1, by: swift_format_non_negative_int_validation),
+  spaces_before_end_of_line_comments: refined_for_authoritative_constant(base: 2, by: swift_format_non_negative_int_validation),
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,

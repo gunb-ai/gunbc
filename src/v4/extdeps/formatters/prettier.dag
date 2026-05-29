@@ -10,7 +10,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
 import v4.std.patch { FieldPatch, apply_field_patch }
-import v4.std.refinement { Refined, Validation, refine }
+import v4.std.refinement { Refined, Validation, refine, refined_for_authoritative_constant }
 
 
 type PrettierPositiveInt = Refined<Int>
@@ -194,8 +194,8 @@ type PrettierConfig {
 
 
 data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
-  print_width: Refined { base: 80 },
-  tab_width: Refined { base: 2 },
+  print_width: refined_for_authoritative_constant(base: 80, by: prettier_positive_int_validation),
+  tab_width: refined_for_authoritative_constant(base: 2, by: prettier_positive_int_validation),
   use_tabs: false,
   semi: true,
   single_quote: false,

@@ -9,7 +9,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
 import v4.std.patch { FieldPatch, apply_field_patch }
-import v4.std.refinement { Refined, Validation, refine }
+import v4.std.refinement { Refined, Validation, refine, refined_for_authoritative_constant }
 
 
 type RustfmtPositiveInt = Refined<Int>
@@ -278,20 +278,20 @@ type RustfmtConfig {
 // Official rustfmt 1.6 defaults. edition field defaults to 2015 per rustfmt spec regardless of project edition.
 data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   indent_style: RustfmtIndentBlock,
-  tab_spaces: Refined { base: 4 },
+  tab_spaces: refined_for_authoritative_constant(base: 4, by: rustfmt_positive_int_validation),
   hard_tabs: false,
 
-  max_width: Refined { base: 100 },
-  comment_width: Refined { base: 80 },
-  chain_width: Refined { base: 60 },
-  single_line_if_else_max_width: Refined { base: 50 },
-  single_line_let_else_max_width: Refined { base: 50 },
-  fn_call_width: Refined { base: 60 },
-  attr_fn_like_width: Refined { base: 70 },
-  struct_lit_width: Refined { base: 18 },
-  struct_variant_width: Refined { base: 35 },
-  array_width: Refined { base: 60 },
-  short_array_element_width_threshold: Refined { base: 10 },
+  max_width: refined_for_authoritative_constant(base: 100, by: rustfmt_positive_int_validation),
+  comment_width: refined_for_authoritative_constant(base: 80, by: rustfmt_non_negative_int_validation),
+  chain_width: refined_for_authoritative_constant(base: 60, by: rustfmt_positive_int_validation),
+  single_line_if_else_max_width: refined_for_authoritative_constant(base: 50, by: rustfmt_non_negative_int_validation),
+  single_line_let_else_max_width: refined_for_authoritative_constant(base: 50, by: rustfmt_non_negative_int_validation),
+  fn_call_width: refined_for_authoritative_constant(base: 60, by: rustfmt_positive_int_validation),
+  attr_fn_like_width: refined_for_authoritative_constant(base: 70, by: rustfmt_positive_int_validation),
+  struct_lit_width: refined_for_authoritative_constant(base: 18, by: rustfmt_non_negative_int_validation),
+  struct_variant_width: refined_for_authoritative_constant(base: 35, by: rustfmt_non_negative_int_validation),
+  array_width: refined_for_authoritative_constant(base: 60, by: rustfmt_positive_int_validation),
+  short_array_element_width_threshold: refined_for_authoritative_constant(base: 10, by: rustfmt_positive_int_validation),
 
   brace_style: RustfmtBraceSameLineWhere,
   control_brace_style: RustfmtControlBraceAlwaysSameLine,
@@ -313,21 +313,21 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   fn_params_layout: RustfmtFnParamsTall,
   fn_args_layout: RustfmtFnParamsTall,
   fn_single_line: false,
-  inline_attribute_width: Refined { base: 0 },
+  inline_attribute_width: refined_for_authoritative_constant(base: 0, by: rustfmt_non_negative_int_validation),
 
   reorder_modules: true,
   reorder_impl_items: false,
 
   newline_style: RustfmtNewlineAuto,
-  blank_lines_upper_bound: Refined { base: 1 },
-  blank_lines_lower_bound: Refined { base: 0 },
+  blank_lines_upper_bound: refined_for_authoritative_constant(base: 1, by: rustfmt_non_negative_int_validation),
+  blank_lines_lower_bound: refined_for_authoritative_constant(base: 0, by: rustfmt_non_negative_int_validation),
 
   wrap_comments: false,
   normalize_comments: false,
   normalize_doc_attributes: false,
   format_strings: false,
   format_code_in_doc_comments: false,
-  doc_comment_code_block_width: Refined { base: 100 },
+  doc_comment_code_block_width: refined_for_authoritative_constant(base: 100, by: rustfmt_positive_int_validation),
   format_generated_files: true,
   hide_parse_errors: false,
 
@@ -346,8 +346,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   remove_nested_parens: true,
   combine_control_expr: true,
   hex_literal_case: RustfmtHexPreserve,
-  enum_discrim_align_threshold: Refined { base: 0 },
-  struct_field_align_threshold: Refined { base: 0 },
+  enum_discrim_align_threshold: refined_for_authoritative_constant(base: 0, by: rustfmt_non_negative_int_validation),
+  struct_field_align_threshold: refined_for_authoritative_constant(base: 0, by: rustfmt_non_negative_int_validation),
   spaces_around_ranges: false,
   space_after_colon: true,
   space_before_colon: false,
