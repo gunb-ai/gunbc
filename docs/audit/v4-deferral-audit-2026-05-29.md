@@ -36,7 +36,7 @@ snapshot** under an explicit one-shot operator directive (2026-05-29). It is
 1.  Enumerate every marker. Three populations:
     * **gate vocabulary** — `🟡 gated — feature:NAME — bind X — dissolve-on Y`.
       280 occurrences across the corpus collapse to a small set of distinct
-      `feature:` + `consumer:` gate names (140 distinct per §0 Population A); one row per gate.
+      `feature:` + `consumer:` gate names (141 distinct per §0 Population A); one row per gate.
     * **needs-more-work** — 53 `🟡 needs-more-work` markers. Each carries a
       `bind T-X — dissolve-on:` rider; classified by upstream task.
     * **prose-level deferrals** in `TASKS.md`, `src/v4/DECISIONS.md`,
@@ -68,7 +68,7 @@ missing 1 gate in `docs/v4-compilation-milestones.md`
 
 | Population | Question it answers | Canonical grep | Result on `origin/main` |
 | --- | --- | --- | ---: |
-| **A. Distinct gate names** (all `feature:` + `consumer:` forms) | how many *gates* exist? | `{ git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/feature://'; git grep -hoE 'feature: [a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/feature: //'; git grep -hoE 'consumer:[a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/consumer://'; } \| sort -u \| wc -l` | **140** |
+| **A. Distinct gate names** (all `feature:` + `consumer:` + shorthand-only `🟡 gated: NAME` forms) | how many *gates* exist? | `{ git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/feature://'; git grep -hoE 'feature: [a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/feature: //'; git grep -hoE 'consumer:[a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/consumer://'; git grep -hoE '🟡 gated: [a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/🟡 gated: //'; } \| sort -u \| wc -l` | **141** |
 | **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -c '🟡 gated' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **280** |
 | **C. Per-gate annotation rows for gate X (all forms — header + field; covers `feature:X`, `feature: X`, `consumer:X`, `consumer: X`, and field shorthand `gated: X`)** | how many annotation rows carry gate X? | `git grep -cE 'gated[ —:]+(feature:\|consumer:)? ?X' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| awk -F: '{s+=\$NF}END{print s}'` (substitute X) | e.g. `formatter-int-refinement` = 66; `config-patch-record-projection` = 12; `formatter-cross-field-constraints` = 7; `rustfmt-deprecated-alias` = 3; `lean4-option-closed-set` = 3 |
 | **C′. Per-gate FIELD annotations only (excludes `feature:`/`consumer:` header rows)** — historical/informational only | how many *field* annotations carry gate X (declaration rows excluded)? | `git grep -cE 'gated: ?X\|gated consumer: ?X' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| awk -F: '{s+=\$NF}END{print s}'` | e.g. `formatter-int-refinement` = 63; `formatter-cross-field-constraints` = 3 (clang_format only — black/ktfmt/rustfmt carry only the `feature:` header for this gate) |
@@ -80,7 +80,7 @@ where §1.1 cited the C′ value (63) while §1.3 cited the C value (7);
 **§1.1 now reads "66" under C** for single-authority consistency.
 
 **Last reproduced 2026-05-29 against `origin/main` @ `df91abc2b`:**
-populations A=**140**, B=**280**.
+populations A=**141**, B=**280**.
 
 **Corrected per inline review 2026-05-29:** the original audit cited
 A=97, derived from `feature:[a-z]` (no-space form only). Inline review
@@ -92,7 +92,7 @@ distinct = 130**. Headline gates including `formatter-int-refinement`,
 `formatter-cross-field-constraints`, `lean4-option-closed-set` use
 the spaced form for their headers and were excluded from the original
 97 census. **The 97/89/75 figures in §1, §1.9, and downstream tables
-were all undercounts** and have been corrected to 140/132/95
+were all undercounts** and have been corrected to 141/133/95
 respectively (see §1.9 for the regenerated distribution).
 
 This does **not** change the substantive classifications — every
@@ -122,7 +122,7 @@ are the audit's canonical commands.
 
 ## §1. Gate vocabulary — `🟡 gated — feature:NAME`
 
-**140 distinct gate names** appear in the corpus (corrected 2026-05-29
+**141 distinct gate names** appear in the corpus (corrected 2026-05-29
 per inline review — see §0 for the unified spaced+unspaced grep that
 yields this; the original 97 figure missed 33 spaced-form gates
 including `formatter-int-refinement` itself). **§1.1–§1.8 tabulate 8
