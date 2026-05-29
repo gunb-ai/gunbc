@@ -1122,6 +1122,13 @@ fn data_body_source_contains(
     data_body_source(module, source, name).is_some_and(|body| body.contains(needle))
 }
 
+fn data_list_element_surface_text(source: &str, element: &SurfaceExpr) -> String {
+    match element {
+        SurfaceExpr::Var { name, .. } => name.clone(),
+        _ => source_span_text(source, &element.span()).trim().to_string(),
+    }
+}
+
 fn data_list_element_var_names(
     module: &v3_compiler::parse_surface::SurfaceModule,
     source: &str,
@@ -1138,10 +1145,7 @@ fn data_list_element_var_names(
             } if item_name == name => Some(
                 elements
                     .iter()
-                    .map(|element| match element {
-                        SurfaceExpr::Var { name, .. } => name.clone(),
-                        other => panic!("expected list element var in `{name}`, got {other:?}"),
-                    })
+                    .map(|element| data_list_element_surface_text(source, element))
                     .collect(),
             ),
             SurfaceItem::Data {
