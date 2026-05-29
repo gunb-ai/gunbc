@@ -20,12 +20,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::emit_rust_roundtrip_fixtures::{
-    ProgramFixture, GO_EMIT_EXCLUDE, PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE,
-};
+use v3_compiler::emit_rust_roundtrip_fixtures::{ProgramFixture, PROGRAM_FIXTURES};
 use v3_compiler::post_emit_verifier::{
-    verify_program_emitted_source, verify_program_emitted_source_all_targets,
-    EmitVerificationTarget,
+    fixture_supports_emit_verification_target, verify_program_emitted_source,
+    verify_program_emitted_source_all_targets, EmitVerificationTarget,
 };
 use v3_compiler::CompileError;
 
@@ -56,15 +54,6 @@ fn compile_fixture(fixture: &ProgramFixture) -> v3_compiler::Dag {
     }
 }
 
-#[allow(dead_code)] // used by `#[ignore]` toolchain tests below
-fn fixture_supports_target(fixture: &ProgramFixture, target: EmitVerificationTarget) -> bool {
-    match target {
-        EmitVerificationTarget::Rust => true,
-        EmitVerificationTarget::Go => !GO_EMIT_EXCLUDE.contains(&fixture.name),
-        EmitVerificationTarget::Python => !PYTHON_EMIT_EXCLUDE.contains(&fixture.name),
-    }
-}
-
 /// Gate: every corpus program passes all applicable Shape-A post-emit verifiers.
 #[test]
 #[ignore = "requires rustc, gofmt, and python3 on PATH"]
@@ -73,7 +62,9 @@ fn arbitrary_program_fixtures_pass_post_emit_verifier_all_targets() {
     for fixture in PROGRAM_FIXTURES {
         let dag = compile_fixture(fixture);
         let scratch = scratch_dir(fixture.name);
-        if let Err(msg) = verify_program_emitted_source_all_targets(&dag, &scratch, fixture.name) {
+        if let Err(msg) =
+            verify_program_emitted_source_all_targets(&dag, &scratch, fixture.name, fixture.name)
+        {
             failures.push(msg);
         }
         let _ = std::fs::remove_dir_all(&scratch);
@@ -92,6 +83,9 @@ fn arbitrary_program_fixtures_pass_post_emit_verifier_all_targets() {
 #[ignore = "requires rustc on PATH"]
 fn arbitrary_program_fixtures_pass_rust_post_emit_verifier() {
     for fixture in PROGRAM_FIXTURES {
+        if !fixture_supports_emit_verification_target(fixture.name, EmitVerificationTarget::Rust) {
+            continue;
+        }
         let dag = compile_fixture(fixture);
         let scratch = scratch_dir(&format!("{}_rust", fixture.name));
         verify_program_emitted_source(&dag, EmitVerificationTarget::Rust, &scratch, fixture.name)

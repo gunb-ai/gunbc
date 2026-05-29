@@ -45,6 +45,7 @@ use crate::bounded_host_command::{self, DEFAULT_WALL_TIMEOUT};
 
 use crate::dag::{DeclarationId, FieldValue, LiteralBits};
 use crate::emit::{emit_go_text, emit_python_text, emit_rust_text};
+use crate::emit_rust_roundtrip_fixtures::{GO_EMIT_EXCLUDE, PYTHON_EMIT_EXCLUDE};
 use crate::Dag;
 
 /// R3 Shape-A emission targets whose `CleanEmissionContract.post_emit_verifier`
@@ -73,6 +74,18 @@ impl EmitVerificationTarget {
             Self::Go => "main.go",
             Self::Python => "main.py",
         }
+    }
+}
+
+/// Whether a `PROGRAM_FIXTURES` row participates in post-emit verification for `target`.
+pub fn fixture_supports_emit_verification_target(
+    fixture_name: &str,
+    target: EmitVerificationTarget,
+) -> bool {
+    match target {
+        EmitVerificationTarget::Rust => true,
+        EmitVerificationTarget::Go => !GO_EMIT_EXCLUDE.contains(&fixture_name),
+        EmitVerificationTarget::Python => !PYTHON_EMIT_EXCLUDE.contains(&fixture_name),
     }
 }
 
@@ -367,14 +380,20 @@ pub fn verify_program_emitted_source(
     })
 }
 
-/// Every Shape-A target must accept the emitted source for `program_dag`.
+/// Every **applicable** Shape-A target must accept the emitted source for `program_dag`.
+/// Skips Go/Python when `fixture_name` is listed in `GO_EMIT_EXCLUDE` /
+/// `PYTHON_EMIT_EXCLUDE` (same rule as omni emit gates).
 pub fn verify_program_emitted_source_all_targets(
     program_dag: &Dag,
     scratch_dir: &Path,
     file_stem: &str,
+    fixture_name: &str,
 ) -> Result<(), String> {
     let mut failures = Vec::new();
     for &target in EmitVerificationTarget::ALL {
+        if !fixture_supports_emit_verification_target(fixture_name, target) {
+            continue;
+        }
         if let Err(msg) = verify_program_emitted_source(program_dag, target, scratch_dir, file_stem)
         {
             failures.push(msg);
