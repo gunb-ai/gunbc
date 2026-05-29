@@ -61,8 +61,17 @@ three to spot-check the §1/§5/§A numbers. **Run from repo root:**
 
 | Population | Question it answers | Canonical grep | Result on `origin/main` |
 | --- | --- | --- | ---: |
-| **A. Distinct gate names** (`feature:NAME` or `feature: NAME`) | how many *gates* exist? | `{ git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sed 's/feature://'; git grep -hoE 'feature: [a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sed 's/feature: //'; } \| sort -u \| wc -l` | **130** |
-| **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -c '🟡 gated' origin/main -- src/v4/ \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **279** |
+**Audit pathspec (corrected 2026-05-29 per inline review to match
+declared corpus scope):** all commands below use the pathspec
+`-- src/v4/ docs/v4-*.md docs/design-v4-*.md` so the census matches
+the audit's declared scope. Earlier draft used `-- src/v4/` only,
+missing 1 gate in `docs/v4-compilation-milestones.md`
+(`feature:T-7-parse-walk-realization`).
+
+| Population | Question it answers | Canonical grep | Result on `origin/main` |
+| --- | --- | --- | ---: |
+| **A. Distinct gate names** (all `feature:` + `consumer:` forms) | how many *gates* exist? | `{ git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/feature://'; git grep -hoE 'feature: [a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/feature: //'; git grep -hoE 'consumer:[a-z][a-z0-9_-]+' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| sed 's/consumer://'; } \| sort -u \| wc -l` | **140** |
+| **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -c '🟡 gated' origin/main -- src/v4/ docs/v4-*.md docs/design-v4-*.md \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **280** |
 | **C. Per-gate annotation rows for gate X (all forms — header + field)** | how many annotation rows carry gate X? | `git grep -cE 'gated[ —:]+(feature: )?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` (substitute X) | e.g. `formatter-cross-field-constraints` = 7; `formatter-int-refinement` = 66 |
 | **C′. Per-gate FIELD annotations only (excludes `feature:` header rows)** — historical/informational only | how many *field* annotations carry gate X (header declaration rows excluded)? | `git grep -cE 'gated: ?X\|gated consumer: ?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` | e.g. `formatter-int-refinement` = 63; `formatter-cross-field-constraints` = 3 (clang_format only — black/ktfmt/rustfmt carry only the `feature:` header for this gate) |
 
