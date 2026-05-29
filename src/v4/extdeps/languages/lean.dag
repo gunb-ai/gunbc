@@ -42,8 +42,8 @@ import v4.std.algebra {
   BooleanAlgebra,
   Cons,
   Empty,
-  boolean_algebra_node,
-  commutative_ring_node,
+  boolean_algebra_type_node,
+  commutative_ring_type_node,
   fold_list,
   list_snoc_item
 }
@@ -844,12 +844,12 @@ fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabita
     // CommutativeRing, not merely Semiring. Neither class is OrderedRing: wrapping
     // breaks a ≤ b → a+c ≤ b+c. Anchor: Lean 4 reference §Fixed-Precision Integers.
     IntScalar { kind, width } => AlgebraInhabitanceDecl {
-      algebra: commutative_ring_node(inhabitant: inhabitant),
+      algebra: commutative_ring_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: lean_integer_algebra_witness_node(facts: facts, kind: kind, width: width)
     }
     BoolScalar => AlgebraInhabitanceDecl {
-      algebra: boolean_algebra_node(inhabitant: inhabitant),
+      algebra: boolean_algebra_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: lean_bool_algebra_witness_node()
     }
