@@ -114,6 +114,8 @@ fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
     assert!(
         OPENAPI_DAG.contains("fn openapi_http_wire_contract_facts(")
             && OPENAPI_DAG.contains("-> Outcome<WireContractFacts>")
+            && OPENAPI_DAG.contains("fn openapi_operation_wire_contract_facts(")
+            && OPENAPI_DAG.contains("-> Outcome<OpenApiOperationWireContractFacts>")
             && OPENAPI_DAG.contains("fn openapi_operation_wire_contract(")
             && OPENAPI_DAG.contains("facts: facts.coordination"),
         "OpenApiOperationWireContractFacts must compose coordination WireContract via Outcome-guarded facts.coordination"

@@ -3,6 +3,7 @@ name = "v3-grounding-cross-target-meta"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 # T-Ground-CrossTarget-Meta — L6 cross-product walker scaffold. Sibling crate
 # to grounding_pilot / grounding_engine / grounding_lifetime / grounding_coercion_fold;
