@@ -6,7 +6,6 @@
 module v4.std.determinism
 
 import v4.std.collection { List, Map, empty_map, map_insert }
-import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.witness { Witness }
 
@@ -32,13 +31,6 @@ fn determinism_registry_from_facts(facts: List<DeterminismFact>) -> Map<Symbol, 
   fold(facts, init: empty_map(), f: fn(acc, row) {
     map_insert(m: acc, key: row.signature, value: row.classification)
   })
-}
-
-fn determinism_class_is_deterministic(classification: DeterminismClass) -> Bool {
-  match classification {
-    Deterministic => true
-    NonDeterministic { source: _ } => false
-  }
 }
 
 fn determinism_registry_lookup(

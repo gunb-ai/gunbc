@@ -23,7 +23,6 @@ import v4.std.determinism {
   DeterminismClass,
   DeterminismFact,
   NonDetSource,
-  determinism_class_is_deterministic,
   determinism_registry_from_facts,
   determinism_registry_lookup
 }
@@ -36,6 +35,7 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
+  Bind,
   ComputationNode,
   Edge,
   Named,
@@ -53,6 +53,7 @@ data determinism_forbidden_time_read: Symbol = determinism_forbidden_time_read
 data determinism_forbidden_random_read: Symbol = determinism_forbidden_random_read
 data determinism_forbidden_env_read: Symbol = determinism_forbidden_env_read
 data determinism_effect_leak: Symbol = determinism_effect_leak
+data determinism_invoke_edge: Symbol = determinism_invoke_edge
 
 data forbidden_symbol_hash_map: Symbol = forbidden_symbol_hash_map
 data forbidden_symbol_hash_set: Symbol = forbidden_symbol_hash_set
@@ -190,11 +191,43 @@ type CalleeScanState {
   violation: Optional<DeterminismViolation>
 }
 
-fn callee_is_transform_or_bind(n: Node) -> Bool {
-  match n.kind {
-    ComputationNode { behavior: Transform } => true
-    ComputationNode { behavior: Bind } => true
-    _ => false
+fn callee_symbol_from_invoke_target(target: Node) -> Optional<Symbol> {
+  match target.kind {
+    TypeNode { connective: Atom { identity: callee_sym } } =>
+      optional_present(value: callee_sym)
+    _ => optional_absent()
+  }
+}
+
+fn callee_invoke_edge_violation(
+  registry: Map<Symbol, DeterminismClass>,
+  edge: Edge
+) -> Optional<DeterminismViolation> {
+  match edge.label {
+    Named { name: edge_sym } =>
+      if edge_sym == determinism_invoke_edge {
+        match callee_symbol_from_invoke_target(target: edge.target) {
+          Present { value: callee_sym } =>
+            match determinism_registry_lookup(registry: registry, signature: callee_sym) {
+              Holds { value: classification } =>
+                match classification {
+                  Deterministic => optional_absent()
+                  NonDeterministic { source: _ } =>
+                    optional_present(
+                      value: EffectLeak { callee: callee_sym, at: edge.target }
+                    )
+                }
+              Violates { diagnostic: _ } =>
+                optional_present(
+                  value: EffectLeak { callee: callee_sym, at: edge.target }
+                )
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
   }
 }
 
@@ -203,27 +236,12 @@ fn callee_edge_violation(
   parent: Node,
   edge: Edge
 ) -> Optional<DeterminismViolation> {
-  if callee_is_transform_or_bind(n: parent) {
-    match edge.label {
-      Named { name: callee_sym } =>
-        match determinism_registry_lookup(registry: registry, signature: callee_sym) {
-          Holds { value: classification } =>
-            if determinism_class_is_deterministic(classification: classification) {
-              optional_absent()
-            } else {
-              optional_present(
-                value: EffectLeak { callee: callee_sym, at: edge.target }
-              )
-            }
-          Violates { diagnostic: _ } =>
-            optional_present(
-              value: EffectLeak { callee: callee_sym, at: edge.target }
-            )
-        }
-      Positional => optional_absent()
-    }
-  } else {
-    optional_absent()
+  match parent.kind {
+    ComputationNode { behavior: Transform } =>
+      callee_invoke_edge_violation(registry: registry, edge: edge)
+    ComputationNode { behavior: Bind } =>
+      callee_invoke_edge_violation(registry: registry, edge: edge)
+    _ => optional_absent()
   }
 }
 

@@ -6,6 +6,7 @@ module v4.test.claim.lens_determinism.deterministic_btree_callee
 
 import v4.compiler.infer { InferredTree }
 import v4.lens.determinism {
+  determinism_invoke_edge,
   determinism_witness_from_facts,
   forbidden_symbol_btree_map
 }
@@ -46,7 +47,7 @@ data det_clean_body: Node = Node {
       target: det_clean_map_node
     },
     Edge {
-      label: Named { name: det_clean_callee_symbol },
+      label: Named { name: determinism_invoke_edge },
       target: det_clean_callee_target
     }
   ]
