@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/protobuf.dag
 // Scope: Protocol Buffers schema-IDL subset (proto2/proto3 messages, enums, maps, oneofs) + binary wire-format encoding — declarative only.
-// Status: protobuf modeling lane — schema + wire axes; parse/emit deferred (T-6/T-7/T-10).
+// Status: bounded schema-IDL subset (messages/enums/maps/oneofs) + wire-format; not full .proto surface — see gated axes below.
 // Anchor: https://protobuf.dev/programming-guides/proto/ (language guide)
 // Anchor: https://protobuf.dev/programming-guides/encoding/ (wire format)
 // Anchor: https://protobuf.dev/reference/protobuf/proto3-spec/ (map key types, field grammar)
@@ -290,3 +290,4 @@ type ProtoDocument {
 // 🟡 gated — feature: protobuf service/RPC definitions (service/method/streaming grammar) — SL-3229-PROTOBUF-SERVICE-RPC.
 // 🟡 gated — feature: protobuf extensions and custom options — SL-3229-PROTOBUF-EXTENSIONS.
 // 🟡 gated — feature: protobuf editions syntax — SL-3229-PROTOBUF-EDITIONS.
+// 🟡 gated — feature: protobuf proto2 group fields (deprecated schema `group` keyword) — SL-3229-PROTOBUF-PROTO2-GROUPS.

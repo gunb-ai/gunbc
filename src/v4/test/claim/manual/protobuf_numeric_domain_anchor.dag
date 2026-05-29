@@ -6,7 +6,7 @@ module v4.test.claim.manual.protobuf_numeric_domain_anchor
 
 import v4.extdeps.formats.protobuf {
   ProtoEnumValueNumber,
-  ProtoEnumValueNonZero,
+  ProtoEnumValuePositive,
   ProtoEnumValueZero,
   ProtoFieldNumber,
 }
@@ -22,6 +22,6 @@ data protobuf_anchor_field_number_one: ProtoFieldNumber = ProtoFieldNumber {
 data protobuf_anchor_enum_value_zero: ProtoEnumValueNumber = ProtoEnumValueZero
 
 
-data protobuf_anchor_enum_value_nonzero: ProtoEnumValueNumber = ProtoEnumValueNonZero {
+data protobuf_anchor_enum_value_positive: ProtoEnumValueNumber = ProtoEnumValuePositive {
   value: NonZeroNat { prev: Succ { prev: Zero } },
 }
