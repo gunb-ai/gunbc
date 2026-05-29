@@ -85,21 +85,37 @@ data release_build_matrix: List<ReleaseMatrixRow> = [
     target: "x86_64-unknown-linux-musl"
     runner: "ubuntu-24.04"
     cross: true
+    artifact_basename: "gunbc-x86_64-unknown-linux-musl"
   },
   {
     target: "aarch64-unknown-linux-musl"
     runner: "ubuntu-24.04"
     cross: true
+    artifact_basename: "gunbc-aarch64-unknown-linux-musl"
   },
   {
     target: "x86_64-apple-darwin"
     runner: "macos-15-intel"
     cross: false
+    artifact_basename: "gunbc-x86_64-apple-darwin"
   },
   {
     target: "aarch64-apple-darwin"
     runner: "macos-14"
     cross: false
+    artifact_basename: "gunbc-aarch64-apple-darwin"
+  },
+  {
+    target: "x86_64-pc-windows-msvc"
+    runner: "windows-2022"
+    cross: false
+    artifact_basename: "gunbc-x86_64-pc-windows-msvc.exe"
+  },
+  {
+    target: "aarch64-pc-windows-msvc"
+    runner: "windows-11-arm"
+    cross: false
+    artifact_basename: "gunbc-aarch64-pc-windows-msvc.exe"
   }
 ]
 
@@ -109,10 +125,19 @@ fn release_matrix_row_targets(rows: List<ReleaseMatrixRow>) -> List<String> {
   })
 }
 
-// Published GH Release asset triples (`gunbc-{target}`) — projection of `release_build_matrix`
-// row targets (single modeled source). Shell `scripts/release-target-triples.sh` mirrors this
-// list for curl|sh install until install targets derive from `.dag` eval.
+fn release_matrix_row_artifact_basenames(rows: List<ReleaseMatrixRow>) -> List<String> {
+  fold(rows, init: [], f: fn(acc, row) {
+    concat(acc, [row.artifact_basename])
+  })
+}
+
+// Published GH Release rustc target triples — projection of `release_build_matrix` row targets.
+// `install.dag` (Phase 1b) references this list; do not duplicate literals in install shell.
 data release_published_target_triples: List<String> = release_matrix_row_targets(rows: release_build_matrix)
+
+// Published GH Release upload basenames — projection of matrix `artifact_basename` (`.exe` policy
+// is modeled per row, not hardcoded in workflow shell branches).
+data release_published_artifact_names: List<String> = release_matrix_row_artifact_basenames(rows: release_build_matrix)
 
 // `release_pipeline` jobs are hand-expanded (M1 interim; mirror `ci.dag` `ci_pipeline`) until
 // YamlStatic derives them from `release_build_matrix`. Target-bearing authority is the matrix:
@@ -123,19 +148,27 @@ data release_build_musl_x86: Symbol = release_build_musl_x86
 data release_build_musl_aarch64: Symbol = release_build_musl_aarch64
 data release_build_darwin_x86: Symbol = release_build_darwin_x86
 data release_build_darwin_aarch64: Symbol = release_build_darwin_aarch64
+data release_build_windows_x86: Symbol = release_build_windows_x86
+data release_build_windows_aarch64: Symbol = release_build_windows_aarch64
 data release_upload_musl_x86: Symbol = release_upload_musl_x86
 data release_upload_musl_aarch64: Symbol = release_upload_musl_aarch64
 data release_upload_darwin_x86: Symbol = release_upload_darwin_x86
 data release_upload_darwin_aarch64: Symbol = release_upload_darwin_aarch64
+data release_upload_windows_x86: Symbol = release_upload_windows_x86
+data release_upload_windows_aarch64: Symbol = release_upload_windows_aarch64
 data release_publish_execution: Symbol = release_publish_execution
 data release_build_musl_x86_signal: Symbol = release_build_musl_x86_signal
 data release_build_musl_aarch64_signal: Symbol = release_build_musl_aarch64_signal
 data release_build_darwin_x86_signal: Symbol = release_build_darwin_x86_signal
 data release_build_darwin_aarch64_signal: Symbol = release_build_darwin_aarch64_signal
+data release_build_windows_x86_signal: Symbol = release_build_windows_x86_signal
+data release_build_windows_aarch64_signal: Symbol = release_build_windows_aarch64_signal
 data release_upload_musl_x86_signal: Symbol = release_upload_musl_x86_signal
 data release_upload_musl_aarch64_signal: Symbol = release_upload_musl_aarch64_signal
 data release_upload_darwin_x86_signal: Symbol = release_upload_darwin_x86_signal
 data release_upload_darwin_aarch64_signal: Symbol = release_upload_darwin_aarch64_signal
+data release_upload_windows_x86_signal: Symbol = release_upload_windows_x86_signal
+data release_upload_windows_aarch64_signal: Symbol = release_upload_windows_aarch64_signal
 data release_publish_signal: Symbol = release_publish_signal
 
 data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
@@ -147,13 +180,11 @@ data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
   aarch64_strip_step_name: "Install aarch64 strip (musl cross artifacts on x86 runner)"
   build_gunbc_step_name: "Build gunbc"
   upload_artifact_step_name: "Upload binary artifact"
-  stage_install_sh_step_name: "Stage release assets"
   create_release_step_name: "Create GitHub Release"
   gh_release_action: "softprops/action-gh-release@v2"
   cargo_package: "v2-compiler"
   cargo_bin: "gunbc"
   cross_version: "0.2.5"
-  install_sh_bundle_name: "install.sh"
 }
 
 data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p: ReleasePipeline {
@@ -179,6 +210,16 @@ data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p
       needs: []
     },
     ReleaseJob {
+      id: release_build_windows_x86,
+      command: NativeWindowsGunbcBuild { target: "x86_64-pc-windows-msvc" },
+      needs: []
+    },
+    ReleaseJob {
+      id: release_build_windows_aarch64,
+      command: NativeWindowsGunbcBuild { target: "aarch64-pc-windows-msvc" },
+      needs: []
+    },
+    ReleaseJob {
       id: release_upload_musl_x86,
       command: UploadGunbcMatrixArtifact,
       needs: [release_build_musl_x86]
@@ -199,13 +240,25 @@ data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p
       needs: [release_build_darwin_aarch64]
     },
     ReleaseJob {
+      id: release_upload_windows_x86,
+      command: UploadGunbcMatrixArtifact,
+      needs: [release_build_windows_x86]
+    },
+    ReleaseJob {
+      id: release_upload_windows_aarch64,
+      command: UploadGunbcMatrixArtifact,
+      needs: [release_build_windows_aarch64]
+    },
+    ReleaseJob {
       id: release_publish_execution,
-      command: PublishGitHubRelease { bundle_install_sh: true },
+      command: PublishGitHubRelease,
       needs: [
         release_upload_musl_x86,
         release_upload_musl_aarch64,
         release_upload_darwin_x86,
-        release_upload_darwin_aarch64
+        release_upload_darwin_aarch64,
+        release_upload_windows_x86,
+        release_upload_windows_aarch64
       ]
     }
   ],
@@ -214,10 +267,14 @@ data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p
     ReleaseGate { id: release_build_musl_aarch64_signal, job: release_build_musl_aarch64 },
     ReleaseGate { id: release_build_darwin_x86_signal, job: release_build_darwin_x86 },
     ReleaseGate { id: release_build_darwin_aarch64_signal, job: release_build_darwin_aarch64 },
+    ReleaseGate { id: release_build_windows_x86_signal, job: release_build_windows_x86 },
+    ReleaseGate { id: release_build_windows_aarch64_signal, job: release_build_windows_aarch64 },
     ReleaseGate { id: release_upload_musl_x86_signal, job: release_upload_musl_x86 },
     ReleaseGate { id: release_upload_musl_aarch64_signal, job: release_upload_musl_aarch64 },
     ReleaseGate { id: release_upload_darwin_x86_signal, job: release_upload_darwin_x86 },
     ReleaseGate { id: release_upload_darwin_aarch64_signal, job: release_upload_darwin_aarch64 },
+    ReleaseGate { id: release_upload_windows_x86_signal, job: release_upload_windows_x86 },
+    ReleaseGate { id: release_upload_windows_aarch64_signal, job: release_upload_windows_aarch64 },
     ReleaseGate { id: release_publish_signal, job: release_publish_execution }
   ]
 })
@@ -327,15 +384,36 @@ fn release_acyclic(jobs: List<ReleaseJob>) -> Bool {
 
 // 🟡 matrix-row validator dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: declared platform coproduct or YamlStatic `release_build_matrix` emission replaces tag-keyed OR over `(target, runner, cross)`; forbidden: new supported platform rows without disposition.
 fn release_matrix_row_tuple_well_formed(row: ReleaseMatrixRow) -> Bool {
-  (row.target == "x86_64-unknown-linux-musl" && row.runner == "ubuntu-24.04" && row.cross == true)
-    || (row.target == "aarch64-unknown-linux-musl" && row.runner == "ubuntu-24.04" && row.cross == true)
-    || (row.target == "x86_64-apple-darwin" && row.runner == "macos-15-intel" && row.cross == false)
-    || (row.target == "aarch64-apple-darwin" && row.runner == "macos-14" && row.cross == false)
+  (row.target == "x86_64-unknown-linux-musl"
+    && row.runner == "ubuntu-24.04"
+    && row.cross == true
+    && row.artifact_basename == "gunbc-x86_64-unknown-linux-musl")
+    || (row.target == "aarch64-unknown-linux-musl"
+      && row.runner == "ubuntu-24.04"
+      && row.cross == true
+      && row.artifact_basename == "gunbc-aarch64-unknown-linux-musl")
+    || (row.target == "x86_64-apple-darwin"
+      && row.runner == "macos-15-intel"
+      && row.cross == false
+      && row.artifact_basename == "gunbc-x86_64-apple-darwin")
+    || (row.target == "aarch64-apple-darwin"
+      && row.runner == "macos-14"
+      && row.cross == false
+      && row.artifact_basename == "gunbc-aarch64-apple-darwin")
+    || (row.target == "x86_64-pc-windows-msvc"
+      && row.runner == "windows-2022"
+      && row.cross == false
+      && row.artifact_basename == "gunbc-x86_64-pc-windows-msvc.exe")
+    || (row.target == "aarch64-pc-windows-msvc"
+      && row.runner == "windows-11-arm"
+      && row.cross == false
+      && row.artifact_basename == "gunbc-aarch64-pc-windows-msvc.exe")
 }
 
 fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
   unique(xs: release_matrix_row_targets(rows: rows), eq: fn(left, right) { left == right })
-    && length(xs: rows) == 4
+    && unique(xs: release_matrix_row_artifact_basenames(rows: rows), eq: fn(left, right) { left == right })
+    && length(xs: rows) == 6
     && for_all(xs: rows, predicate: fn(row) {
       release_matrix_row_tuple_well_formed(row: row)
     })
@@ -348,8 +426,10 @@ fn release_command_authority_ok(c: ReleaseCommand) -> Bool {
       t == "x86_64-unknown-linux-musl" || t == "aarch64-unknown-linux-musl"
     NativeDarwinGunbcBuild { target: t } =>
       t == "x86_64-apple-darwin" || t == "aarch64-apple-darwin"
+    NativeWindowsGunbcBuild { target: t } =>
+      t == "x86_64-pc-windows-msvc" || t == "aarch64-pc-windows-msvc"
     UploadGunbcMatrixArtifact => true
-    PublishGitHubRelease { bundle_install_sh: bundle } => bundle == true
+    PublishGitHubRelease => true
   }
 }
 
@@ -364,8 +444,9 @@ fn release_command_builds_target(c: ReleaseCommand, target: String) -> Bool {
   match c {
     CrossMuslGunbcBuild { target: t } => t == target
     NativeDarwinGunbcBuild { target: t } => t == target
+    NativeWindowsGunbcBuild { target: t } => t == target
     UploadGunbcMatrixArtifact => false
-    PublishGitHubRelease { bundle_install_sh: _ } => false
+    PublishGitHubRelease => false
   }
 }
 
@@ -404,8 +485,9 @@ fn release_command_is_build(c: ReleaseCommand) -> Bool {
   match c {
     CrossMuslGunbcBuild { target: _ } => true
     NativeDarwinGunbcBuild { target: _ } => true
+    NativeWindowsGunbcBuild { target: _ } => true
     UploadGunbcMatrixArtifact => false
-    PublishGitHubRelease { bundle_install_sh: _ } => false
+    PublishGitHubRelease => false
   }
 }
 
