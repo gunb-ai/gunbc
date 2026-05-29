@@ -57,6 +57,32 @@ fn verdict_monoid<T>() -> Monoid<Verdict<T>> {
     identity: Pass
   }
 }
+// Canonical per-variant classification predicates for Verdict<T>. Workflow
+// callers that need to discriminate Pass vs Fail vs Deferred (e.g. for
+// `count_where` tallies in a corpus runner) consume these single-authority
+// predicates rather than re-deriving the variant set via inline `match`,
+// per docs/modeling-discipline.md predicate-dissolution.
+fn verdict_is_pass<T>(v: Verdict<T>) -> Bool {
+  match v {
+    Pass => true
+    Fail { actual: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+fn verdict_is_fail<T>(v: Verdict<T>) -> Bool {
+  match v {
+    Pass => false
+    Fail { actual: _ } => true
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+fn verdict_is_deferred<T>(v: Verdict<T>) -> Bool {
+  match v {
+    Pass => false
+    Fail { actual: _ } => false
+    Deferred { actual: _, diagnostic: _ } => true
+  }
+}
 // Fold a list of verdicts with the monoid identity (Pass) and verdict_combine.
 // Fail-closed on empty list: the caller supplies the empty_verdict to enforce
 // the desired policy (typically Fail with a context-specific diagnostic).

@@ -35,7 +35,15 @@ import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
-import v4.std.verdict { Verdict, Deferred, Fail, Pass }
+import v4.std.verdict {
+  Verdict,
+  Deferred,
+  Fail,
+  Pass,
+  verdict_is_deferred,
+  verdict_is_fail,
+  verdict_is_pass
+}
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,

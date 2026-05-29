@@ -160,7 +160,6 @@ cat <<JSON
   "execution_status": "blocked_m1_subset",
   "blocked_reason": "wedge-real runtime invocation of run_manual_testclaim_corpus_eval requires a cargo-clean subset of the v2-compiler emit-Rust output; full-tree cargo check on the emitted crate currently fails (FreeMonoid drop-check cycle + Nat cata Fn-clone in v2_compiler_emit_rust — M1 emitter lane, not T-38 scope). Tracked as T-38-PR2.",
   "scaffold_receipts": {
-    "dag_compile": { "status": "0-diagnostic", "modules": 282 },
     "rust_emit": { "status": "0-diagnostic", "files_emitted": ${files_emitted} },
     "emitted_runner_structural_witness": "PASS"
   },
@@ -180,7 +179,6 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo ""
     echo "| receipt | status |"
     echo "| --- | --- |"
-    echo "| \`gunbc compile --source-root src/v4 --target dag\` | 0-diagnostic |"
     echo "| \`gunbc compile --source-root src/v4 --target rust\` | 0-diagnostic, ${files_emitted} files emitted |"
     echo "| emitted runner.rs + roster.rs structural witness (entry symbols + roster row refs) | PASS |"
     echo ""
