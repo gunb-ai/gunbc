@@ -896,6 +896,7 @@ type WorkflowPipelinePlanBoundPassReceipt {
 }
 
 
+// Pass arm is intentionally lossy (`aggregate_verdicts` Pass carries no payload); `workflow_pipeline_plan_bound_pass_receipt` closes over the original `run` on Pass.
 fn workflow_pipeline_pass_gate(
   run: TestClaimRun<CiPipeline, CiPipeline>,
   at: Node
