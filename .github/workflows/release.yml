@@ -99,8 +99,10 @@ jobs:
         run: |
           set -eux
           cp install.sh dist/install.sh
+          mkdir -p dist/scripts
+          cp scripts/release-target-triples.sh dist/scripts/release-target-triples.sh
           chmod +x dist/install.sh
-          ls -la dist
+          ls -la dist dist/scripts
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

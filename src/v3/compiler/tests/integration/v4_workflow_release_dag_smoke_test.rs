@@ -264,6 +264,11 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
         "{RELEASE_YML_PATH}: publish bundle must include modeled install.sh"
     );
     assert!(
+        RELEASE_YML
+            .contains("scripts/release-target-triples.sh dist/scripts/release-target-triples.sh"),
+        "{RELEASE_YML_PATH}: publish bundle must ship target-authority script beside install.sh"
+    );
+    assert!(
         RELEASE_YML.contains(&format!("- name: {publish_step}")),
         "{RELEASE_YML_PATH}: must create GitHub Release"
     );
