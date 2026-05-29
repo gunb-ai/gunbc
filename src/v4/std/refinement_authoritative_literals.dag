@@ -21,9 +21,6 @@ import v4.std.refinement {
 // Each literal is a primary data row plus *_reattempt sibling: total match requires a Rejected arm,
 // but admitted upstream bases only reject on substrate fault. Reattempt re-runs make_* (fail-closed)
 // without bare Refined fabrication or unbounded discharge-fn recursion (P4).
-// Each literal is a primary data row plus *_reattempt sibling: total match requires a Rejected arm,
-// but admitted upstream bases only reject on substrate fault. Reattempt re-runs make_* (fail-closed)
-// without bare Refined fabrication or unbounded discharge-fn recursion (P4).
 // 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail — dissolve-on-arrival:
 // each data row discharged through make_*_at_authoritative; witness ties constant to Accepted carrier.
 // forbidden: bare PositiveInt { refined: Refined { base } } without matching acceptance witness.
