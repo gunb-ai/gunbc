@@ -11,7 +11,6 @@ module v4.extdeps.formats.openapi
 import v4.extdeps.coordination {
   BindRef,
   CoordinationBind,
-  CoordinationEffectKind,
   EndpointRef,
   ExchangePattern,
   Http,
