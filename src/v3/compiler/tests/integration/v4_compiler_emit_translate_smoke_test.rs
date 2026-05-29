@@ -22,6 +22,9 @@
 //! LanguageModel / lex/grammar surface on `python.dag`. **PR #3840 (+0 census paths):**
 //! adds T-11 grammar-inverse compile-inferred TestClaim parse/import receipts for
 //! python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`).
+//! **PR #3901 (+0 census paths):** extends TypeScript T-11 beyond MVP-1 add-fn with
+//! wave2a let/const grammar-inverse translation rules in `typescript.dag` plus parse/emit
+//! TestClaim receipts (`typescript_wave2a.dag`, `mvp1_typescript_wave2a_let_const_translate.dag`).
 //! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
 //! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
 //!
@@ -78,6 +81,14 @@ const MVP1_TYPESCRIPT_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_typescript_add_translate.dag");
 const MVP1_TYPESCRIPT_CLAIM_PATH: &str =
     "src/v4/test/claim/manual/mvp1_typescript_add_translate.dag";
+const TYPESCRIPT_WAVE2A_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/parse/typescript_wave2a.dag");
+const TYPESCRIPT_WAVE2A_CLAIM_PATH: &str = "src/v4/test/claim/parse/typescript_wave2a.dag";
+const MVP1_TYPESCRIPT_WAVE2A_CLAIM_DAG: &str = include_str!(
+    "../../../../v4/test/claim/manual/mvp1_typescript_wave2a_let_const_translate.dag"
+);
+const MVP1_TYPESCRIPT_WAVE2A_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/mvp1_typescript_wave2a_let_const_translate.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -759,6 +770,18 @@ fn v4_typescript_language_model_declares_t11_translation_rules() {
         surface_declares_fn(&module, "ts_mvp1_translation_rules_node"),
         "{TYPESCRIPT_LANGUAGE_PATH}: must project MVP-1 TypeScript translation rules into the target model"
     );
+    assert!(
+        surface_declares_fn(&module, "ts_wave2a_translation_rules_node"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: must project Wave 2a let/const translation rules beyond MVP-1 add-fn"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_wave2a_let_target_model"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: must expose Wave 2a let-decl TargetModel for T-11 emit"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_wave2a_const_target_model"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: must expose Wave 2a const-decl TargetModel for T-11 emit"
+    );
 }
 
 #[test]
@@ -1036,6 +1059,33 @@ fn v4_mvp1_cpp_add_claim_tokenizes_and_parses() {
 #[test]
 fn v4_mvp1_typescript_add_claim_tokenizes_and_parses() {
     let _module = parse_module(MVP1_TYPESCRIPT_CLAIM_DAG, MVP1_TYPESCRIPT_CLAIM_PATH);
+}
+
+#[test]
+fn v4_typescript_wave2a_claim_tokenizes_and_parses() {
+    let _module = parse_module(TYPESCRIPT_WAVE2A_CLAIM_DAG, TYPESCRIPT_WAVE2A_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_typescript_wave2a_let_const_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_TYPESCRIPT_WAVE2A_CLAIM_DAG, MVP1_TYPESCRIPT_WAVE2A_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_typescript_wave2a_claim_imports_emit() {
+    let module = parse_module(MVP1_TYPESCRIPT_WAVE2A_CLAIM_DAG, MVP1_TYPESCRIPT_WAVE2A_CLAIM_PATH);
+    assert!(
+        import_includes_name(&module, &["v4", "compiler", "emit"], "emit"),
+        "{MVP1_TYPESCRIPT_WAVE2A_CLAIM_PATH}: Wave 2a grammar-inverse claim must import emit stage"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "extdeps", "languages", "typescript"],
+            "ts_wave2a_let_target_model"
+        ),
+        "{MVP1_TYPESCRIPT_WAVE2A_CLAIM_PATH}: must import Wave 2a let TargetModel"
+    );
 }
 
 #[test]

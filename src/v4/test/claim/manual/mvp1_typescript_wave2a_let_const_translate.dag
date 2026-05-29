@@ -1,0 +1,224 @@
+// src/v4/test/claim/manual/mvp1_typescript_wave2a_let_const_translate.dag
+// Scope: T-11 Wave 2a receipt — grammar-inverse emit accepts for ts let/const decl trees.
+// Status: T-11 TypeScript slice beyond MVP-1 add-fn; authority_source_text poisoned on compile path.
+
+
+module v4.test.claim.manual.mvp1_typescript_wave2a_let_const_translate
+
+import v4.compiler.emit { emit }
+import v4.compiler.eval {
+  TestClaimEvalSubject,
+  TestClaimRun,
+  run_test_claim_assert,
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
+}
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.compiler.target_carriers { TargetSource }
+import v4.extdeps.languages.typescript {
+  ts_wave2a_const_emitted_node,
+  ts_wave2a_const_source_text,
+  ts_wave2a_const_target_model,
+  ts_wave2a_let_emitted_node,
+  ts_wave2a_let_source_text,
+  ts_wave2a_let_target_model
+}
+import v4.std.target_model { TargetModel }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
+import v4.test.claim.manual.infer_ground_add_mvp {
+  infer_receipt_context,
+  infer_receipt_input_infer_add_mvp
+}
+import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v4.std.collection { Map }
+import v4.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness,
+  StructuralPropertyWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus
+}
+import v4.std.node { Node, Symbol, TypeNode }
+import v4.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v4.std.witness { Holds, Violates, Witness }
+
+data wave2a_ts_grounding_miss: Symbol = wave2a_ts_grounding_miss
+data wave2a_ts_emit_source_mismatch: Symbol = wave2a_ts_emit_source_mismatch
+
+data wave2a_ts_let_emitted_root: Node = ts_wave2a_let_emitted_node()
+data wave2a_ts_const_emitted_root: Node = ts_wave2a_const_emitted_node()
+
+data wave2a_ts_let_target_model: TargetModel = ts_wave2a_let_target_model()
+data wave2a_ts_const_target_model: TargetModel = ts_wave2a_const_target_model()
+
+fn wave2a_ts_canonical_grounding(
+  node: Node,
+  algebra: Node
+) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: algebra
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+fn wave2a_ts_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+  if node == wave2a_ts_let_emitted_root || node == wave2a_ts_const_emitted_root {
+    match termination_proof_witness_for_node(n: node) {
+      Violates { diagnostic: d } => Violates { diagnostic: d }
+      Holds { value: proof } =>
+        Holds {
+          value: claim_inferred_facts_witness(
+            grounding: wave2a_ts_canonical_grounding(node: node, algebra: node),
+            descent: Holds { value: proof }
+          )
+        }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: wave2a_ts_grounding_miss,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+fn wave2a_ts_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  wave2a_ts_inferred_facts_for(node: key)
+}
+
+data wave2a_ts_let_inferred_tree: InferredTree = InferredTree {
+  root: wave2a_ts_let_emitted_root,
+  facts: Map { lookup: wave2a_ts_facts_lookup }
+}
+
+data wave2a_ts_const_inferred_tree: InferredTree = InferredTree {
+  root: wave2a_ts_const_emitted_root,
+  facts: Map { lookup: wave2a_ts_facts_lookup }
+}
+
+fn anchor_wave2a_ts_let_emit_accepts() -> Outcome<TargetSource> {
+  emit(tree: wave2a_ts_let_inferred_tree, target: wave2a_ts_let_target_model)
+}
+
+fn anchor_wave2a_ts_const_emit_accepts() -> Outcome<TargetSource> {
+  emit(tree: wave2a_ts_const_inferred_tree, target: wave2a_ts_const_target_model)
+}
+
+data wave2a_ts_let_emit_receipt: Outcome<TargetSource> = anchor_wave2a_ts_let_emit_accepts()
+data wave2a_ts_const_emit_receipt: Outcome<TargetSource> = anchor_wave2a_ts_const_emit_accepts()
+
+fn wave2a_ts_emit_claim_outcome(
+  receipt: Outcome<TargetSource>,
+  expected: String,
+  emitted: Node
+) -> Outcome<Node> {
+  match receipt {
+    Accepted { value: source, diagnostics: d } =>
+      if (source == expected) && (d == None) {
+        Accepted { value: emitted, diagnostics: None }
+      } else {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: Diagnostic {
+              reason: wave2a_ts_emit_source_mismatch,
+              at: node_locus(node: emitted),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+data claim_wave2a_ts_emit_let_decl_accepts: TestClaim = CompilesClaim {
+  label: "manual/wave2a: emit emits canonical ts_wave2a let decl source",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: wave2a_ts_let_emitted_root,
+  expected_value: wave2a_ts_let_emitted_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_wave2a_ts_emit_const_decl_accepts: TestClaim = CompilesClaim {
+  label: "manual/wave2a: emit emits canonical ts_wave2a const decl source",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: wave2a_ts_const_emitted_root,
+  expected_value: wave2a_ts_const_emitted_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data subject_wave2a_ts_emit_let_decl_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_wave2a_ts_emit_let_decl_accepts,
+  context: infer_receipt_context(),
+  tree: wave2a_ts_let_inferred_tree,
+  input: test_claim_typed_input_node(
+    evaluator_input: wave2a_ts_let_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
+}
+
+data subject_wave2a_ts_emit_const_decl_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_wave2a_ts_emit_const_decl_accepts,
+  context: infer_receipt_context(),
+  tree: wave2a_ts_const_inferred_tree,
+  input: test_claim_typed_input_node(
+    evaluator_input: wave2a_ts_const_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
+}
+
+data run_wave2a_ts_emit_let_decl_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_wave2a_ts_emit_let_decl_accepts),
+  verdict: run_test_claim_assert(
+    claim: claim_wave2a_ts_emit_let_decl_accepts,
+    actual: wave2a_ts_emit_claim_outcome(
+      receipt: wave2a_ts_let_emit_receipt,
+      expected: ts_wave2a_let_source_text,
+      emitted: wave2a_ts_let_emitted_root
+    ),
+    at: wave2a_ts_let_emitted_root
+  )
+}
+
+data run_wave2a_ts_emit_const_decl_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_wave2a_ts_emit_const_decl_accepts),
+  verdict: run_test_claim_assert(
+    claim: claim_wave2a_ts_emit_const_decl_accepts,
+    actual: wave2a_ts_emit_claim_outcome(
+      receipt: wave2a_ts_const_emit_receipt,
+      expected: ts_wave2a_const_source_text,
+      emitted: wave2a_ts_const_emitted_root
+    ),
+    at: wave2a_ts_const_emitted_root
+  )
+}
