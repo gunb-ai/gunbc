@@ -14,6 +14,7 @@
 //! table row land in the same PR.
 
 use v3_compiler::parse_for_test;
+use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
 use v3_compiler::tokenize_for_test;
 
 const TASK_MANAGER_DEMO_DAG: &str =
@@ -27,25 +28,127 @@ fn task_manager_demo_surface_or_panic() -> v3_compiler::parse_surface::SurfaceMo
         .unwrap_or_else(|e| panic!("{TASK_MANAGER_DEMO_PATH}: parse: {e:?}"))
 }
 
+fn type_record_fields<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a [SurfaceField] {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord {
+                name: item_name,
+                fields,
+                ..
+            } if item_name == name => Some(fields.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record {name}"))
+}
+
+fn type_sum_variants(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> Vec<String> {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeSum {
+                name: item_name,
+                variants,
+                ..
+            } if item_name == name => Some(variants.iter().map(|v| v.name.clone()).collect()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type sum {name}"))
+}
+
+fn surface_type_name(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Named { name, .. } => name.clone(),
+        SurfaceType::Parameterized { name, args, .. } => {
+            let rendered = args
+                .iter()
+                .map(|arg| match arg {
+                    TypeAngleArg::TypeExpr { ty } => surface_type_name(ty),
+                    TypeAngleArg::WidthNatLiteral { decimal, .. } => decimal.clone(),
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{rendered}>")
+        }
+        SurfaceType::Optional { inner, .. } => format!("?{}", surface_type_name(inner)),
+        SurfaceType::Arrow { .. } => "fn".to_string(),
+    }
+}
+
+fn record_field_type(fields: &[SurfaceField], name: &str) -> String {
+    fields
+        .iter()
+        .find(|field| field.name == name)
+        .map(|field| surface_type_name(&field.ty))
+        .unwrap_or_else(|| panic!("missing field {name}"))
+}
+
 #[test]
 fn v4_test_fixture_task_manager_demo_parses() {
     let _module = task_manager_demo_surface_or_panic();
 }
 
 #[test]
-fn v4_test_fixture_task_manager_demo_exports_sql_create_table_projection() {
-    let _module = task_manager_demo_surface_or_panic();
+fn v4_test_fixture_task_manager_demo_task_field_authority_matches_task_record() {
+    let module = task_manager_demo_surface_or_panic();
+    let task_fields = type_record_fields(&module, "Task");
+    assert_eq!(
+        task_fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect::<Vec<_>>(),
+        ["id", "title", "status"]
+    );
+    assert_eq!(
+        type_sum_variants(&module, "TaskManagerTaskField"),
+        ["TaskFieldId", "TaskFieldTitle", "TaskFieldStatus"]
+    );
+    assert!(
+        TASK_MANAGER_DEMO_DAG.contains("data task_manager_task_field_catalog: List<TaskManagerTaskField> = [")
+            && TASK_MANAGER_DEMO_DAG.contains("TaskFieldId,")
+            && TASK_MANAGER_DEMO_DAG.contains("TaskFieldTitle,")
+            && TASK_MANAGER_DEMO_DAG.contains("TaskFieldStatus")
+            && TASK_MANAGER_DEMO_DAG
+                .contains("fn task_manager_task_fields_to_sql_columns(")
+            && TASK_MANAGER_DEMO_DAG.contains(
+                "o: task_manager_task_fields_to_sql_columns(fields: task_manager_task_field_catalog)"
+            ),
+        "SQL columns must fold over task_manager_task_field_catalog, not hand-list Task fields"
+    );
+}
+
+#[test]
+fn v4_test_fixture_task_manager_demo_sql_projection_uses_canonical_carriers() {
+    let module = task_manager_demo_surface_or_panic();
+    assert_eq!(
+        type_sum_variants(&module, "TaskManagerSqlProjectableScalar"),
+        ["ProjectTaskId", "ProjectString", "ProjectTaskStatus"]
+    );
+    assert_eq!(
+        type_sum_variants(&module, "TaskManagerSqlScalarDispatch"),
+        ["MappedProjectable", "UnmappedDomainScalar"]
+    );
+
+    let sql_table = type_record_fields(&module, "SqlTableDefinition");
+    assert_eq!(record_field_type(sql_table, "primary_key"), "?List<SqlIdentifier>");
+
+    assert!(
+        TASK_MANAGER_DEMO_DAG.contains("UnmappedDomainScalar { anchor } =>")
+            && TASK_MANAGER_DEMO_DAG
+                .contains("task_manager_reject_unmapped_domain_scalar(node: anchor)"),
+        "UnmappedDomainScalar dispatch arm must route to fail-closed rejection"
+    );
     assert!(
         TASK_MANAGER_DEMO_DAG
             .contains("fn task_to_sql_create_table() -> Outcome<SqlSchemaOperation>"),
         "fixture must export Task→SqlCreateTable Shape-B projection"
-    );
-    assert!(
-        TASK_MANAGER_DEMO_DAG.contains("fn task_manager_reject_unmapped_domain_scalar("),
-        "fixture must fail-closed on unmapped domain scalars"
-    );
-    assert!(
-        TASK_MANAGER_DEMO_DAG.contains("type TaskManagerSqlProjectableScalar"),
-        "fixture must enumerate projectable Task field scalars explicitly"
     );
 }

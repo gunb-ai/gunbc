@@ -20,13 +20,16 @@ import v4.extdeps.formats.sql {
   SqlTableDefinition,
   SqlTypeCharacterLargeObject
 }
-import v4.std.algebra { FreeMonoid, Empty }
+import v4.std.algebra { FreeMonoid, Empty, fold }
 import v4.std.collection { Absent, optional_present }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
+  ShortCircuit,
+  StageDiagnosticPolicy,
   Unavailable,
+  append_outcome_value,
   bind_outcome,
   node_locus,
   outcome_accepted,
@@ -251,6 +254,26 @@ data task_manager_task_field_catalog: List<TaskManagerTaskField> = [
   TaskFieldStatus
 ]
 
+data task_manager_sql_projection_policy: StageDiagnosticPolicy = StageDiagnosticPolicy {
+  accumulation: ShortCircuit
+}
+
+fn task_manager_task_fields_to_sql_columns(
+  fields: List<TaskManagerTaskField>
+) -> Outcome<List<SqlColumnDefinition>> {
+  fold(
+    fields,
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, field) {
+      append_outcome_value(
+        acc: acc,
+        child: task_manager_task_field_to_sql_column_definition(field: field),
+        policy: task_manager_sql_projection_policy
+      )
+    }
+  )
+}
+
 fn task_manager_task_field_column_spelling(field: TaskManagerTaskField) -> String {
   match field {
     TaskFieldId => "id"
@@ -346,28 +369,18 @@ fn task_manager_task_field_to_sql_column_definition(
 
 fn task_to_sql_table_definition() -> Outcome<SqlTableDefinition> {
   bind_outcome(
-    o: task_manager_task_field_to_sql_column_definition(field: TaskFieldId),
-    f: fn(id_col) {
-      bind_outcome(
-        o: task_manager_task_field_to_sql_column_definition(field: TaskFieldTitle),
-        f: fn(title_col) {
-          bind_outcome(
-            o: task_manager_task_field_to_sql_column_definition(field: TaskFieldStatus),
-            f: fn(status_col) {
-              outcome_accepted(value: SqlTableDefinition {
-                name: task_manager_sql_identifier(name: tasks_table_spelling),
-                columns: [id_col, title_col, status_col],
-                primary_key: optional_present(value: [
-                  task_manager_sql_identifier(
-                    name: task_manager_task_field_column_spelling(field: TaskFieldId)
-                  )
-                ]),
-                table_constraints: []
-              })
-            }
+    o: task_manager_task_fields_to_sql_columns(fields: task_manager_task_field_catalog),
+    f: fn(columns) {
+      outcome_accepted(value: SqlTableDefinition {
+        name: task_manager_sql_identifier(name: tasks_table_spelling),
+        columns: columns,
+        primary_key: optional_present(value: [
+          task_manager_sql_identifier(
+            name: task_manager_task_field_column_spelling(field: TaskFieldId)
           )
-        }
-      )
+        ]),
+        table_constraints: []
+      })
     }
   )
 }
