@@ -309,6 +309,14 @@ fn tcc_cache_byte_offset_pow_20() -> Int {
   int_mul(a: tcc_cache_byte_offset_pow_19(), b: tcc_cache_byte_limb_base)
 }
 
+fn tcc_cache_byte_offset_pow_21() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_20(), b: tcc_cache_byte_limb_base)
+}
+
+fn tcc_cache_byte_offset_pow_22() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_21(), b: tcc_cache_byte_limb_base)
+}
+
 // 256^9 - 1 — largest within-ceiling offset (9 base-256 limbs).
 fn tcc_cache_byte_offset_exact_ceiling() -> Int {
   int_add(a: tcc_cache_byte_offset_pow_9(), b: int_negate(a: tcc_cache_int_one))
@@ -357,6 +365,17 @@ fn tcc_cache_byte_offset_exhausted_residual_quotient_digest_differs() -> Bool {
 fn tcc_cache_byte_offset_exhausted_residual_adjacent_power_digest_differs() -> Bool {
   byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_19()) !=
     byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_20())
+}
+
+// First adjacent-power alias band under fixed four-limb suffix (256^21 vs 256^22) — cache-ineligible path.
+fn tcc_cache_byte_offset_exhausted_residual_adjacent_power_21_22_digest_differs() -> Bool {
+  byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_21()) !=
+    byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_22())
+}
+
+fn tcc_cache_byte_offset_exhausted_residual_21_double_digest_differs() -> Bool {
+  byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_21()) !=
+    byte_offset_cache_digest(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_21()))
 }
 
 fn tcc_cache_runtime_unit() -> RuntimeValue {
@@ -687,6 +706,26 @@ data claim_test_claim_cache_byte_offset_exhausted_residual_adjacent_power: TestC
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exhausted_residual_adjacent_power_digest_differs()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_exhausted_residual_adjacent_power_21_22: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: exhausted-residual adjacent powers (256^21 vs 256^22) do not alias",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_exhausted_residual_adjacent_power_21_22_digest_differs()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_exhausted_residual_21_double: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: exhausted-residual 256^21 vs 2*256^21 do not alias",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_exhausted_residual_21_double_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
