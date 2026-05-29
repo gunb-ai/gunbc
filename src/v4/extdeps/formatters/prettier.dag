@@ -7,7 +7,32 @@
 module v4.extdeps.formatters.prettier
 
 import v4.std.collection { List }
+import v4.std.diagnostic { Locus, Outcome }
+import v4.std.node { Symbol }
 import v4.std.patch { FieldPatch, apply_field_patch }
+import v4.std.refinement { Refined, Validation, refine }
+
+
+type PrettierPositiveInt = Refined<Int>
+
+
+data prettier_positive_int_out_of_range: Symbol = prettier_positive_int_out_of_range
+
+
+fn prettier_positive_int_admits(value: Int) -> Bool {
+  value >= 1
+}
+
+
+data prettier_positive_int_validation: Validation<Int> = Validation {
+  reason: prettier_positive_int_out_of_range,
+  admits: prettier_positive_int_admits
+}
+
+
+fn make_prettier_positive_int(value: Int, at: Locus) -> Outcome<PrettierPositiveInt> {
+  refine(base: value, by: prettier_positive_int_validation, at: at)
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -100,8 +125,8 @@ type PrettierParser
 
 
 type PrettierFormattingOptions {
-  print_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1
-  tab_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  print_width: PrettierPositiveInt
+  tab_width: PrettierPositiveInt
   use_tabs: Bool
   semi: Bool
   single_quote: Bool
@@ -129,8 +154,8 @@ type PrettierFormattingOptions {
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierOverrideOptions projected from PrettierFormattingOptions field set plus parser override field.
 type PrettierOverrideOptions {
   parser: FieldPatch<PrettierParser>
-  print_width: FieldPatch<Int>
-  tab_width: FieldPatch<Int>
+  print_width: FieldPatch<PrettierPositiveInt>
+  tab_width: FieldPatch<PrettierPositiveInt>
   use_tabs: FieldPatch<Bool>
   semi: FieldPatch<Bool>
   single_quote: FieldPatch<Bool>
@@ -169,8 +194,8 @@ type PrettierConfig {
 
 
 data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
-  print_width: 80,
-  tab_width: 2,
+  print_width: Refined { base: 80 },
+  tab_width: Refined { base: 2 },
   use_tabs: false,
   semi: true,
   single_quote: false,
@@ -203,8 +228,8 @@ data prettier_defaults: PrettierConfig = PrettierConfig {
 
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierFormattingOptionsPatch projected from PrettierFormattingOptions field set.
 type PrettierFormattingOptionsPatch {
-  print_width: FieldPatch<Int>
-  tab_width: FieldPatch<Int>
+  print_width: FieldPatch<PrettierPositiveInt>
+  tab_width: FieldPatch<PrettierPositiveInt>
   use_tabs: FieldPatch<Bool>
   semi: FieldPatch<Bool>
   single_quote: FieldPatch<Bool>

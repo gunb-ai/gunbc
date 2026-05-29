@@ -6,7 +6,32 @@
 module v4.extdeps.formatters.black
 
 import v4.std.collection { List }
+import v4.std.diagnostic { Locus, Outcome }
+import v4.std.node { Symbol }
 import v4.std.patch { FieldPatch, apply_field_patch }
+import v4.std.refinement { Refined, Validation, refine }
+
+
+type BlackPositiveInt = Refined<Int>
+
+
+data black_positive_int_out_of_range: Symbol = black_positive_int_out_of_range
+
+
+fn black_positive_int_admits(value: Int) -> Bool {
+  value >= 1
+}
+
+
+data black_positive_int_validation: Validation<Int> = Validation {
+  reason: black_positive_int_out_of_range,
+  admits: black_positive_int_admits
+}
+
+
+fn make_black_positive_int(value: Int, at: Locus) -> Outcome<BlackPositiveInt> {
+  refine(base: value, by: black_positive_int_validation, at: at)
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -52,7 +77,7 @@ type BlackUnstableFeature
 
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: witness checks enable_unstable_feature empty unless preview; unstable implies preview; forbidden: ad-hoc cross-field guards outside validation substrate.
 type BlackConfig {
-  line_length: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  line_length: BlackPositiveInt
   target_version: BlackTargetVersionPolicy
   required_version: BlackRequiredVersionPolicy
   pyi: Bool
@@ -72,7 +97,7 @@ type BlackConfig {
 
 
 data black_defaults: BlackConfig = BlackConfig {
-  line_length: 88,
+  line_length: Refined { base: 88 },
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
   pyi: false,
@@ -93,7 +118,7 @@ data black_defaults: BlackConfig = BlackConfig {
 
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: BlackConfigPatch projected from BlackConfig field set.
 type BlackConfigPatch {
-  line_length: FieldPatch<Int>
+  line_length: FieldPatch<BlackPositiveInt>
   target_version: FieldPatch<BlackTargetVersionPolicy>
   required_version: FieldPatch<BlackRequiredVersionPolicy>
   pyi: FieldPatch<Bool>
