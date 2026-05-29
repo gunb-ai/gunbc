@@ -12677,6 +12677,65 @@ mod tests {
     }
 
     #[test]
+    fn extract_config_patch_layer_operands_rejects_missing_base_or_patch() {
+        let span = test_span();
+        let only_base = vec![SurfaceExpr::Record {
+            fields: vec![SurfaceRecordField {
+                name: "base".to_string(),
+                value: SurfaceExpr::Var {
+                    name: "defaults".to_string(),
+                    span: span.clone(),
+                },
+                span: span.clone(),
+            }],
+            span: span.clone(),
+        }];
+        assert!(extract_config_patch_layer_operands(&only_base).is_none());
+    }
+
+    #[test]
+    fn config_patch_record_decl_materializes_for_empty_config_conj() {
+        let mut dag = Dag::new();
+        let empty_cfg = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Conj {
+                children: Vec::new(),
+            },
+        );
+        let field_patch_t_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("PatchT".to_string())),
+        );
+        let field_patch_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("FieldPatch".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: vec![field_patch_t_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_v4_std_patch_span(),
+            });
+            id
+        };
+        let _ = field_patch_tpl;
+        let patch_decl =
+            config_patch_record_decl_for_config(&mut dag, empty_cfg, &test_span()).expect("empty Config");
+        let TypeConnective::Conj { children } = &dag.declaration(patch_decl).connective else {
+            panic!("expected patch record Conj");
+        };
+        assert!(children.is_empty());
+    }
+
+    #[test]
     fn surface_field_access_expr_projects_call_site_carrier() {
         let span = test_span();
         let carrier = SurfaceExpr::Var {
