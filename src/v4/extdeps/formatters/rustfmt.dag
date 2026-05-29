@@ -8,23 +8,24 @@ module v4.extdeps.formatters.rustfmt
 import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_0),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_1),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_18),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_35),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_50),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_80),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_10),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_100),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_4),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_60),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_70),
+  authoritative_non_negative_int_0,
+  authoritative_non_negative_int_1,
+  authoritative_non_negative_int_18,
+  authoritative_non_negative_int_35,
+  authoritative_non_negative_int_50,
+  authoritative_non_negative_int_80,
+  authoritative_positive_int_10,
+  authoritative_positive_int_100,
+  authoritative_positive_int_4,
+  authoritative_positive_int_60,
+  authoritative_positive_int_70,
 }
 import v4.std.refinement {
   PositiveInt,
-  NonNegativeInt,,
+  NonNegativeInt,
   non_negative_int_from_authoritative_catalog,
-  positive_int_from_authoritative_catalog}
+  positive_int_from_authoritative_catalog,
+}
 
 
 

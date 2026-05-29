@@ -8,20 +8,21 @@ module v4.extdeps.formatters.swift_format
 import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
-  exact_one_int_from_authoritative_catalog(receipt: authoritative_exact_one_int_1),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_1),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_2),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_100),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_2),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_8),
+  authoritative_exact_one_int_1,
+  authoritative_non_negative_int_1,
+  authoritative_non_negative_int_2,
+  authoritative_positive_int_100,
+  authoritative_positive_int_2,
+  authoritative_positive_int_8,
 }
 import v4.std.refinement {
   PositiveInt,
   NonNegativeInt,
-  ExactOneInt,,
+  ExactOneInt,
   exact_one_int_from_authoritative_catalog,
   non_negative_int_from_authoritative_catalog,
-  positive_int_from_authoritative_catalog}
+  positive_int_from_authoritative_catalog,
+}
 
 
 

@@ -9,12 +9,13 @@ module v4.extdeps.formatters.prettier
 import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_2),
-  positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_80),
+  authoritative_positive_int_2,
+  authoritative_positive_int_80,
 }
 import v4.std.refinement {
-  PositiveInt,,
-  positive_int_from_authoritative_catalog}
+  PositiveInt,
+  positive_int_from_authoritative_catalog,
+}
 
 
 

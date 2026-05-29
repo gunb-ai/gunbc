@@ -7,32 +7,33 @@ module v4.extdeps.formatters.clang_format
 
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
-  at_least_minus_one_int_from_authoritative_catalog(receipt: authoritative_at_least_minus_one_int_0),
-  at_least_minus_one_int_from_authoritative_catalog(receipt: authoritative_at_least_minus_one_int_minus_1),
-  at_least_minus_two_int_from_authoritative_catalog(receipt: authoritative_at_least_minus_two_int_minus_2),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_0),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_1),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_10),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_1000),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_1000000),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_120),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_150),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_19),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_2),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_300),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_4),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_500),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_60),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_8),
-  non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_80),
+  authoritative_at_least_minus_one_int_0,
+  authoritative_at_least_minus_one_int_minus_1,
+  authoritative_at_least_minus_two_int_minus_2,
+  authoritative_non_negative_int_0,
+  authoritative_non_negative_int_1,
+  authoritative_non_negative_int_10,
+  authoritative_non_negative_int_1000,
+  authoritative_non_negative_int_1000000,
+  authoritative_non_negative_int_120,
+  authoritative_non_negative_int_150,
+  authoritative_non_negative_int_19,
+  authoritative_non_negative_int_2,
+  authoritative_non_negative_int_300,
+  authoritative_non_negative_int_4,
+  authoritative_non_negative_int_500,
+  authoritative_non_negative_int_60,
+  authoritative_non_negative_int_8,
+  authoritative_non_negative_int_80,
 }
 import v4.std.refinement {
   NonNegativeInt,
   AtLeastMinusOneInt,
-  AtLeastMinusTwoInt,,
+  AtLeastMinusTwoInt,
   at_least_minus_one_int_from_authoritative_catalog,
   at_least_minus_two_int_from_authoritative_catalog,
-  non_negative_int_from_authoritative_catalog}
+  non_negative_int_from_authoritative_catalog,
+}
 
 
 
