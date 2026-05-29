@@ -259,6 +259,7 @@ data java_production_field_declaration: Symbol = java_production_field_declarati
 data java_production_primitive_type: Symbol = java_production_primitive_type
 data java_production_result: Symbol = java_production_result
 data java_production_type: Symbol = java_production_type
+data java_production_formal_parameter: Symbol = java_production_formal_parameter
 data java_production_formal_parameter_list: Symbol = java_production_formal_parameter_list
 data java_production_method_declarator: Symbol = java_production_method_declarator
 data java_production_block: Symbol = java_production_block
@@ -1426,7 +1427,7 @@ fn java_wave2_formal_productions() -> List<FormalProduction> {
       rhs: [grammar_formal_nonterminal_occurrence(identity: java_production_primitive_type)]
     ),
     grammar_formal_production(
-      lhs: java_production_formal_parameter_list,
+      lhs: java_production_formal_parameter,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: java_production_type),
         grammar_formal_terminal(identity: java_token_ident)
@@ -1434,12 +1435,14 @@ fn java_wave2_formal_productions() -> List<FormalProduction> {
     ),
     grammar_formal_production(
       lhs: java_production_formal_parameter_list,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: java_production_formal_parameter)]
+    ),
+    grammar_formal_production(
+      lhs: java_production_formal_parameter_list,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: java_production_type),
-        grammar_formal_terminal(identity: java_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: java_production_formal_parameter),
         grammar_formal_terminal(identity: java_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: java_production_type),
-        grammar_formal_terminal(identity: java_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: java_production_formal_parameter),
         grammar_formal_nonterminal_occurrence(identity: java_production_formal_parameter_list_suffix)
       ]
     ),
@@ -1448,8 +1451,7 @@ fn java_wave2_formal_productions() -> List<FormalProduction> {
       lhs: java_production_formal_parameter_list_suffix,
       rhs: [
         grammar_formal_terminal(identity: java_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: java_production_type),
-        grammar_formal_terminal(identity: java_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: java_production_formal_parameter),
         grammar_formal_nonterminal_occurrence(identity: java_production_formal_parameter_list_suffix)
       ]
     ),
