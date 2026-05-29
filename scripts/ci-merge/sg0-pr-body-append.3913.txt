@@ -1,3 +1,3 @@
-SG-0 hand-path delta: +1
+SG-0 hand-path delta: +0
 
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `emit_verification_gates_test.rs` (INVARIANTS §P5(b) receipt in `_internal/INVARIANTS_OPS.md`; multi-target E-5 `post_emit_verifier` on `PROGRAM_FIXTURES` + non-ignored R1C-E `ExecuteCommand` claim `program_fixtures_post_emit_clean_all_targets`). Follow-up dispatch: dissolve hand-Rust when `.dag` TestClaim rows own post-emit obligations — gunb-ai/gunbc#3913.
+SG-0 note: net zero across `EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}` — +1 non-test `bounded_host_command.rs`, +1 test `emit_verification_gates_test.rs`, −2 retired test census rows (`v4_test_fixture_task_manager_demo_smoke_test.rs`, `v4_workflow_release_dag_smoke_test.rs`). P5(b) receipts in `_internal/INVARIANTS_OPS.md` + matching census lines for both new paths.

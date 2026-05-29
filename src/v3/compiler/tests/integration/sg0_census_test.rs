@@ -286,6 +286,12 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
+    // E-5 / P2–P4: wall-bounded host subprocess I/O shared by `post_emit_verifier` and
+    // W1/L5 `test_runner` (fail-closed vs unbounded `Command::output`).
+    // **P5 receipt (Mechanism (b)):** matching row in `_internal/INVARIANTS_OPS.md`.
+    // Dissolution: delete when PB-Runtime owns bounded host-child policy for all
+    // post-emit / ExecuteCommand paths without this hand module.
+    "src/v3/compiler/src/bounded_host_command.rs",
     // R3 gate #87 / T-Tests-As-Data-Completeness: `CementingDispatchMatchesProjection` host
     // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
     // predicate substrate owns the walk without host FS coupling).
