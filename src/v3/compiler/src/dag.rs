@@ -5168,8 +5168,8 @@ mod tests {
 
     #[test]
     fn try_register_lane2_workflow_effect_upserts_without_silent_overwrite() {
-        let mut dag = crate::compile_to_dag("let _: Int = 0", "lane2_upsert_unit.v3")
-            .expect("compile shell");
+        let mut dag =
+            crate::compile_to_dag("let _: Int = 0", "lane2_upsert_unit.v3").expect("compile shell");
         let root = dag.workflow_lane2_subject().expect("bind shell");
         let wf_a = WorkflowEffect::LinearEffect { ops: vec![] };
         let wf_b = WorkflowEffect::LoopEffect {
