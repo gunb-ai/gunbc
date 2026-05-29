@@ -3886,7 +3886,10 @@ fn surface_field_access_expr(
 ) -> Option<SurfaceExpr> {
     let field_span = SourceSpan::new(span.file.as_str(), span.byte_start, span.byte_end);
     match carrier {
-        SurfaceExpr::Var { name, span: carrier_span } => Some(SurfaceExpr::Path {
+        SurfaceExpr::Var {
+            name,
+            span: carrier_span,
+        } => Some(SurfaceExpr::Path {
             segments: vec![name.clone(), field_label.to_string()],
             segment_spans: vec![carrier_span.clone(), field_span],
             span: span.clone(),
@@ -12418,12 +12421,10 @@ mod tests {
             span: span.clone(),
         };
         let access = surface_field_access_expr(&carrier, "line_length", &span).expect("path");
-        assert!(
-            matches!(
-                access,
-                SurfaceExpr::Path { segments, .. }
-                if segments == ["defaults", "line_length"]
-            )
-        );
+        assert!(matches!(
+            access,
+            SurfaceExpr::Path { segments, .. }
+            if segments == ["defaults", "line_length"]
+        ));
     }
 }
