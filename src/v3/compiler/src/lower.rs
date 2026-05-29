@@ -4150,17 +4150,15 @@ fn try_lower_config_patch_layer_invocation(
             },
         ));
     }
-    let patch_record_decl =
-        match config_patch_record_decl_for_config(dag, symbols, &HashMap::new(), config_decl, span)
-        {
-            Some(decl) => decl,
-            None => {
-                return Some(unresolved_port(
-                    dag,
-                    config_patch_record_materialization_failed_diagnostic(span),
-                ));
-            }
-        };
+    let patch_record_decl = match config_patch_record_decl_for_config(dag, config_decl, span) {
+        Some(decl) => decl,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_record_materialization_failed_diagnostic(span),
+            ));
+        }
+    };
     let base_port = lower_expr(
         base_operand,
         dag,
