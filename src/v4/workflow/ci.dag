@@ -114,13 +114,8 @@ type CiComponentAffected {
 }
 
 // RULING-1: 🟢 pretty-much-done — host `git diff --name-only` read outcome (T-24 / INVARIANTS P3).
-// `ReadFailClosed` selects the superset `ci_component_affected_fail_closed` (all flags true).
-type CiGitDiffReadOutcome
-  = ReadOk { git_diff: GitDiffNameOnly }
-  | ReadFailClosed { diagnostic: Diagnostic }
-
-data ci_git_diff_read_fail_closed_reason: Symbol = ci_git_diff_read_fail_closed_reason
-
+// `Rejected` selects the superset `ci_component_affected_fail_closed` (all flags true).
+// Uses canonical `Outcome<GitDiffNameOnly>` from std.diagnostic (Practice 10 — no parallel read carrier).
 // RULING-1: 🟢 pretty-much-done — self-hosted fleet substrate (operator 2026-05-28: srv1/srv2 Ampere Altra).
 // Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
 type RunnerArch
@@ -262,18 +257,7 @@ data ci_dangling_reference: Symbol = ci_dangling_reference
 data ci_dependency_cycle: Symbol = ci_dependency_cycle
 data ci_bootstrap_authority_violation: Symbol = ci_bootstrap_authority_violation
 data ci_workflow_file: Symbol = ci_workflow_file
-data ci_int_min_fold_sentinel: Int = 999999999
-
-fn ci_int_div_totalizing(a: Int, b: Int) -> Int {
-  match int_div(
-    a: a,
-    b: b,
-    at: Textual { file: ci_workflow_file, extent: WholeFile }
-  ) {
-    Accepted { value: quotient, diagnostics: _ } => quotient
-    Rejected { diagnostics: _ } => 1
-  }
-}
+data ci_runner_pool_m1_witness_violation: Symbol = ci_runner_pool_m1_witness_violation
 
 fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
