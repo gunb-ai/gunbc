@@ -3,6 +3,7 @@ name = "v3-grounding-pilot"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 # T-Ground-Pilot — bounded probe validating that algebra-homomorphism
 # inhabitance search reproduces today's name-keyed table-lookup routing

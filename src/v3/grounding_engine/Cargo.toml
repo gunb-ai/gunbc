@@ -3,6 +3,7 @@ name = "v3-grounding-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 # T-Ground-Engine: Phase 1 type-structure validation + Phase 2 enumeration of
 # `rust_pilot_primitives` list bodies via v3-compiler's Dag accessor.

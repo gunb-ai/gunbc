@@ -162,7 +162,7 @@ Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 - Tier 3 worker pack: [`docs/briefs/r2-pb-tier3-mirror-dissolution-workers.md`](r2-pb-tier3-mirror-dissolution-workers.md)
 - Tier 3 source: `docs/briefs/debt-paydown-synthesis-2026-04-25.md` items #10 + #12
 - Lens framework spec: `docs/design-lens-framework.md` (Q6+Q7+Q8 locks; consumed by PB-Runtime interpreter-as-data)
-- ROADMAP single authority on gate semantics: `ROADMAP.md §"Lane acceptance — .dag gates"`
+- ROADMAP single authority on gate semantics: [`_internal/ROADMAP_OPS.md §"Lane acceptance — .dag gates"`](../../_internal/ROADMAP_OPS.md)
 - Thesis-claim disposition: `docs/thesis/r2-r3-thesis-mapping.md`
 - PB-Zero / v2 emit boundary — **planning audit only** (row-authority consumer gap vs. live `src/v3/std/*_method_template_contracts.dag`; no implementation claim): [`docs/audit/pb-zero-v2-method-template-row-authority-consumer-gap.md`](../audit/pb-zero-v2-method-template-row-authority-consumer-gap.md)
 - PB-Zero / v2 emit — **canonical read surface options** (STOP matrix only; no surface chosen): [`docs/audit/pb-zero-v2-canonical-read-surface-options-stop-matrix.md`](../audit/pb-zero-v2-canonical-read-surface-options-stop-matrix.md)

@@ -26,18 +26,25 @@ self-hosted runners, GitHub Apps, Actions.
 
 ### Check for Enterprise-only features in use before downgrading
 
-- [ ] Audit org settings for SAML/SSO — if any teammates or bots authenticate
+- [x] Audit org settings for SAML/SSO — if any teammates or bots authenticate
       via SAML, that breaks on Teams (SAML is Enterprise-only)
-- [ ] Check if audit log API (`/orgs/{org}/audit-log`) is used by the
+      — **2026-05-29**: none (`samlIdentityProvider` null; operator confirmed). Receipt: `docs/admin/github-enterprise-to-teams-audit-2026-05-29.md`
+- [x] Check if audit log API (`/orgs/{org}/audit-log`) is used by the
       session dashboard or any script — it's Enterprise-only
-- [ ] Check installed GitHub Apps on `gunb-ai` org — verify none require
+      — **2026-05-29**: API 404 on current plan; no callers in gunbc or ctrl session-dashboard
+- [x] Check installed GitHub Apps on `gunb-ai` org — verify none require
       Enterprise tier (most don't)
-- [ ] Check `required_two_factor_authentication` org policy — available on Teams
-- [ ] Check any IP allowlist settings — Enterprise-only; Teams has no equivalent
-- [ ] Verify self-hosted runner registration doesn't rely on Enterprise runner groups
+      — **2026-05-29**: operator attestation (one app, Teams-compatible); UI confirm before downgrade
+- [x] Check `required_two_factor_authentication` org policy — available on Teams
+      — **2026-05-29**: disabled (`two_factor_requirement_enabled: false`)
+- [x] Check any IP allowlist settings — Enterprise-only; Teams has no equivalent
+      — **2026-05-29**: none (ip-allow-list endpoint 404)
+- [x] Verify self-hosted runner registration doesn't rely on Enterprise runner groups
       (runner groups ARE available on Teams, but the API path differs slightly)
-- [ ] Review `.github/workflows/ci.yml` for any `enterprise:` keys or
+      — **2026-05-29**: CI uses label selectors only; operator confirmed no Enterprise runner groups
+- [x] Review `.github/workflows/ci.yml` for any `enterprise:` keys or
       Enterprise-specific Actions features
+      — **2026-05-29**: no `enterprise:` keys in any workflow under `.github/workflows/`
 
 ### Migration steps
 
