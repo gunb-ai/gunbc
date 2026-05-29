@@ -42,7 +42,7 @@ Work is organized around closing the bootstrap loop, not a calendar:
 2. **Compiler pipeline** — tokenize → parse → resolve → infer → emit → translate with fail-closed diagnostics.
 3. **Lenses and tests** — structural `TestClaim` predicates evaluated by generated or substrate runners; lenses over the same Node tree users write.
 4. **Self-host fixed point** — `compiler.dag` emits bit-identical stage0; hand-maintained file count → 0 per [docs/design-pure-bootstrap-zero.md](docs/design-pure-bootstrap-zero.md).
-5. **Public release** — v2 + v4 story documented; binaries via GitHub Releases; public repo snapshot (see `RELEASE_TODO.md` in the private tree).
+5. **Public release** — v2 + v4 story documented; binaries via GitHub Releases; public repo snapshot with these root docs and an executable quick start in [README.md](README.md).
 
 Earlier release-program lanes (complexity parity, testgen, multi-target emit, pure-bootstrap floors) informed v4 scope; detailed operational tracking for that era lives in [`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md) for maintainers migrating from the internal repo.
 

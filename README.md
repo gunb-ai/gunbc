@@ -18,10 +18,15 @@ cargo test -p v2-compiler-tests    # compiler tests
 cargo clippy --all-targets -- -D warnings  # lint
 ```
 
-The release binary is `target/release/gunbc`. Use it to compile v4 trees, for example:
+The release binary is `target/release/gunbc` (crate `v2-compiler`, bin `gunbc` in
+`src/v2/stage0/Cargo.toml`). Use it to compile v4 trees, for example:
 
 ```bash
-./target/release/gunbc compile --source-root src/v4
+mkdir -p /tmp/gunbc-out
+./target/release/gunbc compile \
+  --source-root src/v4 \
+  --output-dir /tmp/gunbc-out \
+  --target dag
 ```
 
 ## How it works
