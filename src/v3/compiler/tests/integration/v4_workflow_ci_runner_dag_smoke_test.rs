@@ -35,6 +35,7 @@ const CI_CHANGED_PATH_AFFECTS_FNS: &[&str] = &[
     "ci_changed_path_affects_v3",
     "ci_changed_path_affects_v4",
     "ci_changed_path_affects_workflow_policy",
+    "ci_changed_path_affects_release_distribution",
 ];
 
 struct CiAffectedFixture {
@@ -43,6 +44,7 @@ struct CiAffectedFixture {
     v3: bool,
     v4: bool,
     workflow_policy: bool,
+    release_distribution: bool,
 }
 
 /// Behavioral fixtures aligned with `src/v4/test/claim/workflow/ci_component_affected.dag`.
@@ -53,6 +55,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v3: false,
         v4: false,
         workflow_policy: false,
+        release_distribution: false,
     },
     CiAffectedFixture {
         path: "dsl/gunbc/ci.dag",
@@ -60,6 +63,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v3: true,
         v4: false,
         workflow_policy: false,
+        release_distribution: false,
     },
     CiAffectedFixture {
         path: "dsl/std/node.dag",
@@ -67,6 +71,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v3: true,
         v4: true,
         workflow_policy: false,
+        release_distribution: false,
     },
     CiAffectedFixture {
         path: "scripts/v4-m1-rust-emit-probe.sh",
@@ -74,6 +79,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v3: false,
         v4: true,
         workflow_policy: false,
+        release_distribution: false,
     },
     CiAffectedFixture {
         path: "src/v4/workflow/ci.dag",
@@ -81,6 +87,15 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v3: false,
         v4: true,
         workflow_policy: true,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
+        path: "src/v4/workflow/release.dag",
+        v2: false,
+        v3: false,
+        v4: true,
+        workflow_policy: false,
+        release_distribution: true,
     },
     CiAffectedFixture {
         path: "Cargo.lock",
@@ -88,6 +103,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v3: false,
         v4: true,
         workflow_policy: false,
+        release_distribution: false,
     },
     CiAffectedFixture {
         path: "docs/README.md",
@@ -95,6 +111,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v3: false,
         v4: false,
         workflow_policy: false,
+        release_distribution: false,
     },
 ];
 
@@ -188,6 +205,11 @@ fn assert_ci_dag_rust_mirror_behavioral_parity() {
         assert_eq!(
             flags.workflow_policy, fixture.workflow_policy,
             "path `{}`: workflow_policy flag",
+            fixture.path
+        );
+        assert_eq!(
+            flags.release_distribution, fixture.release_distribution,
+            "path `{}`: release_distribution flag",
             fixture.path
         );
     }
@@ -445,6 +467,11 @@ fn v4_workflow_ci_component_bucket_prefixes_align_rust_mirror() {
     ] {
         assert_ci_dag_rust_bucket_parity(fn_name);
     }
+}
+
+#[test]
+fn v4_workflow_ci_release_distribution_exact_paths_align_rust_mirror() {
+    assert_ci_dag_rust_bucket_parity("ci_changed_path_affects_release_distribution");
 }
 
 #[test]
