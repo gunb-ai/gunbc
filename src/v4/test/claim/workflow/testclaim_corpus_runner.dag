@@ -120,9 +120,7 @@ fn corpus_entry_from_node_runtime_value_run(
 fn corpus_entries_from_node_runtime_value_runs(
   runs: List<TestClaimRun<Node, RuntimeValue>>
 ) -> List<CorpusEvalEntry> {
-  fold(runs, init: [], f: fn(acc, run) {
-    concat(acc, [corpus_entry_from_node_runtime_value_run(run: run)])
-  })
+  map(runs, fn(run) { corpus_entry_from_node_runtime_value_run(run: run) })
 }
 
 
