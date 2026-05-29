@@ -535,11 +535,11 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         );
     assert!(
         CI_DAG.contains("data ci_srv1_pool: SelfHostedRunnerPool")
-            && CI_DAG.contains("runner_count: 20")
-            && CI_DAG.contains("jobserver_token_cap: 25")
+            && CI_DAG.contains("runner_count: Refined { base: 20 }")
+            && CI_DAG.contains("jobserver_token_cap: Refined { base: 25 }")
             && CI_DAG.contains("data ci_srv2_pool: SelfHostedRunnerPool")
-            && CI_DAG.contains("runner_count: 30")
-            && CI_DAG.contains("jobserver_token_cap: 36"),
+            && CI_DAG.contains("runner_count: Refined { base: 30 }")
+            && CI_DAG.contains("jobserver_token_cap: Refined { base: 36 }"),
         "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
     );
     assert!(
