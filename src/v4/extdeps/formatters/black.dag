@@ -9,7 +9,7 @@ import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement {
   PositiveInt,
-  positive_int_for_authoritative_constant,
+  positive_int_authoritative_literal,
 }
 
 
@@ -77,7 +77,7 @@ type BlackConfig {
 
 
 data black_defaults: BlackConfig = BlackConfig {
-  line_length: positive_int_for_authoritative_constant(base: 88),
+  line_length: positive_int_authoritative_literal(base: 88),
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
   pyi: false,

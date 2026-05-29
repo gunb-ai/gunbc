@@ -11,9 +11,9 @@ import v4.std.refinement {
   PositiveInt,
   NonNegativeInt,
   ExactOneInt,
-  positive_int_for_authoritative_constant,
-  non_negative_int_for_authoritative_constant,
-  exact_one_int_for_authoritative_constant,
+  positive_int_authoritative_literal,
+  non_negative_int_authoritative_literal,
+  exact_one_int_authoritative_literal,
 }
 
 
@@ -89,12 +89,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: exact_one_int_for_authoritative_constant(base: 1),
-  line_length: positive_int_for_authoritative_constant(base: 100),
-  indentation: SwiftFormatSpaces { count: positive_int_for_authoritative_constant(base: 2) },
-  tab_width: positive_int_for_authoritative_constant(base: 8),
-  maximum_blank_lines: non_negative_int_for_authoritative_constant(base: 1),
-  spaces_before_end_of_line_comments: non_negative_int_for_authoritative_constant(base: 2),
+  version: exact_one_int_authoritative_literal(base: 1),
+  line_length: positive_int_authoritative_literal(base: 100),
+  indentation: SwiftFormatSpaces { count: positive_int_authoritative_literal(base: 2) },
+  tab_width: positive_int_authoritative_literal(base: 8),
+  maximum_blank_lines: non_negative_int_authoritative_literal(base: 1),
+  spaces_before_end_of_line_comments: non_negative_int_authoritative_literal(base: 2),
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,

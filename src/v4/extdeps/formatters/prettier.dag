@@ -10,7 +10,7 @@ import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement {
   PositiveInt,
-  positive_int_for_authoritative_constant,
+  positive_int_authoritative_literal,
 }
 
 
@@ -174,8 +174,8 @@ type PrettierConfig {
 
 
 data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
-  print_width: positive_int_for_authoritative_constant(base: 80),
-  tab_width: positive_int_for_authoritative_constant(base: 2),
+  print_width: positive_int_authoritative_literal(base: 80),
+  tab_width: positive_int_authoritative_literal(base: 2),
   use_tabs: false,
   semi: true,
   single_quote: false,
