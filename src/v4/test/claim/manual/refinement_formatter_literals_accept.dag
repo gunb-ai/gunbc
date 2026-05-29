@@ -226,7 +226,7 @@ data claim_authoritative_positive_int_70_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_positive_int_80_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 80) {
     Accepted { value: accepted, diagnostics: _ } =>
-      positive_int_authoritative_literal_matches_accepted(literal: authoritative_positive_int_8()0(), accepted: accepted)
+      positive_int_authoritative_literal_matches_accepted(literal: authoritative_positive_int_80, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -246,7 +246,7 @@ data claim_authoritative_positive_int_80_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_positive_int_88_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 88) {
     Accepted { value: accepted, diagnostics: _ } =>
-      positive_int_authoritative_literal_matches_accepted(literal: authoritative_positive_int_8()8(), accepted: accepted)
+      positive_int_authoritative_literal_matches_accepted(literal: authoritative_positive_int_88, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -266,7 +266,7 @@ data claim_authoritative_positive_int_88_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_positive_int_100_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 100) {
     Accepted { value: accepted, diagnostics: _ } =>
-      positive_int_authoritative_literal_matches_accepted(literal: authoritative_positive_int_10()0(), accepted: accepted)
+      positive_int_authoritative_literal_matches_accepted(literal: authoritative_positive_int_100, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -286,7 +286,7 @@ data claim_authoritative_positive_int_100_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_non_negative_int_0_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 0) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_0, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -306,7 +306,7 @@ data claim_authoritative_non_negative_int_0_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_non_negative_int_1_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 1) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_()1(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_1, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -326,7 +326,7 @@ data claim_authoritative_non_negative_int_1_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_non_negative_int_2_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 2) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_()2(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_2, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -346,7 +346,7 @@ data claim_authoritative_non_negative_int_2_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_non_negative_int_4_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 4) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_()4(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_4, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -366,7 +366,7 @@ data claim_authoritative_non_negative_int_4_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_non_negative_int_8_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 8) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_()8(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_8, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -386,7 +386,7 @@ data claim_authoritative_non_negative_int_8_discharge: TestClaim = EqualsClaim {
 fn witness_authoritative_non_negative_int_10_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 10) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_1()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_10, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -406,7 +406,7 @@ data claim_authoritative_non_negative_int_10_discharge: TestClaim = EqualsClaim 
 fn witness_authoritative_non_negative_int_18_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 18) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_1()8(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_18, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -426,7 +426,7 @@ data claim_authoritative_non_negative_int_18_discharge: TestClaim = EqualsClaim 
 fn witness_authoritative_non_negative_int_19_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 19) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_1()9(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_19, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -446,7 +446,7 @@ data claim_authoritative_non_negative_int_19_discharge: TestClaim = EqualsClaim 
 fn witness_authoritative_non_negative_int_35_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 35) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_3()5(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_35, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -466,7 +466,7 @@ data claim_authoritative_non_negative_int_35_discharge: TestClaim = EqualsClaim 
 fn witness_authoritative_non_negative_int_50_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 50) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_5()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_50, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -486,7 +486,7 @@ data claim_authoritative_non_negative_int_50_discharge: TestClaim = EqualsClaim 
 fn witness_authoritative_non_negative_int_60_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 60) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_6()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_60, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -506,7 +506,7 @@ data claim_authoritative_non_negative_int_60_discharge: TestClaim = EqualsClaim 
 fn witness_authoritative_non_negative_int_80_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 80) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_8()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_80, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -526,7 +526,7 @@ data claim_authoritative_non_negative_int_80_discharge: TestClaim = EqualsClaim 
 fn witness_authoritative_non_negative_int_120_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 120) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_12()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_120, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -546,7 +546,7 @@ data claim_authoritative_non_negative_int_120_discharge: TestClaim = EqualsClaim
 fn witness_authoritative_non_negative_int_150_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 150) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_15()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_150, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -566,7 +566,7 @@ data claim_authoritative_non_negative_int_150_discharge: TestClaim = EqualsClaim
 fn witness_authoritative_non_negative_int_300_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 300) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_30()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_300, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
