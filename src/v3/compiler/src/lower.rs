@@ -3901,7 +3901,8 @@ fn v4_std_patch_named_declaration(dag: &Dag, name: &str) -> Option<DeclarationId
         .declarations()
         .iter()
         .filter(|decl| {
-            decl.name.as_deref() == Some(name) && declaration_authority_is_v4_std_patch(dag, decl.id)
+            decl.name.as_deref() == Some(name)
+                && declaration_authority_is_v4_std_patch(dag, decl.id)
         })
         .map(|decl| decl.id)
         .collect::<Vec<_>>();
@@ -4155,17 +4156,16 @@ fn try_lower_config_patch_layer_invocation(
             },
         ));
     }
-    let patch_record_decl = match config_patch_record_decl_for_config(
-        dag, symbols, local, config_decl, span,
-    ) {
-        Some(decl) => decl,
-        None => {
-            return Some(unresolved_port(
-                dag,
-                config_patch_record_materialization_failed_diagnostic(span),
-            ));
-        }
-    };
+    let patch_record_decl =
+        match config_patch_record_decl_for_config(dag, symbols, local, config_decl, span) {
+            Some(decl) => decl,
+            None => {
+                return Some(unresolved_port(
+                    dag,
+                    config_patch_record_materialization_failed_diagnostic(span),
+                ));
+            }
+        };
     let base_port = lower_expr(
         base_operand,
         dag,
@@ -12776,7 +12776,7 @@ mod tests {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: test_span(),
+                span: test_v4_std_patch_span(),
             });
             id
         };
@@ -12908,7 +12908,7 @@ mod tests {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: test_span(),
+                span: test_v4_std_patch_span(),
             });
             id
         };
@@ -12932,7 +12932,7 @@ mod tests {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: test_span(),
+                span: test_v4_std_patch_span(),
             });
             id
         };
@@ -13034,5 +13034,124 @@ mod tests {
             !matches!(connective, TypeConnective::Conj { .. }),
             "must not materialize without imported ConfigPatchRecord template"
         );
+    }
+
+    #[test]
+    fn surface_parameterized_name_requires_v4_std_patch_authority() {
+        let mut dag = Dag::new();
+        let homograph = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("ConfigPatchRecord".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+        let canonical = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("ConfigPatchRecord".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_v4_std_patch_span(),
+            });
+            id
+        };
+        let mut symbols = HashMap::new();
+        symbols.insert("ConfigPatchRecord".to_string(), homograph);
+        assert!(
+            !surface_parameterized_name_resolves_to_template(
+                &dag,
+                &symbols,
+                &HashMap::new(),
+                "ConfigPatchRecord",
+                "ConfigPatchRecord",
+            ),
+            "same-named non-patch.dag declaration must not authorize projection"
+        );
+        symbols.insert("ConfigPatchRecord".to_string(), canonical);
+        assert!(surface_parameterized_name_resolves_to_template(
+            &dag,
+            &symbols,
+            &HashMap::new(),
+            "ConfigPatchRecord",
+            "ConfigPatchRecord",
+        ));
+    }
+
+    #[test]
+    fn callable_is_v4_std_patch_config_patch_layer_rejects_homograph() {
+        let mut dag = Dag::new();
+        let patch_span = test_v4_std_patch_span();
+        let homograph = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("config_patch_layer".to_string()),
+                connective: TypeConnective::Arrow {
+                    inputs: Vec::new(),
+                    output: dag.int_shape().expect("Int").declaration,
+                    body: ArrowBody::NoBody,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+        let canonical = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("config_patch_layer".to_string()),
+                connective: TypeConnective::Arrow {
+                    inputs: Vec::new(),
+                    output: dag.int_shape().expect("Int").declaration,
+                    body: ArrowBody::NoBody,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: patch_span.clone(),
+            });
+            id
+        };
+        assert!(!callable_is_v4_std_patch_config_patch_layer(
+            &dag, homograph
+        ));
+        assert!(callable_is_v4_std_patch_config_patch_layer(&dag, canonical));
     }
 }
