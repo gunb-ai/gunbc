@@ -751,8 +751,7 @@ fn ci_runner_pool_is_nonempty(pools: List<SelfHostedRunnerPool>) -> Bool {
 
 
 fn ci_runner_pool_has_nonuniform_runner_counts(pools: List<SelfHostedRunnerPool>) -> Bool {
-  ci_runner_pool_max_runner_count(pools: pools)
-    != ci_runner_pool_min_runner_count(pools: pools)
+  ci_runner_pool_max_runner_count(pools: pools) != ci_runner_pool_min_runner_count(pools: pools)
 }
 
 
