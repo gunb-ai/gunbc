@@ -1659,10 +1659,11 @@ T-23/AGENT-1 composes over — T-35 owns the no-filesystem entry point;
 T-23 owns the non-text AGENT-SURFACE contract (lens reads, `apply_diff`,
 structured output). These are complementary, not overlapping.
 
-**On hold pending T-QN-1** (QualifiedName infrastructure). Once T-QN-1 lands,
-`QualifiedName` and `qualified_name_from_node` are available and this spec
-applies. T-35 dispatch additionally requires operator code examples (see
-Sequencing). T-35 workers must not proceed without both gates.
+**Gate (T-QN-1 satisfied).** T-QN-1 is `[DONE]` on main — `QualifiedName`,
+`qualified_name_from_node`, and `qualified_name_from_module_node` are available
+and this spec applies. T-35 dispatch still requires **T-28-B** and operator
+code examples (see Sequencing). T-35 workers must not proceed without those
+remaining gates.
 
 **Scope — two pieces (ingest side only):**
 
@@ -1808,10 +1809,9 @@ to define a new agent output surface.
   pipeline. Output type is `Outcome<Validated<CompileOutput>>`, the same carrier
   as `validate_then_compile`; T-35 workers must not redefine it.
 
-**Dependencies — `[needs T-28-B, T-QN-1]`. Execution prerequisites: T-9, T-10.**
-- **T-QN-1** is the hard design prerequisite: `QualifiedName` and
-  `qualified_name_from_node` must exist before T-35 workers can build a
-  `ModuleBatch` or call `compile_with_batch`. T-35 workers cannot proceed without T-QN-1.
+**Dependencies — `[needs T-28-B]`. Execution prerequisites: T-9, T-10.**
+- **T-QN-1** `[DONE]` on main — `QualifiedName`, `qualified_name_from_node`, and
+  `qualified_name_from_module_node` landed; T-35 workers may rely on that surface.
 - **T-28-B** is the hard implementation prerequisite: the module-admission
   stage must be extracted from `03_resolve.dag` before the virtual loader can
   replace it. T-35 workers cannot proceed without T-28-B.
@@ -1830,9 +1830,10 @@ to define a new agent output surface.
 - Not T-23/AGENT-1 — T-35 does not define the agent output surface
   (InferenceResult, DiagnosticSet, apply_diff). Those live in T-23.
 
-**Sequencing.** Post-M3. Dispatch after T-QN-1 lands AND T-28-B merges AND
-operator code-examples gate clears. All three are required; none is
-sufficient alone. Unblocks: IDE integration; automated `.dag` authoring agent
+**Sequencing.** Post-M3. Dispatch after T-28-B merges AND operator
+code-examples gate clears (T-QN-1 prerequisite satisfied on main). Both
+remaining gates are required; neither is sufficient alone. Unblocks: IDE
+integration; automated `.dag` authoring agent
 workflows.
 
 ---
