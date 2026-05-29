@@ -6,7 +6,7 @@
 module v4.std.grammar
 
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
-import v4.std.collection { List, Map, Set }
+import v4.std.collection { List, Optional, Set, optional_absent, optional_present }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -27,7 +27,6 @@ import v4.std.target_model {
   grammar_relation_field_tokens
 }
 import v4.std.text { String }
-import v4.std.witness { Holds, Violates, Witness }
 
 // "What is a terminal symbol?"
 // Ref: https://en.wikipedia.org/wiki/Terminal_and_nonterminal_symbols
@@ -54,7 +53,7 @@ type FormalNonterminal {
 // A grammar symbol is either a terminal or a nonterminal. Sequences of
 // grammar symbols form the right-hand sides of production rules.
 type FormalGrammarSymbol
-  = FormalTerminalOccurrence { terminal: FormalTerminal }
+  = FormalTerminalOccurrence { terminal: FormalTerminal, binding: Optional<Symbol> }
   | FormalNonterminalOccurrence { nonterminal: FormalNonterminal }
 
 
@@ -229,7 +228,16 @@ fn grammar_formal_nonterminal(identity: Symbol) -> FormalNonterminal {
 
 fn grammar_formal_terminal(identity: Symbol) -> FormalGrammarSymbol {
   FormalTerminalOccurrence {
-    terminal: FormalTerminal { identity: identity }
+    terminal: FormalTerminal { identity: identity },
+    binding: optional_absent()
+  }
+}
+
+
+fn grammar_formal_terminal_bound(identity: Symbol, binding: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence {
+    terminal: FormalTerminal { identity: identity },
+    binding: optional_present(value: binding)
   }
 }
 
@@ -275,7 +283,7 @@ fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
 
 fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
   match symbol {
-    FormalTerminalOccurrence { terminal: terminal } =>
+    FormalTerminalOccurrence { terminal: terminal, binding: _ } =>
       Node {
         kind: TypeNode {
           connective: Conj
@@ -399,19 +407,14 @@ fn grammar_concrete_bound_token_node(token_class: Symbol, binding: Symbol) -> No
 }
 
 
-fn grammar_bindings_lookup(bindings: Map<Symbol, Symbol>, key: Symbol) -> Witness<Symbol> {
-  bindings.lookup(key)
-}
-
-
-fn grammar_terminal_to_token_edge(terminal: FormalTerminal, bindings: Map<Symbol, Symbol>) -> Edge {
-  match grammar_bindings_lookup(bindings: bindings, key: terminal.identity) {
-    Holds { value: binding } =>
+fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: Optional<Symbol>) -> Edge {
+  match binding {
+    Present { value: binding } =>
       Edge {
         label: Positional,
         target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: binding)
       }
-    Violates { diagnostic: _ } =>
+    Absent =>
       Edge {
         label: Positional,
         target: grammar_concrete_fixed_token_node(token_class: terminal.identity)
@@ -422,14 +425,13 @@ fn grammar_terminal_to_token_edge(terminal: FormalTerminal, bindings: Map<Symbol
 
 fn derive_grammar_relation_terminal_token_edges_step(
   acc: List<Edge>,
-  symbol: FormalGrammarSymbol,
-  bindings: Map<Symbol, Symbol>
+  symbol: FormalGrammarSymbol
 ) -> List<Edge> {
   match symbol {
-    FormalTerminalOccurrence { terminal: terminal } =>
+    FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
       list_snoc_item(
         xs: acc,
-        item: grammar_terminal_to_token_edge(terminal: terminal, bindings: bindings)
+        item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
       )
     FormalNonterminalOccurrence { nonterminal: _ } => acc
   }
@@ -437,15 +439,12 @@ fn derive_grammar_relation_terminal_token_edges_step(
 
 
 // Terminal occurrences in the caller-supplied production only (MVP-1 add-fn formal row).
-fn derive_grammar_relation_terminal_token_edges(
-  production: FormalProduction,
-  bindings: Map<Symbol, Symbol>
-) -> List<Edge> {
+fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) -> List<Edge> {
   fold_list(
     xs: production.rhs,
     empty: Empty,
     cons: fn(acc, symbol) {
-      derive_grammar_relation_terminal_token_edges_step(acc: acc, symbol: symbol, bindings: bindings)
+      derive_grammar_relation_terminal_token_edges_step(acc: acc, symbol: symbol)
     }
   )
 }
@@ -457,21 +456,14 @@ fn derive_grammar_relation_terminal_token_edges(
 //   Conj positional emitted children + lhs-disambiguated production selection replace this
 //   terminal-only slice; forbidden: multi-LHS production-list recursion or fail-soft empty-node
 //   fallbacks on this path (removed in PR-1.5 — see PR-1.5b for faithful nonterminal derivation).
-fn derive_grammar_relation_row_node(
-  production: FormalProduction,
-  emitted: Node,
-  bindings: Map<Symbol, Symbol>
-) -> Node {
+fn derive_grammar_relation_row_node(production: FormalProduction, emitted: Node) -> Node {
   grammar_relation_row_to_node(
     row: derive_grammar_relation_row(production: production, emitted: emitted),
     tokens: Node {
       kind: TypeNode {
         connective: Conj
       },
-      children: derive_grammar_relation_terminal_token_edges(
-        production: production,
-        bindings: bindings
-      )
+      children: derive_grammar_relation_terminal_token_edges(production: production)
     }
   )
 }

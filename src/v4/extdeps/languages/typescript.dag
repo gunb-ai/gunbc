@@ -10,6 +10,7 @@ module v4.extdeps.languages.typescript
 
 import v4.std.grammar {
   grammar_formal_terminal,
+  grammar_formal_terminal_bound,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   Choice,
@@ -1144,6 +1145,13 @@ fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
 
 
 
+fn ts_formal_grammar_symbol_from_token(token: TsConcreteSyntaxToken) -> FormalGrammarSymbol {
+  match token {
+    TsFixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    TsBoundToken { token_class: c, binding: b } => grammar_formal_terminal_bound(identity: c, binding: b)
+  }
+}
+
 fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -1151,7 +1159,7 @@ fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<Formal
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: ts_concrete_token_class(token: token))
+        item: ts_formal_grammar_symbol_from_token(token: token)
       )
     }
   )
