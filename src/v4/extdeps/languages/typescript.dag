@@ -29,6 +29,7 @@ import v4.std.grammar {
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
   derive_grammar_relation_row,
+  derive_grammar_relation_row_node,
   grammar_production_to_node,
   grammar_relation_row_to_node
 }

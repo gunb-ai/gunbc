@@ -15,8 +15,10 @@ import v4.extdeps.languages.typescript {
 }
 import v4.std.grammar {
   derive_grammar_relation_row,
+  derive_grammar_relation_row_node,
   grammar_relation_row_to_node
 }
+import v4.std.collection { empty_map }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, content_hash }
 import v4.std.verification {
@@ -64,6 +66,14 @@ fn ts_mvp1_grammar_relation_row_std_node() -> Node {
     tokens: ts_mvp1_grammar_relation_tokens_root()
   )
 }
+
+// Receipt that derive_grammar_relation_row_node is declared and callable on MVP-1 formal row.
+data ts_mvp1_derive_row_node_receipt: Node = derive_grammar_relation_row_node(
+  production: ts_formal_production_mvp1_fn_add(),
+  productions: [ts_formal_production_mvp1_fn_add()],
+  emitted: ts_mvp1_emitted_add_fn_node(),
+  bindings: empty_map()
+)
 
 fn ts_derive_grammar_relation_row_round_trip_holds() -> Bool {
   content_hash(n: ts_mvp1_grammar_relation_row_std_node()) ==
