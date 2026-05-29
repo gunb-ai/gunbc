@@ -747,6 +747,14 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         CI_DAG.contains("release_distribution && affected.release_distribution"),
         "{CI_DAG_PATH}: ci_component_mask_intersects must include release_distribution axis"
     );
+    assert!(
+        CI_DAG.contains("fn ci_select_ci_jobs_needs_closure_pass("),
+        "{CI_DAG_PATH}: needs closure must be bounded (P4) — not unbounded recursion on unresolved needs"
+    );
+    assert!(
+        CI_DAG.contains("ci_symbol_resolves(s: n, jobs: jobs) && !ci_member(s: n, ids: selected_ids)"),
+        "{CI_DAG_PATH}: needs closure must ignore unresolved need symbols"
+    );
 }
 
 #[test]
