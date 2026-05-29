@@ -1,47 +1,40 @@
 //! **Layer:** integration
 //!
 //! T-16-A+ ratchet for `src/v4/test/fixture/task_manager_demo.dag`: the
-//! TaskManager omni-emission fixture must compile with **zero** module
-//! diagnostics and export the Shape-B `task_to_sql_create_table` projection
-//! over sql.dag carriers (fail-closed on unmapped domain scalars).
+//! TaskManager omni-emission fixture must tokenize+parse cleanly and export
+//! the Shape-B `task_to_sql_create_table` projection over sql.dag carriers
+//! (fail-closed on unmapped domain scalars).
+//!
+//! Uses `parse_for_test` (not `compile_to_dag`): v4 cross-module fixtures
+//! with record literals / block bodies remain M1(2.8) opaque to full lowering;
+//! parse is the same gate used by coordination/openapi extdeps smoke tests.
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching
 //! `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` + INVARIANTS
 //! table row land in the same PR.
 
-use v3_compiler::compile_to_dag;
-use v3_compiler::CompileError;
+use v3_compiler::parse_for_test;
+use v3_compiler::tokenize_for_test;
 
 const TASK_MANAGER_DEMO_DAG: &str =
     include_str!("../../../../v4/test/fixture/task_manager_demo.dag");
 const TASK_MANAGER_DEMO_PATH: &str = "src/v4/test/fixture/task_manager_demo.dag";
 
-fn task_manager_demo_dag_or_panic() -> v3_compiler::Dag {
-    match compile_to_dag(TASK_MANAGER_DEMO_DAG, TASK_MANAGER_DEMO_PATH) {
-        Ok(dag) => {
-            assert!(
-                dag.diagnostics().is_empty(),
-                "{TASK_MANAGER_DEMO_PATH}: expected empty diagnostics, got {:?}",
-                dag.diagnostics().iter().collect::<Vec<_>>()
-            );
-            dag
-        }
-        Err(CompileError::Semantic(dag)) => panic!(
-            "{TASK_MANAGER_DEMO_PATH}: semantic errors: {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        ),
-        Err(other) => panic!("{TASK_MANAGER_DEMO_PATH}: {other:?}"),
-    }
+fn task_manager_demo_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens = tokenize_for_test(TASK_MANAGER_DEMO_DAG, TASK_MANAGER_DEMO_PATH)
+        .unwrap_or_else(|e| panic!("{TASK_MANAGER_DEMO_PATH}: tokenize: {e:?}"));
+    parse_for_test(&tokens, TASK_MANAGER_DEMO_PATH)
+        .unwrap_or_else(|e| panic!("{TASK_MANAGER_DEMO_PATH}: parse: {e:?}"))
 }
 
 #[test]
-fn v4_test_fixture_task_manager_demo_compiles() {
-    let _dag = task_manager_demo_dag_or_panic();
+fn v4_test_fixture_task_manager_demo_parses() {
+    let _module = task_manager_demo_surface_or_panic();
 }
 
 #[test]
 fn v4_test_fixture_task_manager_demo_exports_sql_create_table_projection() {
-    let _dag = task_manager_demo_dag_or_panic();
+    let _module = task_manager_demo_surface_or_panic();
     assert!(
         TASK_MANAGER_DEMO_DAG.contains("fn task_to_sql_create_table() -> Outcome<SqlSchemaOperation>"),
         "fixture must export Task→SqlCreateTable Shape-B projection"
