@@ -496,8 +496,9 @@ fn release_job_command_in_matrix(j: ReleaseJob, rows: List<ReleaseMatrixRow>) ->
   match j.command {
     CrossMuslGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
     NativeDarwinGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
+    NativeWindowsGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
     UploadGunbcMatrixArtifact => true
-    PublishGitHubRelease { bundle_install_sh: bundle } => bundle == true
+    PublishGitHubRelease => true
   }
 }
 
@@ -538,7 +539,8 @@ fn release_command_is_upload(c: ReleaseCommand) -> Bool {
     UploadGunbcMatrixArtifact => true
     CrossMuslGunbcBuild { target: _ } => false
     NativeDarwinGunbcBuild { target: _ } => false
-    PublishGitHubRelease { bundle_install_sh: _ } => false
+    NativeWindowsGunbcBuild { target: _ } => false
+    PublishGitHubRelease => false
   }
 }
 
@@ -571,9 +573,10 @@ fn release_matrix_upload_jobs_present(jobs: List<ReleaseJob>, rows: List<Release
 // 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
 fn release_command_is_publish(c: ReleaseCommand) -> Bool {
   match c {
-    PublishGitHubRelease { bundle_install_sh: _ } => true
+    PublishGitHubRelease => true
     CrossMuslGunbcBuild { target: _ } => false
     NativeDarwinGunbcBuild { target: _ } => false
+    NativeWindowsGunbcBuild { target: _ } => false
     UploadGunbcMatrixArtifact => false
   }
 }
