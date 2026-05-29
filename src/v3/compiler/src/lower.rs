@@ -3802,13 +3802,14 @@ fn materialize_config_patch_record_connective(
     let config_ty = type_angle_arg_to_declaration_id(&args[0], symbols, local, dag);
     let mut subst = LowerSubstStack::default();
     let conj_id = walk_to_conj_decl_with_subst_lower(dag, config_ty, &mut subst)?;
-    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
-        return None;
+    let children = match &dag.declaration(conj_id).connective {
+        TypeConnective::Conj { children } => children.clone(),
+        _ => return None,
     };
     let field_patch_tpl = dag.declaration_by_name("FieldPatch")?.id;
     let field_patch_param = template_param_id(dag, field_patch_tpl, 0)?;
     let patch_children: Vec<Field> = children
-        .iter()
+        .into_iter()
         .map(|field| {
             let field_ty =
                 resolve_decl_with_subst_lower(dag, field.ty, &subst, 0).unwrap_or(field.ty);
