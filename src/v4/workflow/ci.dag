@@ -2,7 +2,7 @@
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; Wave-0 TestClaim roster selection.
 // Wave-0 partial close (this PR): T-21/T-24 affected-set authority, detect-affected-components.sh dissolution, runner-pool/M1 facts modeled.
 // T-24 CI/YAML authority bridge (emitter wired, hand-authored ci.yml deleted) remains open per src/v4/TASKS.md §T-24 — interim hand ci.yml edits are transport wiring only, not YAML-authority dissolution.
-// Status: filled — declarative core + eager well-formedness + T-21/T-24 component affected-set (dissolves scripts/detect-affected-components.sh via `ci_component_affected_from_git_diff` + `detect-ci-affected-components` host transport) + T-21/T-24 TestClaim roster selection + T-38 dissolution step declared (TestClaimCorpusEvalCommand job/gate/cache-digest; IRT-1 call site — ci_select_from_affected_set narrows roster to content_hash frontier — lands with dissolution PR that replaces scripts/v4-testclaim-corpus-gate.sh).
+// Status: filled — declarative core + eager well-formedness + T-21/T-24 component affected-set + T-24 bankruptcy Tier-0 (I0–I8): `ci_select_ci_jobs_from_affected_set` over `ci_pipeline`, V2/V3 integrity commands, TestClaim roster selection + T-38 dissolution step (TestClaimCorpusEvalCommand; IRT-1 — ci_select_from_affected_set).
 
 module v4.workflow.ci
 
