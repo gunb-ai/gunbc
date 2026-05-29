@@ -1,0 +1,39 @@
+// src/v4/test/claim/manual/protobuf_wire_encoding_facts_anchor.dag
+// Scope: Compile anchors for protobuf wire-encoding fact bundles.
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_wire_encoding_facts_anchor
+
+import v4.extdeps.formats.protobuf {
+  ProtoFieldTagEncodingFacts,
+  ProtoFieldTagFieldNumberShiftByThreeWitness,
+  ProtoFieldTagWireTypeLowThreeBitsWitness,
+  ProtoMapEntryKeyFieldNumberOneWitness,
+  ProtoMapEntryValueFieldNumberTwoWitness,
+  ProtoMapEntryWireFacts,
+  ProtoVarintContinuationBitWitness,
+  ProtoVarintEncodingFacts,
+  ProtoVarintLittleEndianBase128Witness,
+  ProtoZigZagEncodingFacts,
+  ProtoZigZagSignedIntegerEncodingWitness,
+}
+
+
+data protobuf_anchor_field_tag_facts: ProtoFieldTagEncodingFacts = ProtoFieldTagEncodingFacts {
+  field_number_shift_by_three: ProtoFieldTagFieldNumberShiftByThreeWitness,
+  wire_type_low_three_bits: ProtoFieldTagWireTypeLowThreeBitsWitness,
+}
+
+data protobuf_anchor_varint_facts: ProtoVarintEncodingFacts = ProtoVarintEncodingFacts {
+  continuation_bit: ProtoVarintContinuationBitWitness,
+  little_endian_base128: ProtoVarintLittleEndianBase128Witness,
+}
+
+data protobuf_anchor_zigzag_facts: ProtoZigZagEncodingFacts = ProtoZigZagEncodingFacts {
+  signed_integer_encoding: ProtoZigZagSignedIntegerEncodingWitness,
+}
+
+data protobuf_anchor_map_entry_facts: ProtoMapEntryWireFacts = ProtoMapEntryWireFacts {
+  key_field_number_one: ProtoMapEntryKeyFieldNumberOneWitness,
+  value_field_number_two: ProtoMapEntryValueFieldNumberTwoWitness,
+}

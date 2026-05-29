@@ -1,0 +1,13 @@
+// src/v4/test/claim/manual/protobuf_wire_type_anchor.dag
+// Scope: Compile anchors for protobuf wire-type coproduct (encoding guide §2).
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_wire_type_anchor
+
+import v4.extdeps.formats.protobuf { ProtoWireType }
+
+
+data protobuf_anchor_wire_varint: ProtoWireType = ProtoWireVarint
+data protobuf_anchor_wire_i64: ProtoWireType = ProtoWireI64
+data protobuf_anchor_wire_len: ProtoWireType = ProtoWireLengthDelimited
+data protobuf_anchor_wire_i32: ProtoWireType = ProtoWireI32

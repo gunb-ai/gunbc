@@ -1,0 +1,13 @@
+// src/v4/test/claim/manual/protobuf_rpc_streaming_anchor.dag
+// Scope: Compile anchors for protobuf RPC streaming-kind coproduct (service definitions).
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_rpc_streaming_anchor
+
+import v4.extdeps.formats.protobuf { ProtoRpcStreamingKind }
+
+
+data protobuf_anchor_rpc_unary: ProtoRpcStreamingKind = ProtoRpcUnary
+data protobuf_anchor_rpc_client_stream: ProtoRpcStreamingKind = ProtoRpcClientStreaming
+data protobuf_anchor_rpc_server_stream: ProtoRpcStreamingKind = ProtoRpcServerStreaming
+data protobuf_anchor_rpc_bidi_stream: ProtoRpcStreamingKind = ProtoRpcBidirectionalStreaming

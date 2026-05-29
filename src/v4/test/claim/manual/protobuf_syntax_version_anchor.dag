@@ -1,0 +1,11 @@
+// src/v4/test/claim/manual/protobuf_syntax_version_anchor.dag
+// Scope: Compile anchors for protobuf syntax-version coproduct.
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_syntax_version_anchor
+
+import v4.extdeps.formats.protobuf { ProtoSyntaxVersion }
+
+
+data protobuf_anchor_syntax_proto2: ProtoSyntaxVersion = ProtoSyntaxProto2
+data protobuf_anchor_syntax_proto3: ProtoSyntaxVersion = ProtoSyntaxProto3

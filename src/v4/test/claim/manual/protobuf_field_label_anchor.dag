@@ -1,0 +1,12 @@
+// src/v4/test/claim/manual/protobuf_field_label_anchor.dag
+// Scope: Compile anchors for protobuf field-label coproduct (proto2/proto3 labels).
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_field_label_anchor
+
+import v4.extdeps.formats.protobuf { ProtoFieldLabel }
+
+
+data protobuf_anchor_label_singular: ProtoFieldLabel = ProtoFieldSingular
+data protobuf_anchor_label_optional: ProtoFieldLabel = ProtoFieldOptional
+data protobuf_anchor_label_repeated: ProtoFieldLabel = ProtoFieldRepeated

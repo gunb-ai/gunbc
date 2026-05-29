@@ -1,0 +1,323 @@
+// src/v4/extdeps/formats/protobuf.dag
+// Scope: Protocol Buffers schema IDL (.proto language) + binary wire-format encoding.
+// Status: parallel-fill format substrate — schema + wire axes modeled; parse/emit deferred.
+// Anchor: https://protobuf.dev/programming-guides/proto3/ + https://protobuf.dev/programming-guides/encoding/
+// Stress: gRPC and cross-target marshaling consume this wire-format authority (T-4.15 grpc.dag
+//         names protobuf encoding; this file owns the format spec, not transport framing).
+// Clear win: ONE `.dag` domain declaration → `.proto` schema text + wire bytes at module boundaries.
+
+module v4.extdeps.formats.protobuf
+
+import v4.std.cardinality { NonZeroNat }
+import v4.std.collection { List, Map, Optional }
+import v4.std.grammar { GrammarSchema }
+
+
+// ── Syntax profile ───────────────────────────────────────────────────────────
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ProtoSyntaxVersion
+  = ProtoSyntaxProto2
+  | ProtoSyntaxProto3
+
+
+type ProtoProto3NoRequiredKeywordWitness {}
+
+type ProtoProto3NoGroupSyntaxWitness {}
+
+type ProtoProto2RequiredLabelPermittedWitness {}
+
+type ProtoProto2GroupSyntaxPermittedWitness {}
+
+type ProtoSyntaxProfileFacts {
+  proto3_no_required_keyword: ProtoProto3NoRequiredKeywordWitness,
+  proto3_no_group_syntax: ProtoProto3NoGroupSyntaxWitness,
+  proto2_required_label_permitted: ProtoProto2RequiredLabelPermittedWitness,
+  proto2_group_syntax_permitted: ProtoProto2GroupSyntaxPermittedWitness,
+}
+
+
+// ── Schema IDL — scalar + reference types ─────────────────────────────────────
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ProtoScalarType
+  = ProtoDouble
+  | ProtoFloat
+  | ProtoInt32
+  | ProtoInt64
+  | ProtoUint32
+  | ProtoUint64
+  | ProtoSint32
+  | ProtoSint64
+  | ProtoFixed32
+  | ProtoFixed64
+  | ProtoSfixed32
+  | ProtoSfixed64
+  | ProtoBool
+  | ProtoString
+  | ProtoBytes
+
+
+type ProtoMessageTypeName {
+  name: String,
+}
+
+
+type ProtoEnumTypeName {
+  name: String,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ProtoFieldType
+  = ProtoFieldScalar { scalar: ProtoScalarType }
+  | ProtoFieldMessage { message: ProtoMessageTypeName }
+  | ProtoFieldEnum { enum_type: ProtoEnumTypeName }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ProtoFieldLabel
+  = ProtoFieldSingular
+  | ProtoFieldOptional
+  | ProtoFieldRequired
+  | ProtoFieldRepeated
+
+
+type ProtoFieldNumber {
+  number: NonZeroNat,
+}
+
+
+type ProtoFieldDefinition {
+  number: ProtoFieldNumber,
+  label: ProtoFieldLabel,
+  field_type: ProtoFieldType,
+  name: String,
+}
+
+
+type ProtoMapFieldDefinition {
+  number: ProtoFieldNumber,
+  key_type: ProtoScalarType,
+  value_type: ProtoFieldType,
+  name: String,
+}
+
+
+type ProtoOneofDefinition {
+  name: String,
+  fields: List<ProtoFieldDefinition>,
+}
+
+
+type ProtoReservedRange {
+  start: NonZeroNat,
+  end: NonZeroNat,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ProtoReservedStatement
+  = ProtoReservedFieldNumbers { ranges: List<ProtoReservedRange> }
+  | ProtoReservedFieldNames { names: List<String> }
+
+
+type ProtoEnumValueDefinition {
+  name: String,
+  number: ProtoFieldNumber,
+}
+
+
+type ProtoEnumDefinition {
+  name: String,
+  values: List<ProtoEnumValueDefinition>,
+}
+
+
+type ProtoMessageDefinition {
+  name: String,
+  fields: List<ProtoFieldDefinition>,
+  nested_messages: List<ProtoMessageDefinition>,
+  nested_enums: List<ProtoEnumDefinition>,
+  oneofs: List<ProtoOneofDefinition>,
+  map_fields: List<ProtoMapFieldDefinition>,
+  reserved: List<ProtoReservedStatement>,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ProtoRpcStreamingKind
+  = ProtoRpcUnary
+  | ProtoRpcClientStreaming
+  | ProtoRpcServerStreaming
+  | ProtoRpcBidirectionalStreaming
+
+
+type ProtoRpcDefinition {
+  name: String,
+  input: ProtoMessageTypeName,
+  output: ProtoMessageTypeName,
+  streaming: ProtoRpcStreamingKind,
+}
+
+
+type ProtoServiceDefinition {
+  name: String,
+  rpcs: List<ProtoRpcDefinition>,
+}
+
+
+type ProtoImportPath {
+  path: String,
+}
+
+
+type ProtoPackageName {
+  name: String,
+}
+
+
+type ProtoSchemaDocument {
+  grammar_schema: GrammarSchema,
+  syntax: ProtoSyntaxVersion,
+  syntax_profile: ProtoSyntaxProfileFacts,
+  package: Optional<ProtoPackageName>,
+  imports: List<ProtoImportPath>,
+  messages: List<ProtoMessageDefinition>,
+  enums: List<ProtoEnumDefinition>,
+  services: List<ProtoServiceDefinition>,
+}
+
+
+// ── Wire format — encoding spec ───────────────────────────────────────────────
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ProtoWireType
+  = ProtoWireVarint
+  | ProtoWireI64
+  | ProtoWireLengthDelimited
+  | ProtoWireStartGroup
+  | ProtoWireEndGroup
+  | ProtoWireI32
+
+
+type ProtoFieldTagFieldNumberShiftByThreeWitness {}
+
+type ProtoFieldTagWireTypeLowThreeBitsWitness {}
+
+type ProtoFieldTagEncodingFacts {
+  field_number_shift_by_three: ProtoFieldTagFieldNumberShiftByThreeWitness,
+  wire_type_low_three_bits: ProtoFieldTagWireTypeLowThreeBitsWitness,
+}
+
+
+type ProtoVarintContinuationBitWitness {}
+
+type ProtoVarintLittleEndianBase128Witness {}
+
+type ProtoVarintEncodingFacts {
+  continuation_bit: ProtoVarintContinuationBitWitness,
+  little_endian_base128: ProtoVarintLittleEndianBase128Witness,
+}
+
+
+type ProtoZigZagSignedIntegerEncodingWitness {}
+
+type ProtoZigZagEncodingFacts {
+  signed_integer_encoding: ProtoZigZagSignedIntegerEncodingWitness,
+}
+
+
+type ProtoLengthDelimitedLengthPrefixIsVarintWitness {}
+
+type ProtoLengthDelimitedPayloadFollowsLengthWitness {}
+
+type ProtoLengthDelimitedEncodingFacts {
+  length_prefix_is_varint: ProtoLengthDelimitedLengthPrefixIsVarintWitness,
+  payload_follows_length: ProtoLengthDelimitedPayloadFollowsLengthWitness,
+}
+
+
+type ProtoPackedRepeatedUsesLengthDelimitedWireTypeWitness {}
+
+type ProtoPackedRepeatedContiguousScalarPayloadWitness {}
+
+type ProtoPackedRepeatedEncodingFacts {
+  uses_length_delimited_wire_type: ProtoPackedRepeatedUsesLengthDelimitedWireTypeWitness,
+  contiguous_scalar_payload: ProtoPackedRepeatedContiguousScalarPayloadWitness,
+}
+
+
+type ProtoMapEntryKeyFieldNumberOneWitness {}
+
+type ProtoMapEntryValueFieldNumberTwoWitness {}
+
+type ProtoMapEntryWireFacts {
+  key_field_number_one: ProtoMapEntryKeyFieldNumberOneWitness,
+  value_field_number_two: ProtoMapEntryValueFieldNumberTwoWitness,
+}
+
+
+type ProtoUnknownFieldPreservedOnParseWitness {}
+
+type ProtoUnknownFieldWireProfileFacts {
+  unknown_field_preserved_on_parse: ProtoUnknownFieldPreservedOnParseWitness,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ProtoWireFieldValue
+  = ProtoWireVarintPayload { lexeme: String }
+  | ProtoWireI64Payload { lexeme: String }
+  | ProtoWireLengthDelimitedPayload { lexeme: String }
+  | ProtoWireI32Payload { lexeme: String }
+
+
+type ProtoWireFieldRecord {
+  tag: ProtoFieldNumber,
+  wire_type: ProtoWireType,
+  value: ProtoWireFieldValue,
+}
+
+
+type ProtoWireMessage {
+  fields: List<ProtoWireFieldRecord>,
+}
+
+
+type ProtoWireDocument {
+  schema: ProtoSchemaDocument,
+  field_tag_encoding: ProtoFieldTagEncodingFacts,
+  varint_encoding: ProtoVarintEncodingFacts,
+  zigzag_encoding: ProtoZigZagEncodingFacts,
+  length_delimited_encoding: ProtoLengthDelimitedEncodingFacts,
+  packed_repeated_encoding: ProtoPackedRepeatedEncodingFacts,
+  map_entry_wire: ProtoMapEntryWireFacts,
+  unknown_field_profile: ProtoUnknownFieldWireProfileFacts,
+  message: ProtoWireMessage,
+}
+
+
+// ── Scalar → wire-type mapping facts (encoding guide §2) ───────────────────────
+
+type ProtoScalarUsesVarintWireTypeWitness {}
+
+type ProtoScalarUsesI64WireTypeWitness {}
+
+type ProtoScalarUsesI32WireTypeWitness {}
+
+type ProtoScalarUsesLengthDelimitedWireTypeWitness {}
+
+type ProtoScalarWireTypeMappingFacts {
+  varint_scalars: ProtoScalarUsesVarintWireTypeWitness,
+  i64_scalars: ProtoScalarUsesI64WireTypeWitness,
+  i32_scalars: ProtoScalarUsesI32WireTypeWitness,
+  length_delimited_scalars: ProtoScalarUsesLengthDelimitedWireTypeWitness,
+}
+
+
+// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
+// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature: proto-text ingest binding (`.proto` source → ProtoSchemaDocument) — SL-3229-PROTO-SCHEMA-PARSE.
+// 🟡 gated — feature: proto-wire ingest binding (binary bytes → ProtoWireMessage) — SL-3229-PROTO-WIRE-PARSE.
+// 🟡 gated — feature: proto-wire emit binding (ProtoWireMessage → binary bytes) — SL-3229-PROTO-WIRE-EMIT.

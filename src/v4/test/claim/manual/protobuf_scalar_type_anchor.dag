@@ -1,0 +1,13 @@
+// src/v4/test/claim/manual/protobuf_scalar_type_anchor.dag
+// Scope: Compile anchors for protobuf scalar-type coproduct (proto3 language guide).
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_scalar_type_anchor
+
+import v4.extdeps.formats.protobuf { ProtoScalarType }
+
+
+data protobuf_anchor_scalar_int32: ProtoScalarType = ProtoInt32
+data protobuf_anchor_scalar_string: ProtoScalarType = ProtoString
+data protobuf_anchor_scalar_bytes: ProtoScalarType = ProtoBytes
+data protobuf_anchor_scalar_sint64: ProtoScalarType = ProtoSint64
