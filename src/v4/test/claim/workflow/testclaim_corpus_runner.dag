@@ -1,0 +1,125 @@
+// src/v4/test/claim/workflow/testclaim_corpus_runner.dag
+// Scope: T-38 — modeled corpus-level TestClaim runner over the manual roster.
+// Status: wedge — folds the TestClaimRun<Node, RuntimeValue> roster into a
+//   CorpusEvalReport. Per-A rosters fold into the same report through
+//   per-A entry projections so the report is type-uniform and host-serializable
+//   (JSON list of CorpusEvalEntry rows + Pass/Fail/Deferred counts).
+//
+// Per-row verdicts are produced at .dag eval time by the underlying TestClaimRun
+// rows (see v4.compiler.eval.run_test_claim). The host harness
+// scripts/v4-testclaim-corpus-eval.sh compiles src/v4 --target rust and invokes
+// the entry symbol run_manual_testclaim_corpus_eval; non-Pass entries fail the
+// CI step. Selection narrowing (ci_select_from_affected_set) runs in
+// v4.workflow.ci before the host harness folds the surviving roster.
+//
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 —
+// dissolve-on-arrival: same trigger as the structural bridge
+// (scripts/v4-testclaim-corpus-gate.sh) — when this modeled runner replaces
+// shell-owned artifact inspection in CI and the dissolution PR deletes the
+// bridge script + ci.yml step + ci_github_actions_workflow.dag paired step.
+module v4.test.claim.workflow.testclaim_corpus_runner
+
+
+import v4.compiler.eval { TestClaimRun }
+import v4.std.algebra { concat, count_where, fold_list, length }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.node { Node, Symbol }
+import v4.std.runtime { RuntimeValue }
+import v4.std.verdict { Verdict, Deferred, Fail, Pass }
+import v4.test.claim.manual.manual_corpus_roster {
+  ManualCorpusRow,
+  manual_corpus_node_runtime_value_rows
+}
+
+
+// Stable Symbol tags for the per-row verdict surface — the host JSON report
+// emits these verbatim; non-Pass tags fail the CI step.
+data corpus_verdict_pass_tag: Symbol = corpus_verdict_pass_tag
+data corpus_verdict_fail_tag: Symbol = corpus_verdict_fail_tag
+data corpus_verdict_deferred_tag: Symbol = corpus_verdict_deferred_tag
+
+
+// Type-uniform projection of one corpus run row: row label + verdict tag.
+// Heterogeneous A in TestClaimRun<Node, A> is erased at projection time;
+// host JSON does not need to project Outcome<A> bodies because Fail rows
+// already carry the failure as a non-Pass verdict tag the host can act on.
+type CorpusEvalEntry {
+  label: String
+  verdict_tag: Symbol
+}
+
+
+type CorpusEvalReport {
+  entries: List<CorpusEvalEntry>
+  pass_count: Int
+  fail_count: Int
+  deferred_count: Int
+  total: Int
+}
+
+
+fn verdict_tag<A>(v: Verdict<A>) -> Symbol {
+  match v {
+    Pass => corpus_verdict_pass_tag
+    Fail { actual: _ } => corpus_verdict_fail_tag
+    Deferred { actual: _, diagnostic: _ } => corpus_verdict_deferred_tag
+  }
+}
+
+
+fn corpus_entry_node_runtime_value(row: ManualCorpusRow<RuntimeValue>) -> CorpusEvalEntry {
+  CorpusEvalEntry {
+    label: row.label,
+    verdict_tag: verdict_tag(v: row.run.verdict)
+  }
+}
+
+
+fn corpus_entry_is_pass(e: CorpusEvalEntry) -> Bool {
+  e.verdict_tag == corpus_verdict_pass_tag
+}
+
+
+fn corpus_entry_is_fail(e: CorpusEvalEntry) -> Bool {
+  e.verdict_tag == corpus_verdict_fail_tag
+}
+
+
+fn corpus_entry_is_deferred(e: CorpusEvalEntry) -> Bool {
+  e.verdict_tag == corpus_verdict_deferred_tag
+}
+
+
+fn corpus_report_from_entries(entries: List<CorpusEvalEntry>) -> CorpusEvalReport {
+  CorpusEvalReport {
+    entries: entries,
+    pass_count: count_where(xs: entries, predicate: corpus_entry_is_pass),
+    fail_count: count_where(xs: entries, predicate: corpus_entry_is_fail),
+    deferred_count: count_where(xs: entries, predicate: corpus_entry_is_deferred),
+    total: length(xs: entries)
+  }
+}
+
+
+// Modeled corpus-eval entry point. Host harness invokes the emitted Rust mirror
+// of this symbol, then serializes the returned CorpusEvalReport (entries list +
+// per-tag counts) to JSON on stdout + a markdown table on GITHUB_STEP_SUMMARY.
+// Non-zero exit if `fail_count != 0`; Deferred policy follows existing
+// Verdict<T> semantics (Pass < Deferred < Fail).
+fn map_node_runtime_value_rows(rows: List<ManualCorpusRow<RuntimeValue>>) -> List<CorpusEvalEntry> {
+  fold_list(
+    xs: rows,
+    empty: [],
+    cons: fn(acc, row) {
+      concat([corpus_entry_node_runtime_value(row: row)], acc)
+    }
+  )
+}
+
+
+fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
+  corpus_report_from_entries(
+    entries: map_node_runtime_value_rows(rows: manual_corpus_node_runtime_value_rows)
+  )
+}
