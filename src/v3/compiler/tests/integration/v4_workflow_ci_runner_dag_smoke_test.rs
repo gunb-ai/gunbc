@@ -93,7 +93,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         path: "src/v4/workflow/release.dag",
         v2: false,
         v3: false,
-        v4: false,
+        v4: true,
         workflow_policy: false,
         release_distribution: true,
     },
