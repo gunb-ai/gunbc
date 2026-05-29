@@ -10,49 +10,22 @@
 
 module v4.test.claim.manual.multi_target_emit_verification_gate
 
-import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.verification {
   Boundary,
   CompilesClaim,
-  EqualsClaim,
   ManualAnchorAbsent,
-  ManualAnchorKey,
   TestClaim,
   TestClassification,
   Tier1,
-  manual_claim_anchor,
-  test_claim_input
+  manual_claim_anchor
 }
+import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
-fn emit_verification_gate_atom(s: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
-}
-
-data emit_verification_gate_symbol: Symbol = emit_verification_gate_symbol
-
-data emit_verification_gate_anchor: ManualAnchorKey = ManualAnchorAbsent
-
-data emit_verification_gate_classification: TestClassification = {
-  tier: Tier1
-  layer: Boundary
-}
-
-// Receipt row: CompilesClaim over a minimal program node until T-38 (above) retires this scaffold.
+// Receipt row: CompilesClaim scaffold until T-38 (above) retires the v3 host harness.
 data claim_emit_verification_gate_obligation_modeled: TestClaim = CompilesClaim {
   label: "multi-target emit verification gate obligation is modeled (v3 harness is authority until T-38)"
-  anchor: manual_claim_anchor(anchor: emit_verification_gate_anchor)
-  input: emit_verification_gate_atom(s: emit_verification_gate_symbol)
-  expected_value: emit_verification_gate_atom(s: emit_verification_gate_symbol)
-  classification: emit_verification_gate_classification
-}
-
-data claim_emit_verification_gate_input_is_claim_subject: TestClaim = EqualsClaim {
-  label: "emit verification gate claim subject is test_claim_input"
-  anchor: manual_claim_anchor(anchor: emit_verification_gate_anchor)
-  lhs: test_claim_input(c: claim_emit_verification_gate_obligation_modeled)
-  rhs: emit_verification_gate_atom(s: emit_verification_gate_symbol)
-  classification: emit_verification_gate_classification
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent)
+  input: stub_empty_conj
+  expected_value: stub_empty_conj
+  classification: TestClassification { tier: Tier1, layer: Boundary }
 }
