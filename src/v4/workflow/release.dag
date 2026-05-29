@@ -1,0 +1,317 @@
+// src/v4/workflow/release.dag
+// Scope: GitHub Releases binary distribution AS DATA (RELEASE_TODO.md §5 Phase 1).
+// Status: filled — semantic authority for tag trigger, 4-target matrix, musl cross builds,
+//   gunbc artifact naming, GH Release upload intent. YamlStatic `release_pipeline →
+//   .github/workflows/release.yml` deferred (same posture as `src/v4/workflow/ci.dag` lines 2–4 /
+//   TASKS T-24). `.github/workflows/release.yml` is a hand-synced projection until emission lands.
+//   `install.sh` is an end-user shell script (not modeled runtime); only the bundle artifact name
+//   is referenced for upload contents.
+
+module v4.workflow.release
+
+import v4.std.collection { List }
+import v4.std.text { String }
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Extent,
+  Locus,
+  NoCorrectionReason,
+  Outcome,
+  Accepted,
+  None,
+  diagnostics_singleton
+}
+import v4.std.algebra {
+  count_equal,
+  count_where,
+  filter,
+  for_all,
+  length,
+  unique
+}
+import v4.workflow.bootstrap { v4_stage0_binary }
+
+
+type ReleaseCommand
+  = CrossMuslGunbcBuild { target: String }
+  | NativeDarwinGunbcBuild { target: String }
+  | UploadGunbcMatrixArtifact
+  | PublishGitHubRelease { bundle_install_sh: Bool }
+
+type ReleaseJob {
+  id: Symbol
+  command: ReleaseCommand
+  needs: List<Symbol>
+}
+
+type ReleaseGate {
+  id: Symbol
+  job: Symbol
+}
+
+type ReleasePipeline {
+  jobs: List<ReleaseJob>
+  gates: List<ReleaseGate>
+}
+
+type ReleaseMatrixRow {
+  target: String
+  runner: String
+  cross: Bool
+}
+
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100) — feature:release-github-actions-landed — consumer:v4.workflow.release release_live_workflow_signal — bind RELEASE_TODO.md §5 Phase 1 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `release_pipeline` directly and this carrier is deleted; forbidden: adding release transport facts outside `release_pipeline` + this binding.
+type ReleaseLiveWorkflowSignal {
+  workflow_name: String
+  tag_pattern: String
+  build_job_name: String
+  publish_job_name: String
+  cross_install_step_name: String
+  aarch64_strip_step_name: String
+  build_gunbc_step_name: String
+  upload_artifact_step_name: String
+  stage_install_sh_step_name: String
+  create_release_step_name: String
+  gh_release_action: String
+  cargo_package: String
+  cargo_bin: String
+  cross_version: String
+  install_sh_bundle_name: String
+}
+
+data release_build_matrix: List<ReleaseMatrixRow> = [
+  {
+    target: "x86_64-unknown-linux-musl"
+    runner: "ubuntu-24.04"
+    cross: true
+  },
+  {
+    target: "aarch64-unknown-linux-musl"
+    runner: "ubuntu-24.04"
+    cross: true
+  },
+  {
+    target: "x86_64-apple-darwin"
+    runner: "macos-15-intel"
+    cross: false
+  },
+  {
+    target: "aarch64-apple-darwin"
+    runner: "macos-14"
+    cross: false
+  }
+]
+
+data release_matrix_build_execution: Symbol = release_matrix_build_execution
+data release_publish_execution: Symbol = release_publish_execution
+data release_matrix_build_signal: Symbol = release_matrix_build_signal
+data release_publish_signal: Symbol = release_publish_signal
+
+data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
+  workflow_name: "release"
+  tag_pattern: "v*"
+  build_job_name: "build"
+  publish_job_name: "release"
+  cross_install_step_name: "Install cross"
+  aarch64_strip_step_name: "Install aarch64 strip (musl cross artifacts on x86 runner)"
+  build_gunbc_step_name: "Build gunbc"
+  upload_artifact_step_name: "Upload binary artifact"
+  stage_install_sh_step_name: "Stage release assets"
+  create_release_step_name: "Create GitHub Release"
+  gh_release_action: "softprops/action-gh-release@v2"
+  cargo_package: "v2-compiler"
+  cargo_bin: "gunbc"
+  cross_version: "0.2.5"
+  install_sh_bundle_name: "install.sh"
+}
+
+data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p: ReleasePipeline {
+  jobs: [
+    ReleaseJob {
+      id: release_matrix_build_execution,
+      command: CrossMuslGunbcBuild { target: "x86_64-unknown-linux-musl" },
+      needs: []
+    },
+    ReleaseJob {
+      id: release_publish_execution,
+      command: PublishGitHubRelease { bundle_install_sh: true },
+      needs: [release_matrix_build_execution]
+    }
+  ],
+  gates: [
+    ReleaseGate {
+      id: release_matrix_build_signal,
+      job: release_matrix_build_execution
+    },
+    ReleaseGate {
+      id: release_publish_signal,
+      job: release_publish_execution
+    }
+  ]
+})
+
+// Path prefix for `ci.dag` `ci_changed_path_affects_workflow_policy` when T-24 (#3853) lands.
+data release_workflow_policy_path_prefix: String = "src/v4/workflow/release"
+
+data release_duplicate_job_id: Symbol = release_duplicate_job_id
+data release_duplicate_gate_id: Symbol = release_duplicate_gate_id
+data release_dangling_reference: Symbol = release_dangling_reference
+data release_dependency_cycle: Symbol = release_dependency_cycle
+data release_matrix_invalid: Symbol = release_matrix_invalid
+data release_bootstrap_authority_violation: Symbol = release_bootstrap_authority_violation
+data release_workflow_file: Symbol = release_workflow_file
+
+fn release_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: release_workflow_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn release_job_ids(jobs: List<ReleaseJob>) -> List<Symbol> {
+  fold(jobs, init: [], f: fn(acc, j) {
+    concat([j.id], acc)
+  })
+}
+
+fn release_gate_ids(gates: List<ReleaseGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    concat([g.id], acc)
+  })
+}
+
+fn release_gate_job_ids(gates: List<ReleaseGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    concat([g.job], acc)
+  })
+}
+
+fn release_member(s: Symbol, ids: List<Symbol>) -> Bool {
+  count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
+}
+
+fn release_symbol_resolves(s: Symbol, jobs: List<ReleaseJob>) -> Bool {
+  release_member(s: s, ids: release_job_ids(jobs: jobs))
+}
+
+fn release_all_job_ids_unique(jobs: List<ReleaseJob>) -> Bool {
+  unique(xs: release_job_ids(jobs: jobs), eq: fn(left, right) { left == right })
+}
+
+fn release_all_gate_ids_unique(gates: List<ReleaseGate>) -> Bool {
+  unique(xs: release_gate_ids(gates: gates), eq: fn(left, right) { left == right })
+}
+
+fn release_all_needs_resolve(jobs: List<ReleaseJob>) -> Bool {
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && for_all(xs: j.needs, predicate: fn(n) {
+      release_symbol_resolves(s: n, jobs: jobs)
+    })
+  })
+}
+
+fn release_all_gate_jobs_resolve(gates: List<ReleaseGate>, jobs: List<ReleaseJob>) -> Bool {
+  for_all(xs: release_gate_job_ids(gates: gates), predicate: fn(job_sym) {
+    release_symbol_resolves(s: job_sym, jobs: jobs)
+  })
+}
+
+fn release_job_needs(id: Symbol, jobs: List<ReleaseJob>) -> List<Symbol> {
+  fold(jobs, init: [], f: fn(acc, j) {
+    if j.id == id { j.needs } else { acc }
+  })
+}
+
+fn release_blocked(id: Symbol, remaining: List<Symbol>, jobs: List<ReleaseJob>) -> Bool {
+  count_where(xs: release_job_needs(id: id, jobs: jobs), predicate: fn(n) {
+    release_member(s: n, ids: remaining)
+  }) != 0
+}
+
+fn release_eliminate_pass(remaining: List<Symbol>, jobs: List<ReleaseJob>) -> List<Symbol> {
+  fold(remaining, init: [], f: fn(acc, id) {
+    if release_blocked(id: id, remaining: remaining, jobs: jobs) {
+      concat([id], acc)
+    } else {
+      acc
+    }
+  })
+}
+
+fn release_kahn_fixpoint(jobs: List<ReleaseJob>) -> List<Symbol> {
+  fold(jobs, init: map(jobs, fn(j) { j.id }), f: fn(remaining, job) {
+    release_eliminate_pass(remaining: remaining, jobs: jobs)
+  })
+}
+
+fn release_acyclic(jobs: List<ReleaseJob>) -> Bool {
+  length(xs: release_kahn_fixpoint(jobs: jobs)) == 0
+}
+
+fn release_matrix_row_targets(rows: List<ReleaseMatrixRow>) -> List<String> {
+  fold(rows, init: [], f: fn(acc, row) {
+    concat([row.target], acc)
+  })
+}
+
+fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
+  unique(xs: release_matrix_row_targets(rows: rows), eq: fn(left, right) { left == right })
+    && length(xs: rows) == 4
+    && for_all(xs: rows, predicate: fn(row) {
+      (row.cross && row.target == "x86_64-unknown-linux-musl")
+        || (row.cross && row.target == "aarch64-unknown-linux-musl")
+        || (!row.cross && row.target == "x86_64-apple-darwin")
+        || (!row.cross && row.target == "aarch64-apple-darwin")
+    })
+}
+
+fn release_command_authority_ok(c: ReleaseCommand) -> Bool {
+  match c {
+    CrossMuslGunbcBuild { target: t } =>
+      t == "x86_64-unknown-linux-musl" || t == "aarch64-unknown-linux-musl"
+    NativeDarwinGunbcBuild { target: t } =>
+      t == "x86_64-apple-darwin" || t == "aarch64-apple-darwin"
+    UploadGunbcMatrixArtifact => true
+    PublishGitHubRelease { bundle_install_sh: _ } => true
+  }
+}
+
+fn release_all_commands_authority_ok(jobs: List<ReleaseJob>) -> Bool {
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && release_command_authority_ok(c: j.command)
+  })
+}
+
+fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> {
+  if release_all_job_ids_unique(jobs: p.jobs) {
+    if release_all_gate_ids_unique(gates: p.gates) {
+      if release_all_needs_resolve(jobs: p.jobs) {
+        if release_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
+          if release_acyclic(jobs: p.jobs) {
+            if release_all_commands_authority_ok(jobs: p.jobs) {
+              if release_matrix_targets_well_formed(rows: release_build_matrix) {
+                Accepted { value: p, diagnostics: None }
+              } else {
+                Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_invalid)) }
+              }
+            } else {
+              Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_bootstrap_authority_violation)) }
+            }
+          } else {
+            Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_dependency_cycle)) }
+          }
+        } else {
+          Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_dangling_reference)) }
+        }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_dangling_reference)) }
+      }
+    } else {
+      Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_duplicate_gate_id)) }
+    }
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_duplicate_job_id)) }
+  }
+}

@@ -1,3 +1,6 @@
+# Hand-synced projection of src/v4/workflow/release.dag (RELEASE_TODO.md §5 Phase 1).
+# Semantic authority: src/v4/workflow/release.dag — update the model first, then mirror here.
+# YamlStatic `release_pipeline → release.yml` deferred (same posture as ci.dag / TASKS T-24).
 name: release
 
 on:
