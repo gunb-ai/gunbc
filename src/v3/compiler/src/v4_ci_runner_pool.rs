@@ -66,16 +66,30 @@ pub fn ci_runner_pool_host_count(pools: &[SelfHostedRunnerPool]) -> u32 {
     pools.len() as u32
 }
 
-pub fn ci_int_at_least_one(n: u32) -> u32 {
-    n.max(1)
+pub fn ci_int_positive(n: u32) -> bool {
+    n >= 1
 }
 
-pub fn ci_runner_pool_m1_probe_witness_holds(pools: &[SelfHostedRunnerPool]) -> bool {
-    !pools.is_empty() && ci_fleet_max_runner_count() != ci_fleet_min_runner_count()
+pub fn ci_runner_pool_capacity_valid(pool: SelfHostedRunnerPool) -> bool {
+    ci_int_positive(pool.core_count)
+        && ci_int_positive(pool.runner_count)
+        && ci_int_positive(pool.jobserver_token_cap)
+}
+
+pub fn ci_runner_pool_fleet_capacities_valid() -> bool {
+    CI_SELF_HOSTED_RUNNER_POOLS
+        .iter()
+        .all(|pool| ci_runner_pool_capacity_valid(*pool))
+}
+
+pub fn ci_runner_pool_m1_probe_witness_holds() -> bool {
+    ci_runner_pool_fleet_capacities_valid()
+        && !CI_SELF_HOSTED_RUNNER_POOLS.is_empty()
+        && ci_fleet_max_runner_count() != ci_fleet_min_runner_count()
 }
 
 pub fn ci_m1_probe_cargo_fanout_slots_from_fleet() -> Option<u32> {
-    if !ci_runner_pool_m1_probe_witness_holds(&CI_SELF_HOSTED_RUNNER_POOLS) {
+    if !ci_runner_pool_m1_probe_witness_holds() {
         return None;
     }
     let min_runners = ci_fleet_min_runner_count();
@@ -91,16 +105,15 @@ pub fn ci_m1_probe_cargo_fanout_slots_from_fleet() -> Option<u32> {
 
 pub fn ci_m1_probe_cargo_check_jobs_from_fleet() -> Option<u32> {
     let fanout = ci_m1_probe_cargo_fanout_slots_from_fleet()?;
-    let fanout = ci_int_at_least_one(fanout);
-    if fanout == 0 {
+    if !ci_int_positive(fanout) {
         return None;
     }
     Some(ci_fleet_min_jobserver_token_cap() / fanout)
 }
 
 /// Modeled authority for `data m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
-pub fn m1_probe_cargo_check_jobs() -> u32 {
-    ci_m1_probe_cargo_check_jobs_from_fleet().unwrap_or(0)
+pub fn m1_probe_cargo_check_jobs() -> Option<u32> {
+    ci_m1_probe_cargo_check_jobs_from_fleet()
 }
 
 #[cfg(test)]
@@ -117,15 +130,14 @@ mod tests {
 
     #[test]
     fn m1_probe_cargo_check_jobs_derived_as_four() {
+        assert!(ci_runner_pool_fleet_capacities_valid());
         assert_eq!(ci_m1_probe_cargo_fanout_slots_from_fleet(), Some(6));
         assert_eq!(ci_m1_probe_cargo_check_jobs_from_fleet(), Some(4));
-        assert_eq!(m1_probe_cargo_check_jobs(), 4);
+        assert_eq!(m1_probe_cargo_check_jobs(), Some(4));
     }
 
     #[test]
     fn witness_required_for_fleet_m1_derivation() {
-        assert!(ci_runner_pool_m1_probe_witness_holds(
-            &CI_SELF_HOSTED_RUNNER_POOLS
-        ));
+        assert!(ci_runner_pool_m1_probe_witness_holds());
     }
 }

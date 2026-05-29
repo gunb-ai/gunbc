@@ -32,11 +32,15 @@ fn runner_pool_m1_fanout_slots_holds() -> Bool {
 }
 
 fn runner_pool_m1_cargo_jobs_holds() -> Bool {
-  (m1_probe_cargo_check_jobs == 4)
-    && match ci_m1_probe_cargo_check_jobs_from_fleet() {
-      Accepted { value: jobs, diagnostics: _ } => jobs == 4
-      Rejected { diagnostics: _ } => false
-    }
+  match m1_probe_cargo_check_jobs {
+    Accepted { value: jobs, diagnostics: _ } =>
+      (jobs == 4)
+        && match ci_m1_probe_cargo_check_jobs_from_fleet() {
+          Accepted { value: derived, diagnostics: _ } => derived == 4
+          Rejected { diagnostics: _ } => false
+        }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 data runner_pool_srv1_claim_passes: Bool = runner_pool_srv1_runner_count_holds()

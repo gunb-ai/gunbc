@@ -721,12 +721,20 @@ fn ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>) -
 }
 
 
-fn ci_int_at_least_one(n: Int) -> Int {
-  if n < 1 {
-    1
-  } else {
-    n
-  }
+fn ci_int_positive(n: Int) -> Bool {
+  n >= 1
+}
+
+
+fn ci_runner_pool_capacity_valid(pool: SelfHostedRunnerPool) -> Bool {
+  ci_int_positive(n: pool.core_count)
+    && ci_int_positive(n: pool.runner_count)
+    && ci_int_positive(n: pool.jobserver_token_cap)
+}
+
+
+fn ci_runner_pool_fleet_capacities_valid() -> Bool {
+  for_all(xs: ci_self_hosted_runner_pools, predicate: ci_runner_pool_capacity_valid)
 }
 
 
@@ -784,15 +792,14 @@ fn ci_runner_pool_has_nonuniform_runner_counts_on_fleet() -> Bool {
 }
 
 
-fn ci_runner_pool_m1_probe_witness_holds(pools: List<SelfHostedRunnerPool>) -> Bool {
-  non_empty(xs: pools)
+fn ci_runner_pool_m1_probe_witness_holds() -> Bool {
+  ci_runner_pool_fleet_capacities_valid()
+    && non_empty(xs: ci_self_hosted_runner_pools)
     && ci_runner_pool_has_nonuniform_runner_counts_on_fleet()
 }
 
 
-data ci_runner_pool_m1_probe_witness: Bool = ci_runner_pool_m1_probe_witness_holds(
-  pools: ci_self_hosted_runner_pools
-)
+data ci_runner_pool_m1_probe_witness: Bool = ci_runner_pool_m1_probe_witness_holds()
 
 
 fn ci_m1_probe_cargo_fanout_slots_from_fleet() -> Outcome<Int> {
@@ -821,22 +828,22 @@ fn ci_m1_probe_cargo_fanout_slots_from_fleet() -> Outcome<Int> {
 fn ci_m1_probe_cargo_check_jobs_from_fleet() -> Outcome<Int> {
   match ci_m1_probe_cargo_fanout_slots_from_fleet() {
     Accepted { value: fanout_slots, diagnostics: _ } =>
-      int_div(
-        a: ci_fleet_min_jobserver_token_cap(),
-        b: ci_int_at_least_one(n: fanout_slots),
-        at: Textual { file: ci_workflow_file, extent: WholeFile }
-      )
+      if ci_int_positive(n: fanout_slots) {
+        int_div(
+          a: ci_fleet_min_jobserver_token_cap(),
+          b: fanout_slots,
+          at: Textual { file: ci_workflow_file, extent: WholeFile }
+        )
+      } else {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: ci_diagnostic(reason: ci_runner_pool_non_positive_fanout)
+          )
+        }
+      }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
 
-fn ci_m1_probe_cargo_check_jobs_fleet_int() -> Int {
-  match ci_m1_probe_cargo_check_jobs_from_fleet() {
-    Accepted { value: jobs, diagnostics: _ } => jobs
-    Rejected { diagnostics: _ } => 0
-  }
-}
-
-
-data m1_probe_cargo_check_jobs: Int = ci_m1_probe_cargo_check_jobs_fleet_int()
+data m1_probe_cargo_check_jobs: Outcome<Int> = ci_m1_probe_cargo_check_jobs_from_fleet()

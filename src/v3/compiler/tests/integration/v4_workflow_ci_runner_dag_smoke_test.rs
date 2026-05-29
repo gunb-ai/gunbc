@@ -425,10 +425,11 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
     );
     assert!(
-        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int"),
-        "{CI_DAG_PATH}: M1 cargo parallelism must be a derived Int fact"
+        CI_DAG.contains("data m1_probe_cargo_check_jobs: Outcome<Int>"),
+        "{CI_DAG_PATH}: M1 cargo parallelism must remain Outcome<Int> (no Rejected→0 collapse)"
     );
-    let m1_jobs = v3_compiler::v4_ci_runner_pool::m1_probe_cargo_check_jobs();
+    let m1_jobs = v3_compiler::v4_ci_runner_pool::m1_probe_cargo_check_jobs()
+        .expect("fleet model must derive M1 cargo-check jobs");
     assert_eq!(
         m1_jobs, 4,
         "Rust transport mirror of m1_probe_cargo_check_jobs must match ci.dag fleet model"
