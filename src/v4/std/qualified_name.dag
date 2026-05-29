@@ -1,7 +1,7 @@
 // src/v4/std/qualified_name.dag
 // Scope: Qualified names as a projection over symbol sequences.
 // Anchor: INVARIANTS.md P1 "Model names must reflect what they are" (T-QN-1).
-// Status: T-QN-1 modeled; T-28 support carrier; consumed by std/catalog.dag, compiler/03_name_resolve.dag.
+// Status: T-QN-1 modeled; consumed by compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Qualified_name
 
 module v4.std.qualified_name
