@@ -163,18 +163,18 @@ type RustfmtRequiredVersion
 // 🟡 gated — feature: rustfmt-unstable-option-validity — bind T-4.16 follow-on — dissolve-on-arrival: emit stage must omit all fields marked "Stable: No" from the emitted .toml when unstable_features=false; RustfmtConfig's full-value form collapses set-vs-absent so the validity constraint is an emit obligation, not a value predicate; follow-on: migrate unstable fields to Option<T> carriers so absence is structurally representable in the substrate; forbidden: emitting a key for any unstable field when unstable_features=false regardless of whether its value equals the default.
 type RustfmtConfig {
   indent_style: RustfmtIndentStyle
-  tab_spaces: Outcome<PositiveInt>   
+  tab_spaces: Outcome<PositiveInt>
   hard_tabs: Bool
-  max_width: Outcome<PositiveInt>    
+  max_width: Outcome<PositiveInt>
   comment_width: Outcome<NonNegativeInt>
-  chain_width: Outcome<PositiveInt>  
+  chain_width: Outcome<PositiveInt>
   single_line_if_else_max_width: Outcome<NonNegativeInt>
   single_line_let_else_max_width: Outcome<NonNegativeInt>
-  fn_call_width: Outcome<PositiveInt>    
-  attr_fn_like_width: Outcome<PositiveInt> 
-  struct_lit_width: Outcome<NonNegativeInt>   
-  struct_variant_width: Outcome<NonNegativeInt> 
-  array_width: Outcome<PositiveInt>      
+  fn_call_width: Outcome<PositiveInt>
+  attr_fn_like_width: Outcome<PositiveInt>
+  struct_lit_width: Outcome<NonNegativeInt>
+  struct_variant_width: Outcome<NonNegativeInt>
+  array_width: Outcome<PositiveInt>
   short_array_element_width_threshold: Outcome<PositiveInt>
   brace_style: RustfmtBraceStyle
   control_brace_style: RustfmtControlBraceStyle
@@ -197,8 +197,8 @@ type RustfmtConfig {
   reorder_modules: Bool
   reorder_impl_items: Bool
   newline_style: RustfmtNewlineStyle
-  blank_lines_upper_bound: Outcome<NonNegativeInt> 
-  blank_lines_lower_bound: Outcome<NonNegativeInt> 
+  blank_lines_upper_bound: Outcome<NonNegativeInt>
+  blank_lines_lower_bound: Outcome<NonNegativeInt>
   wrap_comments: Bool
   normalize_comments: Bool
   normalize_doc_attributes: Bool

@@ -83,7 +83,7 @@ type ClangFormatTrailingCommentsAlignmentKind
 
 type ClangFormatTrailingCommentsAlignmentStyle {
   kind: ClangFormatTrailingCommentsAlignmentKind,
-  over_empty_lines: NonNegativeInt, // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_empty_lines_to_keep
+  over_empty_lines: Outcome<NonNegativeInt>, // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_empty_lines_to_keep
   align_pp_and_not_pp: Bool,
 }
 
@@ -256,7 +256,7 @@ type ClangFormatBreakBinaryOperationsStyle
 type ClangFormatBinaryOperationBreakRule {
   operators: List<String>,
   style: ClangFormatBreakBinaryOperationsStyle,
-  min_chain_length: NonNegativeInt,
+  min_chain_length: Outcome<NonNegativeInt>,
 }
 
 
@@ -354,15 +354,15 @@ type ClangFormatTrailingCommaStyle
 
 
 type ClangFormatIntegerLiteralSeparatorStyle {
-  binary: AtLeastMinusOneInt,
-  binary_min_digits_insert: NonNegativeInt,
-  binary_max_digits_remove: NonNegativeInt,
-  decimal: AtLeastMinusOneInt,
-  decimal_min_digits_insert: NonNegativeInt,
-  decimal_max_digits_remove: NonNegativeInt,
-  hex: AtLeastMinusOneInt,
-  hex_min_digits_insert: NonNegativeInt,
-  hex_max_digits_remove: NonNegativeInt,
+  binary: Outcome<AtLeastMinusOneInt>,
+  binary_min_digits_insert: Outcome<NonNegativeInt>,
+  binary_max_digits_remove: Outcome<NonNegativeInt>,
+  decimal: Outcome<AtLeastMinusOneInt>,
+  decimal_min_digits_insert: Outcome<NonNegativeInt>,
+  decimal_max_digits_remove: Outcome<NonNegativeInt>,
+  hex: Outcome<AtLeastMinusOneInt>,
+  hex_min_digits_insert: Outcome<NonNegativeInt>,
+  hex_max_digits_remove: Outcome<NonNegativeInt>,
 }
 
 
@@ -587,8 +587,8 @@ type ClangFormatSpacesInAnglesStyle
 
 
 type ClangFormatSpacesInLineComment {
-  minimum: NonNegativeInt,
-  maximum: AtLeastMinusOneInt, // 🟡 gated: formatter-cross-field-constraints — must be ≥ minimum unless -1
+  minimum: Outcome<NonNegativeInt>,
+  maximum: Outcome<AtLeastMinusOneInt>, // 🟡 gated: formatter-cross-field-constraints — must be ≥ minimum unless -1
 }
 
 

@@ -82,7 +82,7 @@ def update_formatter(path: Path) -> None:
         outcome_type = f"Outcome<{typename}>"
         # Field declarations: name: PositiveInt -> Outcome<PositiveInt>
         text = re.sub(
-            rf"(: )({typename})(\s|$|\|)",
+            rf"(: )({typename})(\s|,|$|\|)",
             rf"\1{outcome_type}\3",
             text,
         )
