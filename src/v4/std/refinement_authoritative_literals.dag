@@ -6,7 +6,7 @@
 module v4.std.refinement_authoritative_literals
 
 
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v4.std.refinement {
   AtLeastMinusOneInt,
   AtLeastMinusTwoInt,
@@ -21,106 +21,115 @@ import v4.std.refinement {
 }
 
 
-// Catalog-row discharge lives in this module only (not std/refinement.dag): exhaustive Outcome
-// match with bounded Rejected re-propagation; no fabricated carrier on failure (P3/P4).
-// Accepted-only rows witnessed per literal in refinement_formatter_literals_accept.dag.
+// Catalog-row discharge is module-local (not std/refinement.dag). Accepted arm unwraps the
+// carrier; Rejected arm is ill-typed (returns Outcome) so a mistyped catalog literal fails
+// compile-time rather than fabricating a carrier or diverging (P3/P4).
+// Per-literal Accepted witnesses: refinement_formatter_literals_accept.dag.
 // 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail
 
 fn discharge_positive_int_catalog_row(receipt: Outcome<PositiveInt>) -> PositiveInt {
-  discharge_positive_int_catalog_row_step(receipt: receipt, steps_remaining: 256)
+  match receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics } => positive_int_catalog_row_substrate_fault(diagnostics: diagnostics)
+  }
 }
 
 
-fn discharge_positive_int_catalog_row_step(receipt: Outcome<PositiveInt>, steps_remaining: Int) -> PositiveInt {
-  match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics } =>
-      discharge_positive_int_catalog_row_step(
-        receipt: Rejected { diagnostics: diagnostics },
-        steps_remaining: steps_remaining - 1
-      )
-  }
+fn positive_int_catalog_row_substrate_fault(diagnostics: NonEmptyDiagnostics) -> PositiveInt {
+  positive_int_catalog_row_substrate_fault_outcome(diagnostics: diagnostics)
+}
+
+
+fn positive_int_catalog_row_substrate_fault_outcome(diagnostics: NonEmptyDiagnostics) -> Outcome<PositiveInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
 fn discharge_non_negative_int_catalog_row(receipt: Outcome<NonNegativeInt>) -> NonNegativeInt {
-  discharge_non_negative_int_catalog_row_step(receipt: receipt, steps_remaining: 256)
+  match receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics } => non_negative_int_catalog_row_substrate_fault(diagnostics: diagnostics)
+  }
 }
 
 
-fn discharge_non_negative_int_catalog_row_step(
-  receipt: Outcome<NonNegativeInt>,
-  steps_remaining: Int,
-) -> NonNegativeInt {
-  match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics } =>
-      discharge_non_negative_int_catalog_row_step(
-        receipt: Rejected { diagnostics: diagnostics },
-        steps_remaining: steps_remaining - 1
-      )
-  }
+fn non_negative_int_catalog_row_substrate_fault(diagnostics: NonEmptyDiagnostics) -> NonNegativeInt {
+  non_negative_int_catalog_row_substrate_fault_outcome(diagnostics: diagnostics)
+}
+
+
+fn non_negative_int_catalog_row_substrate_fault_outcome(
+  diagnostics: NonEmptyDiagnostics,
+) -> Outcome<NonNegativeInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
 fn discharge_at_least_minus_one_int_catalog_row(
   receipt: Outcome<AtLeastMinusOneInt>,
 ) -> AtLeastMinusOneInt {
-  discharge_at_least_minus_one_int_catalog_row_step(receipt: receipt, steps_remaining: 256)
-}
-
-
-fn discharge_at_least_minus_one_int_catalog_row_step(
-  receipt: Outcome<AtLeastMinusOneInt>,
-  steps_remaining: Int,
-) -> AtLeastMinusOneInt {
   match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
     Rejected { diagnostics } =>
-      discharge_at_least_minus_one_int_catalog_row_step(
-        receipt: Rejected { diagnostics: diagnostics },
-        steps_remaining: steps_remaining - 1
-      )
+      at_least_minus_one_int_catalog_row_substrate_fault(diagnostics: diagnostics)
   }
+}
+
+
+fn at_least_minus_one_int_catalog_row_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> AtLeastMinusOneInt {
+  at_least_minus_one_int_catalog_row_substrate_fault_outcome(diagnostics: diagnostics)
+}
+
+
+fn at_least_minus_one_int_catalog_row_substrate_fault_outcome(
+  diagnostics: NonEmptyDiagnostics,
+) -> Outcome<AtLeastMinusOneInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
 fn discharge_at_least_minus_two_int_catalog_row(
   receipt: Outcome<AtLeastMinusTwoInt>,
 ) -> AtLeastMinusTwoInt {
-  discharge_at_least_minus_two_int_catalog_row_step(receipt: receipt, steps_remaining: 256)
-}
-
-
-fn discharge_at_least_minus_two_int_catalog_row_step(
-  receipt: Outcome<AtLeastMinusTwoInt>,
-  steps_remaining: Int,
-) -> AtLeastMinusTwoInt {
   match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
     Rejected { diagnostics } =>
-      discharge_at_least_minus_two_int_catalog_row_step(
-        receipt: Rejected { diagnostics: diagnostics },
-        steps_remaining: steps_remaining - 1
-      )
+      at_least_minus_two_int_catalog_row_substrate_fault(diagnostics: diagnostics)
   }
+}
+
+
+fn at_least_minus_two_int_catalog_row_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> AtLeastMinusTwoInt {
+  at_least_minus_two_int_catalog_row_substrate_fault_outcome(diagnostics: diagnostics)
+}
+
+
+fn at_least_minus_two_int_catalog_row_substrate_fault_outcome(
+  diagnostics: NonEmptyDiagnostics,
+) -> Outcome<AtLeastMinusTwoInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
 fn discharge_exact_one_int_catalog_row(receipt: Outcome<ExactOneInt>) -> ExactOneInt {
-  discharge_exact_one_int_catalog_row_step(receipt: receipt, steps_remaining: 256)
+  match receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics } => exact_one_int_catalog_row_substrate_fault(diagnostics: diagnostics)
+  }
 }
 
 
-fn discharge_exact_one_int_catalog_row_step(receipt: Outcome<ExactOneInt>, steps_remaining: Int) -> ExactOneInt {
-  match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics } =>
-      discharge_exact_one_int_catalog_row_step(
-        receipt: Rejected { diagnostics: diagnostics },
-        steps_remaining: steps_remaining - 1
-      )
-  }
+fn exact_one_int_catalog_row_substrate_fault(diagnostics: NonEmptyDiagnostics) -> ExactOneInt {
+  exact_one_int_catalog_row_substrate_fault_outcome(diagnostics: diagnostics)
+}
+
+
+fn exact_one_int_catalog_row_substrate_fault_outcome(diagnostics: NonEmptyDiagnostics) -> Outcome<ExactOneInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
