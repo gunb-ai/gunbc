@@ -355,8 +355,8 @@ data kotlin_integer_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
 ]
 
 data kotlin_integer_algebra_inhabitance_facts_catalog: List<KotlinOrderedRingIntegerFacts> = [
-  kotlin_ordered_ring_integer_from_primitive_facts(facts: kotlin_facts_int),
-  kotlin_ordered_ring_integer_from_primitive_facts(facts: kotlin_facts_long)
+  kotlin_ordered_ring_integer_from_int_primitive_facts(facts: kotlin_facts_int),
+  kotlin_ordered_ring_integer_from_long_primitive_facts(facts: kotlin_facts_long)
 ]
 
 data kotlin_float_facts_catalog: List<KotlinFloatPrimitiveFacts> = [
@@ -891,20 +891,23 @@ fn kotlin_ordered_ring_int_width_to_int_width(width: KotlinOrderedRingIntWidth) 
   }
 }
 
-fn kotlin_int_width_to_ordered_ring_width(width: KotlinIntWidth) -> KotlinOrderedRingIntWidth {
-  match width {
-    Bits32 => Bits32
-    Bits64 => Bits64
-    _ => Bits32
-  }
-}
-
-fn kotlin_ordered_ring_integer_from_primitive_facts(
+fn kotlin_ordered_ring_integer_from_int_primitive_facts(
   facts: KotlinIntegerPrimitiveFacts
 ) -> KotlinOrderedRingIntegerFacts {
   KotlinOrderedRingIntegerFacts {
     surface_spelling: facts.surface_spelling,
-    width: kotlin_int_width_to_ordered_ring_width(width: facts.width),
+    width: Bits32,
+    overflow: facts.overflow,
+    representation: facts.representation
+  }
+}
+
+fn kotlin_ordered_ring_integer_from_long_primitive_facts(
+  facts: KotlinIntegerPrimitiveFacts
+) -> KotlinOrderedRingIntegerFacts {
+  KotlinOrderedRingIntegerFacts {
+    surface_spelling: facts.surface_spelling,
+    width: Bits64,
     overflow: facts.overflow,
     representation: facts.representation
   }

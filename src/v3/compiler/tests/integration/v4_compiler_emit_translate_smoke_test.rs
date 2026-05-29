@@ -531,7 +531,8 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
         );
     }
     for name in [
-        "kotlin_ordered_ring_integer_from_primitive_facts",
+        "kotlin_ordered_ring_integer_from_int_primitive_facts",
+        "kotlin_ordered_ring_integer_from_long_primitive_facts",
         "kotlin_integer_algebra_witness_node",
         "kotlin_float_algebra_witness_node",
         "kotlin_bool_algebra_witness_node",
@@ -562,8 +563,8 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
     assert_eq!(
         data_list_element_var_names(&module, KOTLIN_LANGUAGE_DAG, "kotlin_integer_algebra_inhabitance_facts_catalog"),
         vec![
-            "kotlin_ordered_ring_integer_from_primitive_facts(facts: kotlin_facts_int)".to_string(),
-            "kotlin_ordered_ring_integer_from_primitive_facts(facts: kotlin_facts_long)".to_string(),
+            "kotlin_ordered_ring_integer_from_int_primitive_facts(facts: kotlin_facts_int)".to_string(),
+            "kotlin_ordered_ring_integer_from_long_primitive_facts(facts: kotlin_facts_long)".to_string(),
         ],
         "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must derive Int/Long ordered-ring rows from primitive fact bundles"
     );
