@@ -22,9 +22,14 @@ import v4.std.runtime {
   Continue,
   EvaluationEnvironment,
   EvaluationFrame,
+  BindInterpreter,
+  BranchInterpreter,
   InterpretationAlgebra,
   InterpretationStructureWitness,
+  LoopInterpreter,
   Raise,
+  TransformInterpreter,
+  ValueInterpreter,
   Return,
   RuntimeAggregate,
   RuntimeClosure,
@@ -123,6 +128,17 @@ import v4.std.verification {
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
+  v4_eval_wave1_allocate_literal,
+  v4_eval_wave1_allocate_literal_sym,
+  v4_eval_wave1_bind_value,
+  v4_eval_wave1_bind_value_sym,
+  v4_eval_wave1_call_primitive,
+  v4_eval_wave1_call_primitive_sym,
+  v4_eval_wave1_choose_branch,
+  v4_eval_wave1_choose_branch_sym,
+  v4_eval_wave1_represent_literal,
+  v4_eval_wave1_step_loop,
+  v4_eval_wave1_step_loop_sym,
   v4_evaluator_interpretation_structure_witness,
   v4_evaluator_interpretation_wave1,
   v4_evaluator_runtime_id,
@@ -213,6 +229,162 @@ fn interpretation_structure_witness_digest(
 }
 
 
+fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash {
+  if v.allocate_literal == v4_eval_wave1_allocate_literal {
+    test_claim_symbol_digest(sym: v4_eval_wave1_allocate_literal_sym)
+  } else if v.allocate_literal == v4_eval_wave1_represent_literal {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_fn_slot_represent_literal_tag)
+  } else {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_fn_slot_unregistered_allocate_tag)
+  }
+}
+
+
+fn interpretation_transform_interpreter_executed_digest(t: TransformInterpreter) -> Hash {
+  if t.call_primitive == v4_eval_wave1_call_primitive {
+    test_claim_symbol_digest(sym: v4_eval_wave1_call_primitive_sym)
+  } else {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_fn_slot_unregistered_call_primitive_tag)
+  }
+}
+
+
+fn interpretation_branch_interpreter_executed_digest(b: BranchInterpreter) -> Hash {
+  if b.choose_branch == v4_eval_wave1_choose_branch {
+    test_claim_symbol_digest(sym: v4_eval_wave1_choose_branch_sym)
+  } else {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_fn_slot_unregistered_branch_tag)
+  }
+}
+
+
+fn interpretation_loop_interpreter_executed_digest(l: LoopInterpreter) -> Hash {
+  if l.step_loop == v4_eval_wave1_step_loop {
+    test_claim_symbol_digest(sym: v4_eval_wave1_step_loop_sym)
+  } else {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_fn_slot_unregistered_loop_tag)
+  }
+}
+
+
+fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
+  if b.bind_value == v4_eval_wave1_bind_value {
+    test_claim_symbol_digest(sym: v4_eval_wave1_bind_value_sym)
+  } else {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_fn_slot_unregistered_bind_tag)
+  }
+}
+
+
+// P2/P3 fail-closed: only closed-registry (wave1) fn refs may cohere with a witness symbol alone.
+fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
+  if v.allocate_literal == v4_eval_wave1_allocate_literal {
+    test_claim_symbol_digest(sym: v4_eval_wave1_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
+  } else if v.allocate_literal == v4_eval_wave1_represent_literal {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_fn_slot_represent_literal_tag) == test_claim_symbol_digest(sym: witness_sym)
+  } else {
+    false
+  }
+}
+
+fn interpretation_transform_interpreter_slot_coherent(t: TransformInterpreter, witness_sym: Symbol) -> Bool {
+  if t.call_primitive == v4_eval_wave1_call_primitive {
+    test_claim_symbol_digest(sym: v4_eval_wave1_call_primitive_sym) == test_claim_symbol_digest(sym: witness_sym)
+  } else {
+    false
+  }
+}
+
+fn interpretation_branch_interpreter_slot_coherent(b: BranchInterpreter, witness_sym: Symbol) -> Bool {
+  if b.choose_branch == v4_eval_wave1_choose_branch {
+    test_claim_symbol_digest(sym: v4_eval_wave1_choose_branch_sym) == test_claim_symbol_digest(sym: witness_sym)
+  } else {
+    false
+  }
+}
+
+fn interpretation_loop_interpreter_slot_coherent(l: LoopInterpreter, witness_sym: Symbol) -> Bool {
+  if l.step_loop == v4_eval_wave1_step_loop {
+    test_claim_symbol_digest(sym: v4_eval_wave1_step_loop_sym) == test_claim_symbol_digest(sym: witness_sym)
+  } else {
+    false
+  }
+}
+
+fn interpretation_bind_interpreter_slot_coherent(b: BindInterpreter, witness_sym: Symbol) -> Bool {
+  if b.bind_value == v4_eval_wave1_bind_value {
+    test_claim_symbol_digest(sym: v4_eval_wave1_bind_value_sym) == test_claim_symbol_digest(sym: witness_sym)
+  } else {
+    false
+  }
+}
+
+fn interpretation_structure_witness_coherent(
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness
+) -> Bool {
+  interpretation_value_interpreter_slot_coherent(v: interpretation.value, witness_sym: structure_witness.allocate_literal)
+    && interpretation_transform_interpreter_slot_coherent(t: interpretation.transform, witness_sym: structure_witness.call_primitive)
+    && interpretation_branch_interpreter_slot_coherent(b: interpretation.branch, witness_sym: structure_witness.choose_branch)
+    && interpretation_loop_interpreter_slot_coherent(l: interpretation.loop, witness_sym: structure_witness.step_loop)
+    && interpretation_bind_interpreter_slot_coherent(b: interpretation.bind, witness_sym: structure_witness.bind_value)
+}
+
+
+// P2/P3: cache keys hash the InterpretationAlgebra run_test_claim executes, not caller-supplied witness Symbols alone.
+fn interpretation_algebra_executed_slots_digest(interpretation: InterpretationAlgebra) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: combine_hash(
+        a: interpretation_value_interpreter_executed_digest(v: interpretation.value),
+        b: interpretation_transform_interpreter_executed_digest(t: interpretation.transform)
+      ),
+      b: interpretation_branch_interpreter_executed_digest(b: interpretation.branch)
+    ),
+    b: combine_hash(
+      a: interpretation_loop_interpreter_executed_digest(l: interpretation.loop),
+      b: interpretation_bind_interpreter_executed_digest(b: interpretation.bind)
+    )
+  )
+}
+
+
+fn interpretation_algebra_executed_structure_digest(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness
+) -> Hash {
+  let executed = combine_hash(
+    a: test_claim_symbol_digest(sym: runtime_identity),
+    b: interpretation_algebra_executed_slots_digest(interpretation: interpretation)
+  )
+  if interpretation_structure_witness_coherent(
+    interpretation: interpretation,
+    structure_witness: structure_witness
+  ) {
+    executed
+  } else {
+    combine_hash(
+      a: executed,
+      b: interpretation_structure_witness_digest(
+        runtime_identity: runtime_identity,
+        structure_witness: structure_witness
+      )
+    )
+  }
+}
+
+
+fn interpretation_v4_evaluator_wave1_registry_semantics_digest(
+  interpretation: InterpretationAlgebra
+) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: v4_evaluator_runtime_id),
+    b: interpretation_algebra_executed_slots_digest(interpretation: interpretation)
+  )
+}
+
+
 fn interpretation_registry_semantics_digest(
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra,
@@ -220,12 +392,12 @@ fn interpretation_registry_semantics_digest(
 ) -> Hash {
   if runtime_identity == v4_evaluator_runtime_id {
     if interpretation == v4_evaluator_interpretation_wave1() {
-      test_claim_symbol_digest(sym: v4_evaluator_runtime_id)
+      interpretation_v4_evaluator_wave1_registry_semantics_digest(interpretation: interpretation)
     } else {
       test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
     }
   } else {
-    interpretation_structure_witness_slots_digest(w: structure_witness)
+    interpretation_algebra_executed_slots_digest(interpretation: interpretation)
   }
 }
 
@@ -317,6 +489,13 @@ data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_r
 data test_claim_cache_interpretation_semantics_mismatch_tag: Symbol = test_claim_cache_interpretation_semantics_mismatch_tag
 data test_claim_cache_interpretation_registry_unbound_tag: Symbol = test_claim_cache_interpretation_registry_unbound_tag
 data test_claim_cache_interpretation_cache_ineligible_tag: Symbol = test_claim_cache_interpretation_cache_ineligible_tag
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — dissolve-on: content_hash(Node) of interpreter fn body replaces per-slot unregistered sentinel; interim slot tag + witness fold when slot_coherent is false.
+data test_claim_cache_interpretation_fn_slot_unregistered_allocate_tag: Symbol = test_claim_cache_interpretation_fn_slot_unregistered_allocate_tag
+data test_claim_cache_interpretation_fn_slot_unregistered_bind_tag: Symbol = test_claim_cache_interpretation_fn_slot_unregistered_bind_tag
+data test_claim_cache_interpretation_fn_slot_unregistered_branch_tag: Symbol = test_claim_cache_interpretation_fn_slot_unregistered_branch_tag
+data test_claim_cache_interpretation_fn_slot_unregistered_call_primitive_tag: Symbol = test_claim_cache_interpretation_fn_slot_unregistered_call_primitive_tag
+data test_claim_cache_interpretation_fn_slot_unregistered_loop_tag: Symbol = test_claim_cache_interpretation_fn_slot_unregistered_loop_tag
+data test_claim_cache_interpretation_fn_slot_represent_literal_tag: Symbol = test_claim_cache_interpretation_fn_slot_represent_literal_tag
 data test_claim_cache_interpretation_registered_tag: Symbol = test_claim_cache_interpretation_registered_tag
 data test_claim_cache_witness_holds_tag: Symbol = test_claim_cache_witness_holds_tag
 data test_claim_cache_witness_violates_tag: Symbol = test_claim_cache_witness_violates_tag
@@ -615,7 +794,9 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
     interpretation: authority.interpretation,
     structure_witness: authority.structure_witness
   )
-  let registered_semantics = test_claim_symbol_digest(sym: v4_evaluator_runtime_id)
+  let registered_semantics = interpretation_v4_evaluator_wave1_registry_semantics_digest(
+    interpretation: v4_evaluator_interpretation_wave1()
+  )
   let registry_mismatch = test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
   if authority.runtime_identity == v4_evaluator_runtime_id
     && authority.interpretation == v4_evaluator_interpretation_wave1()
@@ -630,8 +811,9 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
     InterpretationCacheIneligible {
       runtime_identity: authority.runtime_identity,
       registry_witness: registry_witness,
-      structure_digest: interpretation_structure_witness_digest(
+      structure_digest: interpretation_algebra_executed_structure_digest(
         runtime_identity: authority.runtime_identity,
+        interpretation: authority.interpretation,
         structure_witness: authority.structure_witness
       )
     }

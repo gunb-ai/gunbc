@@ -16,21 +16,59 @@ import v4.compiler.eval {
   test_claim_no_correction_ambiguous_intent_tag,
   test_claim_typed_input_node
 }
-import v4.extdeps.runtimes.v4_evaluator { v4_evaluator_interpretation_structure_witness }
+import v4.extdeps.runtimes.v4_evaluator {
+  v4_eval_wave1_allocate_literal,
+  v4_eval_wave1_allocate_literal_sym,
+  v4_eval_wave1_bind_value,
+  v4_eval_wave1_bind_value_sym,
+  v4_eval_wave1_call_primitive,
+  v4_eval_wave1_call_primitive_sym,
+  v4_eval_wave1_choose_branch,
+  v4_eval_wave1_choose_branch_sym,
+  v4_eval_wave1_step_loop,
+  v4_eval_wave1_step_loop_sym,
+  v4_eval_wave1_unit_type_node,
+  v4_evaluator_interpretation_structure_witness
+}
 import v4.compiler.infer { InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
 import v4.std.collection { List, Map }
 import v4.std.diagnostic {
+  Accepted,
   AmbiguousIntent,
   Diagnostic,
+  None,
   NonEmptyDiagnostics,
+  Outcome,
   Suggested,
   Unavailable,
   diagnostics_singleton,
   node_locus,
   port_locus
 }
-import v4.std.node { Atom, Hash, Node, Symbol, TypeNode, byte_offset_cache_digest }
+import v4.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v4.std.integer { int_add, int_mul, int_negate }
+import v4.std.node {
+  Atom,
+  Hash,
+  Node,
+  Symbol,
+  TypeNode,
+  byte_offset_cache_digest,
+  byte_offset_cache_digest_max_limbs
+}
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
@@ -60,6 +98,8 @@ data tcc_cache_tail_diag_b: Symbol = tcc_cache_tail_diag_b
 data tcc_cache_tail_diag_c: Symbol = tcc_cache_tail_diag_c
 data tcc_cache_ineligible_pin_a: Symbol = tcc_cache_ineligible_pin_a
 data tcc_cache_ineligible_pin_b: Symbol = tcc_cache_ineligible_pin_b
+data tcc_stub_alloc_a_sym: Symbol = tcc_stub_alloc_a_sym
+data tcc_stub_call_b_sym: Symbol = tcc_stub_call_b_sym
 
 fn tcc_cache_pass_node() -> Node {
   Node {
@@ -219,14 +259,200 @@ fn tcc_cache_ineligible_interpretation_digest_differs() -> Bool {
   digest_a != digest_b
 }
 
-// 256^9 - 1 — largest offset representable within byte_offset_cache_digest_max_limbs (9 base-256 limbs).
-data tcc_cache_byte_offset_exact_ceiling: Int = 68719476735
+data tcc_cache_byte_limb_base: Int = 256
+data tcc_cache_int_one: Int = 1
+data tcc_cache_int_two: Int = 2
+
+fn tcc_cache_byte_offset_pow_2() -> Int {
+  int_mul(a: tcc_cache_byte_limb_base, b: tcc_cache_byte_limb_base)
+}
+
+fn tcc_cache_byte_offset_pow_4() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_2(), b: tcc_cache_byte_offset_pow_2())
+}
+
+fn tcc_cache_byte_offset_pow_8() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_4(), b: tcc_cache_byte_offset_pow_4())
+}
+
+// 256^byte_offset_cache_digest_max_limbs (9).
+fn tcc_cache_byte_offset_pow_9() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_8(), b: tcc_cache_byte_limb_base)
+}
+
+fn tcc_cache_byte_offset_pow_12() -> Int {
+  int_mul(
+    a: tcc_cache_byte_offset_pow_9(),
+    b: int_mul(a: tcc_cache_byte_limb_base, b: int_mul(a: tcc_cache_byte_limb_base, b: tcc_cache_byte_limb_base))
+  )
+}
+
+fn tcc_cache_byte_offset_pow_13() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_12(), b: tcc_cache_byte_limb_base)
+}
+
+fn tcc_cache_byte_offset_pow_16() -> Int {
+  int_mul(
+    a: tcc_cache_byte_offset_pow_13(),
+    b: int_mul(a: tcc_cache_byte_limb_base, b: int_mul(a: tcc_cache_byte_limb_base, b: tcc_cache_byte_limb_base))
+  )
+}
+
+fn tcc_cache_byte_offset_pow_19() -> Int {
+  int_mul(
+    a: tcc_cache_byte_offset_pow_16(),
+    b: int_mul(a: tcc_cache_byte_limb_base, b: int_mul(a: tcc_cache_byte_limb_base, b: tcc_cache_byte_limb_base))
+  )
+}
+
+fn tcc_cache_byte_offset_pow_20() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_19(), b: tcc_cache_byte_limb_base)
+}
+
+// 256^9 - 1 — largest within-ceiling offset (9 base-256 limbs).
+fn tcc_cache_byte_offset_exact_ceiling() -> Int {
+  int_add(a: tcc_cache_byte_offset_pow_9(), b: int_negate(a: tcc_cache_int_one))
+}
+
 // 256^9 — first offset that exhausts the limb budget with nonzero remainder.
-data tcc_cache_byte_offset_over_ceiling: Int = 68719476736
+fn tcc_cache_byte_offset_over_ceiling() -> Int {
+  tcc_cache_byte_offset_pow_9()
+}
 
 fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
-  byte_offset_cache_digest(i: tcc_cache_byte_offset_exact_ceiling) !=
-    byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling)
+  byte_offset_cache_digest(i: tcc_cache_byte_offset_exact_ceiling()) !=
+    byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling())
+}
+
+// 256^9 + 256 — same post-ceiling quotient as 256^9+1 but distinct low nine limbs.
+fn tcc_cache_byte_offset_same_quotient() -> Int {
+  int_add(a: tcc_cache_byte_offset_over_ceiling(), b: tcc_cache_byte_limb_base)
+}
+
+fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
+  byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling()) !=
+    byte_offset_cache_digest(i: tcc_cache_byte_offset_same_quotient())
+}
+
+fn tcc_cache_byte_offset_sign_over_ceiling_digest_differs() -> Bool {
+  byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling()) !=
+    byte_offset_cache_digest(i: 0 - tcc_cache_byte_offset_over_ceiling())
+}
+
+// Post-ceiling quotient beyond the overflow tail limb budget must not collapse via byte_limb_out_of_range.
+fn tcc_cache_byte_offset_large_overflow_quotient_digest_differs() -> Bool {
+  let overflow_quotient = tcc_cache_byte_offset_pow_13()
+  byte_offset_cache_digest(i: overflow_quotient) !=
+    byte_offset_cache_digest(i: int_mul(a: tcc_cache_int_two, b: overflow_quotient))
+}
+
+// Exhausted-residual band (quotient >= 256^2): must not alias via limb_out_of_range + low byte only.
+fn tcc_cache_byte_offset_exhausted_residual_quotient_digest_differs() -> Bool {
+  let overflow_quotient = tcc_cache_byte_offset_pow_19()
+  byte_offset_cache_digest(i: overflow_quotient) !=
+    byte_offset_cache_digest(i: int_mul(a: tcc_cache_int_two, b: overflow_quotient))
+}
+
+// Same retained low tail, discarded high quotient differs (256^19 vs 256^20).
+fn tcc_cache_byte_offset_exhausted_residual_adjacent_power_digest_differs() -> Bool {
+  byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_19()) !=
+    byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_20())
+}
+
+fn tcc_cache_runtime_unit() -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue { unit_type: v4_eval_wave1_unit_type_node() }
+  }
+}
+
+fn tcc_stub_alloc_a(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Accepted { value: tcc_cache_runtime_unit(), diagnostics: None }
+}
+
+fn tcc_stub_call_b(
+  _node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  Accepted { value: tcc_cache_runtime_unit(), diagnostics: None }
+}
+
+fn tcc_interp_stub_allocate_body() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: tcc_stub_alloc_a
+    },
+    transform: TransformInterpreter {
+      call_primitive: v4_eval_wave1_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: v4_eval_wave1_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: v4_eval_wave1_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: v4_eval_wave1_bind_value
+    }
+  }
+}
+
+fn tcc_interp_stub_call_body() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: v4_eval_wave1_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: tcc_stub_call_b
+    },
+    branch: BranchInterpreter {
+      choose_branch: v4_eval_wave1_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: v4_eval_wave1_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: v4_eval_wave1_bind_value
+    }
+  }
+}
+
+fn tcc_witness_stub_allocate_body() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: tcc_stub_alloc_a_sym,
+    call_primitive: v4_eval_wave1_call_primitive_sym,
+    choose_branch: v4_eval_wave1_choose_branch_sym,
+    step_loop: v4_eval_wave1_step_loop_sym,
+    bind_value: v4_eval_wave1_bind_value_sym
+  }
+}
+
+fn tcc_witness_stub_call_body() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: v4_eval_wave1_allocate_literal_sym,
+    call_primitive: tcc_stub_call_b_sym,
+    choose_branch: v4_eval_wave1_choose_branch_sym,
+    step_loop: v4_eval_wave1_step_loop_sym,
+    bind_value: v4_eval_wave1_bind_value_sym
+  }
+}
+
+fn tcc_cache_same_pin_different_executed_slot_digest_differs() -> Bool {
+  let digest_a = test_claim_interpretation_cache_digest(
+    context: eval_context_with_semantics(
+      runtime_identity: tcc_cache_interpretation_pin,
+      interpretation: tcc_interp_stub_allocate_body(),
+      structure_witness: tcc_witness_stub_allocate_body()
+    )
+  )
+  let digest_b = test_claim_interpretation_cache_digest(
+    context: eval_context_with_semantics(
+      runtime_identity: tcc_cache_interpretation_pin,
+      interpretation: tcc_interp_stub_call_body(),
+      structure_witness: tcc_witness_stub_call_body()
+    )
+  )
+  digest_a != digest_b
 }
 
 fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnostic>) -> TestClaim {
@@ -413,6 +639,64 @@ data claim_test_claim_cache_byte_offset_ceiling_digest_differs: TestClaim = Comp
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_same_quotient_low_limbs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: over-ceiling offsets with same quotient differ by low limbs",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_sign_over_ceiling: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: over-ceiling positive and negative magnitudes differ",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_byte_offset_sign_over_ceiling_digest_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_large_overflow_quotient: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: large post-ceiling quotients do not alias via limb-out-of-range",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_large_overflow_quotient_digest_differs()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_exhausted_residual_quotient: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: exhausted-residual quotients (256^19 vs 2*256^19) do not alias",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_exhausted_residual_quotient_digest_differs()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_exhausted_residual_adjacent_power: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: exhausted-residual adjacent powers (256^19 vs 256^20) do not alias",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_exhausted_residual_adjacent_power_digest_differs()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_same_pin_executed_slot_digest_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: same pin, different executed interpreter slots differ",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_same_pin_different_executed_slot_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
