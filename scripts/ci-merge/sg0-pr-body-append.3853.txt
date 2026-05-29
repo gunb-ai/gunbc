@@ -1,3 +1,3 @@
-SG-0 hand-path delta: +3
+SG-0 hand-path delta: +1
 
 SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_NON_TEST` (T-PB-A / `pb_hand_rust_at_shim_floor` non-test census per `ROADMAP.md:179`) for T-24 host-transport shim `v4_ci_runner_pool.rs` with matching INVARIANTS §P5(b) row. Affected-set mirror + bin live in `tools/ci_affected_components` (outside v3-compiler SG-0 census; INVARIANTS §P5(b) rows for lib + main). Follow-up dispatch: dissolve when `ci.dag` eval / generated CI runner owns affected-set and M1 parallelism without parallel Rust path logic (T-24 emission slice; tracked gunbc#3853).
