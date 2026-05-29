@@ -6,6 +6,11 @@
 # public remote. The public repo is treated as a force-pushed mirror of the
 # latest snapshot — no internal history travels with it.
 #
+# Target repo: gunb-ai/daglang (separate public repo; internal gunb-ai/gunbc
+# stays unchanged). 'daglang' is the public language name; 'gunbc' remains
+# the compiler binary name. Configure the remote once with:
+#   git remote add public git@github.com:gunb-ai/daglang.git
+#
 # Defaults to dry-run (no push). To actually publish:
 #   PUBLISH_CONFIRM=yes scripts/publish-snapshot.sh --publish
 #
