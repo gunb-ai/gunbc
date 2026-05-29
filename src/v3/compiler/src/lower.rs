@@ -3872,6 +3872,16 @@ fn config_patch_layer_body_fallback_diagnostic(span: &SourceSpan) -> Diagnostic 
     }
 }
 
+fn config_patch_record_materialization_failed_diagnostic(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: "ConfigPatchRecord<Config> requires Config to lower to a record (Conj)".to_string(),
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
+}
+
 /// Parse `config_patch_layer(base: …, patch: …)` call-site named operands.
 fn extract_config_patch_layer_operands(
     args: &[SurfaceExpr],
@@ -4156,6 +4166,11 @@ fn type_to_declaration_id(
                     });
                     return id;
                 }
+                report_declaration_error(
+                    dag,
+                    config_patch_record_materialization_failed_diagnostic(span),
+                );
+                return alloc_identifier_stub(dag, "ConfigPatchRecord", span);
             }
             let template_id = local
                 .get(name)
@@ -4263,6 +4278,13 @@ fn type_to_connective(
                 {
                     return conn;
                 }
+                report_declaration_error(
+                    dag,
+                    config_patch_record_materialization_failed_diagnostic(span),
+                );
+                return TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
+                    "ConfigPatchRecord".to_string(),
+                ));
             }
             let template = local
                 .get(name)
