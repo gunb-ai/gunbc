@@ -1,0 +1,79 @@
+// src/v4/test/claim/manual/protobuf_wire_message_anchor.dag
+// Scope: Compile anchor for a minimal wire message (varint + length-delimited fields).
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_wire_message_anchor
+
+import v4.extdeps.formats.protobuf {
+  ProtoFieldKey,
+  ProtoFixed32LittleEndianFourOctetsWitness,
+  ProtoFixed64LittleEndianEightOctetsWitness,
+  ProtoLengthDelimitedPrefixVarintLengthWitness,
+  ProtoPackedRepeatedPrimitiveFieldsWitness,
+  ProtoProto2RequiredFieldMustBePresentWitness,
+  ProtoProto3SingularAbsentMeansDefaultWitness,
+  ProtoScalarDefaultWireTypeWitness,
+  ProtoVarintSignedUsesZigZagForSintWitness,
+  ProtoVarintUnsignedLexemeWitness,
+  ProtoWireDocument,
+  ProtoWireEncodingFacts,
+  ProtoWireFieldRecord,
+  ProtoWireLengthDelimitedValue,
+  ProtoWireMessage,
+  ProtoWireProfileFacts,
+  ProtoWireVarint,
+  ProtoWireVarintValue,
+}
+import v4.std.cardinality { NonZeroNat }
+import v4.std.collection { List }
+import v4.std.nat { Succ, Zero }
+
+
+data protobuf_anchor_wire_field_number_one: NonZeroNat = NonZeroNat { prev: Succ { prev: Zero } }
+
+
+data protobuf_anchor_wire_field_number_two: NonZeroNat = NonZeroNat { prev: Succ { prev: Succ { prev: Zero } } }
+
+
+data protobuf_anchor_wire_record_page_number: ProtoWireFieldRecord = ProtoWireFieldRecord {
+  key: ProtoFieldKey {
+    field_number: protobuf_anchor_wire_field_number_one,
+    wire_type: ProtoWireVarint,
+  },
+  value: ProtoWireVarintValue { lexeme: "1" },
+}
+
+
+data protobuf_anchor_wire_record_query: ProtoWireFieldRecord = ProtoWireFieldRecord {
+  key: ProtoFieldKey {
+    field_number: protobuf_anchor_wire_field_number_two,
+    wire_type: ProtoWireVarint,
+  },
+  value: ProtoWireLengthDelimitedValue { payload_lexeme: "search" },
+}
+
+
+data protobuf_anchor_wire_message: ProtoWireMessage = ProtoWireMessage {
+  fields: [
+    protobuf_anchor_wire_record_page_number,
+    protobuf_anchor_wire_record_query,
+  ],
+}
+
+
+data protobuf_anchor_wire_document: ProtoWireDocument = ProtoWireDocument {
+  encoding_facts: ProtoWireEncodingFacts {
+    varint_unsigned_lexeme: ProtoVarintUnsignedLexemeWitness {},
+    varint_signed_uses_zigzag_for_sint: ProtoVarintSignedUsesZigZagForSintWitness {},
+    fixed32_little_endian_four_octets: ProtoFixed32LittleEndianFourOctetsWitness {},
+    fixed64_little_endian_eight_octets: ProtoFixed64LittleEndianEightOctetsWitness {},
+    length_delimited_prefix_varint_length: ProtoLengthDelimitedPrefixVarintLengthWitness {},
+  },
+  wire_profile: ProtoWireProfileFacts {
+    scalar_maps_to_default_wire_type: ProtoScalarDefaultWireTypeWitness {},
+    packed_repeated_primitive_fields: ProtoPackedRepeatedPrimitiveFieldsWitness {},
+    proto3_singular_absent_means_default: ProtoProto3SingularAbsentMeansDefaultWitness {},
+    proto2_required_field_must_be_present: ProtoProto2RequiredFieldMustBePresentWitness {},
+  },
+  message: protobuf_anchor_wire_message,
+}

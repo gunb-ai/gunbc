@@ -1,0 +1,52 @@
+// src/v4/test/claim/manual/protobuf_scalar_type_anchor.dag
+// Scope: Compile anchors for ProtoScalarType coproduct arms.
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_scalar_type_anchor
+
+import v4.extdeps.formats.protobuf { ProtoScalarType }
+
+
+data protobuf_anchor_scalar_double: ProtoScalarType = ProtoDouble
+
+
+data protobuf_anchor_scalar_float: ProtoScalarType = ProtoFloat
+
+
+data protobuf_anchor_scalar_int32: ProtoScalarType = ProtoInt32
+
+
+data protobuf_anchor_scalar_int64: ProtoScalarType = ProtoInt64
+
+
+data protobuf_anchor_scalar_uint32: ProtoScalarType = ProtoUint32
+
+
+data protobuf_anchor_scalar_uint64: ProtoScalarType = ProtoUint64
+
+
+data protobuf_anchor_scalar_sint32: ProtoScalarType = ProtoSint32
+
+
+data protobuf_anchor_scalar_sint64: ProtoScalarType = ProtoSint64
+
+
+data protobuf_anchor_scalar_fixed32: ProtoScalarType = ProtoFixed32
+
+
+data protobuf_anchor_scalar_fixed64: ProtoScalarType = ProtoFixed64
+
+
+data protobuf_anchor_scalar_sfixed32: ProtoScalarType = ProtoSfixed32
+
+
+data protobuf_anchor_scalar_sfixed64: ProtoScalarType = ProtoSfixed64
+
+
+data protobuf_anchor_scalar_bool: ProtoScalarType = ProtoBool
+
+
+data protobuf_anchor_scalar_string: ProtoScalarType = ProtoString
+
+
+data protobuf_anchor_scalar_bytes: ProtoScalarType = ProtoBytes

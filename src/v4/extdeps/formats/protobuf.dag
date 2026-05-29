@@ -1,0 +1,229 @@
+// src/v4/extdeps/formats/protobuf.dag
+// Scope: Protocol Buffers schema-IDL (.proto language, proto2/proto3) + binary wire-format encoding model — declarative only.
+// Status: protobuf modeling lane — schema + wire axes; parse/emit deferred (T-6/T-7/T-10).
+// Anchor: https://protobuf.dev/programming-guides/proto/ (language guide)
+// Anchor: https://protobuf.dev/programming-guides/encoding/ (wire format)
+
+module v4.extdeps.formats.protobuf
+
+import v4.std.cardinality { NonZeroNat }
+import v4.std.collection { List, Map, Optional }
+import v4.std.grammar { GrammarSchema }
+
+
+// ── Schema-IDL axis (proto2 / proto3) ─────────────────────────────────────────
+
+// 🟢 coproduct dissolution — protobuf-syntax.
+type ProtoSyntax
+  = ProtoSyntaxProto2
+  | ProtoSyntaxProto3
+
+
+// 🟢 coproduct dissolution — protobuf-scalar-type.
+type ProtoScalarType
+  = ProtoDouble
+  | ProtoFloat
+  | ProtoInt32
+  | ProtoInt64
+  | ProtoUint32
+  | ProtoUint64
+  | ProtoSint32
+  | ProtoSint64
+  | ProtoFixed32
+  | ProtoFixed64
+  | ProtoSfixed32
+  | ProtoSfixed64
+  | ProtoBool
+  | ProtoString
+  | ProtoBytes
+
+
+// 🟢 coproduct dissolution — protobuf-field-label.
+type ProtoFieldLabel
+  = ProtoLabelOptional
+  | ProtoLabelRequired
+  | ProtoLabelRepeated
+
+
+// 🟢 coproduct dissolution — protobuf-type-reference.
+type ProtoTypeReference
+  = ProtoTypeScalar { scalar: ProtoScalarType }
+  | ProtoTypeMessage { qualified_name: String }
+  | ProtoTypeEnum { qualified_name: String }
+
+
+// 🟢 coproduct dissolution — protobuf-field-definition.
+type ProtoFieldDefinition
+  = ProtoSingularField {
+      number: NonZeroNat,
+      name: String,
+      type_ref: ProtoTypeReference,
+      label: ProtoFieldLabel,
+    }
+  | ProtoMapField {
+      number: NonZeroNat,
+      name: String,
+      key_type: ProtoScalarType,
+      value_type: ProtoTypeReference,
+    }
+
+
+// 🟢 coproduct dissolution — protobuf-oneof-member.
+type ProtoOneofMember {
+  name: String,
+  field: ProtoFieldDefinition,
+}
+
+
+type ProtoOneofDefinition {
+  name: String,
+  members: List<ProtoOneofMember>,
+}
+
+
+// 🟢 coproduct dissolution — protobuf-enum-value.
+type ProtoEnumValue {
+  name: String,
+  number: NonZeroNat,
+}
+
+
+type ProtoEnumDefinition {
+  name: String,
+  values: List<ProtoEnumValue>,
+}
+
+
+type ProtoReservedRange {
+  start: NonZeroNat,
+  end: Optional<NonZeroNat>,
+}
+
+
+type ProtoMessageDefinition {
+  name: String,
+  fields: List<ProtoFieldDefinition>,
+  nested_enums: List<ProtoEnumDefinition>,
+  nested_messages: List<ProtoMessageDefinition>,
+  oneofs: List<ProtoOneofDefinition>,
+  reserved_ranges: List<ProtoReservedRange>,
+  reserved_names: List<String>,
+}
+
+
+type ProtoImport {
+  path: String,
+}
+
+
+type ProtoPackage {
+  name: String,
+}
+
+
+type ProtoFileDefinition {
+  syntax: ProtoSyntax,
+  package: Optional<ProtoPackage>,
+  imports: List<ProtoImport>,
+  enums: List<ProtoEnumDefinition>,
+  messages: List<ProtoMessageDefinition>,
+}
+
+
+type ProtoSchemaDocument {
+  grammar_schema: GrammarSchema,
+  file: ProtoFileDefinition,
+}
+
+
+// ── Wire-format axis (encoding spec) ─────────────────────────────────────────
+
+// 🟢 coproduct dissolution — protobuf-wire-type.
+type ProtoWireType
+  = ProtoWireVarint
+  | ProtoWireFixed64
+  | ProtoWireLengthDelimited
+  | ProtoWireStartGroup
+  | ProtoWireEndGroup
+  | ProtoWireFixed32
+
+
+type ProtoFieldKey {
+  field_number: NonZeroNat,
+  wire_type: ProtoWireType,
+}
+
+
+type ProtoVarintUnsignedLexemeWitness {}
+
+type ProtoVarintSignedUsesZigZagForSintWitness {}
+
+type ProtoFixed32LittleEndianFourOctetsWitness {}
+
+type ProtoFixed64LittleEndianEightOctetsWitness {}
+
+type ProtoLengthDelimitedPrefixVarintLengthWitness {}
+
+
+type ProtoWireEncodingFacts {
+  varint_unsigned_lexeme: ProtoVarintUnsignedLexemeWitness,
+  varint_signed_uses_zigzag_for_sint: ProtoVarintSignedUsesZigZagForSintWitness,
+  fixed32_little_endian_four_octets: ProtoFixed32LittleEndianFourOctetsWitness,
+  fixed64_little_endian_eight_octets: ProtoFixed64LittleEndianEightOctetsWitness,
+  length_delimited_prefix_varint_length: ProtoLengthDelimitedPrefixVarintLengthWitness,
+}
+
+
+type ProtoScalarDefaultWireTypeWitness {}
+
+type ProtoPackedRepeatedPrimitiveFieldsWitness {}
+
+type ProtoProto3SingularAbsentMeansDefaultWitness {}
+
+type ProtoProto2RequiredFieldMustBePresentWitness {}
+
+type ProtoWireProfileFacts {
+  scalar_maps_to_default_wire_type: ProtoScalarDefaultWireTypeWitness,
+  packed_repeated_primitive_fields: ProtoPackedRepeatedPrimitiveFieldsWitness,
+  proto3_singular_absent_means_default: ProtoProto3SingularAbsentMeansDefaultWitness,
+  proto2_required_field_must_be_present: ProtoProto2RequiredFieldMustBePresentWitness,
+}
+
+
+// 🟢 coproduct dissolution — protobuf-wire-field-value.
+type ProtoWireFieldValue
+  = ProtoWireVarintValue { lexeme: String }
+  | ProtoWireFixed32Value { octets_lexeme: String }
+  | ProtoWireFixed64Value { octets_lexeme: String }
+  | ProtoWireLengthDelimitedValue { payload_lexeme: String }
+
+
+type ProtoWireFieldRecord {
+  key: ProtoFieldKey,
+  value: ProtoWireFieldValue,
+}
+
+
+type ProtoWireMessage {
+  fields: List<ProtoWireFieldRecord>,
+}
+
+
+type ProtoWireDocument {
+  encoding_facts: ProtoWireEncodingFacts,
+  wire_profile: ProtoWireProfileFacts,
+  message: ProtoWireMessage,
+}
+
+
+type ProtoDocument {
+  schema: ProtoSchemaDocument,
+  wire: ProtoWireDocument,
+}
+
+
+// ── Gated axes ───────────────────────────────────────────────────────────────
+// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
+// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature: proto-text-format parse/emit (protobuf text format; distinct from binary wire) — SL-3229-PROTOBUF-TEXT-FORMAT.
+// 🟡 gated — feature: schema_to_type derivation (given ProtoFileDefinition, generate .dag types) — SL-3229-PROTOBUF-SCHEMA-TO-TYPE.
