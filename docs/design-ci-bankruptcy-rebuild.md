@@ -130,7 +130,7 @@ ci_pipeline
 
 | Phase | Deliverable | CI surface |
 |-------|-------------|------------|
-| **B0 — Bankruptcy cut** | New minimal `ci.yml` harness; **disable** legacy jobs (or delete in one PR); `ci.dag` Tier-0 skeleton + smoke test | PRs run **only** Tier-0; may be red until B1 |
+| **B0 — Bankruptcy cut** | New minimal `ci.yml` harness; **delete** legacy jobs/steps (D3); `ci.dag` Tier-0 skeleton + smoke test | PRs run **only** Tier-0; may be red until B1 |
 | **B1 — Tier-0 green** | I0–I8 modeled + legacy deleted; interpreter S2′; fail-closed M1 + T-15 path | Integrity green on main + representative PRs |
 | **B2 — Opt-in backlog** | Promote audit Table B rows one at a time → `CiCommand` + delete script | Each promotion = one PR + cost note |
 | **B3 — Shape-B** | A15: emit checked `ci.yml` from `CiPipeline` | T-24 / C4 close |
@@ -175,14 +175,15 @@ Promote from audit with **measured wall** (warm-cache methodology per #3881):
 
 ---
 
-## 7. Open decisions (operator)
+## 7. Operator decisions (ratified 2026-05-29)
 
-| # | Question | Default recommendation |
-|---|----------|------------------------|
-| D1 | v3 fixed-point on PRs with v3 frontier hit, or main-only? | **Frontier OR main** — never duplicate both paths |
-| D2 | Keep minimal `cargo test -p v3-compiler` smoke on v3 frontier? | **Yes** as `V3IntegrationClusterCommand` smoke arm only (debug), separate from I4 release |
-| D3 | Bankruptcy PR deletes `ci.yml` jobs outright vs feature-flag? | **Delete** — bankruptcy means cut, not bridge |
-| D4 | neat-carp-699 A2 scope | **Reframe to B0/B1 Tier-0 harness**, not full A3–A8 discipline |
+| # | Decision |
+|---|----------|
+| **D1 — v3 fixed-point** | **Minimal** I3/I4 when v3 frontier is hit; **`MainPush`** may run the same minimal arms. v3 CI is **transitional** — lane will delete v3 eventually; do not preserve full legacy `v3` job + `self_host_ratchet` duplication. |
+| **D2 — v3 smoke** | Minimal determinism + fixed-point only; no full `cargo test -p v3-compiler` matrix unless explicitly promoted in B2. |
+| **D3 — bankruptcy cut** | **Delete** legacy jobs/steps outright — no feature-flag bridge. |
+| **D4 — A2 scope** | **B0/B1 Tier-0 harness** (neat-carp-699), not A3–A8 discipline in the same PR. |
+| **D5 — CI wall clock** | Docs-only PR: **~instant** on warm cache. Code-touch PR: **&lt; 1 min** warm-cache interpreter path (not 2 min). |
 
 ---
 
