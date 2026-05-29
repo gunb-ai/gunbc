@@ -1,5 +1,7 @@
 // SCC-aware function signature resolution.
+
 module v2.compiler.infer_sigs
+
 import v2.std.core {
   Node,
   ExprData, ExprCall, expr_call_func_at,
@@ -11,9 +13,11 @@ import v2.std.core {
 }
 import v2.compiler.infer_types { emit_map_has }
 import std.induction { SubValueRelation }
+
 // =========================================================================
 // Types
 // =========================================================================
+
 type ResolvedFuncSig {
   name: String
   params: List<Node>
@@ -22,24 +26,30 @@ type ResolvedFuncSig {
   output_provenance: List<Map<String, SubValueRelation>>
   variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
 }
+
 type ResolvedFuncEnv {
   signatures: Map<String, ResolvedFuncSig>
 }
+
 type ResolveFuncSigsResult {
   func_env: ResolvedFuncEnv
   diagnostics: List<ErrorNode>
 }
+
 type SigsAccum {
   signatures: Map<String, ResolvedFuncSig>
   diagnostics: List<ErrorNode>
 }
+
 type CallEdge {
   caller: String
   callee: String
 }
+
 // =========================================================================
 // Call graph construction
 // =========================================================================
+
 fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
@@ -49,6 +59,7 @@ fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>,
     }
   )
 }
+
 fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
   let this_edges = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -63,6 +74,7 @@ fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String
   let result = concat(this_edges, child_edges)
   result
 }
+
 fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {
   if emit_map_has(m: visited, key: current) { false }
   else {
@@ -74,12 +86,15 @@ fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, 
     )
   }
 }
+
 // =========================================================================
 // Signature resolution
 // =========================================================================
+
 fn build_name_set(names: List<String>) -> Map<String, Bool> {
   fold(names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
 }
+
 fn collect_parent_resolved_sigs(declared_sigs: Map<String, DeclaredFuncSig>, local_func_set: Map<String, Bool>) -> Map<String, ResolvedFuncSig> {
   fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
     if emit_map_has(m: local_func_set, key: dsig.name) {
@@ -91,9 +106,11 @@ fn collect_parent_resolved_sigs(declared_sigs: Map<String, DeclaredFuncSig>, loc
     }
   )
 }
+
 fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
   ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
 }
+
 fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
   fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
     if dsig.inferred != none {
@@ -101,6 +118,7 @@ fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolve
     } else { acc }
   )
 }
+
 fn topo_resolve_loop(
     remaining: List<String>,
     resolved: Map<String, ResolvedFuncSig>,
@@ -122,6 +140,7 @@ fn topo_resolve_loop(
       diagnostics: diagnostics
     }
   }
+
   let ready = remaining |> filter(fn_name =>
     let local_callees = call_edges
       |> filter(e => e.caller == fn_name)
@@ -129,6 +148,7 @@ fn topo_resolve_loop(
       |> filter(c => emit_map_has(m: local_func_set, key: c))
     local_callees |> all(c => map_get(resolved, c) != none)
   )
+
   if ready |> count == 0 {
     let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
       match map_get(declared_sigs, fn_name) {
@@ -151,6 +171,7 @@ fn topo_resolve_loop(
       diagnostics: concat(diagnostics, cycle_accum.diagnostics)
     }
   }
+
   let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
       Some { value: dsig } =>
@@ -162,8 +183,10 @@ fn topo_resolve_loop(
       None => acc
     }
   )
+
   let ready_set = fold(ready, init: empty_map(), f: (acc, fn_name) => map_insert(acc, fn_name, true))
   let next_remaining = remaining |> filter(fn_name => emit_map_has(m: ready_set, key: fn_name) == false)
+
   topo_resolve_loop(
     remaining: next_remaining,
     resolved: ready_accum.signatures,
@@ -175,6 +198,7 @@ fn topo_resolve_loop(
     fuel: fuel - 1
   )
 }
+
 fn resolve_func_sigs(
     declared_sigs: Map<String, DeclaredFuncSig>,
     items: List<Node>,

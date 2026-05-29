@@ -1,6 +1,9 @@
 // =========================================================================
+
 module v2.compiler.infer_cycle
+
 import v2.compiler.infer_env { TypeBinding }
+
 fn compute_in_graph_deps(
     all_names: List<String>,
     deps_map: Map<String, List<String>>,
@@ -16,6 +19,7 @@ fn compute_in_graph_deps(
   )
   result
 }
+
 fn build_reverse_adj(
     all_names: List<String>,
     local_deps: Map<String, List<String>>
@@ -31,6 +35,7 @@ fn build_reverse_adj(
     }
   )
 }
+
 fn build_in_degree(
     all_names: List<String>,
     local_deps: Map<String, List<String>>
@@ -40,6 +45,7 @@ fn build_in_degree(
     map_insert(acc, name, deg)
   )
 }
+
 fn kahn_remove_loop(
     remaining: List<String>,
     local_deps: Map<String, List<String>>
@@ -58,10 +64,12 @@ fn kahn_remove_loop(
     )
   }
 }
+
 type KahnState {
   in_degree: Map<String, Int>
   removed_count: Int
 }
+
 fn kahn_cycle_drain(
     queue: List<String>,
     in_degree: Map<String, Int>,
@@ -89,6 +97,7 @@ fn kahn_cycle_drain(
   )
   kahn_cycle_drain(queue: next_queue, in_degree: result.in_degree, reverse_adj: reverse_adj, removed_count: result.removed_count, fuel: fuel - 1)
 }
+
 fn detect_type_cycles_kahn(
     deps_map: Map<String, List<String>>,
     bindings: Map<String, TypeBinding>

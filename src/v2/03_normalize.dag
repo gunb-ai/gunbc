@@ -8,7 +8,9 @@
 // The normalizer validates structural invariants that should hold
 // after resolve and before infer:
 //   - No bare container types (List, Map, Set, etc. with 0 type parameters)
+
 module v2.compiler.normalize
+
 import v2.std.core {
   Node, ErrorNode, NewlineIndex,
   InferredNode, Resolved, CompilerError,
@@ -18,16 +20,20 @@ import v2.std.core {
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule }
 import std.types { container_expected_arity }
+
 // =========================================================================
 // Output types
 // =========================================================================
+
 type NormalizeResult {
   graph: ModuleGraph
   diagnostics: List<ErrorNode>
 }
+
 // =========================================================================
 // Bare container detection
 // =========================================================================
+
 fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let has_structure = match n.body { Some { value: _ } => true  None => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
   let is_expr = match n.expr_data { NoExprData => false  _ => true }
@@ -67,9 +73,11 @@ fn check_bare_containers(n: Node, module_name: String, source_indices: Map<Strin
   let prop_diags = flat_map(n.properties, p => check_bare_containers(n: p, module_name: module_name, source_indices: source_indices))
   flat_map([self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags], d => d)
 }
+
 // =========================================================================
 // Normalization entry point
 // =========================================================================
+
 fn normalize_graph(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> NormalizeResult {
   let diags = flat_map(graph.modules, m => {
     let items = module_items(n: m.module)

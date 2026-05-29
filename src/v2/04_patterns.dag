@@ -1,5 +1,7 @@
 // Pattern matching and variant lookup -- read-only type checks for
+
 module v2.compiler.infer_patterns
+
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
@@ -25,29 +27,36 @@ import v2.compiler.infer_env {
   TypeEnv,
   lookup_type, lookup_type_by_name
 }
+
 // =========================================================================
 // Types
 // =========================================================================
+
 type NodeLookupResult {
   status: NodeLookupStatus
   diagnostics: List<ErrorNode>
 }
+
 type NodeLookupStatus
   = LookupResolved { node: Node }
   | LookupFailed
+
 type PatternSubject
   = PatternResolved { node: Node }
   | PatternDynamic { span: SourceSpan }
   | PatternLookupBlocked
+
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
     _ => false
   }
 }
+
 // =========================================================================
 // Variant lookup
 // =========================================================================
+
 // Temporary bridge: synthesize a "Some { value: T }" variant node for
 // Optional pattern matching. Optional is still represented as
 // [inner_type, None] — no explicit "Some" child. Track in the roadmap until
@@ -58,6 +67,7 @@ fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let some_node = Node { name: "Some", span: scrut.span, ident_span: Some { value: kernel_span(name: "Some") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   some_node
 }
+
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
   // Structural check: CompilerError in inferred means error sentinel.
   // Dynamic/Error name checks dissolved — no .dag source declares these types,
@@ -69,30 +79,35 @@ fn pattern_subject_from_node(n: Node) -> PatternSubject {
     PatternResolved { node: n }
   }
 }
+
 fn pattern_subject_from_inferred(n: InferredNode?) -> PatternSubject {
   match n {
     Some { value: Resolved { node: resolved } } => pattern_subject_from_node(n: resolved)
     _ => PatternLookupBlocked
   }
 }
+
 fn node_lookup_resolved(node: Node) -> NodeLookupResult {
   NodeLookupResult {
     status: LookupResolved { node: node },
     diagnostics: []
   }
 }
+
 fn node_lookup_failed(diagnostics: List<ErrorNode>) -> NodeLookupResult {
   NodeLookupResult {
     status: LookupFailed,
     diagnostics: diagnostics
   }
 }
+
 fn lookup_result_subject(result: NodeLookupResult) -> PatternSubject {
   match result.status {
     LookupResolved { node: resolved } => pattern_subject_from_node(n: resolved)
     LookupFailed => PatternLookupBlocked
   }
 }
+
 fn pattern_binding_type(subject: PatternSubject) -> Node {
   match subject {
     PatternResolved { node: resolved } => resolved
@@ -100,11 +115,13 @@ fn pattern_binding_type(subject: PatternSubject) -> Node {
     PatternLookupBlocked => error_type
   }
 }
+
 fn variant_not_found_result(scrut: Node, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
   node_lookup_failed(
     diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: authored_name_at(source_indices: source_indices, node: scrut), span: scrut.span }, module_name: module_name)]
   )
 }
+
 fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
@@ -139,6 +156,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
       }
   }
 }
+
 fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
   match variant {
     PatternLookupBlocked =>
@@ -154,9 +172,11 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
       }
   }
 }
+
 // =========================================================================
 // Match exhaustiveness checking
 // =========================================================================
+
 fn check_match_exhaustiveness(
   scrutinee_type: Node,
   arms: List<Node>,

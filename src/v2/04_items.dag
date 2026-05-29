@@ -1,5 +1,7 @@
 // Item analysis -- classifies module items and builds item metadata.
+
 module v2.compiler.infer_items
+
 import std.types { SourceSpan }
 import v2.std.core {
   Node, ErrorNode,
@@ -25,10 +27,13 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_emit_info {
   EmitGraphInfo
 }
+
 // =========================================================================
 // Types
 // =========================================================================
+
 type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
+
 type ItemInfo {
   name: String
   module_name: String
@@ -39,6 +44,7 @@ type ItemInfo {
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
 }
+
 type TypedModule {
   module: Node
   items: List<Node>
@@ -46,20 +52,24 @@ type TypedModule {
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
 }
+
 type TypedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<ErrorNode>
 }
+
 type ResolvedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<ErrorNode>
   emit_graph_info: EmitGraphInfo
 }
+
 // =========================================================================
 // Functions
 // =========================================================================
+
 fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> List<Node> {
   if inferred == none { [] }
   else { match inferred.value {
@@ -89,6 +99,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
     }
   }
 }
+
 fn item_kind(item: Node) -> ItemKind {
   let kind = if item.connective != NoConnective && item.transport == none {
     TypeItem
@@ -107,6 +118,7 @@ fn item_kind(item: Node) -> ItemKind {
   }
   kind
 }
+
 fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeBinding> {
   fold(items, init: init, f: (acc, item) =>
     let is_coproduct = item.connective == Disj

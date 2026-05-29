@@ -312,10 +312,15 @@ def process_file_lines(lines: list[str]) -> list[str]:
                 out.append(emit_line(code))
             continue
 
-        if line.strip():
+        if not line.strip():
             in_feature_marker_block = False
             in_why_paragraph = False
-            out.append(emit_line(line.rstrip("\n")))
+            out.append("\n")
+            continue
+
+        in_feature_marker_block = False
+        in_why_paragraph = False
+        out.append(emit_line(line.rstrip("\n")))
 
     flush_comment_run()
     return out

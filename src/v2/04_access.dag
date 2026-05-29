@@ -1,5 +1,7 @@
 // Access checks -- pure type checks for index and slice operations.
+
 module v2.compiler.infer_access
+
 import std.types { SourceSpan, is_ordered_element_collection }
 import v2.std.core {
   Node, NewlineIndex, authored_name_at,
@@ -7,6 +9,7 @@ import v2.std.core {
   ErrorNode, make_error_node, diagnostic_to_message,
   InternalError,
   with_optional_cardinality,
+
   unit_type, string_type, int_type
 }
 import v2.compiler.infer_types {
@@ -14,23 +17,29 @@ import v2.compiler.infer_types {
   node_type_equals, node_is_keyed_collection,
   node_is_element_collection, for_each_element_type_node
 }
+
 // =========================================================================
 // Types
 // =========================================================================
+
 type AccessCheckResultNode {
   inferred: InferredNode?
   diagnostics: List<ErrorNode>
 }
+
 type KeyedCollectionParts {
   key_type: Node
   value_type: Node
 }
+
 // =========================================================================
 // Functions
 // =========================================================================
+
 fn access_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
+
 fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
   if count(diagnostics) == 0 {
     AccessCheckResultNode {
@@ -48,6 +57,7 @@ fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan,
     }
   }
 }
+
 fn keyed_collection_parts(n: Node, source_indices: Map<String, NewlineIndex>) -> KeyedCollectionParts? {
   if node_is_keyed_collection(n: n, source_indices: source_indices) && n.children |> count >= 2 {
     match n.children |> first {
@@ -62,6 +72,7 @@ fn keyed_collection_parts(n: Node, source_indices: Map<String, NewlineIndex>) ->
     none
   }
 }
+
 fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> AccessCheckResultNode {
   let normed = normalize_access_type_node(n: base_type)
   let normed_index = normalize_access_type_node(n: index_type)
@@ -91,6 +102,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     }
   }
 }
+
 fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, span: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> AccessCheckResultNode {
   let normed_base = normalize_access_type_node(n: base_type)
   let base_is_string = node_type_equals(left: normed_base, right: string_type, source_indices: source_indices)

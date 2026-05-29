@@ -4,12 +4,15 @@
 // This is the single authority for the stage0 test harness.
 // The emit layer calls compiler_tests_source() and writes the result
 // as src/compiler_tests.rs in the emitted crate.
+
 module v2.compiler.compiler_tests_rust
+
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go }
 import v2.compiler.coercion {
   extract_coercion_tests, CoercionTestEntry, CoercionAssertion,
   CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion
 }
+
 fn ct_module_header() -> String {
   concat(
     "#[cfg(test)]\n",
@@ -17,6 +20,7 @@ fn ct_module_header() -> String {
     "    use std::collections::HashMap;\n",
     "    use crate::v2_compiler_tokenize::tokenize;\n\n")
 }
+
 fn ct_workspace_helpers() -> String {
   concat(
     "    /// Find workspace root by walking up from the current directory looking for Cargo.toml + dsl/\n",
@@ -38,6 +42,7 @@ fn ct_workspace_helpers() -> String {
     "            .unwrap_or_else(|e| panic!(\"failed to read {}: {}\", full.display(), e))\n",
     "    }\n\n")
 }
+
 fn ct_file_discovery_helpers() -> String {
   concat(
     "    /// Discover all .dag files under a directory, returning (relative_path, content) pairs.\n",
@@ -74,6 +79,7 @@ fn ct_file_discovery_helpers() -> String {
     "        }\n",
     "    }\n\n")
 }
+
 fn ct_source_builders() -> String {
   concat(
     "    /// Build SourceFile vec from discovered .dag files.\n",
@@ -185,6 +191,7 @@ fn ct_source_builders() -> String {
     ct_self_compile_sources(),
     ct_gist_sources())
 }
+
 fn ct_self_compile_sources() -> String {
   concat(
     "    /// Build the self-compile source closure from src/v2 entry modules with dsl as a dependency pool.\n",
@@ -192,6 +199,7 @@ fn ct_self_compile_sources() -> String {
     "        resolve_source_closure(discover_dag_files(\"src/v2\"), &[\"src/v2\", \"dsl\"])\n",
     "    }\n\n")
 }
+
 fn ct_gist_sources() -> String {
   concat(
     "    /// Build the gist pipeline source closure.\n",
@@ -230,6 +238,7 @@ fn ct_gist_sources() -> String {
     "            .collect()\n",
     "    }\n\n")
 }
+
 fn ct_tokenizer_tests() -> String {
   concat(
     "    #[test]\n",
@@ -277,6 +286,7 @@ fn ct_tokenizer_tests() -> String {
     "        );\n",
     "    }\n\n")
 }
+
 fn ct_parse_tests() -> String {
   concat(
     "    #[test]\n",
@@ -325,6 +335,7 @@ fn ct_parse_tests() -> String {
     "        result.expect(\"self-parse test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_pipeline_test() -> String {
   concat(
     "    #[test]\n",
@@ -360,6 +371,7 @@ fn ct_pipeline_test() -> String {
     "        result.expect(\"pipeline_trivial_module test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_self_parse_all_test() -> String {
   concat(
     "    #[test]\n",
@@ -403,6 +415,7 @@ fn ct_self_parse_all_test() -> String {
     "        result.expect(\"self-parse-all test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_self_resolve_test() -> String {
   concat(
     "    #[test]\n",
@@ -434,6 +447,7 @@ fn ct_self_resolve_test() -> String {
     "        result.expect(\"self-resolve-all test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_self_compile_test() -> String {
   concat(
     "    #[test]\n",
@@ -486,6 +500,7 @@ fn ct_self_compile_test() -> String {
     "        result.expect(\"self-compile-all test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_self_compile_cargo_check_test() -> String {
   concat(
     "    #[test]\n",
@@ -544,6 +559,7 @@ fn ct_self_compile_cargo_check_test() -> String {
     "        result.expect(\"self-compile-cargo-check test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_gist_tests() -> String {
   concat(
     "    #[test]\n",
@@ -611,6 +627,7 @@ fn ct_gist_tests() -> String {
     "        result.expect(\"gist-compile-all test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_type_size_test() -> String {
   concat(
     "    #[test]\n",
@@ -631,6 +648,7 @@ fn ct_type_size_test() -> String {
     "        );\n",
     "    }\n\n")
 }
+
 fn ct_coercion_tests() -> String {
   let entries = extract_coercion_tests()
   let test_fns = entries |> map(e => render_coercion_test_rust(entry: e))
@@ -641,6 +659,7 @@ fn ct_coercion_tests() -> String {
     test_fns |> join(separator: "\n"),
     ct_rust_btree_set_ord_eligibility_test())
 }
+
 fn ct_rust_btree_set_ord_eligibility_test() -> String {
   concat(
     "    fn shaped_type_node(name: &str, children: Vec<std::rc::Rc<crate::v2_std_core::Node>>) -> std::rc::Rc<crate::v2_std_core::Node> {\n",
@@ -706,6 +725,7 @@ fn ct_rust_btree_set_ord_eligibility_test() -> String {
     "        );\n",
     "    }\n\n")
 }
+
 fn render_target_rust_enum(target: RenderTarget) -> String {
   match target {
     Rust => "RenderTarget::Rust"
@@ -714,6 +734,7 @@ fn render_target_rust_enum(target: RenderTarget) -> String {
     Dag => "RenderTarget::Dag"
   }
 }
+
 fn render_coercion_test_rust(entry: CoercionTestEntry) -> String {
   let assertions = entry.assertions |> map(a => render_coercion_assertion_rust(a: a))
   concat(
@@ -723,18 +744,21 @@ fn render_coercion_test_rust(entry: CoercionTestEntry) -> String {
     assertions |> join(separator: ""),
     "    }\n\n")
 }
+
 fn first_or_empty(items: List<String>) -> String {
   match items |> first {
     Some { value: v } => v
     None => ""
   }
 }
+
 fn second_or_empty(items: List<String>) -> String {
   match items |> skip(count: 1) |> first {
     Some { value: v } => v
     None => ""
   }
 }
+
 fn render_coercion_assertion_rust(a: CoercionAssertion) -> String {
   match a {
     CheckpointAssertion { target: t, dag_name: name, expected_type: expected } =>
@@ -759,6 +783,7 @@ fn render_coercion_assertion_rust(a: CoercionAssertion) -> String {
       } else { "" }
   }
 }
+
 fn ct_profile_helpers() -> String {
   concat(
     "    /// Return current process RSS in bytes (macOS via mach_task_basic_info).\n",
@@ -821,6 +846,7 @@ fn ct_profile_helpers() -> String {
     "        }\n",
     "    }\n\n")
 }
+
 fn ct_profile_gist_test() -> String {
   concat(
     "    #[test]\n",
@@ -919,6 +945,7 @@ fn ct_profile_gist_test() -> String {
     "        result.expect(\"profile test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_profile_self_compile_test() -> String {
   concat(
     "    #[test]\n",
@@ -1101,6 +1128,7 @@ fn ct_profile_self_compile_test() -> String {
     "        result.expect(\"profile_self_compile test panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_profile_full_pipeline_test() -> String {
   concat(
     "    #[test]\n",
@@ -1235,6 +1263,7 @@ fn ct_profile_full_pipeline_test() -> String {
     "        result.expect(\"profile_full_pipeline panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_profile_reconcile_test() -> String {
   concat(
     "    #[test]\n",
@@ -1418,9 +1447,11 @@ fn ct_profile_reconcile_test() -> String {
     "        result.expect(\"profile_reconcile_per_module panicked\");\n",
     "    }\n\n")
 }
+
 fn ct_module_footer() -> String {
   "}\n"
 }
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),

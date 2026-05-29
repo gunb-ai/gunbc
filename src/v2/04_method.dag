@@ -1,5 +1,7 @@
 // v2 method helpers -- builtin call type inference and type constructors.
+
 module v2.compiler.infer_method
+
 import std.types { SourceSpan }
 import v2.std.core {
   Node, TypeVariable, Resolved,
@@ -13,21 +15,27 @@ import v2.std.core {
 import v2.compiler.infer_types {
   make_container_type, make_map_type
 }
+
 // =========================================================================
 // Builtin call type inference
 // =========================================================================
+
 fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
+
 fn map_of_type_variables() -> Node {
   make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty
 }
+
 fn list_of_type_variable(id: String) -> Node {
   make_container_type(kind_name: "List", element: type_variable_node(id: id)).ty
 }
+
 fn list_of_element(element: Node) -> Node {
   make_container_type(kind_name: "List", element: element).ty
 }
+
 // Builtin function return type registry.
 //
 // BRIDGE: This map_insert chain is a duplicate authority over facts that
@@ -39,6 +47,7 @@ fn list_of_element(element: Node) -> Node {
 fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
   map_insert(empty_map(), key, value)
 }
+
 fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
   concat(
     concat(
@@ -48,6 +57,7 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
     make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).diagnostics
   )
 }
+
 fn builtin_function_registry() -> Map<String, Node> {
   let m = seed_node_map(key: "count", value: int_type)
   let m = map_insert(m, "string_length", int_type)
@@ -86,11 +96,13 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "atom_identity_hash", hash_type)
   m
 }
+
 // NOTE: builtin_function_registry() constructs the map on each call in .dag
 // source. The stage0 Rust caches it via thread_local! to avoid O(N×M) rebuild.
 fn infer_builtin_call_type(name: String) -> Node? {
   map_get(builtin_function_registry(), name)
 }
+
 fn resolve_builtin_call_type(name: String) -> Node {
   match infer_builtin_call_type(name: name) {
     Some { value: v } => v
