@@ -5,7 +5,7 @@ Work item: `node://adhoc-0972e492-c72` (CI EFFICIENCY MANAGER)
 Authority audited: `.github/workflows/ci.yml` on `main` at `2d2a8fc75` (2026-05-29)  
 Canonical anchor for the CI-efficiency lane. Code-fix PRs reference this doc; do not bundle fixes here.
 
-**North star (operator 2026-05-29):** Every CI step is a pure function over content-addressed inputs. If inputs are unchanged, the step does not run — verdict reuse, not “runs faster.” The same principle applies to test coverage: one canonical proof per behavior.
+**North star (operator 2026-05-29):** Every CI step — including every test — is a pure function over content-addressed inputs. If inputs are unchanged, the step does not run (verdict reuse), not “runs faster.” Overlapping tests with the same input subgraph become **free at runtime** once declared: IRT-1 / affected-set skips both; only cold-cache cost remains, and that fires once per unique input merkle. Deduplication is substrate-enforced via input declaration + affected-set caching, not human “delete the duplicate” curation.
 
 **Related work (coordinate, do not duplicate):**
 
@@ -268,13 +268,16 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 | P1 | Merge #3853; wire finer buckets from `ci.dag` | wise-otter-34 | enables R03/R10 | Parity mirror ≠ speed |
 | P1 | M1 merkle cache + bootstrap artifact sharing | new work-item | **−10–20 min** v4 PRs | R07/R08 |
 | P1 | Single integration binary compile per workflow | CI refactor | **−5–15 min** | R05/O4 |
-| P1 | Test corpus consolidation | §8 + vivid-raven-55 | **−5–30 min** v3 job | exactly-once coverage |
+| P1 | Test input-declaration + IRT frontier (§8) | T-21/T-19/T-38 + #3853 | **−5–30 min** when skips work | declare inputs; do not bulk-delete overlaps |
+| P1 | Scaffold-ratchet dissolution (delete) | vivid-raven-55 | varies | INVARIANTS trigger met only |
 | P2 | Shared cargo home across jobs on host | infra | R06 | conflicts w/ rustup race fix |
 | P2 | Restore v3 integration filter (#846) | operator | quality | after amortization |
 
 ---
 
 ## 8. Test corpus rationalization
+
+**Operator clarification (2026-05-29):** Test overlap is handled via **affected-set semantics**, not hand-curated deletion PRs. Primary deliverable: **which tests lack declared input subgraphs** (so the frontier cannot skip them), and what declaration work closes the gap. See also Table B (§6) — tests are Nodes with `content_hash` inputs + cache-keyed verdicts, same as discipline shell steps.
 
 ### 8.1 What CI actually executes (test surface)
 
@@ -305,73 +308,91 @@ rg '#\[test\]' src/v3/compiler/tests -c
 find src/v4/test/claim -name '*.dag' | sort
 ```
 
-### 8.2 Classification rubric
+### 8.2 Classification rubric (operator-aligned)
 
-| Class | Meaning |
-|-------|---------|
-| **KEEP** | Canonical proof for a named gate / behavior; no duplicate |
-| **DUPLICATE-COVERAGE** | Same behavior as another test (Rust + TestClaim, or two Rust smokes) |
-| **SCAFFOLD-RATCHET-DISSOLVABLE** | INVARIANTS / file header names “dissolve when …” — trigger met or imminent |
-| **DEAD** | Target removed; test always passes; zero assertions |
-| **ORPHAN** | No gate, no INVARIANTS row, no claim twin |
-| **FLAKY** | sleeps, retries, timing-sensitive |
-| **OVERLAP-WITH-TESTCLAIM** | Rust smoke duplicates `src/v4/test/claim/**` property |
+| Class | Action | Mechanism |
+|-------|--------|-----------|
+| **INPUT-UNDECLARED** | **Primary gap** — discover/write declared input subgraph | TestClaim `input` edges, or generated host-Rust equivalent; IRT-1 / `ci_select_from_affected_set` skips when merkle stable |
+| **DUPLICATE-COVERAGE** | **Do not delete** by classification | Same input subgraph ⇒ same behavior; both inert when inputs unchanged. File in **Table B** (§6), not delete list |
+| **OVERLAP-WITH-TESTCLAIM** | **Do not delete** — declare Rust test inputs to match claim twin | Claim has `input: Node`; wire host-Rust test → same merkle. Both skipped together at runtime |
+| **SCAFFOLD-RATCHET-DISSOLVABLE** | **Delete** when trigger met | Named INVARIANTS dissolution trigger; ratchet, not coverage. **vivid-raven-55** confirms |
+| **DEAD** | **Delete** | No target, no consumer, no signal (includes CI steps that run 0 tests) |
+| **ORPHAN** | **Investigate** | Implicit input subgraph → declare; no consumer → delete |
+| **FLAKY / NON-DETERMINISTIC** | **Fix** (correctness) | Not duplication |
 
-### 8.3 Prioritized consolidation candidates
+### 8.3 Overlap inventory → dependency-modeled fix (not deletion)
 
-Coordinate with **vivid-raven-55** (deferral audit): she owns INVARIANTS dissolution-trigger rows; this section owns **CI wall-time overlap**. Split: she confirms trigger met; we open surgical deletion PRs with claim coverage proof.
+Pairs below share behavior on the **same `.dag` / module closure**. Not deletion candidates — **input-declaration** candidates (Table B).
 
-| Class | Test (file :: fn or module) | Why it can go | Replacement | Est. win |
-|-------|------------------------------|---------------|-------------|----------|
-| OVERLAP-WITH-TESTCLAIM | `v4_lens_affected_set_dag_smoke_test.rs` :: parse/wiring tests | Claims in `src/v4/test/claim/lens_affected_set/*.dag` + `irt1_leaf_claim_suite.dag` | TestClaim eval (T-38) + one smoke if needed | **−30–90s** per CI filter |
-| OVERLAP-WITH-TESTCLAIM | `v4_workflow_ci_runner_dag_smoke_test.rs` :: `*_claim_wiring` | `src/v4/test/claim/workflow/affected_set_ci_runner.dag` | Same | **−30–90s** |
-| OVERLAP-WITH-TESTCLAIM | `v4_lens_edit_locus_dag_smoke_test.rs` | `lens_affected_set/edit_locus_resolver.dag` | Same | **−20–60s** |
-| OVERLAP-WITH-TESTCLAIM | `v4_lens_registry_dag_smoke_test.rs` | Lens registry claims (when present) + Lens-CI compile | Keep **one** CI-filtered smoke until T-38 | **−20–60s** |
-| DUPLICATE-COVERAGE | `ci` job: T-15 + Lens-CI + M1 binding + Gate #103 (four integration filters) | Four separate `cargo test` invocations compile/link same binary | Single `cargo test` with multiple filters or workspace test plan node | **−5–15 min** cold |
-| DUPLICATE-COVERAGE | `v3` determinism_test + `self_host_ratchet` determinism (main) | Same crate, different feature flags | One scheduled Node with explicit matrix | **−2–10 min** on main |
-| SCAFFOLD-RATCHET-DISSOLVABLE | `tc*_deferred_test.rs` / strict_fire pairs | Thesis/deferral tests with explicit strict-fire twins | vivid-raven-55: confirm trigger | varies |
-| SCAFFOLD-RATCHET-DISSOLVABLE | `sg0_census_test.rs` hand-path inventory | Dissolves when census migrated to substrate / claims | Operator SG-0 policy | N/A (gate) |
-| DEAD / NO-SIGNAL | `v3` integration `__HOT_FIX_NONEXISTENT_FILTER__` | Runs libtest harness, **0 tests** | Remove step when #846 restored; until then **delete step** and adjust split guard | **−1–3 min** |
-| DEAD / NO-SIGNAL | `v3` “Stage 2d SKIPPED” step | `exit 0` notice only | Delete step | **−5s** |
-| ORPHAN | Legacy `t_ci_workflow_as_data_demo_test.rs` demo slices | Partial overlap with Gate #103 + `ci.dag` | Consolidate into claim-backed tests | **−1–2 min** when filtered |
-| FLAKY | Tests in `check-test-timeout.sh` manifest (warn policy) | Known slow tests — not delete, fix or shard | Per-test budget | — |
+| Host-Rust test (integration) | TestClaim / modeled twin | Declared inputs (target) | Cache key (target) | Wall when merkle matches green |
+|------------------------------|--------------------------|--------------------------|--------------------|--------------------------------|
+| `v4_lens_affected_set_dag_smoke_test` | `src/v4/test/claim/lens_affected_set/*.dag` | `content_hash(affected_set.dag)` + claim nodes | IRT-4 TestClaim node hash | **0s** (skipped) |
+| `v4_workflow_ci_runner_dag_smoke_test` | `claim/workflow/affected_set_ci_runner.dag` | `content_hash(ci.dag)` + runner claims | same | **0s** |
+| `v4_lens_edit_locus_dag_smoke_test` | `edit_locus_resolver.dag` | `content_hash(edit_locus.dag)` + deps | same | **0s** |
+| `v4_lens_registry_dag_smoke_test` | registry claims + Lens-CI compile | registry closure merkle | Lens-CI + claim verdict | **seconds** warm |
+| `v4_bin_main_dag_smoke_test` | bin/main.dag claims | `content_hash(main.dag)` | same | **0s** |
+| `ci` job: Gate #103 + T-15 + Lens-CI + M1 binding (four `cargo test` filters) | `ci.dag` `TestCommand` roster | integration binary digest + per-test input merkle | compile once; skip off frontier | **−5–15 min** → **seconds** |
+| `v3` `determinism_test` + `self_host_ratchet` (main) | determinism claims (when modeled) | determinism input merkle | single Node; flags as input | **−2–10 min** → reuse |
 
-### 8.4 v4 `*_dag_smoke_test` cluster (merge target)
+**Cold-cache note:** Undeclared tests still pay link/compile when CI fires separate `cargo test` filters (R05). Input declaration removes **execution**; one integration compile per workflow removes duplicate **cold link** (CI wiring, not test deletion).
 
-Fifteen modules under `src/v3/compiler/tests/integration/v4_*` share one pattern: **tokenize + parse + surface_declares_fn** on a single `.dag` already listed in `src/v4/test/claim/`.
+### 8.4 Input-declaration discipline gap (primary deliverable)
 
-| Module | Claim directory / twin |
-|--------|-------------------------|
+*Which tests cannot be skipped today because nothing names their input subgraph?*
+
+| Gap ID | Test / step | Symptom today | Declaration work | Owner lane |
+|--------|-------------|---------------|------------------|------------|
+| T-IG-01 | ~15 `v4_*_dag_smoke_test.rs` modules | Run whenever CI filter fires | Bind each `#[test]` to `content_hash(.dag)` via TestClaim or generated metadata | T-19 + T-38 |
+| T-IG-02 | `v3-compiler` integration (~140 modules) | Whole binary on `v3` job; #846 runs 0 tests but pays libtest | Per-module `AffectedSet` registration or claim migration | T-21 + #846 |
+| T-IG-03 | Host-Rust tests without claim backing | No `input: Node` | Synthetic TestClaim wrapper with fixture merkle | T-24 CI runner |
+| T-IG-04 | `ci.yml` coarse `if: v4` | All integration filters on any v4 path change | `ci_select_from_affected_set` → step frontier (#3853) | wise-otter-34 |
+| T-IG-05 | `v4-testclaim-corpus-gate.sh` | Structural only; no verdict cache | T-38 `TestClaimCorpusEvalCommand` + IRT-4 | T-38 |
+
+**Enumeration procedure:** `cargo test -p v3-compiler --test integration -- --list` → infer `include_str!` / fixture paths → merkle → cross-check `src/v4/test/claim/**` → mark declared vs T-IG row.
+
+### 8.5 v4 `*_dag_smoke_test` cluster (overlap map, not merge/delete)
+
+| Module | Claim twin (declaration target) |
+|--------|--------------------------------|
 | `v4_bin_main_dag_smoke_test` | bin/main.dag claims |
 | `v4_workflow_ci_runner_dag_smoke_test` | `claim/workflow/affected_set_ci_runner.dag` |
 | `v4_lens_affected_set_dag_smoke_test` | `claim/lens_affected_set/*.dag` |
 | `v4_lens_edit_locus_dag_smoke_test` | `edit_locus_resolver.dag` |
-| `v4_lens_registry_dag_smoke_test` | registry + Lens-CI |
-| `v4_std_model_core_dag_smoke_test` | std model claims |
+| `v4_lens_registry_dag_smoke_test` | registry claims |
 | `v4_compiler_*_smoke_test` (3) | compiler pipeline claims |
 | `v4_extdeps_*_smoke_test` (3) | extdeps claims |
 
-**Consolidation proposal:** One CI step `cargo test -p v3-compiler --test integration v4_claim_smoke -- --quiet` after T-38 lists claims; until then keep **workflow/ci.dag binding** + **registry** smokes only; dissolve per-module smokes as matching `claim/**/*.dag` rows gain eval receipts.
+**Action:** Wire host-Rust inputs to claim twin merkle (or run claim via T-38 eval). **Do not** bulk-delete as “duplicates.”
 
-**Estimated win after consolidation:** **−3–8 min** on v4/workflow_policy PRs (cold); **−30–120s** warm.
+### 8.6 Substrate enforcement (how overlap becomes free)
 
-### 8.5 Exactly-once coverage rule (operator)
+```text
+test_run(claim) = f(content_hash(input_subgraph(claim)))
+ci_select_from_affected_set(roster, affected) → subset where input merkle ∈ rerun frontier
+```
 
-| Behavior | Canonical proof (target) | Interim hand-Rust |
-|----------|-------------------------|-------------------|
-| CI workflow policy | `src/v4/test/claim/workflow/*.dag` + `ci.dag` | `workflow_no_path_regex_policy_ci_yml`, binding smoke |
-| Affected-set frontier | `lens/affected_set.dag` + IRT-1 claims | `v4_lens_affected_set_dag_smoke_test` (**dissolve**) |
-| M1 rust emit gap | T-24 probe Node + cache merkle | `v4-m1-rust-emit-probe.sh` (**informational → cached Node**) |
-| SG-0 hand path census | substrate / claim (future) | `sg0_census_test.rs` (**KEEP** until dissolved) |
+When PR diff does not touch a test’s declared input subgraph, **IRT-1** excludes it; **IRT-4** reuses cached verdict. A Rust smoke and its TestClaim twin with the same input merkle both skip — no human dedup list required.
 
-### 8.6 Dispatch (test deletion — surgical PRs)
+### 8.7 Still delete / still fix (non-overlap classes)
+
+| Class | Example | Action |
+|-------|---------|--------|
+| SCAFFOLD-RATCHET | `tc*_deferred_test.rs` / strict_fire pairs | Delete when **vivid-raven-55** confirms trigger |
+| SCAFFOLD-RATCHET | `sg0_census_test.rs` | Delete when census trigger met |
+| DEAD | `v3` `__HOT_FIX_NONEXISTENT_FILTER__` CI step | Delete step (0 tests) |
+| DEAD | `v3` “Stage 2d SKIPPED” notice step | Delete step |
+| ORPHAN | `t_ci_workflow_as_data_demo_test.rs` | Declare inputs or delete if no consumer |
+| FLAKY | `check-test-timeout.sh` manifest | Fix / budget |
+
+### 8.8 Dispatch (revised)
 
 | Work item | Action |
 |-----------|--------|
-| Share with **vivid-raven-55** | This §8 table + INVARIANTS row IDs she surfaces |
-| New child (suggested) | “Dissolve v4_lens_*_dag_smoke_test where claim twin exists” |
-| New child (suggested) | “Collapse ci integration filters to one cargo test invocation” |
-| Each PR | Reference INVARIANTS dissolution row **or** TestClaim path + `rg` proof no unique assertion |
+| **vivid-raven-55** | SCAFFOLD-RATCHET dissolution only; cross-ref T-IG table |
+| Suggested child | T-IG-01: bind `v4_*_dag_smoke` tests to claim input merkle |
+| Suggested child | T-IG-04: wire `ci_select_from_affected_set` to integration roster |
+| **Not dispatched** | “Delete all duplicate smokes” — superseded by affected-set model |
+| Each **delete** PR | INVARIANTS dissolution row or DEAD proof only |
 
 ---
 
