@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +1
+
+SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_t15_self_host_fixed_point_harness_test.rs` (INVARIANTS §P5(b) T-15 execution + bootstrap fixpt stage1==stage2 harness; `claim_t15_self_host_fixed_point.dag` EqualsClaim scaffold). Follow-up: B1 merkle digests + T-22 eval replace host receipts per `src/v4/TASKS.md` §T-15 / §T-38; tracked gunbc#3897.
