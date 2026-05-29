@@ -1755,31 +1755,21 @@ to define a new agent output surface.
   root until a later task models import extraction from the normalized Node;
   T-35 workers must not synthesize imports from filenames, batch order, or an
   undeclared parse traversal.
-  **Current execution gate:** `qualified_name_from_node` (T-QN-1) is now the
-  real structural walker; the T-8 segment-identity gate moved to
-  `qualified_name_from_module_node` in `extdeps/languages/dag.dag`. However,
-  `compile_with_batch` itself is currently the stub: it returns
+  **Current execution gate:** `qualified_name_from_module_node` (T-QN-1) is the
+  real structural walker for post-normalize module Nodes; the T-8 segment-identity
+  gate lives in `extdeps/languages/dag.dag`. However, `compile_with_batch` itself
+  is currently the stub: it returns
   `compile_with_batch_projection_gated_diagnostic()` unconditionally
   (`src/v4/compiler/00_compile.dag`). This is not a successful virtual-loader
   execution receipt; it is the fail-closed boundary receipt preserving T-35's
   locked surface without fabricating accepted batches.
-  `compile_with_batch` runs admission first: it folds `batch.entries` applying
-  `qualified_name_from_module_node` (extdeps/languages/dag.dag; compiler/ can
-  import extdeps/). For `Accepted { value: name, ... }`, the fold
-  appends `Entry { name: name, root: node }` to the candidate
-  `FreeMonoid<Entry>`; for `Rejected { diagnostics }`, the fold records the
-  diagnostics and the overall admission returns `Rejected` before catalog
-  construction. Only if every projection is accepted does it call
-  `catalog_from_entries` → `Holds { value: catalog }` (fail-closed:
-  `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
-  retrieved via `catalog_entry_for_name(catalog: catalog, name: root)` →
-  `Holds { value: entry }` (fail-closed: `Violates` if absent, using
-  `catalog_entry_not_found` as the diagnostic reason). Any `Violates` or
-  projection `Rejected` becomes the `Rejected` branch of
-  `Outcome<Validated<CompileOutput>>`; workers must not drop or fabricate past
-  projection diagnostics. `entry.root` is
-  the **post-normalize Node** admitted from the batch — it is then resolved:
-  `resolve_with_admission(lm: dag_language_model_wave1(), catalog: catalog,
+  When the stub lifts, `compile_with_batch` passes `batch.entries` directly to
+  `resolve_with_admission`. That stage validates all module roots once via
+  `qualified_name_from_module_node`, rejects on projection diagnostics, rejects
+  missing or duplicate names, and never constructs a caller-supplied name/root
+  pair. The selected root is the **post-normalize Node** admitted from the batch — it
+  is then resolved:
+  `resolve_with_admission(lm: dag_language_model_wave1(), roots: batch.entries,
   admission: Admission { subject: ResolutionSubject { name: root, tree:
   selected_root }, imports: imports })` produces the `CoreNode`
   (post-resolve) that enters `validate_then_compile`. Workers must not skip
