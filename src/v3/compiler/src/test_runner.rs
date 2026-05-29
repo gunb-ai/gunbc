@@ -313,148 +313,6 @@ impl Drop for W1RustEmitScratchGuard {
     }
 }
 
-/// Max bytes retained from a W1 host child's **stdout** (slice-1 Int observation: one token +
-/// whitespace). Beyond this we keep draining until EOF so the child cannot stall on a full pipe.
-const W1_HOST_CAPTURE_MAX_STDOUT_BYTES: usize = 16 * 1024;
-
-/// Max bytes retained from a W1 host child's **stderr** (`rustc` diagnostics / runtime errors).
-/// Same drain-to-EOF behavior after the cap.
-const W1_HOST_CAPTURE_MAX_STDERR_BYTES: usize = 256 * 1024;
-
-const W1_HOST_DRAIN_CHUNK_BYTES: usize = 8192;
-
-#[derive(Debug)]
-struct W1BoundedPipeCapture {
-    bytes: Vec<u8>,
-    truncated: bool,
-}
-
-/// Read from `r` until EOF: store at most `max_stored` bytes, then discard the rest so the peer
-/// cannot block on a full pipe (P2 host-process boundary).
-fn w1_drain_reader_bounded(
-    mut r: impl std::io::Read,
-    max_stored: usize,
-) -> std::io::Result<W1BoundedPipeCapture> {
-    let mut buf = Vec::new();
-    let mut truncated = false;
-    let mut scratch = [0u8; W1_HOST_DRAIN_CHUNK_BYTES];
-    loop {
-        let n = r.read(&mut scratch)?;
-        if n == 0 {
-            break;
-        }
-        if buf.len() >= max_stored {
-            truncated = true;
-            continue;
-        }
-        let room = max_stored - buf.len();
-        if n <= room {
-            buf.extend_from_slice(&scratch[..n]);
-        } else {
-            buf.extend_from_slice(&scratch[..room]);
-            truncated = true;
-        }
-    }
-    Ok(W1BoundedPipeCapture {
-        bytes: buf,
-        truncated,
-    })
-}
-
-/// New process group for the W1 host child so [`kill_process_group_on_timeout`] can tear down a
-/// wedged `rustc` or emitted binary without leaving grandchildren (same contract as
-/// [`build_execute_command_process`]).
-fn w1_prepare_host_command(cmd: &mut Command) {
-    cmd.stdin(Stdio::null());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        unsafe {
-            cmd.pre_exec(|| {
-                if libc::setpgid(0, 0) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
-    }
-}
-
-/// `spawn` + wall-bounded wait + **bounded** stdout/stderr capture — fail-closed vs unbounded
-/// `output()` / `read_to_end` allocation (Decidability / CI). Uses [`EXECUTE_COMMAND_WALL_TIMEOUT`]
-/// and the same `try_wait` poll + process-group kill path as [`child_wait_for_execute_command`].
-/// After [`W1_HOST_CAPTURE_MAX_STDOUT_BYTES`] / [`W1_HOST_CAPTURE_MAX_STDERR_BYTES`] the reader keeps
-/// draining until EOF so a verbose child cannot wedge on a full pipe.
-fn w1_host_command_output(
-    label: &str,
-    wall: Duration,
-    mut cmd: Command,
-) -> Result<std::process::Output, String> {
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("{label}: failed to spawn host child: {e}"))?;
-    let mut stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| format!("{label}: internal error: stdout not piped (W1 host harness)"))?;
-    let mut stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| format!("{label}: internal error: stderr not piped (W1 host harness)"))?;
-
-    let stdout_handle = std::thread::spawn(move || {
-        w1_drain_reader_bounded(&mut stdout, W1_HOST_CAPTURE_MAX_STDOUT_BYTES)
-    });
-    let stderr_handle = std::thread::spawn(move || {
-        w1_drain_reader_bounded(&mut stderr, W1_HOST_CAPTURE_MAX_STDERR_BYTES)
-    });
-
-    let status = match child_wait_for_execute_command(&mut child, wall) {
-        Ok(s) => s,
-        Err(ChildWaitFail::WallTimeout { wall_time }) => {
-            let _ = stdout_handle.join();
-            let _ = stderr_handle.join();
-            return Err(format!(
-                "{label}: exceeded {:.2}s wall-clock limit (timeout — process group / child killed, fail-closed); \
-                 dissolution: PB-Runtime owns host subprocess policy for generated tests",
-                wall_time.as_secs_f64()
-            ));
-        }
-        Err(ChildWaitFail::Io(err)) => {
-            let _ = stdout_handle.join();
-            let _ = stderr_handle.join();
-            return Err(format!("{label}: wait on host child failed: {err}"));
-        }
-    };
-
-    let stdout_cap = stdout_handle
-        .join()
-        .map_err(|_| format!("{label}: stdout capture thread panicked"))?
-        .map_err(|e| format!("{label}: read stdout failed: {e}"))?;
-    let stderr_cap = stderr_handle
-        .join()
-        .map_err(|_| format!("{label}: stderr capture thread panicked"))?
-        .map_err(|e| format!("{label}: read stderr failed: {e}"))?;
-
-    if stdout_cap.truncated || stderr_cap.truncated {
-        return Err(format!(
-            "{label}: bounded host I/O exceeded (stdout cap {} B, stderr cap {} B; stdout_trunc={} stderr_trunc={}); \
-             child exit={:?}; fail-closed vs unbounded capture; dissolution: PB-Runtime owns diagnostic bounds for generated-test subprocesses",
-            W1_HOST_CAPTURE_MAX_STDOUT_BYTES,
-            W1_HOST_CAPTURE_MAX_STDERR_BYTES,
-            stdout_cap.truncated,
-            stderr_cap.truncated,
-            status.code(),
-        ));
-    }
-
-    Ok(std::process::Output {
-        status,
-        stdout: stdout_cap.bytes,
-        stderr: stderr_cap.bytes,
-    })
-}
-
 fn w1_rust_emit_output_int(
     program_dag: &Dag,
     output_bind: &BindNode,
@@ -539,8 +397,8 @@ fn w1_rust_emit_output_int(
         .arg(&bin_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    w1_prepare_host_command(&mut rustc);
-    let compile_out = w1_host_command_output(
+    crate::bounded_host_command::prepare_host_command(&mut rustc);
+    let compile_out = crate::bounded_host_command::host_command_output(
         "W1 rust_emit_output: rustc",
         EXECUTE_COMMAND_WALL_TIMEOUT,
         rustc,
@@ -558,8 +416,8 @@ fn w1_rust_emit_output_int(
     }
     let mut run_cmd = Command::new(&bin_path);
     run_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    w1_prepare_host_command(&mut run_cmd);
-    let run = w1_host_command_output(
+    crate::bounded_host_command::prepare_host_command(&mut run_cmd);
+    let run = crate::bounded_host_command::host_command_output(
         "W1 rust_emit_output: emitted binary",
         EXECUTE_COMMAND_WALL_TIMEOUT,
         run_cmd,
@@ -691,8 +549,8 @@ fn l5_rust_emit_output_int(program_dag: &Dag, claim_file: &str) -> Result<i64, S
         .arg(&bin_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    w1_prepare_host_command(&mut rustc);
-    let compile_out = w1_host_command_output(
+    crate::bounded_host_command::prepare_host_command(&mut rustc);
+    let compile_out = crate::bounded_host_command::host_command_output(
         "L5 rust_emit_output: rustc",
         EXECUTE_COMMAND_WALL_TIMEOUT,
         rustc,
@@ -707,8 +565,8 @@ fn l5_rust_emit_output_int(program_dag: &Dag, claim_file: &str) -> Result<i64, S
     }
     let mut run_cmd = Command::new(&bin_path);
     run_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    w1_prepare_host_command(&mut run_cmd);
-    let run = w1_host_command_output(
+    crate::bounded_host_command::prepare_host_command(&mut run_cmd);
+    let run = crate::bounded_host_command::host_command_output(
         "L5 rust_emit_output: emitted binary",
         EXECUTE_COMMAND_WALL_TIMEOUT,
         run_cmd,
@@ -744,8 +602,8 @@ fn l5_python_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
         .arg(&src_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    w1_prepare_host_command(&mut run_cmd);
-    let run = w1_host_command_output(
+    crate::bounded_host_command::prepare_host_command(&mut run_cmd);
+    let run = crate::bounded_host_command::host_command_output(
         "L5 python_emit_output: python3",
         EXECUTE_COMMAND_WALL_TIMEOUT,
         run_cmd,
@@ -782,8 +640,8 @@ fn l5_go_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
         .arg(&src_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    w1_prepare_host_command(&mut run_cmd);
-    let run = w1_host_command_output(
+    crate::bounded_host_command::prepare_host_command(&mut run_cmd);
+    let run = crate::bounded_host_command::host_command_output(
         "L5 go_emit_output: go run",
         EXECUTE_COMMAND_WALL_TIMEOUT,
         run_cmd,
@@ -1096,7 +954,8 @@ fn list_string_literal_values(value: &FieldValue) -> Option<Vec<String>> {
 /// Hard wall-clock for [`evaluate_execute_command_exit_code`]: fail-closed `ClaimResult::Fail`
 /// (not hang / not unbounded) so checked-in `TestClaim` data cannot block CI on a runaway child.
 /// Adjusting the limit is policy; the substrate has no per-claim override today.
-pub const EXECUTE_COMMAND_WALL_TIMEOUT: Duration = Duration::from_secs(30);
+pub const EXECUTE_COMMAND_WALL_TIMEOUT: Duration =
+    crate::bounded_host_command::DEFAULT_WALL_TIMEOUT;
 
 const EXECUTE_COMMAND_WAIT_POLL: Duration = Duration::from_millis(20);
 
