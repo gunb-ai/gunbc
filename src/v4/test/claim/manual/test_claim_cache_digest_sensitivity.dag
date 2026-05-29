@@ -751,6 +751,16 @@ data claim_test_claim_cache_byte_offset_exhausted_residual_21_double: TestClaim 
   expected_value: tcc_cache_pass_node()
 }
 
+data claim_test_claim_cache_byte_offset_exhausted_residual_29_double: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: exhausted-residual 256^29 vs 2*256^29 do not alias",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_exhausted_residual_29_double_digest_differs()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
 data claim_test_claim_cache_same_pin_executed_slot_digest_differs: TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: same pin, different executed interpreter slots differ",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
