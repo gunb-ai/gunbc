@@ -110,6 +110,15 @@ type CiComponentAffected {
   workflow_policy: Bool
 }
 
+// RULING-1: 🟢 pretty-much-done — host `git diff --name-only` read outcome (T-24 / INVARIANTS P3).
+// `ReadFailClosed` selects the superset `ci_component_affected_fail_closed` (all flags true).
+type CiGitDiffReadOutcome {
+  ReadOk: GitDiffNameOnly
+  ReadFailClosed: Diagnostic
+}
+
+data ci_git_diff_read_fail_closed_reason: Symbol = ci_git_diff_read_fail_closed_reason
+
 // RULING-1: 🟢 pretty-much-done — self-hosted fleet substrate (operator 2026-05-28: srv1/srv2 Ampere Altra).
 // Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
 type RunnerArch
@@ -687,6 +696,16 @@ fn ci_any_changed_path_matches(
 }
 
 
+fn ci_component_affected_fail_closed() -> CiComponentAffected {
+  CiComponentAffected {
+    v2: true
+    v3: true
+    v4: true
+    workflow_policy: true
+  }
+}
+
+
 fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponentAffected {
   CiComponentAffected {
     v2: ci_any_changed_path_matches(
@@ -707,6 +726,45 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
     )
   }
 }
+
+
+fn ci_component_affected_from_git_diff_read(outcome: CiGitDiffReadOutcome) -> CiComponentAffected {
+  match outcome {
+    ReadOk { git_diff } => ci_component_affected_from_git_diff(git_diff: git_diff)
+    ReadFailClosed { .. } => ci_component_affected_fail_closed()
+  }
+}
+
+
+fn ci_int_at_least_one(n: Int) -> Int {
+  if n < 1 {
+    1
+  } else {
+    n
+  }
+}
+
+
+fn ci_runner_pool_is_nonempty(pools: List<SelfHostedRunnerPool>) -> Bool {
+  length(xs: pools) != 0
+}
+
+
+fn ci_runner_pool_has_nonuniform_runner_counts(pools: List<SelfHostedRunnerPool>) -> Bool {
+  ci_runner_pool_max_runner_count(pools: pools)
+    != ci_runner_pool_min_runner_count(pools: pools)
+}
+
+
+fn ci_runner_pool_m1_probe_witness_holds(pools: List<SelfHostedRunnerPool>) -> Bool {
+  ci_runner_pool_is_nonempty(pools: pools)
+    && ci_runner_pool_has_nonuniform_runner_counts(pools: pools)
+}
+
+
+data ci_runner_pool_m1_probe_witness: Bool = ci_runner_pool_m1_probe_witness_holds(
+  pools: ci_self_hosted_runner_pools
+)
 
 
 fn ci_runner_pool_min_jobserver_token_cap(pools: List<SelfHostedRunnerPool>) -> Int {
@@ -778,7 +836,7 @@ fn ci_m1_probe_cargo_fanout_slots(pools: List<SelfHostedRunnerPool>) -> Int {
 
 fn ci_m1_probe_cargo_check_jobs_from_pools(pools: List<SelfHostedRunnerPool>) -> Int {
   ci_runner_pool_min_jobserver_token_cap(pools: pools)
-    / ci_m1_probe_cargo_fanout_slots(pools: pools)
+    / ci_int_at_least_one(n: ci_m1_probe_cargo_fanout_slots(pools: pools))
 }
 
 

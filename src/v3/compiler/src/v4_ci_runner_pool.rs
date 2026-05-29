@@ -58,6 +58,18 @@ pub fn ci_runner_pool_host_count(pools: &[SelfHostedRunnerPool]) -> u32 {
     pools.len() as u32
 }
 
+pub fn ci_int_at_least_one(n: u32) -> u32 {
+    n.max(1)
+}
+
+pub fn ci_runner_pool_has_nonuniform_runner_counts(pools: &[SelfHostedRunnerPool]) -> bool {
+    ci_runner_pool_max_runner_count(pools) != ci_runner_pool_min_runner_count(pools)
+}
+
+pub fn ci_runner_pool_m1_probe_witness_holds(pools: &[SelfHostedRunnerPool]) -> bool {
+    !pools.is_empty() && ci_runner_pool_has_nonuniform_runner_counts(pools)
+}
+
 pub fn ci_runner_pool_runner_spread(max_runners: u32, min_runners: u32) -> u32 {
     if max_runners == min_runners {
         1
@@ -76,7 +88,7 @@ pub fn ci_m1_probe_cargo_fanout_slots(pools: &[SelfHostedRunnerPool]) -> u32 {
 }
 
 pub fn ci_m1_probe_cargo_check_jobs_from_pools(pools: &[SelfHostedRunnerPool]) -> u32 {
-    let fanout = ci_m1_probe_cargo_fanout_slots(pools).max(1);
+    let fanout = ci_int_at_least_one(ci_m1_probe_cargo_fanout_slots(pools));
     ci_runner_pool_min_jobserver_token_cap(pools) / fanout
 }
 

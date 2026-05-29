@@ -1,4 +1,4 @@
-// Host transport for `v4.workflow.ci` `ci_component_affected_from_git_diff` (T-24).
+// Host transport for `v4.workflow.ci` `ci_component_affected_from_git_diff_read` (T-24).
 // Replaces scripts/detect-affected-components.sh — path buckets live in ci.dag only.
 #![allow(clippy::disallowed_macros)]
 
@@ -6,7 +6,9 @@ use std::io::Write;
 use std::process::{Command, ExitCode};
 use std::{env, fs, io};
 
-use v3_compiler::v4_ci_component_affected::ci_component_affected_from_changed_paths;
+use v3_compiler::v4_ci_component_affected::{
+    ci_component_affected_fail_closed, ci_component_affected_from_changed_paths,
+};
 
 fn usage() -> ! {
     eprintln!(
@@ -25,26 +27,33 @@ fn diff_range(event_name: &str) -> &'static str {
     }
 }
 
-fn git_changed_paths(range: &str) -> Vec<String> {
+enum GitDiffRead {
+    Ok(Vec<String>),
+    FailClosed,
+}
+
+fn git_read_changed_paths(range: &str) -> GitDiffRead {
     let output = Command::new("git")
         .args(["diff", "--name-only", range])
         .output();
     match output {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .filter(|line| !line.is_empty())
-            .map(str::to_string)
-            .collect(),
+        Ok(out) if out.status.success() => GitDiffRead::Ok(
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect(),
+        ),
         Ok(out) => {
             eprintln!(
-                "warning: git diff --name-only {range} exited {}; treating as no changes",
+                "error: git diff --name-only {range} exited {}; fail-closed (all components affected)",
                 out.status
             );
-            Vec::new()
+            GitDiffRead::FailClosed
         }
         Err(e) => {
-            eprintln!("warning: git diff failed ({e}); treating as no changes");
-            Vec::new()
+            eprintln!("error: git diff failed ({e}); fail-closed (all components affected)");
+            GitDiffRead::FailClosed
         }
     }
 }
@@ -70,19 +79,25 @@ fn main() -> ExitCode {
     }
 
     let range = diff_range(event_name.as_str());
-    let changed = git_changed_paths(range);
-
-    eprintln!("Changed files in {range}:");
-    if changed.is_empty() {
-        eprintln!("  (none detected)");
-    } else {
-        for path in &changed {
-            eprintln!("  {path}");
+    let flags = match git_read_changed_paths(range) {
+        GitDiffRead::Ok(changed) => {
+            eprintln!("Changed files in {range}:");
+            if changed.is_empty() {
+                eprintln!("  (none detected)");
+            } else {
+                for path in &changed {
+                    eprintln!("  {path}");
+                }
+            }
+            eprintln!();
+            ci_component_affected_from_changed_paths(changed.iter().map(String::as_str))
         }
-    }
-    eprintln!();
-
-    let flags = ci_component_affected_from_changed_paths(changed.iter().map(String::as_str));
+        GitDiffRead::FailClosed => {
+            eprintln!("Changed files in {range}: (read failed — fail-closed superset)");
+            eprintln!();
+            ci_component_affected_fail_closed()
+        }
+    };
 
     eprintln!(
         "v2 affected: {}",

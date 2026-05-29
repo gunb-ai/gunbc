@@ -13,6 +13,16 @@ pub struct CiComponentAffected {
     pub workflow_policy: bool,
 }
 
+/// Mirror of `ci_component_affected_fail_closed` — all components affected (INVARIANTS P3).
+pub fn ci_component_affected_fail_closed() -> CiComponentAffected {
+    CiComponentAffected {
+        v2: true,
+        v3: true,
+        v4: true,
+        workflow_policy: true,
+    }
+}
+
 /// Map `git diff --name-only` paths to component flags (same semantics as `ci.dag`).
 pub fn ci_component_affected_from_changed_paths<'a, I>(changed: I) -> CiComponentAffected
 where
