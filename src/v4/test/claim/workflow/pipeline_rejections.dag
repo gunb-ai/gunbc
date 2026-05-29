@@ -10,16 +10,17 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  aggregate_verdicts,
-  eval_context_with_semantics,
-  eval_diagnostic,
-  eval_rejected_roundtrip_deferred
+  eval_context_with_semantics
 }
 import v4.workflow.ci {
+  ci_pipeline_evaluator_input_node,
   test_claim_cache_receipt_pinned,
-  test_claim_typed_input_ci_pipeline
+  test_claim_typed_input_ci_pipeline,
+  workflow_pipeline_pass_gate,
+  workflow_pipeline_plan_bound_pass_receipt,
+  WorkflowPipelinePlanBoundPassReceipt
 }
-import v4.std.verdict { Verdict, Deferred, Fail, Pass }
+import v4.std.verdict { Verdict, Fail, Pass }
 import v4.compiler.infer {
   InferredFacts,
   InferredTree
@@ -30,7 +31,6 @@ import v4.test.claim.lens_common.infer_fixture {
 import v4.std.collection { List, Map }
 import v4.std.node {
   Atom,
-  Hash,
   Node,
   Symbol,
   TypeNode
@@ -106,9 +106,6 @@ type PipelineRejectionCase {
 }
 
 
-data eval_rejected_pipeline_projection_deferred: Symbol = eval_rejected_pipeline_projection_deferred
-
-
 fn run_pipeline_assert(
   claim: TestClaim,
   actual: Outcome<CiPipeline>,
@@ -126,35 +123,11 @@ fn run_pipeline_assert(
             _ => Fail { actual: actual }
           }
         _ =>
-          Deferred {
-            actual: actual,
-            diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
-          }
+          Fail { actual: actual }
       }
     Rejected { diagnostics: _ } =>
-      Deferred {
-        actual: actual,
-        diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
-      }
+      Fail { actual: actual }
   }
-}
-
-
-fn workflow_pipeline_pass_gate(
-  run: TestClaimRun<CiPipeline, CiPipeline>,
-  at: Node
-) -> Verdict<TestClaimRun<CiPipeline, CiPipeline>> {
-  aggregate_verdicts(
-    rs: [
-      match run.verdict {
-        Pass => Pass
-        Fail { actual: _ } => Fail { actual: Accepted { value: run, diagnostics: None } }
-        Deferred { actual: _, diagnostic: d } =>
-          Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
-      }
-    ],
-    at: at
-  )
 }
 
 
@@ -286,12 +259,15 @@ fn workflow_inferred_tree(root: Node) -> InferredTree {
 }
 
 
-fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol) -> TestClaim {
+fn pipeline_rejection_claim(case: PipelineRejectionCase) -> TestClaim {
   DiagnosticClaim {
-    label: label,
+    label: case.label,
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    input: input,
-    expected_rejection: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason)),
+    input: ci_pipeline_evaluator_input_node(
+      pipeline: case.pipeline,
+      evaluator_pin: case.input_symbol
+    ),
+    expected_rejection: diagnostics_singleton(d: ci_diagnostic(reason: case.expected_reason)),
     classification: TestClassification { tier: Tier1, layer: Unit }
   }
 }
@@ -319,8 +295,7 @@ fn pipeline_claim_context() -> EvalContext {
 fn pipeline_rejection_subject(
   case: PipelineRejectionCase
 ) -> TestClaimEvalSubject<CiPipeline> {
-  let input = pipeline_symbol_node(s: case.input_symbol)
-  let claim = pipeline_rejection_claim(label: case.label, input: input, expected_reason: case.expected_reason)
+  let claim = pipeline_rejection_claim(case: case)
   TestClaimEvalSubject {
     claim: claim,
     context: pipeline_claim_context(),
@@ -377,6 +352,12 @@ data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline, CiPipeline
 )
 
 
+data receipt_dangling_bootstrap_output: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_dangling_bootstrap_output,
+  at: test_claim_input(c: subject_dangling_bootstrap_output.claim)
+)
+
+
 data case_duplicate_job_id: PipelineRejectionCase = PipelineRejectionCase {
   label: "workflow_pipeline_duplicate_job_id",
   input_symbol: duplicate_job_id,
@@ -400,6 +381,12 @@ data run_duplicate_job_id: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipel
 
 
 data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_duplicate_job_id,
+  at: test_claim_input(c: subject_duplicate_job_id.claim)
+)
+
+
+data receipt_duplicate_job_id: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
   run: run_duplicate_job_id,
   at: test_claim_input(c: subject_duplicate_job_id.claim)
 )
@@ -433,6 +420,12 @@ data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = wor
 )
 
 
+data receipt_duplicate_gate_id: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_duplicate_gate_id,
+  at: test_claim_input(c: subject_duplicate_gate_id.claim)
+)
+
+
 data case_dangling_need: PipelineRejectionCase = PipelineRejectionCase {
   label: "workflow_pipeline_dangling_need",
   input_symbol: dangling_need,
@@ -455,6 +448,12 @@ data run_dangling_need: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline
 
 
 data gate_dangling_need: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_need,
+  at: test_claim_input(c: subject_dangling_need.claim)
+)
+
+
+data receipt_dangling_need: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
   run: run_dangling_need,
   at: test_claim_input(c: subject_dangling_need.claim)
 )
@@ -487,6 +486,12 @@ data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = wor
 )
 
 
+data receipt_dangling_gate_job: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
+  run: run_dangling_gate_job,
+  at: test_claim_input(c: subject_dangling_gate_job.claim)
+)
+
+
 data case_dependency_cycle: PipelineRejectionCase = PipelineRejectionCase {
   label: "workflow_pipeline_dependency_cycle",
   input_symbol: dependency_cycle,
@@ -511,6 +516,12 @@ data run_dependency_cycle: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipel
 
 
 data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dependency_cycle,
+  at: test_claim_input(c: subject_dependency_cycle.claim)
+)
+
+
+data receipt_dependency_cycle: Outcome<WorkflowPipelinePlanBoundPassReceipt> = workflow_pipeline_plan_bound_pass_receipt(
   run: run_dependency_cycle,
   at: test_claim_input(c: subject_dependency_cycle.claim)
 )
