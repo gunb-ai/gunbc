@@ -1,20 +1,17 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). Wave-1 MVP-1 and wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave1_formal_productions`, `rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). Wave-2 keyword/operator lexemes are layout-free; `WhitespaceChar` trivia separates tokens. Wave-1 MVP-1 lex still has layout-in-literals — 🟡 T-6 TokenLayout. bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). Wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). Wave-2 keyword/operator lexemes are layout-free; `WhitespaceChar` trivia separates tokens. Wave-1 MVP-1 lex still has layout-in-literals — 🟡 T-6 TokenLayout. bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
 
 import v4.std.grammar {
-  grammar_formal_terminal,
-  grammar_formal_nonterminal_occurrence,
-  grammar_formal_production,
   Choice,
   FormalGrammarSymbol,
-  FormalNonterminalOccurrence,
   FormalProduction,
-  FormalTerminal,
-  FormalTerminalOccurrence,
+  grammar_formal_production,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_terminal,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
@@ -25,9 +22,9 @@ import v4.std.grammar {
   Repeat,
   Sequence,
   Terminal,
+  formal_production_to_node,
   grammar_carries_symbol,
-  grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_empty_sync_tokens
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -255,7 +252,7 @@ type RustConcreteSyntaxToken
   | RustBoundToken { token_class: Symbol, binding: Symbol }
 
 type RustGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<RustConcreteSyntaxToken>
 }
@@ -1329,7 +1326,7 @@ fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
 
 fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {
   RustGrammarRelationRow {
-    production: rust_grammar_production_mvp1_fn_add(),
+    production: rust_formal_production_mvp1_fn_add(),
     emitted: rust_mvp1_emitted_add_fn_node(),
     tokens: rust_mvp1_concrete_tokens()
   }
@@ -1354,7 +1351,7 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
     children: [
       rust_named_edge(
         name: grammar_relation_field_production,
-        target: grammar_production_to_node(production: row.production)
+        target: formal_production_to_node(production: row.production)
       ),
       rust_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       rust_named_edge(
@@ -1476,8 +1473,6 @@ fn rust_grammar_atom(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
 }
 
-
-
 fn rust_formal_rhs_from_tokens(tokens: List<RustConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -1496,10 +1491,6 @@ fn rust_formal_production_mvp1_fn_add() -> FormalProduction {
     lhs: rust_production_mvp1_fn_add,
     rhs: rust_formal_rhs_from_tokens(tokens: rust_mvp1_concrete_tokens())
   )
-}
-
-fn rust_wave1_formal_productions() -> List<FormalProduction> {
-  [rust_formal_production_mvp1_fn_add()]
 }
 
 fn rust_grammar_production_mvp1_fn_add() -> GrammarProduction {
@@ -2392,20 +2383,6 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
     ),
     rust_formal_production_mvp1_fn_add()
   ]
-}
-
-fn rust_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn rust_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || rust_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
 }
 
 // Operational parse scaffold (GrammarExpr); dissolves when CP-1b converges FormalGrammar ↔ ParseGrammar.

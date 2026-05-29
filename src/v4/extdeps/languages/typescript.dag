@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric+string primitive fact-bundles, ModelCore wave-1 (primitives+inhabitance), wave-2b (laws+effects+partiality+string).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
-// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2a lex/grammar (typed let/const + type annotations). Wave-2a productions declared as `FormalProduction` flat rhs (`ts_wave2a_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). ECMA `number`/`bigint`/`string` fact-bundles; wave-2b inhabitance+laws+effects+partiality; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW, SL-T4-WAVE2B-TS-LAW-KEY.
 // 🟡
@@ -9,15 +9,10 @@
 module v4.extdeps.languages.typescript
 
 import v4.std.grammar {
-  grammar_formal_terminal,
-  grammar_formal_nonterminal_occurrence,
-  grammar_formal_production,
   Choice,
   FormalGrammarSymbol,
-  FormalNonterminalOccurrence,
+  FormalNonterminal,
   FormalProduction,
-  FormalTerminal,
-  FormalTerminalOccurrence,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
@@ -26,9 +21,13 @@ import v4.std.grammar {
   Nonterminal,
   Sequence,
   Terminal,
+  formal_production_to_node,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_formal_nonterminal,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  grammar_formal_terminal
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -152,7 +151,7 @@ type TsConcreteSyntaxToken
 
 // 🟢 grounded.
 type TsGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<TsConcreteSyntaxToken>
 }
@@ -622,9 +621,29 @@ fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
   }
 }
 
+fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: grammar_formal_terminal(identity: ts_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ts_production_mvp1_fn_add,
+    rhs: ts_formal_rhs_from_tokens(tokens: ts_mvp1_concrete_tokens())
+  )
+}
+
 fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   TsGrammarRelationRow {
-    production: ts_grammar_production_mvp1_fn_add(),
+    production: ts_formal_production_mvp1_fn_add(),
     emitted: ts_mvp1_emitted_add_fn_node(),
     tokens: ts_mvp1_concrete_tokens()
   }
@@ -649,7 +668,7 @@ fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
     children: [
       ts_named_edge(
         name: grammar_relation_field_production,
-        target: grammar_production_to_node(production: row.production)
+        target: formal_production_to_node(production: row.production)
       ),
       ts_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       ts_named_edge(
@@ -1134,28 +1153,6 @@ fn ts_wave2a_lex() -> LexRules {
 
 fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(rules: ts_wave2a_lex_rules(), token_class: sym)
-}
-
-
-
-fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: grammar_formal_terminal(identity: ts_concrete_token_class(token: token))
-      )
-    }
-  )
-}
-
-fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
-  grammar_formal_production(
-    lhs: ts_production_mvp1_fn_add,
-    rhs: ts_formal_rhs_from_tokens(tokens: ts_mvp1_concrete_tokens())
-  )
 }
 
 fn ts_wave2a_formal_productions() -> List<FormalProduction> {

@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired; wave-1 productions declared as `FormalProduction` flat rhs (`dag_wave1_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence.
+// Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired; wave-1 productions declared as `FormalProduction` flat rhs (`dag_wave1_formal_productions`); `GrammarExpr`/`GrammarRoot` remain operational parse scaffold until CP-1b convergence (dual-carrier hold).
 // Anchor: docs/v3-spec.md
 
 module v4.extdeps.languages.dag
@@ -9,15 +9,9 @@ module v4.extdeps.languages.dag
 
 import v4.std.collection { List, Set }
 import v4.std.grammar {
-  grammar_formal_terminal,
-  grammar_formal_nonterminal_occurrence,
-  grammar_formal_production,
-  ParseGrammar,
   FormalGrammarSymbol,
-  FormalNonterminalOccurrence,
   FormalProduction,
-  FormalTerminal,
-  FormalTerminalOccurrence,
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -29,7 +23,12 @@ import v4.std.grammar {
   Sequence,
   Terminal,
   VoidGrammar,
-  grammar_carries_symbol
+  formal_production_to_node,
+  grammar_carries_symbol,
+  grammar_formal_nonterminal,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  grammar_formal_terminal
 }
 import v4.std.lexing {
   BlockCommentTextChar,
@@ -167,38 +166,46 @@ data dag_production_pattern: Symbol = dag_production_pattern
 data dag_production_field_pattern: Symbol = dag_production_field_pattern
 data dag_production_if_expr: Symbol = dag_production_if_expr
 data dag_production_fn_literal: Symbol = dag_production_fn_literal
-data dag_production_qualified_name_repeat_suffix: Symbol = dag_production_qualified_name_repeat_suffix
-data dag_production_comma_ident_list_suffix: Symbol = dag_production_comma_ident_list_suffix
-data dag_production_comma_typed_param_list_suffix: Symbol = dag_production_comma_typed_param_list_suffix
-data dag_production_comma_type_expr_list_suffix: Symbol = dag_production_comma_type_expr_list_suffix
-data dag_production_comma_field_decl_list_suffix: Symbol = dag_production_comma_field_decl_list_suffix
-data dag_production_fn_body_repeat_suffix: Symbol = dag_production_fn_body_repeat_suffix
-data dag_production_postfix_expr_repeat_suffix: Symbol = dag_production_postfix_expr_repeat_suffix
-data dag_production_comma_arg_list_suffix: Symbol = dag_production_comma_arg_list_suffix
-data dag_production_comma_field_init_list_suffix: Symbol = dag_production_comma_field_init_list_suffix
-data dag_production_comma_expr_list_suffix: Symbol = dag_production_comma_expr_list_suffix
-data dag_production_comma_field_pattern_list_suffix: Symbol = dag_production_comma_field_pattern_list_suffix
-data dag_production_comma_pattern_list_suffix: Symbol = dag_production_comma_pattern_list_suffix
-data dag_production_type_alias_rhs_repeat_suffix: Symbol = dag_production_type_alias_rhs_repeat_suffix
-data dag_production_module_repeat_suffix: Symbol = dag_production_module_repeat_suffix
-data dag_production_primary_ident_suffix: Symbol = dag_production_primary_ident_suffix
-data dag_production_postfix_call_suffix: Symbol = dag_production_postfix_call_suffix
-data dag_production_constructor_pattern_suffix: Symbol = dag_production_constructor_pattern_suffix
-data dag_production_if_then_form: Symbol = dag_production_if_then_form
-data dag_production_if_block_form: Symbol = dag_production_if_block_form
-data dag_production_param_list_opt_typed_params: Symbol = dag_production_param_list_opt_typed_params
-data dag_production_comma_ident_list: Symbol = dag_production_comma_ident_list
-data dag_production_comma_typed_param_list: Symbol = dag_production_comma_typed_param_list
-data dag_production_comma_type_expr_list: Symbol = dag_production_comma_type_expr_list
-data dag_production_comma_field_decl_list: Symbol = dag_production_comma_field_decl_list
-data dag_production_comma_arg_list: Symbol = dag_production_comma_arg_list
-data dag_production_comma_field_init_list: Symbol = dag_production_comma_field_init_list
-data dag_production_comma_expr_list: Symbol = dag_production_comma_expr_list
-data dag_production_comma_field_pattern_list: Symbol = dag_production_comma_field_pattern_list
-data dag_production_comma_pattern_list: Symbol = dag_production_comma_pattern_list
+
+data dag_production_additive_expr: Symbol = dag_production_additive_expr
+data dag_production_and_expr: Symbol = dag_production_and_expr
+data dag_production_arg_comma_list: Symbol = dag_production_arg_comma_list
+data dag_production_arg_comma_list_suffix: Symbol = dag_production_arg_comma_list_suffix
+data dag_production_comparison_expr: Symbol = dag_production_comparison_expr
 data dag_production_constructor_pattern: Symbol = dag_production_constructor_pattern
-data dag_production_qualified_type_generics: Symbol = dag_production_qualified_type_generics
-data dag_production_qualified_type_generics_type_list: Symbol = dag_production_qualified_type_generics_type_list
+data dag_production_constructor_pattern_suffix: Symbol = dag_production_constructor_pattern_suffix
+data dag_production_equality_expr: Symbol = dag_production_equality_expr
+data dag_production_expr_comma_list: Symbol = dag_production_expr_comma_list
+data dag_production_expr_comma_list_suffix: Symbol = dag_production_expr_comma_list_suffix
+data dag_production_field_decl: Symbol = dag_production_field_decl
+data dag_production_field_decl_comma_list: Symbol = dag_production_field_decl_comma_list
+data dag_production_field_decl_comma_list_suffix: Symbol = dag_production_field_decl_comma_list_suffix
+data dag_production_field_init_comma_list: Symbol = dag_production_field_init_comma_list
+data dag_production_field_init_comma_list_suffix: Symbol = dag_production_field_init_comma_list_suffix
+data dag_production_field_pattern_comma_list: Symbol = dag_production_field_pattern_comma_list
+data dag_production_field_pattern_comma_list_suffix: Symbol = dag_production_field_pattern_comma_list_suffix
+data dag_production_ident_comma_list: Symbol = dag_production_ident_comma_list
+data dag_production_ident_comma_list_suffix: Symbol = dag_production_ident_comma_list_suffix
+data dag_production_match_arm_list: Symbol = dag_production_match_arm_list
+data dag_production_module_items: Symbol = dag_production_module_items
+data dag_production_multiplicative_expr: Symbol = dag_production_multiplicative_expr
+data dag_production_or_expr: Symbol = dag_production_or_expr
+data dag_production_pattern_comma_list: Symbol = dag_production_pattern_comma_list
+data dag_production_pattern_comma_list_suffix: Symbol = dag_production_pattern_comma_list_suffix
+data dag_production_pipe_expr: Symbol = dag_production_pipe_expr
+data dag_production_postfix_call_suffix: Symbol = dag_production_postfix_call_suffix
+data dag_production_postfix_suffix: Symbol = dag_production_postfix_suffix
+data dag_production_postfix_suffix_list: Symbol = dag_production_postfix_suffix_list
+data dag_production_primary_ident_suffix: Symbol = dag_production_primary_ident_suffix
+data dag_production_qualified_name_suffix: Symbol = dag_production_qualified_name_suffix
+data dag_production_qualified_type: Symbol = dag_production_qualified_type
+data dag_production_stmt_list: Symbol = dag_production_stmt_list
+data dag_production_type_expr_comma_list: Symbol = dag_production_type_expr_comma_list
+data dag_production_type_expr_comma_list_suffix: Symbol = dag_production_type_expr_comma_list_suffix
+data dag_production_type_variant_tail: Symbol = dag_production_type_variant_tail
+data dag_production_typed_param: Symbol = dag_production_typed_param
+data dag_production_typed_param_comma_list: Symbol = dag_production_typed_param_comma_list
+data dag_production_typed_param_comma_list_suffix: Symbol = dag_production_typed_param_comma_list_suffix
 
 data dag_surface_module: Symbol = dag_surface_module
 data dag_surface_module_header: Symbol = dag_surface_module_header
@@ -463,7 +470,7 @@ fn emit_relation_token_edges(tokens: List<Node>) -> List<Edge> {
 
 
 fn emit_grammar_relation_row(
-  production: GrammarProduction,
+  production: FormalProduction,
   emitted: Node,
   tokens: List<Node>
 ) -> Node {
@@ -472,7 +479,7 @@ fn emit_grammar_relation_row(
     children: [
       dag_named_edge(
         name: grammar_relation_field_production,
-        target: dag_grammar_atom(id: production.name)
+        target: formal_production_to_node(production: production)
       ),
       dag_named_edge(
         name: grammar_relation_field_emitted,
@@ -489,1244 +496,6 @@ fn emit_grammar_relation_row(
   }
 }
 
-
-
-
-
-// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
-fn dag_wave1_formal_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: dag_production_module_header,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_module),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_qualified_name,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_qualified_name,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_dot),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_qualified_name_repeat_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_qualified_name_repeat_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_dot),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_generic_params,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lt),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_ident_list),
-        grammar_formal_terminal(identity: dag_token_gt)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_ident_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_ident_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_ident_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_ident_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_ident_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_ident_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_ident_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_ident_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_param_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_terminal(identity: dag_token_rparen)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_param_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_typed_param_list),
-        grammar_formal_terminal(identity: dag_token_rparen)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_typed_param_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_typed_param_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_typed_param_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_typed_param_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_typed_param_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_typed_param_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_typed_param_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_typed_param_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_qualified_type_generics,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lt),
-        grammar_formal_terminal(identity: dag_token_gt)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_qualified_type_generics,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lt),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_type_generics_type_list),
-        grammar_formal_terminal(identity: dag_token_gt)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_qualified_type_generics_type_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_type_expr_list)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_type_expr_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_type_expr_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_type_expr_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_type_expr_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_type_expr_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_type_expr_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_type_expr_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_type_expr_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_type,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_terminal(identity: dag_token_rparen),
-        grammar_formal_terminal(identity: dag_token_arrow),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_type,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_type_expr_list),
-        grammar_formal_terminal(identity: dag_token_rparen),
-        grammar_formal_terminal(identity: dag_token_arrow),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_type_generics)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_type)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_import_block,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_ident_list),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_field_decl_block,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_field_decl_block,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_decl_list),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_decl_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_decl_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_decl_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_field_decl_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_decl_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_decl_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_decl_list,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_decl_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_body,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_body,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_stmt),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body_repeat_suffix),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_fn_body_repeat_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_fn_body_repeat_suffix,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_stmt),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_stmt,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_let_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_stmt,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_let_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_let),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_eq),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_match_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_if_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_literal)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_block_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_unary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_unary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_bang),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_postfix_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_primary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_postfix_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_primary_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_expr_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_postfix_expr_repeat_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_postfix_expr_repeat_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_dot),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_expr_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_postfix_expr_repeat_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_dot),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_call_suffix),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_expr_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_postfix_call_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_terminal(identity: dag_token_rparen)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_postfix_call_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_arg_list),
-        grammar_formal_terminal(identity: dag_token_rparen)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_arg_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_arg)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_arg_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_arg),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_arg),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_arg_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_arg_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_arg_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_arg),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_arg_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_arg_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_arg),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_arg_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_primary_ident_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_primary_ident_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_primary_ident_suffix,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_call_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_ident_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_init_list),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_init_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_init_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_init_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_field_init_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_init_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_init_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_init_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_init_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_int_literal)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_string_literal)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_true)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_false)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbracket),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_expr_list),
-        grammar_formal_terminal(identity: dag_token_rbracket)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_expr_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_expr_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_expr_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_expr_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_expr_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_expr_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_expr_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_expr_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_init_list),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_primary_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_terminal(identity: dag_token_rparen)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_block_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_arg,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_arg,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_field_init,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_match_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_match),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_match_expr,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_match),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_match_arm),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_match_arm,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
-        grammar_formal_terminal(identity: dag_token_fat_arrow),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_pattern,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_constructor_pattern)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_pattern,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_true)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_pattern,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_false)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_pattern,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_int_literal)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_pattern,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_string_literal)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_constructor_pattern,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_constructor_pattern,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_constructor_pattern_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_constructor_pattern_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_constructor_pattern_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_pattern_list),
-        grammar_formal_terminal(identity: dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_constructor_pattern_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_pattern_list),
-        grammar_formal_terminal(identity: dag_token_rparen)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_pattern_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_pattern_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_pattern_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_field_pattern_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_pattern_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_field_pattern_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_pattern_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_field_pattern_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_pattern_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_pattern_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_pattern_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_comma_pattern_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_comma_pattern_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_pattern_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_pattern_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_comma_pattern_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_comma)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_field_pattern,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_field_pattern,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_ident)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_if_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_if_then_form)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_if_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_if_block_form)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_if_then_form,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_if),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_terminal(identity: dag_token_kw_then),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_terminal(identity: dag_token_kw_else),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_if_block_form,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_if),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body),
-        grammar_formal_terminal(identity: dag_token_kw_else),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_if_block_form,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_if),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body),
-        grammar_formal_terminal(identity: dag_token_kw_else),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_if_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_literal,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_terminal(identity: dag_token_rparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_literal,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_ident_list),
-        grammar_formal_terminal(identity: dag_token_rparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_literal,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_terminal(identity: dag_token_rparen),
-        grammar_formal_terminal(identity: dag_token_arrow),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_literal,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_comma_ident_list),
-        grammar_formal_terminal(identity: dag_token_rparen),
-        grammar_formal_terminal(identity: dag_token_arrow),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_import_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_import),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_import_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_import),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_import_block)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_variant,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_variant,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_block)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_alias_rhs,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_variant)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_alias_rhs,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_variant),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_alias_rhs_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_type_alias_rhs_repeat_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_type_alias_rhs_repeat_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_pipe),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_variant),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_alias_rhs_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_type),
-        grammar_formal_terminal(identity: dag_token_ident)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_type),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_type),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_block)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_type),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_eq),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_alias_rhs)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_type),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_block)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_type_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_type),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params),
-        grammar_formal_terminal(identity: dag_token_eq),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_alias_rhs)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_data_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_data),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_terminal(identity: dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_terminal(identity: dag_token_eq),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_param_list),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_param_list),
-        grammar_formal_terminal(identity: dag_token_arrow),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_param_list),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_fn_decl,
-      rhs: [
-        grammar_formal_terminal(identity: dag_token_kw_fn),
-        grammar_formal_terminal(identity: dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_param_list),
-        grammar_formal_terminal(identity: dag_token_arrow),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_top_level_item,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_import_decl)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_top_level_item,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_type_decl)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_top_level_item,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_data_decl)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_top_level_item,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_decl)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_module,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_module_header)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_module,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_module_header),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_top_level_item),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_module_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_module_repeat_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: dag_production_module_repeat_suffix,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_top_level_item),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_module_repeat_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: dag_production_binary_expr, rhs: [grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)]),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_pipe_gt),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_or_or),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_and_and),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_eq_eq),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_neq),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_gte),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_lte),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_lt),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_gt),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_plus),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_minus),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_star),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_slash),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: dag_production_binary_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
-        grammar_formal_terminal(identity: dag_token_percent),
-        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
-      ]
-    ),
-
-  ]
-}
 
 fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
@@ -2596,6 +1365,55 @@ fn dag_grammar_module_production() -> GrammarProduction {
 }
 
 
+fn dag_formal_production_module_header() -> FormalProduction {
+  grammar_formal_production(
+    lhs: dag_production_module_header,
+    rhs: [
+      grammar_formal_terminal(identity: dag_token_kw_module),
+      grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name)
+    ]
+  )
+}
+
+
+fn dag_formal_production_import_decl() -> FormalProduction {
+  grammar_formal_production(
+    lhs: dag_production_import_decl,
+    rhs: [
+      grammar_formal_terminal(identity: dag_token_kw_import),
+      grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name)
+    ]
+  )
+}
+
+
+fn dag_formal_production_import_decl_with_block() -> FormalProduction {
+  grammar_formal_production(
+    lhs: dag_production_import_decl,
+    rhs: [
+      grammar_formal_terminal(identity: dag_token_kw_import),
+      grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name),
+      grammar_formal_nonterminal_occurrence(identity: dag_production_import_block)
+    ]
+  )
+}
+
+
+fn dag_formal_production_data_decl() -> FormalProduction {
+  grammar_formal_production(
+    lhs: dag_production_data_decl,
+    rhs: [
+      grammar_formal_terminal(identity: dag_token_kw_data),
+      grammar_formal_terminal(identity: dag_token_ident),
+      grammar_formal_terminal(identity: dag_token_colon),
+      grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+      grammar_formal_terminal(identity: dag_token_eq),
+      grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+    ]
+  )
+}
+
+
 fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2615,11 +1433,7 @@ fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
 
 fn emit_row_module_header(qualified_name: Node) -> Node {
   emit_grammar_relation_row(
-    production: dag_grammar_production(
-      name: dag_production_module_header,
-      expression: dag_grammar_module_header_expr(),
-      emitted: dag_surface_module_header
-    ),
+    production: dag_formal_production_module_header(),
     emitted: emit_module_header_emitted_node(qualified_name: qualified_name),
     tokens: [
       emit_fixed_token(token_class: dag_token_kw_module),
@@ -2668,11 +1482,10 @@ fn emit_row_import_decl(
     qualified_name
   ]
   emit_grammar_relation_row(
-    production: dag_grammar_production(
-      name: dag_production_import_decl,
-      expression: dag_grammar_import_decl_expr(),
-      emitted: dag_surface_import_decl
-    ),
+    production: match import_block {
+      Some { value: _ } => dag_formal_production_import_decl_with_block()
+      None => dag_formal_production_import_decl()
+    },
     emitted: emit_import_decl_emitted_node(
       qualified_name: qualified_name,
       import_block: import_block
@@ -2720,11 +1533,7 @@ fn emit_row_data_decl(
   expr: Node
 ) -> Node {
   emit_grammar_relation_row(
-    production: dag_grammar_production(
-      name: dag_production_data_decl,
-      expression: dag_grammar_data_decl_expr(),
-      emitted: dag_surface_data_decl
-    ),
+    production: dag_formal_production_data_decl(),
     emitted: emit_data_decl_emitted_node(
       name_binding: name_binding,
       type_expr: type_expr,
@@ -2739,6 +1548,1308 @@ fn emit_row_data_decl(
       expr
     ]
   )
+}
+
+
+// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
+// Formal rules: 182 (33 GrammarRoot productions + helper nonterminals).
+fn dag_wave1_formal_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: dag_production_ident_comma_list,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_ident_comma_list,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_ident_comma_list,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_ident_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_ident_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_ident_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_ident_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_ident_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_typed_param,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_typed_param_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_typed_param)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_typed_param_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_typed_param),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_typed_param_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_typed_param),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_typed_param),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_typed_param_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_typed_param_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_typed_param_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_typed_param_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_typed_param),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_typed_param_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_expr_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_expr_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_expr_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_expr_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_expr_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_expr_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_arg_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_arg)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_arg_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_arg),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_arg_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_arg),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_arg),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_arg_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_arg_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_arg_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_arg_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_arg),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_arg_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_init_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_init_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_init_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_init_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_init_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_init_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_pattern_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_pattern_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_pattern_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_pattern_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_pattern_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_pattern_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr_comma_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr_comma_list_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr_comma_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr_comma_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_module_items,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_module_items,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_top_level_item)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_module_items,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_top_level_item),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_module_items)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_module,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_module_header),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_module_items)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_module_header,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_module),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_qualified_name,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_qualified_name,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_dot),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_qualified_name_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_qualified_name_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_dot),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_top_level_item,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_import_decl)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_top_level_item,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_decl)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_top_level_item,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_data_decl)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_top_level_item,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_decl)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_import_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_import),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_import_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_import),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_import_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_import_block,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_ident_comma_list),
+        grammar_formal_terminal(identity: dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_generic_params,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lt),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_ident_comma_list),
+        grammar_formal_terminal(identity: dag_token_gt)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_param_list,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_terminal(identity: dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_param_list,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_typed_param_comma_list),
+        grammar_formal_terminal(identity: dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_qualified_type,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_qualified_type,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name),
+        grammar_formal_terminal(identity: dag_token_lt),
+        grammar_formal_terminal(identity: dag_token_gt)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_qualified_type,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_name),
+        grammar_formal_terminal(identity: dag_token_lt),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr_comma_list),
+        grammar_formal_terminal(identity: dag_token_gt)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_type,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_terminal(identity: dag_token_rparen),
+        grammar_formal_terminal(identity: dag_token_arrow),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_type,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr_comma_list),
+        grammar_formal_terminal(identity: dag_token_rparen),
+        grammar_formal_terminal(identity: dag_token_arrow),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_qualified_type)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_type)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_variant,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_variant,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_variant_tail,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_variant_tail,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_pipe),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_variant),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_variant_tail)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_alias_rhs,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_variant),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_variant_tail)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl_block,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lbrace),
+        grammar_formal_terminal(identity: dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl_block,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_comma_list),
+        grammar_formal_terminal(identity: dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_type),
+        grammar_formal_terminal(identity: dag_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_type),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_type),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_type),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_decl_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_type),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_alias_rhs)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_type_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_type),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params),
+        grammar_formal_terminal(identity: dag_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_alias_rhs)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_data_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_data),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_terminal(identity: dag_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_param_list),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_param_list),
+        grammar_formal_terminal(identity: dag_token_arrow),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_param_list),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_decl,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_generic_params),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_param_list),
+        grammar_formal_terminal(identity: dag_token_arrow),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_stmt_list,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_stmt_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_stmt)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_stmt_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_stmt),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_stmt_list)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_body,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_stmt_list),
+        grammar_formal_terminal(identity: dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_stmt,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_let_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_stmt,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_let_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_let),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_match_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_if_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_block_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_multiplicative_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_multiplicative_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_multiplicative_expr),
+        grammar_formal_terminal(identity: dag_token_star),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_multiplicative_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_multiplicative_expr),
+        grammar_formal_terminal(identity: dag_token_slash),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_multiplicative_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_multiplicative_expr),
+        grammar_formal_terminal(identity: dag_token_percent),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_additive_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_multiplicative_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_additive_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr),
+        grammar_formal_terminal(identity: dag_token_plus),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_multiplicative_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_additive_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr),
+        grammar_formal_terminal(identity: dag_token_minus),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_multiplicative_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_comparison_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_comparison_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr),
+        grammar_formal_terminal(identity: dag_token_gte),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_comparison_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr),
+        grammar_formal_terminal(identity: dag_token_lte),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_comparison_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr),
+        grammar_formal_terminal(identity: dag_token_lt),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_comparison_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr),
+        grammar_formal_terminal(identity: dag_token_gt),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_additive_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_equality_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_comparison_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_equality_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_comparison_expr),
+        grammar_formal_terminal(identity: dag_token_eq_eq),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_comparison_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_equality_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_comparison_expr),
+        grammar_formal_terminal(identity: dag_token_neq),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_comparison_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_and_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_equality_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_and_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_and_expr),
+        grammar_formal_terminal(identity: dag_token_and_and),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_equality_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_or_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_and_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_or_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_or_expr),
+        grammar_formal_terminal(identity: dag_token_or_or),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_and_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pipe_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_or_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pipe_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pipe_expr),
+        grammar_formal_terminal(identity: dag_token_pipe_gt),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_or_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_binary_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pipe_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_unary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_bang),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_unary_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_unary_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_postfix_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_dot),
+        grammar_formal_terminal(identity: dag_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_postfix_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_dot),
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_call_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_postfix_call_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_terminal(identity: dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_postfix_call_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_arg_comma_list),
+        grammar_formal_terminal(identity: dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_postfix_suffix_list,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_postfix_suffix_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_postfix_suffix_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_suffix),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_suffix_list)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_postfix_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_primary_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_suffix_list)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_ident_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_ident_suffix,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_call_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_ident_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init_comma_list),
+        grammar_formal_terminal(identity: dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_primary_ident_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_int_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_string_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_true)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_false)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lbracket),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr_comma_list),
+        grammar_formal_terminal(identity: dag_token_rbracket)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_init_comma_list),
+        grammar_formal_terminal(identity: dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_terminal(identity: dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_block_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_arg,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_arg,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_init,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_match_arm_list,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_match_arm_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_match_arm)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_match_arm_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_match_arm),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_match_arm_list)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_match_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_match),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr),
+        grammar_formal_terminal(identity: dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_match_arm_list),
+        grammar_formal_terminal(identity: dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_match_arm,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern),
+        grammar_formal_terminal(identity: dag_token_fat_arrow),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_constructor_pattern_suffix,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: dag_production_constructor_pattern_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_field_pattern_comma_list),
+        grammar_formal_terminal(identity: dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_constructor_pattern_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern_comma_list),
+        grammar_formal_terminal(identity: dag_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_constructor_pattern,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_constructor_pattern_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_constructor_pattern)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_true)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_false)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_int_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_pattern,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_string_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_pattern,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident),
+        grammar_formal_terminal(identity: dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_pattern)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_field_pattern,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_if_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_terminal(identity: dag_token_kw_then),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_terminal(identity: dag_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_if_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body),
+        grammar_formal_terminal(identity: dag_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_if_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_if_expr,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body),
+        grammar_formal_terminal(identity: dag_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_literal,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_terminal(identity: dag_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_literal,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_ident_comma_list),
+        grammar_formal_terminal(identity: dag_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_literal,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_terminal(identity: dag_token_rparen),
+        grammar_formal_terminal(identity: dag_token_arrow),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: dag_production_fn_literal,
+      rhs: [
+        grammar_formal_terminal(identity: dag_token_kw_fn),
+        grammar_formal_terminal(identity: dag_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_ident_comma_list),
+        grammar_formal_terminal(identity: dag_token_rparen),
+        grammar_formal_terminal(identity: dag_token_arrow),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_body)
+      ]
+    )
+  ]
 }
 
 

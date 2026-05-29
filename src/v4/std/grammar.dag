@@ -223,6 +223,22 @@ fn grammar_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> For
 }
 
 
+fn grammar_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
+  production.lhs.identity == lhs
+}
+
+
+fn grammar_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
+  fold_list(
+    xs: productions,
+    empty: false,
+    cons: fn(found, production) {
+      found || grammar_formal_production_matches_lhs(production: production, lhs: lhs)
+    }
+  )
+}
+
+
 fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
   Node {
     kind: TypeNode {

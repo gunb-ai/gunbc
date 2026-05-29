@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/wasm.dag
 // Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
+// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; wave-1 productions declared as `FormalProduction` flat rhs (`wasm_wave1_formal_productions`); `GrammarExpr`/`GrammarRoot` remain operational parse scaffold until CP-1b convergence (dual-carrier hold); v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
 // Anchor: https://webassembly.github.io/spec/core/types.html#number-types
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T4-WAVE2B-WASM-LAW-KEY.
 // 🟡
@@ -9,15 +9,9 @@
 module v4.extdeps.languages.wasm
 
 import v4.std.grammar {
-  grammar_formal_terminal,
-  grammar_formal_nonterminal_occurrence,
-  grammar_formal_production,
   Choice,
   FormalGrammarSymbol,
-  FormalNonterminalOccurrence,
   FormalProduction,
-  FormalTerminal,
-  FormalTerminalOccurrence,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
@@ -29,8 +23,12 @@ import v4.std.grammar {
   Sequence,
   Terminal,
   grammar_carries_symbol,
+  formal_production_to_node,
   grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_formal_nonterminal,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  grammar_formal_terminal,
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -164,7 +162,7 @@ type WasmConcreteSyntaxToken
 
 // 🟢 grounded.
 type WasmGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<WasmConcreteSyntaxToken>
 }
@@ -316,7 +314,7 @@ data wasm_production_tagidx_numeric: Symbol = wasm_production_tagidx_numeric
 data wasm_production_tagidx_named: Symbol = wasm_production_tagidx_named
 data wasm_production_local_get_instr: Symbol = wasm_production_local_get_instr
 data wasm_production_localidx: Symbol = wasm_production_localidx
-data wasm_production_mvp1_module_fn_suffix: Symbol = wasm_production_mvp1_module_fn_suffix
+data wasm_production_mvp1_module_fn_items: Symbol = wasm_production_mvp1_module_fn_items
 
 data wasm_surface_fn_item: Symbol = wasm_surface_fn_item
 data wasm_surface_text_fragment: Symbol = wasm_surface_text_fragment
@@ -886,7 +884,7 @@ fn wasm_grammar_sequence_from_token_classes() -> GrammarExpr {
 
 fn wasm_mvp1_grammar_relation_row() -> WasmGrammarRelationRow {
   WasmGrammarRelationRow {
-    production: wasm_grammar_production_mvp1_fn_add(),
+    production: wasm_formal_production_mvp1_fn_add(),
     emitted: wasm_mvp1_emitted_add_fn_node(),
     tokens: wasm_mvp1_concrete_tokens()
   }
@@ -911,7 +909,7 @@ fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
     children: [
       wasm_named_edge(
         name: grammar_relation_field_production,
-        target: grammar_production_to_node(production: row.production)
+        target: formal_production_to_node(production: row.production)
       ),
       wasm_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       wasm_named_edge(
@@ -1325,9 +1323,6 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
 fn wasm_wave1_lex() -> LexRules {
   ModeledLexRules { root: wasm_wave1_lex_rules() }
 }
-
-
-
 
 fn wasm_formal_rhs_from_tokens(tokens: List<WasmConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
@@ -1979,6 +1974,331 @@ fn wasm_grammar_production_numeric_binop_instr() -> GrammarProduction {
     expression: wasm_grammar_numeric_binop_instr_expr(),
     emitted: wasm_grammar_atom(id: wasm_surface_numeric_binop_instr)
   }
+}
+
+fn wasm_formal_rhs_from_tokens(tokens: List<WasmConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: grammar_formal_terminal(identity: wasm_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn wasm_formal_production_mvp1_fn_add() -> FormalProduction {
+  grammar_formal_production(
+    lhs: wasm_production_mvp1_fn_add,
+    rhs: wasm_formal_rhs_from_tokens(tokens: wasm_mvp1_concrete_tokens())
+  )
+}
+
+fn wasm_wave1_formal_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: wasm_production_text_fragment,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_mvp1_fn_add)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_text_fragment,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_mvp1_module)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_text_fragment,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_value_type)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_text_fragment,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_localidx)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_text_fragment,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_numeric_const_instr)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_text_fragment,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_numeric_binop_instr)]
+    ),
+    wasm_formal_production_mvp1_fn_add(),
+    grammar_formal_production(lhs: wasm_production_mvp1_module_fn_items, rhs: []),
+    grammar_formal_production(
+      lhs: wasm_production_mvp1_module_fn_items,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_mvp1_fn_add)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_mvp1_module_fn_items,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: wasm_production_mvp1_fn_add),
+        grammar_formal_nonterminal_occurrence(identity: wasm_production_mvp1_module_fn_items)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_mvp1_module,
+      rhs: [
+        grammar_formal_terminal(identity: wasm_token_lparen),
+        grammar_formal_terminal(identity: wasm_token_kw_module),
+        grammar_formal_nonterminal_occurrence(identity: wasm_production_mvp1_module_fn_items),
+        grammar_formal_terminal(identity: wasm_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_mvp1_module,
+      rhs: [
+        grammar_formal_terminal(identity: wasm_token_lparen),
+        grammar_formal_terminal(identity: wasm_token_kw_module),
+        grammar_formal_terminal(identity: wasm_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: wasm_production_mvp1_module_fn_items),
+        grammar_formal_terminal(identity: wasm_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_value_type,
+      rhs: [grammar_formal_terminal(identity: wasm_token_type_i32)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_value_type,
+      rhs: [grammar_formal_terminal(identity: wasm_token_type_i64)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_value_type,
+      rhs: [grammar_formal_terminal(identity: wasm_token_type_f32)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_value_type,
+      rhs: [grammar_formal_terminal(identity: wasm_token_type_f64)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_i32_numeric_literal,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_numeric_literal)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_i64_numeric_literal,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_numeric_literal)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_f32_numeric_literal,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f32_numeric_literal)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_f64_numeric_literal,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f64_numeric_literal)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_localidx,
+      rhs: [grammar_formal_terminal(identity: wasm_token_localidx_literal)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_localidx,
+      rhs: [grammar_formal_terminal(identity: wasm_token_ident)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_const_instr,
+      rhs: [
+        grammar_formal_terminal(identity: wasm_token_i32_const),
+        grammar_formal_nonterminal_occurrence(identity: wasm_production_i32_numeric_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_const_instr,
+      rhs: [
+        grammar_formal_terminal(identity: wasm_token_i64_const),
+        grammar_formal_nonterminal_occurrence(identity: wasm_production_i64_numeric_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_const_instr,
+      rhs: [
+        grammar_formal_terminal(identity: wasm_token_f32_const),
+        grammar_formal_nonterminal_occurrence(identity: wasm_production_f32_numeric_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_const_instr,
+      rhs: [
+        grammar_formal_terminal(identity: wasm_token_f64_const),
+        grammar_formal_nonterminal_occurrence(identity: wasm_production_f64_numeric_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_add)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_sub)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_mul)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_div_s)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_div_u)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_rem_s)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_rem_u)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_and)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_or)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_xor)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_shl)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_shr_s)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_shr_u)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_rotl)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i32_rotr)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_add)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_sub)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_mul)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_div_s)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_div_u)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_rem_s)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_rem_u)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_and)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_or)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_xor)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_shl)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_shr_s)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_shr_u)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_rotl)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_i64_rotr)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f32_add)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f32_sub)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f32_mul)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f32_div)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f32_min)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f32_max)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f32_copysign)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f64_add)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f64_sub)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f64_mul)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f64_div)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f64_min)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f64_max)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_numeric_binop_instr,
+      rhs: [grammar_formal_terminal(identity: wasm_token_f64_copysign)]
+    )
+  ]
 }
 
 fn wasm_wave1_grammar_root() -> GrammarRoot {

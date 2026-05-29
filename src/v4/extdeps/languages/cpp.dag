@@ -1,24 +1,20 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
-// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`cpp_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` below remain operational parse scaffold until CP-1b convergence. Wave 2b inhabitance: signed/unsigned int/long/llong only (char/short excluded — [conv.prom] integral promotion), signed → ordered_ring_node + partiality, unsigned → commutative_semiring_node, bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
+// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; Wave 2b inhabitance: signed/unsigned int/long/llong only (char/short excluded — [conv.prom] integral promotion), signed → ordered_ring_node + partiality, unsigned → commutative_semiring_node, bool → boolean_algebra_node; wave-1 MVP-1 productions declared as `FormalProduction` flat rhs (`cpp_wave1_formal_productions`); `GrammarExpr` sequence adapter remains operational parse scaffold until CP-1b convergence (dual-carrier hold). C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v4.extdeps.languages.cpp
 
 import v4.std.grammar {
-  grammar_formal_terminal,
-  grammar_formal_nonterminal_occurrence,
-  grammar_formal_production,
   FormalGrammarSymbol,
-  FormalNonterminalOccurrence,
   FormalProduction,
-  FormalTerminal,
-  FormalTerminalOccurrence,
   GrammarExpr,
   GrammarProduction,
   Sequence,
   Terminal,
-  grammar_production_to_node
+  formal_production_to_node,
+  grammar_formal_production,
+  grammar_formal_terminal,
 }
 import v4.std.lexing {
   LexRule,
@@ -202,7 +198,7 @@ type CppConcreteSyntaxToken
   | CppBoundToken { token_class: Symbol, binding: Symbol }
 
 type CppGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<CppConcreteSyntaxToken>
 }
@@ -1131,6 +1127,9 @@ fn cpp_mvp1_serialize_source_node() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: cpp_mvp1_serialize_source_children() }
 }
 
+fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
 
 fn cpp_formal_rhs_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
@@ -1152,12 +1151,9 @@ fn cpp_formal_production_mvp1_fn_add() -> FormalProduction {
   )
 }
 
+// Canonical CFG: flat FormalProduction rhs (wave-1 MVP-1 only).
 fn cpp_wave1_formal_productions() -> List<FormalProduction> {
   [cpp_formal_production_mvp1_fn_add()]
-}
-
-fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
 }
 
 type CppGramBuild1State
@@ -1200,7 +1196,7 @@ fn cpp_grammar_production_mvp1_fn_add(target_profile: Node) -> GrammarProduction
 
 fn cpp_mvp1_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow {
   CppGrammarRelationRow {
-    production: cpp_grammar_production_mvp1_fn_add(target_profile: target_profile),
+    production: cpp_formal_production_mvp1_fn_add(),
     emitted: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile),
     tokens: cpp_mvp1_concrete_tokens()
   }
@@ -1220,7 +1216,7 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      cpp_named_edge(name: grammar_relation_field_production, target: formal_production_to_node(production: row.production)),
       cpp_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       cpp_named_edge(
         name: grammar_relation_field_tokens,

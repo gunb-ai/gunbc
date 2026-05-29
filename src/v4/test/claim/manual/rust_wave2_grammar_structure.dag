@@ -6,7 +6,6 @@ module v4.test.claim.manual.rust_wave2_grammar_structure
 
 import v4.extdeps.languages.rust {
   RustLanguageModel,
-  rust_formal_production_list_has_lhs,
   rust_language_model_wave2,
   rust_production_block,
   rust_production_fn_item,
@@ -23,26 +22,29 @@ import v4.extdeps.languages.rust {
   rust_wave2_formal_productions,
   rust_wave2_lex_rules
 }
-import v4.std.grammar { grammar_carries_symbol }
+import v4.std.grammar {
+  grammar_carries_symbol,
+  grammar_formal_production_list_has_lhs
+}
 import v4.std.lexing { lex_rule_set_token_class_member }
 import v4.std.logic { Bool }
 
 fn rust_wave2_grammar_structure_satisfied(lm: RustLanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_let) &&
     lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_else) &&
-    rust_formal_production_list_has_lhs(
+    grammar_formal_production_list_has_lhs(
       productions: rust_wave2_formal_productions(),
       lhs: rust_production_mvp1_fn_add
     ) &&
-    rust_formal_production_list_has_lhs(
+    grammar_formal_production_list_has_lhs(
       productions: rust_wave2_formal_productions(),
       lhs: rust_production_fn_item
     ) &&
-    rust_formal_production_list_has_lhs(
+    grammar_formal_production_list_has_lhs(
       productions: rust_wave2_formal_productions(),
       lhs: rust_production_if_expr
     ) &&
-    rust_formal_production_list_has_lhs(
+    grammar_formal_production_list_has_lhs(
       productions: rust_wave2_formal_productions(),
       lhs: rust_production_type
     ) &&
