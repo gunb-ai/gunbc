@@ -7,7 +7,7 @@
 **Companion read (what is wrong today):** [CI anatomy audit](https://github.com/gunb-ai/gunbc/pull/3885) — §7 aligned to this canvas (no staged YAML/bucket tuning).  
 **This document (what we build):** modeled CI in `src/v4/workflow/ci.dag`; **§6.3 = project board**; **§6 = TASKS bridge**. No separate task ledger.
 
-**Operator directive (2026-05-29):** *Less/no bridging → immediate solution.* One end-state (**S2′ interpreter-direct**). No S1/S2 staged YAML. No coarse bucket gating. No YamlStatic in this lane.
+**Operator directive (2026-05-29):** *Less/no bridging → immediate solution.* One **execution** end-state (**S2′ interpreter-direct**). No S1/S2 staged YAML. No coarse bucket gating. **T-24 / C4 projection close** still requires Shape-B checked `ci.yml` emission (atom **A15**; `src/v4/TASKS.md` amended in this PR — §6.1.1).
 
 ---
 
@@ -169,7 +169,7 @@ Exact CLI lands in A0/A2 with T-38. **There is no S1, S2, or S3 in this lane.**
 
 **T-21:** replacement for `detect-affected-components.sh`; IRT-1/IRT-4 with T-24.
 
-**T-24:** CI as `.dag`; dissolves hand YAML when **`ci.dag` is sole authority** — satisfied by **interpreter-direct harness** (Q-R1, **Q-R6**). See §6.1.1 for C4 / Shape-B reconciliation.
+**T-24:** CI as `.dag`; **Phase 1** = S2′ interpreter-direct (A0–A14); **Phase 2** = Shape-B checked `ci.yml` + delete hand YAML (A15) — **T-24 [DONE] only after both** (Q-R1, **Q-R6**; TASKS.md ratified in this PR).
 
 **T-38:** T-22 eval in CI; delete corpus shell when structured verdicts exist.
 
@@ -183,14 +183,21 @@ Exact CLI lands in A0/A2 with T-38. **There is no S1, S2, or S3 in this lane.**
 | `docs/design-pure-bootstrap-zero.md` **C4** | Committed `ci.yml` as **checked projection** from `.dag` | Sounds like generated YAML is mandatory |
 | This canvas **Q-R1 / S2′** | T-24 closes on **interpreter-direct** harness; YamlStatic **out of lane** (§10) | Sounds like no committed YAML |
 
-**Resolution (single authority — no competing close predicates):**
+**Resolution (single authority — two-phase close, no silent TASKS narrowing):**
 
-1. **Policy authority = `ci.dag` only.** Every CI computation, schedule decision, and pass/fail verdict is a Node (or `TestClaim`) evaluated via T-22. GHA does not encode policy (`if: v4`, discipline shell, duplicate git-diff).
-2. **Committed `ci.yml` at steady state = minimal harness projection**, not a parallel policy graph. It contains triggers, concurrency, permissions, runner labels, checkout, optional gunbc build, and **interpreter invocation** on `ci_pipeline` (§5). Hand-authored policy steps and coarse bucket jobs are **deleted** in atoms A1–A2 — this is the “hand-authored YAML deleted” clause in TASKS.md.
-3. **C4 satisfied without YamlStatic in this lane:** C4 requires the committed file be a **checked, non-authoritative projection** verifiable against `ci.dag` — satisfied by **binding TestClaims / smoke** (A2 extends `v4_workflow_ci_runner_dag_smoke_test` and existing M1 binding patterns) that fail if harness YAML drifts from modeled entrypoints. The harness is **authored once** in A2 and kept thin; it is not re-derived on every `ci.dag` edit via a Shape-B emitter.
-4. **Shape-B full `ci.yml` emission (TASKS.md bullet) = optional follow-on**, same class as §10 YamlStatic / `WorkflowRuntime` — useful for branch-protection ergonomics or merry-carp-style emission, **not** required for T-24 close under operator Q-R1. Post-ratification TASKS.md tweak (§6.2) narrows the close bullet to S2′ + harness binding; full emitter work stays a separate tracked item if ever scheduled.
+This canvas **does not** redefine T-24/C4 in prose alone. It **ratifies** a two-phase close in **`src/v4/TASKS.md` (same PR)** so `TASKS.md` and C4 remain authoritative.
 
-**Worker rule:** If a change adds policy to `ci.yml` instead of `ci.dag`, it violates P2 regardless of emission path.
+| Phase | Atoms | What closes | `ci.yml` role |
+|-------|-------|-------------|---------------|
+| **1 — execution** | A0–A14 | CI overhaul lane “behavior done” | **Interim:** thin GHA harness (checkout, env, interpreter on `ci_pipeline` per §5). Hand **policy** YAML + `scripts/check-*` **deleted**. Binding smoke in A2 proves harness entrypoints match `ci.dag`. **T-24 stays open.** |
+| **2 — projection (T-24 / C4)** | **A15** | **T-24 [DONE]** per TASKS + C4 | **Shape-B:** generator emits **checked** `.github/workflows/ci.yml` from `CiPipeline`; **all** hand-authored `ci.yml` removed. Committed YAML is a non-authoritative projection only. |
+
+1. **Policy authority = `ci.dag` only (both phases).** Every schedule decision and pass/fail verdict is a Node / `TestClaim` via T-22. GHA never encodes policy (`if: v4`, discipline shell, duplicate git-diff).
+2. **Phase 1 does not claim T-24 closed.** Interpreter-direct (S2′) dissolves shell bridges and bucket `if:` scheduling; it is **not** a substitute for Shape-B emission.
+3. **Phase 2 is mandatory for T-24 / C4** (`TASKS.md` L1181–1186; `design-pure-bootstrap-zero.md` C4). Shape-B checked YAML emission + deletion of hand-authored workflow YAML is **atom A15**, not an optional follow-on.
+4. **P5 preserved:** each atom still pairs modeled Node authorship with legacy deletion in the **same PR**; A15 deletes remaining hand `ci.yml` when the emitter lands.
+
+**Worker rule:** If a change adds policy to `ci.yml` instead of `ci.dag`, it violates P2. Hand-editing committed `ci.yml` after A15 is forbidden — regenerate from `ci.dag`.
 
 **T-22:** THESIS:225 — `dag run` / eval is the primary execution path.
 
@@ -199,12 +206,12 @@ Exact CLI lands in A0/A2 with T-38. **There is no S1, S2, or S3 in this lane.**
 | Task | Relationship |
 |------|----------------|
 | **T-21** | **Scheduling authority** for this overhaul |
-| **T-24** | **Closes on S2′** + atoms A0–A14 — **not** on YamlStatic (Q-R1) |
+| **T-24** | **Phase 1:** A0–A14 (S2′); **Phase 2:** A15 Shape-B — **[DONE] only after A15** (Q-R1/Q-R6) |
 | **T-38** | **A0 active now** (Q-R2); neat-wren-762 owns harness + host effects |
 | **T-15** | CI schedules self-host `TestCommand`; Lane C owns implementation |
 | **T-10/T-23** | Unchanged lens split |
 
-**Post-ratification TASKS.md tweak:** T-24 close bullet = interpreter harness + deleted hand policy scripts; pointer to §6.3 atoms.
+**TASKS.md:** T-24 close predicates amended **in this PR** (§6.1.1 table); no post-merge silent narrowing.
 
 ### 6.3 Migration atoms — project board
 
@@ -227,12 +234,13 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 | **A12** | `TestClaimCorpusEvalCommand` via interpreter | `scripts/v4-testclaim-corpus-gate.sh` | clever-cat-115 + neat-wren-762 | paused |
 | **A13** | Bootstrap viability as bootstrap chain | `scripts/v4-bootstrap-viability.sh`, posture gate | clever-cat-115 | paused |
 | **A14** | `V3IntegrationClusterCommand` + single binary | duplicate `cargo test` filters | clever-cat-115 | paused |
+| **A15** | Shape-B `ci.yml` emission from `CiPipeline` + checked-in projection | **all** hand-authored `.github/workflows/ci.yml` | clever-cat-115 + merry-carp-814 pattern | paused — **T-24 / C4 close gate** |
 
-**Removed from board (were bridging / out of lane):** YamlStatic `affected` emit, full YamlStatic `ci.yml`, emission mirror removal — see §10.
+**Removed from board (bridging only):** YamlStatic `affected` emit, emission mirror as interim schedule driver — see §10. **Not removed:** full `ci.yml` Shape-B emission (**A15**).
 
 **Dispatch rule:** work-item title starts with atom id (`A9: …`).
 
-**Paused:** A2–A14 until canvas ratified. **Active:** A0. **A1:** coordinate #3853 reframe before merge.
+**Paused:** A2–A15 until canvas ratified. **Active:** A0. **A1:** coordinate #3853 reframe before merge.
 
 ---
 
@@ -254,8 +262,8 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 
 | ID | Decision | Resolution |
 |----|----------|------------|
-| **Q-R1** | T-24 close requires YamlStatic? | **No.** **S2′-only** close. YamlStatic is **out of lane** (§10). |
-| **Q-R6** | C4 vs S2′ / TASKS Shape-B bullet | **Reconciled** (§6.1.1): `ci.dag` sole policy authority; committed harness YAML is thin, checked projection — **not** full Shape-B emission in this lane |
+| **Q-R1** | T-24 close requires Shape-B `ci.yml` emission? | **Yes (A15).** **No** staged YAML *bridging* (buckets / hand policy). S2′ = Phase 1 execution only. |
+| **Q-R6** | C4 vs S2′ / TASKS Shape-B bullet | **Reconciled in TASKS.md + §6.1.1:** two-phase close; C4 satisfied at **A15**, not by hand harness |
 | **Q-R2** | A0 before canvas ratification? | **Yes.** neat-wren-762 starts **immediately** (substrate/host-effects only). |
 | **Q-R3** | `CiComponentAffected` scheduling | **Drop** as schedule driver (default **a**). Frontier only. |
 | **Q-R4** | Staged S0/S1/S2/S3 | **Reject.** Single end-state **S2′**; S0 = today’s audit baseline only. |
@@ -267,20 +275,30 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 
 ---
 
-## 9. Acceptance criteria (“CI overhaul done”)
+## 9. Acceptance criteria
 
-1. **T-24 closed (S2′):** `ci.dag` sole CI authority; GHA = minimal harness invoking interpreter on `ci_pipeline`; **no** coarse bucket `if:` scheduling; **no** policy `scripts/check-*.sh`.
+### 9.1 CI overhaul lane done (A0–A14 complete)
+
+1. **`ci.dag` sole policy authority;** GHA invokes interpreter on `ci_pipeline` (S2′); **no** coarse bucket `if:`; **no** policy `scripts/check-*.sh`.
 2. **IRT-1 + IRT-4** on all CI `TestCommand` / corpus eval paths.
 3. **M1** real `src/v4` merkle; probe shell deleted; fail-closed on timeout.
 4. **Single** `CiGitDiffReadOutcome` per run.
-5. **Ratchet / C4:** harness + `ci_pipeline` smoke (existing `v4_workflow_ci_runner_dag_smoke_test` extended) proves committed `ci.yml` stays a checked projection of `ci.dag` entrypoints — **not** YamlStatic diff ratchet (§6.1.1).
+5. **Phase-1 ratchet:** harness binding smoke (`v4_workflow_ci_runner_dag_smoke_test` extended) — interim until A15.
 6. Audit Table A rows owned by A0–A14 or explicitly deferred.
+
+### 9.2 T-24 / C4 closed (requires A15)
+
+1. **Shape-B** checked `.github/workflows/ci.yml` emitted from `CiPipeline` in `ci.dag`.
+2. **Hand-authored `ci.yml` deleted** — no parallel workflow authority (TASKS L1182–1186; C4).
+3. **v3 string ratchets** over generated output → `TestClaim`s (existing T-24 bridge clause).
 
 ---
 
 ## 10. Out of scope
 
-- **YamlStatic / S3 `ci.yml` emission** — hyper-perf or branch-protection optimization; **not** T-24 close for this lane; merry-carp-style emission is a **follow-on** or never.
+- **YamlStatic `affected` job emit** or bucket→GHA bridging — not a schedule driver (dissolved A1).
+- **Hand-editing `ci.yml` for policy** — forbidden after A15; only generator output.
+- **A15 emitter implementation detail** — merry-carp-814 / `WorkflowRuntime` pattern informs A15; atom owner clever-cat-115 unless redispatched.
 - **Staged YAML bridging** (S1 bucket tuning, parallel hand-`ci.yml` edits, “preserve YAML during emission slice”).
 - **`CiComponentAffected` as GHA schedule driver** — dissolved in A1.
 - **`release.dag`**, **T-15 implementation**, **T-21 lens math**, **sccache infra**, **micro-optimization PRs** (#3879-class).
@@ -294,4 +312,4 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 
 ## Appendix B — Execution gate
 
-**PAUSED:** A2–A14 until operator ratifies this canvas. **ACTIVE:** A0 (neat-wren-762). **A1:** #3853 reframe coordination only until ratified.
+**PAUSED:** A2–A15 until operator ratifies this canvas. **ACTIVE:** A0 (neat-wren-762). **A1:** #3853 reframe coordination only until ratified.
