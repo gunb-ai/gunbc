@@ -145,7 +145,8 @@ fn first_forbidden_in_body(body: Node) -> Optional<DeterminismViolation> {
 
 fn module_import_forbidden(view: DependencyView) -> Optional<DeterminismViolation> {
   if view.kind == ModuleDependsOn {
-    forbidden_source_at_node(node: view.dependent)
+    let dep = view.dependent
+    forbidden_source_at_node(node: dep)
   } else {
     optional_absent()
   }
