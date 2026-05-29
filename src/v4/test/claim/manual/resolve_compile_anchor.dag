@@ -57,6 +57,7 @@ data anchor_decl_first: Symbol = anchor_decl_first
 data anchor_decl_second: Symbol = anchor_decl_second
 data anchor_imported_decl: Symbol = anchor_imported_decl
 data anchor_imported_path_segment: Symbol = anchor_imported_path_segment
+data anchor_subject_path_segment: Symbol = anchor_subject_path_segment
 data anchor_resolve_roots_pass: Symbol = anchor_resolve_roots_pass
 data anchor_resolve_roots_fail: Symbol = anchor_resolve_roots_fail
 
@@ -226,10 +227,48 @@ fn resolve_imported_module_root() -> Node {
 }
 
 
+fn resolve_subject_qn_node() -> Node {
+  fold_list_node(
+    xs: Cons { head: anchor_subject_path_segment, tail: Empty },
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: []
+      }
+    }
+  )
+}
+
+
+fn resolve_subject_module_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: dag_surface_module_header,
+        target: dag_grammar_atom(id: dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: dag_surface_module_header_qualified_name,
+        target: resolve_subject_qn_node()
+      )
+    ]
+  }
+}
+
+
+fn resolve_subject_name() -> QualifiedName {
+  QnCons { head: anchor_subject_path_segment, tail: QnEmpty }
+}
+
+
 fn resolve_roots_single_import() -> FreeMonoid<Node> {
   Cons {
-    head: resolve_imported_module_root(),
-    tail: Empty
+    head: resolve_subject_module_root(),
+    tail: Cons {
+      head: resolve_imported_module_root(),
+      tail: Empty
+    }
   }
 }
 
@@ -253,7 +292,7 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
     roots: resolve_roots_single_import(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: QnEmpty,
+        name: resolve_subject_name(),
         tree: resolve_imported_use_tree()
       },
       imports: Cons {

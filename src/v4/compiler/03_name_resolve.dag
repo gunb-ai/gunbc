@@ -407,6 +407,31 @@ fn admit_imports(
 }
 
 
+fn subject_module_root_for_name(
+  roots: FreeMonoid<Node>,
+  name: QualifiedName
+) -> Outcome<Node> {
+  match module_root_for_name_fold(
+    roots: roots,
+    name: name,
+    acc: ModuleRootNotFound
+  ) {
+    ModuleRootFoundOnce { root: subject_root } =>
+      Accepted { value: subject_root, diagnostics: None }
+    ModuleRootNotFound =>
+      Rejected {
+        diagnostics: resolve_diagnostics(reason: resolve_module_not_found)
+      }
+    ModuleRootFoundDuplicate =>
+      Rejected {
+        diagnostics: resolve_diagnostics(reason: resolve_duplicate_module_name)
+      }
+    ModuleRootProjectionRejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+
 fn namespace_for_subject(
   lm: DagLanguageModel,
   roots: FreeMonoid<Node>,
@@ -415,26 +440,33 @@ fn namespace_for_subject(
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: validated_roots, diagnostics: _ } =>
-      let base = build_program_namespace(tree: admission.subject.tree, lm: lm)
-      match admit_imports(
+      match subject_module_root_for_name(
         roots: validated_roots,
-        imports: admission.imports,
-        state: admit_named_exports(
-          root: admission.subject.tree,
-          origin: admission.subject.name,
-          state: admission_initial(base: base)
-        )
+        name: admission.subject.name
       ) {
-        AdmissionAccepted { bindings: b, origins: _ } =>
-          Accepted {
-            value: Namespace {
-              bindings: b,
-              canonical_symbols: base.canonical_symbols
-            },
-            diagnostics: None
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: subject_module_root, diagnostics: _ } =>
+          let base = build_program_namespace(tree: admission.subject.tree, lm: lm)
+          match admit_imports(
+            roots: validated_roots,
+            imports: admission.imports,
+            state: admit_named_exports(
+              root: subject_module_root,
+              origin: admission.subject.name,
+              state: admission_initial(base: base)
+            )
+          ) {
+            AdmissionAccepted { bindings: b, origins: _ } =>
+              Accepted {
+                value: Namespace {
+                  bindings: b,
+                  canonical_symbols: base.canonical_symbols
+                },
+                diagnostics: None
+              }
+            AdmissionRejected { diagnostics: d } =>
+              Rejected { diagnostics: d }
           }
-        AdmissionRejected { diagnostics: d } =>
-          Rejected { diagnostics: d }
       }
   }
 }

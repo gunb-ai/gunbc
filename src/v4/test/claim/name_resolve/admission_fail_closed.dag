@@ -153,7 +153,25 @@ fn resolve_duplicate_module_roots_is_rejected() -> Bool {
     roots: fc_duplicate_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: QnEmpty,
+        name: fc_qn(seg: fc_dup_seg),
+        tree: fc_subject_tree()
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+
+fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: fc_single_found_root(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: fc_missing_seg),
         tree: fc_subject_tree()
       },
       imports: Empty
@@ -178,6 +196,15 @@ data claim_resolve_duplicate_module_roots_is_rejected: TestClaim = CompilesClaim
   label: "name_resolve/validate_module_roots: duplicate projected module names are rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fc_claim_input(ok: resolve_duplicate_module_roots_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_resolve_subject_name_not_in_roots_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/resolve_with_admission: subject name not in validated roots is rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_subject_name_not_in_roots_is_rejected()),
   expected_value: fc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
