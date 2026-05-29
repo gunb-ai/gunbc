@@ -154,6 +154,7 @@ fn admit_export_symbol(
 }
 
 
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-qualified-name — hand-rolls Empty/Cons accumulation over FreeMonoid<QualifiedName>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
 fn module_root_name_find_fold(
   names: FreeMonoid<QualifiedName>,
   name: QualifiedName,
