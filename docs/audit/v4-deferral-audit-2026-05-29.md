@@ -42,14 +42,22 @@ occurrence gates) is summarized after.
 **Bind:** T-25-core (refine substrate; `Refined<Int>` carrier with predicate
 ≥ 0 / ≥ 1).
 
-**Status of upstream:** T-25-core is **not landed** — there is no
-`Refined<Int>` constructor in `std/`.
+**Status of upstream — CORRECTED 2026-05-29 (cursor review on this PR):**
+T-25-core **IS LANDED** (`src/v4/std/refinement.dag` — PR #3354). `Refined<B>`
++ `Validation<B>` + `refine` exist; `Refined<Int>` is in active use in
+`extdeps/posix.dag:20`, `extdeps/formatters/ktfmt.dag:29`, and
+`extdeps/formatters/lean4_format.dag:18`.
+`src/v4/TASKS.md:1252` records **`T-25 [SUBSTRATE LANDED]`**.
 
-**Classification:** **NECESSARY.** Every formatter field annotated `must be
-≥0` or `must be ≥1` is a `Refined<Int>` once the predicate prover lands.
-Replacing the field today would require the substrate; doing so without it
-is the very "cement Rust into templates to satisfy a ratchet" anti-pattern
-the project spirit forbids.
+**Classification — CORRECTED:** **UNNECESSARY.** All 63 sites can replace
+their annotated `Int` fields with `Refined<Int>` today against the existing
+substrate. Each per-field "must be ≥0" / "must be ≥1" annotation becomes the
+`Validation<Int>` predicate. This is the largest UNNECESSARY cluster in the
+audit and inverts the headline.
+
+**Why the original audit missed this:** the §B inspection list omitted
+`refinement.dag` (action §A8 below). The bind line reads correctly; the
+upstream-status check was wrong.
 
 ### §1.2 `config-patch-record-projection`  (13 sites · `std/patch.dag` +
 9 formatter files)
@@ -102,13 +110,13 @@ local predicate over the same config record.
 **Bind:** T-4.16 follow-on. Dissolve-on: replace `List<String>` with
 `List<Refined<String>>` validating gitignore-format Unix paths.
 
-**Status of upstream:** `Refined<T>` requires T-25-core (same gap as §1.1).
-Although the dissolve mark says "T-4.16 follow-on", the *actual* substrate
-need is T-25-core.
+**Status of upstream — CORRECTED 2026-05-29:** Same correction as §1.1 —
+`Refined<B>` is generic and available now (`std/refinement.dag`,
+PR #3354). `Refined<String>` requires only a `Validation<String>`
+gitignore-path predicate.
 
-**Classification:** **NECESSARY.** The bind line is misleading; the real
-upstream is T-25-core. Recommend retagging the bind to `bind T-25-core` for
-single-authority clarity (action §A1).
+**Classification — CORRECTED:** **UNNECESSARY.** Can land in T-4.16's
+current dispatch.
 
 ### §1.6 `rustfmt-unstable-option-validity`  (1 site · rustfmt)
 
@@ -167,14 +175,16 @@ intra-task slicing):
 * `feature:t11-grammar-from-token-row` (2 sites) — bind T-11; not landed.
 * `feature:network-validated-components` (2 sites) — bind T-26 boundary
   carriers; not landed.
-* `feature:t19-claim-anchor-split` (3 sites) — bind T-19 (DONE) but the
-  dissolution edits are pending across consumer files; **this one warrants
-  follow-up** — T-19 is closed, so the consumers should now dissolve. See
-  action §A4.
+* `feature:t19-claim-anchor-split` (3 sites) — bind T-19. **CORRECTED
+  2026-05-29:** T-19 itself is closed but `src/v4/TASKS.md:1042` records an
+  active **T-19 Phase-2** follow-up which is the actual dissolve trigger
+  ("when T-19 Phase-2 defines separate corpus types for generated vs manual
+  TestClaim rows … the union dissolves"); `std/verification.dag:196` still
+  carries the matching `RULING-1: needs-more-work` mark. The original audit
+  draft mis-read this as stale. **The bind is correctly active.**
 
-**Long-tail classification:** **NECESSARY** for all but
-`t19-claim-anchor-split` (which is **stale** — should have dissolved when
-T-19 closed; see §A4).
+**Long-tail classification:** **NECESSARY** across the long tail
+(`t19-claim-anchor-split` included — corrected per above).
 
 ---
 
@@ -269,68 +279,90 @@ deferral inside a "staging" noun.
 
 ---
 
-## §5. Summary
+## §5. Summary — CORRECTED 2026-05-29 (post-cursor-review)
 
 | Population | Sites | NECESSARY | UNNECESSARY |
 | --- | ---: | ---: | ---: |
-| `🟡 gated — feature:*` distinct gates | 97 | 94 | **3** (§1.3 cross-field, §1.4 deprecated-alias, §1.6 unstable-option-validity) |
-| `🟡 gated` annotation occurrences | 282 | ~276 | ~6 (the 3 above span 6 annotation rows) |
-| `🟡 needs-more-work` | 53 | 36 | **17** (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
+| `🟡 gated — feature:*` distinct gates | 97 | 92 | **5** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity) |
+| `🟡 gated` annotation occurrences | 282 | ~213 | **~69** (§1.1 alone is 63 sites) |
+| `🟡 needs-more-work` | 53 | 36 | 17 (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
 
-**Headline:** the v4 deferral ledger is **overwhelmingly honest** — every
-prose deferral and the long tail of feature gates trace to a real upstream
-substrate gap or an external (Lean4-upstream / dispatch-hold) trigger.
+**Headline — REVISED:** the v4 deferral ledger has **one large unnecessary
+cluster** — `formatter-int-refinement` (63 sites · 9 formatter files)
+should have dissolved when T-25-core (`std/refinement.dag`) landed in
+PR #3354. Prose deferrals and the long tail of feature gates remain
+honest. Combined with the four smaller T-4.16 follow-on gates (§1.3, §1.4,
+§1.5, §1.6), there is a clear T-4.16 close-out opportunity to dissolve
+~69 yellow marks against substrate that already exists.
 
-The misclassifications cluster narrowly in **two places**:
+The misclassifications cluster in **two places**:
 
-1.  **Three T-4.16 "follow-on" gates** that are intra-task slicing, not
-    upstream reorder (§1.3, §1.4, §1.6). These could land in T-4.16's
-    current dispatch without any prior substrate work.
-2.  **One stale bind label** (§1.8) and **one mis-rooted bind** (§1.5)
-    where the named upstream is misleading (substrate is fine, but the
-    bind line points at the wrong gate).
+1.  **One stale-substrate cluster (§1.1)** — `formatter-int-refinement`
+    still tagged "wait on T-25-core" though T-25-core landed PR #3354.
+2.  **Four T-4.16 "follow-on" gates** that are intra-task slicing, not
+    upstream reorder (§1.3, §1.4, §1.5, §1.6). All four can land in
+    T-4.16's current dispatch against substrate that exists today
+    (Witness, Option<T>, Refined<B>).
 
-The `testgen.dag` RULING-1 cluster (§A5) is a labelling defect, not a
-deferral defect: the work is genuinely open, but the bind names a closed
-task.
+One labelling defect: **§1.8** (`swift-format-rules-carrier`) — bind
+points at "T-4.16 follow-on" but the real upstream is a v4-language Map
+primitive (action §A3). The `testgen.dag` RULING-1 cluster (§A5) is also a
+labelling defect: work is open, bind names a closed task.
 
 ---
 
 ## §A. Action items
 
-* **§A1 — re-bind `rustfmt-ignore-path-refinement`** from
-  `T-4.16 follow-on` → `T-25-core` (it's a `Refined<String>` gap, same as
-  §1.1). Single-line edit in `rustfmt.dag`.
+* **§A1 — DISSOLVE `formatter-int-refinement` (63 sites)** against the
+  landed `std/refinement.dag` substrate. Replace each annotated `Int`
+  field with `Refined<Int>` + the per-field `Validation<Int>` predicate.
+  Reference patterns: `extdeps/posix.dag` ProcessId/ExitCode wrappers and
+  `extdeps/formatters/ktfmt.dag:29`. **This is the largest single
+  dissolution available** in the v4 corpus today.
 * **§A2 — re-bind `lean4-option-closed-set`** from `T-4.16 follow-on` →
   `upstream:lean4-fixed-option-set` to surface the external dependency.
   Edit in `lean4_format.dag`.
 * **§A3 — re-bind `swift-format-rules-carrier`** from `T-4.16 follow-on` →
   `v4-lang:map-primitive`. Edit in `swift_format.dag`.
-* **§A4 — dissolve `feature:t19-claim-anchor-split`** consumer sites
-  (T-19 is DONE; these are stale yellow marks). Sweep across 3 sites.
+* **§A4 — (RETRACTED 2026-05-29).** Original draft proposed dissolving
+  `feature:t19-claim-anchor-split` consumers. **Wrong** — `TASKS.md:1042`
+  records active T-19 Phase-2 follow-up that is the actual dissolve
+  trigger; `std/verification.dag:196` still carries the matching
+  `RULING-1: needs-more-work`. The bind is correctly active. No action.
 * **§A5 — re-bind `lens/testgen.dag` RULING-1 cluster** (17 sites) from
   T-19 to `RULING-1` (the open design ruling), so the open status is
   honest. Sweep edit.
-* **§A6 — UNNECESSARY: collapse three intra-task gates into T-4.16's
+* **§A6 — UNNECESSARY: collapse four intra-task gates into T-4.16's
   current dispatch:**
-  * `formatter-cross-field-constraints` — author `*ConfigValidation`
-    witnesses for rustfmt / ktfmt / black against existing Witness
-    substrate. 3 files.
-  * `rustfmt-deprecated-alias` — author the canonical-wins precedence
-    predicate over `RustfmtConfig`. 1 file.
-  * `rustfmt-unstable-option-validity` — migrate unstable rustfmt fields
-    to `Option<T>` (substrate present in `std/option.dag`). 1 file.
+  * `formatter-cross-field-constraints` (3 sites) — author
+    `*ConfigValidation` witnesses for rustfmt / ktfmt / black against
+    existing Witness substrate.
+  * `rustfmt-deprecated-alias` (1 site) — author the canonical-wins
+    precedence predicate over `RustfmtConfig`.
+  * `rustfmt-unstable-option-validity` (1 site) — migrate unstable
+    rustfmt fields to `Option<T>` (substrate present in
+    `std/option.dag`).
+  * `rustfmt-ignore-path-refinement` (1 site) — replace
+    `List<String>` with `List<Refined<String>>` against landed
+    `std/refinement.dag` (cross-ref §A1).
 
   **None of these requires upstream substrate work.** Recommend folding
   into T-4.16's close conditions (or a tight follow-on PR explicitly
   tagged as task-completion, not substrate-wait).
 
 * **§A7 — `config-patch-record-projection` is the highest-leverage
-  dissolution** (12 consumer sites + 1 substrate site). Although correctly
-  classified NECESSARY today, landing the projection in `std/patch.dag`
-  immediately dissolves all 12 formatter consumer hand-mirrors. Recommend
-  prioritising the projection inside T-4.16.
+  remaining substrate dissolution** (12 consumer sites + 1 substrate
+  site). Although correctly classified NECESSARY today, landing the
+  projection in `std/patch.dag` immediately dissolves all 12 formatter
+  consumer hand-mirrors. Recommend prioritising the projection inside
+  T-4.16.
+
+* **§A8 — audit methodology fix:** the §B inspection list omitted
+  `src/v4/std/refinement.dag`, which caused the §1.1 / §1.5 NECESSARY
+  miscall. Future audit passes that touch `Refined<*>` claims must check
+  `refinement.dag` directly (or use `TASKS.md` `[SUBSTRATE LANDED]`
+  markers as the authoritative status surface).
 
 ---
 
@@ -340,7 +372,9 @@ task.
   name collapse to one classification row.
 * "Substrate present?" was checked by direct file inspection of
   `src/v4/std/` (`patch.dag`, `option.dag`, `witness.dag`) and by `git log`
-  status of T-tasks named in bind lines.
+  status of T-tasks named in bind lines. **Original draft omitted
+  `refinement.dag` from this list** — fixed in §A8; the §1.1 and §1.5
+  rows were corrected after cursor review surfaced the gap.
 * Where a bind line is misleading (§1.5, §1.8, §A5), the misclassification
   was charged against *labelling*, not against the deferral itself; the
   underlying status (NECESSARY / UNNECESSARY) is reported per the actual
