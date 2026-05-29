@@ -280,6 +280,10 @@ type ItemKeywords {
   import_keyword: String
   import_from_keyword: String
 }
+// Look up an emission keyword by item kind from a SyntaxSpec's item_forms.
+// Fails closed with an error marker if no matching ItemForm exists.
+// M5: "No fallbacks that fabricate" — missing item form is a data bug
+// that should cause visible compilation failure, not silent "" emission.
 fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
   let matching = forms |> filter(f => f.kind == kind)
   match matching |> first {

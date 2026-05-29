@@ -2207,6 +2207,7 @@ fn emit_algebra_method_template(method_name: String, recv_str: String,
     None => none
   }
 }
+// Shared typed first arg — renders first method argument or fails closed.
 fn emit_typed_first_arg_shared(args: List<Node>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
   match args |> first {
     Some { value: a } => recurse(arg_value(n: a))
@@ -2412,6 +2413,8 @@ fn emit_match_arm_line(
   concat(make_indent(level: case_depth), case_kw, guard_str, ":\n",
     make_indent(level: body_depth), body_str)
 }
+// Render guard expression from arm. Reads guard_prefix from ExpressionSemantics.
+// Fails closed if a guard is present but the target has no guard syntax.
 fn emit_arm_guard(arm: Node, target: RenderTarget, render_guard_expr: fn(Node) -> String) -> String {
   let es = language_spec(target: target).expression_semantics
   match arm_guard(n: arm) {

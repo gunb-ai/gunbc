@@ -3296,11 +3296,15 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
     )
   }
 }
+// CX-L2 hybrid: self-edges from descent_evidence annotations, cross-edges from old system.
+// This uses the richer CX-L2 classification for self-calls (accessor let-bindings,
+// collection+lambda, arithmetic) while keeping the existing cross-call infrastructure.
 fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<ProofEdge> {
   let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
   members |> flat_map(name =>
     match map_get(func_index, name) {
       Some { value: entry } =>
+        // Self-edge: read CX-L2 descent_evidence from annotated self-calls
         let self_evidence = collect_self_call_evidence(body: entry.body, fn_name: name, si: si)
         let self_has_calls = self_evidence |> count > 0
         let self_all_structural = self_has_calls && self_evidence |> all(call_ev =>
@@ -3357,6 +3361,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
     }
   )
 }
+// Extract the actual descending parameter name from CX-L2 evidence for the first SCC member.
 fn scc_descending_param(members: List<String>, func_index: Map<String, FuncEntry>, si: Map<String, NewlineIndex>) -> String {
   members |> fold(init: "", f: (found, name) =>
     if found != "" { found }
@@ -3385,6 +3390,7 @@ fn scc_descending_param(members: List<String>, func_index: Map<String, FuncEntry
   )
 }
 fn construct_scc_termination_proof(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> TerminationProof? {
+  // CX-L2 hybrid: self-edges from descent_evidence, cross-edges from old system
   let cx_l2_edges = collect_scc_cx_l2_tree_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
   let cx_l2_all_known = cx_l2_edges |> all(e =>
     match e.evidence |> first {

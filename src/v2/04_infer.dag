@@ -450,6 +450,10 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(kind: InternalExprError, message: message, span: span)
 }
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
+  // BRIDGE DEBT (M4): uses has_child_named to verify variant membership.
+  // scope.locals contains ALL locals (params, let bindings, match bindings),
+  // not just variant bindings — the Disj check alone is insufficient.
+  // Deletion point: when variant bindings carry a structural parent edge.
   match map_get(scope.locals, name) {
     Some { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
@@ -484,6 +488,9 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
 fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  // Regression pin for legacy authoring forms that wrote a String into an
+  // optional coproduct field. Broader coproduct assignability belongs to the
+  // general record-field type-check path.
   let expected_inner = with_required_cardinality(n: expected)
   let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_inner.connective == Disj
   let got_is_string = authored_name_at(source_indices: source_indices, node: got) == "String"
@@ -2391,7 +2398,7 @@ type SizeExpr
   | DividedSize { param: String, divisor: Int }
 type DescentContext {
   fn_name: String
-  param_names: Map<String, String>
+  param_names: Map<String, String> // param_name → type_name (M4: String proxy)
   param_order: List<String>
   type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
@@ -3883,6 +3890,10 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
       let scrut_prov = classify_body_provenance(expr: scrut, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
       let arms = match_arm_nodes(texpr: expr)
       let arm_provs = arms |> map(arm =>
+        // Extend let_prov with arm bindings composed through inductive fields.
+        // Uses field_binding_pattern (Bind { name }) for the introduced binding name,
+        // field_binding_name_at for the field label in inductive field lookup.
+        // Includes variant_name in the filter. Fails closed on unmatched fields.
         let arm_let_prov = match arm_pattern(n: arm) {
           VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
             fold(bindings, init: let_prov, f: (acc, binding) =>
@@ -4212,6 +4223,11 @@ fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>,
     None => empty_map()
   }
 }
+// Walk return-position expressions collecting ExprRecordLit nodes whose
+// parent_enum matches. Only recurses into return positions: match arm bodies,
+// if then/else branches, let bodies, block last statements. Does NOT recurse
+// into match scrutinees, if conditions, or let values — those are not return
+// positions and could fabricate contracts from temporary same-enum literals.
 fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, Map<String, Map<String, SubValueRelation>>>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
   match body.expr_data {
     ExprRecordLit { parent_enum: pe } =>
@@ -5014,6 +5030,8 @@ fn build_module_context(contributions: List<ItemContribution>,
           Some { value: prev } =>
             let prev_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: prev.resolved)) != none
             if curr_is_imported && prev_is_imported {
+              // Both enums explicitly imported — ambiguous. Remove the
+              // binding so later phases cannot consume a fabricated choice.
               VariantFoldState {
                 locals: vacc.locals,
                 collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: authored_name_at(source_indices: env.source_indices, node: child), enum1: authored_name_at(source_indices: env.source_indices, node: prev.resolved), enum2: authored_name_at(source_indices: env.source_indices, node: binding.resolved), span: no_span() }, module_name: module_name))

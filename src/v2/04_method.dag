@@ -28,6 +28,14 @@ fn list_of_type_variable(id: String) -> Node {
 fn list_of_element(element: Node) -> Node {
   make_container_type(kind_name: "List", element: element).ty
 }
+// Builtin function return type registry.
+//
+// BRIDGE: This map_insert chain is a duplicate authority over facts that
+// should come from .dag function declarations (extern fn signatures).
+// Deletion point: when builtins are actual .dag definitions that the
+// compiler loads and resolves, this registry is deleted. See review
+// feedback on BuiltinReturnKind — the proper model is definition nodes,
+// not a return-type proxy enum.
 fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
   map_insert(empty_map(), key, value)
 }

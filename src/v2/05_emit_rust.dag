@@ -3366,6 +3366,12 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
     _ => emit_typed_expr(texpr: lambda_expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   }
 }
+// Emit a fold lambda with typed accumulator and element parameters.
+// The accumulator type is always emitted as `_` because the reconciler's inferred
+// BRIDGE: emitter compensation — uses acc_type_str as fallback for fold lambda
+// accumulator annotation. Blocked on inference fold accuracy (CX-C).
+// The inferred type for fold accumulators is often wrong (e.g. bare Map<String, String>
+// instead of Map<String, Rc<T>>). Rust can infer the correct type from init and body.
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda =>
@@ -3632,6 +3638,8 @@ fn emit_rust_get_method_call(receiver: Node, args: List<Node>, registry: Map<Str
     Some { value: a } => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     None => "compile_error!(\"get method missing index\")"
   }
+  // Distinguish Map.get (key lookup) from List.get (index access).
+  // Guard: if receiver type is unresolved, don't fabricate list indexing.
   let receiver_resolved = match receiver.inferred {
     Some { value: Resolved { node: _ } } => true
     _ => false
@@ -4553,6 +4561,11 @@ fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<S
 }
 // =========================================================================
 // Service definition emission
+//
+// Each service becomes:
+//   - A client struct with config fields
+//   - An impl block with one async method per operation
+//   - Transport-specific call scaffolding (REST -> reqwest, Shell -> Command)
 // =========================================================================
 fn emit_service_def(
   item: Node,

@@ -441,6 +441,10 @@ fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> St
     None => ""
   }
 }
+// BRIDGE DEBT (M4 Lane 2): child lookup by authored string name.
+// Deletion point: when Node.name is removed, replace all call sites
+// with positional access (children[i]) or structural field identity.
+// Until then, routes through authored_name_at for source-derived names.
 fn find_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   match n.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == name) |> first {
     Some { value: ch } => Some { value: ch }
