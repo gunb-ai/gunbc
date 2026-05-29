@@ -157,6 +157,10 @@ fn cache_summary(table: CostInternTable, func_name: String, summary: ComplexityS
 fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummary? {
   map_get(table.summaries, func_name)
 }
+// Evict a summary from the intern table, dropping its CostExpr trees.
+// Replaces the full CostExpr tree with a trivial constant so the Rc
+// nodes of the original tree are freed. Safe only when no future caller
+// will read this summary (fan-in has reached 0).
 fn evict_summary(table: CostInternTable, func_name: String) -> CostInternTable {
   cache_summary(table: table, func_name: func_name, summary: ComplexitySummary {
     work: CostConst { value: 0 },
@@ -231,6 +235,9 @@ type SccEdgeBlockAcc {
   edges: List<ParserProgressEdge>
   vars: Map<String, Bool>
 }
+// CX-C: Check if a method has algebra iteration semantics (fold, map, etc.)
+// by reading the structural MethodSemantics fact carried on ExprMethodCall,
+// rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
     Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } } => true
@@ -253,6 +260,12 @@ fn method_callback_element_position(method_semantics: MethodSemantics?) -> Int? 
     _ => none
   }
 }
+// Extract the element parameter name from a lambda argument using the
+// algebra template's callback_element_position. The template declares
+// which CallableOf param receives IteratedSubValue of the receiver —
+// this function reads that declared position and indexes into the
+// lambda's params via skip(position). Fail-closed: returns none when
+// no template declares a position (no heuristic guessing).
 fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node, si: Map<String, NewlineIndex>) -> String? {
   let params = lambda_param_names_at(texpr: lambda, source_indices: si)
   match method_callback_element_position(method_semantics: method_semantics) {
@@ -1467,7 +1480,19 @@ fn has_arithmetic_descent(body: Node, func_name: String, si: Map<String, Newline
 }
 // =========================================================================
 // CX-1: Container-child descent and list-shrinkage proofs.
+//
+// Container-child descent: function matches on param.expr_data (or
+// unwraps param.children) and recurses on accessor(param) results.
+// Each accessor projects into param.children → strict tree descent.
+//
+// List shrinkage: function matches on list |> first, recurses on
+// list |> skip(1). List length strictly decreases.
 // =========================================================================
+// Check if an expression is `accessor(param)` where accessor is a known
+// child-position accessor from 00_core.dag.
+// CX-L: recognize accessor(param) AND accessor(descent_var) as child descent.
+// If a is a descent var (sub-tree of param), then accessor(a) extracts a child
+// of that sub-tree — strictly smaller than param.
 fn is_accessor_of_param(expr: Node, param_name: String, vars: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -1494,15 +1519,22 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>,
         ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base, source_indices: si) == param_name
         _ => false
       }
+    // CX-K: a variable previously bound to param.children is also children.
     ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name_at(texpr: expr, source_indices: si))
     ExprMethodCall { method_semantics: ms } =>
       match method_size_effect(method_semantics: ms) {
         Some { value: ShrinkEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
         _ => false
       }
+    // CX-J: skip(param.children, N) function-call form is normalized to
+    // ExprMethodCall by inference (04_infer.dag Tier 2 bridge). Dead post-inference.
     _ => false
   }
 }
+// CX-C: Check if an expression is structural children of the parameter
+// or a known descent variable. Handles:
+// - param.children / descent_var.children
+// - param.children |> skip(N) / descent_var.children |> skip(N)
 fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Bool {
   is_children_of_param(expr: expr, param_name: param_name, vars: vars, si: si)
   || match expr.expr_data {
@@ -1520,6 +1552,8 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
         Some { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
         _ => false
       }
+    // CX-J: skip(descent_var.children, N) function-call form is normalized to
+    // ExprMethodCall by inference (04_infer.dag Tier 2 bridge). Dead post-inference.
     _ => false
   }
 }
@@ -1536,6 +1570,10 @@ fn is_child_descent_expr(expr: Node, param_name: String, vars: Map<String, Bool>
     }
   }
 }
+// CX-D: Tree-size-preserving wrapper transparency.
+// Some functions return a Node with identical children/structure but different
+// surface properties (e.g., cardinality). The complexity analyzer can see
+// through these wrappers: wrapper(n: arg) has the same tree size as arg.
 fn is_tree_size_preserving_wrapper(expr: Node, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -1550,6 +1588,11 @@ fn wrapper_inner_arg(expr: Node) -> Node {
     None => expr
   }
 }
+// CX-D: Sub-value extraction. Some functions return a proper sub-value of
+// their Node argument (tree_size(result) < tree_size(arg)). Unlike wrappers
+// which preserve tree size, extractors strictly reduce it.
+// rt_type extracts n.inferred.Resolved.node; param_node_type_expr extracts
+// n.children |> first. Both produce a strict sub-value of the input Node.
 fn is_sub_value_extractor(expr: Node, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -1576,6 +1619,8 @@ fn is_list_shrink_expr(expr: Node, param_name: String, si: Map<String, NewlineIn
         ExprVar { binding_kind: _ } => expr_var_name_at(texpr: method_receiver(texpr: expr), source_indices: si) == param_name
         _ => false
       }
+      // Verify skip amount is a positive integer literal (fail-closed: skip(0) or
+      // non-literal skip amounts are not accepted as descent evidence).
       && match method_arg_nodes(texpr: expr) |> first {
         Some { value: arg_node } =>
           match arg_value(n: arg_node).expr_data {
@@ -1587,6 +1632,10 @@ fn is_list_shrink_expr(expr: Node, param_name: String, si: Map<String, NewlineIn
     _ => false
   }
 }
+// CX-R: Check if an expression is ANY_EXPR |> skip(N) with N > 0.
+// Unlike is_list_shrink_expr (which requires the receiver to be the measure
+// param variable), this permits arbitrary receivers — callers classify the
+// receiver's evidence separately and elevate NonIncreasing to Strict.
 fn is_generalized_shrink(expr: Node, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
     ExprMethodCall { method_semantics: ms } =>
@@ -1639,6 +1688,7 @@ fn is_tokens_consuming_call(expr: Node, param_name: String, vars: Map<String, Bo
     _ => false
   }
 }
+// CX-R: Extract the `tokens` named argument from a consuming parser call.
 fn consuming_tokens_arg(expr: Node, si: Map<String, NewlineIndex>) -> Node? {
   expr.children |> fold(init: none, f: (acc, child) =>
     match acc {
@@ -1653,6 +1703,9 @@ fn consuming_tokens_arg(expr: Node, si: Map<String, NewlineIndex>) -> Node? {
     }
   )
 }
+// CX-R: Check if an expression carries the tokens dimension — either the
+// measure param itself, a descent var, or a NonIncreasing alias (field-name
+// provenance, list shrink, or pass-through wrapper of any of these).
 fn is_tokens_input_expr(expr: Node, param_name: String, vars: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -1718,8 +1771,14 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
           Some { value: last_stmt } => expr_contains_descent(expr: last_stmt, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
           None => false
         }
+      // CX-Q: bare param is NOT descent — only proper sub-values are.
+      // param.field IS descent (field access reduces tree), but param alone
+      // is Same/NonIncreasing. Conflating them caused is_if_option_descent
+      // to promote `if cond { param } else { none }` as descent.
       ExprVar { binding_kind: _ } =>
         set_has(m: vars, key: expr_var_name_at(texpr: expr, source_indices: si))
+      // CX-E: param.field or descent_var.field is a sub-value (acyclic construction),
+      // but only if the field is a known sub-value field (structural witness).
       ExprFieldAccess =>
         let field = field_access_field_at(texpr: expr, source_indices: si)
         let base = field_access_base(texpr: expr)
@@ -1730,6 +1789,8 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
             bname == param_name || set_has(m: vars, key: bname)
           _ => false
         }
+      // CX-M: methods with a declared size effect (projection, shrink, identity)
+      // preserve or extract descent. If the receiver is descent, the result is descent.
       ExprMethodCall { method_semantics: ms } =>
         let receiver = method_receiver(texpr: expr)
         match method_size_effect(method_semantics: ms) {
@@ -1742,6 +1803,9 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
     }
   }
 }
+// CX-F: Extract variable bindings from nested match patterns.
+// Handles arbitrarily deep patterns like Some { value: Resolved { node: x } }
+// by recursing into VariantPattern field bindings.
 fn collect_field_binding_names(fb: Node, vars: Map<String, Bool>) -> Map<String, Bool> {
   match field_binding_pattern(n: fb) {
     Bind { name: binding_name } => map_insert(vars, binding_name, true)
@@ -1785,6 +1849,19 @@ fn is_if_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, 
     _ => false
   }
 }
+// CX-J: Match-option descent for let-bindings.
+// Recognizes `match descent_expr { Some { value: v } => v, None => default }`
+// where the scrutinee contains descent and a variant arm extracts the value.
+// Requires: at least one arm extracts a variant binding, AND all non-extracting
+// arms are safe (don't return param_name directly — that would pass through
+// the original value without descent).
+//
+// This function is generic on VariantPattern structure — it does not hardcode
+// Option/Result type names. Any sum type with a variant that carries a sub-value
+// is recognized. A full coproduct projection metadata registry (like
+// function_size_effects for functions) would let the analyzer distinguish
+// "projection extracts a strict sub-value" from "projection extracts an
+// unrelated value". Deferred to CX-D (coproduct metadata in std/).
 fn is_match_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool, si: Map<String, NewlineIndex>) -> Bool {
   match val.expr_data {
     ExprMatch =>
@@ -1834,7 +1911,9 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       }
       // RC-2: if cond { descent } else { none } → conditional descent via Option
       let is_option_descent = is_if_option_descent(val: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+      // CX-J: match descent_expr { Some { value: v } => v, None => default }
       let is_match_descent = is_match_option_descent(val: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+      // CX-D: wrapper(descent_expr_or_var) preserves descent status
       let is_wrapped_descent = if is_tree_size_preserving_wrapper(expr: val, si: si) {
         let inner = wrapper_inner_arg(expr: val)
         let inner_is_descent = (check_child && is_child_descent_expr(expr: inner, param_name: param_name, vars: vars, si: si))
@@ -1845,6 +1924,7 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
         }
         inner_is_descent || inner_is_var
       } else { false }
+      // CX-D: extractor(descent_or_param) produces a strict sub-value
       let is_extraction_descent = if is_sub_value_extractor(expr: val, si: si) {
         let inner = extractor_inner_arg(expr: val)
         let inner_is_descent = (check_child && is_child_descent_expr(expr: inner, param_name: param_name, vars: vars, si: si))
@@ -1859,6 +1939,8 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
         }
         inner_is_descent || inner_is_var || inner_is_param
       } else { false }
+      // CX-K: param.children / descent_var.children is a children-list alias.
+      // Adding to vars allows `ss |> first/last` to be recognized as child descent.
       let is_children_list = match val.expr_data {
         ExprFieldAccess =>
           let base = field_access_base(texpr: val)
@@ -1872,6 +1954,7 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
           }
         _ => false
       }
+      // CX-R: pass-through call wrapping a descent expression
       let is_passthrough_descent = if is_list_passthrough_call(expr: val, si: si) {
         match list_passthrough_inner_arg(expr: val, si: si) {
           Some { value: inner } =>
@@ -1884,6 +1967,10 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
           None => false
         }
       } else { false }
+      // CX-R: tokens-consuming call (parser convention).
+      // Any call with a named `tokens:` arg where the input traces back to
+      // the measure param is treated as consuming. The result carries
+      // strictly smaller tokens, so the binding is added to descent_vars.
       let is_consuming_helper = check_list && is_tokens_consuming_call(expr: val, param_name: param_name, vars: vars, si: si)
       let val_is_descent = is_direct_descent || is_descent_var || is_option_descent || is_match_descent || is_wrapped_descent || is_extraction_descent || is_children_list || is_passthrough_descent || is_consuming_helper
       let next_vars = if val_is_descent {
@@ -1898,6 +1985,9 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
         None => next_vars
       }
     ExprMatch =>
+      // If scrutinee is a descent expr, a descent var, or the parameter itself,
+      // then variant field bindings are structural parts (descent).
+      // CX-B: generalized from Some-only to all variant patterns.
       let scrut = match_scrutinee(texpr: body)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let scrut_is_param = match scrut.expr_data {
@@ -1939,6 +2029,8 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       body.children |> fold(init: vars, f: (acc, stmt) =>
         collect_descent_vars(body: stmt, param_name: param_name, vars: acc, check_child: check_child, check_list: check_list, si: si)
       )
+    // CX-H: ExprReturn wraps an inner expression — recurse into it so that
+    // descent vars from match arms inside `return match ... { }` are visible.
     ExprReturn =>
       match body.children |> first {
         Some { value: inner } => collect_descent_vars(body: inner, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
@@ -1973,6 +2065,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
         _ => false
       }
       let is_option = is_if_option_descent(val: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+      // CX-K: param.children / descent_var.children is a children-list alias
       let is_children_list = match val.expr_data {
         ExprFieldAccess =>
           let base = field_access_base(texpr: val)
@@ -1998,6 +2091,8 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
       let scrut = match_scrutinee(texpr: body)
       let scrut_ok = all_self_calls_descend_inc(body: scrut, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+      // CX-B: scrutinee IS the parameter or a known descent var —
+      // variant field bindings are structural parts (standard induction).
       let scrut_is_param = match scrut.expr_data {
         ExprVar { binding_kind: _ } =>
           let sname = expr_var_name_at(texpr: scrut, source_indices: si)
@@ -2053,6 +2148,8 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
         all_self_calls_descend_inc(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       ))
     ExprMethodCall { method_semantics: ms } =>
+      // CX-C: if iterating over structural children, the iteration
+      // parameter is a descent variable (standard structural induction).
       let receiver = method_receiver(texpr: body)
       let is_iter = is_algebra_iteration_method(method_semantics: ms)
       let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: vars, si: si)
@@ -2117,6 +2214,11 @@ fn matches_on_sub_value_field(body: Node, param_name: String, si: Map<String, Ne
     None => false
   }
 }
+// CX-1a: Container-child descent. Every self-call must pass
+// accessor(param), param.children |> first, or a variable bound to
+// such an expression. Accessors always return children[N] (proven by
+// the IR model), so the argument is strictly smaller than the param
+// regardless of which ExprData variant the param carries.
 fn is_container_child_descent(body: Node, func_name: String, params: List<Node>, si: Map<String, NewlineIndex>) -> Bool {
   params |> any(p =>
     let pname = param_node_name_at(n: p, source_indices: si)
@@ -2124,6 +2226,8 @@ fn is_container_child_descent(body: Node, func_name: String, params: List<Node>,
     && all_self_calls_descend(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si)
   )
 }
+// CX-1b: List-shrinkage descent. Every self-call passes param |> skip(N).
+// Covers emit_*_block_stmts, kahn_drain with fuel, init_block_stmts.
 fn is_list_shrinkage_descent(body: Node, func_name: String, params: List<Node>, si: Map<String, NewlineIndex>) -> Bool {
   params |> any(p =>
     let pname = param_node_name_at(n: p, source_indices: si)
@@ -2161,22 +2265,27 @@ fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars:
         if set_has(m: descent_vars, key: vname) { Strict }
         else if vname == param_name { NonIncreasing }
         else { DescentUnknown }
+      // CX-D: wrapper transparency — unwrap and re-classify inner argument
       ExprCall { call_semantics: _, descent_evidence: _ } =>
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
           classify_self_call_evidence(arg_expr: wrapper_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
         } else if is_sub_value_extractor(expr: arg_expr, si: si) {
+          // CX-D: sub-value extraction strictly reduces tree size.
+          // Elevate Same→Strict because extractor(param) < param.
           let inner_ev = classify_self_call_evidence(arg_expr: extractor_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
           match inner_ev {
             NonIncreasing => Strict
             _ => inner_ev
           }
         } else if is_list_passthrough_call(expr: arg_expr, si: si) {
+          // CX-R: List-preserving pass-through (skip_newlines, etc.).
           match list_passthrough_inner_arg(expr: arg_expr, si: si) {
             Some { value: inner } =>
               classify_self_call_evidence(arg_expr: inner, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
             None => DescentUnknown
           }
         } else { DescentUnknown }
+      // CX-E: param.field or descent_var.field is a strict sub-value
       ExprFieldAccess =>
         let base = field_access_base(texpr: arg_expr)
         match base.expr_data {
@@ -2184,12 +2293,14 @@ fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars:
             let bname = expr_var_name_at(texpr: base, source_indices: si)
             if set_has(m: descent_vars, key: bname) || bname == param_name { Strict }
             else {
+              // CX-R: Field-name provenance — r.tokens carries NonIncreasing evidence.
               let field = field_access_field_at(texpr: arg_expr, source_indices: si)
               if field == param_name { NonIncreasing }
               else { DescentUnknown }
             }
           _ => DescentUnknown
         }
+      // CX-R: Generalized shrink — ANY_EXPR |> skip(N) strictly reduces receiver.
       ExprMethodCall { method_semantics: ms } =>
         if is_generalized_shrink(expr: arg_expr, si: si) {
           let recv = method_receiver(texpr: arg_expr)
@@ -2208,6 +2319,9 @@ fn try_dimension_for_param(body: Node, func_name: String, param_name: String, ch
   collect_evidence_incremental(body: body, func_name: func_name, param_name: param_name, vars: empty_map(), check_child: check_child, check_list: check_list, branching_only: false, si: si)
 }
 fn try_branching_dimension_for_param(body: Node, func_name: String, param_name: String, check_child: Bool, check_list: Bool, si: Map<String, NewlineIndex>) -> DescentEvidence? {
+  // CX-N: Like try_dimension_for_param but only collects evidence from
+  // branches that contribute the maximum self-call count, filtering out
+  // dominated branches whose DescentUnknown would poison the proof.
   collect_evidence_incremental(body: body, func_name: func_name, param_name: param_name, vars: empty_map(), check_child: check_child, check_list: check_list, branching_only: true, si: si)
 }
 fn merge_optional_evidence(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
@@ -2230,7 +2344,9 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         _ => false
       }
       let is_option = is_if_option_descent(val: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+      // CX-J: match descent_expr { Some { value: v } => v, None => default }
       let is_match_descent = is_match_option_descent(val: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+      // CX-D: wrapper(descent_expr_or_var) preserves descent status
       let is_wrapped = if is_tree_size_preserving_wrapper(expr: val, si: si) {
         let inner = wrapper_inner_arg(expr: val)
         let inner_d = (check_child && is_child_descent_expr(expr: inner, param_name: param_name, vars: vars, si: si))
@@ -2241,6 +2357,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         }
         inner_d || inner_v
       } else { false }
+      // CX-D: extractor(descent_or_param) produces a strict sub-value
       let is_extraction = if is_sub_value_extractor(expr: val, si: si) {
         let inner = extractor_inner_arg(expr: val)
         let inner_d = (check_child && is_child_descent_expr(expr: inner, param_name: param_name, vars: vars, si: si))
@@ -2255,6 +2372,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         }
         inner_d || inner_v || inner_p
       } else { false }
+      // CX-K: param.children / descent_var.children is a children-list alias
       let is_children_list = match val.expr_data {
         ExprFieldAccess =>
           let base = field_access_base(texpr: val)
@@ -2268,6 +2386,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           }
         _ => false
       }
+      // CX-R: pass-through call wrapping a descent expression
       let is_passthrough = if is_list_passthrough_call(expr: val, si: si) {
         match list_passthrough_inner_arg(expr: val, si: si) {
           Some { value: inner } =>
@@ -2280,6 +2399,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           None => false
         }
       } else { false }
+      // CX-R: tokens-consuming call — result carries strict tokens
       let is_consuming_helper = check_list && is_tokens_consuming_call(expr: val, param_name: param_name, vars: vars, si: si)
       let next_vars = if is_direct || is_var || is_option || is_match_descent || is_wrapped || is_extraction || is_children_list || is_passthrough || is_consuming_helper {
         map_insert(vars, let_binding_name_at(texpr: body, source_indices: si), true)
@@ -2293,12 +2413,17 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
       let scrut = match_scrutinee(texpr: body)
       let scrut_ev = collect_evidence_incremental(body: scrut, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+      // CX-B: scrutinee IS the parameter or a known descent var
       let scrut_is_param = match scrut.expr_data {
         ExprVar { binding_kind: _ } =>
           let sname = expr_var_name_at(texpr: scrut, source_indices: si)
           sname == param_name || set_has(m: vars, key: sname)
         _ => false
       }
+      // CX-N: when branching_only, skip base-case arms (0 self-calls).
+      // Arms with ≥1 self-call MUST still provide descent evidence — a light
+      // arm that calls self(param) without descent would diverge.
+      // Each arm gets INDEPENDENT vars — arm-local bindings don't leak
       let arms_ev = match_arm_nodes(texpr: body) |> fold(init: none, f: (acc, arm_node) =>
         let is_base_case = if branching_only {
           max_path_self_calls(body: arm_body(n: arm_node), func_name: func_name, si: si) == 0
@@ -2323,6 +2448,8 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
       merge_optional_evidence(a: scrut_ev, b: arms_ev)
     ExprIf =>
       let cond_ev = collect_evidence_incremental(body: if_condition(texpr: body), func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
+      // CX-N: when branching_only, skip base-case branches (0 self-calls).
+      // Branches with ≥1 self-call must still provide descent evidence.
       let then_branch = if_then_branch(texpr: body)
       let else_opt = if_else_branch(texpr: body)
       let then_path = if branching_only { max_path_self_calls(body: then_branch, func_name: func_name, si: si) } else { 0 }
@@ -2363,6 +2490,8 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
       )
       result.evidence
     ExprMethodCall { method_semantics: ms } =>
+      // CX-C: if iterating over structural children, the iteration
+      // parameter is a descent variable — enter lambda body with evidence.
       let receiver = method_receiver(texpr: body)
       let is_iter = is_algebra_iteration_method(method_semantics: ms)
       let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: vars, si: si)
@@ -2478,6 +2607,9 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
   }
 }
 fn construct_branching_termination_proof(func_name: String, body: Node, params: List<Node>, si: Map<String, NewlineIndex>) -> TerminationProof? {
+  // CX-N: Like construct_termination_proof but uses branching_only evidence.
+  // Type-directed: use parameter's algebra profile to select dimension.
+  // ArithmeticRepeat is skipped (unsafe for branching — exponential blowup).
   params |> fold(init: none, f: (best, p) =>
     match best {
       Some { value: _ } => best
@@ -2495,7 +2627,7 @@ fn construct_branching_termination_proof(func_name: String, body: Node, params: 
               Some { value: Strict } => Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
               _ => none
             }
-          Some { value: ArithmeticRepeat } => none
+          Some { value: ArithmeticRepeat } => none // unsafe for branching
           None =>
             let tree_ev = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si)
             match tree_ev {
@@ -2743,6 +2875,8 @@ fn scc_label(members: List<String>) -> String {
     None => "scc"
   }
 }
+// CX-3: Classify a call to an SCC peer as Strict (accessor/descent),
+// Same (unchanged param), or Unknown (fail-closed).
 fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: Map<String, Bool>, si: Map<String, NewlineIndex>) -> DescentEvidence {
   if is_child_descent_expr(expr: arg_expr, param_name: param_name, vars: descent_vars, si: si) {
     Strict
@@ -2755,22 +2889,28 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
         if set_has(m: descent_vars, key: vname) { Strict }
         else if vname == param_name { NonIncreasing }
         else { DescentUnknown }
+      // CX-D: wrapper transparency — unwrap and re-classify inner argument
       ExprCall { call_semantics: _, descent_evidence: _ } =>
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
           classify_scc_call_progress(arg_expr: wrapper_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, si: si)
         } else if is_sub_value_extractor(expr: arg_expr, si: si) {
+          // CX-D: sub-value extraction strictly reduces tree size.
+          // Elevate Same→Strict because extractor(param) < param.
           let inner_progress = classify_scc_call_progress(arg_expr: extractor_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, si: si)
           match inner_progress {
             NonIncreasing => Strict
             _ => inner_progress
           }
         } else if is_list_passthrough_call(expr: arg_expr, si: si) {
+          // CX-R: List-preserving pass-through (skip_newlines, etc.).
+          // The call returns ≤ its input — reclassify the inner tokens argument.
           match list_passthrough_inner_arg(expr: arg_expr, si: si) {
             Some { value: inner } =>
               classify_scc_call_progress(arg_expr: inner, param_name: param_name, descent_vars: descent_vars, si: si)
             None => DescentUnknown
           }
         } else { DescentUnknown }
+      // CX-E: param.field or descent_var.field is a strict sub-value
       ExprFieldAccess =>
         let base = field_access_base(texpr: arg_expr)
         match base.expr_data {
@@ -2778,12 +2918,18 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
             let bname = expr_var_name_at(texpr: base, source_indices: si)
             if set_has(m: descent_vars, key: bname) || bname == param_name { Strict }
             else {
+              // CX-R: Field-name provenance — if the extracted field has the same
+              // name as the measure param, it carries NonIncreasing evidence.
+              // Covers: let r = helper(tokens: tokens); scc_call(tokens: r.tokens)
               let field = field_access_field_at(texpr: arg_expr, source_indices: si)
               if field == param_name { NonIncreasing }
               else { DescentUnknown }
             }
           _ => DescentUnknown
         }
+      // CX-R: Generalized shrink — ANY_EXPR |> skip(N) strictly reduces any
+      // NonIncreasing or Strict receiver. Covers `r.tokens |> skip(1)` and
+      // similar patterns where the receiver is not directly the param variable.
       ExprMethodCall { method_semantics: ms } =>
         if is_generalized_shrink(expr: arg_expr, si: si) {
           let recv = method_receiver(texpr: arg_expr)
@@ -2798,6 +2944,12 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
     }
   }
 }
+// CX-3: Walk a function body and collect progress edges for all calls
+// to SCC peers. For each call, check each named argument to see if
+// it passes a descent expression for the caller's param.
+//
+// CX-N: Extends descent_vars through ExprLet/ExprMatch/ExprBlock/ExprIf,
+// mirroring collect_evidence_incremental's var threading.
 fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool, scc_measure_params: Map<String, Map<String, String>>, si: Map<String, NewlineIndex>) -> List<ParserProgressEdge> {
   match body.expr_data {
     ExprLambda => []
@@ -2846,6 +2998,8 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
       )
       concat(own_edges, child_edges)
     ExprMethodCall { method_semantics: ms } =>
+      // CX-C: if iterating over structural children, the iteration
+      // parameter is a descent variable for SCC edge classification.
       let receiver = method_receiver(texpr: body)
       let is_iter = is_algebra_iteration_method(method_semantics: ms)
       let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: descent_vars, si: si)
@@ -2870,6 +3024,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
         )
       }
+    // CX-N: Thread descent vars through let-bindings.
     ExprLet =>
       let val = let_value(texpr: body)
       let val_edges = collect_scc_child_edges(body: val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
@@ -2918,6 +3073,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           }
         _ => false
       }
+      // CX-R: pass-through call wrapping a descent expression
       let is_passthrough = if is_list_passthrough_call(expr: val, si: si) {
         match list_passthrough_inner_arg(expr: val, si: si) {
           Some { value: inner } =>
@@ -2930,6 +3086,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           None => false
         }
       } else { false }
+      // CX-R: tokens-consuming call — result carries strict tokens
       let is_consuming_helper = check_list && is_tokens_consuming_call(expr: val, param_name: param_name, vars: descent_vars, si: si)
       let next_vars = if is_direct || is_var || is_option || is_match_descent || is_wrapped || is_extraction || is_children_list || is_passthrough || is_consuming_helper {
         map_insert(descent_vars, let_binding_name_at(texpr: body, source_indices: si), true)
@@ -2951,6 +3108,8 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
       )
       concat(scrut_edges, arms_edges)
+    // CX-N: Thread descent vars through block statements sequentially.
+    // Uses collect_descent_vars as the single source of truth for var threading.
     ExprBlock =>
       let result = body.children |> fold(init: SccEdgeBlockAcc { edges: [], vars: descent_vars }, f: (acc, stmt) =>
         let stmt_edges = collect_scc_child_edges(body: stmt, caller: caller, param_name: param_name, descent_vars: acc.vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
@@ -2974,6 +3133,10 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
       )
   }
 }
+// CX-3: SCC container-child descent proof. Every cycle through the SCC
+// must have at least one edge where the callee receives an accessor
+// child (Strict). Fail-closed: any DescentUnknown edge or
+// any all-Same cycle means SameArgumentCall (bounded by Forever).
 fn is_scc_container_child_descent(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Bool {
   let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
   let edges = members |> flat_map(name =>
@@ -3096,6 +3259,10 @@ fn collect_scc_parser_proof_edges(members: List<String>, func_index: Map<String,
   let edges = collect_parser_edges_for_scc(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
   edges |> map(pe => progress_edge_to_proof_edge(pe: pe))
 }
+// CX-A: For each SCC call edge, independently find the best evidence for
+// TreeSize and TokenPosition. TreeSize uses the existing child-descent
+// infrastructure; TokenPosition uses collect_parser_edges_for_scc (single
+// authority). Produces 2-slot ProofEdge values: [tree_ev, parser_ev].
 fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<ProofEdge> {
   let all_parser_edges = collect_parser_edges_for_scc(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
   if (all_parser_edges |> count) == 0 {
@@ -3252,6 +3419,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
     if list_all_known && (list_edges |> count) > 0 && proof_has_non_descending_cycle(proof: list_proof, members: members, edges: list_edges) == false {
       Some { value: list_proof }
     } else {
+      // CX-A: Try TokenPosition (parser state advance)
       let parser_edges = collect_scc_parser_proof_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
       let parser_all_known = parser_edges |> all(e =>
         match e.evidence |> first {
@@ -3277,6 +3445,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(proof: lex_proof, members: members, edges: lex_edges) == false {
           Some { value: lex_proof }
         } else {
+          // CX-A: Lexicographic [TreeSize, TokenPosition]
           let tree_parser_edges = collect_scc_tree_parser_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
           let tp_all_known = tree_parser_edges |> all(e =>
             match e.evidence |> first {
@@ -3965,11 +4134,17 @@ type SummaryResult {
   summary: ComplexitySummary
   table: CostInternTable
 }
+// Accumulator for topological-order processing with transit eviction.
+// Threads the intern table, classified results, fan-in counters, and
+// fail-closed violations through the fold over topological order.
 type TopoBuildAcc {
   table: CostInternTable
   classes: Map<String, String>
   violations: List<ComplexityViolation>
   fan_in: Map<String, Int>
+  // Functions explicitly processed by the topological fold.
+  // Prevents evicting SCC co-members computed as side effects
+  // before they reach their own fold iteration.
   processed: Map<String, Bool>
 }
 type MatchCostAccum {
@@ -4390,6 +4565,10 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 }
 // =========================================================================
 // CX-L3: Structural descent analyzer
+//
+// Reads SubValueRelation witnesses from typed ExprCall nodes.
+// Produces CostBound for self-recursive functions via the induction model.
+// NEVER pattern-matches AST — reads only descent_evidence fields.
 // =========================================================================
 fn collect_call_evidence(body: Node, target_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<List<SubValueRelation>> {
   match body.expr_data {
@@ -4441,6 +4620,8 @@ fn merge_param_evidence(all_calls: List<List<SubValueRelation>>, param_index: In
     }
   )
 }
+// Extract the ShrinkFactor for a parameter across all self-call sites.
+// Fail-closed: mixed factors → none (no structural bound produced).
 fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: Int) -> ShrinkFactor? {
   all_calls |> fold(init: Some { value: UnitShrink }, f: (acc, call_evidence) =>
     match acc {
@@ -4611,6 +4792,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         } else { acc }
     }
   )
+  // Compute fan-in: for each callee, how many unique callers reference it?
+  // Used to know when a summary can be evicted (all callers processed).
   let call_forward = forward_adjacency(names: func_entries |> map(entry => entry.name), graph: scc_result.call_graph)
   let fan_in = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
     let callees = match map_get(call_forward, entry.name) {
@@ -4623,6 +4806,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
       map_insert(inner, callee, current + 1)
     )
   )
+  // Process in topological order (callees before callers). After each
+  // function is analyzed, classify it eagerly (storing the string) and
+  // decrement fan-in for its callees. When a callee's fan-in reaches 0,
+  // evict its CostExpr tree — the working set is bounded by the maximum
+  // frontier width of the call graph, not the total function count.
   let result = scc_result.processing_order |> fold(init: TopoBuildAcc {
     table: empty_intern_table(),
     classes: empty_map(),
@@ -4657,12 +4845,18 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           let current = match map_get(fi, callee) { Some { value: v } => v, None => 0 }
           map_insert(fi, callee, current - 1)
         )
+        // Evict summaries whose fan-in has reached 0, but ONLY if the
+        // function was explicitly processed by this fold. SCC co-members
+        // may be computed as side effects of get_or_compute_summary —
+        // evicting them before their fold iteration would replace their
+        // real summary with a fabricated placeholder.
         let evicted_table = unique_callees |> fold(init: sr.table, f: (t, callee) =>
           let remaining = match map_get(new_fan_in, callee) { Some { value: v } => v, None => 0 }
           if remaining <= 0 && set_has(m: new_processed, key: callee) {
             evict_summary(table: t, func_name: callee)
           } else { t }
         )
+        // Also evict this function if it has no callers (fan-in was 0 from the start)
         let self_fan_in = match map_get(new_fan_in, func_name) { Some { value: v } => v, None => 0 }
         let final_table = if self_fan_in <= 0 {
           evict_summary(table: evicted_table, func_name: func_name)
@@ -4671,6 +4865,9 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
       None => acc
     }
   })
+  // intern_table is transit-only — not exposed in the report.
+  // Evicted entries contain fabricated placeholders that would mislead consumers.
+  // CX-L3: structural descent analysis — reads descent_evidence, not AST.
   let structural_bounds = analyze_structural_bounds(func_entries: func_entries, si: si)
   ComplexityReport {
     function_classes: result.classes,

@@ -41,6 +41,11 @@ type TokenShape
 // Module, Import, ImportNames dissolved into Node compositions.
 // See dissolution helpers: module_node(), import_node(), module_imports(),
 // module_items(), import_is_all(), import_specific_names_at().
+// Connective -- the logical primitive for type structure.
+// Conj = conjunction (product): all children hold simultaneously (record fields).
+// Disj = disjunction (coproduct): exactly one child holds (sum variants).
+// Arrow = exponential (function type). params carry input types,
+//         inferred carries return type.
 type Connective = Conj | Disj | NoConnective | Arrow
 type Cardinality = Required | CardOptional
 // Field, Variant, Param dissolved into Node (D1c).
@@ -580,6 +585,9 @@ fn is_child_accessor_in_model(name: String) -> Bool {
   (map_values(expr_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
   || (map_values(wrapper_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
 }
+// Model query: get fixed child roles for an ExprData variant.
+// Returns None if the variant is not in the model (fail-closed: callers
+// must handle missing layout explicitly, not assume "no children").
 fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
   lookup(expr_child_roles, key: variant_name)
 }

@@ -873,6 +873,12 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
     _ => scope
   }
 }
+// Derive provenance for a match-arm field binding.
+// If the scrutinee has known provenance and the field is inductive (recursive),
+// the binding is a StrictSubValue. Otherwise SubValueUnknown (fail-closed).
+// Derive provenance for a match-arm field binding via compose_sub_value
+// (std/induction.dag authority). Looks up whether the field is inductive;
+// if so, composes the scrutinee's provenance with the field.
 fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRelation, scrutinee_subject: PatternSubject, variant_name: String, field_name: String) -> SubValueRelation {
   match scrutinee_provenance {
     SubValueUnknown => SubValueUnknown
@@ -2373,6 +2379,12 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
 }
 // =========================================================================
 // CX-L2: Descent evidence annotation (post-inference)
+//
+// After a function body is type-inferred, this pass walks the typed body
+// and annotates each self-call ExprCall node with descent_evidence.
+// The pass reads InductiveField facts from TypeEnv — it never pattern-
+// matches AST to discover descent. Adding a new recursive type requires
+// zero changes here.
 // =========================================================================
 type SizeExpr
   = ParamSize { param: String }
@@ -2492,6 +2504,9 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                           } else { SubValueUnknown }
                         _ => SubValueUnknown
                       }
+                    // Affine `mid + positive_literal` is only accepted for `skip`: skipping more than
+                    // a known `count(param)/d` threshold is at least as shrinking as the divisor witness.
+                    // `take(mid + k)`, subtraction, and non-positive/unknown offsets stay fail-closed.
                     ExprBinOp { op: op, algebra_field: _ } =>
                       match op {
                         Add =>
@@ -2875,7 +2890,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
                 Some { value: a } =>
                   match arg_value(n: a).expr_data {
                     ExprLiteral { value: LitInt { value: k } } => if k > 0 { k } else { 0 }
-                    _ => 0
+                    _ => 0 // fail-closed: skip(0) is legal, unknown amount is not strict decrease
                   }
                 None => 0
               }
@@ -3337,6 +3352,11 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         _ => none
       }
       let scrut_has_inductive = (scrut_type != "" && inductive_fields_for(env: ctx.type_env, type_name: scrut_type) |> count > 0) || scrut_inducing_field != none
+      // CX-R: Detect scrutinee ExprCall with variant_provenance (sum-type return).
+      // When matching on a function call that returns a sum type, each arm's
+      // variant bindings can be classified using the function's per-variant
+      // per-field provenance, enabling structural descent evidence for
+      // `match advance(tokens: tokens) { AdvanceOk { tokens: rest } => self(tokens: rest) }`.
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
@@ -3753,6 +3773,13 @@ fn resolved_type_name(n: Node, source_indices: Map<String, NewlineIndex>) -> Str
 }
 // =========================================================================
 // Output provenance inference
+//
+// Determine the structural relationship between a function's return value
+// and its parameters by walking the typed body. This enables the descent
+// analysis to see through helper function calls: if f(x) returns a
+// sub-value of x, then `let r = f(p)` registers r as a sub-value of p.
+//
+// fail-closed: returns empty_map() for any body shape we can't analyze.
 // =========================================================================
 fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> List<Map<String, SubValueRelation>> {
   let param_names = params |> map(p => param_node_name_at(n: p, source_indices: type_env.source_indices))
@@ -3993,6 +4020,10 @@ fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, par
     None => empty_map()
   }
 }
+// Walk body to find record literal returns and classify each field's provenance.
+// Non-recursive: walks through ExprLet/ExprBlock chains to find the terminal
+// expression, then checks one level of ExprMatch/ExprIf for record arms.
+// Returns empty list if no record literal found (fail-closed to scalar mode).
 fn classify_body_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
   let unwrapped = unwrap_body_terminal(expr: expr, let_prov: let_prov, type_env: type_env)
   let terminal = unwrapped.expr
@@ -4102,6 +4133,9 @@ fn intersect_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValue
     }
   )
 }
+// CX-R: Compute arm_ctx for a match arm when the scrutinee is a call to a
+// function with variant_provenance. Returns Some(ctx) on success, None to
+// fall through to existing inductive-field handling.
 fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: Node, ctx: DescentContext) -> DescentContext? {
   match arm_pattern(n: arm_node) {
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
@@ -4473,6 +4507,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
+    // CX-L2: annotate self-call sites with descent evidence
     let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), source_indices: scope.type_env.source_indices)
     let annotated_body = if is_recursive {
       annotate_descent_evidence(body: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), params: item.params, type_env: scope.type_env, scope_locals: fn_scope.locals, func_sigs: scope.func_env.signatures)

@@ -2783,6 +2783,9 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   let ch = child_type_node(ch: c)
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
+// BTreeSet requires T: Ord. Whitelist kernel types with known Ord Rust carriers
+// plus nominal carriers whose emitted Rust shape can derive Ord.
+// Float (no total Ord), Json (serde_json::Value), and keyed maps fail-closed.
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
   elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
@@ -4792,6 +4795,8 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
     |> filter(l => l != "")
   all_lines |> join(separator: "\n")
 }
+// RE-1a: HTTP method dispatch — reads transport method field.
+// Fail-closed: unknown method or non-identifier expression → compile_error!
 fn emit_rest_http_method(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match transport_method(t: transport, source_indices: source_indices) {
     Some { value: m } => match m.inferred {
@@ -4799,6 +4804,7 @@ fn emit_rest_http_method(transport: Node, source_indices: Map<String, NewlineInd
         let method_name = expr_var_name_at(texpr: m, source_indices: source_indices)
         method_name |> chars |> map(ch => to_lower_char(ch: ch)) |> join(separator: "")
       _ =>
+        // Fallback for uninferred transport (fail-closed)
         concat("compile_error!(\"transport method type not resolved\")")
     }
     None => "compile_error!(\"transport method not specified\")"
@@ -4877,6 +4883,7 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
           }
           concat("let request = client.", http_method, "(&url)\n    .header(\"", header_name, "\", ", token_param, ");")
         _ =>
+          // Fail-closed: unknown auth shape
           concat("compile_error!(\"unrecognized auth scheme expression shape\"); let request = client.", http_method, "(&url);")
       }
     }
@@ -4913,6 +4920,11 @@ fn emit_rest_query_line(transport: Node, source_indices: Map<String, NewlineInde
     None => ""
   }
 }
+// RE-1 POST body: emit .json() with serde_json::json! macro for request body.
+// Body must be ExprRecordLit (field-init children). Fail-closed: any other
+// expression shape produces compile_error! — no silent fabrication.
+// Optional-typed fields are emitted as conditional insertions so None values
+// are omitted from the wire body rather than serialized as null.
 fn emit_rest_body_line(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match transport_request_body(t: transport, source_indices: source_indices) {
     Some { value: b } => match b.expr_data {
@@ -4967,6 +4979,8 @@ fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>)
 fn has_response_200_property(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   op_node.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200")
 }
+// Returns none when the property is absent or when it is present but the body type
+// cannot be resolved. Emitters must combine with has_response_200_property for fail-closed behavior.
 fn operation_response_200_resolved_type(op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node? {
   match op_node.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200") |> first {
     Some { value: p } => {

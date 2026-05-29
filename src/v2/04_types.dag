@@ -127,6 +127,13 @@ fn bare_set_node() -> Node? {
 }
 // =========================================================================
 // Shared type construction authorities
+//
+// Single-authority builders for synthesized type nodes. All container param
+// names derive from algebra via container_param_name (fail-closed on miss).
+// These centralize type-shape knowledge that was previously inlined as
+// raw Node literals across multiple files.
+//
+// Dissolution point: Tier 3 / FF-9 (declaration-driven construction).
 // =========================================================================
 fn kernel_container_profile_miss_diagnostic(kind_name: String) -> ErrorNode {
   let msg = concat("missing kernel container profile: ", kind_name)

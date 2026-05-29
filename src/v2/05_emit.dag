@@ -748,6 +748,9 @@ fn emit_keyword(key: String, target: RenderTarget) -> String {
 fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
+      // String literal suffix from TypeCheckpoint (e.g. ".to_string()" for Rust).
+      // Fail-closed: missing TypeCheckpoint emits error marker.
+      // All targets (including Dag) must declare String in their TypeCheckpoints.
       let suffix = match literal_suffix(target: target, dag_name: "String") {
         Some { value: sfx } => sfx
         None => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
@@ -1891,6 +1894,14 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
     _ => Interpolation { expr: arg_value(n: child) }
   })
 }
+// Shared ExprCast — data-driven, target-parameterized.
+// Cast syntax derives from CastSyntax in extdeps/languages/*/types.dag.
+// Rust: `expr as type`, Python/Go: `type(expr)`.
+//
+// Numeric casts are validated early in infer (dag_can_cast). Emit retains
+// the per-target can_cast guard as a fail-closed safety net for casts
+// outside the numeric domain (String, user types, etc.) until structural
+// cast modeling replaces the string-keyed tables.
 fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_indices: source_indices)

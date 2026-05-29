@@ -86,6 +86,8 @@ fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> Stri
 fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> TypeCheckpoint? {
   target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
 }
+// Transitional: fail-open (returns dag_name on miss). M5-full should
+// fail-closed once all surface types have checkpoint declarations.
 fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
     Some { value: cp } => cp.target_type
