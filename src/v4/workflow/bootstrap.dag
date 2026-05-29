@@ -184,14 +184,44 @@ fn bootstrap_construct_subset_node(identity: Symbol) -> Node {
   }
 }
 
-// Phase-1 frozen snapshot inventory: four declared subset markers as a Conj fact-bundle.
+// Live snapshot root: source-language facet only (target/runtime/lowering ride projection inputs).
 fn bootstrap_source_snapshot_root() -> Node {
+  bootstrap_construct_subset_node(identity: bootstrap_construct_source_language_subset)
+}
+
+// Declared frozen sub-model inventory (seed_capability authority — not derived from footprint).
+fn bootstrap_seed_capability_inventory_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
         label: Named { name: bootstrap_construct_source_language_subset },
         target: bootstrap_construct_subset_node(identity: bootstrap_construct_source_language_subset)
+      },
+      Edge {
+        label: Named { name: bootstrap_construct_target_model_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_target_model_subset)
+      },
+      Edge {
+        label: Named { name: bootstrap_construct_runtime_model_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_runtime_model_subset)
+      },
+      Edge {
+        label: Named { name: bootstrap_construct_lowering_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_lowering_subset)
+      }
+    ]
+  }
+}
+
+// §4 footprint lens: fold inventory spans snapshot + target + runtime projection facets.
+fn bootstrap_projection_footprint_node(inputs: BootstrapProjectionInputs) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: bootstrap_projection_snapshot_root_edge },
+        target: inputs.snapshot.root
       },
       Edge {
         label: Named { name: bootstrap_construct_target_model_subset },
@@ -244,8 +274,16 @@ fn bootstrap_construct_fold_state(root: Node) -> BootstrapConstructFoldState {
   fold_node(n: root, algebra: bootstrap_construct_fold_algebra())
 }
 
-fn bootstrap_footprint_constructs_from_snapshot_root(root: Node) -> List<BootstrapConstruct> {
+fn bootstrap_footprint_constructs_from_node(root: Node) -> List<BootstrapConstruct> {
   bootstrap_construct_fold_state(root: root).constructs
+}
+
+fn bootstrap_footprint_constructs_from_projection_inputs(
+  inputs: BootstrapProjectionInputs
+) -> List<BootstrapConstruct> {
+  bootstrap_footprint_constructs_from_node(
+    root: bootstrap_projection_footprint_node(inputs: inputs)
+  )
 }
 
 fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
@@ -464,7 +502,7 @@ fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFo
       value: BootstrapFootprint {
         inputs: inputs,
         closure_hash: closure_hash,
-        constructs: bootstrap_footprint_constructs_from_snapshot_root(root: inputs.snapshot.root)
+        constructs: bootstrap_footprint_constructs_from_projection_inputs(inputs: inputs)
       }
     }
   } else {
@@ -576,7 +614,7 @@ fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> Witness<FixptStage1Stage2> {
 
 data seed_capability: SeedCapability = SeedCapability {
   language_model: seed_capability_language_model(),
-  constructs: bootstrap_footprint_constructs_from_snapshot_root(root: bootstrap_source_snapshot_root()),
+  constructs: bootstrap_footprint_constructs_from_node(root: bootstrap_seed_capability_inventory_root()),
   frozen_at: bootstrap_phase1_frozen_submodel
 }
 
