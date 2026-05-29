@@ -891,6 +891,25 @@ fn kotlin_ordered_ring_int_width_to_int_width(width: KotlinOrderedRingIntWidth) 
   }
 }
 
+fn kotlin_int_width_to_ordered_ring_width(width: KotlinIntWidth) -> KotlinOrderedRingIntWidth {
+  match width {
+    Bits32 => Bits32
+    Bits64 => Bits64
+    _ => Bits32
+  }
+}
+
+fn kotlin_ordered_ring_integer_from_primitive_facts(
+  facts: KotlinIntegerPrimitiveFacts
+) -> KotlinOrderedRingIntegerFacts {
+  KotlinOrderedRingIntegerFacts {
+    surface_spelling: facts.surface_spelling,
+    width: kotlin_int_width_to_ordered_ring_width(width: facts.width),
+    overflow: facts.overflow,
+    representation: facts.representation
+  }
+}
+
 fn kotlin_ordered_ring_integer_to_primitive_facts(
   facts: KotlinOrderedRingIntegerFacts
 ) -> KotlinIntegerPrimitiveFacts {
