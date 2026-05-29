@@ -11,12 +11,15 @@
 // fields, so inconsistent (entries, counts) pairs are unrepresentable —
 // entries are the single authority and counts cannot diverge from them.
 //
-// The host harness scripts/v4-testclaim-corpus-eval.sh compiles src/v4
-// --target rust and executes the emitted Rust mirror of the entry
-// `run_manual_testclaim_corpus_eval` over a minimal subset crate (M1 subset
-// strategy — not full-tree cargo-clean), then serializes the returned
-// CorpusEvalReport to JSON (stdout) + a markdown table
-// (GITHUB_STEP_SUMMARY). Selection narrowing
+// PR1 boundary (current): the host harness scripts/v4-testclaim-corpus-eval.sh
+// compiles src/v4 --target rust (0-diagnostic), runs a structural witness
+// over the emitted runner.rs + roster.rs, and emits a JSON report with
+// `execution_status="blocked_m1_subset"` (empty `entries`) — the modeled
+// runner is emitted but NOT executed under PR1 because full-tree cargo
+// check on the emitted crate currently fails on v2-emitter Rust shape
+// (FreeMonoid drop-check / Nat cata Fn-clone — M1 emitter lane). PR2 lifts
+// `execution_status` to per-row Pass/Fail/Deferred once the M1 subset
+// rustc strategy lands the runtime invocation; selection narrowing
 // (`ci_select_from_affected_set`) runs in v4.workflow.ci before the host
 // harness folds the surviving roster. Non-zero exit if any entry's verdict
 // is Fail.
@@ -30,16 +33,15 @@ module v4.test.claim.workflow.testclaim_corpus_runner
 
 
 import v4.compiler.eval { TestClaimRun }
-import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verdict {
   Verdict,
   VerdictTally,
-  verdict_tally,
+  verdict_tally_add,
   verdict_tally_empty,
-  verdict_tally_add
+  verdict_tally_total
 }
 import v4.std.verification {
   CompilesClaim,
@@ -117,7 +119,7 @@ fn corpus_report_deferred_count(r: CorpusEvalReport) -> Int {
 
 
 fn corpus_report_total(r: CorpusEvalReport) -> Int {
-  length(xs: r.entries)
+  verdict_tally_total(t: corpus_report_tally(r: r))
 }
 
 
@@ -135,7 +137,7 @@ fn corpus_entries_from_node_runtime_value_rows(
   rows: List<ManualCorpusRow<RuntimeValue>>
 ) -> List<CorpusEvalEntry> {
   fold(rows, init: [], f: fn(acc, row) {
-    concat([corpus_entry_from_node_runtime_value_row(row: row)], acc)
+    concat(acc, [corpus_entry_from_node_runtime_value_row(row: row)])
   })
 }
 
