@@ -7,10 +7,8 @@ module v4.workflow.bootstrap
 
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node }
 import v4.std.algebra {
-  Empty,
   bag_eq,
-  list_append,
-  list_snoc_item
+  list_append
 }
 import v4.compiler.target_carriers { LanguageModel }
 import v4.std.target_model { TargetModel }
@@ -24,7 +22,6 @@ data v4_stage0_binary: Symbol = v4_stage0_binary
 data v4_stage1_binary: Symbol = v4_stage1_binary
 data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
-data v4_live_compiler_source_snapshot_root: Symbol = v4_live_compiler_source_snapshot_root
 data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
