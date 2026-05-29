@@ -10,8 +10,10 @@ import v4.std.refinement {
   PositiveInt,
   NonNegativeInt,
   AtLeastMinusOneInt,
+  AtLeastMinusTwoInt,
   ExactOneInt,
   make_at_least_minus_one_int_at_authoritative,
+  make_at_least_minus_two_int_at_authoritative,
   make_exact_one_int_at_authoritative,
   make_non_negative_int_at_authoritative,
   make_positive_int_at_authoritative,
@@ -313,6 +315,16 @@ data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = match make_at_
 data authoritative_at_least_minus_one_int_0_reattempt: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: 0) {
   Accepted { value: carrier, diagnostics: _ } => carrier
   Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0
+}
+
+data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = match make_at_least_minus_two_int_at_authoritative(value: -2) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_reattempt
+}
+
+data authoritative_at_least_minus_two_int_minus_2_reattempt: AtLeastMinusTwoInt = match make_at_least_minus_two_int_at_authoritative(value: -2) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2
 }
 
 data authoritative_exact_one_int_1: ExactOneInt = match make_exact_one_int_at_authoritative(value: 1) {

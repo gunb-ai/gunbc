@@ -10,8 +10,10 @@ import v4.std.refinement {
   PositiveInt,
   NonNegativeInt,
   AtLeastMinusOneInt,
+  AtLeastMinusTwoInt,
   ExactOneInt,
   make_at_least_minus_one_int_at_authoritative,
+  make_at_least_minus_two_int_at_authoritative,
   make_exact_one_int_at_authoritative,
   make_non_negative_int_at_authoritative,
   make_positive_int_at_authoritative,
@@ -47,6 +49,7 @@ import v4.std.refinement_authoritative_literals {
   authoritative_non_negative_int_1000000,
   authoritative_at_least_minus_one_int_minus_1,
   authoritative_at_least_minus_one_int_0,
+  authoritative_at_least_minus_two_int_minus_2,
   authoritative_exact_one_int_1,
 }
 import v4.std.diagnostic { Accepted, Rejected }
@@ -82,6 +85,13 @@ fn non_negative_int_authoritative_literal_matches_accepted(
 fn at_least_minus_one_int_authoritative_literal_matches_accepted(
   literal: AtLeastMinusOneInt,
   accepted: AtLeastMinusOneInt,
+) -> Bool {
+  refined_base(r: literal.refined) == refined_base(r: accepted.refined)
+}
+
+fn at_least_minus_two_int_authoritative_literal_matches_accepted(
+  literal: AtLeastMinusTwoInt,
+  accepted: AtLeastMinusTwoInt,
 ) -> Bool {
   refined_base(r: literal.refined) == refined_base(r: accepted.refined)
 }
@@ -669,6 +679,31 @@ data claim_authoritative_at_least_minus_one_int_0_discharge: TestClaim = EqualsC
   label: "manual/refinement: authoritative_at_least_minus_one_int_0 discharged constant matches authoritative make_*",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_authoritative_at_least_minus_one_int_0_discharge_input(ok: witness_authoritative_at_least_minus_one_int_0_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_at_least_minus_two_int_minus_2_discharge() -> Bool {
+  match make_at_least_minus_two_int_at_authoritative(value: -2) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      at_least_minus_two_int_authoritative_literal_matches_accepted(
+        literal: authoritative_at_least_minus_two_int_minus_2,
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_at_least_minus_two_int_minus_2_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_at_least_minus_two_int_minus_2_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_at_least_minus_two_int_minus_2 discharged constant matches authoritative make_*",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_at_least_minus_two_int_minus_2_discharge_input(
+    ok: witness_authoritative_at_least_minus_two_int_minus_2_discharge()
+  ),
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

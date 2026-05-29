@@ -9,7 +9,9 @@ module v4.test.claim.manual.refinement_authoritative_constants
 import v4.std.refinement {
   at_least_minus_one_int_out_of_range,
   exact_one_int_out_of_range,
+  at_least_minus_two_int_out_of_range,
   make_at_least_minus_one_int_at_authoritative,
+  make_at_least_minus_two_int_at_authoritative,
   make_exact_one_int_at_authoritative,
   make_non_negative_int_at_authoritative,
   make_positive_int_at_authoritative,
@@ -53,6 +55,14 @@ fn witness_at_least_minus_one_int_authoritative_minus_two_rejects() -> Bool {
   match make_at_least_minus_one_int_at_authoritative(value: -2) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == at_least_minus_one_int_out_of_range
+  }
+}
+
+
+fn witness_at_least_minus_two_int_authoritative_minus_three_rejects() -> Bool {
+  match make_at_least_minus_two_int_at_authoritative(value: -3) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == at_least_minus_two_int_out_of_range
   }
 }
 

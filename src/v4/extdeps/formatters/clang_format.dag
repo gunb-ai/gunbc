@@ -9,6 +9,7 @@ import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
   authoritative_at_least_minus_one_int_0,
   authoritative_at_least_minus_one_int_minus_1,
+  authoritative_at_least_minus_two_int_minus_2,
   authoritative_non_negative_int_0,
   authoritative_non_negative_int_1,
   authoritative_non_negative_int_10,
@@ -28,6 +29,7 @@ import v4.std.refinement_authoritative_literals {
 import v4.std.refinement {
   NonNegativeInt,
   AtLeastMinusOneInt,
+  AtLeastMinusTwoInt,
 }
 
 
@@ -659,7 +661,7 @@ type ClangFormatWrapNamespaceBodyWithEmptyLinesStyle
 
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: encode annotated formatter field dependencies as config-level refinements once dependent record predicates are available; forbidden: collapsing dependent fields into lossy enums or omitting companion fields required by the upstream formatter schema.
 type ClangFormatConfig {
-  access_modifier_offset: Int
+  access_modifier_offset: AtLeastMinusTwoInt
   align_after_open_bracket: Bool
   align_array_of_structures: ClangFormatArrayInitializerAlignmentStyle
   align_consecutive_assignments: ClangFormatAlignConsecutiveStyle
@@ -856,7 +858,7 @@ type ClangFormatConfig {
 
 
 data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
-  access_modifier_offset: -2,
+  access_modifier_offset: authoritative_at_least_minus_two_int_minus_2,
   align_after_open_bracket: true,
   align_array_of_structures: ClangFormatArrayAlignNone,
   align_consecutive_assignments: ClangFormatAlignConsecutiveStyle { enabled: false, across_empty_lines: false, across_comments: false, align_compound: false, align_function_declarations: false, align_function_pointers: false, enum_assignments: false, pad_operators: false },
@@ -1054,7 +1056,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
 
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: ClangFormatConfigPatch projected from ClangFormatConfig field set.
 type ClangFormatConfigPatch {
-  access_modifier_offset: FieldPatch<Int>
+  access_modifier_offset: FieldPatch<AtLeastMinusTwoInt>
   align_after_open_bracket: FieldPatch<Bool>
   align_array_of_structures: FieldPatch<ClangFormatArrayInitializerAlignmentStyle>
   align_consecutive_assignments: FieldPatch<ClangFormatAlignConsecutiveStyle>
