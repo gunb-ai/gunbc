@@ -31,114 +31,51 @@ import v4.std.refinement {
 // via *_from_authoritative_catalog in v4.std.refinement.
 // 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail
 
-data authoritative_at_least_minus_one_int_minus_1: Outcome<AtLeastMinusOneInt> =
-  discharge_at_least_minus_one_int_authoritative_catalog_literal(
-    receipt: at_least_minus_one_int_authoritative_literal(value: -1)
-  )
+data authoritative_at_least_minus_one_int_minus_1: Outcome<AtLeastMinusOneInt> = discharge_at_least_minus_one_int_authoritative_catalog_literal( receipt: at_least_minus_one_int_authoritative_literal(value: -1)
 
-data authoritative_at_least_minus_one_int_0: Outcome<AtLeastMinusOneInt> =
-  discharge_at_least_minus_one_int_authoritative_catalog_literal(
-    receipt: at_least_minus_one_int_authoritative_literal(value: 0)
-  )
+data authoritative_at_least_minus_one_int_0: Outcome<AtLeastMinusOneInt> = discharge_at_least_minus_one_int_authoritative_catalog_literal( receipt: at_least_minus_one_int_authoritative_literal(value: 0)
 
-data authoritative_at_least_minus_two_int_minus_2: Outcome<AtLeastMinusTwoInt> =
-  discharge_at_least_minus_two_int_authoritative_catalog_literal(
-    receipt: at_least_minus_two_int_authoritative_literal(value: -2)
-  )
+data authoritative_at_least_minus_two_int_minus_2: Outcome<AtLeastMinusTwoInt> = discharge_at_least_minus_two_int_authoritative_catalog_literal( receipt: at_least_minus_two_int_authoritative_literal(value: -2)
 
 data authoritative_exact_one_int_1: Outcome<ExactOneInt> = discharge_exact_one_int_authoritative_catalog_literal(
   receipt: exact_one_int_authoritative_literal(value: 1)
 )
 
-data authoritative_non_negative_int_0: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 0)
-  )
+data authoritative_non_negative_int_0: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 0)
 
-data authoritative_non_negative_int_1: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 1)
-  )
+data authoritative_non_negative_int_1: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 1)
 
-data authoritative_non_negative_int_2: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 2)
-  )
+data authoritative_non_negative_int_2: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 2)
 
-data authoritative_non_negative_int_4: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 4)
-  )
+data authoritative_non_negative_int_4: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 4)
 
-data authoritative_non_negative_int_8: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 8)
-  )
+data authoritative_non_negative_int_8: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 8)
 
-data authoritative_non_negative_int_10: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 10)
-  )
+data authoritative_non_negative_int_10: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 10)
 
-data authoritative_non_negative_int_18: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 18)
-  )
+data authoritative_non_negative_int_18: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 18)
 
-data authoritative_non_negative_int_19: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 19)
-  )
+data authoritative_non_negative_int_19: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 19)
 
-data authoritative_non_negative_int_35: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 35)
-  )
+data authoritative_non_negative_int_35: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 35)
 
-data authoritative_non_negative_int_50: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 50)
-  )
+data authoritative_non_negative_int_50: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 50)
 
-data authoritative_non_negative_int_60: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 60)
-  )
+data authoritative_non_negative_int_60: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 60)
 
-data authoritative_non_negative_int_80: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 80)
-  )
+data authoritative_non_negative_int_80: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 80)
 
-data authoritative_non_negative_int_120: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 120)
-  )
+data authoritative_non_negative_int_120: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 120)
 
-data authoritative_non_negative_int_150: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 150)
-  )
+data authoritative_non_negative_int_150: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 150)
 
-data authoritative_non_negative_int_300: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 300)
-  )
+data authoritative_non_negative_int_300: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 300)
 
-data authoritative_non_negative_int_500: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 500)
-  )
+data authoritative_non_negative_int_500: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 500)
 
-data authoritative_non_negative_int_1000: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 1000)
-  )
+data authoritative_non_negative_int_1000: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 1000)
 
-data authoritative_non_negative_int_1000000: Outcome<NonNegativeInt> =
-  discharge_non_negative_int_authoritative_catalog_literal(
-    receipt: non_negative_int_authoritative_literal(value: 1000000)
-  )
+data authoritative_non_negative_int_1000000: Outcome<NonNegativeInt> = discharge_non_negative_int_authoritative_catalog_literal( receipt: non_negative_int_authoritative_literal(value: 1000000)
 
 data authoritative_positive_int_2: Outcome<PositiveInt> = discharge_positive_int_authoritative_catalog_literal(
   receipt: positive_int_authoritative_literal(value: 2)
