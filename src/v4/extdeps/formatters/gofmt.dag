@@ -5,16 +5,17 @@
 
 module v4.extdeps.formatters.gofmt
 
+import v4.std.patch { ConfigPatchRecord, config_patch_layer }
+
 
 type GofmtConfig {}
 
 data gofmt_defaults: GofmtConfig = GofmtConfig {}
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: GofmtConfigPatch projected from GofmtConfig field set.
-type GofmtConfigPatch {}
+type GofmtConfigPatch = ConfigPatchRecord<GofmtConfig>
 
 
 fn gofmt_layer(base: GofmtConfig, patch: GofmtConfigPatch) -> GofmtConfig {
-  base
+  config_patch_layer(base: base, patch: patch)
 }
