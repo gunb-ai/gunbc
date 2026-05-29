@@ -1,0 +1,23 @@
+// src/v4/std/behavioral.dag
+// Scope: behavioral vocabulary for external-system modeling — v4 port of dsl/std/behavioral.dag (Determinism arm first; remainder lands with extdeps behavior contracts).
+// Status: determinism carrier for effect-algebra attachment (operator-directive 2026-05-29).
+
+
+module v4.std.behavioral
+
+
+// Whether repeated invocations with equal inputs converge to one outcome.
+// Authority: dsl/std/behavioral.dag — keep the two in sync during bootstrap.
+type Determinism
+  = Deterministic
+  | NonDeterministic
+  | EventuallyConsistent
+
+
+fn determinism_is_deterministic(d: Determinism) -> Bool {
+  match d {
+    Deterministic => true
+    NonDeterministic => false
+    EventuallyConsistent => false
+  }
+}

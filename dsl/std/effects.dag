@@ -27,9 +27,11 @@
 //   space that the operation modifies.
 //
 // RELATIONSHIP TO std/behavioral.dag:
-//   behavioral.dag declares OperationBehavior with idempotent: Bool.
-//   That flag dissolves when this algebra is wired: idempotency is
-//   derived from EffectShape, not declared.
+//   behavioral.dag declares OperationBehavior with idempotent: Bool and
+//   determinism: Determinism. Idempotency dissolves onto EffectShape;
+//   determinism threads through OperationEffect as a typed coproduct arm
+//   (Deterministic | NonDeterministic | EventuallyConsistent), not a
+//   parallel Bool flag.
 //
 // CONSUMERS:
 //   - Compiler: compose effects through workflows, prove idempotency
@@ -38,6 +40,7 @@
 
 module std.effects
 
+import std.behavioral { Determinism }
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.http_path {
   PathTemplate,
@@ -137,6 +140,16 @@ type OperationEffect {
   operation_name: String
   shape: EffectShape
   evidence: IdempotencyEvidence
+  determinism: Determinism
+}
+
+// Determinism is a typed property on the effect carrier, not a host test matrix.
+fn is_deterministic_operation(op: OperationEffect) -> Bool {
+  match op.determinism {
+    Deterministic => true
+    NonDeterministic => false
+    EventuallyConsistent => false
+  }
 }
 
 // Workflow-level idempotency judgment — a sum, not a Bool × optional

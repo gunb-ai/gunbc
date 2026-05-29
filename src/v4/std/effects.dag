@@ -1,10 +1,13 @@
 // src/v4/std/effects.dag
 // Scope: v4 effect algebra — idempotent/breaking partition (structural mirror of src/v3/std/effects.dag terminal carriers).
 // Status: T-19 idempotent-operation generator authority; full OperationEffect port = TASKS T-8.
+// Determinism: `EffectCarrier` threads `v4.std.behavioral::Determinism` as a typed property (operator-directive 2026-05-29) — not a parallel Bool flag or host-side 5× matrix.
 
 module v4.std.effects
 
 
+import v4.std.behavioral { Determinism, determinism_is_deterministic }
+import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode }
 
 
@@ -37,6 +40,15 @@ type KeySource
 type EffectShape
   = IsIdempotent(IdempotentShape)
   | IsBreaking(BreakingShape)
+
+
+// Per-operation effect carrier: state-modification shape + determinism (orthogonal axes).
+// `Deterministic` is the behavioral coproduct arm imported from `v4.std.behavioral` —
+// not a host-side re-emit matrix ratchet.
+type EffectCarrier {
+  shape: EffectShape
+  determinism: Determinism
+}
 
 
 type IdempotentOperationRef {
@@ -78,6 +90,23 @@ data sample_upsert_callable: Symbol = sample_upsert_callable
 data sample_delete_callable: Symbol = sample_delete_callable
 data sample_path_key_slug: Symbol = sample_path_key_slug
 data sample_label_only_callable: Symbol = sample_label_only_callable
+
+
+data sample_deterministic_read_carrier: EffectCarrier = EffectCarrier {
+  shape: IsIdempotent(ReadEffect),
+  determinism: Deterministic
+}
+
+
+data sample_nondeterministic_create_carrier: EffectCarrier = EffectCarrier {
+  shape: IsBreaking(CreateEffect { cause: PostAlways }),
+  determinism: NonDeterministic
+}
+
+
+fn effect_carrier_is_deterministic(carrier: EffectCarrier) -> Bool {
+  determinism_is_deterministic(d: carrier.determinism)
+}
 
 
 data sample_state: Node = Node {
