@@ -240,24 +240,22 @@ The sed above is a **first-pass draft only** — do not run it without an allowl
 
 ## 5. Binary distribution
 
-### Phase 1 — GitHub Releases (do for June 1)
+### Phase 1a — GitHub Releases binaries + workflow (do for June 1)
 
-- [ ] Write `.github/workflows/release.yml` — triggered on `v*` tag push:
-  - Build matrix: `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`,
-    `x86_64-apple-darwin`, `aarch64-apple-darwin`
-  - Use `cross` for musl cross-compilation (avoids glibc dependency)
-  - Upload artifacts to GitHub Release
-  - Include `install.sh` in the release
-- [ ] Write `install.sh` — detects OS/arch, downloads right binary from
-      GitHub Releases latest, installs to `/usr/local/bin/gunbc`:
-  ```bash
-  #!/usr/bin/env sh
-  set -e
-  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-  ARCH=$(uname -m)
-  # ... map to release asset name, curl, chmod +x, install
-  ```
-- [ ] Tag `v0.1.0` from main after all cleanup lands
+- [ ] `src/v4/workflow/release.dag` — semantic authority: six-target matrix
+      (`x86_64`/`aarch64` linux-musl, `x86_64`/`aarch64` apple-darwin,
+      `x86_64`/`aarch64` pc-windows-msvc), `release_published_target_triples`,
+      `release_published_artifact_names` (`.exe` on windows rows), GH Release pipeline
+- [ ] Hand-synced `.github/workflows/release.yml` — `v*` tag push; musl via `cross`;
+      native darwin + windows runners; upload modeled `artifact_basename` assets only
+- [ ] Tag `v0.1.0` from main after Phase 1a + 1b land
+
+### Phase 1b — install (blocks public `curl | sh` / install UX; follow-on PR)
+
+- [ ] `src/v4/install/install.dag` — `InstallTarget` / OS-arch detection / env policy;
+      references `release.dag` `release_published_target_triples` (no duplicate triple literals)
+- [ ] Emit/project `install.sh` + helper scripts from model (hand-synced interim until ShellStatic)
+- [ ] Re-enable install assets in GH Release bundle after install.dag lands
 
 ### Phase 2 — Homebrew tap (good for macOS users, do week of June 1)
 
