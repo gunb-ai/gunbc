@@ -1,4 +1,4 @@
-// v2 emitter core -- target-agnostic dispatch and shared helpers.
+// No I/O -- file writing is handled by the pipeline.
 // Invariant 6: "DAG nodes are facts, rendering is separate."
 module v2.compiler.emit
 import v2.std.core {
@@ -709,7 +709,6 @@ fn is_null_coalesce(op: BinOp) -> Bool {
 // =========================================================================
 // Per-language functions -- centralized data, inline lookup.
 // =========================================================================
-// `.to_string()` because Rust patterns use `&str`, not owned `String`.
 fn rust_literal_for_pattern(value: LiteralValue) -> String {
   match value {
     LitStr { value: s } => emit_string_literal(s: s, suffix: "")
@@ -796,7 +795,7 @@ fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<Str
   }
 }
 // =========================================================================
-// render_node_type -- fused Node -> String type rendering
+// Classifies Node structure and renders directly to a target-language
 // =========================================================================
 fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
@@ -1934,7 +1933,7 @@ fn emit_typed_slice_shared(base: Node, start: Node, end: Node, target: RenderTar
   }
 }
 // =========================================================================
-// emit_shared_expr — full shared ExprData dispatcher (P4.2 step 5)
+// The shared layer owns the whole-tree `ExprData` match. Backends provide:
 // =========================================================================
 fn emit_shared_expr(
   texpr: Node,

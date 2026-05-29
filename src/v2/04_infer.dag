@@ -1,4 +1,4 @@
-// v2 namespace reconciler -- verifies that named structural compositions
+// "Types" in the DAG language are named compositions (namespaces), not
 module v2.compiler.infer
 import std.types { SourceSpan, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
@@ -256,7 +256,6 @@ type CycleDetectState {
 }
 // =========================================================================
 // Scope merge helpers
-// Parent imports still merge separately because they operate on already-
 // =========================================================================
 type InferScopeComponents {
   func_sigs: Map<String, DeclaredFuncSig>
@@ -2373,13 +2372,15 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
 type SizeExpr
   = ParamSize { param: String }
   | DividedSize { param: String, divisor: Int }
-// M4 constraint: param_names uses String keys/values because .dag has no
 type DescentContext {
   fn_name: String
-  param_names: Map<String, String>  param_order: List<String>  type_env: TypeEnv
+  param_names: Map<String, String>
+  param_order: List<String>
+  type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
   size_aliases: Map<String, SizeExpr>
-  scope_locals: Map<String, TypeBinding>  func_sigs: Map<String, ResolvedFuncSig>
+  scope_locals: Map<String, TypeBinding>
+  func_sigs: Map<String, ResolvedFuncSig>
   per_field_vars: Map<String, Map<String, SubValueRelation>>
 }
 fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
@@ -2869,7 +2870,8 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
                 Some { value: a } =>
                   match arg_value(n: a).expr_data {
                     ExprLiteral { value: LitInt { value: k } } => if k > 0 { k } else { 0 }
-                    _ => 0                  }
+                    _ => 0
+                  }
                 None => 0
               }
               if skip_amount > 0 {
@@ -2936,7 +2938,6 @@ fn classify_call_arg_provenance(arg_expr: Node, ctx: DescentContext) -> SubValue
     _ => classify_let_value(val: arg_expr, ctx: ctx)
   }
 }
-// Uses first-element-as-init because the lattice has no unique top
 fn merge_argument_relations(rels: List<SubValueRelation>) -> SubValueRelation {
   match rels |> first {
     None => SubValueUnknown
@@ -3050,7 +3051,6 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
               _ => SubValueUnknown
             }
           } else {
-            // f(n) = f(0 - n) can oscillate. Fail closed.
             SubValueUnknown
           }
         Div =>
@@ -3079,6 +3079,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           SubValueUnknown
         _ => SubValueUnknown
       }
+    // Worst-case across branches ensures soundness.
     ExprMatch =>
       let arm_rels = match_arm_nodes(texpr: arg_expr) |> map(arm =>
         classify_argument(arg_expr: arm_body(n: arm), param_name: param_name, ctx: ctx)
@@ -4585,7 +4586,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
-  // do not leak as ambient user-facing type bindings.
   let std_import_bindings = collect_parent_bindings_filtered(envs: std_types_parent_env)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
@@ -5309,6 +5309,7 @@ fn typecheck_modules(
 }
 // =========================================================================
 // Reconcile namespaces in one call.
+// Historical note: collect_unresolved_in_expr and the rest of the
 // =========================================================================
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
   let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)

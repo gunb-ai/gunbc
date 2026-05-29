@@ -1,4 +1,4 @@
-// v2 core types -- the compiler's domain model.
+// Imports shared types from std.types (the same types used by all DSL
 module v2.std.core
 import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity }
 import std.syntax {
@@ -11,6 +11,7 @@ import std.induction { SubValueRelation }
 // =========================================================================
 // Tokens
 // =========================================================================
+// Token: Layer 5 compositional type (see Composition Stack in ROADMAP).
 type Token {
   text: String
   span: SourceSpan
@@ -44,7 +45,6 @@ type FieldSummary {
   access_style: FieldAccessStyle
   value_shape: FieldValueShape
 }
-// re-exported for backward compatibility with v2.std.core consumers.
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
@@ -197,8 +197,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   true
 }
-// one diagnostic class — ComplexityUnknown — because the CX analysis is
-// must not execute programs that violate ownership.
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
@@ -468,7 +466,11 @@ fn variant_node_span(n: Node) -> SourceSpan { n.span }
 // IR Child Layout Model
 // =========================================================================
 type ChildRole {
-  name: String  accessor: String  position: Int  required: Bool}
+  name: String
+  accessor: String
+  position: Int
+  required: Bool
+}
 data expr_child_roles: Map<String, List<ChildRole>> = {
   "ExprFieldAccess": [
     ChildRole { name: "base", accessor: "field_access_base", position: 0, required: true }
@@ -542,7 +544,10 @@ fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
 // Node field roles — structural descent facts for complexity analysis
 // =========================================================================
 type NodeFieldRole
-  = ChildrenListField  | SubValueField  | MetadataFielddata node_field_roles: Map<String, NodeFieldRole> = {
+  = ChildrenListField
+  | SubValueField
+  | MetadataField
+data node_field_roles: Map<String, NodeFieldRole> = {
   "children": ChildrenListField,
   "params": ChildrenListField,
   "body": SubValueField,
@@ -566,7 +571,10 @@ fn is_sub_value_field(field_name: String) -> Bool {
 // Function size effects — structural descent facts for complexity analysis
 // =========================================================================
 type FunctionSizeEffect
-  = TreeSizePreserving  | TreeSizeReducing  | PropertyContraction { domain_size: Int }data function_size_effects: Map<String, FunctionSizeEffect> = {
+  = TreeSizePreserving
+  | TreeSizeReducing
+  | PropertyContraction { domain_size: Int }
+data function_size_effects: Map<String, FunctionSizeEffect> = {
   "with_required_cardinality": PropertyContraction { domain_size: 2 },
   "resolved_type": TreeSizeReducing,
   "param_node_type_expr": TreeSizeReducing,
@@ -642,15 +650,12 @@ fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
 fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "binop right") }
 fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
-// -- ExprVar (D3: name dissolved into Node.name) --
 fn expr_var_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
-// -- ExprFieldAccess (D3: field dissolved into Node.name) --
 fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
 fn field_access_field_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
   match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
 }
-// -- ExprCall (D3: func dissolved into Node.name) --
 fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
   match texpr.expr_data {
@@ -658,23 +663,19 @@ fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
     _ => none
   }
 }
-// -- ExprMethodCall (D3: method dissolved into Node.name) --
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 fn expr_method_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
   match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
 }
-// -- ExprLambda (D3: params dissolved into child Nodes after body) --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
 fn lambda_param_names_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_indices: source_indices, node: n)) }
-// -- ExprLet (D3: name dissolved into Node.name) --
 fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
 fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
 fn let_binding_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
 fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
-// -- ExprForEach (D3: variable dissolved into Node.name) --
 fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
 fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
 fn foreach_variable_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
@@ -685,7 +686,6 @@ fn slice_start(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role
 fn slice_end(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 2, role: "slice end") }
 fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "return value") }
 fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
-// -- ExprRecordLit (D3: type_name dissolved into Node.name, parent_enum stays in ExprData) --
 fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let name = authored_name_at(source_indices: source_indices, node: texpr)
   if name == "" { none } else { Some { value: name } }
@@ -936,7 +936,6 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
 }
 // =========================================================================
 // Dissolution infrastructure -- Node-based representations of types that
-// will eventually dissolve. Each type gets:
 // =========================================================================
 // A ServiceConfig dissolves into Node properties where:
 fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {

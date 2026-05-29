@@ -1,4 +1,4 @@
-// v2 complexity analysis -- cost algebra and proof vocabulary.
+// Defines the symbolic types for runtime complexity analysis of DAG
 // D2: get_or_compute_summary -- lazy cached summary computation
 // D4: build_complexity_report -- collect summaries (no violations — all costs concrete)
 module v2.compiler.complexity
@@ -230,8 +230,6 @@ fn proof_has_non_descending_cycle(proof: TerminationProof, members: List<String>
 fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   map_get(m, key) != none
 }
-// `strict_after_parser_witness` (below) — they do not import `promote_to_strict` anymore.
-// ahead of the original parser state. They do not rescue unknown provenance.
 fn strict_after_parser_witness(input: DescentEvidence) -> DescentEvidence {
   match input {
     DescentUnknown => DescentUnknown
@@ -1085,7 +1083,6 @@ fn count_self_calls(body: Node, func_name: String, si: Map<String, NewlineIndex>
   )
   own + from_children
 }
-// iteration and do not contribute to the recursion branching factor.
 fn max_path_self_calls(body: Node, func_name: String, si: Map<String, NewlineIndex>) -> Int {
   max_path_self_calls_with_cont(body: body, func_name: func_name, continue_calls: 0, si: si)
 }
@@ -1120,6 +1117,7 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
       cond_calls + branch_max
     ExprForEach =>
       // They do NOT contribute to the recursion branching factor.
+      // Soundness note: this exclusion is correct for path-counting (the
       max_path_self_calls_with_cont(body: foreach_collection(texpr: body), func_name: func_name, continue_calls: 0, si: si) + continue_calls
     ExprLet =>
       let val_calls = max_path_self_calls_with_cont(body: let_value(texpr: body), func_name: func_name, continue_calls: 0, si: si)
@@ -1294,12 +1292,12 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
         Div => expr_descending_witness_source(expr: binop_left(texpr: expr), descending_witness_names: descending_witness_names, si: si)
         _ => none
       }
-    // values are acyclically constructed (Decidability Invariant Part 1),
-    // field) are substructures of x but do not prove that the recursion
     _ => none
   }
 }
-// It does NOT propagate through ExprIf or ExprMatch branches because
+// Soundness note on witness propagation through control flow:
+// "either branch yields a witness" is unsound: `if cond { n - 1 } else { n }`
+// This is tracked in ROADMAP §I1.
 fn condition_param_names(expr: Node, param_set: Map<String, String>, si: Map<String, NewlineIndex>) -> Map<String, String> {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -1529,6 +1527,7 @@ fn is_list_passthrough_call(expr: Node, si: Map<String, NewlineIndex>) -> Bool {
 fn list_passthrough_inner_arg(expr: Node, si: Map<String, NewlineIndex>) -> Node? {
   list_passthrough_inner(expr: expr, si: si)
 }
+// Optimistic soundness: parser code always error-checks before using the
 fn is_tokens_consuming_call(expr: Node, param_name: String, vars: Map<String, Bool>, si: Map<String, NewlineIndex>) -> Bool {
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -1652,11 +1651,9 @@ fn collect_field_binding_names(fb: Node, vars: Map<String, Bool>) -> Map<String,
     _ => vars
   }
 }
+// Soundness: for let-bindings, ONLY accept direct descent expressions
 // Do NOT look through if/match wrappers — `let x = if c { desc } else { n }`
-// For match scrutinees, expr_contains_descent IS safe because the match
-// extracts the descending component (W-4 is safe when gated by match).
 // RC-2: Check if an if-expression produces Option where the descent branch
-// This is safe because the subsequent match on Some { value: x } guarantees
 fn is_if_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool, si: Map<String, NewlineIndex>) -> Bool {
   match val.expr_data {
     ExprIf =>
@@ -1775,7 +1772,6 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       let next_vars = if val_is_descent {
         map_insert(vars, let_binding_name_at(texpr: body, source_indices: si), true)
       } else { vars }
-      // let-value must NOT leak into the let-body scope — they are only
       match let_body(texpr: body) {
         Some { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list, si: si)
         None => next_vars
@@ -1808,7 +1804,6 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
         map_merge(acc, arm_result)
       )
     ExprIf =>
-      // must NOT contaminate the else-branch (they are branch-local).
       let then_vars = collect_descent_vars(body: if_then_branch(texpr: body), param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let else_vars = match if_else_branch(texpr: body) {
         Some { value: eb } => collect_descent_vars(body: eb, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
@@ -2036,7 +2031,6 @@ fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars:
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
           classify_self_call_evidence(arg_expr: wrapper_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
         } else if is_sub_value_extractor(expr: arg_expr, si: si) {
-          // Elevate Same→Strict because extractor(param) < param.
           let inner_ev = classify_self_call_evidence(arg_expr: extractor_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
           match inner_ev {
             NonIncreasing => Strict
@@ -2068,7 +2062,8 @@ fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars:
           let recv_ev = classify_self_call_evidence(arg_expr: recv, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
           match recv_ev {
             Strict => Strict
-            NonIncreasing => Strict            DescentUnknown => DescentUnknown
+            NonIncreasing => Strict
+            DescentUnknown => DescentUnknown
           }
         } else { DescentUnknown }
       _ => DescentUnknown
@@ -2287,7 +2282,8 @@ fn try_type_directed_dimension(body: Node, func_name: String, param_name: String
 fn construct_termination_proof(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>, si: Map<String, NewlineIndex>) -> TerminationProof? {
   let structural_proof = params |> fold(init: none, f: (best, p) =>
     match best {
-      Some { value: _ } => best      None =>
+      Some { value: _ } => best
+      None =>
         let pname = param_node_name_at(n: p, source_indices: si)
         let type_name = authored_name_at(source_indices: si, node: param_node_type_expr(n: p))
         match type_iteration_dimension(type_name: type_name) {
@@ -2363,7 +2359,8 @@ fn construct_branching_termination_proof(func_name: String, body: Node, params: 
               Some { value: Strict } => Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
               _ => none
             }
-          Some { value: ArithmeticRepeat } => none          None =>
+          Some { value: ArithmeticRepeat } => none
+          None =>
             let tree_ev = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si)
             match tree_ev {
               Some { value: Strict } => Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
@@ -2606,7 +2603,6 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
           classify_scc_call_progress(arg_expr: wrapper_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, si: si)
         } else if is_sub_value_extractor(expr: arg_expr, si: si) {
-          // Elevate Same→Strict because extractor(param) < param.
           let inner_progress = classify_scc_call_progress(arg_expr: extractor_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, si: si)
           match inner_progress {
             NonIncreasing => Strict
@@ -2638,7 +2634,8 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
           let recv_progress = classify_scc_call_progress(arg_expr: recv, param_name: param_name, descent_vars: descent_vars, si: si)
           match recv_progress {
             Strict => Strict
-            NonIncreasing => Strict            DescentUnknown => DescentUnknown
+            NonIncreasing => Strict
+            DescentUnknown => DescentUnknown
           }
         } else { DescentUnknown }
       _ => DescentUnknown
@@ -2651,7 +2648,6 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own_edges = if set_has(m: target_set, key: callee) {
-        // is per-callee-param edge tracking — deferred because all current
         let callee_params = match map_get(scc_measure_params, callee) {
           Some { value: p } => p
           None => empty_map()
@@ -2810,6 +2806,7 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
           let pname = param_node_name_at(n: p, source_indices: si)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: true, si: si)
           let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: true, check_list: true, scc_measure_params: measure_params, si: si)
+          // This is a SEARCH heuristic, not a proof obligation — soundness comes
           let unknown_count = count_unknown_progress_edges(edges: param_edges)
           let best_unknown = count_unknown_progress_edges(edges: best)
           if best |> count == 0 || unknown_count < best_unknown {
@@ -2870,7 +2867,7 @@ fn count_known_in_edge_map(m: Map<String, DescentEvidence>) -> Int {
     match map_get(m, k) { Some { value: DescentUnknown } => false  _ => true }
   ) |> count
 }
-// A cross-param JOIN (best-of per edge) is unsound because edge A→B may
+// Soundness: all edges from a member must use a single param's measure.
 fn pick_best_param_edges(current: Map<String, DescentEvidence>, candidate: Map<String, DescentEvidence>) -> Map<String, DescentEvidence> {
   if count_known_in_edge_map(m: candidate) > count_known_in_edge_map(m: current) { candidate }
   else { current }
@@ -2894,6 +2891,7 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best_map, candidate: param_map)
         )
+        // Note: map_keys order is nondeterministic (HashMap-backed), but consumers
         let all_keys = concat(map_keys(tree_edge_map), map_keys(list_edge_map))
         let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
         map_keys(unique_keys) |> map(callee =>
@@ -2927,6 +2925,7 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
           )
           let my_parser_edges = all_parser_edges |> filter(pe => pe.caller == name)
           let parser_edge_map = my_parser_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
+          // Note: map_keys order is nondeterministic (HashMap-backed), but consumers
           let all_keys = concat(map_keys(tree_edge_map), map_keys(parser_edge_map))
           let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
           map_keys(unique_keys) |> map(callee =>
@@ -3072,7 +3071,6 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         Some { value: parser_proof }
       } else {
         let lex_edges = collect_scc_independent_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
-        // and must not pass — the primary measure could increase.
         let lex_all_known = lex_edges |> all(e =>
           match e.evidence |> first {
             Some { value: ev } => match ev { DescentUnknown => false  _ => true }
@@ -3221,6 +3219,7 @@ fn scalar_output() -> Map<String, CostExpr> {
 // =========================================================================
 // Size variable extraction
 // =========================================================================
+// NOTE: produces_collection is NOT used here — "returns a collection" and
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
   if method_semantics == none { false }
   else {
@@ -3737,7 +3736,9 @@ type FuncEntry {
   body: Node
   params: List<Node>
   span: SourceSpan
-  is_tail_recursive: Bool}
+  is_tail_recursive: Bool
+}
+// Note: recursive_type_set was removed (unused downstream — the complexity
 type RecursionContext {
 }
 type SummaryResult {
@@ -4165,7 +4166,6 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // =========================================================================
 // CX-L3: Structural descent analyzer
 // =========================================================================
-// sound because annotate_descent's method-call handler sets up the correct context
 fn collect_call_evidence(body: Node, target_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<List<SubValueRelation>> {
   match body.expr_data {
     ExprCall { call_semantics: _, descent_evidence: de } =>
@@ -4366,7 +4366,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let parser_always_advancing = infer_all_parser_always_advancing(func_index: func_index, si: si)
   let full_scc_index = func_entries |> fold(init: scc_result.index, f: (acc, entry) =>
     match map_get(acc, entry.name) {
-      Some { value: _ } => acc      None =>
+      Some { value: _ } => acc
+      None =>
         if max_path_self_calls(body: entry.body, func_name: entry.name, si: si) > 0 {
           let pattern = classify_recursion_pattern(
             func_name: entry.name,
@@ -4437,7 +4438,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           evict_summary(table: evicted_table, func_name: func_name)
         } else { evicted_table }
         TopoBuildAcc { table: final_table, classes: new_classes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
-      None => acc    }
+      None => acc
+    }
   })
   let structural_bounds = analyze_structural_bounds(func_entries: func_entries, si: si)
   ComplexityReport {

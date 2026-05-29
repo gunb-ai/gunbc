@@ -1,4 +1,4 @@
-// v2 ownership analysis -- static proof that try_unwrap fallbacks are unnecessary.
+// D-ownership: Classify every use of every binding by how it consumes the value.
 // The .dag language guarantees fan-out is a syntactic property (INVARIANTS.md
 module v2.compiler.ownership
 import v2.std.core {
@@ -311,7 +311,6 @@ fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Se
 }
 // =========================================================================
 // Callable reference collection — which functions are passed as values?
-// HOF) cannot have its params borrowed, because borrowing changes the
 // =========================================================================
 fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<String> {
   match texpr.expr_data {

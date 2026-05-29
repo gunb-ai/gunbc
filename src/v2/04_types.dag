@@ -1,4 +1,4 @@
-// v2 type predicates, constructors, and comparisons.
+// Dependency: only v2.std.core (Node, Connective, etc.)
 module v2.compiler.infer_types
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name }
 import std.algebra {
@@ -44,7 +44,6 @@ fn type_variable_node(id: String) -> Node {
 // =========================================================================
 // Node constructors
 // =========================================================================
-// post-inference sites where Resolved is the expected invariant.
 fn resolved_type(n: Node) -> Node {
   match n.inferred {
     Some { value: Resolved { node: rt } } => rt
@@ -131,7 +130,6 @@ fn kernel_container_profile_miss_diagnostic(kind_name: String) -> ErrorNode {
     module_name: "v2.compiler.infer_types"
   )
 }
-// invariant), not user-facing SemanticExprError.
 fn missing_kernel_container_profile_type(kind_name: String) -> Node {
   let msg = concat("missing kernel container profile: ", kind_name)
   Node {

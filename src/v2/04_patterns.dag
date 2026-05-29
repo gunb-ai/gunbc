@@ -48,6 +48,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 // =========================================================================
 // Variant lookup
 // =========================================================================
+// [inner_type, None] — no explicit "Some" child. Track in the roadmap until
 fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
   let value_field = Node { name: "value", span: scrut.span, ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -55,7 +56,6 @@ fn synthesize_optional_some_variant(scrut: Node) -> Node {
   some_node
 }
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
-  // Dynamic/Error name checks dissolved — no .dag source declares these types,
   let is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if is_error {
     PatternLookupBlocked

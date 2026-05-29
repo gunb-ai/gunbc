@@ -1,4 +1,4 @@
-// v2 compiler test harness template for Rust stage0.
+// Defines the Rust source text for the compiler_tests module.
 module v2.compiler.compiler_tests_rust
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go }
 import v2.compiler.coercion {

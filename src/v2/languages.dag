@@ -133,8 +133,16 @@ type ImportRule {
   import_path: String
 }
 type SharingStrategy {
-  needs_sharing: Bool  wrap_template: String
-  clone_value: String  deref_clone: String  field_clone: String  iter_owned: String  clone_suffix: String  borrow_param_template: String  borrow_arg_template: String}
+  needs_sharing: Bool
+  wrap_template: String
+  clone_value: String
+  deref_clone: String
+  field_clone: String
+  iter_owned: String
+  clone_suffix: String
+  borrow_param_template: String
+  borrow_arg_template: String
+}
 type IndexingSemantics {
   list_index: String
   map_index: String
@@ -143,32 +151,73 @@ type IndexingSemantics {
   string_slice: String?
 }
 type AnnotationRequirements {
-  let_binding_inferred: String  let_binding_annotated: String  lambda_param_typed: String  lambda_param_untyped: String}
+  let_binding_inferred: String
+  let_binding_annotated: String
+  lambda_param_typed: String
+  lambda_param_untyped: String
+}
 type ServiceFieldTemplates {
-  rest_decl: String  auth_decl: String
+  rest_decl: String
+  auth_decl: String
   shell_decl: String
   file_decl: String
-  rest_ctor: String  auth_ctor: String
+  rest_ctor: String
+  auth_ctor: String
   shell_ctor: String
   file_ctor: String
 }
 type BlockSyntax {
-  block_open: String  block_close: String  else_clause: String  match_keyword: String  case_keyword: String  arm_separator: String  stmt_terminator: String  significant_whitespace: Bool}
+  block_open: String
+  block_close: String
+  else_clause: String
+  match_keyword: String
+  case_keyword: String
+  arm_separator: String
+  stmt_terminator: String
+  significant_whitespace: Bool
+}
 type ForEachSyntax {
-  prefix: String  separator: String}
+  prefix: String
+  separator: String
+}
 type IfValueForm
-  = IfExpression  | ConditionalTernary  | IfStatementtype ExpressionSemantics {
+  = IfExpression
+  | ConditionalTernary
+  | IfStatement
+type ExpressionSemantics {
   if_value_form: IfValueForm
-  wildcard_case: String?  variant_pattern: VariantPatternSyntax?  guard_prefix: String?  empty_return_value: String  return_suffix: String  suppress_unit_return: Bool}
+  wildcard_case: String?
+  variant_pattern: VariantPatternSyntax?
+  guard_prefix: String?
+  empty_return_value: String
+  return_suffix: String
+  suppress_unit_return: Bool
+}
 type VariantPatternSyntax {
-  open: String  close: String  binding_sep: String  empty_suffix: String}
+  open: String
+  close: String
+  binding_sep: String
+  empty_suffix: String
+}
 type NamingCase = PascalCase | SnakeCase | CamelCase | AsAuthored
 type VisibilitySpec
-  = KeywordVisibility { prefix: String }  | CaseVisibility { export_case: NamingCase }type TcoSyntax {
-  loop_keyword: String  break_return: String  continue_str: String  temp_var_prefix: String  temp_decl_prefix: String  temp_assign_op: String}
+  = KeywordVisibility { prefix: String }
+  | CaseVisibility { export_case: NamingCase }
+type TcoSyntax {
+  loop_keyword: String
+  break_return: String
+  continue_str: String
+  temp_var_prefix: String
+  temp_decl_prefix: String
+  temp_assign_op: String
+}
 type ServiceMethodStrategy
-  = SelfInParams { self_param: String }  | ExternalReceiver { var_name: String }type ServiceReturnStrategy
-  = ArrowReturn  | ErrorTupleReturn { error_type: String }fn service_self_param(spec: LanguageSpec) -> String {
+  = SelfInParams { self_param: String }
+  | ExternalReceiver { var_name: String }
+type ServiceReturnStrategy
+  = ArrowReturn
+  | ErrorTupleReturn { error_type: String }
+fn service_self_param(spec: LanguageSpec) -> String {
   match spec.service_method {
     SelfInParams { self_param: sp } => sp
     ExternalReceiver { var_name: _ } => ""
@@ -199,7 +248,18 @@ fn service_return_str(spec: LanguageSpec, ret_type: String) -> String {
   }
 }
 type ItemKeywords {
-  func_keyword: String  async_prefix: String  struct_keyword: String  enum_keyword: String  type_alias_keyword: String  param_separator: String  return_arrow: String  param_type_sep: String  module_keyword: String  import_keyword: String  import_from_keyword: String}
+  func_keyword: String
+  async_prefix: String
+  struct_keyword: String
+  enum_keyword: String
+  type_alias_keyword: String
+  param_separator: String
+  return_arrow: String
+  param_type_sep: String
+  module_keyword: String
+  import_keyword: String
+  import_from_keyword: String
+}
 fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
   let matching = forms |> filter(f => f.kind == kind)
   match matching |> first {
@@ -224,29 +284,60 @@ type LanguageSpec {
   tco: TcoSyntax
   items: ItemKeywords
   expression_semantics: ExpressionSemantics
-  lambda_template: String  error_expr_template: String  list_literal_empty: String  list_literal_template: String  null_coalesce_template: String  error_type_template: String  type_arg_open: String  type_arg_close: String  void_type: String  tuple_syntax: TupleSyntax
+  lambda_template: String
+  error_expr_template: String
+  list_literal_empty: String
+  list_literal_template: String
+  null_coalesce_template: String
+  error_type_template: String
+  type_arg_open: String
+  type_arg_close: String
+  void_type: String
+  tuple_syntax: TupleSyntax
   string_interp: StringInterpSyntax
   callable_type_template: String?
   naming_case: NamingCase
   async_call_prefix: String
-  bridge_method_prefix: String  bridge_method_case: NamingCase  bridge_method_overrides: Map<String, String>  record_lit: RecordLitSyntax
+  bridge_method_prefix: String
+  bridge_method_case: NamingCase
+  bridge_method_overrides: Map<String, String>
+  record_lit: RecordLitSyntax
   service_method: ServiceMethodStrategy
   service_return: ServiceReturnStrategy
 }
 type TupleSyntax {
-  empty: String  pair_template: String  multi_template: String  separator: String  first_accessor: String  second_accessor: String}
+  empty: String
+  pair_template: String
+  multi_template: String
+  separator: String
+  first_accessor: String
+  second_accessor: String
+}
 type RecordLitSyntax {
-  named_open: String  named_close: String  named_empty: String  named_field_sep: String  named_field_join: String  anon_empty: String  anon_prefix: String  anon_suffix: String  anon_field_indent: String}
+  named_open: String
+  named_close: String
+  named_empty: String
+  named_field_sep: String
+  named_field_join: String
+  anon_empty: String
+  anon_prefix: String
+  anon_suffix: String
+  anon_field_indent: String
+}
 // C-1: dissolves `match target` in emit_simple_string_interp.
 type InterpStyle
-  = FormatArgs { placeholder: String }  | InlineExpr
+  = FormatArgs { placeholder: String }
+  | InlineExpr
 type EscapePair {
   from: String
   to: String
 }
 type StringInterpSyntax {
   style: InterpStyle
-  format_template: String  plain_template: String  escape_pairs: List<EscapePair>}
+  format_template: String
+  plain_template: String
+  escape_pairs: List<EscapePair>
+}
 // =========================================================================
 // SyntaxSpec — unified with std.syntax (single authority)
 // =========================================================================

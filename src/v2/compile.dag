@@ -1,4 +1,4 @@
-// v2 compiler pipeline -- the full .dag-to-files transform.
+// The compiler reads .dag source files and emits target-language source
 module v2.compiler.compile
 import v2.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at,
@@ -155,6 +155,7 @@ type DagCollectPending {
   fp: String
 }
 // Provisional location key until v4 content_hash (see DagNodeId 🟡 gate). Collection
+// fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
 fn dag_node_key(node: Node) -> String {
   let anchor = dag_node_collection_anchor(node: node)
   concat(
@@ -166,6 +167,8 @@ fn dag_node_key(node: Node) -> String {
 }
 // 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
 // dissolve-on: DagNode exposes a modeled identity-shell fact (or anchor walk is structurally
+// total on shells) so collection does not match expr_data × InferredNode here;
+// forbidden: permanent cross-pass is_* over Node storage shape outside canonical query surface.
 fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
   match node.expr_data {
     NoExprData =>
@@ -1045,7 +1048,6 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let norm_diags = norm.diagnostics
       // Gate: if normalization produced errors (bare parameterized types,
-      // arity mismatches), do not proceed to infer.
       let norm_errors = norm_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
       if norm_errors |> count > 0 {
         return PipelineResult {

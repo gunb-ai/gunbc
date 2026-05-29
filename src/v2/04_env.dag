@@ -1,4 +1,4 @@
-// v2 type environment -- structural type bindings and lookup.
+// Defines the TypeEnv and TypeBinding types used throughout inference
 module v2.compiler.infer_env
 import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }

@@ -1,4 +1,4 @@
-// v2 trace model -- normalized execution traces, repro cases, source mapping.
+// The compiler has no interpreter or executor. This module defines the
 module v2.compiler.trace
 import v2.std.core { SourceSpan }
 // =========================================================================
@@ -60,7 +60,6 @@ fn event_node_id(event: TraceEvent) -> String {
 }
 // =========================================================================
 // F2: Trace filtering and replay
-// Because trace data is immutable, a recorded trace can be replayed and
 // =========================================================================
 type TraceFilter
   = FilterByFunc { func_name: String }

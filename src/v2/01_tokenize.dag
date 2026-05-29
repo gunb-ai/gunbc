@@ -1,4 +1,4 @@
-// v2 tokenizer -- pure function from source string to token list.
+// No I/O -- file reading is handled by the pipeline.
 module v2.compiler.tokenize
 import std.types { SourceSpan }
 import v2.std.core {
@@ -21,6 +21,7 @@ fn is_keyword_text(text: String) -> Bool {
     None => false
   }
 }
+// Note: { and } are NOT in this table -- they require special handling
 data single_punct: Map<String, TokenShape> = {
   "(": ShLParen, ")": ShRParen,
   "[": ShLBracket, "]": ShRBracket,

@@ -28,10 +28,12 @@ WHY_KEEP_RE = re.compile(
     r"|feature:"
     r"|fail closed|Fail closed"
     r"|non-obvious"
-    r"|because\b"
     r"|otherwise look wrong"
     r"|compatibility"
     r"|tradeoff"
+    r"|Soundness"
+    r"|Note:"
+    r"|Historical"
     r"|SG-\d+"
     r"|C-\d+:"
     r"|D\d+:"
@@ -43,11 +45,19 @@ WHY_KEEP_RE = re.compile(
     r"|Early Detection"
     r"|Decidability"
     r"|audit\b"
+    r"|unsound"
+    r"|ROADMAP"
     r")",
     re.IGNORECASE,
 )
 
 TODO_STRIP_RE = re.compile(r"^\s*//\s*TODO:", re.IGNORECASE)
+
+# Lines kept only because "because" matched, but the prose continues on the next line.
+TRUNCATED_BECAUSE_RE = re.compile(
+    r"^\s*//.*\bbecause\b(?![^/\n]*[.!?:])",
+    re.IGNORECASE,
+)
 
 
 def why_keep(text: str) -> bool:
@@ -57,6 +67,76 @@ def why_keep(text: str) -> bool:
 def is_blank_comment(line: str) -> bool:
     s = line.strip()
     return s == "//" or s == ""
+
+
+CONTINUATION_PREFIX_RE = re.compile(
+    r"^(?:"
+    r"[\)\],]"
+    r"|field\)"
+    r"|values "
+    r"|ahead "
+    r"|iteration "
+    r"|documented "
+    r"|would "
+    r"|accept "
+    r"|arity mismatches\)"
+    r"|needed\.?"
+    r"|of alias \("
+    r"|the grounded "
+    r"|is UNSOUND"
+    r"|and must not pass"
+    r"|used different parameter"
+    r"|caller's param"
+    r"|back to itself"
+    r"|unsoundly promote"
+    r"|making descent"
+    r"|functions are O\(n\)"
+    r"|do not leak"
+    r")",
+    re.IGNORECASE,
+)
+
+STANDALONE_KEEP_PREFIX_RE = re.compile(
+    r"^\s*//\s*(?:"
+    r"[\U0001f7e1\U0001f7e2\U0001f534]"
+    r"|Gate:"
+    r"|Note:"
+    r"|dissolve-on:"
+    r"|fail closed"
+    r"|Fail closed"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def is_orphan_comment_fragment(line: str, *, inline: bool = False) -> bool:
+    """Drop mid-sentence debris left when a multi-line WHY block was line-stripped."""
+    m = re.match(r"^\s*//\s*(.*)$", line)
+    if not m:
+        return False
+    if STANDALONE_KEEP_PREFIX_RE.match(line):
+        return False
+    text = m.group(1).strip()
+    if not text:
+        return True
+    if TRUNCATED_BECAUSE_RE.match(line):
+        return True
+    if CONTINUATION_PREFIX_RE.match(text):
+        return True
+    if text.endswith("-") or text.endswith(","):
+        return True
+    if re.match(r"^[\)\]]", text):
+        return True
+    if inline:
+        return False
+    # Standalone full-line comment starting mid-sentence.
+    if re.match(r"^[a-z(`]", text) and not text.startswith("http"):
+        return True
+    return False
+
+
+def emit_line(text: str) -> str:
+    return text.rstrip("\n") + "\n"
 
 
 def split_code_and_comment(line: str) -> tuple[str, str | None]:
@@ -70,9 +150,9 @@ def split_code_and_comment(line: str) -> tuple[str, str | None]:
             i += 1
             continue
         if not in_str and c == "/" and i + 1 < n and line[i + 1] == "/":
-            return line[:i].rstrip(), line[i:]
+            return line[:i].rstrip(), line[i:].rstrip("\n")
         i += 1
-    return line, None
+    return line.rstrip("\n"), None
 
 
 def is_section_title_line(line: str) -> bool:
@@ -90,6 +170,7 @@ def process_file_lines(lines: list[str]) -> list[str]:
     in_section = False
     section_title_kept = False
     seen_divider_in_section = False
+    in_feature_marker_block = False
 
     for line in lines:
         if not past_header:
@@ -101,10 +182,20 @@ def process_file_lines(lines: list[str]) -> list[str]:
 
         if comment is not None and code.strip() == "":
             if is_blank_comment(line):
+                in_feature_marker_block = False
+                continue
+
+            if in_feature_marker_block:
+                out.append(emit_line(line.rstrip("\n")))
+                continue
+
+            if is_orphan_comment_fragment(line, inline=False):
                 continue
 
             if why_keep(line):
-                out.append(line)
+                out.append(emit_line(line.rstrip("\n")))
+                if re.search(r"[\U0001f7e1\U0001f7e2\U0001f534]|dissolve-on:", line):
+                    in_feature_marker_block = True
                 if in_section:
                     section_title_kept = True
                 continue
@@ -114,14 +205,12 @@ def process_file_lines(lines: list[str]) -> list[str]:
 
             if DIVIDER_RE.match(line):
                 if in_section and seen_divider_in_section:
-                    # Closing divider.
-                    out.append(line)
+                    out.append(emit_line(line.rstrip("\n")))
                     in_section = False
                     section_title_kept = False
                     seen_divider_in_section = False
                 else:
-                    # Opening divider (or first divider in a new section).
-                    out.append(line)
+                    out.append(emit_line(line.rstrip("\n")))
                     in_section = True
                     section_title_kept = False
                     seen_divider_in_section = True
@@ -129,28 +218,31 @@ def process_file_lines(lines: list[str]) -> list[str]:
 
             if not past_header:
                 if not header_title_kept and is_section_title_line(line):
-                    out.append(line)
+                    out.append(emit_line(line.rstrip("\n")))
                     header_title_kept = True
                 continue
 
             if in_section:
                 if not section_title_kept and is_section_title_line(line):
-                    out.append(line)
+                    out.append(emit_line(line.rstrip("\n")))
                     section_title_kept = True
                 continue
 
-            # Standalone WHAT comment.
             continue
 
         if comment is not None and code.strip() != "":
-            if why_keep(comment):
-                out.append(code + comment)
+            full = code + " " + comment
+            if why_keep(comment) and not is_orphan_comment_fragment(
+                full, inline=True
+            ):
+                out.append(emit_line(full))
             elif code.strip():
-                out.append(code)
+                out.append(emit_line(code))
             continue
 
         if line.strip():
-            out.append(line)
+            in_feature_marker_block = False
+            out.append(emit_line(line.rstrip("\n")))
 
     collapsed: list[str] = []
     blank_run = 0

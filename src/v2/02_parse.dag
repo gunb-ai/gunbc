@@ -1,4 +1,4 @@
-// v2 parser -- recursive descent, first-error-halt.
+// Consumes a flat List<Token> (from the tokenizer) and produces a
 module v2.compiler.parse
 import v2.std.core {
   module_node, import_node,
@@ -695,6 +695,7 @@ fn leaf_type_node(name: String, span: SourceSpan) -> Node {
 fn is_conj_with_children(n: Node) -> Bool {
   n.connective == Conj && n.children |> count > 0
 }
+// Note: node_inferred_to_outputs gate ensures only Typed children reach here.
 fn child_inferred_or_empty(ch: Node) -> Node {
   match ch.inferred {
     Some { value: Resolved { node: rt } } => rt
@@ -1379,7 +1380,6 @@ fn parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
   }
 }
 fn parse_callable_type_expr(tokens: List<Token>, ctx: ParseContext, start_span: SourceSpan) -> TypeResult {
-  // must be orthogonal to the node graph (invariant #2). A "Callable"-named
   let dummy_te = leaf_type_node(name: "", span: start_span)
   let r = expect(tokens: tokens, expected: ExpectLParen)
   if has_err(err: r.err) { return TypeResult { type_expr: dummy_te, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -1622,7 +1622,6 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let params = prefix.params
   let inferred = prefix.inferred
   let ctx = prefix.ctx
-  // the grounded invariant installed by resolve_item_types:909 —
   let all_params = concat(type_params, params)
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let r = parse_block(tokens: skip_newlines(tokens: prefix.tokens), ctx: ctx)
@@ -2393,7 +2392,6 @@ fn parse_operation_modifiers_acc(tokens: List<Token>, ctx: ParseContext, acc: Li
   }
 }
 // =========================================================================
-// response/mock_response block helpers
 // =========================================================================
 fn parse_status_pattern(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let tok = tokens |> first
@@ -3960,7 +3958,6 @@ fn parse_paren_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 // =========================================================================
-// fn(param1, param2) { body } -- lambda expression with fn keyword
 // =========================================================================
 fn parse_fn_lambda(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
