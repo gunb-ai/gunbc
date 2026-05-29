@@ -58,6 +58,7 @@ data anchor_decl_second: Symbol = anchor_decl_second
 data anchor_imported_decl: Symbol = anchor_imported_decl
 data anchor_imported_path_segment: Symbol = anchor_imported_path_segment
 data anchor_subject_path_segment: Symbol = anchor_subject_path_segment
+data anchor_subject_import_use: Symbol = anchor_subject_import_use
 data anchor_resolve_roots_pass: Symbol = anchor_resolve_roots_pass
 data anchor_resolve_roots_fail: Symbol = anchor_resolve_roots_fail
 
@@ -270,7 +271,7 @@ fn resolve_subject_module_root_with_import_use() -> Node {
         target: resolve_subject_qn_node()
       ),
       Edge {
-        label: Positional,
+        label: Named { name: anchor_subject_import_use },
         target: resolve_imported_use_tree()
       }
     ]
