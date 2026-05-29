@@ -1956,7 +1956,7 @@ are already landed on main — see PRs #3650, #3651, #3652.)
   `fold(layers, init: *_defaults, f: *_layer)` with one patch per layer.
   The prior full-config `*_layer(base, outer) { outer }` scaffold and
   `feature:formatter-config-patch` gate are dissolved in the T-4.16 follow-on.
-- **ConfigPatch record projection (interim mirrors):** `feature:config-patch-record-projection` in `v4.std.patch` — formatter `*ConfigPatch` records and `*_layer` bodies are hand mirrors until record-field projection derives them from `*Config`; owner **T-4.16 follow-on** (same lane as formatter-config-patch dissolution); consumers carry `consumer:config-patch-record-projection` tags until projection lands.
+- **ConfigPatch record projection:** `ConfigPatchRecord<Config>` + `config_patch_layer` in `v4.std.patch` — record-field map derives per-field `FieldPatch<T>` patch types and `*_layer` bodies from `*Config` at lower time (`materialize_config_patch_record_connective` / `try_lower_config_patch_layer_invocation` in `src/v3/compiler/src/lower.rs`). Consumers: `type *ConfigPatch = ConfigPatchRecord<*Config>` and `config_patch_layer(base, patch)`. **Residual hand mirrors:** `PrettierOverrideOptions` (extra `parser` field), `PrettierConfigPatch` (`options` nested patch type, not `FieldPatch<PrettierFormattingOptions>`).
 - **Real options, not abstract axes**: each file models the actual
   formatter's documented option space (e.g., `rustfmt.toml` flags, not
   a synthetic `IndentWidth` abstraction shared across languages). A
