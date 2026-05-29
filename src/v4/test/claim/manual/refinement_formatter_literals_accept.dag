@@ -7,6 +7,10 @@ module v4.test.claim.manual.refinement_formatter_literals_accept
 
 
 import v4.std.refinement {
+  PositiveInt,
+  NonNegativeInt,
+  AtLeastMinusOneInt,
+  ExactOneInt,
   make_at_least_minus_one_int_at_authoritative,
   make_exact_one_int_at_authoritative,
   make_non_negative_int_at_authoritative,
