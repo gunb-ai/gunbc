@@ -273,7 +273,7 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 2. **IRT-1 + IRT-4** on all CI `TestCommand` / corpus eval paths.
 3. **M1** real `src/v4` merkle; probe shell deleted; fail-closed on timeout.
 4. **Single** `CiGitDiffReadOutcome` per run.
-5. **Ratchet:** harness + `ci_pipeline` smoke (existing `v4_workflow_ci_runner_dag_smoke_test` extended) — **not** YamlStatic diff ratchet.
+5. **Ratchet / C4:** harness + `ci_pipeline` smoke (existing `v4_workflow_ci_runner_dag_smoke_test` extended) proves committed `ci.yml` stays a checked projection of `ci.dag` entrypoints — **not** YamlStatic diff ratchet (§6.1.1).
 6. Audit Table A rows owned by A0–A14 or explicitly deferred.
 
 ---
