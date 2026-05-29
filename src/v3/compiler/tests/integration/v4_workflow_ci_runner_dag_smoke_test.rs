@@ -686,6 +686,12 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
         "{CI_YML_PATH}: Tier-0 I4 must run inside the ci harness job"
     );
+    let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
+    assert!(
+        binding_step.contains(BANKRUPTCY_TIER0_BINDING_TEST_FILTER),
+        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must execute the bankruptcy D3 ratchet \
+         (`{BANKRUPTCY_TIER0_BINDING_TEST_FILTER}` with --exact) so legacy job reintroduction fails CI"
+    );
 }
 
 #[test]
