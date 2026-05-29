@@ -122,36 +122,7 @@ data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
 }
 
 
-<<<<<<< HEAD
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: SwiftFormatConfigPatch projected from SwiftFormatConfig field set.
-type SwiftFormatConfigPatch {
-  version: FieldPatch<Outcome<ExactOneInt>>
-  line_length: FieldPatch<Outcome<PositiveInt>>
-  indentation: FieldPatch<SwiftFormatIndentation>
-  tab_width: FieldPatch<Outcome<PositiveInt>>
-  maximum_blank_lines: FieldPatch<Outcome<NonNegativeInt>>
-  spaces_before_end_of_line_comments: FieldPatch<Outcome<NonNegativeInt>>
-  respects_existing_line_breaks: FieldPatch<Bool>
-  line_break_before_control_flow_keywords: FieldPatch<Bool>
-  line_break_before_each_argument: FieldPatch<Bool>
-  line_break_before_each_generic_requirement: FieldPatch<Bool>
-  line_break_between_declaration_attributes: FieldPatch<Bool>
-  prioritize_keeping_function_output_together: FieldPatch<Bool>
-  indent_conditional_compilation_blocks: FieldPatch<Bool>
-  line_break_around_multiline_expression_chain_components: FieldPatch<Bool>
-  file_scoped_declaration_privacy: FieldPatch<SwiftFormatFileScopedDeclarationPrivacy>
-  indent_switch_case_labels: FieldPatch<Bool>
-  spaces_around_range_formation_operators: FieldPatch<Bool>
-  no_assignment_in_expressions: FieldPatch<SwiftFormatNoAssignmentInExpressions>
-  multiline_trailing_comma_behavior: FieldPatch<SwiftFormatTrailingCommaBehavior>
-  multi_element_collection_trailing_commas: FieldPatch<Bool>
-  reflow_multiline_string_literals: FieldPatch<SwiftFormatMultilineStringReflow>
-  indent_blank_lines: FieldPatch<Bool>
-  ordered_imports: FieldPatch<SwiftFormatOrderedImports>
-}
-=======
 type SwiftFormatConfigPatch = ConfigPatchRecord<SwiftFormatConfig>
->>>>>>> origin/main
 
 
 fn swift_format_layer(base: SwiftFormatConfig, patch: SwiftFormatConfigPatch) -> SwiftFormatConfig {
