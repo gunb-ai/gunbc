@@ -163,11 +163,13 @@ fn try_v2_compile_main_dag_entry(root: &Path) {
         compile_log.display(),
         String::from_utf8_lossy(&status.stderr)
     );
-    let combined = String::from_utf8_lossy(&log_bytes);
+    // gunbc prints the compile receipt on stderr (see src/v2/stage0/src/main.rs eprintln).
+    let receipt = String::from_utf8_lossy(&status.stderr);
     assert!(
-        combined.contains("compiled:") && combined.contains("0 diagnostics"),
-        "main.dag entry compile must emit a clean compiled receipt (log: {})",
-        compile_log.display()
+        receipt.contains("compiled:") && receipt.contains("0 diagnostics"),
+        "main.dag entry compile must emit a clean compiled receipt (log: {})\nreceipt:\n{}",
+        compile_log.display(),
+        receipt
     );
 }
 
