@@ -55,8 +55,45 @@ import v4.std.verification {
   generated_claim_anchor,
   manual_claim_anchor
 }
-import v4.std.refinement { Refined, refined_discharge }
+import v4.std.diagnostic { port_locus, Locus }
+import v4.std.refinement {
+  Refined,
+  Validation,
+  refine,
+  refined_discharge_outcome
+}
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
+
+
+data refinement_preservation_stub_locus_port: Symbol = refinement_preservation_stub_locus_port
+data refinement_preservation_stub_invalid: Symbol = refinement_preservation_stub_invalid
+
+
+fn refinement_preservation_stub_locus() -> Locus {
+  port_locus(port: refinement_preservation_stub_locus_port)
+}
+
+
+fn refinement_preservation_stub_admits(xs: List<Node>) -> Bool {
+  true
+}
+
+
+data refinement_preservation_stub_validation: Validation<List<Node>> = Validation {
+  reason: refinement_preservation_stub_invalid,
+  admits: refinement_preservation_stub_admits
+}
+
+
+fn refinement_preservation_stub_refined(xs: List<Node>) -> Refined<List<Node>> {
+  refined_discharge_outcome(
+    receipt: refine(
+      base: xs,
+      by: refinement_preservation_stub_validation,
+      at: refinement_preservation_stub_locus()
+    )
+  )
+}
 
 
 // 🟡 gated — coproduct dissolution (docs/modeling-discipline.md Practice 4) — feature:t19-generator-oracle-basis-carrier — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — owner:T-19 testgen follow-up — dissolve-on-arrival: delete TestgenOracleBasis when each wishlist arm is replaced by its category-specific generated corpus and that corpus carries oracle basis through the concrete generator helper or emitted TestClaim shape; forbidden: permanent parallel oracle-category authority in the wishlist ledger.

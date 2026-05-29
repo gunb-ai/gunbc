@@ -22,7 +22,11 @@ import v4.std.refinement {
   exact_one_int_authoritative_literal,
   non_negative_int_authoritative_literal,
   positive_int_authoritative_literal,
-  refined_base,
+  positive_int_value,
+  non_negative_int_value,
+  at_least_minus_one_int_value,
+  at_least_minus_two_int_value,
+  exact_one_int_value,
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.node { Node }
