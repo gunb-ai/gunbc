@@ -233,14 +233,19 @@ fn bootstrap_construct_fold_step(
   }
 }
 
+fn bootstrap_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
+  NodeFold {
+    init: bootstrap_construct_fold_init,
+    step: bootstrap_construct_fold_step
+  }
+}
+
+fn bootstrap_construct_fold_state(root: Node) -> BootstrapConstructFoldState {
+  fold_node(n: root, algebra: bootstrap_construct_fold_algebra())
+}
+
 fn bootstrap_footprint_constructs_from_snapshot_root(root: Node) -> List<BootstrapConstruct> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: bootstrap_construct_fold_init,
-      step: bootstrap_construct_fold_step
-    }
-  ).constructs
+  bootstrap_construct_fold_state(root: root).constructs
 }
 
 fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
