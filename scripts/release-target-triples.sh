@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Single shell authority for release binary target triples (gunbc-{triple} asset names).
-# Semantic authority: src/v4/workflow/release.dag `release_build_matrix` / `release_published_target_triples`.
+# Semantic authority: src/v4/workflow/release.dag `release_published_target_triples`.
 # Do not edit target strings here without updating the model first.
 # Ratchet: v4_workflow_release_dag_smoke_test::v4_workflow_release_target_authority_single_writer
 

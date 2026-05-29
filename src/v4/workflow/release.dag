@@ -103,6 +103,15 @@ data release_build_matrix: List<ReleaseMatrixRow> = [
   }
 ]
 
+// Published GH Release asset triples (`gunbc-{target}`) — single authority for release.yml matrix,
+// `scripts/release-target-triples.sh`, and install.sh (via that script).
+data release_published_target_triples: List<String> = [
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-musl",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin"
+]
+
 data release_matrix_build_execution: Symbol = release_matrix_build_execution
 data release_publish_execution: Symbol = release_publish_execution
 data release_matrix_build_signal: Symbol = release_matrix_build_signal

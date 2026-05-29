@@ -5,6 +5,12 @@
 //! (same deferral posture as `v4.workflow.ci` / T-24).
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge deferred.
+//!
+//! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+//! **TASKS.md** RELEASE_TODO §5 Phase 1 (`src/v4/workflow/release.dag` + hand-synced release.yml).
+//!
+//! **Dissolution:** remove when release pipeline + install target selection are exercised only by
+//! `.dag` `TestClaim` rows / YamlStatic emission without this hand-Rust parse harness.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};
@@ -14,6 +20,17 @@ const RELEASE_DAG: &str = include_str!("../../../../v4/workflow/release.dag");
 const RELEASE_DAG_PATH: &str = "src/v4/workflow/release.dag";
 const RELEASE_YML: &str = include_str!("../../../../../.github/workflows/release.yml");
 const RELEASE_YML_PATH: &str = ".github/workflows/release.yml";
+const RELEASE_TARGET_SCRIPT: &str = include_str!("../../../../../scripts/release-target-triples.sh");
+const RELEASE_TARGET_SCRIPT_PATH: &str = "scripts/release-target-triples.sh";
+const INSTALL_SH: &str = include_str!("../../../../../install.sh");
+const INSTALL_SH_PATH: &str = "install.sh";
+
+const RELEASE_PUBLISHED_TARGETS: &[&str] = &[
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+];
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -115,17 +132,47 @@ fn v4_workflow_release_semantics_modeled() {
         RELEASE_DAG.contains("YamlStatic `release_pipeline →"),
         "{RELEASE_DAG_PATH}: must document YamlStatic emission deferral"
     );
-    for target in [
-        "x86_64-unknown-linux-musl",
-        "aarch64-unknown-linux-musl",
-        "x86_64-apple-darwin",
-        "aarch64-apple-darwin",
-    ] {
+    assert!(
+        RELEASE_DAG.contains("data release_published_target_triples"),
+        "{RELEASE_DAG_PATH}: must declare published target triple authority"
+    );
+    for target in RELEASE_PUBLISHED_TARGETS {
         assert!(
             RELEASE_DAG.contains(target),
             "{RELEASE_DAG_PATH}: release_build_matrix must include `{target}`"
         );
     }
+}
+
+#[test]
+fn v4_workflow_release_target_authority_single_writer() {
+    for target in RELEASE_PUBLISHED_TARGETS {
+        assert!(
+            RELEASE_DAG.contains(target),
+            "{RELEASE_DAG_PATH}: `release_published_target_triples` must include `{target}`"
+        );
+        assert!(
+            RELEASE_YML.contains(target),
+            "{RELEASE_YML_PATH}: matrix must include `{target}`"
+        );
+        assert!(
+            RELEASE_TARGET_SCRIPT.contains(target),
+            "{RELEASE_TARGET_SCRIPT_PATH}: shell authority must include `{target}`"
+        );
+    }
+    assert!(
+        INSTALL_SH.contains("scripts/release-target-triples.sh"),
+        "{INSTALL_SH_PATH}: must load scripts/release-target-triples.sh"
+    );
+    assert!(
+        INSTALL_SH.contains("detect_release_target"),
+        "{INSTALL_SH_PATH}: must delegate target detection to shell authority"
+    );
+    assert!(
+        !INSTALL_SH.contains("unsupported Linux architecture")
+            || INSTALL_SH.contains("load_release_target_authority"),
+        "{INSTALL_SH_PATH}: must not embed a parallel detect_target mapping"
+    );
 }
 
 #[test]
@@ -158,15 +205,7 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
         RELEASE_YML.contains("on:\n  push:\n    tags:") || RELEASE_YML.contains("tags:\n      -"),
         "{RELEASE_YML_PATH}: must use tag push trigger"
     );
-    workflow_contains_targets(
-        RELEASE_YML,
-        &[
-            "x86_64-unknown-linux-musl",
-            "aarch64-unknown-linux-musl",
-            "x86_64-apple-darwin",
-            "aarch64-apple-darwin",
-        ],
-    );
+    workflow_contains_targets(RELEASE_YML, RELEASE_PUBLISHED_TARGETS);
     assert!(
         RELEASE_YML.contains(&format!("- name: {cross_step}")),
         "{RELEASE_YML_PATH}: must declare cross install step"
