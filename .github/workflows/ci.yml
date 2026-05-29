@@ -138,10 +138,6 @@ jobs:
       run: bash scripts/check-r4-carve-dissolution-discipline.sh
     - name: Fabrication sentinel ratchet (P0-C)
       run: bash scripts/check-fabrication-sentinels.sh
-    - name: v4 strict-deprose script self-test (Python)
-      run: python3 scripts/test_strict_deprose_dag.py
-    - name: v4 strict-deprose allowlist (--check; merge-base + Part 6 inventory)
-      run: python3 scripts/strict_deprose_dag.py --check
     - name: T-19 testgen activation self-test (Python)
       run: python3 scripts/test_check_t19_testgen_activation.py
     - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
