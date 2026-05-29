@@ -258,6 +258,5 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Upstream-documented defaults: import discharged carriers from
 // Formatter upstream defaults: *_authoritative_literal (Outcome) on config fields; witnesses in refinement_formatter_literals_accept.dag.
 // Runtime/user input: make_* + Outcome directly.
