@@ -109,7 +109,7 @@ rows across 4 formatter files") use **population C** — they count
 per-field shorthand annotations like `🟡 gated: formatter-int-refinement`,
 not just the `feature:` header declarations. §1.9's distribution table
 uses **population A** — distinct `feature:NAME` declarations only, which
-is why formatter-int-refinement contributes 1 to the 140 there but 66 to
+is why formatter-int-refinement contributes 1 to the 141 there but 66 to
 §1.1's site count. Both numbers are correct for their respective
 populations.
 
@@ -127,7 +127,7 @@ per inline review — see §0 for the unified spaced+unspaced grep that
 yields this; the original 97 figure missed 33 spaced-form gates
 including `formatter-int-refinement` itself). **§1.1–§1.8 tabulate 8
 representative gates** (5 multi-site: §1.1–§1.4 + the 12-row §1.2;
-3 singletons: §1.6–§1.8); **§1.9 summarizes the remaining 132
+3 singletons: §1.6–§1.8); **§1.9 summarizes the remaining 133
 gates**, which contain both un-tabulated multi-site gates (at 2–9
 sites each) **and** the bulk of the singleton tail. See §1.9 for the
 full site-count distribution table.
@@ -269,14 +269,14 @@ not a T-4.16 follow-on; it is a v4-language-level substrate gap.
 Recommend retagging the bind to `bind v4-lang:map-primitive`
 (action §A3).
 
-### §1.9  Long-tail gates — remaining 132 distinct gates
+### §1.9  Long-tail gates — remaining 133 distinct gates
 
 **Census (regenerated 2026-05-29 from unified spaced+unspaced grep
 per inline review):** the original draft cited 97 distinct gates from
 the no-space `feature:[a-z]` form; that undercounted by 33 because
 **33 gates use spaced `feature: NAME` headers** (including the
 headline `formatter-int-refinement`). True unified distribution
-across all **140** distinct gate names (from §0 Population A — pinned df91abc2b):
+across all **141** distinct gate names (from §0 Population A — pinned df91abc2b; includes the 1 field-shorthand-only gate `rustfmt-ignore-path-refinement` per inline review 2026-05-29):
 
 **Distribution at pinned `origin/main` @ `df91abc2b`** (regenerated
 2026-05-29 from unified Population A grep — see §0; per-name counts
@@ -297,11 +297,11 @@ feature:NAME` patterns, so name-count ≠ annotation-row count):
 | 4 names  | 4 | long tail |
 | 3 names  | 4 | long tail |
 | 2 names  | 22 | long tail (incl. 3 already tabulated in §1.3/§1.4) |
-| 1 name   | 102 | long tail singletons (§1.5–§1.8 are four of these) |
-| **Total** | **140** | — |
+| 1 name   | 103 | long tail singletons (§1.5–§1.8 are four of these; +1 field-shorthand-only `rustfmt-ignore-path-refinement` per inline review) |
+| **Total** | **141** | — |
 
 Tabulated by name in §1.1–§1.8: **8 gates** (5 multi-site, 3 singletons).
-**Remaining 132 long-tail gates** are summarized below; representative
+**Remaining 133 long-tail gates** are summarized below; representative
 examples (multi-site first, then singleton patterns):
 
 * `feature:canonical-b-grounding-consumer` (7 sites) — bind T-9 algebra-ref
@@ -460,7 +460,7 @@ under-counted the route by omitting §1.2 and §1.3.
 
 | Population | Sites | NECESSARY | UNNECESSARY |
 | --- | ---: | ---: | ---: |
-| `🟡 gated — feature:*`+`consumer:*` distinct gates (Population A) | 140 (full scope incl. docs/) | 133 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
+| `🟡 gated` distinct gate names (Population A: `feature:`+`consumer:`+shorthand-only) | 141 (full scope incl. docs/) | 134 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
 | `🟡 gated` annotation occurrences (Population C, all forms, full scope) | 280 | ~200 | **~80** (§1.1 = 66 + §1.3 = 7 + §1.4 = 3 + §1.5 = 1 + §1.6 = 1 + 2 long-tail T-25-core binds = 80; all derived from §0 Population C — single authority) |
 | `🟡 needs-more-work` | 53 | 36 | 17 (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
