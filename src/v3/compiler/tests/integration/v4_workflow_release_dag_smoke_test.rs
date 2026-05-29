@@ -135,8 +135,7 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
     let tag_pattern = expr_string(record_body_field(live, "tag_pattern"));
     let workflow_name = expr_string(record_body_field(live, "workflow_name"));
     let cross_step = expr_string(record_body_field(live, "cross_install_step_name"));
-    let aarch64_strip_step =
-        expr_string(record_body_field(live, "aarch64_strip_step_name"));
+    let aarch64_strip_step = expr_string(record_body_field(live, "aarch64_strip_step_name"));
     let build_step = expr_string(record_body_field(live, "build_gunbc_step_name"));
     let upload_step = expr_string(record_body_field(live, "upload_artifact_step_name"));
     let stage_step = expr_string(record_body_field(live, "stage_install_sh_step_name"));
