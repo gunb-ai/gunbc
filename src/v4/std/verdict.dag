@@ -22,6 +22,7 @@ module v4.std.verdict
 import v4.std.algebra { Magma, Monoid, Semigroup, is_empty }
 import v4.std.collection { List }
 import v4.std.diagnostic { Diagnostic, Outcome }
+import v4.std.nat { Nat, Succ, Zero, nat_add }
 // 🟢 coproduct dissolution — CP-AI10-VERDICT-TERMINAL.
 // Pass: all expected behaviors confirmed.
 // Fail: a claim did not hold; actual outcome is attached for diagnostics.
@@ -56,6 +57,35 @@ fn verdict_monoid<T>() -> Monoid<Verdict<T>> {
     semigroup: Semigroup { magma: Magma { op: verdict_combine } },
     identity: Pass
   }
+}
+// Tally of Verdict<T> populations by variant. Carries genuinely distinct
+// per-variant work (different field increments in `verdict_tally_add`),
+// so it is the canonical surface for "how many Pass / Fail / Deferred"
+// over a list — NOT per-variant `is_*` Bool predicates (which would be
+// unconditional predicate-dissolution triggers in std/ per
+// docs/modeling-discipline.md). Populations are `Nat` so negative counts
+// are unrepresentable in the substrate (count invariant lives in the type,
+// not in a hand-checked predicate).
+type VerdictTally {
+  pass: Nat
+  fail: Nat
+  deferred: Nat
+}
+data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, deferred: Zero }
+fn verdict_tally_add<T>(t: VerdictTally, v: Verdict<T>) -> VerdictTally {
+  match v {
+    Pass => VerdictTally { pass: Succ { prev: t.pass }, fail: t.fail, deferred: t.deferred }
+    Fail { actual: _ } => VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+    Deferred { actual: _, diagnostic: _ } => VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
+  }
+}
+fn verdict_tally<T>(vs: List<Verdict<T>>) -> VerdictTally {
+  fold(vs, init: verdict_tally_empty, f: fn(acc, v) {
+    verdict_tally_add(t: acc, v: v)
+  })
+}
+fn verdict_tally_total(t: VerdictTally) -> Nat {
+  nat_add(a: nat_add(a: t.pass, b: t.fail), b: t.deferred)
 }
 // Fold a list of verdicts with the monoid identity (Pass) and verdict_combine.
 // Fail-closed on empty list: the caller supplies the empty_verdict to enforce

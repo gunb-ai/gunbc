@@ -155,7 +155,7 @@ fn try_v2_compile_main_dag_entry(root: &Path) {
         .unwrap_or_else(|e| panic!("spawn gunbc compile: {e}"));
     let mut log_bytes = status.stdout.clone();
     log_bytes.extend_from_slice(&status.stderr);
-    fs::write(&compile_log, log_bytes).ok();
+    fs::write(&compile_log, &log_bytes).ok();
 
     assert!(
         status.status.success(),
@@ -163,7 +163,7 @@ fn try_v2_compile_main_dag_entry(root: &Path) {
         compile_log.display(),
         String::from_utf8_lossy(&status.stderr)
     );
-    let combined = String::from_utf8_lossy(&status.stdout);
+    let combined = String::from_utf8_lossy(&log_bytes);
     assert!(
         combined.contains("compiled:") && combined.contains("0 diagnostics"),
         "main.dag entry compile must emit a clean compiled receipt (log: {})",

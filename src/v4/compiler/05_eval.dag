@@ -455,6 +455,33 @@ type TestClaimRun<S, A> {
 }
 
 
+// Canonical projection: a TestClaimRun's claim is the claim of its cached
+// eval subject. Single-authority accessor so consumers (e.g. corpus
+// rosters / runners) never carry a parallel claim field beside a run.
+// Stepped typed accessors — each preserves the generic at the parameter
+// boundary so the chained projection from TestClaimRun<S,A> down to the
+// TestClaim resolves cleanly (v4 inference does not currently propagate
+// generics through chained field access without re-quoting the type).
+fn test_claim_cache_key_claim<T>(key: TestClaimCacheKey<T>) -> TestClaim {
+  key.eval_subject.claim
+}
+
+
+fn test_claim_cache_receipt_claim<T>(receipt: TestClaimCacheReceipt<T>) -> TestClaim {
+  test_claim_cache_key_claim(key: receipt.key)
+}
+
+
+fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> TestClaim {
+  test_claim_cache_receipt_claim(receipt: run.cache)
+}
+
+
+fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<A> {
+  run.verdict
+}
+
+
 type EvalFoldState {
   node: Node
   progress: EvalProgress
