@@ -5,8 +5,8 @@
 
 module v4.std.grammar
 
-import v4.std.algebra { Cons, Empty, fold_list, list_snoc_item }
-import v4.std.collection { List, Optional, Set, optional_absent, optional_present }
+import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.collection { List, Optional, Set, list_nth, optional_absent, optional_present }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -14,7 +14,8 @@ import v4.std.diagnostic {
   node_locus
 }
 import v4.std.lexing { LexRules }
-import v4.std.logic { Bool, bool_and }
+import v4.std.logic { Bool }
+import v4.std.witness { Holds, Violates, Witness }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -477,99 +478,227 @@ fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) ->
 }
 
 
-// Accumulator for faithful rhs token derivation (PR-1.5b): one nonterminal slot per rhs NT occurrence.
-type DeriveGrammarRelationRhsTokenAcc {
-  edges: List<Edge>
-  nonterminal_slots: List<Node>
-}
-
-
-fn derive_grammar_relation_rhs_token_edges_step(
-  acc: DeriveGrammarRelationRhsTokenAcc,
-  symbol: FormalGrammarSymbol
-) -> DeriveGrammarRelationRhsTokenAcc {
-  match symbol {
-    FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
-      DeriveGrammarRelationRhsTokenAcc {
-        edges: list_snoc_item(
-          xs: acc.edges,
-          item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
-        ),
-        nonterminal_slots: acc.nonterminal_slots
-      }
-    FormalNonterminalOccurrence { nonterminal: _ } =>
-      match acc.nonterminal_slots {
-        Empty => acc
-        Cons { head: slot, tail: rest } =>
-          DeriveGrammarRelationRhsTokenAcc {
-            edges: list_snoc_item(
-              xs: acc.edges,
-              item: Edge { label: Positional, target: slot }
-            ),
-            nonterminal_slots: rest
+fn conj_positional_children(parent: Node) -> List<Node> {
+  match parent.kind {
+    TypeNode { connective: Conj } =>
+      fold_list(
+        xs: parent.children,
+        empty: Empty,
+        cons: fn(acc, edge) {
+          match edge.label {
+            Positional => list_snoc_item(xs: acc, item: edge.target)
+            Named { name: _ } => acc
           }
-      }
-  }
-}
-
-
-// Faithful rhs walk: terminals become concrete-token edges; nonterminals consume caller-supplied
-// emitted subtrees in rhs order (T-11 PR-1.5b — type_alias_decl and nested type_annotation).
-fn derive_grammar_relation_rhs_token_edges(
-  production: FormalProduction,
-  nonterminal_slots: List<Node>
-) -> List<Edge> {
-  match fold_list(
-    xs: production.rhs,
-    empty: DeriveGrammarRelationRhsTokenAcc {
-      edges: Empty,
-      nonterminal_slots: nonterminal_slots
-    },
-    cons: fn(acc, symbol) {
-      derive_grammar_relation_rhs_token_edges_step(acc: acc, symbol: symbol)
-    }
-  ) {
-    DeriveGrammarRelationRhsTokenAcc { edges: result, nonterminal_slots: _ } => result
-  }
-}
-
-
-// 🟢 coproduct dissolution — REPLAN-3 PR-1.5b — bind TASKS.md T-11 — faithful grammar-relation
-// row node: production + emitted + rhs-faithful positional token/nonterminal children.
-fn derive_grammar_relation_row_node_faithful(
-  production: FormalProduction,
-  emitted: Node,
-  nonterminal_slots: List<Node>
-) -> Node {
-  grammar_relation_row_to_node(
-    row: derive_grammar_relation_row(production: production, emitted: emitted),
-    tokens: Node {
-      kind: TypeNode {
-        connective: Conj
-      },
-      children: derive_grammar_relation_rhs_token_edges(
-        production: production,
-        nonterminal_slots: nonterminal_slots
+        }
       )
+    _ => Empty
+  }
+}
+
+
+fn formal_symbol_is_emitted_slot(symbol: FormalGrammarSymbol) -> Bool {
+  match symbol {
+    FormalTerminalOccurrence { terminal: _, binding: binding } =>
+      match binding {
+        Present { value: _ } => true
+        Absent => false
+      }
+    FormalNonterminalOccurrence { nonterminal: _ } => true
+  }
+}
+
+
+fn formal_production_emitted_slot_count(production: FormalProduction) -> Int {
+  fold_list(
+    xs: production.rhs,
+    empty: 0,
+    cons: fn(count, symbol) {
+      if formal_symbol_is_emitted_slot(symbol: symbol) {
+        count + 1
+      } else {
+        count
+      }
     }
   )
 }
 
 
+fn formal_production_lhs_matches(production: FormalProduction, lhs: Symbol) -> Bool {
+  production.lhs.identity == lhs
+}
+
+
+fn formal_production_matches_lhs_and_slot_count(
+  production: FormalProduction,
+  lhs: Symbol,
+  emitted_slot_count: Int
+) -> Bool {
+  formal_production_lhs_matches(production: production, lhs: lhs) &&
+    formal_production_emitted_slot_count(production: production) == emitted_slot_count
+}
+
+
+// Exact lhs + emitted-slot arity (PR-1.5b DESIGN-2): disambiguates multi-rule lhs without scan heuristics.
+fn formal_production_for_lhs_exact(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  emitted_slot_count: Int
+) -> FormalProduction {
+  match fold_list(
+    xs: productions,
+    empty: grammar_formal_production(lhs: lhs, rhs: []),
+    cons: fn(found, candidate) {
+      if formal_production_matches_lhs_and_slot_count(
+        production: candidate,
+        lhs: lhs,
+        emitted_slot_count: emitted_slot_count
+      ) {
+        candidate
+      } else {
+        found
+      }
+    }
+  ) {
+    result: FormalProduction => result
+  }
+}
+
+
+type DeriveGrammarRelationTokensAcc {
+  edges: List<Edge>
+  conj_index: Int
+  conj_children: List<Node>
+}
+
+
+fn emitted_node_slot_count(emitted: Node) -> Int {
+  fold_list(
+    xs: conj_positional_children(parent: emitted),
+    empty: 0,
+    cons: fn(count, _) {
+      count + 1
+    }
+  )
+}
+
+
+fn derive_grammar_relation_token_edges_recursive_step(
+  acc: DeriveGrammarRelationTokensAcc,
+  productions: List<FormalProduction>,
+  symbol: FormalGrammarSymbol
+) -> DeriveGrammarRelationTokensAcc {
+  match symbol {
+    FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+      match binding {
+        Present { value: _ } =>
+          DeriveGrammarRelationTokensAcc {
+            edges: list_snoc_item(
+              xs: acc.edges,
+              item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+            ),
+            conj_index: acc.conj_index + 1,
+            conj_children: acc.conj_children
+          }
+        Absent =>
+          DeriveGrammarRelationTokensAcc {
+            edges: list_snoc_item(
+              xs: acc.edges,
+              item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+            ),
+            conj_index: acc.conj_index,
+            conj_children: acc.conj_children
+          }
+      }
+    FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      match list_nth(
+        xs: acc.conj_children,
+        wanted: acc.conj_index,
+        absent: Diagnostic {
+          reason: grammar_relation_field_tokens,
+          at: node_locus(
+            node: Node {
+              kind: TypeNode { connective: Conj },
+              children: []
+            }
+          ),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      ) {
+        Holds { value: child } =>
+          let nested = formal_production_for_lhs_exact(
+            productions: productions,
+            lhs: nonterminal.identity,
+            emitted_slot_count: emitted_node_slot_count(emitted: child)
+          )
+          DeriveGrammarRelationTokensAcc {
+            edges: list_append(
+              left: acc.edges,
+              right: derive_grammar_relation_token_edges_recursive(
+                production: nested,
+                productions: productions,
+                emitted: child
+              )
+            ),
+            conj_index: acc.conj_index + 1,
+            conj_children: acc.conj_children
+          }
+        Violates { diagnostic: _ } => acc
+      }
+  }
+}
+
+
+fn derive_grammar_relation_token_edges_recursive(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> List<Edge> {
+  let conj_children = conj_positional_children(parent: emitted)
+  match fold_list(
+    xs: production.rhs,
+    empty: DeriveGrammarRelationTokensAcc {
+      edges: Empty,
+      conj_index: 0,
+      conj_children: conj_children
+    },
+    cons: fn(acc, symbol) {
+      derive_grammar_relation_token_edges_recursive_step(
+        acc: acc,
+        productions: productions,
+        symbol: symbol
+      )
+    }
+  ) {
+    DeriveGrammarRelationTokensAcc { edges: result, conj_index: _, conj_children: _ } => result
+  }
+}
+
+
 // 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind TASKS.md T-11 — derive production+emitted+bindings
 // into the grammar_relation_row Node shape consumed by 06_translate.dag (via target_model fields).
-// 🟡 gated — feature:grammar-relation-derived-token-edges — bind TASKS.md T-11 PR-1.5b — dissolve-on-arrival:
-//   Conj positional emitted children + lhs-disambiguated production selection replace this
-//   terminal-only slice; forbidden: multi-LHS production-list recursion or fail-soft empty-node
-//   fallbacks on this path (removed in PR-1.5 — see PR-1.5b for faithful nonterminal derivation).
-fn derive_grammar_relation_row_node(production: FormalProduction, emitted: Node) -> Node {
+// 🟢 PR-1.5b — Conj-positional emitted + lhs-exact production recursion (terminal-only fallback for legacy Arrow emitted).
+fn derive_grammar_relation_row_node(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Node {
+  let token_edges = match emitted.kind {
+    TypeNode { connective: Conj } =>
+      derive_grammar_relation_token_edges_recursive(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      )
+    _ =>
+      derive_grammar_relation_terminal_token_edges(production: production)
+  }
   grammar_relation_row_to_node(
     row: derive_grammar_relation_row(production: production, emitted: emitted),
     tokens: Node {
       kind: TypeNode {
         connective: Conj
       },
-      children: derive_grammar_relation_terminal_token_edges(production: production)
+      children: token_edges
     }
   )
 }
