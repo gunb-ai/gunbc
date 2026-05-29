@@ -606,7 +606,7 @@ data claim_authoritative_non_negative_int_500_discharge: TestClaim = EqualsClaim
 fn witness_authoritative_non_negative_int_1000_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 1000) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_100()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_1000, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -626,7 +626,7 @@ data claim_authoritative_non_negative_int_1000_discharge: TestClaim = EqualsClai
 fn witness_authoritative_non_negative_int_1000000_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 1000000) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_100000()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_1000000, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
