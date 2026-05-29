@@ -332,7 +332,6 @@ fn interpretation_structure_witness_coherent(
 }
 
 
-// P2/P3: cache keys hash the InterpretationAlgebra run_test_claim executes, not caller-supplied witness Symbols alone.
 fn interpretation_algebra_executed_slots_digest(interpretation: InterpretationAlgebra) -> Hash {
   combine_hash(
     a: combine_hash(
