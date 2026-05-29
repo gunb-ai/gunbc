@@ -14,8 +14,8 @@ import v4.std.algebra { Magma, Semigroup, Monoid }
 type ConfigPatchRecord<Config>
 
 // Per-field `apply_field_patch` fold over `Config`; expanded at call sites from the Config record shape.
-// Surface stub — must be intercepted by v3 lowerer (`try_lower_config_patch_layer_invocation`).
-// Body returns `base` only for parse/type-check; if lowering misses, patch is silently dropped.
+// Surface body is syntactic only — v3 lowerer expands calls (`try_lower_config_patch_layer_invocation`)
+// and rejects direct execution of the fn stub (`config_patch_layer_body_fallback_diagnostic`).
 fn config_patch_layer<Config>(base: Config, patch: ConfigPatchRecord<Config>) -> Config {
   base
 }

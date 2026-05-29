@@ -3860,6 +3860,18 @@ fn config_patch_layer_args_diagnostic(span: &SourceSpan) -> Diagnostic {
     }
 }
 
+fn config_patch_layer_body_fallback_diagnostic(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: "config_patch_layer must be expanded at the call site by the v3 lowerer; \
+              executing the surface stub body is forbidden"
+            .to_string(),
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
+}
+
 /// Parse `config_patch_layer(base: …, patch: …)` call-site named operands.
 fn extract_config_patch_layer_operands<'a>(
     args: &'a [SurfaceExpr],
@@ -7766,6 +7778,41 @@ fn lower_fn_item_expr_body(
         return outer_scope;
     }
 
+    // `config_patch_layer` is expanded at call sites (`try_lower_config_patch_layer_invocation`).
+    // Do not lower the surface stub body (`base`) — that would silently discard `patch` on any
+    // invocation path that bypasses the interceptor.
+    if name == "config_patch_layer" {
+        let body_span = surface_expr_span(body).clone();
+        let err_port = dag.alloc_port(None);
+        dag.mark_unresolved(err_port, config_patch_layer_body_fallback_diagnostic(&body_span));
+        if let Some(return_ty) = return_ty {
+            dag.set_port_type(err_port, return_ty);
+        } else if let Some(diag) = return_type_diagnostic {
+            dag.mark_unresolved(err_port, diag);
+        }
+        let bind_id = dag.alloc_node_id();
+        dag.push_node(Behavior::Bind(BindNode {
+            id: bind_id,
+            name: name.to_string(),
+            value: err_port,
+            params: param_ports,
+            span: body_span,
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
+            inputs: param_decl_inputs,
+            output: return_decl_id,
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
+        };
+        let mut outer_scope = outer_scope;
+        outer_scope.insert(name.to_string(), err_port);
+        return outer_scope;
+    }
+
     // 4. Lower the body.
     let body_start_index = dag.nodes().len();
     let lowered_body_return_port = lower_expr(
@@ -9332,6 +9379,9 @@ fn lower_resolved_callable_invocation(
         expected_decl,
     ) {
         return port;
+    }
+    if declaration_named(dag, base_target_decl, "config_patch_layer") {
+        return unresolved_port(dag, config_patch_layer_body_fallback_diagnostic(span));
     }
     let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
     let mut input_ports: Vec<PortId> = Vec::new();
