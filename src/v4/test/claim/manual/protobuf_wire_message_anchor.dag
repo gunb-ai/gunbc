@@ -18,6 +18,7 @@ import v4.extdeps.formats.protobuf {
   ProtoWireDocument,
   ProtoWireEncodingFacts,
   ProtoWireFieldRecord,
+  ProtoWireLengthDelimited,
   ProtoWireLengthDelimitedValue,
   ProtoWireMessage,
   ProtoWireProfileFacts,
@@ -47,7 +48,7 @@ data protobuf_anchor_wire_record_page_number: ProtoWireFieldRecord = ProtoWireFi
 data protobuf_anchor_wire_record_query: ProtoWireFieldRecord = ProtoWireFieldRecord {
   key: ProtoFieldKey {
     field_number: protobuf_anchor_wire_field_number_two,
-    wire_type: ProtoWireVarint,
+    wire_type: ProtoWireLengthDelimited,
   },
   value: ProtoWireLengthDelimitedValue { payload_lexeme: "search" },
 }
