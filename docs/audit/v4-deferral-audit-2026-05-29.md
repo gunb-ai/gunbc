@@ -95,9 +95,14 @@ are the audit's canonical commands.
 
 ## §1. Gate vocabulary — `🟡 gated — feature:NAME`
 
-97 distinct `feature:NAME` strings appear in the corpus. The top-population
-gates (occurrence count ≥ 2) are tabulated below. The long tail (75 single-
-occurrence gates) is summarized after.
+97 distinct `feature:NAME` strings appear in the corpus. **§1.1–§1.8
+tabulate 8 representative gates** (5 multi-site: §1.1–§1.4 + the
+13-site §1.2; 3 singletons: §1.6–§1.8); **§1.9 summarizes the
+remaining 89 gates**, which contain both un-tabulated multi-site gates
+(at 2–7 sites each) **and** the bulk of the singleton tail. See §1.9
+for the full site-count distribution table; the original "≥2
+tabulated / singletons in the long tail" framing was wrong and was
+corrected 2026-05-29.
 
 ### §1.1 `formatter-int-refinement`  (63 sites · 9 formatter files)
 
