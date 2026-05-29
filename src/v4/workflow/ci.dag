@@ -895,6 +895,180 @@ fn ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>) -
 }
 
 
+fn ci_component_affected_is_fail_closed(affected: CiComponentAffected) -> Bool {
+  affected.v2
+    && affected.v3
+    && affected.v4
+    && affected.workflow_policy
+}
+
+
+fn ci_component_mask_intersects(mask: CiComponentAffected, affected: CiComponentAffected) -> Bool {
+  (mask.v2 && affected.v2)
+    || (mask.v3 && affected.v3)
+    || (mask.v4 && affected.v4)
+    || (mask.workflow_policy && affected.workflow_policy)
+}
+
+
+fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
+  match j.command {
+    V2BootstrapCompileCommand =>
+      CiComponentAffected {
+        v2: true
+        v3: false
+        v4: false
+        workflow_policy: false
+      }
+    BootstrapStageCompile { produces: _ } =>
+      CiComponentAffected {
+        v2: true
+        v3: false
+        v4: true
+        workflow_policy: false
+      }
+    V3DeterminismCommand { profile: _ } =>
+      CiComponentAffected {
+        v2: false
+        v3: true
+        v4: false
+        workflow_policy: false
+      }
+    V3SelfHostFixedPointCommand { profile: _, schedule: _ } =>
+      CiComponentAffected {
+        v2: false
+        v3: true
+        v4: false
+        workflow_policy: false
+      }
+    LensCiCommand { required_lenses: _ } =>
+      CiComponentAffected {
+        v2: false
+        v3: true
+        v4: true
+        workflow_policy: true
+      }
+    M1RustEmitProbeCommand =>
+      CiComponentAffected {
+        v2: false
+        v3: false
+        v4: true
+        workflow_policy: false
+      }
+    TestClaimCorpusEvalCommand { selection_fn: _ } =>
+      CiComponentAffected {
+        v2: false
+        v3: false
+        v4: true
+        workflow_policy: true
+      }
+    LintCommand => ci_component_affected_fail_closed()
+    TestCommand => ci_component_affected_fail_closed()
+    IgnoredTestCommand { test_name: _ } => ci_component_affected_fail_closed()
+  }
+}
+
+
+fn ci_v3_tier0_scheduled(affected: CiComponentAffected, schedule: CiSchedulePolicy) -> Bool {
+  affected.v3 || schedule == MainPush
+}
+
+
+fn ci_v3_self_host_fixed_point_scheduled(
+  affected: CiComponentAffected,
+  schedule: CiSchedulePolicy
+) -> Bool {
+  schedule == MainPush && ci_v3_tier0_scheduled(affected: affected, schedule: schedule)
+}
+
+
+fn ci_job_scheduled_by_policy(
+  j: CiJob,
+  affected: CiComponentAffected,
+  schedule: CiSchedulePolicy
+) -> Bool {
+  match j.command {
+    V3DeterminismCommand { profile: _ } =>
+      ci_v3_tier0_scheduled(affected: affected, schedule: schedule)
+    V3SelfHostFixedPointCommand { profile: _, schedule: cmd_schedule } =>
+      ci_v3_self_host_fixed_point_scheduled(affected: affected, schedule: schedule)
+        && schedule == cmd_schedule
+    _ => false
+  }
+}
+
+
+fn ci_job_selected_by_affected(
+  j: CiJob,
+  affected: CiComponentAffected,
+  schedule: CiSchedulePolicy
+) -> Bool {
+  if ci_component_affected_is_fail_closed(affected: affected) {
+    true
+  } else {
+    ci_component_mask_intersects(mask: ci_job_component_mask(j: j), affected: affected)
+      || ci_job_scheduled_by_policy(j: j, affected: affected, schedule: schedule)
+  }
+}
+
+
+fn ci_jobs_matching_ids(jobs: List[CiJob], ids: List[Symbol]) -> List[CiJob] {
+  filter(xs: jobs, predicate: fn(j) { ci_member(s: j.id, ids: ids) })
+}
+
+
+fn ci_collect_needs_for_ids(ids: List[Symbol], jobs: List[CiJob]) -> List[Symbol] {
+  fold(ids, init: [], f: fn(acc, id) {
+    concat(acc, ci_job_needs(id: id, jobs: jobs))
+  })
+}
+
+
+fn ci_merge_jobs_unique(acc: List[CiJob], more: List[CiJob]) -> List[CiJob] {
+  fold(more, init: acc, f: fn(acc2, j) {
+    if ci_member(s: j.id, ids: ci_job_ids(jobs: acc2)) {
+      acc2
+    } else {
+      concat(acc2, [j])
+    }
+  })
+}
+
+
+fn ci_select_ci_jobs_needs_closure(jobs: List[CiJob], selected: List[CiJob]) -> List[CiJob] {
+  let selected_ids = ci_job_ids(jobs: selected)
+  let need_ids = ci_collect_needs_for_ids(ids: selected_ids, jobs: jobs)
+  let missing_ids = filter(
+    xs: need_ids,
+    predicate: fn(n) { !ci_member(s: n, ids: selected_ids) }
+  )
+  if length(missing_ids) == 0 {
+    selected
+  } else {
+    let added = ci_jobs_matching_ids(jobs: jobs, ids: missing_ids)
+    ci_select_ci_jobs_needs_closure(
+      jobs: jobs,
+      selected: ci_merge_jobs_unique(acc: selected, more: added)
+    )
+  }
+}
+
+
+fn ci_select_ci_jobs_from_affected_set(
+  jobs: List[CiJob],
+  affected: CiComponentAffected,
+  schedule: CiSchedulePolicy
+) -> List[CiJob] {
+  let initial = filter(
+    xs: jobs,
+    predicate: fn(j) {
+      ci_job_selected_by_affected(j: j, affected: affected, schedule: schedule)
+    }
+  )
+  ci_select_ci_jobs_needs_closure(jobs: jobs, selected: initial)
+}
+
+
 fn ci_int_positive(n: Int) -> Bool {
   n >= 1
 }

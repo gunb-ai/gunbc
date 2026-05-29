@@ -358,6 +358,7 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
     for name in [
         "ci_select_from_rerun_nodes",
         "ci_select_from_affected_set",
+        "ci_select_ci_jobs_from_affected_set",
         "ci_component_affected_from_git_diff",
         "test_claim_in_rerun_frontier",
         "ci_all_gate_run_policies_resolve",
@@ -629,6 +630,56 @@ fn v4_workflow_affected_set_ci_runner_claim_wiring() {
             && surface_declares_fn(&module, "ci_runner_shape_collision_holds")
             && surface_declares_fn(&module, "ci_runner_inner_frontier_holds"),
         "{CLAIM_PATH}: receipt predicates must exercise ci selection entrypoints"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    for name in ["CiBuildProfile", "CiSchedulePolicy"] {
+        assert!(
+            module.items.iter().any(|item| match item {
+                SurfaceItem::TypeSum { name: item_name, .. } => item_name == name,
+                _ => false,
+            }),
+            "{CI_DAG_PATH}: must model bankruptcy Tier-0 enum `{name}`"
+        );
+    }
+    for arm in [
+        "| V2BootstrapCompileCommand",
+        "| V3DeterminismCommand",
+        "| V3SelfHostFixedPointCommand",
+    ] {
+        assert!(
+            CI_DAG.contains(arm),
+            "{CI_DAG_PATH}: CiCommand must include bankruptcy Tier-0 arm `{arm}`"
+        );
+    }
+    assert!(
+        CI_DAG.contains("fn ci_select_ci_jobs_from_affected_set("),
+        "{CI_DAG_PATH}: must declare ci_select_ci_jobs_from_affected_set (I1 / A2)"
+    );
+    assert!(
+        CI_DAG.contains("v3_determinism_execution"),
+        "{CI_DAG_PATH}: ci_pipeline must include v3_determinism_execution"
+    );
+    assert!(
+        CI_DAG.contains("v3_self_host_fixed_point_execution"),
+        "{CI_DAG_PATH}: ci_pipeline must include v3_self_host_fixed_point_execution"
+    );
+    for legacy_job in ["  v2:", "  v3:", "  v4:", "  self_host_ratchet:"] {
+        assert!(
+            !CI_YML.contains(legacy_job),
+            "{CI_YML_PATH}: bankruptcy B0 must delete legacy job `{legacy_job}`"
+        );
+    }
+    assert!(
+        CI_YML.contains("v3 determinism (Tier-0 I3)"),
+        "{CI_YML_PATH}: Tier-0 I3 must run inside the ci harness job"
+    );
+    assert!(
+        CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
+        "{CI_YML_PATH}: Tier-0 I4 must run inside the ci harness job"
     );
 }
 
