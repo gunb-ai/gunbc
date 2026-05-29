@@ -327,15 +327,19 @@ fn release_acyclic(jobs: List<ReleaseJob>) -> Bool {
   length(xs: release_kahn_fixpoint(jobs: jobs)) == 0
 }
 
-// 🟡 matrix-row validator dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: declared platform coproduct or YamlStatic `release_build_matrix` emission replaces tag-keyed OR over `cross`+`target`; forbidden: new supported platform rows without disposition.
+// 🟡 matrix-row validator dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: declared platform coproduct or YamlStatic `release_build_matrix` emission replaces tag-keyed OR over `(target, runner, cross)`; forbidden: new supported platform rows without disposition.
+fn release_matrix_row_tuple_well_formed(row: ReleaseMatrixRow) -> Bool {
+  (row.target == "x86_64-unknown-linux-musl" && row.runner == "ubuntu-24.04" && row.cross == true)
+    || (row.target == "aarch64-unknown-linux-musl" && row.runner == "ubuntu-24.04" && row.cross == true)
+    || (row.target == "x86_64-apple-darwin" && row.runner == "macos-15-intel" && row.cross == false)
+    || (row.target == "aarch64-apple-darwin" && row.runner == "macos-14" && row.cross == false)
+}
+
 fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
   unique(xs: release_matrix_row_targets(rows: rows), eq: fn(left, right) { left == right })
     && length(xs: rows) == 4
     && for_all(xs: rows, predicate: fn(row) {
-      (row.cross && row.target == "x86_64-unknown-linux-musl")
-        || (row.cross && row.target == "aarch64-unknown-linux-musl")
-        || (row.cross == false && row.target == "x86_64-apple-darwin")
-        || (row.cross == false && row.target == "aarch64-apple-darwin")
+      release_matrix_row_tuple_well_formed(row: row)
     })
 }
 

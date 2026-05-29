@@ -331,9 +331,30 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
         "{RELEASE_YML_PATH}: release must generate notes"
     );
     assert!(
-        RELEASE_YML.contains("ubuntu-24.04") && RELEASE_YML.contains("macos-15-intel"),
-        "{RELEASE_YML_PATH}: must use github-hosted runners for release matrix"
+        RELEASE_DAG.contains("release_matrix_row_tuple_well_formed"),
+        "{RELEASE_DAG_PATH}: matrix well-formedness must validate (target, runner, cross) tuples"
     );
+    const RELEASE_MATRIX_YML_ROW_SNIPPETS: &[&str] = &[
+        "target: x86_64-unknown-linux-musl\n            runner: ubuntu-24.04\n            cross: true",
+        "target: aarch64-unknown-linux-musl\n            runner: ubuntu-24.04\n            cross: true",
+        "target: x86_64-apple-darwin\n            runner: macos-15-intel\n            cross: false",
+        "target: aarch64-apple-darwin\n            runner: macos-14\n            cross: false",
+    ];
+    const RELEASE_MATRIX_DAG_ROW_SNIPPETS: &[&str] = &[
+        "target: \"x86_64-unknown-linux-musl\"\n    runner: \"ubuntu-24.04\"\n    cross: true",
+        "target: \"aarch64-unknown-linux-musl\"\n    runner: \"ubuntu-24.04\"\n    cross: true",
+        "target: \"x86_64-apple-darwin\"\n    runner: \"macos-15-intel\"\n    cross: false",
+        "target: \"aarch64-apple-darwin\"\n    runner: \"macos-14\"\n    cross: false",
+    ];
+    for (yml_snippet, dag_snippet) in RELEASE_MATRIX_YML_ROW_SNIPPETS
+        .iter()
+        .zip(RELEASE_MATRIX_DAG_ROW_SNIPPETS.iter())
+    {
+        assert!(
+            RELEASE_YML.contains(yml_snippet) && RELEASE_DAG.contains(dag_snippet),
+            "{RELEASE_YML_PATH}: matrix row tuple must match {RELEASE_DAG_PATH} (target+runner+cross)"
+        );
+    }
     assert!(
         !RELEASE_YML.contains("self-hosted"),
         "{RELEASE_YML_PATH}: release workflow must not use srv1/srv2 self-hosted pool"
