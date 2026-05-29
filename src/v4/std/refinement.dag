@@ -258,13 +258,26 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Catalog discharge: unwrap Accepted carrier at compile-time catalog boundary.
-// Rejected is unreachable for catalog rows (witnessed per literal in refinement_formatter_literals_accept.dag).
+// Catalog discharge: unwrap Accepted carrier; Rejected re-propagates with bounded steps (P4).
+// Catalog rows witness Accepted only (refinement_formatter_literals_accept.dag); persistent Rejected is substrate fault.
 fn discharge_positive_int_authoritative_catalog_literal(
   receipt: Outcome<PositiveInt>,
 ) -> PositiveInt {
+  discharge_positive_int_authoritative_catalog_literal_step(receipt: receipt, steps_remaining: 256)
+}
+
+
+fn discharge_positive_int_authoritative_catalog_literal_step(
+  receipt: Outcome<PositiveInt>,
+  steps_remaining: Int,
+) -> PositiveInt {
   match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics } =>
+      discharge_positive_int_authoritative_catalog_literal_step(
+        receipt: Rejected { diagnostics: diagnostics },
+        steps_remaining: steps_remaining - 1
+      )
   }
 }
 
@@ -272,8 +285,21 @@ fn discharge_positive_int_authoritative_catalog_literal(
 fn discharge_non_negative_int_authoritative_catalog_literal(
   receipt: Outcome<NonNegativeInt>,
 ) -> NonNegativeInt {
+  discharge_non_negative_int_authoritative_catalog_literal_step(receipt: receipt, steps_remaining: 256)
+}
+
+
+fn discharge_non_negative_int_authoritative_catalog_literal_step(
+  receipt: Outcome<NonNegativeInt>,
+  steps_remaining: Int,
+) -> NonNegativeInt {
   match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics } =>
+      discharge_non_negative_int_authoritative_catalog_literal_step(
+        receipt: Rejected { diagnostics: diagnostics },
+        steps_remaining: steps_remaining - 1
+      )
   }
 }
 
@@ -281,8 +307,24 @@ fn discharge_non_negative_int_authoritative_catalog_literal(
 fn discharge_at_least_minus_one_int_authoritative_catalog_literal(
   receipt: Outcome<AtLeastMinusOneInt>,
 ) -> AtLeastMinusOneInt {
+  discharge_at_least_minus_one_int_authoritative_catalog_literal_step(
+    receipt: receipt,
+    steps_remaining: 256
+  )
+}
+
+
+fn discharge_at_least_minus_one_int_authoritative_catalog_literal_step(
+  receipt: Outcome<AtLeastMinusOneInt>,
+  steps_remaining: Int,
+) -> AtLeastMinusOneInt {
   match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics } =>
+      discharge_at_least_minus_one_int_authoritative_catalog_literal_step(
+        receipt: Rejected { diagnostics: diagnostics },
+        steps_remaining: steps_remaining - 1
+      )
   }
 }
 
@@ -290,8 +332,24 @@ fn discharge_at_least_minus_one_int_authoritative_catalog_literal(
 fn discharge_at_least_minus_two_int_authoritative_catalog_literal(
   receipt: Outcome<AtLeastMinusTwoInt>,
 ) -> AtLeastMinusTwoInt {
+  discharge_at_least_minus_two_int_authoritative_catalog_literal_step(
+    receipt: receipt,
+    steps_remaining: 256
+  )
+}
+
+
+fn discharge_at_least_minus_two_int_authoritative_catalog_literal_step(
+  receipt: Outcome<AtLeastMinusTwoInt>,
+  steps_remaining: Int,
+) -> AtLeastMinusTwoInt {
   match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics } =>
+      discharge_at_least_minus_two_int_authoritative_catalog_literal_step(
+        receipt: Rejected { diagnostics: diagnostics },
+        steps_remaining: steps_remaining - 1
+      )
   }
 }
 
@@ -299,8 +357,21 @@ fn discharge_at_least_minus_two_int_authoritative_catalog_literal(
 fn discharge_exact_one_int_authoritative_catalog_literal(
   receipt: Outcome<ExactOneInt>,
 ) -> ExactOneInt {
+  discharge_exact_one_int_authoritative_catalog_literal_step(receipt: receipt, steps_remaining: 256)
+}
+
+
+fn discharge_exact_one_int_authoritative_catalog_literal_step(
+  receipt: Outcome<ExactOneInt>,
+  steps_remaining: Int,
+) -> ExactOneInt {
   match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics } =>
+      discharge_exact_one_int_authoritative_catalog_literal_step(
+        receipt: Rejected { diagnostics: diagnostics },
+        steps_remaining: steps_remaining - 1
+      )
   }
 }
 
