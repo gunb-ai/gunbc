@@ -1,5 +1,6 @@
 // Host transport for `v4.workflow.ci` `ci_component_affected_from_git_diff_read` (T-24).
-// Replaces scripts/detect-affected-components.sh — path buckets live in ci.dag only.
+// Replaces scripts/detect-affected-components.sh. Modeled authority is `src/v4/workflow/ci.dag`;
+// this bin executes the Rust mirror in `v4_ci_component_affected` (parity-ratcheted to ci.dag).
 #![allow(clippy::disallowed_macros)]
 
 use std::io::Write;

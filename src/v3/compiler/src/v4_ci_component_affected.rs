@@ -1,8 +1,9 @@
 //! v4 `workflow/ci.dag` component affected-set — host transport for GitHub Actions.
 //!
-//! **Authority:** `src/v4/workflow/ci.dag` (`ci_component_affected_from_git_diff` and
-//! `ci_changed_path_affects_*`). This module is the CI runner projection only; path buckets
-//! must not be duplicated in workflow YAML (gate #103).
+//! **Modeled authority:** `src/v4/workflow/ci.dag` (`ci_component_affected_from_git_diff` and
+//! `ci_changed_path_affects_*`). This module is an interim Rust mirror of those predicates for
+//! the CI runner (not `.dag` eval yet); keep aligned via `workflow_policy_paths_match_ci_dag_authority`
+//! and `v4_workflow_ci_runner_dag_smoke_test` prefix parity. Do not add path buckets to workflow YAML.
 
 /// Structural mirror of `CiComponentAffected` in `src/v4/workflow/ci.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
