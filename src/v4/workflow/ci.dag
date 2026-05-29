@@ -33,15 +33,21 @@ import v4.compiler.eval {
   TestClaimCacheKey,
   TestClaimCacheReceipt,
   TestClaimEvalSubject,
+  TestClaimRun,
   TestClaimTypedInput,
+  aggregate_verdicts,
   inferred_tree_digest,
   test_claim_claim_hash_digest,
   test_claim_interpretation_cache_digest
 }
 import v4.std.node {
   Atom,
+  Conj,
+  Edge,
   Hash,
+  Named,
   Node,
+  Positional,
   Symbol,
   TypeNode,
   combine_hash,
@@ -50,10 +56,22 @@ import v4.std.node {
   ByteOffsetCacheIneligible,
   byte_offset_cache_key
 }
-import v4.std.algebra { fold_list }
+import v4.std.algebra { Empty, fold_list, list_snoc_item }
+import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.std.collection { List }
 import v4.std.text { Char, String }
-import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Extent,
+  Locus,
+  NoCorrectionReason,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  diagnostics_singleton
+}
 import v4.std.algebra {
   any,
   count_equal,
@@ -414,27 +432,331 @@ data ci_cache_string_empty_tag: Symbol = ci_cache_string_empty_tag
 data ci_cache_char_byte_offset_ineligible_tag: Symbol = ci_cache_char_byte_offset_ineligible_tag
 data ci_cache_bootstrap_consumes_empty_tag: Symbol = ci_cache_bootstrap_consumes_empty_tag
 data ci_cache_bootstrap_plan_rejected_tag: Symbol = ci_cache_bootstrap_plan_rejected_tag
+data ci_projection_evaluator_pin_edge: Symbol = ci_projection_evaluator_pin_edge
+data ci_projection_evaluator_pipeline_edge: Symbol = ci_projection_evaluator_pipeline_edge
+data ci_projection_pipeline_jobs_edge: Symbol = ci_projection_pipeline_jobs_edge
+data ci_projection_pipeline_gates_edge: Symbol = ci_projection_pipeline_gates_edge
+data ci_projection_job_id_edge: Symbol = ci_projection_job_id_edge
+data ci_projection_job_command_edge: Symbol = ci_projection_job_command_edge
+data ci_projection_job_needs_edge: Symbol = ci_projection_job_needs_edge
+data ci_projection_gate_id_edge: Symbol = ci_projection_gate_id_edge
+data ci_projection_gate_job_edge: Symbol = ci_projection_gate_job_edge
+data ci_projection_gate_run_policy_edge: Symbol = ci_projection_gate_run_policy_edge
+data ci_projection_bootstrap_plan_outcome_edge: Symbol = ci_projection_bootstrap_plan_outcome_edge
+data ci_projection_bootstrap_plan_seed_edge: Symbol = ci_projection_bootstrap_plan_seed_edge
+data ci_projection_bootstrap_plan_self0_edge: Symbol = ci_projection_bootstrap_plan_self0_edge
+data ci_projection_bootstrap_plan_self1_edge: Symbol = ci_projection_bootstrap_plan_self1_edge
+data ci_projection_bootstrap_plan_fixpt_edge: Symbol = ci_projection_bootstrap_plan_fixpt_edge
+data ci_projection_compile_stage_produces_edge: Symbol = ci_projection_compile_stage_produces_edge
+data ci_projection_compile_stage_compiled_by_edge: Symbol = ci_projection_compile_stage_compiled_by_edge
+data ci_projection_compile_stage_produces_hash_edge: Symbol = ci_projection_compile_stage_produces_hash_edge
+data ci_projection_compile_stage_consumes_edge: Symbol = ci_projection_compile_stage_consumes_edge
+data ci_projection_fixpt_left_edge: Symbol = ci_projection_fixpt_left_edge
+data ci_projection_fixpt_right_edge: Symbol = ci_projection_fixpt_right_edge
+data ci_projection_fixpt_left_hash_edge: Symbol = ci_projection_fixpt_left_hash_edge
+data ci_projection_fixpt_right_hash_edge: Symbol = ci_projection_fixpt_right_hash_edge
+data ci_projection_fixpt_pinned_hash_edge: Symbol = ci_projection_fixpt_pinned_hash_edge
+data ci_projection_hash_pin_edge: Symbol = ci_projection_hash_pin_edge
+data ci_projection_command_produces_edge: Symbol = ci_projection_command_produces_edge
+data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_name_edge
+data ci_projection_command_lenses_edge: Symbol = ci_projection_command_lenses_edge
+data ci_projection_command_selection_fn_edge: Symbol = ci_projection_command_selection_fn_edge
+data ci_projection_gate_policy_job_edge: Symbol = ci_projection_gate_policy_job_edge
+
+
+fn ci_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  }
+}
+
+
+fn ci_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target
+  }
+}
 
 
 fn ci_symbol_digest(sym: Symbol) -> Hash {
-  content_hash(
-    n: Node {
-      kind: TypeNode { connective: Atom { identity: sym } },
-      children: []
-    }
-  )
+  content_hash(n: ci_atom(sym: sym))
+}
+
+
+fn ci_symbol_list_projection_node(xs: List<Symbol>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: xs,
+      empty: Empty,
+      cons: fn(acc, sym) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: ci_atom(sym: sym) }
+        )
+      }
+    )
+  }
+}
+
+
+fn ci_bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_hash_pin_edge, target: ci_atom(sym: pin.pin))
+    ]
+  }
+}
+
+
+fn ci_compile_stage_projection_node(stage: CompileStage) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_compile_stage_produces_edge, target: ci_atom(sym: stage.produces)),
+      ci_named_edge(name: ci_projection_compile_stage_compiled_by_edge, target: ci_atom(sym: stage.compiled_by)),
+      ci_named_edge(
+        name: ci_projection_compile_stage_produces_hash_edge,
+        target: ci_bootstrap_hash_pin_projection_node(pin: stage.produces_hash)
+      ),
+      ci_named_edge(
+        name: ci_projection_compile_stage_consumes_edge,
+        target: ci_symbol_list_projection_node(xs: stage.consumes)
+      )
+    ]
+  }
+}
+
+
+fn ci_fixpt_stage_projection_node(fixpt: FixptStage1Stage2) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_fixpt_left_edge, target: ci_atom(sym: fixpt.left)),
+      ci_named_edge(name: ci_projection_fixpt_right_edge, target: ci_atom(sym: fixpt.right)),
+      ci_named_edge(
+        name: ci_projection_fixpt_left_hash_edge,
+        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.left_hash)
+      ),
+      ci_named_edge(
+        name: ci_projection_fixpt_right_hash_edge,
+        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.right_hash)
+      ),
+      ci_named_edge(
+        name: ci_projection_fixpt_pinned_hash_edge,
+        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.pinned_hash)
+      )
+    ]
+  }
+}
+
+
+fn ci_bootstrap_plan_accepted_projection_node(plan: BootstrapPlan) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_bootstrap_plan_seed_edge, target: ci_compile_stage_projection_node(stage: plan.seed)),
+      ci_named_edge(name: ci_projection_bootstrap_plan_self0_edge, target: ci_compile_stage_projection_node(stage: plan.self0)),
+      ci_named_edge(name: ci_projection_bootstrap_plan_self1_edge, target: ci_compile_stage_projection_node(stage: plan.self1)),
+      ci_named_edge(name: ci_projection_bootstrap_plan_fixpt_edge, target: ci_fixpt_stage_projection_node(fixpt: plan.fixpt))
+    ]
+  }
+}
+
+
+fn ci_bootstrap_plan_projection_node() -> Node {
+  match bootstrap_plan {
+    Accepted { value: plan, diagnostics: _ } =>
+      ci_bootstrap_plan_accepted_projection_node(plan: plan)
+    Rejected { diagnostics: _ } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_bootstrap_plan_outcome_edge,
+            target: ci_atom(sym: ci_cache_bootstrap_plan_rejected_tag)
+          )
+        ]
+      }
+  }
+}
+
+
+fn ci_lens_id_projection_node(lens: LensIdV0) -> Node {
+  match lens {
+    Complexity => ci_atom(sym: ci_cache_lens_complexity_tag)
+    Cost => ci_atom(sym: ci_cache_lens_cost_tag)
+    Parallelism => ci_atom(sym: ci_cache_lens_parallelism_tag)
+    EffectEnumeration => ci_atom(sym: ci_cache_lens_effect_enum_tag)
+    Idempotency => ci_atom(sym: ci_cache_lens_idempotency_tag)
+    Provenance => ci_atom(sym: ci_cache_lens_provenance_tag)
+    UnusedParameters => ci_atom(sym: ci_cache_lens_unused_params_tag)
+    StructuralResolution => ci_atom(sym: ci_cache_lens_structural_resolution_tag)
+    TableDecisionTree => ci_atom(sym: ci_cache_lens_table_decision_tree_tag)
+  }
+}
+
+
+fn ci_gate_run_policy_projection_node(policy: CiGateRunPolicy) -> Node {
+  match policy {
+    Always => ci_atom(sym: ci_cache_gate_policy_always_tag)
+    RequiresJobAttempt { job: job } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(name: ci_projection_gate_policy_job_edge, target: ci_atom(sym: job))
+        ]
+      }
+  }
+}
+
+
+fn ci_command_projection_node(c: CiCommand) -> Node {
+  match c {
+    LintCommand => ci_atom(sym: ci_cache_cmd_lint_tag)
+    TestCommand => ci_atom(sym: ci_cache_cmd_test_tag)
+    IgnoredTestCommand { test_name: _ } => ci_atom(sym: ci_cache_cmd_ignored_test_tag)
+    LensCiCommand { required_lenses: lenses } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_command_lenses_edge,
+            target: ci_lens_list_projection_node(lenses: lenses)
+          )
+        ]
+      }
+    BootstrapStageCompile { produces: produces } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(name: ci_projection_command_produces_edge, target: ci_atom(sym: produces)),
+          ci_named_edge(
+            name: ci_projection_bootstrap_plan_outcome_edge,
+            target: ci_bootstrap_plan_projection_node()
+          )
+        ]
+      }
+    M1RustEmitProbeCommand => ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+    TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(name: ci_projection_command_selection_fn_edge, target: ci_atom(sym: fn_name))
+        ]
+      }
+  }
+}
+
+
+fn ci_lens_list_projection_node(lenses: List<LensIdV0>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: lenses,
+      empty: Empty,
+      cons: fn(acc, lens) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: ci_lens_id_projection_node(lens: lens) }
+        )
+      }
+    )
+  }
+}
+
+
+fn ci_job_projection_node(j: CiJob) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_job_id_edge, target: ci_atom(sym: j.id)),
+      ci_named_edge(name: ci_projection_job_command_edge, target: ci_command_projection_node(c: j.command)),
+      ci_named_edge(name: ci_projection_job_needs_edge, target: ci_symbol_list_projection_node(xs: j.needs))
+    ]
+  }
+}
+
+
+fn ci_job_list_projection_node(jobs: List<CiJob>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: jobs,
+      empty: Empty,
+      cons: fn(acc, job) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: ci_job_projection_node(j: job) }
+        )
+      }
+    )
+  }
+}
+
+
+fn ci_gate_projection_node(g: CiGate) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_gate_id_edge, target: ci_atom(sym: g.id)),
+      ci_named_edge(name: ci_projection_gate_job_edge, target: ci_atom(sym: g.job)),
+      ci_named_edge(
+        name: ci_projection_gate_run_policy_edge,
+        target: ci_gate_run_policy_projection_node(policy: g.run_policy)
+      )
+    ]
+  }
+}
+
+
+fn ci_gate_list_projection_node(gates: List<CiGate>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: gates,
+      empty: Empty,
+      cons: fn(acc, gate) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: ci_gate_projection_node(g: gate) }
+        )
+      }
+    )
+  }
+}
+
+
+fn ci_pipeline_projection_node(p: CiPipeline) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_pipeline_jobs_edge, target: ci_job_list_projection_node(jobs: p.jobs)),
+      ci_named_edge(name: ci_projection_pipeline_gates_edge, target: ci_gate_list_projection_node(gates: p.gates))
+    ]
+  }
+}
+
+
+fn ci_pipeline_evaluator_input_node(pipeline: CiPipeline, evaluator_pin: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_evaluator_pin_edge, target: ci_atom(sym: evaluator_pin)),
+      ci_named_edge(
+        name: ci_projection_evaluator_pipeline_edge,
+        target: ci_pipeline_projection_node(p: pipeline)
+      )
+    ]
+  }
 }
 
 
 fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
-  match policy {
-    Always => ci_symbol_digest(sym: ci_cache_gate_policy_always_tag)
-    RequiresJobAttempt { job: job } =>
-      combine_hash(
-        a: ci_symbol_digest(sym: ci_cache_gate_policy_requires_job_tag),
-        b: ci_symbol_digest(sym: job)
-      )
-  }
+  content_hash(n: ci_gate_run_policy_projection_node(policy: policy))
 }
 
 
@@ -468,174 +790,42 @@ fn ci_string_cache_digest(s: String) -> Hash {
 }
 
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of LensIdV0) replaces ci_lens_id_cache_digest; interim hand-rolled coproduct fold for CiPipeline cache only.
 fn ci_lens_id_cache_digest(lens: LensIdV0) -> Hash {
-  match lens {
-    Complexity => ci_symbol_digest(sym: ci_cache_lens_complexity_tag)
-    Cost => ci_symbol_digest(sym: ci_cache_lens_cost_tag)
-    Parallelism => ci_symbol_digest(sym: ci_cache_lens_parallelism_tag)
-    EffectEnumeration => ci_symbol_digest(sym: ci_cache_lens_effect_enum_tag)
-    Idempotency => ci_symbol_digest(sym: ci_cache_lens_idempotency_tag)
-    Provenance => ci_symbol_digest(sym: ci_cache_lens_provenance_tag)
-    UnusedParameters => ci_symbol_digest(sym: ci_cache_lens_unused_params_tag)
-    StructuralResolution => ci_symbol_digest(sym: ci_cache_lens_structural_resolution_tag)
-    TableDecisionTree => ci_symbol_digest(sym: ci_cache_lens_table_decision_tree_tag)
-  }
-}
-
-
-fn ci_symbol_list_cache_digest(xs: List<Symbol>) -> Hash {
-  fold_list(
-    xs: xs,
-    empty: ci_symbol_digest(sym: ci_cache_bootstrap_consumes_empty_tag),
-    cons: fn(acc, sym) {
-      combine_hash(a: acc, b: ci_symbol_digest(sym: sym))
-    }
-  )
-}
-
-
-fn ci_bootstrap_hash_pin_cache_digest(pin: BootstrapHashPin) -> Hash {
-  combine_hash(
-    a: ci_symbol_digest(sym: pin.pin),
-    b: pin.digest
-  )
-}
-
-
-fn ci_compile_stage_cache_digest(stage: CompileStage) -> Hash {
-  combine_hash(
-    a: combine_hash(
-      a: ci_symbol_digest(sym: stage.produces),
-      b: ci_symbol_digest(sym: stage.compiled_by)
-    ),
-    b: combine_hash(
-      a: ci_bootstrap_hash_pin_cache_digest(pin: stage.produces_hash),
-      b: ci_symbol_list_cache_digest(xs: stage.consumes)
-    )
-  )
-}
-
-
-fn ci_fixpt_stage_cache_digest(fixpt: FixptStage1Stage2) -> Hash {
-  combine_hash(
-    a: combine_hash(
-      a: ci_symbol_digest(sym: fixpt.left),
-      b: ci_symbol_digest(sym: fixpt.right)
-    ),
-    b: combine_hash(
-      a: combine_hash(
-        a: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.left_hash),
-        b: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.right_hash)
-      ),
-      b: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.pinned_hash)
-    )
-  )
+  content_hash(n: ci_lens_id_projection_node(lens: lens))
 }
 
 
 // IRT-4: bootstrap_plan is the authority ci_command_authority_ok uses for BootstrapStageCompile.
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — consumer:ci_command_cache_digest BootstrapStageCompile — dissolve-on: content_hash(Node projection of BootstrapPlan) replaces ci_bootstrap_plan_cache_digest manual field mirror below.
-fn ci_bootstrap_plan_cache_digest() -> Hash {
-  match bootstrap_plan {
-    Accepted { value: plan, diagnostics: _ } =>
-      combine_hash(
-        a: combine_hash(
-          a: ci_compile_stage_cache_digest(stage: plan.seed),
-          b: ci_compile_stage_cache_digest(stage: plan.self0)
-        ),
-        b: combine_hash(
-          a: ci_compile_stage_cache_digest(stage: plan.self1),
-          b: ci_fixpt_stage_cache_digest(fixpt: plan.fixpt)
-        )
-      )
-    Rejected { diagnostics: _ } =>
-      ci_symbol_digest(sym: ci_cache_bootstrap_plan_rejected_tag)
-  }
+// 🟢 derived-operation — feature:T22-EVAL-PASS-RECEIPT — plan-bound: reads module bootstrap_plan at cache boundary.
+fn ci_bootstrap_plan_cache_hash() -> Hash {
+  content_hash(n: ci_bootstrap_plan_projection_node())
 }
 
 
 fn ci_command_cache_digest(c: CiCommand) -> Hash {
   match c {
-    LintCommand => ci_symbol_digest(sym: ci_cache_cmd_lint_tag)
-    TestCommand => ci_symbol_digest(sym: ci_cache_cmd_test_tag)
     IgnoredTestCommand { test_name: name } =>
       combine_hash(
-        a: ci_symbol_digest(sym: ci_cache_cmd_ignored_test_tag),
+        a: content_hash(n: ci_command_projection_node(c: IgnoredTestCommand { test_name: name })),
         b: ci_string_cache_digest(s: name)
       )
-    LensCiCommand { required_lenses: lenses } =>
-      fold_list(
-        xs: lenses,
-        empty: ci_symbol_digest(sym: ci_cache_cmd_lens_ci_tag),
-        cons: fn(acc, lens) {
-          combine_hash(a: acc, b: ci_lens_id_cache_digest(lens: lens))
-        }
-      )
-    BootstrapStageCompile { produces: produces } =>
-      combine_hash(
-        a: combine_hash(
-          a: ci_symbol_digest(sym: ci_cache_cmd_bootstrap_compile_tag),
-          b: ci_symbol_digest(sym: produces)
-        ),
-        b: ci_bootstrap_plan_cache_digest()
-      )
-    M1RustEmitProbeCommand => ci_symbol_digest(sym: ci_cache_cmd_m1_probe_tag)
-    TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
-      combine_hash(
-        a: ci_symbol_digest(sym: ci_cache_cmd_testclaim_corpus_eval_tag),
-        b: ci_symbol_digest(sym: fn_name)
-      )
+    _ => content_hash(n: ci_command_projection_node(c: c))
   }
 }
 
 
 fn ci_job_cache_digest(j: CiJob) -> Hash {
-  combine_hash(
-    a: combine_hash(
-      a: ci_symbol_digest(sym: j.id),
-      b: ci_command_cache_digest(c: j.command)
-    ),
-    b: fold_list(
-      xs: j.needs,
-      empty: ci_symbol_digest(sym: ci_cache_jobs_empty_tag),
-      cons: fn(acc, need) {
-        combine_hash(a: acc, b: ci_symbol_digest(sym: need))
-      }
-    )
-  )
+  content_hash(n: ci_job_projection_node(j: j))
 }
 
 
 fn ci_gate_cache_digest(g: CiGate) -> Hash {
-  combine_hash(
-    a: combine_hash(
-      a: ci_symbol_digest(sym: g.id),
-      b: ci_symbol_digest(sym: g.job)
-    ),
-    b: ci_gate_run_policy_cache_digest(policy: g.run_policy)
-  )
+  content_hash(n: ci_gate_projection_node(g: g))
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of CiPipeline) replaces this hand-rolled coproduct digest fold; interim TestClaim pinned-evaluator cache authority only.
 fn ci_pipeline_cache_digest(p: CiPipeline) -> Hash {
-  combine_hash(
-    a: fold_list(
-      xs: p.jobs,
-      empty: ci_symbol_digest(sym: ci_cache_jobs_empty_tag),
-      cons: fn(acc, job) {
-        combine_hash(a: acc, b: ci_job_cache_digest(j: job))
-      }
-    ),
-    b: fold_list(
-      xs: p.gates,
-      empty: ci_symbol_digest(sym: ci_cache_gates_empty_tag),
-      cons: fn(acc, gate) {
-        combine_hash(a: acc, b: ci_gate_cache_digest(g: gate))
-      }
-    )
-  )
+  content_hash(n: ci_pipeline_projection_node(p: p))
 }
 
 
@@ -651,10 +841,60 @@ fn test_claim_typed_input_ci_pipeline(
 
 
 fn ci_test_claim_evaluator_digest(input: TestClaimTypedInput<CiPipeline>) -> Hash {
-  combine_hash(
-    a: ci_symbol_digest(sym: input.evaluator_pin),
-    b: ci_pipeline_cache_digest(p: input.evaluator_input)
+  content_hash(
+    n: ci_pipeline_evaluator_input_node(
+      pipeline: input.evaluator_input,
+      evaluator_pin: input.evaluator_pin
+    )
   )
+}
+
+
+// 🟢 derived-operation — feature:T22-EVAL-PASS-RECEIPT — LB-T22-3213 negative-coverage plan-bound receipt.
+type WorkflowPipelinePlanBoundPassReceipt {
+  run: TestClaimRun<CiPipeline, CiPipeline>
+  plan_hash: Hash
+}
+
+
+fn workflow_pipeline_pass_gate(
+  run: TestClaimRun<CiPipeline, CiPipeline>,
+  at: Node
+) -> Verdict<TestClaimRun<CiPipeline, CiPipeline>> {
+  aggregate_verdicts(
+    rs: [
+      match run.verdict {
+        Pass => Pass
+        Fail { actual: _ } => Fail { actual: Accepted { value: run, diagnostics: None } }
+        Deferred { actual: _, diagnostic: d } =>
+          Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
+      }
+    ],
+    at: at
+  )
+}
+
+
+fn workflow_pipeline_plan_bound_pass_receipt(
+  run: TestClaimRun<CiPipeline, CiPipeline>,
+  at: Node
+) -> Outcome<WorkflowPipelinePlanBoundPassReceipt> {
+  match workflow_pipeline_pass_gate(run: run, at: at) {
+    Pass =>
+      Accepted {
+        value: WorkflowPipelinePlanBoundPassReceipt {
+          run: run,
+          plan_hash: ci_bootstrap_plan_cache_hash()
+        },
+        diagnostics: None
+      }
+    Fail { actual: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation))
+      }
+    Deferred { actual: _, diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
 }
 
 

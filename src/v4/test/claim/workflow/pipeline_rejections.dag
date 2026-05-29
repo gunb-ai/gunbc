@@ -16,8 +16,11 @@ import v4.compiler.eval {
   eval_rejected_roundtrip_deferred
 }
 import v4.workflow.ci {
+  ci_pipeline_evaluator_input_node,
   test_claim_cache_receipt_pinned,
-  test_claim_typed_input_ci_pipeline
+  test_claim_typed_input_ci_pipeline,
+  workflow_pipeline_pass_gate,
+  workflow_pipeline_plan_bound_pass_receipt
 }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
