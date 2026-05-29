@@ -116,7 +116,6 @@ fn wire_contract_obligation_table_t4_8() -> List<CoordinationEffectObligation> {
   ]
 }
 
-// coincides: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
 type BindRef {
   identity: Symbol
 }
