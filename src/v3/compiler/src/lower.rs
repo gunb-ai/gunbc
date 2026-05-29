@@ -9438,9 +9438,6 @@ fn lower_resolved_callable_invocation(
     ) {
         return port;
     }
-    if declaration_named(dag, base_target_decl, "config_patch_layer") {
-        return unresolved_port(dag, config_patch_layer_body_fallback_diagnostic(span));
-    }
     let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
     let mut input_ports: Vec<PortId> = Vec::new();
     let mut template_arguments: Vec<TemplateArgument> = Vec::new();
