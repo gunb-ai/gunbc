@@ -296,11 +296,12 @@ fn bootstrap_target_model_bundle_construct_fold_algebra() -> NodeFold<BootstrapC
   }
 }
 
+fn bootstrap_target_model_bundle_construct_fold_state(root: Node) -> BootstrapConstructFoldState {
+  fold_node(n: root, algebra: bootstrap_target_model_bundle_construct_fold_algebra())
+}
+
 fn bootstrap_target_model_construct_inventory(target: TargetModel) -> List<BootstrapConstruct> {
-  fold_node(
-    n: target.bundle,
-    algebra: bootstrap_target_model_bundle_construct_fold_algebra()
-  ).constructs
+  bootstrap_target_model_bundle_construct_fold_state(root: target.bundle).constructs
 }
 
 fn bootstrap_runtime_model_construct_inventory(runtime: V4EvaluatorRuntime) -> List<BootstrapConstruct> {
