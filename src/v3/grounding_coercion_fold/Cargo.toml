@@ -3,6 +3,7 @@ name = "v3-grounding-coercion-fold"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 # T-Ground-Coercion-Fold — structural fold scaffold (program intent × substrate
 # → target inhabitance OR fail-closed diagnostic). Sibling to grounding_pilot /
