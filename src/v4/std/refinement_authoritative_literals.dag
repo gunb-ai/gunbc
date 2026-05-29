@@ -1,5 +1,5 @@
 // src/v4/std/refinement_authoritative_literals.dag
-// Scope: upstream formatter default literals — discharged via make_* at authoritative locus.
+// Scope: upstream formatter default literals — per-catalog data discharge at authoritative locus.
 // Status: T-25-core formatter dissolution; tied to refinement_formatter_literals_accept.dag.
 
 
@@ -12,76 +12,176 @@ import v4.std.refinement {
   AtLeastMinusOneInt,
   AtLeastMinusTwoInt,
   ExactOneInt,
-  positive_int_authoritative_literal,
-  non_negative_int_authoritative_literal,
-  at_least_minus_one_int_authoritative_literal,
-  at_least_minus_two_int_authoritative_literal,
-  exact_one_int_authoritative_literal,
+  make_at_least_minus_one_int_at_authoritative,
+  make_at_least_minus_two_int_at_authoritative,
+  make_exact_one_int_at_authoritative,
+  make_non_negative_int_at_authoritative,
+  make_positive_int_at_authoritative,
+  positive_int_authoritative_constant,
+  non_negative_int_authoritative_constant,
+  at_least_minus_one_int_authoritative_constant,
+  at_least_minus_two_int_authoritative_constant,
+  exact_one_int_authoritative_constant,
 }
+import v4.std.diagnostic { Accepted, Rejected }
 
 
-// Each row discharges through typed *_authoritative_literal helpers (Accepted-only match;
-// catalog rejection unreachable — witnessed per literal in refinement_formatter_literals_accept.dag).
+// Per-catalog `data` rows (fixed value: N) — not Int->Carrier totalizers. Rejected arms preserve
+// the Outcome boundary via *_authoritative_constant (substrate authoring fault if reached for
+// witnessed catalog values). Acceptance tied per literal in refinement_formatter_literals_accept.dag.
 // 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail
 
-data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = at_least_minus_one_int_authoritative_literal(value: -1)
+data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: -1) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => at_least_minus_one_int_authoritative_constant(base: -1)
+}
 
-data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = at_least_minus_one_int_authoritative_literal(value: 0)
+data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: 0) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => at_least_minus_one_int_authoritative_constant(base: 0)
+}
 
-data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = at_least_minus_two_int_authoritative_literal(value: -2)
+data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = match make_at_least_minus_two_int_at_authoritative(value: -2) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => at_least_minus_two_int_authoritative_constant(base: -2)
+}
 
-data authoritative_exact_one_int_1: ExactOneInt = exact_one_int_authoritative_literal(value: 1)
+data authoritative_exact_one_int_1: ExactOneInt = match make_exact_one_int_at_authoritative(value: 1) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => exact_one_int_authoritative_constant(base: 1)
+}
 
-data authoritative_non_negative_int_0: NonNegativeInt = non_negative_int_authoritative_literal(value: 0)
+data authoritative_non_negative_int_0: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 0) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 0)
+}
 
-data authoritative_non_negative_int_1: NonNegativeInt = non_negative_int_authoritative_literal(value: 1)
+data authoritative_non_negative_int_1: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 1)
+}
 
-data authoritative_non_negative_int_2: NonNegativeInt = non_negative_int_authoritative_literal(value: 2)
+data authoritative_non_negative_int_2: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 2) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 2)
+}
 
-data authoritative_non_negative_int_4: NonNegativeInt = non_negative_int_authoritative_literal(value: 4)
+data authoritative_non_negative_int_4: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 4) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 4)
+}
 
-data authoritative_non_negative_int_8: NonNegativeInt = non_negative_int_authoritative_literal(value: 8)
+data authoritative_non_negative_int_8: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 8) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 8)
+}
 
-data authoritative_non_negative_int_10: NonNegativeInt = non_negative_int_authoritative_literal(value: 10)
+data authoritative_non_negative_int_10: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 10) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 10)
+}
 
-data authoritative_non_negative_int_18: NonNegativeInt = non_negative_int_authoritative_literal(value: 18)
+data authoritative_non_negative_int_18: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 18) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 18)
+}
 
-data authoritative_non_negative_int_19: NonNegativeInt = non_negative_int_authoritative_literal(value: 19)
+data authoritative_non_negative_int_19: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 19) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 19)
+}
 
-data authoritative_non_negative_int_35: NonNegativeInt = non_negative_int_authoritative_literal(value: 35)
+data authoritative_non_negative_int_35: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 35) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 35)
+}
 
-data authoritative_non_negative_int_50: NonNegativeInt = non_negative_int_authoritative_literal(value: 50)
+data authoritative_non_negative_int_50: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 50) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 50)
+}
 
-data authoritative_non_negative_int_60: NonNegativeInt = non_negative_int_authoritative_literal(value: 60)
+data authoritative_non_negative_int_60: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 60) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 60)
+}
 
-data authoritative_non_negative_int_80: NonNegativeInt = non_negative_int_authoritative_literal(value: 80)
+data authoritative_non_negative_int_80: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 80) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 80)
+}
 
-data authoritative_non_negative_int_120: NonNegativeInt = non_negative_int_authoritative_literal(value: 120)
+data authoritative_non_negative_int_120: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 120) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 120)
+}
 
-data authoritative_non_negative_int_150: NonNegativeInt = non_negative_int_authoritative_literal(value: 150)
+data authoritative_non_negative_int_150: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 150) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 150)
+}
 
-data authoritative_non_negative_int_300: NonNegativeInt = non_negative_int_authoritative_literal(value: 300)
+data authoritative_non_negative_int_300: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 300) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 300)
+}
 
-data authoritative_non_negative_int_500: NonNegativeInt = non_negative_int_authoritative_literal(value: 500)
+data authoritative_non_negative_int_500: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 500) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 500)
+}
 
-data authoritative_non_negative_int_1000: NonNegativeInt = non_negative_int_authoritative_literal(value: 1000)
+data authoritative_non_negative_int_1000: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1000) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 1000)
+}
 
-data authoritative_non_negative_int_1000000: NonNegativeInt = non_negative_int_authoritative_literal(value: 1000000)
+data authoritative_non_negative_int_1000000: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1000000) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 1000000)
+}
 
-data authoritative_positive_int_2: PositiveInt = positive_int_authoritative_literal(value: 2)
+data authoritative_positive_int_2: PositiveInt = match make_positive_int_at_authoritative(value: 2) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 2)
+}
 
-data authoritative_positive_int_4: PositiveInt = positive_int_authoritative_literal(value: 4)
+data authoritative_positive_int_4: PositiveInt = match make_positive_int_at_authoritative(value: 4) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 4)
+}
 
-data authoritative_positive_int_8: PositiveInt = positive_int_authoritative_literal(value: 8)
+data authoritative_positive_int_8: PositiveInt = match make_positive_int_at_authoritative(value: 8) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 8)
+}
 
-data authoritative_positive_int_10: PositiveInt = positive_int_authoritative_literal(value: 10)
+data authoritative_positive_int_10: PositiveInt = match make_positive_int_at_authoritative(value: 10) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 10)
+}
 
-data authoritative_positive_int_60: PositiveInt = positive_int_authoritative_literal(value: 60)
+data authoritative_positive_int_60: PositiveInt = match make_positive_int_at_authoritative(value: 60) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 60)
+}
 
-data authoritative_positive_int_70: PositiveInt = positive_int_authoritative_literal(value: 70)
+data authoritative_positive_int_70: PositiveInt = match make_positive_int_at_authoritative(value: 70) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 70)
+}
 
-data authoritative_positive_int_80: PositiveInt = positive_int_authoritative_literal(value: 80)
+data authoritative_positive_int_80: PositiveInt = match make_positive_int_at_authoritative(value: 80) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 80)
+}
 
-data authoritative_positive_int_88: PositiveInt = positive_int_authoritative_literal(value: 88)
+data authoritative_positive_int_88: PositiveInt = match make_positive_int_at_authoritative(value: 88) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 88)
+}
 
-data authoritative_positive_int_100: PositiveInt = positive_int_authoritative_literal(value: 100)
+data authoritative_positive_int_100: PositiveInt = match make_positive_int_at_authoritative(value: 100) {
+  Accepted { value: carrier, diagnostics: _ } => carrier
+  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 100)
+}
