@@ -124,15 +124,9 @@ import v2.compiler.emit {
 
 // =========================================================================
 // Python language facts -- from std.languages spec (python_language, python_literals)
-//
-// These data declarations mirror dsl/std/languages.dag exactly.
 // =========================================================================
 
-// Python reserved words imported from extdeps.languages.python.emit
 
-// Python type_map, keywords, container_templates, python_keyword, and
-// python_container now live in python_lang_facts() and shared functions
-// in v2.compiler.emit
 
 // =========================================================================
 // Entry point -- Python target
@@ -314,7 +308,6 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
 fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_py_type_def_from_connective(item: item, env: env)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
@@ -340,11 +333,6 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 
 // =========================================================================
 // Connective-based type emission -- dispatches on Node children
-//
-// Type structure is encoded as:
-//   Records: connective=Conj, children = one Node per field
-//   Sums:    connective=Disj, children = one Node per variant
-//   Aliases: connective=none, inferred carries the aliased type
 // =========================================================================
 
 fn emit_py_type_def_from_connective(item: Node, env: TypeEnv) -> String {
@@ -357,7 +345,6 @@ fn emit_py_type_def_from_connective(item: Node, env: TypeEnv) -> String {
   }
 }
 
-// is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
 fn emit_py_dataclass_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
   if children |> count == 0 {
@@ -383,14 +370,12 @@ fn emit_py_dataclass_field_from_child(child: Node, env: TypeEnv) -> String {
 fn emit_py_enum_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
   let has_data = children |> any(child => child.children |> count > 0)
   if has_data {
-    // Tagged union: emit as a set of dataclasses + a Union type alias
     let variant_classes = children |> map(child => emit_py_variant_class_from_child(parent_name: name, child: child, env: env))
     let variant_names = children |> map(child => concat(name, authored_name(env: env, node: child)))
     let union_str = variant_names |> join(separator: ", ")
     let classes_str = variant_classes |> join(separator: "\n\n\n")
     concat(classes_str, "\n\n\n", name, " = Union[", union_str, "]")
   } else {
-    // Simple enum: all unit variants
     let variant_lines = children |> map(child =>
       concat("    ", authored_name(env: env, node: child), " = auto()")
     )
@@ -412,12 +397,8 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node, env: TypeE
 
 // =========================================================================
 // Node-based type emission
-//
-// These functions dispatch on Node structure (connective + name + children)
-// to render Python type syntax.
 // =========================================================================
 
-// Type rendering now uses shared emit_node_type (05_emit.dag).
 
 // =========================================================================
 // Pure function (fn) emission
@@ -488,8 +469,6 @@ fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List
   all_params |> join(separator: ", ")
 }
 
-// Expression entry point — delegates to shared emit_unified_typed_expr.
-// Pattern rendering is now fully unified in 05_emit.dag (emit_unified_pattern).
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {
   emit_unified_typed_expr(texpr: texpr, target: Python, registry: registry, scope: scope, depth: depth, fuel: fuel,
     render_pattern: pat => emit_unified_pattern(pattern: pat, target: Python, source_indices: scope.type_env.source_indices))
@@ -497,9 +476,6 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
 
 // =========================================================================
 // Service definition — Python
-//
-// Orchestration is in emit_unified_service_def (05_emit.dag).
-// This file provides: __init__ rendering + transport implementations.
 // =========================================================================
 
 fn emit_py_transport_body(transport: Node, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
@@ -599,8 +575,6 @@ fn emit_py_local_call(op_name: String) -> String {
 
 // =========================================================================
 // Resource definition emission
-//
-// Resources become abstract base classes with abstract methods.
 // =========================================================================
 
 fn emit_py_resource_def(item: Node, env: TypeEnv) -> String {
@@ -632,8 +606,6 @@ fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {
 
 // =========================================================================
 // Data definition emission
-//
-// data name: Type = value  ->  module-level constant
 // =========================================================================
 
 fn emit_py_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -647,12 +619,8 @@ fn emit_py_data_def(name: String, type_node: Node, value: Node, registry: Map<St
 // Identifier conversion -- Python target
 // =========================================================================
 
-// Convert a DSL identifier to a valid Python identifier.
-// Handles reserved word collision by appending underscore suffix.
-// Identifier rendering now uses shared emit_ident (05_emit.dag).
 
 // =========================================================================
-// requirements.txt emission
 // =========================================================================
 
 fn emit_requirements_txt(has_services: Bool) -> TextFile {
@@ -665,4 +633,3 @@ fn emit_requirements_txt(has_services: Bool) -> TextFile {
   TextFile { path: "requirements.txt", content: concat(base_deps, async_deps) }
 }
 
-// has_service_items and is_service_item are now shared -- imported from v2.compiler.emit

@@ -1,9 +1,4 @@
 // Access checks -- pure type checks for index and slice operations.
-//
-// Dependency chain:
-//   v2.std.core, v2.compiler.infer_types
-//     -> v2.compiler.infer_access (this file)
-//       -> v2.compiler.infer (expression inference)
 
 module v2.compiler.infer_access
 

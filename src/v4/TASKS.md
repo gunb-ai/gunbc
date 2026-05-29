@@ -178,7 +178,7 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         Structural authority that replaces scripts/detect-affected-
         components.sh. Consumed by T-24 (ci) + eval (skip pure
         unchanged subgraphs).
-  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23 — T-21 (#3747) + T-23 (#3702) + T-10 done; T-20-fill remaining — prep/skeleton can start; cannot close until T-20-fill authored]
+  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23 — T-21 (#3747) + T-23 (#3702) + T-10 done; T-20 structurally filled (#3788 bootstrap_footprint; bootstrap.dag header: "Status: filled") and consumed by ci.dag (`bootstrap_plan` / `bootstrap_stage_output`). Remaining yellow marks in bootstrap.dag dissolve on T-15 (B1 content_hash pins) and T-32 (footprint constructs walk) — NOT on a separate T-20-fill gate. T-24's own close gates are the CI/YAML authority bridge (emitter wired, hand-authored YAML deleted, v3 string ratchets → TestClaims) per task body below.]
         CI pipeline AS DATA; .github/workflows/ci.yml derived. Closes
         v3's gate-#98 gap (hand-authored CI YAML). Consumes T-21 for
         job selection — the shell bridge dissolves once both land.
@@ -1570,7 +1570,7 @@ carriers (option C)" + §"Ratified Q1 supersession — option C runtime split".
 
 ---
 
-### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [SCHEDULED]
+### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [DONE]
 
 **Operator-ratified 2026-05-27.** `ModulePath = FreeMonoid<ModulePathSegment>`
 where `ModulePathSegment = { name: Symbol }` is structurally a nickname for
@@ -1617,7 +1617,7 @@ to `QualifiedName`, add the projection.
    simplify to `FreeMonoid<Node>` only when they thread the `Rejected` branch to
    their admission boundary.
 
-**Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
+**Naming invariant (landed in `INVARIANTS.md` §P1):**
 Model names must reflect what they are. A type named `FooBar` must be a
 structural composition or projection of `Foo` and `Bar` — not a convenient
 label for something else. Nicknaming is a modeling violation. `ModulePath` →
@@ -1640,7 +1640,7 @@ Enforcement via lens (forthcoming).
 the structural authority `qualified_name_from_module_node` reads from. This
 surface already exists in the codebase — no prerequisite task is needed.
 
-**Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
+**Change 2 (follow-on):** With T-QN-1 `[DONE]` and callers migrated to
 `FreeMonoid<Node>` + `qualified_name_from_node`, `Entry`, `Catalog`,
 and `std/catalog.dag` dissolve. Change 2 may be bundled with T-35 or land
 immediately after.
@@ -1659,10 +1659,11 @@ T-23/AGENT-1 composes over — T-35 owns the no-filesystem entry point;
 T-23 owns the non-text AGENT-SURFACE contract (lens reads, `apply_diff`,
 structured output). These are complementary, not overlapping.
 
-**On hold pending T-QN-1** (QualifiedName infrastructure). Once T-QN-1 lands,
-`QualifiedName` and `qualified_name_from_node` are available and this spec
-applies. T-35 dispatch additionally requires operator code examples (see
-Sequencing). T-35 workers must not proceed without both gates.
+**Gate (T-QN-1 satisfied).** T-QN-1 is `[DONE]` on main — `QualifiedName`,
+`qualified_name_from_node`, and `qualified_name_from_module_node` are available
+and this spec applies. T-35 dispatch still requires **T-28-B** and operator
+code examples (see Sequencing). T-35 workers must not proceed without those
+remaining gates.
 
 **Scope — two pieces (ingest side only):**
 
@@ -1808,10 +1809,9 @@ to define a new agent output surface.
   pipeline. Output type is `Outcome<Validated<CompileOutput>>`, the same carrier
   as `validate_then_compile`; T-35 workers must not redefine it.
 
-**Dependencies — `[needs T-28-B, T-QN-1]`. Execution prerequisites: T-9, T-10.**
-- **T-QN-1** is the hard design prerequisite: `QualifiedName` and
-  `qualified_name_from_node` must exist before T-35 workers can build a
-  `ModuleBatch` or call `compile_with_batch`. T-35 workers cannot proceed without T-QN-1.
+**Dependencies — `[needs T-28-B]`. Execution prerequisites: T-9, T-10.**
+- **T-QN-1** `[DONE]` on main — `QualifiedName`, `qualified_name_from_node`, and
+  `qualified_name_from_module_node` landed; T-35 workers may rely on that surface.
 - **T-28-B** is the hard implementation prerequisite: the module-admission
   stage must be extracted from `03_resolve.dag` before the virtual loader can
   replace it. T-35 workers cannot proceed without T-28-B.
@@ -1830,9 +1830,10 @@ to define a new agent output surface.
 - Not T-23/AGENT-1 — T-35 does not define the agent output surface
   (InferenceResult, DiagnosticSet, apply_diff). Those live in T-23.
 
-**Sequencing.** Post-M3. Dispatch after T-QN-1 lands AND T-28-B merges AND
-operator code-examples gate clears. All three are required; none is
-sufficient alone. Unblocks: IDE integration; automated `.dag` authoring agent
+**Sequencing.** Post-M3. Dispatch after T-28-B merges AND operator
+code-examples gate clears (T-QN-1 prerequisite satisfied on main). Both
+remaining gates are required; neither is sufficient alone. Unblocks: IDE
+integration; automated `.dag` authoring agent
 workflows.
 
 ---
