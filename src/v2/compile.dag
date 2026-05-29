@@ -509,6 +509,8 @@ fn field_value_shape_name(value: FieldValueShape) -> String {
   }
 }
 
+// (P5.3: severity_name and error_category_name deleted -- severity and category
+//  are now strings stored in diagnostic Node properties, not enum variants.)
 
 fn var_binding_kind_name(value: VarBindingKind) -> String {
   match value {

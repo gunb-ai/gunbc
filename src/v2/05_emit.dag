@@ -358,6 +358,8 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   }
 }
 
+// scope_after_expr: extend scope with let-binding type for bodyless lets.
+// After Expr->Node dissolution, resolved type is on Node.inferred.
 fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
     ExprLet =>
@@ -829,6 +831,10 @@ fn rust_literal_for_pattern(value: LiteralValue) -> String {
 
 // =========================================================================
 // P4.1: Target-dispatched rendering — unified by RenderTarget
+//
+// These functions replace per-target triples (rust_X, go_X, python_X)
+// with a single function dispatched by RenderTarget. Backends should
+// migrate to calling these instead of the per-target versions.
 // =========================================================================
 
 fn emit_keyword(key: String, target: RenderTarget) -> String {
@@ -1783,6 +1789,9 @@ fn emit_unified_tco_body(
 
 // =========================================================================
 // Phase 3: Fully unified TCO + block-stmt entry points.
+//
+// These replace per-language wrappers in emit_python.dag / emit_go.dag.
+// Only callback remaining: render_pattern (per-language pattern rendering).
 // =========================================================================
 
 fn emit_unified_init_block_stmts(
@@ -2020,6 +2029,8 @@ fn emit_return(value: String, target: RenderTarget) -> String {
 
 // =========================================================================
 // P4.2: Shared per-variant expression renderers.
+// Pattern: backend dispatches ExprData, recurses on subexpressions,
+// passes pre-rendered strings to shared renderer for target syntax.
 // =========================================================================
 
 fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> String {
@@ -2170,7 +2181,12 @@ fn emit_typed_slice_shared(base: Node, start: Node, end: Node, target: RenderTar
 }
 
 // =========================================================================
+// emit_shared_expr — full shared ExprData dispatcher (P4.2 step 5)
+//
 // The shared layer owns the whole-tree `ExprData` match. Backends provide:
+// - `wrap_result` for target-specific result framing (Go indentation)
+// - `recurse` for recursive sub-expression emission
+// - per-variant hooks for the target-specific lowering cases
 // =========================================================================
 
 fn emit_shared_expr(
@@ -2434,6 +2450,11 @@ fn emit_typed_first_arg_shared(args: List<Node>, target: RenderTarget, recurse: 
 
 // =========================================================================
 // Unified typed expression handlers (Phase 2)
+//
+// These replace per-language typed_* functions. Each reads LanguageSpec
+// data instead of branching on target. The `recurse` callback is the
+// caller's expression entry point (emit_py_typed_expr / emit_go_typed_expr
+// during transition; emit_unified_typed_expr once fully unified).
 // =========================================================================
 
 fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
@@ -2584,6 +2605,10 @@ fn emit_typed_method_call_unified(receiver: Node, method: String, args: List<Nod
 
 // =========================================================================
 // Unified pattern rendering (Phase 3.5)
+//
+// Reads VariantPatternSyntax from ExpressionSemantics.
+// Python: Name(field=binding), Go: just Name, Rust: Name { field: binding }.
+// Replaces emit_py_pattern, emit_go_pattern.
 // =========================================================================
 
 fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
@@ -2689,6 +2714,13 @@ fn emit_field_access_unified(base_str: String, field: String, summary: FieldSumm
 
 // =========================================================================
 // Unified typed expression entry point (Phase 2)
+//
+// Single dispatcher for Python and Go expression rendering. Reads all
+// language facts from LanguageSpec. Takes one callback: render_pattern
+// (per-language pattern rendering, not yet unified — Phase 5).
+//
+// Rust uses its own entry point (05_emit_rust.dag) due to ownership
+// logic. When Phase 6 unifies Rust, it can call this function.
 // =========================================================================
 
 fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int, render_pattern: fn(MatchPattern) -> String) -> String {

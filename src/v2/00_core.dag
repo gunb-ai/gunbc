@@ -76,7 +76,14 @@ type FieldSummary {
 // dsl/std/types.dag. Imported via the top-level import above and
 // re-exported for backward compatibility with v2.std.core consumers.
 
+// Arity bridge DELETED (P3.7). The compiler no longer hardcodes which
+// types are parameterized. Arity comes from .dag declarations (params
+// field on type definitions). See std/types.dag for List, Map, Set.
 
+// P1.9 InferredNode: compiler errors are orthogonal to the node graph.
+// When inference fails, the result is structurally distinct from a type node.
+// Error and Dynamic type sentinels become CompilerError variants.
+// Consumers match InferredNode? directly — no bridge accessors needed.
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
@@ -124,6 +131,16 @@ type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 // Expressions
 // =========================================================================
 
+// ExprData -- expression discriminator for Node-embedded expressions.
+// When a Node carries computation (expr_data != NoExprData), the Node's
+// inferred and span provide the resolved type and source location.
+// Sub-expressions are Node values (not Expr).
+// ExprData: pure operator metadata tag (P5.11 dissolution).
+// All child Nodes live in node.children. ExprData retains only
+// non-Node metadata that identifies the expression kind.
+//
+// AlgebraFieldKind coproduct (Track 6): replaces former String? dispatch.
+// Defined in std/syntax.dag, used by ExprBinOp and OperatorSpec.
 type ExprData
   = NoExprData
   | ExprLiteral { value: LiteralValue }
@@ -319,6 +336,7 @@ type Node {
   type_annotation: Node?
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
+  // Match arm pattern -- set only on arm Nodes (P5.11 compositional dissolution)
   match_pattern: MatchPattern?
   expr_data: ExprData
 }
@@ -373,6 +391,10 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 
 // =========================================================================
 // Compositional child Node constructors (P5.11)
+//
+// Arguments, match arms, field inits, and string interp parts are Nodes.
+// This follows the same pattern as Param→Node (Decision 8).
+// Varargs emerge naturally as an N-sized list of arg Nodes.
 // =========================================================================
 
 fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
@@ -431,6 +453,7 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: 
   }
 }
 
+// Field binding node (D2c): name carries the field name, match_pattern carries the binding pattern.
 fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
     name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
@@ -616,6 +639,9 @@ fn variant_node_span(n: Node) -> SourceSpan { n.span }
 // IR Child Layout Model
 // =========================================================================
 
+// Bootstrap constraint: `accessor` is a function name (String). In the current
+// .dag type system, function names ARE the structural identity. When .dag supports
+// function references, accessor should become a structural reference.
 type ChildRole {
   name: String
   accessor: String
@@ -1402,6 +1428,9 @@ fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
 
 // =========================================================================
 // Intern table — parser-owned identifier authority (Phase 1: type + functions only)
+//
+// InternTable is built during parsing and carried on FrontendResult.
+// Identity consumer and TypeEnv threading deferred until first real use site.
 // =========================================================================
 
 type InternTable {

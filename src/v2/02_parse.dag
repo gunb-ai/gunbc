@@ -2059,6 +2059,9 @@ fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: So
   let r2 = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
+  // Operations are already Nodes (D2d dissolution) -- use directly as children
+  // Preserve namespace root as a structural property so downstream stages
+  // don't need to reverse-engineer it by string-splitting.
   let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let svc_props = match r.config {
     Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
@@ -2512,6 +2515,8 @@ fn parse_op_body_entries(
 
 // =========================================================================
 // PortContract dissolution helpers
+//
+// Convert parsed operation/capability metadata into Node properties.
 // =========================================================================
 
 fn modifier_to_prop(name: String, span: SourceSpan) -> Node {
@@ -2822,6 +2827,7 @@ fn parse_resource_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: S
   let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
+  // Capabilities are already Nodes (D2e dissolution) -- use directly as children
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span },
     children: r.capabilities,
     params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective,

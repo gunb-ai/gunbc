@@ -599,6 +599,9 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
   }
 }
 
+// resolve_header_def, resolve_env_def, resolve_auth_config, resolve_service_config
+// deleted — transport and service config dissolution. Config properties are now
+// resolved by the generic resolve_field_init loop in resolve_item_types.
 
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
   if is_local_transport(t: transport, source_indices: env.source_indices) {
@@ -627,6 +630,8 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
   }
 }
 
+// P5.11: resolve_expr_types uses map_children for single-child cases,
+// make_expr_node with explicit children for multi-child cases.
 fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match texpr.expr_data {
     ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
@@ -905,6 +910,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let resolved_transport = if item.transport == none { none } else { Some { value: transport_resolved.transport } }
   let transport_diags = transport_resolved.diagnostics
 
+  // Resolve properties (includes svc_* config properties after ServiceConfig dissolution)
   let prop_results = map(item.properties, p => resolve_field_init(field_init: p, env: env, module_name: module_name))
   let resolved_props = map(prop_results, pr => pr.field_init)
   let prop_diags = flat_map(prop_results, pr => pr.diagnostics)

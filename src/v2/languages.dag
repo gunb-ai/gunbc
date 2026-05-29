@@ -278,6 +278,8 @@ fn service_self_param(spec: LanguageSpec) -> String {
   }
 }
 
+// TODO: receiver_template on LanguageSpec — Go receiver syntax "(c *Name) "
+// is hardcoded here. Phase 5: move to a data-driven rendering template.
 fn service_receiver_str(spec: LanguageSpec, service_name: String) -> String {
   match spec.service_method {
     SelfInParams { self_param: _ } => ""
@@ -299,6 +301,8 @@ fn service_methods_inside_class(spec: LanguageSpec) -> Bool {
   }
 }
 
+// TODO: return_template on LanguageSpec — error tuple format "(T, error)"
+// is hardcoded here. Phase 5: move to fully data-driven rendering.
 fn service_return_str(spec: LanguageSpec, ret_type: String) -> String {
   match spec.service_return {
     ArrowReturn => concat(spec.items.return_arrow, ret_type)

@@ -37,6 +37,7 @@ type DepEdge {
 }
 
 
+// Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
   imports_by_name: Map<String, List<ResolvedImport>>
   diagnostics: List<ErrorNode>
@@ -54,6 +55,7 @@ fn map_has(m: Map<String, Bool>, key: String) -> Bool {
 // =========================================================================
 
 fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> ModuleGraph {
+  // Phase 1: check for duplicate module declarations
   let dup_diags = check_duplicate_modules(modules: modules, source_indices: source_indices)
 
   let module_index = modules |> fold(init: empty_map(), f: (acc, m) =>
@@ -66,6 +68,9 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m), exported_set)
   )
 
+  // Phase 2: resolve each module's imports.
+  // Build a map from module name to resolved imports for O(1) lookup,
+  // and collect diagnostics in a single pass.
   let resolve_accum = modules |> fold(init: ResolveAccum {
     imports_by_name: empty_map(),
     diagnostics: []
@@ -79,12 +84,17 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
   let imports_by_name = resolve_accum.imports_by_name
   let import_diags = resolve_accum.diagnostics
 
+  // Phase 3: topological sort
   let topo_result = topological_sort(modules: modules, source_indices: source_indices)
   let topo_diags = match topo_result.cycle_error {
     Some { value: diag } => [diag]
     None => []
   }
 
+  // Phase 4: assign dep_order from the sorted order.
+  // Modules not in the sorted output (cycle members) get no dep_order
+  // and are excluded from the acyclic result.
+  // Build a map from module name to its position in the sorted list for O(1) lookup.
   let sorted_names = topo_result.sorted
   let sorted_order_map = sorted_names |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
     map_insert(acc, pair.second, pair.first)

@@ -1143,6 +1143,8 @@ fn empty_override_map() -> Map<String, Node> {
   seed_override_map()
 }
 
+// refine_collection_result_type was deleted — callers removed by M2 Phase C (PR #332).
+// Method return types now resolve structurally via AlgebraTypeVariable instantiation.
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Some { value: element_type })
@@ -1300,6 +1302,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let func_name = expr_call_func_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let call_args = texpr.children
+      // Pre-fetch function sig for callable-aware lambda typing (P4.7e).
       let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
       let sig_params = match sig {
         Some { value: s } => s.params
@@ -1329,6 +1332,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             []
         }
       } else {
+        // Infer each arg; for lambdas where the formal param is Callable,
+        // thread the Callable's param types to the lambda (P4.7e).
         call_args |> enumerate |> map(pair =>
           let a = pair.second
           let formal_param_type = match sig_params |> skip(pair.first) |> first {
@@ -2848,6 +2853,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   match val.expr_data {
     ExprVar { binding_kind: _ } =>
       let vname = expr_var_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
+      // Read carried facts from scope_locals (Experiment 2: reconstruction deleted)
       match map_get(ctx.scope_locals, vname) {
         Some { value: binding } =>
           match binding.provenance {
@@ -2869,6 +2875,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           match from_per_field {
             Some { value: rel } => Some { value: rel }
             None =>
+              // Check scope_locals for base type, then param_names (Experiment 2: sub_value_vars reconstruction deleted)
               let type_name = match map_get(ctx.scope_locals, bname) {
                 Some { value: binding } => authored_name_at(source_indices: ctx.type_env.source_indices, node: binding.resolved)
                 None =>
@@ -4929,6 +4936,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown })
     } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
+      // Parameterized type declaration (e.g., type List<element> = FreeMonoid<element>).
+      // Register as a nominal type with params so generics can find the declaration.
+      // Preserve .inferred so alias chains (List → FreeMonoid) survive into the
+      // TypeEnv for structural resolution (Phase 2 alias following).
       let bare_node = Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [],
         connective: NoConnective, params: item.params, inferred: item.inferred,
@@ -4943,6 +4954,12 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       acc
     }
   )
+  // Register type parameter names from generic type declarations so inference
+  // can resolve slot references (e.g., "A" and "B" in type Pair<A, B>).
+  // Slot names resolve to leaf nodes; normalization substitutes them at
+  // use sites. Phase 3 MVP: registered globally, not scoped to declaration.
+  // Only register params from items already recognized as type bindings —
+  // prevents function params from leaking into the type namespace.
   let param_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Some { value: _ } => true  None => false }
     if item.params |> count > 0 && is_type_decl {

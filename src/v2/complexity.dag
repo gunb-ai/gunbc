@@ -135,6 +135,10 @@ type Certainty = Proven | Conservative
 // =========================================================================
 
 
+// Child accessor identity is now derived from the IR child layout model
+// in 00_core.dag (expr_child_roles / wrapper_child_roles). The hardcoded
+// child_accessor_table has been deleted — use is_child_accessor_in_model()
+// imported from v2.std.core instead.
 
 // =========================================================================
 // Complexity summary -- the main output type

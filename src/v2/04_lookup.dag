@@ -315,6 +315,11 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
 }
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> KnownMethodResolution {
+  // Tier 0: Structural field lookup for ALL types (including collections).
+  // The algebra registry (enrich_kernel_type) provides fields for kernel
+  // types; user-defined types have their own structural children.
+  // Return types from the algebra field are passed through unsubstituted —
+  // Phase C structural resolution handles TypeVariable resolution at the call site.
   let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match tier0.resolution {
     Some { value: mfr } =>

@@ -582,6 +582,7 @@ fn emit_go_local_call(op_name: String, depth: Int) -> String {
 
 fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
+  // After dissolution, capability children are identified by having params
   let cap_children = item.children |> filter(c => c.params |> count > 0)
   let methods = cap_children |> map(c => emit_go_capability_method(cap_node: c, depth: 1, env: env))
   let methods_str = methods |> join(separator: "\n")
@@ -594,6 +595,7 @@ fn emit_go_capability_method(cap_node: Node, depth: Int, env: TypeEnv) -> String
     concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Go), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go, source_indices: env.source_indices))
   )
   let params_str = input_params |> join(separator: ", ")
+  // After dissolution, inferred on the child node IS the output type
   let ret = emit_node_type(n: resolved_type(n: cap_node), target: Go, source_indices: env.source_indices)
   concat(make_indent(level: depth), go_export_ident(name: authored_name(env: env, node: cap_node)), "(", params_str, ") (", ret, ", error)")
 }
