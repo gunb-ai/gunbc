@@ -66,9 +66,7 @@ fn arbitrary_program_fixtures_pass_post_emit_verifier_all_targets() {
     for fixture in PROGRAM_FIXTURES {
         let dag = compile_fixture(fixture);
         let scratch = scratch_dir(fixture.name);
-        if let Err(msg) =
-            verify_program_emitted_source_all_targets(&dag, &scratch, fixture.name)
-        {
+        if let Err(msg) = verify_program_emitted_source_all_targets(&dag, &scratch, fixture.name) {
             failures.push(msg);
         }
         let _ = std::fs::remove_dir_all(&scratch);
@@ -89,13 +87,8 @@ fn arbitrary_program_fixtures_pass_rust_post_emit_verifier() {
     for fixture in PROGRAM_FIXTURES {
         let dag = compile_fixture(fixture);
         let scratch = scratch_dir(&format!("{}_rust", fixture.name));
-        verify_program_emitted_source(
-            &dag,
-            EmitVerificationTarget::Rust,
-            &scratch,
-            fixture.name,
-        )
-        .unwrap_or_else(|e| panic!("fixture `{}`: {e}", fixture.name));
+        verify_program_emitted_source(&dag, EmitVerificationTarget::Rust, &scratch, fixture.name)
+            .unwrap_or_else(|e| panic!("fixture `{}`: {e}", fixture.name));
         let _ = std::fs::remove_dir_all(&scratch);
     }
 }

@@ -56,8 +56,7 @@ pub enum EmitVerificationTarget {
 }
 
 impl EmitVerificationTarget {
-    pub const ALL: &'static [EmitVerificationTarget] =
-        &[Self::Rust, Self::Go, Self::Python];
+    pub const ALL: &'static [EmitVerificationTarget] = &[Self::Rust, Self::Go, Self::Python];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -315,10 +314,8 @@ pub fn verify_emitted_source_file(
     target: EmitVerificationTarget,
     source_path: &Path,
 ) -> Result<(), VerifierRunError> {
-    let spec =
-        clean_emission_spec(dag, target).map_err(verifier_parse_error_to_run_error)?;
-    let binding =
-        parse_post_emit_verifier(dag, spec).map_err(verifier_parse_error_to_run_error)?;
+    let spec = clean_emission_spec(dag, target).map_err(verifier_parse_error_to_run_error)?;
+    let binding = parse_post_emit_verifier(dag, spec).map_err(verifier_parse_error_to_run_error)?;
     run_post_emit_verifier(&binding, source_path)
 }
 
@@ -359,8 +356,12 @@ pub fn verify_program_emitted_source(
         .map_err(|e| format!("create {}: {e}", src_path.display()))?;
     file.write_all(emitted.as_bytes())
         .map_err(|e| format!("write {}: {e}", src_path.display()))?;
-    verify_emitted_source_file(program_dag, target, &src_path)
-        .map_err(|e| format!("{} post_emit_verifier for `{file_stem}`: {e}", target.label()))
+    verify_emitted_source_file(program_dag, target, &src_path).map_err(|e| {
+        format!(
+            "{} post_emit_verifier for `{file_stem}`: {e}",
+            target.label()
+        )
+    })
 }
 
 /// Every Shape-A target must accept the emitted source for `program_dag`.
