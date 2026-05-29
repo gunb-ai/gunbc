@@ -9,6 +9,28 @@ follow-on without an upstream substrate gap).
 
 **Audit scope:** `src/v4/**` and `docs/v4-*.md`, `docs/design-v4-*.md`.
 
+**Ledger standing — bounded exception (per `CLAUDE.md` "Ledger standing
+principle" 2026-05-19):** this document is a **point-in-time classification
+snapshot** under an explicit one-shot operator directive (2026-05-29). It is
+**not** a maintained parallel ledger of `🟡 gated` / `🟡 needs-more-work` /
+`scheduled-but-deferred` marks. **Authority remains with the inline marks.**
+
+* **Dissolution trigger (this doc):** delete this file once §A1–§A8
+  actions are either executed (inline marks dissolved or re-bound) or
+  explicitly dismissed in PR review. No follow-up audit is owed from this
+  snapshot; if a future re-classification is requested, it is a new audit,
+  not an update to this one.
+* **Non-maintenance pledge:** classifications below are not to be patched
+  forward as the underlying marks evolve. When an inline mark dissolves
+  (e.g., a T-25-core consumer migrates to `Refined<Int>`), the row in this
+  doc goes stale; **that is expected and fine** — the inline mark, not
+  this row, was authoritative.
+* **No competing disposition:** every action item cites the inline mark or
+  task-line that holds source-of-truth and either (a) recommends an edit
+  to that authoritative location or (b) flags a labelling mismatch on it.
+  No row of this doc is intended to override or substitute for the bind /
+  dissolve-on text on the mark itself.
+
 **Method:**
 
 1.  Enumerate every marker. Three populations:
