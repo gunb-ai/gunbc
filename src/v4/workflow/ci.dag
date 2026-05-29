@@ -832,8 +832,7 @@ fn ci_m1_probe_cargo_fanout_slots(pools: List<SelfHostedRunnerPool>) -> Int {
 
 
 fn ci_m1_probe_cargo_check_jobs_from_pools(pools: List<SelfHostedRunnerPool>) -> Int {
-  ci_runner_pool_min_jobserver_token_cap(pools: pools)
-    / ci_int_at_least_one(n: ci_m1_probe_cargo_fanout_slots(pools: pools))
+  ci_runner_pool_min_jobserver_token_cap(pools: pools) / ci_int_at_least_one(n: ci_m1_probe_cargo_fanout_slots(pools: pools))
 }
 
 
