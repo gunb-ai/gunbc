@@ -7,82 +7,148 @@ module v4.std.refinement_authoritative_literals
 
 
 import v4.std.refinement {
-  PositiveInt,
-  NonNegativeInt,
   AtLeastMinusOneInt,
   AtLeastMinusTwoInt,
   ExactOneInt,
-  positive_int_authoritative_literal,
-  non_negative_int_authoritative_literal,
+  NonNegativeInt,
+  PositiveInt,
   at_least_minus_one_int_authoritative_literal,
   at_least_minus_two_int_authoritative_literal,
+  discharge_at_least_minus_one_int_authoritative_catalog_literal,
+  discharge_at_least_minus_two_int_authoritative_catalog_literal,
+  discharge_exact_one_int_authoritative_catalog_literal,
+  discharge_non_negative_int_authoritative_catalog_literal,
+  discharge_positive_int_authoritative_catalog_literal,
   exact_one_int_authoritative_literal,
+  non_negative_int_authoritative_literal,
+  positive_int_authoritative_literal
 }
 
 
-// Each row discharges through typed *_authoritative_literal helpers in std/refinement.
-// Rejected arms re-propagate diagnostics as Outcome (no rematch, no recursion — P4); catalog
-// acceptance witnessed per literal in refinement_formatter_literals_accept.dag.
+// Each row: Outcome receipt from *_authoritative_literal, discharged on Accepted.
+// Witnessed per literal in refinement_formatter_literals_accept.dag (Rejected unreachable).
 // 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail
 
-data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = at_least_minus_one_int_authoritative_literal(value: -1)
+data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = discharge_at_least_minus_one_int_authoritative_catalog_literal(
+  receipt: at_least_minus_one_int_authoritative_literal(value: -1)
+)
 
-data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = at_least_minus_one_int_authoritative_literal(value: 0)
+data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = discharge_at_least_minus_one_int_authoritative_catalog_literal(
+  receipt: at_least_minus_one_int_authoritative_literal(value: 0)
+)
 
-data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = at_least_minus_two_int_authoritative_literal(value: -2)
+data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = discharge_at_least_minus_two_int_authoritative_catalog_literal(
+  receipt: at_least_minus_two_int_authoritative_literal(value: -2)
+)
 
-data authoritative_exact_one_int_1: ExactOneInt = exact_one_int_authoritative_literal(value: 1)
+data authoritative_exact_one_int_1: ExactOneInt = discharge_exact_one_int_authoritative_catalog_literal(
+  receipt: exact_one_int_authoritative_literal(value: 1)
+)
 
-data authoritative_non_negative_int_0: NonNegativeInt = non_negative_int_authoritative_literal(value: 0)
+data authoritative_non_negative_int_0: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 0)
+)
 
-data authoritative_non_negative_int_1: NonNegativeInt = non_negative_int_authoritative_literal(value: 1)
+data authoritative_non_negative_int_1: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 1)
+)
 
-data authoritative_non_negative_int_2: NonNegativeInt = non_negative_int_authoritative_literal(value: 2)
+data authoritative_non_negative_int_2: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 2)
+)
 
-data authoritative_non_negative_int_4: NonNegativeInt = non_negative_int_authoritative_literal(value: 4)
+data authoritative_non_negative_int_4: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 4)
+)
 
-data authoritative_non_negative_int_8: NonNegativeInt = non_negative_int_authoritative_literal(value: 8)
+data authoritative_non_negative_int_8: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 8)
+)
 
-data authoritative_non_negative_int_10: NonNegativeInt = non_negative_int_authoritative_literal(value: 10)
+data authoritative_non_negative_int_10: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 10)
+)
 
-data authoritative_non_negative_int_18: NonNegativeInt = non_negative_int_authoritative_literal(value: 18)
+data authoritative_non_negative_int_18: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 18)
+)
 
-data authoritative_non_negative_int_19: NonNegativeInt = non_negative_int_authoritative_literal(value: 19)
+data authoritative_non_negative_int_19: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 19)
+)
 
-data authoritative_non_negative_int_35: NonNegativeInt = non_negative_int_authoritative_literal(value: 35)
+data authoritative_non_negative_int_35: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 35)
+)
 
-data authoritative_non_negative_int_50: NonNegativeInt = non_negative_int_authoritative_literal(value: 50)
+data authoritative_non_negative_int_50: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 50)
+)
 
-data authoritative_non_negative_int_60: NonNegativeInt = non_negative_int_authoritative_literal(value: 60)
+data authoritative_non_negative_int_60: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 60)
+)
 
-data authoritative_non_negative_int_80: NonNegativeInt = non_negative_int_authoritative_literal(value: 80)
+data authoritative_non_negative_int_80: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 80)
+)
 
-data authoritative_non_negative_int_120: NonNegativeInt = non_negative_int_authoritative_literal(value: 120)
+data authoritative_non_negative_int_120: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 120)
+)
 
-data authoritative_non_negative_int_150: NonNegativeInt = non_negative_int_authoritative_literal(value: 150)
+data authoritative_non_negative_int_150: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 150)
+)
 
-data authoritative_non_negative_int_300: NonNegativeInt = non_negative_int_authoritative_literal(value: 300)
+data authoritative_non_negative_int_300: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 300)
+)
 
-data authoritative_non_negative_int_500: NonNegativeInt = non_negative_int_authoritative_literal(value: 500)
+data authoritative_non_negative_int_500: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 500)
+)
 
-data authoritative_non_negative_int_1000: NonNegativeInt = non_negative_int_authoritative_literal(value: 1000)
+data authoritative_non_negative_int_1000: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 1000)
+)
 
-data authoritative_non_negative_int_1000000: NonNegativeInt = non_negative_int_authoritative_literal(value: 1000000)
+data authoritative_non_negative_int_1000000: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 1000000)
+)
 
-data authoritative_positive_int_2: PositiveInt = positive_int_authoritative_literal(value: 2)
+data authoritative_positive_int_2: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 2)
+)
 
-data authoritative_positive_int_4: PositiveInt = positive_int_authoritative_literal(value: 4)
+data authoritative_positive_int_4: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 4)
+)
 
-data authoritative_positive_int_8: PositiveInt = positive_int_authoritative_literal(value: 8)
+data authoritative_positive_int_8: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 8)
+)
 
-data authoritative_positive_int_10: PositiveInt = positive_int_authoritative_literal(value: 10)
+data authoritative_positive_int_10: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 10)
+)
 
-data authoritative_positive_int_60: PositiveInt = positive_int_authoritative_literal(value: 60)
+data authoritative_positive_int_60: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 60)
+)
 
-data authoritative_positive_int_70: PositiveInt = positive_int_authoritative_literal(value: 70)
+data authoritative_positive_int_70: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 70)
+)
 
-data authoritative_positive_int_80: PositiveInt = positive_int_authoritative_literal(value: 80)
+data authoritative_positive_int_80: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 80)
+)
 
-data authoritative_positive_int_88: PositiveInt = positive_int_authoritative_literal(value: 88)
+data authoritative_positive_int_88: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 88)
+)
 
-data authoritative_positive_int_100: PositiveInt = positive_int_authoritative_literal(value: 100)
+data authoritative_positive_int_100: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 100)
+)
