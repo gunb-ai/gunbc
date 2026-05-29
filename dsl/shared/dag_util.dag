@@ -5,7 +5,9 @@
 //   - Report formatting (ci.dag)
 //   - StageResult construction (build.dag, ci.dag)
 //   - Generated file headers (bootstrap, deps, docgen)
-//   - Render-then-upsert helper (8+ tools)
+//   - Render-then-upsert helper (planned — use std.patterns.content_upsert
+//     on RenderedTextFile once pattern generics + resource uses land; not
+//     authored here yet — see docs/audit/upsert-pattern-compiler-stray-2026-05-29.md)
 
 module shared.dag_util
 

@@ -13,7 +13,7 @@ import v4.compiler.target_carriers { LanguageModel }
 import v4.std.target_model { TargetModel }
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
 import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime, v4_evaluator_runtime_wave1 }
-import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
 import v4.std.witness { Holds, Violates, Witness }
 
 data v4_dag_source: Symbol = v4_dag_source
@@ -209,6 +209,149 @@ fn bootstrap_projection_snapshot_content_hash_pin_node(pin: Symbol) -> Node {
     children: []
   }
 }
+
+data bootstrap_projection_hash_pin_slot_edge: Symbol = bootstrap_projection_hash_pin_slot_edge
+data bootstrap_projection_hash_digest_slot_edge: Symbol = bootstrap_projection_hash_digest_slot_edge
+data bootstrap_hash_digest_not_in_fixture_constants: Symbol = bootstrap_hash_digest_not_in_fixture_constants
+data bootstrap_hash_pin_digest_pair_unbound: Symbol = bootstrap_hash_pin_digest_pair_unbound
+
+
+fn bootstrap_hash_digest_in_fixture_constants(digest: Hash) -> Bool {
+  (digest == v4_stage0_hash)
+    || (digest == v4_stage1_hash)
+    || (digest == v4_stage2_hash)
+    || (digest == pinned_v4_fixed_point_hash)
+}
+
+
+fn bootstrap_hash_digest_fixture_atom_node(digest: Hash) -> Node {
+  if digest == v4_stage0_hash {
+    Node {
+      kind: TypeNode { connective: Atom { identity: v4_stage0_hash } },
+      children: []
+    }
+  } else if digest == v4_stage1_hash {
+    Node {
+      kind: TypeNode { connective: Atom { identity: v4_stage1_hash } },
+      children: []
+    }
+  } else if digest == v4_stage2_hash {
+    Node {
+      kind: TypeNode { connective: Atom { identity: v4_stage2_hash } },
+      children: []
+    }
+  } else {
+    Node {
+      kind: TypeNode { connective: Atom { identity: pinned_v4_fixed_point_hash } },
+      children: []
+    }
+  }
+}
+
+
+fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: bootstrap_projection_hash_pin_slot_edge },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: pin } },
+          children: []
+        }
+      },
+      Edge {
+        label: Named { name: bootstrap_projection_hash_digest_slot_edge },
+        target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
+      }
+    ]
+  }
+}
+
+
+// 🟡 derived-operation — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; replace fixture-constant gate + closed (pin,digest) pair match with a total BootstrapHashPin digest coproduct projection.
+fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Outcome<Node> {
+  if bootstrap_hash_digest_in_fixture_constants(digest: pin.digest) {
+    if (pin.pin == v4_stage0_hash_pin) && (pin.digest == v4_stage0_hash) {
+      Accepted {
+        value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
+        diagnostics: None
+      }
+    } else if (pin.pin == v4_stage1_hash_pin) && (pin.digest == v4_stage1_hash) {
+      Accepted {
+        value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
+        diagnostics: None
+      }
+    } else if (pin.pin == v4_stage2_hash_pin) && (pin.digest == v4_stage2_hash) {
+      Accepted {
+        value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
+        diagnostics: None
+      }
+    } else if (pin.pin == v4_stage2_hash_pin) && (pin.digest == v4_stage1_hash) {
+      Accepted {
+        value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
+        diagnostics: None
+      }
+    } else if (pin.pin == pinned_v4_fixed_point_hash_pin) && (pin.digest == pinned_v4_fixed_point_hash) {
+      Accepted {
+        value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
+        diagnostics: None
+      }
+    } else if (pin.pin == pinned_v4_fixed_point_hash_pin) && (pin.digest == v4_stage1_hash) {
+      Accepted {
+        value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
+        diagnostics: None
+      }
+    } else {
+      Rejected {
+        diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: bootstrap_hash_pin_digest_pair_unbound))
+      }
+    }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: bootstrap_hash_digest_not_in_fixture_constants))
+    }
+  }
+}
+
+
+fn bootstrap_plan_accepted_hash_pins_projectable(plan: BootstrapPlan) -> Bool {
+  match bootstrap_hash_pin_projection_node(pin: plan.seed.produces_hash) {
+    Accepted { value: _, diagnostics: _ } =>
+      match bootstrap_hash_pin_projection_node(pin: plan.self0.produces_hash) {
+        Accepted { value: _, diagnostics: _ } =>
+          match bootstrap_hash_pin_projection_node(pin: plan.self1.produces_hash) {
+            Accepted { value: _, diagnostics: _ } =>
+              match bootstrap_hash_pin_projection_node(pin: plan.fixpt.left_hash) {
+                Accepted { value: _, diagnostics: _ } =>
+                  match bootstrap_hash_pin_projection_node(pin: plan.fixpt.right_hash) {
+                    Accepted { value: _, diagnostics: _ } =>
+                      match bootstrap_hash_pin_projection_node(pin: plan.fixpt.pinned_hash) {
+                        Accepted { value: _, diagnostics: _ } => true
+                        Rejected { diagnostics: _ } => false
+                      }
+                    Rejected { diagnostics: _ } => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
+  match bootstrap_plan {
+    Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+data bootstrap_plan_accepted_hash_pins_projectable_witness: Bool = bootstrap_plan_accepted_hash_pins_projectable_ok()
 
 // Phase-1 closure: Node-projectable projection facts (B1 content_hash). BootstrapHashPin.digest
 // (Hash), TargetModel non-bundle fields, and V4EvaluatorRuntime fields beyond runtime_identity

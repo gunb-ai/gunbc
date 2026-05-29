@@ -119,7 +119,7 @@ type SwiftFormatOrderedImports {
 }
 
 
-// 🟡 gated — feature: swift-format-rules-carrier — bind T-4.16 follow-on — dissolve-on-arrival: add rules: Map<String, Bool> field to SwiftFormatConfig once Map is available as a language-level primitive without requiring a std import; forbidden: List<SwiftFormatRuleOverride> workarounds that lose the Bool-keyed semantics of the rules dictionary.
+// 🟡 gated — feature: swift-format-rules-carrier — bind v4-lang:map-primitive — dissolve-on-arrival: add rules: Map<String, Bool> field to SwiftFormatConfig once Map is available as a language-level primitive without requiring a std import; forbidden: List<SwiftFormatRuleOverride> workarounds that lose the Bool-keyed semantics of the rules dictionary.
 type SwiftFormatConfig {
   version: SwiftFormatVersion
   line_length: SwiftFormatPositiveInt
