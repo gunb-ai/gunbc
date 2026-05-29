@@ -1,42 +1,65 @@
-# gunbc
+# daglang
 
-A causal engine for programs. Validates that declared intent is
-sound — every data flow has a valid source and drain, every
-computation terminates, every type is consistent — then emits
-to any target language as mechanical translation.
+A language for programs as dependency graphs. You write `.dag` source: types,
+data, and workflows wired by explicit causes and drains. The language is
+closed—finite data, bounded iteration, and composition that preserves
+boundedness—so structural claims are checkable, not conventional.
 
-**If it compiles, the intent is sound and will execute as declared.**
+**If it compiles, the declared intent is sound and will execute as declared.**
 
-See [THESIS.md](THESIS.md) for the full thesis.
+See [THESIS.md](THESIS.md) for the full thesis behind that guarantee.
+
+## Language and compiler
+
+| | **daglang** | **gunbc** |
+|---|-------------|-----------|
+| What | The `.dag` language, `dsl/std/` vocabulary, and substrate models | The compiler that validates daglang and emits target code |
+| You | Author `.dag` programs | Run `gunbc` on a source tree |
+
+```
+.dag source  →  gunbc  →  tokenize → parse → resolve → infer → emit  →  target code
+```
+
+gunbc is a causal engine: it checks that every flow has a valid source and
+drain, every computation terminates, and every type is consistent—then emits
+to any target language as mechanical translation. Stages are pure transforms;
+gunbc does not execute your program to validate it.
+
+A single daglang program can describe an entire system. Different subgraphs
+emit to different targets; gunbc owns the glue (shared types, serialization,
+API contracts).
 
 ## Quick start
 
 ```bash
-git clone <repo> && cd gunbc
+git clone https://github.com/gunb-ai/daglang.git && cd daglang
+cargo build --release -p v2-compiler --bin gunbc
 cargo test -p v2-compiler-tests    # compiler tests
 cargo clippy --all-targets -- -D warnings  # lint
 ```
 
-## How it works
+The release binary is `target/release/gunbc` (crate `v2-compiler`, bin `gunbc` in
+`src/v2/stage0/Cargo.toml`). Use it to compile v4 trees, for example:
 
-Programs are written in `.dag` — a closed language where all data
-is finite, all iteration is bounded, and composition preserves
-boundedness. The compiler validates the causal graph from source
-to drain:
-
+```bash
+mkdir -p /tmp/gunbc-out
+./target/release/gunbc compile \
+  --source-root src/v4 \
+  --output-dir /tmp/gunbc-out \
+  --target dag
 ```
-.dag source → tokenize → parse → resolve → infer → emit → target code
-```
 
-Every stage is a pure transform. The compiler never executes the
-programs it validates. Emission is mechanical: Rust, Python, Go
-today — any target that can represent the primitives.
+## gunbc: v2 and v4
 
-A single `.dag` program can describe an entire system. Different
-subgraphs emit to different targets. The compiler owns the glue
-between artifacts (shared types, serialization, API contracts).
+| | v2 (`src/v2/`) | v4 (`src/v4/`) |
+|---|----------------|----------------|
+| Role | Production self-hosted compiler | Next substrate + pipeline |
+| Maturity | Emit to Rust/Python/Go; large test suite | Model depth in `std/` and `extdeps/`; compiler stages compile `.dag` |
+| Source | `.dag` + small Rust `stage0` bootstrap | `.dag` only in the compiler tree (bootstrap shrinking) |
 
-## What the compiler proves
+**v4 status (honest):** the v4 compiler pipeline compiles and type-checks `.dag` over `src/v4` in CI. Multi-target emission and execute-verified `TestClaim` runners are in progress. See [ROADMAP.md](ROADMAP.md) for milestone shape.
+
+## What gunbc proves
 
 | Property | How |
 |----------|-----|
@@ -47,37 +70,41 @@ between artifacts (shared types, serialization, API contracts).
 | Ownership | Binding fan-out analysis, clone/move decisions |
 | Cross-target consistency | All targets derive from the same declarations |
 
-What it can't prove — external reality (does the REST endpoint
-exist? is the database up?) — it generates tests for.
+What it can't prove—external reality (does the REST endpoint exist? is the
+database up?)—it generates tests for.
 
 ## Project structure
 
 ```
-THESIS.md           Why this project exists — start here
-ROADMAP.md          Current state and work plan
-INVARIANTS.md       Rules that protect the thesis
+THESIS.md           Why daglang exists — start here
+ROADMAP.md          Current state and direction
+INVARIANTS.md       Five principles that protect the thesis
 MODELING.md         How to extend the language safely
 
 docs/               Project-wide design
   architecture.md     Substrate: Node + Edge
   coercion-design.md  Type coercion algebra
 
-dsl/                Domain: .dag source files
-  std/                Shared vocabulary (types, algebra, iteration)
+dsl/                Portable daglang vocabulary
+  std/                Shared types, algebra, iteration
   extdeps/            External system models (cloud, git, shell)
 
-src/v2/             Self-hosted compiler (.dag source)
+src/v2/             gunbc compiler (.dag source, shipping)
   00_core.dag         Core types
   02_parse.dag        Tokenizer + parser
   04_infer.dag        Type inference + provenance
   05_emit.dag         Emission (shared + per-target)
   complexity.dag      Termination proofs
   ownership.dag       Ownership analysis
-  cx-design.md        Complexity analysis design
-  ownership-design.md Ownership pipeline design
-  compiler-laws.md    Compiler structural laws
 
-src/v2/tests/       Compiler test suite
+src/v4/             Next compiler generation (in progress)
+  std/                Substrate vocabulary
+  extdeps/            Language and transport models
+  compiler/           Pipeline stages (tokenize … emit … translate)
+  lens/               Correctness lenses
+  test/claim/         Structural TestClaim corpus
+
+src/v2/tests/       v2 compiler test suite
   testing-strategy.md Testing philosophy
 ```
 
@@ -85,7 +112,7 @@ src/v2/tests/       Compiler test suite
 
 Read top-down. Each doc links to its parent and children.
 
-1. **[THESIS.md](THESIS.md)** — the goal: causal soundness
+1. **[THESIS.md](THESIS.md)** — the goal: causal soundness for daglang
 2. **[ROADMAP.md](ROADMAP.md)** — what's done, what's next
 3. **[INVARIANTS.md](INVARIANTS.md)** — rules that enforce soundness
 4. **[MODELING.md](MODELING.md)** — how to model new concepts

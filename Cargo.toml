@@ -2,38 +2,23 @@
 resolver = "2"
 exclude = [".stage1"]
 members = [
-    # v2 compiler — RESTORED 2026-05-15 as comparison artifact + v4 bootstrap
-    # source. v2 retired with 1-residual hand-Rust; v4 will use v2's compiled
-    # binary as stage minus one. CI runs v2 fixed-point only when src/v2/ is
-    # affected (frozen-buildable: workspace member, but not tested per-PR
-    # unless touched). See PR #3147 for v4 program context.
     "src/v2/stage0",
     "src/v2/tests",
-    # v3 compiler — FROZEN 2026-05-15 pending v4 program. CI for v3 runs only
-    # when src/v3/ is affected (frozen-buildable; same gating as v2).
     "src/v3/compiler",
-    # T-WAD Slice 4 — regenerate `dsl/gunbc/ci_github_actions_workflow.dag` from `.github/workflows/ci.yml`
     "tools/gen_gunbc_ci_workflow_dag",
-    # T-Ground-Pilot probe — bounded inhabitance-search routing pilot
-    # for the Rust target. Sibling crate so the probe lifecycle is
-    # isolated and the v3-compiler SG-0 ratchet is untouched.
     "src/v3/grounding_pilot",
-    # T-Ground-Engine Phase 1 — type-structure validation for Rust target
-    # primitive declarations loaded through v3-compiler's public accessor.
     "src/v3/grounding_engine",
-    # T-Ground-Lifetime-Analyzer — R2 structural ownership / lifetime / growability fold.
     "src/v3/grounding_lifetime",
-    # T-Ground-Coercion-Fold — structural emission fold scaffold (stub until LanguageSpec + boundary gates).
     "src/v3/grounding_coercion_fold",
-    # T-Ground-CrossTarget-Meta — L6 cross-product walker (TypeConnective × Behavior × Shape A target).
     "src/v3/grounding_cross_target_meta",
-    # T-Ground-Tests — L4 routing-stability Stratum A (name-keyed parity) vs LanguageSpec rows.
     "src/v3/grounding_tests",
-    # Linux ExecuteCommand unshare bootstrap — fd3 sentinel + FD_CLOEXEC before execvp
     "src/v3/execute_command_bootstrap",
-    # v1 compiler — ARCHIVED. No longer in the build or generation path.
-    # Retained in src/v1/ for historical reference. Can be deleted.
 ]
+
+[workspace.metadata]
+description = "A causal engine for programs — validates declared intent and emits to any target language."
+repository = "https://github.com/gunb-ai/gunbc"
+homepage = "https://github.com/gunb-ai/gunbc"
 
 [workspace.package]
 version = "0.1.0"
@@ -52,11 +37,6 @@ hex = "0.4"
 glob = "0.3"
 ureq = "2"
 stacker = "0.1"
-# R3 Substrate Rust-primitive-full-coverage (Director Path A RATIFIED at
-# gunbc#1739 #issuecomment-4392731264): `IntervalInt::ExactInterval`
-# widens from `i128` to `BigInt` to admit `u128::MAX` (and any future
-# wider primitive) without per-width host-repr variant explosion.
-# Single, stable, widely-vendored crate; minor workspace-surface add.
 num-bigint = { version = "0.4", default-features = false }
 
 # Strip debug info from both profiles — this repo produces dev tools,
