@@ -64,6 +64,7 @@ pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
     path.starts_with(".github/workflows/")
         || path.starts_with("src/v4/workflow/ci")
         || path.starts_with("src/v3/compiler/src/v4_ci_component_affected")
+        || path.starts_with("src/v3/compiler/src/v4_ci_runner_pool")
         || path.starts_with("src/v3/compiler/src/bin/detect_ci_affected_components")
         || path.starts_with("scripts/check-workflow-path-regex-inventory")
         || path.starts_with("scripts/workflow-path-regex-forbidden-substrings")
@@ -95,6 +96,29 @@ mod tests {
         assert!(ci_changed_path_affects_workflow_policy(
             ".github/workflows/ci.yml"
         ));
+        assert!(ci_changed_path_affects_workflow_policy(
+            "src/v3/compiler/src/v4_ci_runner_pool.rs"
+        ));
+    }
+
+    #[test]
+    fn workflow_policy_paths_match_ci_dag_authority() {
+        assert_eq!(
+            ci_changed_path_affects_workflow_policy("src/v4/workflow/ci.dag"),
+            true
+        );
+        assert_eq!(
+            ci_changed_path_affects_workflow_policy("src/v3/compiler/src/v4_ci_runner_pool.rs"),
+            true
+        );
+        assert_eq!(
+            ci_changed_path_affects_workflow_policy("src/v3/compiler/src/v4_ci_component_affected.rs"),
+            true
+        );
+        assert_eq!(
+            ci_changed_path_affects_workflow_policy("src/v3/compiler/src/bin/detect_ci_affected_components.rs"),
+            true
+        );
     }
 
     #[test]

@@ -276,6 +276,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
+    "src/v3/compiler/src/bin/detect_ci_affected_components.rs",
     "src/v3/compiler/src/bin/gunbc_ci.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -356,6 +357,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_tokenize.rs",
     "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
+    "src/v3/compiler/src/v4_ci_component_affected.rs",
+    "src/v3/compiler/src/v4_ci_runner_pool.rs",
     "src/v3/compiler/src/v4_hollow_alias_gate.rs",
     "src/v3/compiler/src/wall_clock_ratchet_manifest.rs",
 ];
