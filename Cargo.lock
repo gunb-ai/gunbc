@@ -1137,6 +1137,7 @@ dependencies = [
 name = "v3-compiler"
 version = "0.1.0"
 dependencies = [
+ "ci_affected_components",
  "criterion",
  "gen_gunbc_ci_workflow_dag",
  "libc",
