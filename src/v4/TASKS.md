@@ -1184,6 +1184,27 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
   generator emits checked YAML from `ci.dag`, the hand-authored YAML is
   deleted, and the v3 string ratchets become `TestClaim`s over the generated
   output.
+- **CI overhaul close predicates (operator-ratified 2026-05-29,
+  `docs/design-ci-dag-overhaul.md` PR #3886 — two phases, single authority):**
+  - **Phase 1 — split (same PR as `docs/design-ci-bankruptcy-rebuild.md`):**
+    - **Phase 1a / B1 (Tier-0 integrity):** `ci.dag` is sole *policy*
+      authority for integrity-class CI (I0–I8 in bankruptcy doc); GHA invokes
+      T-22 interpreter on `ci_pipeline` (S2′); coarse bucket `if:` scheduling
+      and monolithic policy jobs (`v3`/`v4`/`self_host_ratchet` as schedule
+      drivers) are dissolved. **`scripts/check-*` are not required to be deleted
+      in Phase 1a** — they must not remain on the Tier-0 critical path after
+      B1. Atoms **A0–A2** (+ integrity arms). **T-24 remains open** after Phase
+      1a.
+    - **Phase 1b / B2 (lane completion):** atoms **A3–A14** promoted opt-in
+      (one PR each); **A6–A8** delete `scripts/check-*` in the same PR as
+      `DisciplinePolicyCommand` / `TestClaim` ports. Canvas §9.1 “lane done” =
+      Phase 1a **and** 1b.
+  - **Phase 2 (atom A15):** Shape-B checked `.github/workflows/ci.yml` emitted
+    from `CiPipeline`; **all** hand-authored workflow YAML deleted (C4 /
+    `design-pure-bootstrap-zero.md`). **T-24 [DONE]** only after Phase 2.
+  - **Forbidden:** treating a hand-maintained harness `ci.yml` as steady-state
+    authority; silently narrowing this bullet to “interpreter-only” without a
+    TASKS amendment.
 - Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
 - **Lens verdict gate (operator-ratified 2026-05-25) — single-authority split:** CI pass/fail for lens enforcement is **`run_required_lens_gates`** in `compiler/00_compile.dag` (`Outcome<List<LensGateWitness>>`) — **owned by T-10**, not build exit code alone. **T-24** owns **`LensCiCommand { required_lenses: … }`** scheduling in `workflow/ci.dag` (which lens set runs in CI). **T-23** owns the Enforce application substrate consumed by T-10's `apply_compile_lens`. Semantic verdict = lens-gate rejection diagnostics, structurally separate from "compile succeeded."
 - Structural cache keys: a cacheable job's `actions/cache` key is `content_hash` (B1) of its input subgraph, not a hand-authored `hashFiles(...)` glob. The interim `hashFiles(...)` keys in the committed `ci.yml` (e.g. the v2-compiler-binary cache) are manual approximations, replaced by emitted content-hashes when `ci.yml` is emitted from this file.
