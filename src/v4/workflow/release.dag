@@ -558,7 +558,7 @@ fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> 
                 Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_invalid)) }
               }
             } else {
-              Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_bootstrap_authority_violation)) }
+              Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_command_authority_violation)) }
             }
           } else {
             Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_dependency_cycle)) }
