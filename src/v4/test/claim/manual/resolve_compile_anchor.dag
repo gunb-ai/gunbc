@@ -314,8 +314,7 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
     roots: resolve_roots_single_import(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: resolve_subject_name(),
-        tree: resolve_subject_module_root_with_import_use()
+        name: resolve_subject_name()
       },
       imports: Cons {
         head: Import {

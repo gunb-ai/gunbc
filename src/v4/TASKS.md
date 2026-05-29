@@ -1770,8 +1770,7 @@ to define a new agent output surface.
   pair. The selected root is the **post-normalize Node** admitted from the batch — it
   is then resolved:
   `resolve_with_admission(lm: dag_language_model_wave1(), roots: batch.entries,
-  admission: Admission { subject: ResolutionSubject { name: root, tree:
-  selected_root }, imports: imports })` produces the `CoreNode`
+  admission: Admission { subject: ResolutionSubject { name: root }, imports: imports })` produces the `CoreNode`
   (post-resolve) that enters `validate_then_compile`. Workers must not skip
   `resolve_with_admission`, not
   substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry

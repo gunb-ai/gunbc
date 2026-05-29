@@ -118,14 +118,6 @@ fn fc_qn(seg: Symbol) -> QualifiedName {
 }
 
 
-fn fc_subject_tree() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: fc_export_sym } },
-    children: []
-  }
-}
-
-
 fn fc_duplicate_roots() -> FreeMonoid<Node> {
   Cons {
     head: fc_module_root(seg: fc_dup_seg),
