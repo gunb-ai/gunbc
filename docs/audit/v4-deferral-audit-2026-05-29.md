@@ -99,8 +99,10 @@ Landing the projection in this PR would dissolve all 12 consumer sites in
 one stroke.  Recommend an action item, but each consumer's deferral is
 correctly classified as a wait-on-substrate.
 
-### §1.3 `formatter-cross-field-constraints`  (4 sites · rustfmt, ktfmt,
-black, clang_format — corrected 2026-05-29 per codex + inline review)
+### §1.3 `formatter-cross-field-constraints`  (7 annotation rows across
+4 formatter files: clang_format ×4, black ×1, ktfmt ×1, rustfmt ×1 —
+corrected 2026-05-29 per codex + inline review; original draft missed
+clang_format)
 
 **Bind:** T-4.16 follow-on. Dissolve-on: a `*ConfigValidation` witness that
 checks e.g. `max_width ≥ chain_width`, `max_width ≥ array_width`, … —
@@ -356,7 +358,7 @@ deferral inside a "staging" noun.
 | Population | Sites | NECESSARY | UNNECESSARY |
 | --- | ---: | ---: | ---: |
 | `🟡 gated — feature:*` distinct gates | 97 | 90 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
-| `🟡 gated` annotation occurrences | 282 | ~211 | **~71** (§1.1 alone is 63 sites; +2 long-tail T-25-core binds surfaced by inline review) |
+| `🟡 gated` annotation occurrences | 282 | ~207 | **~75** (§1.1 alone is 63 sites; +2 long-tail T-25-core binds; §1.3 corrected to 7 rows across 4 formatter files per 2026-05-29 codex/inline review) |
 | `🟡 needs-more-work` | 53 | 36 | 17 (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
 
@@ -412,8 +414,8 @@ labelling defect: work is open, bind names a closed task.
   honest. Sweep edit.
 * **§A6 — UNNECESSARY: collapse four intra-task gates into T-4.16's
   current dispatch:**
-  * `formatter-cross-field-constraints` (4 sites — rustfmt, ktfmt, black,
-    clang_format) — author
+  * `formatter-cross-field-constraints` (7 annotation rows across 4
+    formatter files — rustfmt, ktfmt, black, clang_format) — author
     `*ConfigValidation` witnesses for rustfmt / ktfmt / black against
     existing Witness substrate.
   * `rustfmt-deprecated-alias` (1 site) — author the canonical-wins
