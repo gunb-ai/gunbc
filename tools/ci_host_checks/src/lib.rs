@@ -43,10 +43,10 @@ fn git_ls_files(repo_root: &Path, pathspecs: &[&str]) -> io::Result<Vec<String>>
     }
     let output = cmd.output()?;
     if !output.status.success() {
-        return Err(io::Error::other(format!(
-            "git ls-files exited {}",
-            output.status
-        )));
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("git ls-files exited {}", output.status),
+        ));
     }
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
