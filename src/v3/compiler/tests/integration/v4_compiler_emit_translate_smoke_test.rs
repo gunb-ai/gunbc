@@ -558,9 +558,41 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
         Some("KotlinOrderedRingIntegerFacts".to_string()),
         "{KOTLIN_LANGUAGE_PATH}: `kotlin_integer_algebra_inhabitance` must accept only `KotlinOrderedRingIntegerFacts` (Byte/Short excluded at API level)"
     );
+    assert_eq!(
+        data_list_element_var_names(&module, KOTLIN_LANGUAGE_DAG, "kotlin_integer_algebra_inhabitance_facts_catalog"),
+        vec![
+            "kotlin_ordered_ring_facts_int".to_string(),
+            "kotlin_ordered_ring_facts_long".to_string(),
+        ],
+        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must contain exactly Int/Long ordered-ring rows"
+    );
     assert!(
-        surface_declares_data(&module, "kotlin_integer_algebra_inhabitance_facts_catalog"),
-        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must split algebra-closed integer inhabitance from full primitive catalog (Byte/Short widen to Int)"
+        !data_body_source_contains(
+            &module,
+            KOTLIN_LANGUAGE_DAG,
+            "kotlin_integer_algebra_inhabitance_facts_catalog",
+            "kotlin_facts_byte"
+        ) && !data_body_source_contains(
+            &module,
+            KOTLIN_LANGUAGE_DAG,
+            "kotlin_integer_algebra_inhabitance_facts_catalog",
+            "kotlin_facts_short"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must exclude Byte/Short primitive facts"
+    );
+    assert_eq!(
+        data_named_type(&module, "kotlin_integer_algebra_inhabitance_facts_catalog"),
+        Some("List<KotlinOrderedRingIntegerFacts>".to_string()),
+        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must be typed as `List<KotlinOrderedRingIntegerFacts>`"
+    );
+    assert!(
+        fn_external_body_contains(
+            &module,
+            KOTLIN_LANGUAGE_DAG,
+            "kotlin_model_core_wave1",
+            "inhabitance: kotlin_model_core_inhabitance_decls()"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: `kotlin_model_core_wave1` must wire `ModelCore.inhabitance` through `kotlin_model_core_inhabitance_decls()`"
     );
     for name in [
         "kotlin_char_algebra_witness_node",
