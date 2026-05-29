@@ -586,7 +586,7 @@ data claim_authoritative_non_negative_int_300_discharge: TestClaim = EqualsClaim
 fn witness_authoritative_non_negative_int_500_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 500) {
     Accepted { value: accepted, diagnostics: _ } =>
-      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_50()0(), accepted: accepted)
+      non_negative_int_authoritative_literal_matches_accepted(literal: authoritative_non_negative_int_500, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -646,7 +646,7 @@ data claim_authoritative_non_negative_int_1000000_discharge: TestClaim = EqualsC
 fn witness_authoritative_at_least_minus_one_int_minus_1_discharge() -> Bool {
   match make_at_least_minus_one_int_at_authoritative(value: -1) {
     Accepted { value: accepted, diagnostics: _ } =>
-      at_least_minus_one_int_authoritative_literal_matches_accepted(literal: authoritative_at_least_minus_one_int_minus_()1(), accepted: accepted)
+      at_least_minus_one_int_authoritative_literal_matches_accepted(literal: authoritative_at_least_minus_one_int_minus_1, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -666,7 +666,7 @@ data claim_authoritative_at_least_minus_one_int_minus_1_discharge: TestClaim = E
 fn witness_authoritative_at_least_minus_one_int_0_discharge() -> Bool {
   match make_at_least_minus_one_int_at_authoritative(value: 0) {
     Accepted { value: accepted, diagnostics: _ } =>
-      at_least_minus_one_int_authoritative_literal_matches_accepted(literal: authoritative_at_least_minus_one_int_()0(), accepted: accepted)
+      at_least_minus_one_int_authoritative_literal_matches_accepted(literal: authoritative_at_least_minus_one_int_0, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
