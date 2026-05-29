@@ -97,11 +97,12 @@ fn workflow_contains_targets(workflow_yml: &str, targets: &[&str]) {
             workflow_yml.contains(target),
             "{RELEASE_YML_PATH}: must reference matrix target `{target}`"
         );
-        assert!(
-            workflow_yml.contains(&format!("gunbc-{target}")),
-            "{RELEASE_YML_PATH}: artifact name must include `gunbc-{target}`"
-        );
     }
+    // Hand-synced release.yml uses strategy.matrix (not four static artifact names).
+    assert!(
+        workflow_yml.contains("gunbc-${{ matrix.target }}"),
+        "{RELEASE_YML_PATH}: artifact path/name must use gunbc-${{ matrix.target }}"
+    );
 }
 
 #[test]
@@ -118,7 +119,7 @@ fn v4_workflow_release_semantics_modeled() {
         "{RELEASE_DAG_PATH}: module authority path"
     );
     assert!(
-        RELEASE_DAG.contains("| CrossMuslGunbcBuild { target: String }"),
+        RELEASE_DAG.contains("CrossMuslGunbcBuild { target: String }"),
         "{RELEASE_DAG_PATH}: musl builds must use CrossMuslGunbcBuild"
     );
     assert!(
