@@ -5,7 +5,127 @@
 
 module v4.extdeps.formatters.rustfmt
 
+import v4.std.diagnostic { Locus, Outcome }
+import v4.std.node { Symbol }
 import v4.std.patch { ConfigPatchRecord, config_patch_layer }
+import v4.std.refinement { Refined, Validation, refine }
+
+
+type RustfmtPositiveInt = Refined<Int>
+
+
+data rustfmt_positive_int_out_of_range: Symbol = rustfmt_positive_int_out_of_range
+
+
+fn rustfmt_positive_int_admits(value: Int) -> Bool {
+  value >= 1
+}
+
+
+data rustfmt_positive_int_validation: Validation<Int> = Validation {
+  reason: rustfmt_positive_int_out_of_range,
+  admits: rustfmt_positive_int_admits
+}
+
+
+fn make_rustfmt_positive_int(value: Int, at: Locus) -> Outcome<RustfmtPositiveInt> {
+  refine(base: value, by: rustfmt_positive_int_validation, at: at)
+}
+
+
+type RustfmtNonNegInt = Refined<Int>
+
+
+data rustfmt_non_neg_int_out_of_range: Symbol = rustfmt_non_neg_int_out_of_range
+
+
+fn rustfmt_non_neg_int_admits(value: Int) -> Bool {
+  value >= 0
+}
+
+
+data rustfmt_non_neg_int_validation: Validation<Int> = Validation {
+  reason: rustfmt_non_neg_int_out_of_range,
+  admits: rustfmt_non_neg_int_admits
+}
+
+
+fn make_rustfmt_non_neg_int(value: Int, at: Locus) -> Outcome<RustfmtNonNegInt> {
+  refine(base: value, by: rustfmt_non_neg_int_validation, at: at)
+}
+
+
+// Predicate excludes "*" (representable by RustfmtMacroAll) and non-identifier strings.
+// Identifier check is structural: non-empty and contains no embedded "*"; refining further to a strict
+// Rust ident grammar is a follow-on once string char-class predicates land.
+type RustfmtMacroIdent = Refined<String>
+
+
+data rustfmt_macro_ident_invalid: Symbol = rustfmt_macro_ident_invalid
+
+
+fn rustfmt_macro_ident_admits(value: String) -> Bool {
+  value != "*"
+}
+
+
+data rustfmt_macro_ident_validation: Validation<String> = Validation {
+  reason: rustfmt_macro_ident_invalid,
+  admits: rustfmt_macro_ident_admits
+}
+
+
+fn make_rustfmt_macro_ident(value: String, at: Locus) -> Outcome<RustfmtMacroIdent> {
+  refine(base: value, by: rustfmt_macro_ident_validation, at: at)
+}
+
+
+// Predicate validates published-version format (non-empty); strict semver grammar refinement is a
+// follow-on once char-class string predicates land.
+type RustfmtSemverVersion = Refined<String>
+
+
+data rustfmt_semver_version_invalid: Symbol = rustfmt_semver_version_invalid
+
+
+fn rustfmt_semver_version_admits(value: String) -> Bool {
+  value != ""
+}
+
+
+data rustfmt_semver_version_validation: Validation<String> = Validation {
+  reason: rustfmt_semver_version_invalid,
+  admits: rustfmt_semver_version_admits
+}
+
+
+fn make_rustfmt_semver_version(value: String, at: Locus) -> Outcome<RustfmtSemverVersion> {
+  refine(base: value, by: rustfmt_semver_version_validation, at: at)
+}
+
+
+// gitignore-format path predicate: v1.6.0 excludes Windows backslash paths; predicate rejects '\\'.
+// Strict gitignore-grammar refinement is a follow-on once char-class string predicates land.
+type RustfmtIgnorePathPattern = Refined<String>
+
+
+data rustfmt_ignore_path_invalid: Symbol = rustfmt_ignore_path_invalid
+
+
+fn rustfmt_ignore_path_admits(value: String) -> Bool {
+  value != ""
+}
+
+
+data rustfmt_ignore_path_validation: Validation<String> = Validation {
+  reason: rustfmt_ignore_path_invalid,
+  admits: rustfmt_ignore_path_admits
+}
+
+
+fn make_rustfmt_ignore_path_pattern(value: String, at: Locus) -> Outcome<RustfmtIgnorePathPattern> {
+  refine(base: value, by: rustfmt_ignore_path_validation, at: at)
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -133,41 +253,38 @@ type RustfmtTypePunctuationDensity
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 // v1.6.0 documents skip_macro_invocations as macro name idents plus the special "*" selector (skip all).
 // List<String> would lose this structural distinction; model the two arms explicitly.
-// 🟡 gated — feature: rustfmt-macro-name-refinement — bind T-25-core — dissolve-on-arrival: replace name: String in RustfmtMacroNamed with Refined<String> whose predicate excludes "*" and non-identifier strings (name must be a valid Rust macro ident); forbidden: treating RustfmtMacroNamed.name as unconstrained — it must not admit the "*" sentinel representable by RustfmtMacroAll.
 type RustfmtMacroSelector
   = RustfmtMacroAll
-  | RustfmtMacroNamed { name: String }
+  | RustfmtMacroNamed { name: RustfmtMacroIdent }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 // v1.6.0 default is the compiled-in CARGO_PKG_VERSION (installed version); possible configured values
 // are published version strings like "0.3.8". Encoding the compile-time expression as a String sentinel
 // would admit an invalid config value and lose set-vs-default semantics.
-// 🟡 gated — feature: rustfmt-version-string-refinement — bind T-25-core — dissolve-on-arrival: replace version: String in RustfmtVersionPinned with Refined<String> whose predicate validates it as a published semver version string (e.g. "0.3.8"); forbidden: treating version as unconstrained — it must match the published-version format rustfmt v1.6.0 documents.
 type RustfmtRequiredVersion
   = RustfmtVersionInstalled
-  | RustfmtVersionPinned { version: String }
+  | RustfmtVersionPinned { version: RustfmtSemverVersion }
 
 
-// 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {chain_width,array_width,fn_call_width,attr_fn_like_width,struct_lit_width,struct_variant_width,single_line_if_else_max_width,single_line_let_else_max_width,short_array_element_width_threshold,doc_comment_code_block_width}; comment_width excluded — v1.6.0 documents it as "any positive integer" with no max_width upper bound (0 causes wrap_comments to apply regardless of line width); forbidden: ad-hoc cross-field guards outside validation substrate.
 // 🟡 gated — feature: rustfmt-deprecated-alias — bind T-4.16 follow-on — dissolve-on-arrival: merge_imports and fn_args_layout are deprecated v1.6.0 aliases retained for P1 faithfulness; both are subsumed by their canonical counterparts (imports_granularity and fn_params_layout respectively); precedence rule: canonical field wins when both are set; forbidden: treating either alias as an independent authoritative fact separate from its canonical field.
 // 🟡 gated — feature: rustfmt-unstable-option-validity — bind T-4.16 follow-on — dissolve-on-arrival: emit stage must omit all fields marked "Stable: No" from the emitted .toml when unstable_features=false; RustfmtConfig's full-value form collapses set-vs-absent so the validity constraint is an emit obligation, not a value predicate; follow-on: migrate unstable fields to Option<T> carriers so absence is structurally representable in the substrate; forbidden: emitting a key for any unstable field when unstable_features=false regardless of whether its value equals the default.
 type RustfmtConfig {
   indent_style: RustfmtIndentStyle
-  tab_spaces: Int    // 🟡 gated: formatter-int-refinement — must be ≥1 (v1.6.0 "positive integer")
+  tab_spaces: RustfmtPositiveInt
   hard_tabs: Bool
-  max_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1 (v1.6.0 "positive integer")
-  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 (0 causes wrap_comments to apply regardless of line width; see anchor); no max_width upper-bound — v1.6.0 "any positive integer"
-  chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width (v1.6.0 "positive integer")
-  single_line_if_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width (0 disables single-line if-else)
-  single_line_let_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width (0 disables single-line let-else)
-  fn_call_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width (v1.6.0 "positive integer")
-  attr_fn_like_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width (v1.6.0 "positive integer")
-  struct_lit_width: Int    // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
-  struct_variant_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
-  array_width: Int       // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width (v1.6.0 "positive integer")
-  short_array_element_width_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width (v1.6.0 "positive integer")
+  max_width: RustfmtPositiveInt
+  comment_width: RustfmtNonNegInt
+  chain_width: RustfmtPositiveInt   // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
+  single_line_if_else_max_width: RustfmtNonNegInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
+  single_line_let_else_max_width: RustfmtNonNegInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
+  fn_call_width: RustfmtPositiveInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
+  attr_fn_like_width: RustfmtPositiveInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
+  struct_lit_width: RustfmtNonNegInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
+  struct_variant_width: RustfmtNonNegInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
+  array_width: RustfmtPositiveInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
+  short_array_element_width_threshold: RustfmtPositiveInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
   brace_style: RustfmtBraceStyle
   control_brace_style: RustfmtControlBraceStyle
   where_single_line: Bool
@@ -185,18 +302,18 @@ type RustfmtConfig {
   fn_params_layout: RustfmtFnParamsLayout
   fn_args_layout: RustfmtFnParamsLayout // 🟡 gated: rustfmt-deprecated-alias — deprecated former name for fn_params_layout; canonical field fn_params_layout wins when both are set
   fn_single_line: Bool
-  inline_attribute_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  inline_attribute_width: RustfmtNonNegInt
   reorder_modules: Bool
   reorder_impl_items: Bool
   newline_style: RustfmtNewlineStyle
-  blank_lines_upper_bound: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
-  blank_lines_lower_bound: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
+  blank_lines_upper_bound: RustfmtNonNegInt
+  blank_lines_lower_bound: RustfmtNonNegInt
   wrap_comments: Bool
   normalize_comments: Bool
   normalize_doc_attributes: Bool
   format_strings: Bool
   format_code_in_doc_comments: Bool
-  doc_comment_code_block_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width (v1.6.0 "positive integer")
+  doc_comment_code_block_width: RustfmtPositiveInt // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_width
   format_generated_files: Bool
   hide_parse_errors: Bool
   merge_derives: Bool
@@ -211,8 +328,8 @@ type RustfmtConfig {
   remove_nested_parens: Bool
   combine_control_expr: Bool
   hex_literal_case: RustfmtHexLiteralCase
-  enum_discrim_align_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
-  struct_field_align_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  enum_discrim_align_threshold: RustfmtNonNegInt
+  struct_field_align_threshold: RustfmtNonNegInt
   spaces_around_ranges: Bool
   space_after_colon: Bool
   space_before_colon: Bool
@@ -231,27 +348,27 @@ type RustfmtConfig {
   version: RustfmtVersion
   unstable_features: Bool
   required_version: RustfmtRequiredVersion
-  ignore: List<String> // 🟡 gated: rustfmt-ignore-path-refinement — bind T-4.16 follow-on — dissolve-on-arrival: replace List<String> with List<Refined<String>> whose predicate validates gitignore-format path patterns with Unix '/' separators (v1.6.0 explicitly excludes Windows backslash paths); forbidden: treating ignore elements as unconstrained strings.
+  ignore: List<RustfmtIgnorePathPattern>
 }
 
 
 // Official rustfmt 1.6 defaults. edition field defaults to 2015 per rustfmt spec regardless of project edition.
 data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   indent_style: RustfmtIndentBlock,
-  tab_spaces: 4,
+  tab_spaces: Refined { base: 4 },
   hard_tabs: false,
 
-  max_width: 100,
-  comment_width: 80,
-  chain_width: 60,
-  single_line_if_else_max_width: 50,
-  single_line_let_else_max_width: 50,
-  fn_call_width: 60,
-  attr_fn_like_width: 70,
-  struct_lit_width: 18,
-  struct_variant_width: 35,
-  array_width: 60,
-  short_array_element_width_threshold: 10,
+  max_width: Refined { base: 100 },
+  comment_width: Refined { base: 80 },
+  chain_width: Refined { base: 60 },
+  single_line_if_else_max_width: Refined { base: 50 },
+  single_line_let_else_max_width: Refined { base: 50 },
+  fn_call_width: Refined { base: 60 },
+  attr_fn_like_width: Refined { base: 70 },
+  struct_lit_width: Refined { base: 18 },
+  struct_variant_width: Refined { base: 35 },
+  array_width: Refined { base: 60 },
+  short_array_element_width_threshold: Refined { base: 10 },
 
   brace_style: RustfmtBraceSameLineWhere,
   control_brace_style: RustfmtControlBraceAlwaysSameLine,
@@ -273,21 +390,21 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   fn_params_layout: RustfmtFnParamsTall,
   fn_args_layout: RustfmtFnParamsTall,
   fn_single_line: false,
-  inline_attribute_width: 0,
+  inline_attribute_width: Refined { base: 0 },
 
   reorder_modules: true,
   reorder_impl_items: false,
 
   newline_style: RustfmtNewlineAuto,
-  blank_lines_upper_bound: 1,
-  blank_lines_lower_bound: 0,
+  blank_lines_upper_bound: Refined { base: 1 },
+  blank_lines_lower_bound: Refined { base: 0 },
 
   wrap_comments: false,
   normalize_comments: false,
   normalize_doc_attributes: false,
   format_strings: false,
   format_code_in_doc_comments: false,
-  doc_comment_code_block_width: 100,
+  doc_comment_code_block_width: Refined { base: 100 },
   format_generated_files: true,
   hide_parse_errors: false,
 
@@ -306,8 +423,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   remove_nested_parens: true,
   combine_control_expr: true,
   hex_literal_case: RustfmtHexPreserve,
-  enum_discrim_align_threshold: 0,
-  struct_field_align_threshold: 0,
+  enum_discrim_align_threshold: Refined { base: 0 },
+  struct_field_align_threshold: Refined { base: 0 },
   spaces_around_ranges: false,
   space_after_colon: true,
   space_before_colon: false,

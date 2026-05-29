@@ -54,6 +54,7 @@ import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.text { Char, String }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
+import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.std.algebra {
   any,
   count_equal,
@@ -129,13 +130,34 @@ type CiComponentAffected {
 // RULING-1: 🟢 pretty-much-done — self-hosted fleet substrate (operator 2026-05-28: srv1/srv2 Ampere Altra / Arm64).
 // Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
 // Fleet arch is a closed operator fact as `arch: Symbol` (not a sum type — avoids Lens-CI coproduct resolution).
-// 🟡 gated — feature:formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
+type CiPositiveInt = Refined<Int>
+
+
+data ci_positive_int_out_of_range: Symbol = ci_positive_int_out_of_range
+
+
+fn ci_positive_int_admits(value: Int) -> Bool {
+  value >= 1
+}
+
+
+data ci_positive_int_validation: Validation<Int> = Validation {
+  reason: ci_positive_int_out_of_range,
+  admits: ci_positive_int_admits
+}
+
+
+fn make_ci_positive_int(value: Int, at: Locus) -> Outcome<CiPositiveInt> {
+  refine(base: value, by: ci_positive_int_validation, at: at)
+}
+
+
 type SelfHostedRunnerPool {
   host: Symbol
   arch: Symbol
-  core_count: Int // 🟡 gated: formatter-int-refinement — must be ≥1 (operator fleet spec)
-  runner_count: Int // 🟡 gated: formatter-int-refinement — must be ≥1
-  jobserver_token_cap: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  core_count: CiPositiveInt
+  runner_count: CiPositiveInt
+  jobserver_token_cap: CiPositiveInt
 }
 
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
@@ -171,17 +193,17 @@ data ci_runner_arch_arm64: Symbol = ci_runner_arch_arm64
 data ci_srv1_pool: SelfHostedRunnerPool = {
   host: ci_srv1_host
   arch: ci_runner_arch_arm64
-  core_count: 128
-  runner_count: 20
-  jobserver_token_cap: 25
+  core_count: Refined { base: 128 }
+  runner_count: Refined { base: 20 }
+  jobserver_token_cap: Refined { base: 25 }
 }
 
 data ci_srv2_pool: SelfHostedRunnerPool = {
   host: ci_srv2_host
   arch: ci_runner_arch_arm64
-  core_count: 128
-  runner_count: 30
-  jobserver_token_cap: 36
+  core_count: Refined { base: 128 }
+  runner_count: Refined { base: 30 }
+  jobserver_token_cap: Refined { base: 36 }
 }
 
 data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
@@ -824,9 +846,9 @@ fn ci_int_positive(n: Int) -> Bool {
 
 
 fn ci_runner_pool_capacity_valid(pool: SelfHostedRunnerPool) -> Bool {
-  ci_int_positive(n: pool.core_count)
-    && ci_int_positive(n: pool.runner_count)
-    && ci_int_positive(n: pool.jobserver_token_cap)
+  ci_int_positive(n: refined_base(r: pool.core_count))
+    && ci_int_positive(n: refined_base(r: pool.runner_count))
+    && ci_int_positive(n: refined_base(r: pool.jobserver_token_cap))
 }
 
 
