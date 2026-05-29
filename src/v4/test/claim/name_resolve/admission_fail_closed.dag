@@ -354,7 +354,7 @@ fn fc_mismatched_subject_tree() -> Node {
 }
 
 
-fn resolve_mismatched_subject_tree_cannot_inject_namespace_bindings() -> Bool {
+fn resolve_mismatched_subject_tree_cannot_bypass_authoritative_root() -> Bool {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
     roots: Cons {
@@ -369,8 +369,8 @@ fn resolve_mismatched_subject_tree_cannot_inject_namespace_bindings() -> Bool {
       imports: Empty
     }
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -456,10 +456,10 @@ data claim_resolve_with_admission_threads_validate_diagnostics_on_accept: TestCl
 }
 
 
-data claim_resolve_mismatched_subject_tree_cannot_inject_namespace_bindings: TestClaim = CompilesClaim {
-  label: "name_resolve/resolve_with_admission: caller subject tree cannot inject undeclared module bindings",
+data claim_resolve_mismatched_subject_tree_cannot_bypass_authoritative_root: TestClaim = CompilesClaim {
+  label: "name_resolve/resolve_with_admission: caller subject tree cannot bypass authoritative module root",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: fc_claim_input(ok: resolve_mismatched_subject_tree_cannot_inject_namespace_bindings()),
+  input: fc_claim_input(ok: resolve_mismatched_subject_tree_cannot_bypass_authoritative_root()),
   expected_value: fc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

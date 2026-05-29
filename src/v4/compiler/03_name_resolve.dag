@@ -76,6 +76,13 @@ type Admission {
 }
 
 
+// 🟢 coproduct dissolution — T-28-B admitted subject pairs authoritative module root with its namespace.
+type AdmittedSubject {
+  namespace: Namespace
+  subject_root: NormalizedTree
+}
+
+
 // 🟡 gated — feature:T-28-B-admission-state-outcome — internal fold state mirrors Outcome while carrying accepted namespace bindings plus origin facts for ambiguity checks; dissolve-on: generic Outcome fold/traverse can carry the accepted admission accumulator directly without losing the origin map.
 type AdmissionState
   = AdmissionAccepted {
@@ -483,7 +490,7 @@ fn namespace_for_subject(
   lm: DagLanguageModel,
   roots: FreeMonoid<Node>,
   admission: Admission
-) -> Outcome<Namespace> {
+) -> Outcome<AdmittedSubject> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: validated_roots, diagnostics: validate_diag } =>
@@ -509,9 +516,12 @@ fn namespace_for_subject(
             ) {
               AdmissionAccepted { bindings: b, origins: _ } =>
                 Accepted {
-                  value: Namespace {
-                    bindings: b,
-                    canonical_symbols: base.canonical_symbols
+                  value: AdmittedSubject {
+                    namespace: Namespace {
+                      bindings: b,
+                      canonical_symbols: base.canonical_symbols
+                    },
+                    subject_root: subject_module_root
                   },
                   diagnostics: validate_diag
                 }
@@ -543,8 +553,11 @@ fn resolve_with_admission(
     roots: roots,
     admission: admission
   ) {
-    Accepted { value: namespace, diagnostics: namespace_diag } =>
-      match resolve_with_namespace(tree: admission.subject.tree, namespace: namespace) {
+    Accepted { value: admitted, diagnostics: namespace_diag } =>
+      match resolve_with_namespace(
+        tree: admitted.subject_root,
+        namespace: admitted.namespace
+      ) {
         Accepted { value: resolved, diagnostics: resolve_diag } =>
           Accepted {
             value: resolved,
