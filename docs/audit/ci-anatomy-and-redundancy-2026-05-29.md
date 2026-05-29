@@ -243,20 +243,20 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 
 ## 6. Dependency-modeled fix (Table B)
 
-| Redundancy | Modeled step (`ci.dag` / T-24) | Declared inputs | Cache key | Wall when hashes match green |
-|------------|-------------------------------|-----------------|-----------|------------------------------|
-| R01 | `LintCommand` / fmt | rustfmt surface merkle + toolchain | `combine_hash(surface, toolchain)` | **0s** (not scheduled) |
-| R02 | Shared rust pool node | Union of downstream digests | pool `content_hash` | **0s** |
-| R03 | Per-gate `TestClaim` / shell Node | Path sets per script | T-21 frontier ∩ diff | **0s** |
-| R04 | `CiGitDiffReadOutcome` (#3853) | single `Witness<Diff>` | one read / workflow | **~1s** |
-| R05 | `TestCommand` + IRT-1/IRT-4 | binary digest; per-claim `content_hash(TestClaim node)` | IRT-1 frontier skip + IRT-4 verdict reuse | **seconds** |
-| R06 | Cache emission | registry + target graph merkle | remote/sccache | **0s** restore |
-| R07 | `M1RustEmitProbeCommand` | `content_hash(src/v4/**.dag)` + v2 binary | replace `ci_cache_cmd_m1_probe_tag` | **0s** reuse |
-| R08 | Bootstrap → M1 `needs` edge | dag emit digest → rust emit | shared artifact | one compile / unique input |
-| R09 | `BootstrapStageCompile` + `LensCiCommand` | stage0 + entry closure | gunbc/emit cache | **seconds** warm |
-| R10 | All `ci_command_cache_digest` | real input merkle | interpreter frontier selection (`ci_select_from_affected_set`; **no** GHA bucket `if:`) | exact-once |
-| R11 | v3 `TestCommand` + freeze | v3 subgraph merkle | T-21 on claims | **0s** when untouched |
-| R12 | Receipt `CiGate` | prior verdict hash | stub if stale | **0s** |
+| Redundancy | Modeled step (`ci.dag` / T-24) | Declared inputs | Schedule (IRT-1) | Verdict cache key (IRT-4) | Wall when hashes match green |
+|------------|-------------------------------|-----------------|----------------|---------------------------|------------------------------|
+| R01 | `LintCommand` / fmt | rustfmt surface merkle + toolchain | skip when surface ∩ diff = ∅ | `combine_hash(surface, toolchain)` | **0s** (not scheduled) |
+| R02 | Shared rust pool node | Union of downstream digests | skip when no downstream rust command scheduled | pool `content_hash` | **0s** |
+| R03 | Per-gate `TestClaim` / shell Node | Path sets per script | `ci_select_from_affected_set` (frontier ∩ diff) | `content_hash(whole TestClaim node)` per claim | **0s** |
+| R04 | `CiGitDiffReadOutcome` (#3853) | single `Witness<Diff>` | one witness read / workflow | `content_hash(Witness<Diff>)` | **~1s** |
+| R05 | `TestCommand` | binary digest; per-claim input subgraph | IRT-1 frontier skip (claim not selected → no run) | `content_hash(whole TestClaim node)` (oracle + evaluator + resources) | **seconds** |
+| R06 | Cache emission | registry + target graph merkle | restore when command scheduled | remote/sccache keyed by input merkle | **0s** restore |
+| R07 | `M1RustEmitProbeCommand` | `content_hash(src/v4/**.dag)` + v2 binary | skip when probe not on frontier | `combine_hash(src/v4 merkle, v2 binary)` (replaces static tag) | **0s** reuse |
+| R08 | Bootstrap → M1 `needs` edge | dag emit digest → rust emit | M1 scheduled only when bootstrap edge fires | shared compile artifact `content_hash` | one compile / unique input |
+| R09 | `BootstrapStageCompile` + `LensCiCommand` | stage0 + entry closure | skip when lens surface off frontier | gunbc/emit cache merkle | **seconds** warm |
+| R10 | All `ci_command_cache_digest` | real input merkle per command | interpreter frontier (`ci_select_from_affected_set`; **no** GHA bucket `if:`) | per-command input merkle (dissolve static symbol tags) | exact-once |
+| R11 | v3 `TestCommand` + freeze | v3 subgraph merkle | T-21 claim selection on v3 roster | `content_hash(whole TestClaim node)` per claim | **0s** when untouched |
+| R12 | Receipt `CiGate` | prior verdict hash | run when upstream jobs scheduled | `combine_hash(job_verdict_hash, run_policy_digest)` | **0s** |
 
 ### Summary (wasted compute)
 
