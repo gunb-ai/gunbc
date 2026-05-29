@@ -371,20 +371,34 @@ fn release_command_builds_target(c: ReleaseCommand, target: String) -> Bool {
   }
 }
 
+fn release_job_builds_matrix_target(j: ReleaseJob, target: String) -> Bool {
+  release_command_builds_target(c: j.command, target: target)
+}
+
 fn release_jobs_cover_matrix_target(jobs: List<ReleaseJob>, target: String) -> Bool {
   count_where(xs: jobs, predicate: fn(j) {
-    release_command_builds_target(c: j.command, target: target)
+    release_job_builds_matrix_target(j: j, target: target)
   }) != 0
+}
+
+fn release_matrix_row_covers_pipeline(row: ReleaseMatrixRow, jobs: List<ReleaseJob>) -> Bool {
+  release_jobs_cover_matrix_target(jobs: jobs, target: row.target)
 }
 
 fn release_pipeline_jobs_cover_matrix(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
   for_all(xs: rows, predicate: fn(row) {
-    release_jobs_cover_matrix_target(jobs: jobs, target: row.target)
+    release_matrix_row_covers_pipeline(row: row, jobs: jobs)
   })
 }
 
+fn release_matrix_row_matches_target(row: ReleaseMatrixRow, target: String) -> Bool {
+  row.target == target
+}
+
 fn release_target_in_matrix(target: String, rows: List<ReleaseMatrixRow>) -> Bool {
-  count_where(xs: rows, predicate: fn(row) { row.target == target }) != 0
+  count_where(xs: rows, predicate: fn(row) {
+    release_matrix_row_matches_target(row: row, target: target)
+  }) != 0
 }
 
 // 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
@@ -398,31 +412,43 @@ fn release_command_is_build(c: ReleaseCommand) -> Bool {
 }
 
 // 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (per-job `ReleaseCommand` projection in well-formedness).
+fn release_job_command_in_matrix(j: ReleaseJob, rows: List<ReleaseMatrixRow>) -> Bool {
+  match j.command {
+    CrossMuslGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
+    NativeDarwinGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
+    UploadGunbcMatrixArtifact => true
+    PublishGitHubRelease { bundle_install_sh: bundle } => bundle == true
+  }
+}
+
 fn release_all_build_targets_in_matrix(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
   for_all(xs: jobs, predicate: fn(j) {
-    match j.command {
-      CrossMuslGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
-      NativeDarwinGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
-      UploadGunbcMatrixArtifact => true
-      PublishGitHubRelease { bundle_install_sh: bundle } => bundle == true
-    }
+    release_job_command_in_matrix(j: j, rows: rows)
   })
 }
 
 fn release_jobs_build_matrix_target_once(jobs: List<ReleaseJob>, target: String) -> Bool {
   count_where(xs: jobs, predicate: fn(j) {
-    release_command_builds_target(c: j.command, target: target)
+    release_job_builds_matrix_target(j: j, target: target)
   }) == 1
+}
+
+fn release_matrix_row_build_target_once(row: ReleaseMatrixRow, jobs: List<ReleaseJob>) -> Bool {
+  release_jobs_build_matrix_target_once(jobs: jobs, target: row.target)
+}
+
+fn release_job_is_build(j: ReleaseJob) -> Bool {
+  release_command_is_build(c: j.command)
 }
 
 // Hand-expanded pipeline literals must not drift from `release_build_matrix` (single target authority).
 fn release_build_commands_use_matrix_targets_only(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
   release_all_build_targets_in_matrix(jobs: jobs, rows: rows)
     && for_all(xs: rows, predicate: fn(row) {
-      release_jobs_build_matrix_target_once(jobs: jobs, target: row.target)
+      release_matrix_row_build_target_once(row: row, jobs: jobs)
     })
     && length(xs: rows) == count_where(xs: jobs, predicate: fn(j) {
-      release_command_is_build(c: j.command)
+      release_job_is_build(j: j)
     })
 }
 
@@ -436,12 +462,16 @@ fn release_command_is_upload(c: ReleaseCommand) -> Bool {
   }
 }
 
+fn release_job_need_builds_target(b: ReleaseJob, need: Symbol, target: String) -> Bool {
+  b.id == need && release_job_builds_matrix_target(j: b, target: target)
+}
+
 fn release_upload_needs_build_for_target(j: ReleaseJob, jobs: List<ReleaseJob>, target: String) -> Bool {
   release_command_is_upload(c: j.command)
     && length(xs: j.needs) != 0
     && for_all(xs: j.needs, predicate: fn(need) {
       count_where(xs: jobs, predicate: fn(b) {
-        b.id == need && release_command_builds_target(c: b.command, target: target)
+        release_job_need_builds_target(b: b, need: need, target: target)
       }) != 0
     })
 }
@@ -468,23 +498,31 @@ fn release_command_is_publish(c: ReleaseCommand) -> Bool {
   }
 }
 
+fn release_job_is_publish(j: ReleaseJob) -> Bool {
+  release_command_is_publish(c: j.command)
+}
+
 fn release_pipeline_has_exactly_one_publish_job(jobs: List<ReleaseJob>) -> Bool {
   count_where(xs: jobs, predicate: fn(j) {
-    release_command_is_publish(c: j.command)
+    release_job_is_publish(j: j)
   }) == 1
+}
+
+fn release_upload_drains_publish_row(u: ReleaseJob, publish: ReleaseJob, jobs: List<ReleaseJob>, row: ReleaseMatrixRow) -> Bool {
+  release_upload_needs_build_for_target(j: u, jobs: jobs, target: row.target)
+    && release_member(s: u.id, ids: publish.needs)
 }
 
 fn release_publish_needs_upload_for_row(publish: ReleaseJob, jobs: List<ReleaseJob>, row: ReleaseMatrixRow) -> Bool {
   count_where(xs: jobs, predicate: fn(u) {
-    release_upload_needs_build_for_target(j: u, jobs: jobs, target: row.target)
-      && release_member(s: u.id, ids: publish.needs)
+    release_upload_drains_publish_row(u: u, publish: publish, jobs: jobs, row: row)
   }) != 0
 }
 
 fn release_publish_job_drains_matrix_uploads(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
   release_pipeline_has_exactly_one_publish_job(jobs: jobs)
     && fold(jobs, init: false, f: fn(acc, j) {
-      if release_command_is_publish(c: j.command) {
+      if release_job_is_publish(j: j) {
         for_all(xs: rows, predicate: fn(row) {
           release_publish_needs_upload_for_row(publish: j, jobs: jobs, row: row)
         })
