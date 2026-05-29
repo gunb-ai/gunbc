@@ -28,7 +28,9 @@ import v4.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  grammar_production_to_node
+  derive_grammar_relation_row,
+  grammar_production_to_node,
+  grammar_relation_row_to_node
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -152,7 +154,7 @@ type TsConcreteSyntaxToken
 
 // 🟢 grounded.
 type TsGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<TsConcreteSyntaxToken>
 }
@@ -636,7 +638,7 @@ fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
 
 fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   TsGrammarRelationRow {
-    production: ts_grammar_production_mvp1_fn_add(),
+    production: ts_formal_production_mvp1_fn_add(),
     emitted: ts_mvp1_emitted_add_fn_node(),
     tokens: ts_mvp1_concrete_tokens()
   }
@@ -656,23 +658,13 @@ fn ts_relation_token_edges(tokens: List<TsConcreteSyntaxToken>) -> List<Edge> {
 }
 
 fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(
-        name: grammar_relation_field_production,
-        target: grammar_production_to_node(production: row.production)
-      ),
-      ts_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
-      ts_named_edge(
-        name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: ts_relation_token_edges(tokens: row.tokens)
-        }
-      )
-    ]
-  }
+  grammar_relation_row_to_node(
+    row: derive_grammar_relation_row(production: row.production, emitted: row.emitted),
+    tokens: Node {
+      kind: TypeNode { connective: Conj },
+      children: ts_relation_token_edges(tokens: row.tokens)
+    }
+  )
 }
 
 fn ts_mvp1_translation_rules_node() -> Node {

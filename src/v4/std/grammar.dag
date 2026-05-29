@@ -10,6 +10,11 @@ import v4.std.collection { List, Set }
 import v4.std.lexing { LexRules }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v4.std.target_model {
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens
+}
 import v4.std.text { String }
 
 // "What is a terminal symbol?"
@@ -130,6 +135,15 @@ type GrammarSchemaProbe {
 type GrammarSchemaProbeBinding {
   schema: GrammarSchema
   probe: GrammarSchemaProbe
+}
+
+
+// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind TASKS.md T-11 — canonical grammar-relation
+// row carrier (FormalProduction + emitted Node); per-language concrete-token lists project to
+// the tokens edge via grammar_relation_row_to_node.
+type GrammarRelationRow {
+  production: FormalProduction
+  emitted: Node
 }
 
 
@@ -301,6 +315,31 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
           children: formal_rhs_to_edges(symbols: production.rhs)
         }
       )
+    ]
+  }
+}
+
+
+fn derive_grammar_relation_row(production: FormalProduction, emitted: Node) -> GrammarRelationRow {
+  GrammarRelationRow {
+    production: production,
+    emitted: emitted
+  }
+}
+
+
+fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(
+        name: grammar_relation_field_production,
+        target: formal_production_to_node(production: row.production)
+      ),
+      grammar_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      grammar_named_edge(name: grammar_relation_field_tokens, target: tokens)
     ]
   }
 }
