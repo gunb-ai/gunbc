@@ -113,26 +113,18 @@ mod tests {
 
     #[test]
     fn workflow_policy_paths_match_ci_dag_authority() {
-        assert_eq!(
-            ci_changed_path_affects_workflow_policy("src/v4/workflow/ci.dag"),
-            true
-        );
-        assert_eq!(
-            ci_changed_path_affects_workflow_policy("src/v3/compiler/src/v4_ci_runner_pool.rs"),
-            true
-        );
-        assert_eq!(
-            ci_changed_path_affects_workflow_policy(
-                "src/v3/compiler/src/v4_ci_component_affected.rs"
-            ),
-            true
-        );
-        assert_eq!(
-            ci_changed_path_affects_workflow_policy(
-                "src/v3/compiler/src/bin/detect_ci_affected_components.rs"
-            ),
-            true
-        );
+        assert!(ci_changed_path_affects_workflow_policy(
+            "src/v4/workflow/ci.dag"
+        ));
+        assert!(ci_changed_path_affects_workflow_policy(
+            "src/v3/compiler/src/v4_ci_runner_pool.rs"
+        ));
+        assert!(ci_changed_path_affects_workflow_policy(
+            "src/v3/compiler/src/v4_ci_component_affected.rs"
+        ));
+        assert!(ci_changed_path_affects_workflow_policy(
+            "src/v3/compiler/src/bin/detect_ci_affected_components.rs"
+        ));
     }
 
     #[test]
