@@ -1,12 +1,5 @@
 // Item analysis -- classifies module items and builds item metadata.
-//
-// Dependency chain:
-//   v2.std.core, v2.compiler.infer_types, v2.compiler.infer_env, v2.compiler.infer_sigs
-//     -> v2.compiler.infer_items (this file)
-//       -> v2.compiler.infer (expression inference)
-
 module v2.compiler.infer_items
-
 import std.types { SourceSpan }
 import v2.std.core {
   Node, ErrorNode,
@@ -32,13 +25,10 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_emit_info {
   EmitGraphInfo
 }
-
 // =========================================================================
 // Types
 // =========================================================================
-
 type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
-
 type ItemInfo {
   name: String
   module_name: String
@@ -49,7 +39,6 @@ type ItemInfo {
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
 }
-
 type TypedModule {
   module: Node
   items: List<Node>
@@ -57,33 +46,20 @@ type TypedModule {
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
 }
-
 type TypedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<ErrorNode>
 }
-
-// ResolvedGraph: the reconcile-to-emit boundary type.
-// Wraps TypedModules whose func_env is ResolvedFuncEnv, making it
-// structurally impossible for unresolved signatures to reach emit.
-// emit_graph_info is precomputed here so emit never calls back into infer.
 type ResolvedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<ErrorNode>
   emit_graph_info: EmitGraphInfo
 }
-
 // =========================================================================
 // Functions
 // =========================================================================
-
-// Derive outputs from a Node's inferred.
-// Outputs live in inferred:
-//   - Single output: inferred is the Node directly
-//   - Multiple outputs: inferred is Conj Node with field children
-//   - No outputs: inferred is none
 fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> List<Node> {
   if inferred == none { [] }
   else { match inferred.value {
@@ -95,7 +71,6 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
           let is_product = rt.connective == Conj
           if is_product {
             if rt.ident_span == none {
-              // Anonymous product -- expand children as fields
               map(rt.children, child =>
                 let child_type = child_type_node(ch: child)
                 make_field_node(name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span, name_span: node_name_span(n: child))
@@ -114,7 +89,6 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
     }
   }
 }
-
 fn item_kind(item: Node) -> ItemKind {
   let kind = if item.connective != NoConnective && item.transport == none {
     TypeItem
@@ -133,8 +107,6 @@ fn item_kind(item: Node) -> ItemKind {
   }
   kind
 }
-
-// C2.1: variant locals carry the structural parent node, not a bare nominal leaf.
 fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeBinding> {
   fold(items, init: init, f: (acc, item) =>
     let is_coproduct = item.connective == Disj

@@ -1,15 +1,5 @@
 // v2 runtime template for Rust targets.
-//
-// Defines the Rust source text for the v2_rt runtime shim module.
-// This is the single authority for runtime intrinsic implementations.
-// The v1 V2_RUNTIME_SOURCE const in v2_runtime_shim.rs is bootstrap-only
-// legacy and should not be extended.
-//
-// The emit layer calls rust_runtime_source() and writes the result as
-// src/v2_rt.rs in the emitted crate.
-
 module v2.compiler.runtime_rust
-
 fn rt_header() -> String {
   concat(
     "//! Runtime shims for v2 compiler intrinsic operations.\n",
@@ -19,7 +9,6 @@ fn rt_header() -> String {
     "use std::collections::HashMap;\n",
     "use std::rc::Rc;\n\n")
 }
-
 fn rt_concat_trait() -> String {
   concat(
     "pub trait V2Concat {\n",
@@ -33,7 +22,6 @@ fn rt_concat_trait() -> String {
     "}\n\n",
     "pub fn concat<T: V2Concat>(a: T, b: T) -> T { a.v2_concat(b) }\n\n")
 }
-
 fn rt_string_ops() -> String {
   concat(
     "pub fn char_at(s: &str, pos: i64) -> String {\n",
@@ -70,7 +58,6 @@ fn rt_string_ops() -> String {
     "    val.clamp(min_val, max_val)\n",
     "}\n\n")
 }
-
 fn rt_collection_ops() -> String {
   concat(
     "pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {\n",
@@ -140,7 +127,6 @@ fn rt_collection_ops() -> String {
     "    s.replace(&from, &to)\n",
     "}\n\n")
 }
-
 fn rt_scanner_ops() -> String {
   concat(
     "pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {\n",
@@ -224,7 +210,6 @@ fn rt_scanner_ops() -> String {
     "    pos as i64\n",
     "}\n\n")
 }
-
 fn rt_unicode_ops() -> String {
   concat(
     "pub fn code_point(c: String) -> i64 {\n",
@@ -234,7 +219,6 @@ fn rt_unicode_ops() -> String {
     "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n",
     "}\n\n")
 }
-
 fn rt_rc_container_ops() -> String {
   concat(
     "// -- Rc-wrapped container operations (FF-8) ---------------------------------\n",
@@ -273,7 +257,6 @@ fn rt_rc_container_ops() -> String {
     "    fn v2_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> { rc_list_concat(self, other) }\n",
     "}\n\n")
 }
-
 fn rt_filesystem() -> String {
   concat(
     "#[derive(Debug, Clone)]\n",
@@ -286,7 +269,6 @@ fn rt_filesystem() -> String {
     "    FilesystemReadResult { content }\n",
     "}\n")
 }
-
 fn rt_hash_ops() -> String {
   concat(
     "const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;\n",
@@ -321,7 +303,6 @@ fn rt_hash_ops() -> String {
     "    format!(\"{:016x}\", fnv1a64(&bytes))\n",
     "}\n\n")
 }
-
 fn rust_runtime_source() -> String {
   concat(
     rt_header(),

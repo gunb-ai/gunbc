@@ -1,12 +1,6 @@
 // v2 effect derivation bridge.
-//
-// Imports std.effects derivation types into the compiler tree so they
-// are compiled into stage0 and accessible from Rust tests.
-
 module v2.compiler.effect_derivation
-
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
-
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
   KeySource, PathParam, InputField, CompositeKey,
@@ -24,7 +18,6 @@ import std.effects {
   IdempotencyEvidence,
   LatticeEffect, IdentityEffect, NonIdempotent
 }
-
 import std.http_path {
   UrlPathToken, LiteralToken, ParamToken,
   PathTemplate, PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
@@ -32,7 +25,6 @@ import std.http_path {
   has_path_params,
   last_path_param
 }
-
 fn re_export_derive_op_effect(
   operation_name: String,
   method: HttpMethod,
@@ -44,7 +36,6 @@ fn re_export_derive_op_effect(
     path: path
   )
 }
-
 fn re_export_check_modifier(
   op: DerivedOpEffect,
   declared_idempotent: Bool,
@@ -56,11 +47,9 @@ fn re_export_check_modifier(
     declared_readonly: declared_readonly
   )
 }
-
 fn re_export_parse_path_template(raw: String) -> PathTemplateParseResult {
   parse_path_template(raw: raw)
 }
-
 fn re_export_has_path_params(template: PathTemplate) -> Bool {
   has_path_params(template: template)
 }

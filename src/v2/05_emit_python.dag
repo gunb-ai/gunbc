@@ -1,17 +1,6 @@
 // v2 Python renderer -- emits Python source files from a typed module graph.
-//
-// This module contains all Python-specific rendering logic: dataclasses,
-// type hints, match/case (PEP 634), f-strings, aiohttp for services,
-// Python-idiomatic naming (snake_case functions, PascalCase classes).
-//
-// Target-agnostic helpers (scope management, item registry, name
-// conversion, indent, service call collection) live in 05_emit.dag.
-//
 // Invariant 6: "DAG nodes are facts, rendering is separate."
-// This file IS the Python rendering. No IR changes needed.
-
 module v2.compiler.emit_python
-
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   VarBindingKind, FunctionValueBinding,
@@ -54,7 +43,6 @@ import v2.std.core {
   CardOptional,
   is_rest_transport, is_shell_transport, is_file_transport
 }
-
 import v2.compiler.artifact { RenderTarget, Python }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
@@ -79,7 +67,6 @@ import v2.compiler.infer {
   expr_span
 }
 import std.induction { SubValueUnknown }
-
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type,
@@ -121,23 +108,12 @@ import v2.compiler.emit {
   emit_tco_unified, emit_unified_pattern, test_file_path, emit_unified_typed_func_body,
   emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch
 }
-
 // =========================================================================
 // Python language facts -- from std.languages spec (python_language, python_literals)
-//
-// These data declarations mirror dsl/std/languages.dag exactly.
 // =========================================================================
-
-// Python reserved words imported from extdeps.languages.python.emit
-
-// Python type_map, keywords, container_templates, python_keyword, and
-// python_container now live in python_lang_facts() and shared functions
-// in v2.compiler.emit
-
 // =========================================================================
 // Entry point -- Python target
 // =========================================================================
-
 fn emit_python(typed: ResolvedGraph) -> EmitResult {
   let registry = typed.item_registry
   let test_projections = extract_test_projections(typed: typed)
@@ -152,27 +128,21 @@ fn emit_python(typed: ResolvedGraph) -> EmitResult {
   let files = concat([requirements, init_file], module_files, test_files)
   EmitResult { files: files, diagnostics: [] }
 }
-
 // =========================================================================
 // __init__.py generation
 // =========================================================================
-
 fn py_derive_attribute() -> String {
   match serialization_for_target(target: Python).derive_attribute {
     Some { value: attr } => attr
     None => "@dataclass"
   }
 }
-
 fn py_default_value() -> String {
   match serialization_for_target(target: Python).default_value {
     Some { value: value } => value
     None => "None"
   }
 }
-
-
-
 fn emit_init_py(modules: List<TypedModule>) -> TextFile {
   let import_lines = modules |> map(tm =>
     let mod_name = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
@@ -187,7 +157,6 @@ fn emit_init_py(modules: List<TypedModule>) -> TextFile {
   }
   TextFile { path: init_path, content: content }
 }
-
 fn python_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
     |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python, source_indices: projection.source_indices)))
@@ -201,7 +170,6 @@ fn python_test_signature_comment(projection: TestProjection) -> String {
     ") -> ",
     emit_node_type(n: projection.inferred, target: Python, source_indices: projection.source_indices))
 }
-
 fn emit_py_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
   if projections |> count == 0 {
     TextFile { path: "", content: "" }
@@ -216,7 +184,6 @@ fn emit_py_test_file(module_name: String, projections: List<TestProjection>) -> 
     TextFile { path: test_file_path(module_name: module_name, target: Python), content: content }
   }
 }
-
 fn emit_py_operation_test(projection: TestProjection, depth: Int) -> String {
   let test_name = test_function_name(projection: projection, target: Python)
   let indent = make_indent(level: depth + 1)
@@ -230,18 +197,15 @@ fn emit_py_operation_test(projection: TestProjection, depth: Int) -> String {
     indent, "# TODO: add dry-run support to Python service emission for full invocation tests\n",
     indent, "assert True  # mock data setup verified\n")
 }
-
 fn emit_py_mock_prop_setup(mock_prop: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {
   concat(
     emit_ident(name: field_init_node_name_at(n: mock_prop, source_indices: source_indices), target: Python),
     " = ",
     emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Python, source_indices: source_indices))
 }
-
 // =========================================================================
 // Module emission
 // =========================================================================
-
 fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
@@ -260,11 +224,9 @@ fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
     items_str, "\n")
   TextFile { path: concat(filename, scaffold_for_target(target: Python).source_file_extension), content: content }
 }
-
 // =========================================================================
 // Import emission
 // =========================================================================
-
 fn emit_py_imports(imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   if imports |> count == 0 {
     ""
@@ -287,34 +249,27 @@ fn emit_py_imports(imports: List<Node>, source_indices: Map<String, NewlineIndex
     import_lines |> filter(line => line != "") |> join(separator: "\n")
   }
 }
-
 // =========================================================================
 // Prelude -- standard imports for Python modules
 // =========================================================================
-
 fn emit_py_prelude(typed_module: TypedModule) -> String {
   let items = typed_module.items
   let has_structs = items |> any(item => is_type_def_item(item: item) && item.connective == Conj)
   let has_enums = items |> any(item => is_type_def_item(item: item) && item.connective == Disj)
   let has_services = items |> any(item => is_service_item(item: item))
-
   let future_import = "from __future__ import annotations\n"
   let dc_import = if has_structs { "from dataclasses import dataclass, field\n" } else { "" }
   let enum_import = if has_enums { "from enum import Enum, auto\n" } else { "" }
   let typing_import = if has_structs || has_enums { "from typing import Optional, Union\n" } else { "" }
   let async_import = if has_services { "import aiohttp\n" } else { "" }
-
   concat(future_import, dc_import, enum_import, typing_import, async_import)
 }
-
 // =========================================================================
 // Item dispatch
 // =========================================================================
-
 fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_py_type_def_from_connective(item: item, env: env)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
@@ -337,16 +292,9 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     concat("# unhandled node: ", item_text)
   }
 }
-
 // =========================================================================
 // Connective-based type emission -- dispatches on Node children
-//
-// Type structure is encoded as:
-//   Records: connective=Conj, children = one Node per field
-//   Sums:    connective=Disj, children = one Node per variant
-//   Aliases: connective=none, inferred carries the aliased type
 // =========================================================================
-
 fn emit_py_type_def_from_connective(item: Node, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
   let is_product = item.connective == Conj
@@ -356,9 +304,6 @@ fn emit_py_type_def_from_connective(item: Node, env: TypeEnv) -> String {
     emit_py_enum_from_children(name: item_text, children: item.children, env: env)
   }
 }
-
-// is_type_alias_return_node is shared -- imported from v2.compiler.emit
-
 fn emit_py_dataclass_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
   if children |> count == 0 {
     concat(py_derive_attribute(), "\nclass ", name, ":\n    pass")
@@ -368,7 +313,6 @@ fn emit_py_dataclass_from_children(name: String, children: List<Node>, env: Type
     concat(py_derive_attribute(), "\nclass ", name, ":\n", fields_str)
   }
 }
-
 fn emit_py_dataclass_field_from_child(child: Node, env: TypeEnv) -> String {
   let ty = emit_node_type(n: resolved_type(n: child), target: Python, source_indices: env.source_indices)
   let is_optional = resolved_type(n: child).return_cardinality == CardOptional
@@ -379,18 +323,15 @@ fn emit_py_dataclass_field_from_child(child: Node, env: TypeEnv) -> String {
   }
   concat("    ", emit_ident(name: authored_name(env: env, node: child), target: Python), ": ", ty, default_str)
 }
-
 fn emit_py_enum_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
   let has_data = children |> any(child => child.children |> count > 0)
   if has_data {
-    // Tagged union: emit as a set of dataclasses + a Union type alias
     let variant_classes = children |> map(child => emit_py_variant_class_from_child(parent_name: name, child: child, env: env))
     let variant_names = children |> map(child => concat(name, authored_name(env: env, node: child)))
     let union_str = variant_names |> join(separator: ", ")
     let classes_str = variant_classes |> join(separator: "\n\n\n")
     concat(classes_str, "\n\n\n", name, " = Union[", union_str, "]")
   } else {
-    // Simple enum: all unit variants
     let variant_lines = children |> map(child =>
       concat("    ", authored_name(env: env, node: child), " = auto()")
     )
@@ -398,7 +339,6 @@ fn emit_py_enum_from_children(name: String, children: List<Node>, env: TypeEnv) 
     concat(language_spec(target: Python).items.enum_keyword, " ", name, "(Enum):\n", variants_str)
   }
 }
-
 fn emit_py_variant_class_from_child(parent_name: String, child: Node, env: TypeEnv) -> String {
   let class_name = concat(parent_name, authored_name(env: env, node: child))
   if child.children |> count == 0 {
@@ -409,20 +349,12 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node, env: TypeE
     concat(py_derive_attribute(), "\nclass ", class_name, ":\n", fields_str)
   }
 }
-
 // =========================================================================
 // Node-based type emission
-//
-// These functions dispatch on Node structure (connective + name + children)
-// to render Python type syntax.
 // =========================================================================
-
-// Type rendering now uses shared emit_node_type (05_emit.dag).
-
 // =========================================================================
 // Pure function (fn) emission
 // =========================================================================
-
 fn emit_py_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let depth = 0
   let si = scope.type_env.source_indices
@@ -444,11 +376,9 @@ fn emit_py_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, 
       make_indent(level: depth + 1), "return ", body_str)
   }
 }
-
 // =========================================================================
 // Workflow function (func) emission -- async def
 // =========================================================================
-
 fn emit_py_func_def(
   name: String,
   params: List<Node>,
@@ -475,7 +405,6 @@ fn emit_py_func_def(
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: name, target: Python), "(", params_str, ")", ret_str, ":\n",
     make_indent(level: depth + 1), body_str)
 }
-
 fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let param_strs = params |> map(p => emit_param_shared(param: p, target: Python, source_indices: source_indices))
   let resource_strs = uses |> map(u =>
@@ -487,21 +416,13 @@ fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List
   let all_params = concat(param_strs, resource_strs, service_strs)
   all_params |> join(separator: ", ")
 }
-
-// Expression entry point — delegates to shared emit_unified_typed_expr.
-// Pattern rendering is now fully unified in 05_emit.dag (emit_unified_pattern).
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {
   emit_unified_typed_expr(texpr: texpr, target: Python, registry: registry, scope: scope, depth: depth, fuel: fuel,
     render_pattern: pat => emit_unified_pattern(pattern: pat, target: Python, source_indices: scope.type_env.source_indices))
 }
-
 // =========================================================================
 // Service definition — Python
-//
-// Orchestration is in emit_unified_service_def (05_emit.dag).
-// This file provides: __init__ rendering + transport implementations.
 // =========================================================================
-
 fn emit_py_transport_body(transport: Node, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
   emit_unified_transport_dispatch(
     transport: transport, op_name: op_name, source_indices: source_indices, depth: depth, target: Python,
@@ -510,7 +431,6 @@ fn emit_py_transport_body(transport: Node, op_name: String, source_indices: Map<
     render_file: (n, d) => emit_py_file_call(op_name: n),
     render_local: (n, d) => emit_py_local_call(op_name: n))
 }
-
 fn emit_py_service_def(item: Node, registry: Map<String, ItemInfo>, env: TypeEnv) -> String {
   emit_unified_service_def(
     item: item, target: Python, registry: registry, env: env,
@@ -519,7 +439,6 @@ fn emit_py_service_def(item: Node, registry: Map<String, ItemInfo>, env: TypeEnv
     render_transport_body: (transport, op_name, si, depth) =>
       emit_py_transport_body(transport: transport, op_name: op_name, source_indices: si, depth: depth))
 }
-
 fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_indices: source_indices)
   let params = service_field_decls(fs: fs, t: language_spec(target: Python).service_fields)
@@ -532,7 +451,6 @@ fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>, sourc
     concat("def __init__(", params_str, "):\n", assigns_str)
   }
 }
-
 fn emit_py_rest_call(op_name: String, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let self_base_url = concat("{", "self.base_url", "}")
   let url_line = concat("url = f\"", self_base_url, "/", emit_ident(name: op_name, target: Python), "\"")
@@ -544,7 +462,6 @@ fn emit_py_rest_call(op_name: String, transport: Node, source_indices: Map<Strin
   )
   concat(url_line, "\n", headers_dict, "\n", session_lines)
 }
-
 fn emit_py_headers_dict(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let auth_entry = if transport_has_auth(t: transport, source_indices: source_indices) {
     let header_name = match transport_auth_header_name(t: transport, source_indices: source_indices) {
@@ -564,7 +481,6 @@ fn emit_py_headers_dict(transport: Node, source_indices: Map<String, NewlineInde
   }
   concat("headers = {", all_entries, "}")
 }
-
 fn emit_py_shell_call(op_name: String, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let envs = transport_env(t: transport, source_indices: source_indices)
   let env_dict_entries = envs |> map(e =>
@@ -582,7 +498,6 @@ fn emit_py_shell_call(op_name: String, transport: Node, source_indices: Map<Stri
     "return result.stdout"
   )
 }
-
 fn emit_py_file_call(op_name: String) -> String {
   let self_base_path = concat("{", "self.base_path", "}")
   concat(
@@ -591,18 +506,13 @@ fn emit_py_file_call(op_name: String) -> String {
     "    return f.read()"
   )
 }
-
 fn emit_py_local_call(op_name: String) -> String {
   concat("# Local binding -- direct function call\n",
     "return ", emit_ident(name: op_name, target: Python), "()")
 }
-
 // =========================================================================
 // Resource definition emission
-//
-// Resources become abstract base classes with abstract methods.
 // =========================================================================
-
 fn emit_py_resource_def(item: Node, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
   let depth = 0
@@ -613,7 +523,6 @@ fn emit_py_resource_def(item: Node, env: TypeEnv) -> String {
     language_spec(target: Python).items.struct_keyword, " ", item_text, "(ABC):\n",
     make_indent(level: depth + 1), methods_str)
 }
-
 fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
     concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python, source_indices: env.source_indices))
@@ -629,32 +538,21 @@ fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {
     language_spec(target: Python).items.async_prefix, language_spec(target: Python).items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Python), "(", all_params, ") -> ", ret, ":\n",
     "    ...")
 }
-
 // =========================================================================
 // Data definition emission
-//
-// data name: Type = value  ->  module-level constant
 // =========================================================================
-
 fn emit_py_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let ty_str = emit_node_type(n: type_node, target: Python, source_indices: scope.type_env.source_indices)
   let upper_name = to_screaming_snake(name: name)
   let val_str = emit_py_typed_expr(texpr: value, registry: registry, scope: scope, depth: 0, fuel: 1024)
   concat(upper_name, ": ", ty_str, " = ", val_str)
 }
-
 // =========================================================================
 // Identifier conversion -- Python target
 // =========================================================================
-
-// Convert a DSL identifier to a valid Python identifier.
-// Handles reserved word collision by appending underscore suffix.
-// Identifier rendering now uses shared emit_ident (05_emit.dag).
-
 // =========================================================================
 // requirements.txt emission
 // =========================================================================
-
 fn emit_requirements_txt(has_services: Bool) -> TextFile {
   let base_deps = ""
   let async_deps = if has_services {
@@ -664,5 +562,3 @@ fn emit_requirements_txt(has_services: Bool) -> TextFile {
   }
   TextFile { path: "requirements.txt", content: concat(base_deps, async_deps) }
 }
-
-// has_service_items and is_service_item are now shared -- imported from v2.compiler.emit

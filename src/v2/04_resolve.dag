@@ -1,17 +1,5 @@
 // Type resolution walk for the v2 namespace reconciler.
-//
-// Resolves Node type references against the TypeEnv. Walks the Node type
-// tree, replacing leaf Named references with their structural definitions.
-// Also resolves expression trees (structural recursion) and item-level type
-// references (params, return types, uses, transport, etc.).
-//
-// Dependency chain:
-//   v2.compiler.infer_types, v2.compiler.infer_env
-//     -> v2.compiler.infer_resolve (this file)
-//       -> v2.compiler.infer (expression inference)
-
 module v2.compiler.infer_resolve
-
 import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
@@ -50,94 +38,65 @@ import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
 }
-
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
     _ => false
   }
 }
-
 // =========================================================================
 // Result types for type resolution
 // =========================================================================
-
 type NodeResolveResult {
   resolved: Node
   diagnostics: List<ErrorNode>
 }
-
-// Internal result type for item-level resolution.
 type ItemResult {
   item: Node
   diagnostics: List<ErrorNode>
 }
-
-// Internal result type for field-level resolution.
 type FieldResult {
   field: Node
   diagnostics: List<ErrorNode>
 }
-
 type ExprResolveResult {
   expr: Node
   diagnostics: List<ErrorNode>
 }
-
 type NamedArgResolveResult {
   arg: Node
   diagnostics: List<ErrorNode>
 }
-
 type MatchArmResolveResult {
   arm: Node
   diagnostics: List<ErrorNode>
 }
-
 type FieldInitResolveResult {
   field_init: Node
   diagnostics: List<ErrorNode>
 }
-
 type StringPartResolveResult {
   part: StringPart
   diagnostics: List<ErrorNode>
 }
-
 type TransportResolveResult {
   transport: Node
   diagnostics: List<ErrorNode>
 }
-
-// Internal result type for param-level resolution.
 type ParamResult {
   param: Node
   diagnostics: List<ErrorNode>
 }
-
-// Internal result type for resource-use resolution.
 type ResourceUseResult {
   resource_use: Node
   diagnostics: List<ErrorNode>
 }
-
 // =========================================================================
 // Resolve a Node type reference
-//
-// Walks the Node type tree, replacing leaf Named references with their
-// structural definitions from the environment. Dispatches on Node
-// structure (connective, children).
 // =========================================================================
-
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
   resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0)
 }
-
-// Substitute type slot references in a node. A slot reference is a leaf node
-// whose name matches a key in slot_bindings. Used for generic instantiation.
-// Check if a node is a user-defined generic type use site.
-// True when the node has children (type args) and its name resolves to a
-// type declaration with params that's NOT a built-in parameterized type.
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
@@ -145,14 +104,8 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
     match lookup_type_for(env: env, node: n) {
       Some { value: decl } =>
         if decl.params |> count > 0 {
-          // Container types (Map, List, Set, etc.) stay unexpanded regardless
           // of alias (INVARIANTS.md: "container_types controls which types stay
-          // unexpanded during resolve"). Map = PartialFunction<K,V> is an
-          // inhabitation declaration, not an alias to expand. Algebra fields
-          // are added on demand via enrich_kernel_type during method lookup.
           if is_container_type(name: authored_name(env: env, node: n)) { false }
-          // Non-container parameterized alias (e.g., UserType<T> = Foo<T>):
-          // treat as generic use site so the alias chain is followed.
           else if decl.inferred != none { true }
           else { true }
         } else { false }
@@ -160,7 +113,6 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
     }
   }
 }
-
 fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
   let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
@@ -169,11 +121,8 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
       None => n
     }
   } else {
-    // Don't recurse into self-references (recursive types like MyList<T> in tail)
     let new_children = n.children |> map(child =>
       if authored_name_at(source_indices: source_indices, node: child) == decl_name {
-        // Self-reference in recursive type (e.g., MyList<T> in tail).
-        // Substitute slots in the type args but don't expand the self-reference.
         let substituted_args = child.children |> map(arg =>
           substitute_type_slots(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices)
         )
@@ -190,7 +139,6 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
         substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices)
       }
     )
-    // Also substitute inside inferred (field-style wrappers carry types in inferred)
     let new_inferred = match n.inferred {
       Some { value: Resolved { node: rt } } =>
         Some { value: Resolved { node: substitute_type_slots(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices) } }
@@ -207,20 +155,13 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
     }
   }
 }
-
-// Resolve an alias target through to its structural definition.
-// Uses a discriminant + match to avoid the block-in-if parse
-// limitation (stage0 parser misreads `{ fn(name: v) }` as record
-// literal). Only the chosen branch executes.
 type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
-
 fn classify_alias(target: Node) -> AliasKind {
   let nc = target.connective == NoConnective
   if target.children |> count > 0 && nc { AliasParameterized }
   else if target.children |> count == 0 && nc && target.ident_span != none { AliasLeaf }
   else { AliasPassthrough }
 }
-
 fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: Int) -> Node {
   match classify_alias(target: target) {
     AliasParameterized =>
@@ -233,10 +174,7 @@ fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: 
     AliasPassthrough => target
   }
 }
-
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) -> NodeResolveResult {
-  // Defensive depth limit: with topological resolution ordering, this should
-  // never fire. If it does, there is a bug in topo_resolve_types dependency analysis.
   if depth > 100 {
     return NodeResolveResult {
       resolved: n,
@@ -248,7 +186,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let is_product = n.connective == Conj
     if is_product {
       if n.type_annotation != none {
-        // Refined: recurse on first child (base type)
         match n.children |> first {
           Some { value: base } =>
             let base_result = resolve_node_bounded(n: base, env: env, module_name: module_name, depth: depth + 1)
@@ -261,7 +198,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           None => NodeResolveResult { resolved: n, diagnostics: [] }
         }
       } else {
-        // Product: recurse on each child's inferred
         let child_results = map(n.children, child =>
           if child.inferred == none {
             NodeResolveResult { resolved: child, diagnostics: [] }
@@ -295,17 +231,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           diagnostics: inner_diags
         }
       } else {
-        // Coproduct: recurse on each variant child's children's inferreds
         let variant_results = map(n.children, variant_child =>
           let field_results = map(variant_child.children, field_child =>
             if field_child.inferred == none {
               NodeResolveResult { resolved: field_child, diagnostics: [] }
             } else {
               let field_rt = resolved_type(n: field_child)
-              // Skip resolution for self-referencing fields in recursive types
-              // (e.g., tail: MyList<T> inside MyList's Cons variant).
-              // Check both parent match and is_recursive_type to catch generic
-              // recursive types where the authored name differs for variant vs parent.
               let is_self_ref = authored_name(env: env, node: field_rt) == authored_name(env: env, node: n) && field_rt.children |> count > 0
               let rt_result = if is_self_ref {
                 NodeResolveResult { resolved: field_rt, diagnostics: [] }
@@ -336,8 +267,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       }
     }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
-    // Generic type use site (e.g., Pair<Int, String>, Box<Int>, MyList<Int>).
-    // Look up declaration, validate arity, substitute slot references with concrete arguments.
     let type_name = authored_name(env: env, node: n)
     let decl = match lookup_type_for(env: env, node: n) { Some { value: d } => d  None => n }
     let expected_arity = decl.params |> count
@@ -358,14 +287,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         None => acc
       }
     )
-    // For parameterized aliases (e.g., List<element> = FreeMonoid<element>),
-    // follow the alias target and resolve it with substituted slot bindings.
-    // This produces the structural Conj definition with method children.
     let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
     if is_parameterized_alias {
-      // Extract the alias target (e.g., FreeMonoid<element>), substitute
-      // slots (element → Int), then resolve the result to expand the
-      // structural definition.
       let alias_target = match decl.inferred {
         Some { value: Resolved { node: target } } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: type_name, source_indices: env.source_indices)
         _ => n
@@ -388,7 +311,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   } else {
     let is_map = node_is_keyed_collection(n: n, source_indices: env.source_indices)
     if is_map {
-      // Map: recurse on both key and value children (extract type from field-style encoding)
       let type_name = authored_name(env: env, node: n)
       let key_child_node = match n.children |> first { Some { value: k } => k  None => unit_type }
       let val_child_node = match skip(n.children, 1) |> first { Some { value: v } => v  None => unit_type }
@@ -409,7 +331,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         diagnostics: concat(key_diags, val_diags)
       }
     } else if n.children |> count == 1 {
-    // Container (List, Set, etc.): recurse on single child (extract type from field-style encoding)
     let type_name = authored_name(env: env, node: n)
     match n.children |> first {
       Some { value: child_node } =>
@@ -426,28 +347,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       None => NodeResolveResult { resolved: n, diagnostics: [] }
     }
   } else if n.children |> count == 0 {
-    // Leaf node: lookup in env, recurse if found
     if is_recursive_type_for(env: env, node: n) {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
       match lookup_type_for(env: env, node: n) {
         Some { value: resolved } =>
-          // Topological resolution ensures bindings are fully resolved before
-          // any dependent type is processed. Re-resolving the looked-up node
-          // would redundantly walk the entire expanded subtree, causing
-          // exponential blowup on diamond-shaped dependency graphs (OOM).
-          //
-          // C2.3: For alias nodes (leaf with .inferred but no structure),
-          // follow ONE level of .inferred to return the structural target.
-          // This is O(1), not recursive — the target is already resolved
-          // by topo ordering. Without this, downstream consumers see an
-          // alias_node wrapper and must re-resolve through TypeEnv (layer
-          // downgrade from structural to name-based).
-          //
-          // Preserve CardOptional from the reference node: the env binding
-          // always stores the canonical (Required) definition, but the
-          // reference site may carry CardOptional (e.g. String? → String
-          // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
               Some { value: Resolved { node: target } } => target
@@ -461,7 +365,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
           let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-          // Arrow nodes (callable types) handled by has_structure above.
           // Dynamic/Error sentinel names dissolved — no .dag source declares them.
           if is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
@@ -474,12 +377,10 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       }
     }
     } else {
-      // Unknown structure -- pass through
       NodeResolveResult { resolved: n, diagnostics: [] }
     }
   }
 }
-
 fn missing_generic_args_diagnostics(n: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
   if n.children |> count == 0 && n.params |> count == 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
@@ -489,30 +390,24 @@ fn missing_generic_args_diagnostics(n: Node, env: TypeEnv, module_name: String) 
     []
   }
 }
-
 fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) -> NodeResolveResult {
   if n == none { NodeResolveResult { resolved: unit_type, diagnostics: [] } }
   else {
     match n.value {
       Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
       CompilerError { message: msg, span: sp } =>
-        // Preserve CompilerError structurally. Downstream code matches
-        // InferredNode directly — no name check needed.
         NodeResolveResult {
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
           diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: sp }, module_name: module_name)]
         }
       TypeVariable { id: tv } =>
-        // TypeVariable: unresolved type variable, preserve structurally.
         NodeResolveResult { resolved: Node { name: tv, span: kernel_span(name: tv), ident_span: Some { value: kernel_span(name: tv) }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tv } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, diagnostics: [] }
     }
   }
 }
-
 // =========================================================================
 // Field resolution
 // =========================================================================
-
 fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult {
   let authored_type = field_node_type_expr(n: field)
   let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
@@ -541,11 +436,9 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult 
     diagnostics: concat(type_diags, default_diags)
   }
 }
-
 // =========================================================================
 // Param resolution
 // =========================================================================
-
 fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult {
   let authored_type = param_node_type_expr(n: param)
   let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
@@ -572,15 +465,12 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     diagnostics: concat(type_diags, default_diags)
   }
 }
-
 // =========================================================================
 // Operation resolution
 // =========================================================================
-
 // =========================================================================
 // ResourceUse resolution
 // =========================================================================
-
 fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> ResourceUseResult {
   let type_result = resolve_node(n: resource_use_resource(n: ru), env: env, module_name: module_name)
   let type_resolved = type_result.resolved
@@ -590,7 +480,6 @@ fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> Resource
     diagnostics: type_diags
   }
 }
-
 fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgResolveResult {
   let value_result = resolve_expr_types(texpr: arg_value(n: arg), env: env, module_name: module_name)
   let value_expr = value_result.expr
@@ -600,7 +489,6 @@ fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgRe
     diagnostics: value_diags
   }
 }
-
 fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> FieldInitResolveResult {
   let value_result = resolve_expr_types(texpr: field_init_node_value(n: field_init), env: env, module_name: module_name)
   let value_expr = value_result.expr
@@ -610,7 +498,6 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
     diagnostics: value_diags
   }
 }
-
 fn resolve_match_arm(arm: Node, env: TypeEnv, module_name: String) -> MatchArmResolveResult {
   let arm_g = arm_guard(n: arm)
   let guard_result = match arm_g {
@@ -637,7 +524,6 @@ fn resolve_match_arm(arm: Node, env: TypeEnv, module_name: String) -> MatchArmRe
     diagnostics: concat(guard_diags, body_diags)
   }
 }
-
 fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> StringPartResolveResult {
   match part {
     Text { value: value } =>
@@ -655,16 +541,10 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
       }
   }
 }
-
-// resolve_header_def, resolve_env_def, resolve_auth_config, resolve_service_config
-// deleted — transport and service config dissolution. Config properties are now
-// resolved by the generic resolve_field_init loop in resolve_item_types.
-
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
   if is_local_transport(t: transport, source_indices: env.source_indices) {
     TransportResolveResult { transport: transport, diagnostics: [] }
   } else {
-    // Generic resolution: resolve all property values and children
     let prop_results = map(transport.properties, p =>
       let val_result = resolve_expr_types(texpr: field_init_node_value(n: p), env: env, module_name: module_name)
       FieldInitResolveResult { field_init: make_field_init_node(name: field_init_node_name_at(n: p, source_indices: env.source_indices), value: val_result.expr, span: p.span, name_span: node_name_span(n: p)), diagnostics: val_result.diagnostics }
@@ -674,8 +554,6 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     let child_results = map(transport.children, c => resolve_expr_types(texpr: c, env: env, module_name: module_name))
     let resolved_children = map(child_results, cr => cr.expr)
     let child_diags = flat_map(child_results, cr => cr.diagnostics)
-    // Validate body shape: must be ExprRecordLit if present.
-    // Reject non-record shapes here so the emitter only translates valid bodies.
     let body_diags = match transport_request_body(t: transport, source_indices: env.source_indices) {
       Some { value: b } => match b.expr_data {
         ExprRecordLit => []
@@ -689,9 +567,6 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     }
   }
 }
-
-// P5.11: resolve_expr_types uses map_children for single-child cases,
-// make_expr_node with explicit children for multi-child cases.
 fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match texpr.expr_data {
     ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
@@ -702,14 +577,12 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       }
     ExprVar { binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
     ExprFieldAccess { summary: _ } =>
-      // children: [base]
       let r = match texpr.children |> first {
         Some { value: base } => resolve_expr_types(texpr: base, env: env, module_name: module_name)
         None => ExprResolveResult { expr: texpr, diagnostics: [] }
       }
       ExprResolveResult { expr: map_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprCall { call_semantics: cs, descent_evidence: de } =>
-      // children: arg nodes
       let resolved_children = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
@@ -722,7 +595,6 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       )
       ExprResolveResult { expr: make_named_expr_node(name: expr_call_func_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprCall { call_semantics: cs, descent_evidence: de }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMethodCall { method_semantics: ms } =>
-      // children: [receiver, arg0, arg1, ...]
       let resolved_children = texpr.children |> enumerate |> map(pair =>
         let idx = pair.first
         let child = pair.second
@@ -749,7 +621,6 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       )
       ExprResolveResult { expr: make_named_expr_node(name: expr_method_name_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprMethodCall { method_semantics: ms }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMatch =>
-      // children: [scrutinee, arm0, arm1, ...]
       let resolved_children = texpr.children |> enumerate |> map(pair =>
         let idx = pair.first
         let child = pair.second
@@ -757,7 +628,6 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
           let sr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
           sr.expr
         } else {
-          // arm node: resolve guard and body within children
           let arm_ch = child.children
           let has_guard = arm_ch |> count == 2
           if has_guard {
@@ -791,7 +661,6 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       )
       ExprResolveResult { expr: make_expr_node(expr_data: ExprMatch, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
     ExprIf =>
-      // children: [cond, then] or [cond, then, else]
       let ch = texpr.children
       let cr = match ch |> first { Some { value: c } => resolve_expr_types(texpr: c, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let tr = match ch |> skip(1) |> first { Some { value: t } => resolve_expr_types(texpr: t, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
@@ -799,14 +668,12 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = match er { Some { value: r } => [cr.expr, tr.expr, r.expr]  None => [cr.expr, tr.expr] }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprIf, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(cr.diagnostics, tr.diagnostics, match er { Some { value: r } => r.diagnostics  None => [] }) }
     ExprLet =>
-      // children: [value] or [value, body]
       let ch = texpr.children
       let vr = match ch |> first { Some { value: v } => resolve_expr_types(texpr: v, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let br = match ch |> skip(1) |> first { Some { value: bd } => Some { value: resolve_expr_types(texpr: bd, env: env, module_name: module_name) }  None => none }
       let resolved_children = match br { Some { value: r } => [vr.expr, r.expr]  None => [vr.expr] }
       ExprResolveResult { expr: make_named_expr_node(name: let_binding_name_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprLet, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => [] }) }
     ExprRecordLit { parent_enum: pe } =>
-      // children: field init nodes
       let resolved_children = texpr.children |> map(fi_node =>
         let val = match fi_node.children |> first { Some { value: v } => v  None => fi_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
@@ -819,28 +686,23 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       )
       ExprResolveResult { expr: make_named_expr_node(name: authored_name_at(source_indices: env.source_indices, node: texpr), expr_data: ExprRecordLit { parent_enum: pe }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprListLit =>
-      // children: element expressions
       let el_results = texpr.children |> map(el => resolve_expr_types(texpr: el, env: env, module_name: module_name))
       let resolved_children = el_results |> map(r => r.expr)
       let all_diags = flat_map(el_results, r => r.diagnostics)
       ExprResolveResult { expr: make_expr_node(expr_data: ExprListLit, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
     ExprBinOp { op: op, algebra_field: af } =>
-      // children: [left, right]
       let ch = texpr.children
       let lr = match ch |> first { Some { value: l } => resolve_expr_types(texpr: l, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let rr = match ch |> skip(1) |> first { Some { value: r } => resolve_expr_types(texpr: r, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprBinOp { op: op, algebra_field: af }, children: [lr.expr, rr.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
     ExprUnaryOp { op: op } =>
-      // children: [operand]
       let r = match texpr.children |> first { Some { value: o } => resolve_expr_types(texpr: o, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: op }, children: [r.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
     ExprLambda =>
-      // children: [body, param0, param1, ...]
       let lam_param_nodes = texpr.children |> skip(1)
       let r = match texpr.children |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([r.expr], lam_param_nodes), inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
     ExprStringInterp =>
-      // children: text/interp part nodes
       let resolved_children = texpr.children |> map(part_node =>
         match part_node.expr_data {
           ExprLiteral { value: _ } => part_node
@@ -867,66 +729,45 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       )
       ExprResolveResult { expr: make_expr_node(expr_data: ExprStringInterp, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
     ExprBlock =>
-      // children: stmt expressions
       let stmt_results = texpr.children |> map(s => resolve_expr_types(texpr: s, env: env, module_name: module_name))
       let resolved_children = stmt_results |> map(r => r.expr)
       let all_diags = flat_map(stmt_results, r => r.diagnostics)
       ExprResolveResult { expr: make_expr_node(expr_data: ExprBlock, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
     ExprCast =>
-      // children: [expr, target_type]
       let ch = texpr.children
       let r = match ch |> first { Some { value: inner } => resolve_expr_types(texpr: inner, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let tr = match ch |> skip(1) |> first { Some { value: target } => resolve_node(n: target, env: env, module_name: module_name)  None => NodeResolveResult { resolved: unit_type, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprCast, children: [r.expr, tr.resolved], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(r.diagnostics, tr.diagnostics) }
     ExprForEach =>
-      // children: [collection, body]
       let ch = texpr.children
       let cr = match ch |> first { Some { value: c } => resolve_expr_types(texpr: c, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let br = match ch |> skip(1) |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_named_expr_node(name: foreach_variable_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprForEach, children: [cr.expr, br.expr], inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: concat(cr.diagnostics, br.diagnostics) }
     ExprIndex =>
-      // children: [base, index]
       let ch = texpr.children
       let br = match ch |> first { Some { value: base } => resolve_expr_types(texpr: base, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let ir = match ch |> skip(1) |> first { Some { value: index } => resolve_expr_types(texpr: index, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprIndex, children: [br.expr, ir.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(br.diagnostics, ir.diagnostics) }
     ExprSlice =>
-      // children: [base, start, end]
       let ch = texpr.children
       let br = match ch |> first { Some { value: base } => resolve_expr_types(texpr: base, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let sr = match ch |> skip(1) |> first { Some { value: start } => resolve_expr_types(texpr: start, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let er = match ch |> skip(2) |> first { Some { value: end_e } => resolve_expr_types(texpr: end_e, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprSlice, children: [br.expr, sr.expr, er.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(br.diagnostics, sr.diagnostics, er.diagnostics) }
     ExprReturn =>
-      // children: [value]
       let r = match texpr.children |> first { Some { value: inner } => resolve_expr_types(texpr: inner, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprReturn, children: [r.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
     NoExprData => ExprResolveResult { expr: texpr, diagnostics: [] }
   }
 }
-
 // =========================================================================
 // Resolve all type expressions within a single Node
-//
-// Walks through the item's type references (params, return types,
-// field types, etc.) and resolves each one against the environment.
 // =========================================================================
-
-// Extract function type parameter names from params. Type params are
-// structurally distinguishable: param_node_name == param_node_type_expr.name
-// (self-referential), while function params have name != type_expr.name.
 fn fn_type_param_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   item.params |> filter(p =>
     param_node_name_at(n: p, source_indices: source_indices) == authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: p))
   ) |> map(p => param_node_name_at(n: p, source_indices: source_indices))
 }
-
-// Detect the `fn f<T>(T: T)` name-shadowing ambiguity. Both the declared
-// type param and the value param satisfy the self-reference heuristic, so
-// fn_type_param_names returns duplicate entries. Surface as a gunbc
-// Diagnostic at the detection point (P3 / modeling-discipline §1):
-// fail-closed means the compiler boundary rejects with a typed diagnostic,
-// not that it succeeds and outsources rejection to rustc.
 fn has_duplicate_type_param_name(names: List<String>) -> Bool {
   names |> enumerate |> any(pair =>
     let idx = pair.first
@@ -934,10 +775,7 @@ fn has_duplicate_type_param_name(names: List<String>) -> Bool {
     names |> skip(idx + 1) |> any(other => other == s)
   )
 }
-
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
-  // Register function type params (e.g., <T, B>) as TypeVariable bindings
-  // so bare references to T/B in params/body don't produce UnresolvedType.
   let tp_names = if item.connective != NoConnective && item.transport == none {
     item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
   } else {
@@ -960,23 +798,16 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       intern_table: e.intern_table
     }
   )
-  // Resolve params
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
   let param_diags = flat_map(param_results, pr => pr.diagnostics)
-
-  // Resolve return type
   let ret_result = resolve_optional_node(n: item.inferred, env: env, module_name: module_name)
   let ret_resolved = ret_result.resolved
   let ret_diags = ret_result.diagnostics
   let resolved_ret = if item.inferred == none { none } else { Some { value: Resolved { node: ret_resolved } } }
-
-  // Resolve uses
   let use_results = map(item.uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
   let resolved_uses = map(use_results, ur => ur.resource_use)
   let use_diags = flat_map(use_results, ur => ur.diagnostics)
-
-  // Resolve body if present (non-optional intermediate, same pattern as transport/anno)
   let body_resolved = if item.body == none {
     ExprResolveResult { expr: item, diagnostics: [] }
   } else {
@@ -984,8 +815,6 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   }
   let resolved_body = if item.body == none { none } else { Some { value: body_resolved.expr } }
   let body_diags = if item.body == none { [] } else { body_resolved.diagnostics }
-
-  // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
     NodeResolveResult { resolved: unit_type, diagnostics: [] }
   } else {
@@ -993,8 +822,6 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   }
   let resolved_anno = if item.type_annotation == none { none } else { Some { value: anno_resolved.resolved } }
   let anno_diags = anno_resolved.diagnostics
-
-  // Resolve transport if present
   let transport_resolved = if item.transport == none {
     TransportResolveResult { transport: local_transport_node(span: no_span()), diagnostics: [] }
   } else {
@@ -1002,15 +829,9 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   }
   let resolved_transport = if item.transport == none { none } else { Some { value: transport_resolved.transport } }
   let transport_diags = transport_resolved.diagnostics
-
-  // Resolve properties (includes svc_* config properties after ServiceConfig dissolution)
   let prop_results = map(item.properties, p => resolve_field_init(field_init: p, env: env, module_name: module_name))
   let resolved_props = map(prop_results, pr => pr.field_init)
   let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
-
-  // Resolve children recursively (W11: operations/capabilities as child Nodes).
-  // Product children are field nodes, not nested items, so resolve their type
-  // expressions through the field boundary to preserve applied generic facts.
   let child_results = if item.connective == Conj && item.transport == none {
     item.children |> map(child =>
       let authored_type = field_node_type_expr(n: child)
@@ -1044,7 +865,6 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   }
   let resolved_children = map(child_results, cr => cr.item)
   let child_diags = flat_map(child_results, cr => cr.diagnostics)
-
   ItemResult {
     item: Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: resolved_children,
