@@ -1,7 +1,13 @@
-// dsl/examples/weather -- a minimal .dag project that compiles to Rust.
+// Hero demo for the public daglang launch: types, enums, pure functions,
+// pattern matching, and list pipelines — compiles to Rust with zero hand glue.
 //
-// Demonstrates: types, enums, functions, pattern matching, collections.
-// Gate: `gunbc compile dsl/examples/weather/ --target rust && cargo check`
+// Gate (from repo root, after `cargo build --release -p v2-compiler --bin gunbc`):
+//   gunbc compile \
+//     --source-root dsl/examples/weather \
+//     --source-root dsl/std \
+//     --output-dir /tmp/weather-out \
+//     --target rust \
+//   && cargo check --manifest-path /tmp/weather-out/Cargo.toml
 
 module examples.weather
 
