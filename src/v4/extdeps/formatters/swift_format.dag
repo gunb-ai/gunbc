@@ -7,13 +7,18 @@ module v4.extdeps.formatters.swift_format
 
 import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
+import v4.std.refinement_authoritative_literals {
+  authoritative_exact_one_int_1,
+  authoritative_non_negative_int_1,
+  authoritative_non_negative_int_2,
+  authoritative_positive_int_100,
+  authoritative_positive_int_2,
+  authoritative_positive_int_8,
+}
 import v4.std.refinement {
   PositiveInt,
   NonNegativeInt,
   ExactOneInt,
-  positive_int_authoritative_literal,
-  non_negative_int_authoritative_literal,
-  exact_one_int_authoritative_literal,
 }
 
 
@@ -89,12 +94,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: exact_one_int_authoritative_literal(base: 1),
-  line_length: positive_int_authoritative_literal(base: 100),
-  indentation: SwiftFormatSpaces { count: positive_int_authoritative_literal(base: 2) },
-  tab_width: positive_int_authoritative_literal(base: 8),
-  maximum_blank_lines: non_negative_int_authoritative_literal(base: 1),
-  spaces_before_end_of_line_comments: non_negative_int_authoritative_literal(base: 2),
+  version: authoritative_exact_one_int_1,
+  line_length: authoritative_positive_int_100,
+  indentation: SwiftFormatSpaces { count: authoritative_positive_int_2 },
+  tab_width: authoritative_positive_int_8,
+  maximum_blank_lines: authoritative_non_negative_int_1,
+  spaces_before_end_of_line_comments: authoritative_non_negative_int_2,
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,

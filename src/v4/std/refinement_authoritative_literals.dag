@@ -19,3 +19,63 @@ import v4.std.refinement {
 // each data row discharged by manual claim in refinement_formatter_literals_accept.dag;
 // forbidden: bare carrier construction without matching acceptance witness.
 
+data authoritative_positive_int_2: PositiveInt = PositiveInt { refined: Refined { base: 2 } }
+
+data authoritative_positive_int_4: PositiveInt = PositiveInt { refined: Refined { base: 4 } }
+
+data authoritative_positive_int_8: PositiveInt = PositiveInt { refined: Refined { base: 8 } }
+
+data authoritative_positive_int_10: PositiveInt = PositiveInt { refined: Refined { base: 10 } }
+
+data authoritative_positive_int_60: PositiveInt = PositiveInt { refined: Refined { base: 60 } }
+
+data authoritative_positive_int_70: PositiveInt = PositiveInt { refined: Refined { base: 70 } }
+
+data authoritative_positive_int_80: PositiveInt = PositiveInt { refined: Refined { base: 80 } }
+
+data authoritative_positive_int_88: PositiveInt = PositiveInt { refined: Refined { base: 88 } }
+
+data authoritative_positive_int_100: PositiveInt = PositiveInt { refined: Refined { base: 100 } }
+
+data authoritative_non_negative_int_0: NonNegativeInt = NonNegativeInt { refined: Refined { base: 0 } }
+
+data authoritative_non_negative_int_1: NonNegativeInt = NonNegativeInt { refined: Refined { base: 1 } }
+
+data authoritative_non_negative_int_2: NonNegativeInt = NonNegativeInt { refined: Refined { base: 2 } }
+
+data authoritative_non_negative_int_4: NonNegativeInt = NonNegativeInt { refined: Refined { base: 4 } }
+
+data authoritative_non_negative_int_8: NonNegativeInt = NonNegativeInt { refined: Refined { base: 8 } }
+
+data authoritative_non_negative_int_10: NonNegativeInt = NonNegativeInt { refined: Refined { base: 10 } }
+
+data authoritative_non_negative_int_18: NonNegativeInt = NonNegativeInt { refined: Refined { base: 18 } }
+
+data authoritative_non_negative_int_19: NonNegativeInt = NonNegativeInt { refined: Refined { base: 19 } }
+
+data authoritative_non_negative_int_35: NonNegativeInt = NonNegativeInt { refined: Refined { base: 35 } }
+
+data authoritative_non_negative_int_50: NonNegativeInt = NonNegativeInt { refined: Refined { base: 50 } }
+
+data authoritative_non_negative_int_60: NonNegativeInt = NonNegativeInt { refined: Refined { base: 60 } }
+
+data authoritative_non_negative_int_80: NonNegativeInt = NonNegativeInt { refined: Refined { base: 80 } }
+
+data authoritative_non_negative_int_120: NonNegativeInt = NonNegativeInt { refined: Refined { base: 120 } }
+
+data authoritative_non_negative_int_150: NonNegativeInt = NonNegativeInt { refined: Refined { base: 150 } }
+
+data authoritative_non_negative_int_300: NonNegativeInt = NonNegativeInt { refined: Refined { base: 300 } }
+
+data authoritative_non_negative_int_500: NonNegativeInt = NonNegativeInt { refined: Refined { base: 500 } }
+
+data authoritative_non_negative_int_1000: NonNegativeInt = NonNegativeInt { refined: Refined { base: 1000 } }
+
+data authoritative_non_negative_int_1000000: NonNegativeInt = NonNegativeInt { refined: Refined { base: 1000000 } }
+
+data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = AtLeastMinusOneInt { refined: Refined { base: -1 } }
+
+data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = AtLeastMinusOneInt { refined: Refined { base: 0 } }
+
+data authoritative_exact_one_int_1: ExactOneInt = ExactOneInt { refined: Refined { base: 1 } }
+

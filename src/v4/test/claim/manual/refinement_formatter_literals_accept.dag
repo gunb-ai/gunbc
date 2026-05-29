@@ -1,0 +1,600 @@
+// src/v4/test/claim/manual/refinement_formatter_literals_accept.dag
+// Scope: formatter upstream default literals accept at authoritative locus.
+// Status: T-25-core authoritative literal discharge witnesses.
+
+
+module v4.test.claim.manual.refinement_formatter_literals_accept
+
+
+import v4.std.refinement {
+  make_at_least_minus_one_int_at_authoritative,
+  make_exact_one_int_at_authoritative,
+  make_non_negative_int_at_authoritative,
+  make_positive_int_at_authoritative,
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.node { Node }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor,
+}
+import v4.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj,
+}
+
+fn witness_authoritative_positive_int_2_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 2) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_2_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_2_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_2 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_2_accepts_input(ok: witness_authoritative_positive_int_2_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_positive_int_4_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 4) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_4_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_4_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_4 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_4_accepts_input(ok: witness_authoritative_positive_int_4_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_positive_int_8_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 8) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_8_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_8_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_8 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_8_accepts_input(ok: witness_authoritative_positive_int_8_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_positive_int_10_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 10) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_10_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_10_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_10 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_10_accepts_input(ok: witness_authoritative_positive_int_10_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_positive_int_60_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 60) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_60_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_60_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_60 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_60_accepts_input(ok: witness_authoritative_positive_int_60_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_positive_int_70_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 70) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_70_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_70_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_70 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_70_accepts_input(ok: witness_authoritative_positive_int_70_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_positive_int_80_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 80) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_80_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_80_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_80 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_80_accepts_input(ok: witness_authoritative_positive_int_80_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_positive_int_88_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 88) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_88_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_88_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_88 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_88_accepts_input(ok: witness_authoritative_positive_int_88_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_positive_int_100_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 100) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_positive_int_100_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_positive_int_100_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_positive_int_100 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_positive_int_100_accepts_input(ok: witness_authoritative_positive_int_100_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_0_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 0) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_0_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_0_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_0 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_0_accepts_input(ok: witness_authoritative_non_negative_int_0_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_1_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 1) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_1_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_1_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_1 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_1_accepts_input(ok: witness_authoritative_non_negative_int_1_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_2_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 2) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_2_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_2_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_2 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_2_accepts_input(ok: witness_authoritative_non_negative_int_2_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_4_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 4) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_4_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_4_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_4 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_4_accepts_input(ok: witness_authoritative_non_negative_int_4_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_8_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 8) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_8_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_8_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_8 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_8_accepts_input(ok: witness_authoritative_non_negative_int_8_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_10_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 10) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_10_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_10_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_10 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_10_accepts_input(ok: witness_authoritative_non_negative_int_10_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_18_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 18) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_18_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_18_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_18 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_18_accepts_input(ok: witness_authoritative_non_negative_int_18_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_19_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 19) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_19_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_19_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_19 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_19_accepts_input(ok: witness_authoritative_non_negative_int_19_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_35_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 35) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_35_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_35_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_35 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_35_accepts_input(ok: witness_authoritative_non_negative_int_35_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_50_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 50) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_50_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_50_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_50 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_50_accepts_input(ok: witness_authoritative_non_negative_int_50_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_60_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 60) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_60_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_60_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_60 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_60_accepts_input(ok: witness_authoritative_non_negative_int_60_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_80_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 80) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_80_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_80_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_80 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_80_accepts_input(ok: witness_authoritative_non_negative_int_80_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_120_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 120) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_120_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_120_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_120 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_120_accepts_input(ok: witness_authoritative_non_negative_int_120_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_150_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 150) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_150_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_150_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_150 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_150_accepts_input(ok: witness_authoritative_non_negative_int_150_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_300_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 300) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_300_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_300_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_300 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_300_accepts_input(ok: witness_authoritative_non_negative_int_300_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_500_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 500) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_500_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_500_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_500 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_500_accepts_input(ok: witness_authoritative_non_negative_int_500_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_1000_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 1000) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_1000_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_1000_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_1000 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_1000_accepts_input(ok: witness_authoritative_non_negative_int_1000_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_non_negative_int_1000000_accepts() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 1000000) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_non_negative_int_1000000_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_non_negative_int_1000000_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_non_negative_int_1000000 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_non_negative_int_1000000_accepts_input(ok: witness_authoritative_non_negative_int_1000000_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_at_least_minus_one_int_minus_1_accepts() -> Bool {
+  match make_exact_one_int_at_authoritative(value: -1) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_at_least_minus_one_int_minus_1_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_at_least_minus_one_int_minus_1_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_at_least_minus_one_int_minus_1 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_at_least_minus_one_int_minus_1_accepts_input(ok: witness_authoritative_at_least_minus_one_int_minus_1_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_at_least_minus_one_int_0_accepts() -> Bool {
+  match make_at_least_minus_one_int_at_authoritative(value: 0) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_at_least_minus_one_int_0_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_at_least_minus_one_int_0_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_at_least_minus_one_int_0 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_at_least_minus_one_int_0_accepts_input(ok: witness_authoritative_at_least_minus_one_int_0_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_authoritative_exact_one_int_1_accepts() -> Bool {
+  match make_exact_one_int_at_authoritative(value: 1) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn claim_authoritative_exact_one_int_1_accepts_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_authoritative_exact_one_int_1_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative_exact_one_int_1 authoritative accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_authoritative_exact_one_int_1_accepts_input(ok: witness_authoritative_exact_one_int_1_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
