@@ -3323,6 +3323,21 @@ pub enum ProducerLookup<'a> {
     BindCycle { detected_at: NodeId },
 }
 
+/// Verify-first upsert for native `lane2_workflow` storage on `Value`/`Bind`.
+fn upsert_lane2_workflow_on_node(
+    slot: &mut Option<Box<WorkflowEffect>>,
+    workflow: WorkflowEffect,
+) -> bool {
+    match slot.as_deref() {
+        None => {
+            *slot = Some(Box::new(workflow));
+            true
+        }
+        Some(existing) if *existing == workflow => true,
+        Some(_) => false,
+    }
+}
+
 impl Dag {
     // Only `bootstrap_regen_fresh` constructs an empty Dag for regen; omitting
     // that module without `bootstrap-regen-fresh` would otherwise trip `dead_code`.
@@ -3955,10 +3970,14 @@ impl Dag {
         &self.clusters[id.index()]
     }
 
-    /// Attaches a [`WorkflowEffect`] on [`Behavior`] nodes at `root` (`Value` or
+    /// Upserts a [`WorkflowEffect`] on [`Behavior`] nodes at `root` (`Value` or
     /// `Bind` only). Writes the same `lane2_workflow` field reflected in
-    /// `substrate.dag` for `ValueNode` / `BindNode`. Returns `false` if `root` is
-    /// missing or not `Value`/`Bind`.
+    /// `substrate.dag` for `ValueNode` / `BindNode`.
+    ///
+    /// **UPSERT semantics** (`dsl/std/patterns.dag` canon): verify-first on the
+    /// existing carrier; create-if-missing; no silent overwrite when a different
+    /// effect is already staged. Returns `false` if `root` is missing, not
+    /// `Value`/`Bind`, or an incompatible `lane2_workflow` is already present.
     pub fn try_register_lane2_workflow_effect(
         &mut self,
         root: NodeId,
@@ -3968,14 +3987,8 @@ impl Dag {
             return false;
         };
         match behavior {
-            Behavior::Value(v) => {
-                v.lane2_workflow = Some(Box::new(workflow));
-                true
-            }
-            Behavior::Bind(b) => {
-                b.lane2_workflow = Some(Box::new(workflow));
-                true
-            }
+            Behavior::Value(v) => upsert_lane2_workflow_on_node(&mut v.lane2_workflow, workflow),
+            Behavior::Bind(b) => upsert_lane2_workflow_on_node(&mut b.lane2_workflow, workflow),
             Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => false,
         }
     }
@@ -5152,6 +5165,24 @@ fn duplicate_target_clean_emission_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn try_register_lane2_workflow_effect_upserts_without_silent_overwrite() {
+        let mut dag = crate::compile_to_dag("let _: Int = 0", "lane2_upsert_unit.v3")
+            .expect("compile shell");
+        let root = dag.workflow_lane2_subject().expect("bind shell");
+        let wf_a = WorkflowEffect::LinearEffect { ops: vec![] };
+        let wf_b = WorkflowEffect::LoopEffect {
+            body: Box::new(WorkflowEffect::LinearEffect { ops: vec![] }),
+        };
+        assert!(dag.try_register_lane2_workflow_effect(root, wf_a.clone()));
+        assert!(dag.try_register_lane2_workflow_effect(root, wf_a));
+        assert!(!dag.try_register_lane2_workflow_effect(root, wf_b));
+        assert_eq!(
+            dag.lane2_workflow_effect_at(&root),
+            Some(&WorkflowEffect::LinearEffect { ops: vec![] })
+        );
+    }
 
     #[test]
     fn call_pattern_from_relations_fails_closed_for_mixed_unknown_and_preserved_evidence() {
