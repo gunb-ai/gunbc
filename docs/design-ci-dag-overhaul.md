@@ -13,7 +13,7 @@
 
 ## 1. Architectural target
 
-Every CI computation is a **Node** in `src/v4/workflow/ci.dag` with declared `content_hash` inputs and typed outputs. `.github/workflows/ci.yml` is either a **thin BinaryShim** (invoke one gunbc CI runner) or a **fully derived YamlStatic artifact** emitted from the same model — never a third authority. Legacy shell scripts and hand-Rust mirrors are **deleted in the same PR** as their modeled Node lands. **Exactly-once** is a structural property: unchanged input merkle → step is not scheduled (IRT-1 frontier) and prior green verdict is reused (IRT-4 `content_hash(whole TestClaim node)` per `src/v4/TASKS.md`). Speed is a consequence of correct modeling, not YAML `if:` tuning.
+Every CI computation is a **Node** in `src/v4/workflow/ci.dag` with declared `content_hash` inputs and typed outputs. `.github/workflows/ci.yml` is either a **thin BinaryShim** (invoke one gunbc CI runner) or a **fully derived YamlStatic artifact** emitted from the same model — never a third authority. Legacy shell scripts and hand-Rust mirrors are **deleted in the same PR** as their modeled Node lands — including the **`scripts/check-*.sh` files themselves**, not only the `ci.yml` step that invoked them. **Discipline policy** has no enduring `scripts/*` authority: it becomes **`TestClaim` nodes** under `src/v4/test/claim/workflow/` evaluated by the CI runner (T-22 / T-38), same as other verification. **Exactly-once** is a structural property: unchanged input merkle → step is not scheduled (IRT-1 frontier) and prior green verdict is reused (IRT-4 `content_hash(whole TestClaim node)` per `src/v4/TASKS.md`). Speed is a consequence of correct modeling, not YAML `if:` tuning.
 
 ---
 
@@ -53,12 +53,31 @@ The overhaul **extends** the existing `v4.workflow.ci` carriers already on `main
 
 | Proposed arm | Replaces | Declared inputs |
 |--------------|----------|-----------------|
-| `DisciplineScriptCommand { script_id, authority_paths }` | `check-*.sh` policy gates in `ci` | path-set merkle + script content hash |
+| `DisciplinePolicyCommand { policy_id, claim_refs, authority_paths }` | `check-*.sh` / `check_*.py` policy gates in `ci` | `content_hash(TestClaim node)` per claim + `authority_paths` merkle — **not** script bytes |
 | `CiGitDiffPublishCommand` | `affected` job shell + `detect-affected-components.sh` | delegates to `CiGitDiffReadOutcome` → `CiComponentAffected` |
 | `RustToolchainPoolCommand` | per-job Setup Rust + cache | union of downstream command digests (R02) |
 | `V3IntegrationClusterCommand` | v3 job cargo test matrix | v3 subgraph merkle + single prebuilt test binary |
 
-### 2.3 Mapping: today’s GitHub Actions jobs → modeled graph
+### 2.4 Discipline policy dissolution (P5 / single authority)
+
+Today’s `ci` job runs ~9 discipline **shell/Python scripts** (`scripts/check-*.sh`, `scripts/check_t19_testgen_activation.py`). The ratified end state:
+
+| Legacy path | Modeled replacement | Same-PR deletion (required) |
+|-------------|---------------------|----------------------------|
+| `scripts/check-pr-sg0-net-shrink-discipline.sh` | `TestClaim` + `DisciplinePolicyCommand` (SG-0) | script file + `ci.yml` steps |
+| `scripts/check-r4-carve-dissolution-discipline.sh` | TestClaim (R4-carve) | script + steps |
+| `scripts/check-fabrication-sentinels.sh` | TestClaim | script + step |
+| `scripts/check-release-doc-authority.sh` | TestClaim | script + steps |
+| `scripts/check-manager-brief-authority.sh` | TestClaim | script + steps |
+| `scripts/check-rust-toolchain-single-authority.sh` | TestClaim | script + step |
+| `scripts/check-workflow-path-regex-inventory.sh` | TestClaim + Gate #103 `TestCommand` | script + step |
+| `scripts/check_t19_testgen_activation.py` | TestClaim (T-19) | script + step |
+
+**Forbidden steady state:** `DisciplinePolicyCommand` that shells out to retained `scripts/check-*.sh` (content-addressed script execution still leaves a second authority). **Allowed one-time import:** an atom may mechanically port shell logic into `TestClaim` oracle text in the **same PR** that deletes the script — no follow-on PR may depend on the deleted file.
+
+Scheduling: `DisciplinePolicyCommand` is a `CiJob` whose execution arm is **`TestCommand`** (or `TestClaimCorpusEvalCommand` for multi-claim policies) narrowed by `ci_select_from_affected_set` on each claim’s declared `authority_paths`.
+
+### 2.5 Mapping: today’s GitHub Actions jobs → modeled graph
 
 | GHA job (today) | Modeled as | Scheduling driver (target) |
 |-----------------|------------|----------------------------|
@@ -97,7 +116,7 @@ flowchart TB
   boot --> lens[LensCiCommand]
   boot --> m1[M1RustEmitProbeCommand]
   boot --> corpus[TestClaimCorpusEvalCommand]
-  boot --> disc[DisciplineScriptCommand x N]
+  boot --> disc[DisciplinePolicyCommand via TestClaim]
 
   claims --> tests[TestCommand / TestClaim eval]
   m1 --> v4gate[CiGate v4 receipt]
@@ -112,7 +131,7 @@ flowchart TB
 3. `RustToolchainPoolCommand` → all rust-consuming `CiJob`s (fmt, compile, test).
 4. `BootstrapStageCompile` → `LensCiCommand`, `M1RustEmitProbeCommand`, `TestClaimCorpusEvalCommand` (shared v2 binary / emit tree).
 5. `M1RustEmitProbeCommand` → `CiGate` (`m1_rust_emit_probe_signal`); **blocking** verdict (B01: no `continue-on-error` at authority).
-6. Discipline commands: no compile dependency unless script authority touches rust surface.
+6. `DisciplinePolicyCommand` → `TestCommand`(s): no compile dependency unless claim authority touches rust surface; **no `scripts/*` invocation**.
 7. `v3` job cluster: depends on pool + optional `BootstrapStageCompile` for gunbc-assisted tests only.
 
 **Duplicate reads eliminated:** one `fetch-depth: 0` + `git fetch origin main` at witness; `ci` job must not re-fetch for discipline-only paths (R04).
@@ -134,7 +153,7 @@ flowchart TB
 | `M1RustEmitProbeCommand` | `combine_hash(content_hash(src/v4/**.dag), v2_stage0_binary_digest, Rust)` | **`ci_cache_cmd_m1_probe_tag` (bug R10)** |
 | `TestClaimCorpusEvalCommand` | `combine_hash(corpus_merkle, selection_fn, roster_digest)` | static tag + fn symbol |
 | `TestCommand` | `content_hash(TestClaim node)` | per-filter cargo invocations |
-| `DisciplineScriptCommand` | `combine_hash(script_bytes_hash, authority_paths_merkle)` | unconditional shell |
+| `DisciplinePolicyCommand` | `content_hash(TestClaim node)` per scheduled claim (via `TestCommand`) | `check-*.sh` + unconditional shell steps |
 | `CiGate` | `combine_hash(job_verdict_hash, run_policy_digest)` | GHA `if:` strings |
 | `CiPipeline` (evaluator) | `ci_pipeline_cache_digest` → **dissolve** to `content_hash(Node projection of CiPipeline)` | hand-rolled fold (T-22) |
 
@@ -162,7 +181,7 @@ flowchart TB
 - Triggers, concurrency, permissions, runner labels (platform facts).
 - One checkout/fetch witness job OR inlined witness step.
 - Jobs emitted from `CiJob`/`CiGate` with `if:` expressions **projected** from `CiComponentAffected` + per-command schedule bitmap (not hand-tuned booleans).
-- No `bash scripts/check-*.sh` — discipline becomes `DisciplineScriptCommand` inside runner.
+- No `bash scripts/check-*.sh` — discipline is `DisciplinePolicyCommand` scheduling **TestClaim eval only** (§2.4).
 
 ---
 
@@ -177,9 +196,9 @@ Each atom = **one PR** that authors modeled facts **and** deletes the legacy pat
 | A3 | `CiRunnerPool` + M1 parallelism projection | wise-otter-34 | shell `V4_M1_CARGO_CHECK_JOBS` hacks |
 | A4 | `RustToolchainPoolCommand` + pool digest | clever-cat-115 | 2nd/3rd rustup in `ci`/`fmt` (R02) |
 | A5 | `LintCommand` real surface digest | clever-cat-115 | unconditional `fmt` on docs-only |
-| A6 | `DisciplineScriptCommand` × SG-0 / R4-carve | clever-cat-115 | `check-pr-sg0-*`, `check-r4-carve-*` steps |
-| A7 | `DisciplineScriptCommand` × doc/manager authority | clever-cat-115 | release-doc + manager-brief shell steps |
-| A8 | `DisciplineScriptCommand` × fabrication / T-19 / toolchain | clever-cat-115 | remaining discipline scripts in `ci` |
+| A6 | `DisciplinePolicyCommand` × SG-0 / R4-carve | clever-cat-115 | **Delete:** `scripts/check-pr-sg0-net-shrink-discipline.sh`, `scripts/check-r4-carve-dissolution-discipline.sh`; matching `ci.yml` steps; **Add:** `src/v4/test/claim/workflow/ci_discipline_sg0.dag`, `ci_discipline_r4_carve.dag` |
+| A7 | `DisciplinePolicyCommand` × doc/manager authority | clever-cat-115 | **Delete:** `scripts/check-release-doc-authority.sh`, `scripts/check-manager-brief-authority.sh`; steps; **Add:** `ci_discipline_release_doc.dag`, `ci_discipline_manager_brief.dag` |
+| A8 | `DisciplinePolicyCommand` × fabrication / T-19 / toolchain / Gate #103 inventory | clever-cat-115 | **Delete:** `scripts/check-fabrication-sentinels.sh`, `scripts/check-rust-toolchain-single-authority.sh`, `scripts/check-workflow-path-regex-inventory.sh`, `scripts/check_t19_testgen_activation.py`; steps; **Add:** matching `ci_discipline_*.dag` claims |
 | A9 | `M1RustEmitProbeCommand` runner + merkle cache | clever-cat-115 | `scripts/v4-m1-rust-emit-probe.sh`; `M1CiLiveWorkflowSignal` |
 | A10 | Bootstrap artifact edge → M1 | clever-cat-115 | duplicate full-tree compile (R08) |
 | A11 | `LensCiCommand` projection-only | clever-cat-115 | `LensCiLiveWorkflowSignal`; hand semantic step |
@@ -225,6 +244,7 @@ Each atom = **one PR** that authors modeled facts **and** deletes the legacy pat
 | Q8 | External cache backend | None vs sccache vs shared CARGO_HOME | **Defer** (R06); per-runner temp stays until infra decision |
 | Q9 | `#846` zero-filter tests | Move receipt vs fix filter | **Model `IgnoredTestCommand`** + run at correct site (audit §8) |
 | Q10 | Audit §7 P0 micro-rows | Keep vs rewrite | **Rewrite** to deletion-gated atoms A1–A18 (follow-up on #3885) |
+| Q11 | Discipline end-state | Retain `scripts/*` with content hash vs pure TestClaim | **Resolved:** pure TestClaim + delete scripts in A6–A8 (§2.4); no script authority at S3 |
 
 ---
 
@@ -233,7 +253,8 @@ Each atom = **one PR** that authors modeled facts **and** deletes the legacy pat
 Structural completion (not wall-clock promises):
 
 1. **T-24 closed** per `src/v4/TASKS.md`: `ci.dag` is sole CI authority; hand `ci.yml` deleted; generator emits checked YAML.
-2. **Zero** `scripts/*` invoked from CI except host transports explicitly declared as dissolution-pending with 🟡 marks (none remain for CI policy).
+2. **Zero** `scripts/*` invoked from CI for **policy/discipline** (including no content-addressed shell-out). Host transports only (`detect-ci-affected-components`, checkout/fetch) may remain until dissolved with explicit 🟡 marks; **no** `scripts/check-*.sh` on disk as CI policy authority.
+2b. Every former discipline script in §2.4 is **deleted** and covered by a `TestClaim` + `DisciplinePolicyCommand` row in `ci_pipeline`.
 3. **IRT-1 + IRT-4** wired for every `TestCommand` / `TestClaimCorpusEvalCommand` in CI roster (docs-only PR: no rust toolchain, no cargo, discipline claims skipped at frontier).
 4. **M1** cache uses real `src/v4` merkle; shell probe deleted; timeout cannot yield green (B01).
 5. **Single** `CiGitDiffReadOutcome` per workflow run (R04).
