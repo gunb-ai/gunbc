@@ -3848,6 +3848,24 @@ fn declaration_named(dag: &Dag, decl_id: DeclarationId, expected: &str) -> bool 
     dag.declaration(decl_id).name.as_deref() == Some(expected)
 }
 
+/// Surface `Parameterized` names must resolve through `local` / `symbols` to the
+/// canonical imported template before name-keyed lower hooks run (T-4.16).
+fn surface_parameterized_name_resolves_to_template(
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    surface_name: &str,
+    expected_template_name: &str,
+) -> bool {
+    let Some(&template_id) = local
+        .get(surface_name)
+        .or_else(|| symbols.get(surface_name))
+    else {
+        return false;
+    };
+    declaration_named(dag, template_id, expected_template_name)
+}
+
 fn config_patch_layer_args_diagnostic(span: &SourceSpan) -> Diagnostic {
     Diagnostic::ResolveError {
         name: "config_patch_layer requires exactly named arguments (base: <config>, patch: <config-patch>)"
@@ -4144,7 +4162,9 @@ fn type_to_declaration_id(
                 });
                 return id;
             }
-            if name == "ConfigPatchRecord" {
+            if surface_parameterized_name_resolves_to_template(
+                dag, symbols, local, name, "ConfigPatchRecord",
+            ) {
                 if let Some(connective) =
                     materialize_config_patch_record_connective(dag, symbols, local, args, span)
                 {
@@ -4271,7 +4291,9 @@ fn type_to_connective(
             {
                 return conn;
             }
-            if name == "ConfigPatchRecord" {
+            if surface_parameterized_name_resolves_to_template(
+                dag, symbols, local, name, "ConfigPatchRecord",
+            ) {
                 if let Some(conn) =
                     materialize_config_patch_record_connective(dag, symbols, local, args, span)
                 {
@@ -5601,7 +5623,10 @@ fn concretize_decl_with_lower_subst(
     }
     let decl = dag.declaration(current).clone();
     match decl.connective {
-        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).unwrap_or(current),
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => match subst.lookup(current) {
+            Some(bound) => concretize_decl_with_lower_subst(dag, bound, subst, depth + 1),
+            None => current,
+        },
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             concretize_decl_with_lower_subst(dag, next, subst, depth + 1)
@@ -12666,6 +12691,209 @@ mod tests {
         assert_ne!(
             list_inner, t_param,
             "must not fall back to unspecialized List<T> type param"
+        );
+    }
+
+    /// `ConfigPatchRecord<BlackCfg>` must substitute through a config type alias (`BlackCfg = Cfg<Int>`),
+    /// not only through direct `ConfigPatchRecord<Cfg<Int>>`.
+    #[test]
+    fn materialize_config_patch_record_substitutes_through_config_type_alias() {
+        let mut dag = Dag::new();
+        let int_id = dag.int_shape().expect("bootstrap Int").declaration;
+        let list_tpl = dag.declaration_by_name("List").expect("bootstrap List").id;
+        let list_tpl_param = template_param_id(&dag, list_tpl, 0).expect("List type param");
+        let t_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+        );
+        let list_t = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: list_tpl,
+                arguments: vec![TemplateArgument {
+                    parameter: list_tpl_param,
+                    value: t_param,
+                }],
+            },
+        );
+        let cfg_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("Cfg".to_string()),
+                connective: TypeConnective::Conj {
+                    children: vec![Field {
+                        label: "magics".to_string(),
+                        ty: list_t,
+                    }],
+                },
+                type_params: vec![t_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+        let cfg_int = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: cfg_tpl,
+                arguments: vec![TemplateArgument {
+                    parameter: t_param,
+                    value: int_id,
+                }],
+            },
+        );
+        let field_patch_t_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("PatchT".to_string())),
+        );
+        let field_patch_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("FieldPatch".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: vec![field_patch_t_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+        let config_patch_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("Config".to_string())),
+        );
+        let config_patch_record_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("ConfigPatchRecord".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: vec![config_patch_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+
+        let mut symbols = HashMap::new();
+        symbols.insert("Cfg".to_string(), cfg_tpl);
+        symbols.insert("BlackCfg".to_string(), cfg_int);
+        symbols.insert("Int".to_string(), int_id);
+        symbols.insert("FieldPatch".to_string(), field_patch_tpl);
+        symbols.insert("ConfigPatchRecord".to_string(), config_patch_record_tpl);
+
+        let span = test_span();
+        let args = [TypeAngleArg::TypeExpr {
+            ty: Box::new(SurfaceType::Named {
+                name: "BlackCfg".to_string(),
+                span: span.clone(),
+            }),
+        }];
+
+        let patch_conj = materialize_config_patch_record_connective(
+            &mut dag,
+            &symbols,
+            &HashMap::new(),
+            &args,
+            &span,
+        )
+        .expect("alias-bound config lowers to a record");
+
+        let TypeConnective::Conj { children } = patch_conj else {
+            panic!("expected patch Conj");
+        };
+        let patch_magics = children[0].ty;
+        let inner = {
+            let TypeConnective::Instantiation { arguments, .. } =
+                &dag.declaration(patch_magics).connective
+            else {
+                panic!("expected FieldPatch instantiation");
+            };
+            arguments[0].value
+        };
+        let list_inner = list_instantiation_element(&dag, inner);
+        assert_eq!(list_inner, int_id);
+    }
+
+    #[test]
+    fn config_patch_record_materialization_requires_imported_template_name() {
+        let mut dag = Dag::new();
+        let int_id = dag.int_shape().expect("bootstrap Int").declaration;
+        let field_patch_tpl = dag.declaration_by_name("FieldPatch");
+        let field_patch_tpl = if let Some(decl) = field_patch_tpl {
+            decl.id
+        } else {
+            push_anonymous_test_declaration(
+                &mut dag,
+                TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+            )
+        };
+        let mut symbols = HashMap::new();
+        symbols.insert("Int".to_string(), int_id);
+        symbols.insert("FieldPatch".to_string(), field_patch_tpl);
+        // Deliberately omit `ConfigPatchRecord` from symbols — surface spelling alone must not run
+        // the projection hook.
+
+        let span = test_span();
+        let ty = SurfaceType::Parameterized {
+            name: "ConfigPatchRecord".to_string(),
+            args: vec![TypeAngleArg::TypeExpr {
+                ty: Box::new(SurfaceType::Named {
+                    name: "Int".to_string(),
+                    span: span.clone(),
+                }),
+            }],
+            span: span.clone(),
+        };
+
+        assert!(
+            !surface_parameterized_name_resolves_to_template(
+                &dag,
+                &symbols,
+                &HashMap::new(),
+                "ConfigPatchRecord",
+                "ConfigPatchRecord",
+            ),
+            "unimported surface name must not match the patch template"
+        );
+
+        let connective = type_to_connective(&ty, &symbols, &HashMap::new(), &mut dag);
+        assert!(
+            matches!(
+                connective,
+                TypeConnective::Instantiation { .. }
+                    | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+            ),
+            "expected ordinary instantiation/stub, not materialized patch Conj, got {connective:?}"
+        );
+        assert!(
+            !matches!(connective, TypeConnective::Conj { .. }),
+            "must not materialize without imported ConfigPatchRecord template"
         );
     }
 }
