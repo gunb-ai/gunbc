@@ -88,12 +88,14 @@ type ModuleRootFindState
   | ModuleRootProjectionRejected { diagnostics: NonEmptyDiagnostics }
 
 
+// 🟢 coproduct dissolution — T-QN-1 Change 2 module-root validate accumulator.
 type ModuleRootValidateState
   = ModuleRootsValid { seen: FreeMonoid<QualifiedName> }
   | ModuleRootsDuplicate
   | ModuleRootsProjectionRejected { diagnostics: NonEmptyDiagnostics }
 
 
+// 🟢 coproduct dissolution — T-QN-1 Change 2 module-root name-find accumulator.
 type ModuleRootNameFindState
   = ModuleRootNameNotFound
   | ModuleRootNameFoundOnce
