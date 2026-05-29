@@ -134,7 +134,7 @@ fn try_v2_compile_main_dag_entry(root: &Path) {
         entry_root.join("v4/bin/main.dag"),
     )
     .expect("copy main.dag entry");
-    copy_dir_all(&root.join("src/v4"), &deps_root).expect("copy src/v4 deps");
+    copy_dir_all(&root.join("src/v4"), &deps_root.join("v4")).expect("copy src/v4 deps");
     fs::remove_file(deps_root.join("v4/bin/main.dag"))
         .expect("remove duplicate main.dag from deps");
 
