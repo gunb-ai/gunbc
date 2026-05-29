@@ -5,13 +5,82 @@
 
 module v4.extdeps.formatters.swift_format
 
+import v4.std.diagnostic { Locus, Outcome }
+import v4.std.node { Symbol }
 import v4.std.patch { ConfigPatchRecord, config_patch_layer }
+import v4.std.refinement { Refined, Validation, refine }
+
+
+type SwiftFormatPositiveInt = Refined<Int>
+
+
+data swift_format_positive_int_out_of_range: Symbol = swift_format_positive_int_out_of_range
+
+
+fn swift_format_positive_int_admits(value: Int) -> Bool {
+  value >= 1
+}
+
+
+data swift_format_positive_int_validation: Validation<Int> = Validation {
+  reason: swift_format_positive_int_out_of_range,
+  admits: swift_format_positive_int_admits
+}
+
+
+fn make_swift_format_positive_int(value: Int, at: Locus) -> Outcome<SwiftFormatPositiveInt> {
+  refine(base: value, by: swift_format_positive_int_validation, at: at)
+}
+
+
+type SwiftFormatNonNegInt = Refined<Int>
+
+
+data swift_format_non_neg_int_out_of_range: Symbol = swift_format_non_neg_int_out_of_range
+
+
+fn swift_format_non_neg_int_admits(value: Int) -> Bool {
+  value >= 0
+}
+
+
+data swift_format_non_neg_int_validation: Validation<Int> = Validation {
+  reason: swift_format_non_neg_int_out_of_range,
+  admits: swift_format_non_neg_int_admits
+}
+
+
+fn make_swift_format_non_neg_int(value: Int, at: Locus) -> Outcome<SwiftFormatNonNegInt> {
+  refine(base: value, by: swift_format_non_neg_int_validation, at: at)
+}
+
+
+type SwiftFormatVersion = Refined<Int>
+
+
+data swift_format_version_out_of_range: Symbol = swift_format_version_out_of_range
+
+
+fn swift_format_version_admits(value: Int) -> Bool {
+  value == 1
+}
+
+
+data swift_format_version_validation: Validation<Int> = Validation {
+  reason: swift_format_version_out_of_range,
+  admits: swift_format_version_admits
+}
+
+
+fn make_swift_format_version(value: Int, at: Locus) -> Outcome<SwiftFormatVersion> {
+  refine(base: value, by: swift_format_version_validation, at: at)
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SwiftFormatIndentation
-  = SwiftFormatSpaces { count: Int } // 🟡 gated: formatter-int-refinement — must be ≥1
-  | SwiftFormatTabs { count: Int }   // 🟡 gated: formatter-int-refinement — must be ≥1
+  = SwiftFormatSpaces { count: SwiftFormatPositiveInt }
+  | SwiftFormatTabs { count: SwiftFormatPositiveInt }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -50,15 +119,14 @@ type SwiftFormatOrderedImports {
 }
 
 
-// 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 // 🟡 gated — feature: swift-format-rules-carrier — bind T-4.16 follow-on — dissolve-on-arrival: add rules: Map<String, Bool> field to SwiftFormatConfig once Map is available as a language-level primitive without requiring a std import; forbidden: List<SwiftFormatRuleOverride> workarounds that lose the Bool-keyed semantics of the rules dictionary.
 type SwiftFormatConfig {
-  version: Int // 🟡 gated: formatter-int-refinement — must be exactly 1
-  line_length: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  version: SwiftFormatVersion
+  line_length: SwiftFormatPositiveInt
   indentation: SwiftFormatIndentation,
-  tab_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1
-  maximum_blank_lines: Int // 🟡 gated: formatter-int-refinement — must be ≥0
-  spaces_before_end_of_line_comments: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  tab_width: SwiftFormatPositiveInt
+  maximum_blank_lines: SwiftFormatNonNegInt
+  spaces_before_end_of_line_comments: SwiftFormatNonNegInt
   respects_existing_line_breaks: Bool,
   line_break_before_control_flow_keywords: Bool,
   line_break_before_each_argument: Bool,
@@ -80,12 +148,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: 1,
-  line_length: 100,
-  indentation: SwiftFormatSpaces { count: 2 },
-  tab_width: 8,
-  maximum_blank_lines: 1,
-  spaces_before_end_of_line_comments: 2,
+  version: Refined { base: 1 },
+  line_length: Refined { base: 100 },
+  indentation: SwiftFormatSpaces { count: Refined { base: 2 } },
+  tab_width: Refined { base: 8 },
+  maximum_blank_lines: Refined { base: 1 },
+  spaces_before_end_of_line_comments: Refined { base: 2 },
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,
