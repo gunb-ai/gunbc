@@ -848,6 +848,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **This PR (+0 paths):** structural serialize-measure ratchet on `06_translate.dag`
     // (parsed-surface receipts only); fail-closed exercised by mvp1 TestClaimRun — see
     // INVARIANTS.md §SG-0 row `v4_compiler_emit_translate_smoke_test.rs`.
+    // **PR #3798 (+0 paths):** extends `v4_python_language_model_declares_t11_translation_rules`.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
