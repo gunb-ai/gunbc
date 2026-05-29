@@ -156,7 +156,9 @@ fn try_v2_compile_main_dag_entry(root: &Path) {
         ])
         .output()
         .unwrap_or_else(|e| panic!("spawn gunbc compile: {e}"));
-    fs::write(&compile_log, [&status.stdout, &status.stderr].concat()).ok();
+    let mut log_bytes = status.stdout.clone();
+    log_bytes.extend_from_slice(&status.stderr);
+    fs::write(&compile_log, log_bytes).ok();
 
     assert!(
         status.status.success(),
