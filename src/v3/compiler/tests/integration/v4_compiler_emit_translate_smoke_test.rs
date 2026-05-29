@@ -1057,6 +1057,158 @@ fn surface_fn_first_param_named_type(
     })
 }
 
+fn data_named_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> Option<String> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Data { name: item_name, ty, .. } if item_name == name => {
+            Some(surface_type_name(ty))
+        }
+        _ => None,
+    })
+}
+
+fn data_body_source<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    source: &'a str,
+    name: &str,
+) -> Option<&'a str> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Data {
+            name: item_name,
+            body: Some(body),
+            ..
+        } if item_name == name => Some(match body {
+            SurfaceExpr::List { .. } | SurfaceExpr::Record { .. } => {
+                source_span_text(source, &body.span())
+            }
+            _ => return None,
+        }),
+        SurfaceItem::Data {
+            name: item_name,
+            body: None,
+            body_span,
+            ..
+        } if item_name == name => Some(source_span_text(source, body_span)),
+        _ => None,
+    })
+}
+
+fn data_body_source_contains(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    name: &str,
+    needle: &str,
+) -> bool {
+    data_body_source(module, source, name).is_some_and(|body| body.contains(needle))
+}
+
+fn data_list_element_var_names(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    name: &str,
+) -> Vec<String> {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(SurfaceExpr::List { elements, .. }),
+                ..
+            } if item_name == name => Some(
+                elements
+                    .iter()
+                    .map(|element| match element {
+                        SurfaceExpr::Var { name, .. } => name.clone(),
+                        other => panic!("expected list element var in `{name}`, got {other:?}"),
+                    })
+                    .collect(),
+            ),
+            SurfaceItem::Data {
+                name: item_name,
+                body: None,
+                body_span,
+                ..
+            } if item_name == name => {
+                let body = source_span_text(source, body_span);
+                Some(
+                    body.split(',')
+                        .map(str::trim)
+                        .filter(|line| !line.is_empty() && *line != "[" && *line != "]")
+                        .map(|line| line.trim_end_matches(',').to_string())
+                        .collect(),
+                )
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data list body `{name}`"))
+}
+
+fn fn_external_body_contains(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    fn_name: &str,
+    needle: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::FnExternalBody { name, body_span, .. } if name == fn_name => {
+            source_span_text(source, body_span).contains(needle)
+        }
+        SurfaceItem::Fn { name, body, .. } if name == fn_name => match body {
+            SurfaceExpr::Record { fields, .. } => fields
+                .iter()
+                .any(|field| expr_source_contains(&field.value, needle)),
+            _ => source_span_text(source, &body.span()).contains(needle),
+        },
+        _ => false,
+    })
+}
+
+fn source_span_text<'a>(source: &'a str, span: &v3_compiler::SourceSpan) -> &'a str {
+    source
+        .get(span.byte_start as usize..span.byte_end as usize)
+        .unwrap_or_else(|| panic!("invalid source span {}..{}", span.byte_start, span.byte_end))
+}
+
+fn expr_source_contains(expr: &SurfaceExpr, needle: &str) -> bool {
+    match expr {
+        SurfaceExpr::Var { name, .. } => name.contains(needle),
+        SurfaceExpr::Call { target, args, .. } => {
+            target.contains(needle) || args.iter().any(|arg| expr_source_contains(arg, needle))
+        }
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields
+            .iter()
+            .any(|field| expr_source_contains(&field.value, needle)),
+        _ => false,
+    }
+}
+
+trait SurfaceExprSpan {
+    fn span(&self) -> v3_compiler::SourceSpan;
+}
+
+impl SurfaceExprSpan for SurfaceExpr {
+    fn span(&self) -> v3_compiler::SourceSpan {
+        match self {
+            SurfaceExpr::Literal { span, .. }
+            | SurfaceExpr::Var { span, .. }
+            | SurfaceExpr::Path { span, .. }
+            | SurfaceExpr::Call { span, .. }
+            | SurfaceExpr::PathCall { span, .. }
+            | SurfaceExpr::VariantRecord { span, .. }
+            | SurfaceExpr::Operator { span, .. }
+            | SurfaceExpr::Lambda { span, .. }
+            | SurfaceExpr::If { span, .. }
+            | SurfaceExpr::Match { span, .. }
+            | SurfaceExpr::Record { span, .. }
+            | SurfaceExpr::List { span, .. }
+            | SurfaceExpr::Map { span, .. } => *span,
+        }
+    }
+}
+
 fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
     module.items.iter().any(|item| match item {
         SurfaceItem::Data {
