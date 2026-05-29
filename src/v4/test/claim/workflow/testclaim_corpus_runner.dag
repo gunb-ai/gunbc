@@ -37,9 +37,6 @@ import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verdict {
   Verdict,
-  Deferred,
-  Fail,
-  Pass,
   verdict_is_deferred,
   verdict_is_fail,
   verdict_is_pass
@@ -91,30 +88,22 @@ fn corpus_entry_label(e: CorpusEvalEntry) -> String {
 }
 
 
+// Per-entry verdict predicates delegate to the canonical Verdict<T>
+// predicates in v4.std.verdict — no per-variant match in workflow code
+// (docs/modeling-discipline.md predicate-dissolution: the closed Verdict
+// coproduct stays single authority for Pass / Fail / Deferred classification).
 fn corpus_entry_is_pass(e: CorpusEvalEntry) -> Bool {
-  match e.verdict {
-    Pass => true
-    Fail { actual: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_is_pass(v: e.verdict)
 }
 
 
 fn corpus_entry_is_fail(e: CorpusEvalEntry) -> Bool {
-  match e.verdict {
-    Pass => false
-    Fail { actual: _ } => true
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_is_fail(v: e.verdict)
 }
 
 
 fn corpus_entry_is_deferred(e: CorpusEvalEntry) -> Bool {
-  match e.verdict {
-    Pass => false
-    Fail { actual: _ } => false
-    Deferred { actual: _, diagnostic: _ } => true
-  }
+  verdict_is_deferred(v: e.verdict)
 }
 
 
