@@ -1,0 +1,66 @@
+// src/v4/test/claim/lens_determinism/hash_map_in_body.dag
+// Scope: PR-2 claim — Deterministic fn body containing HashMap carrier -> Violates(HashIteration).
+
+
+module v4.test.claim.lens_determinism.hash_map_in_body
+
+import v4.compiler.infer { InferredTree }
+import v4.lens.determinism {
+  determinism_forbidden_hash_iteration,
+  determinism_witness_from_facts,
+  forbidden_symbol_hash_map
+}
+import v4.std.determinism { DeterminismFact, Deterministic }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.witness { Violates, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data det_hash_fn_symbol: Symbol = det_hash_fn_symbol
+data det_hash_type_symbol: Symbol = det_hash_type_symbol
+data det_hash_algebra_symbol: Symbol = det_hash_algebra_symbol
+data det_hash_descent_symbol: Symbol = det_hash_descent_symbol
+
+data det_hash_body: Node = claim_atom_node(s: forbidden_symbol_hash_map)
+
+data det_hash_subject: DeterminismFact = DeterminismFact {
+  signature: det_hash_fn_symbol,
+  classification: Deterministic
+}
+
+fn det_hash_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: det_hash_body,
+    facts: claim_inferred_facts(
+      type_symbol: det_hash_type_symbol,
+      algebra_symbol: det_hash_algebra_symbol,
+      descent_symbol: det_hash_descent_symbol,
+    ),
+  )
+}
+
+type LensDeterminismHashMapClaim {
+  actual: Witness<DeterminismFact>
+}
+
+data det_hash_map_claim: LensDeterminismHashMapClaim = LensDeterminismHashMapClaim {
+  actual: determinism_witness_from_facts(
+    tree: det_hash_tree(),
+    facts: [det_hash_subject],
+    subject: det_hash_subject,
+    body: det_hash_body,
+  )
+}
+
+fn det_hash_map_claim_violates_hash_iteration() -> Bool {
+  match det_hash_map_claim.actual {
+    Violates { diagnostic: d } => d.reason == determinism_forbidden_hash_iteration
+    _ => false
+  }
+}
+
+data det_hash_map_claim_passes: Bool = det_hash_map_claim_violates_hash_iteration()

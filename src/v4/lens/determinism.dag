@@ -1,0 +1,318 @@
+// src/v4/lens/determinism.dag
+// Scope: determinism lens — structural verifier for functions declaring Deterministic.
+// Status: PR-2 — forbids HashMap/HashSet, clock/RNG/env reads; enforces transitive
+//   Deterministic on direct callees (full body index lands PR-4).
+// Anchor: operator-directive 2026-05-29 determinism-as-modeled-effect lane.
+// Orthogonal to v4.lens.effect / v4.std.effects (idempotency axis).
+
+
+module v4.lens.determinism
+
+import v4.compiler.infer { InferredTree }
+import v4.std.collection {
+  List,
+  Map,
+  Optional,
+  optional_absent,
+  optional_prefer_first_present,
+  optional_present
+}
+import v4.std.dependency {
+  DependencyView,
+  ModuleDependsOn,
+  dependency_lens
+}
+import v4.std.determinism {
+  DeterminismClass,
+  DeterminismFact,
+  NonDetSource,
+  determinism_class_is_deterministic,
+  determinism_registry_from_facts,
+  determinism_registry_lookup
+}
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Unavailable,
+  node_locus
+}
+import v4.std.logic { Bool }
+import v4.std.node {
+  Atom,
+  Bind,
+  ComputationNode,
+  Connective,
+  Edge,
+  Named,
+  Node,
+  NodeFold,
+  Symbol,
+  Transform,
+  TypeNode,
+  fold_node
+}
+import v4.std.witness { Holds, Violates, Witness }
+
+data determinism_forbidden_hash_iteration: Symbol = determinism_forbidden_hash_iteration
+data determinism_forbidden_time_read: Symbol = determinism_forbidden_time_read
+data determinism_forbidden_random_read: Symbol = determinism_forbidden_random_read
+data determinism_forbidden_env_read: Symbol = determinism_forbidden_env_read
+data determinism_effect_leak: Symbol = determinism_effect_leak
+
+// Closed forbidden carriers — PR-4 aligns emit/infer/translate surfaces to these symbols.
+data forbidden_symbol_hash_map: Symbol = forbidden_symbol_hash_map
+data forbidden_symbol_hash_set: Symbol = forbidden_symbol_hash_set
+data forbidden_symbol_btree_map: Symbol = forbidden_symbol_btree_map
+data forbidden_symbol_btree_set: Symbol = forbidden_symbol_btree_set
+data forbidden_symbol_now: Symbol = forbidden_symbol_now
+data forbidden_symbol_instant_now: Symbol = forbidden_symbol_instant_now
+data forbidden_symbol_system_time_now: Symbol = forbidden_symbol_system_time_now
+data forbidden_symbol_random: Symbol = forbidden_symbol_random
+data forbidden_symbol_thread_rng: Symbol = forbidden_symbol_thread_rng
+data forbidden_symbol_gen_range: Symbol = forbidden_symbol_gen_range
+data forbidden_symbol_std_env: Symbol = forbidden_symbol_std_env
+data forbidden_symbol_getenv: Symbol = forbidden_symbol_getenv
+data forbidden_symbol_var_os: Symbol = forbidden_symbol_var_os
+
+type DeterminismViolation
+  = ForbiddenSource { source: NonDetSource, at: Node }
+  | EffectLeak { callee: Symbol, at: Node }
+
+type ForbiddenScanState {
+  violation: Optional<DeterminismViolation>
+}
+
+fn non_det_source_for_symbol(sym: Symbol) -> Optional<NonDetSource> {
+  if sym == forbidden_symbol_hash_map || sym == forbidden_symbol_hash_set {
+    optional_present(value: HashIteration)
+  } else if sym == forbidden_symbol_now ||
+      sym == forbidden_symbol_instant_now ||
+      sym == forbidden_symbol_system_time_now {
+    optional_present(value: TimeRead)
+  } else if sym == forbidden_symbol_random ||
+      sym == forbidden_symbol_thread_rng ||
+      sym == forbidden_symbol_gen_range {
+    optional_present(value: RandomRead)
+  } else if sym == forbidden_symbol_std_env ||
+      sym == forbidden_symbol_getenv ||
+      sym == forbidden_symbol_var_os {
+    optional_present(value: EnvRead)
+  } else {
+    optional_absent()
+  }
+}
+
+fn forbidden_source_at_node(node: Node) -> Optional<DeterminismViolation> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      match non_det_source_for_symbol(sym: sym) {
+        Present { value: source } =>
+          optional_present(
+            value: ForbiddenSource { source: source, at: node }
+          )
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn forbidden_scan_init(n: Node) -> ForbiddenScanState {
+  ForbiddenScanState {
+    violation: forbidden_source_at_node(node: n)
+  }
+}
+
+fn forbidden_scan_step(
+  acc: ForbiddenScanState,
+  edge: Edge,
+  child: ForbiddenScanState
+) -> ForbiddenScanState {
+  ForbiddenScanState {
+    violation: optional_prefer_first_present(
+      left: acc.violation,
+      right: optional_prefer_first_present(
+        left: forbidden_source_at_node(node: edge.target),
+        right: child.violation
+      )
+    )
+  }
+}
+
+fn first_forbidden_in_body(body: Node) -> Optional<DeterminismViolation> {
+  fold_node(
+    n: body,
+    algebra: NodeFold {
+      init: forbidden_scan_init,
+      step: forbidden_scan_step
+    }
+  ).violation
+}
+
+fn module_import_forbidden(view: DependencyView) -> Optional<DeterminismViolation> {
+  if view.kind == ModuleDependsOn {
+    forbidden_source_at_node(node: view.dependent)
+  } else {
+    optional_absent()
+  }
+}
+
+fn first_forbidden_module_import(body: Node) -> Optional<DeterminismViolation> {
+  fold(dependency_lens(root: body), init: optional_absent(), f: fn(acc, view) {
+    optional_prefer_first_present(
+      left: acc,
+      right: module_import_forbidden(view: view)
+    )
+  })
+}
+
+fn reason_for_non_det_source(source: NonDetSource) -> Symbol {
+  match source {
+    HashIteration => determinism_forbidden_hash_iteration
+    TimeRead => determinism_forbidden_time_read
+    RandomRead => determinism_forbidden_random_read
+    EnvRead => determinism_forbidden_env_read
+  }
+}
+
+fn diagnostic_for_violation(v: DeterminismViolation) -> Diagnostic {
+  match v {
+    ForbiddenSource { source: source, at: node } =>
+      Diagnostic {
+        reason: reason_for_non_det_source(source: source),
+        at: node_locus(node: node),
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+    EffectLeak { callee: callee, at: node } =>
+      Diagnostic {
+        reason: determinism_effect_leak,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+  }
+}
+
+type CalleeScanState {
+  current: Node
+  violation: Optional<DeterminismViolation>
+}
+
+fn callee_is_transform_or_bind(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } => true
+    ComputationNode { behavior: Bind } => true
+    _ => false
+  }
+}
+
+fn callee_edge_violation(
+  registry: Map<Symbol, DeterminismClass>,
+  parent: Node,
+  edge: Edge
+) -> Optional<DeterminismViolation> {
+  if callee_is_transform_or_bind(n: parent) {
+    match edge.label {
+      Named { name: callee_sym } =>
+        match determinism_registry_lookup(registry: registry, signature: callee_sym) {
+          Holds { value: classification } =>
+            if determinism_class_is_deterministic(classification: classification) {
+              optional_absent()
+            } else {
+              optional_present(
+                value: EffectLeak { callee: callee_sym, at: edge.target }
+              )
+            }
+          Violates { diagnostic: _ } =>
+            optional_present(
+              value: EffectLeak { callee: callee_sym, at: edge.target }
+            )
+        }
+      Positional => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn callee_scan_init(n: Node) -> CalleeScanState {
+  CalleeScanState {
+    current: n,
+    violation: optional_absent()
+  }
+}
+
+fn callee_scan_with_registry(
+  registry: Map<Symbol, DeterminismClass>,
+  acc: CalleeScanState,
+  edge: Edge,
+  child: CalleeScanState
+) -> CalleeScanState {
+  CalleeScanState {
+    current: acc.current,
+    violation: optional_prefer_first_present(
+      left: acc.violation,
+      right: optional_prefer_first_present(
+        left: callee_edge_violation(registry: registry, parent: acc.current, edge: edge),
+        right: child.violation
+      )
+    )
+  }
+}
+
+fn first_effect_leak_in_body(
+  body: Node,
+  registry: Map<Symbol, DeterminismClass>
+) -> Optional<DeterminismViolation> {
+  fold_node(
+    n: body,
+    algebra: NodeFold {
+      init: callee_scan_init,
+      step: fn(acc, edge, child) {
+        callee_scan_with_registry(registry: registry, acc: acc, edge: edge, child: child)
+      }
+    }
+  ).violation
+}
+
+fn first_violation_in_body(
+  body: Node,
+  registry: Map<Symbol, DeterminismClass>
+) -> Optional<DeterminismViolation> {
+  optional_prefer_first_present(
+    left: first_forbidden_in_body(body: body),
+    right: optional_prefer_first_present(
+      left: first_forbidden_module_import(body: body),
+      right: first_effect_leak_in_body(body: body, registry: registry)
+    )
+  )
+}
+
+fn determinism_witness(
+  tree: InferredTree,
+  registry: Map<Symbol, DeterminismClass>,
+  subject: DeterminismFact,
+  body: Node
+) -> Witness<DeterminismFact> {
+  match subject.classification {
+    Deterministic =>
+      match first_violation_in_body(body: body, registry: registry) {
+        Present { value: v } =>
+          Violates { diagnostic: diagnostic_for_violation(v: v) }
+        Absent => Holds { value: subject }
+      }
+    NonDeterministic { source: _ } => Holds { value: subject }
+  }
+}
+
+fn determinism_witness_from_facts(
+  tree: InferredTree,
+  facts: List<DeterminismFact>,
+  subject: DeterminismFact,
+  body: Node
+) -> Witness<DeterminismFact> {
+  determinism_witness(
+    tree: tree,
+    registry: determinism_registry_from_facts(facts: facts),
+    subject: subject,
+    body: body
+  )
+}

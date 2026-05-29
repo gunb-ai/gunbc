@@ -34,6 +34,8 @@
 module v4.std.determinism
 
 
+import v4.std.collection { List, Map, empty_map, map_insert }
+import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 
 
@@ -74,4 +76,29 @@ type DeterminismClass
 type DeterminismFact {
   signature: Symbol,
   classification: DeterminismClass
+}
+
+
+// PR-4 populates hundreds of rows; Pass-2 callee lookup is hot-path — build once,
+// query via Map rather than scanning List per call site.
+fn determinism_registry_from_facts(facts: List<DeterminismFact>) -> Map<Symbol, DeterminismClass> {
+  fold(facts, init: empty_map(), f: fn(acc, row) {
+    map_insert(m: acc, key: row.signature, value: row.classification)
+  })
+}
+
+
+fn determinism_class_is_deterministic(classification: DeterminismClass) -> Bool {
+  match classification {
+    Deterministic => true
+    NonDeterministic { source: _ } => false
+  }
+}
+
+
+fn determinism_registry_lookup(
+  registry: Map<Symbol, DeterminismClass>,
+  signature: Symbol
+) -> Witness<DeterminismClass> {
+  registry.lookup(signature)
 }

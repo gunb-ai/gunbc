@@ -1,0 +1,96 @@
+// src/v4/test/claim/lens_determinism/deterministic_btree_callee.dag
+// Scope: PR-2 claim — Deterministic fn using BTreeMap + Deterministic callee -> Holds.
+
+
+module v4.test.claim.lens_determinism.deterministic_btree_callee
+
+import v4.compiler.infer { InferredTree }
+import v4.lens.determinism {
+  determinism_witness_from_facts,
+  forbidden_symbol_btree_map
+}
+import v4.std.determinism { DeterminismFact, Deterministic }
+import v4.std.logic { Bool }
+import v4.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  Transform,
+  TypeNode
+}
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data det_clean_caller_symbol: Symbol = det_clean_caller_symbol
+data det_clean_callee_symbol: Symbol = det_clean_callee_symbol
+data det_clean_type_symbol: Symbol = det_clean_type_symbol
+data det_clean_algebra_symbol: Symbol = det_clean_algebra_symbol
+data det_clean_descent_symbol: Symbol = det_clean_descent_symbol
+
+data det_clean_map_node: Node = claim_atom_node(s: forbidden_symbol_btree_map)
+data det_clean_callee_target: Node = claim_atom_node(s: det_clean_callee_symbol)
+
+data det_clean_body: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge {
+      label: Named { name: det_clean_map_node },
+      target: det_clean_map_node
+    },
+    Edge {
+      label: Named { name: det_clean_callee_symbol },
+      target: det_clean_callee_target
+    }
+  ]
+}
+
+data det_clean_callee_fact: DeterminismFact = DeterminismFact {
+  signature: det_clean_callee_symbol,
+  classification: Deterministic
+}
+
+data det_clean_subject: DeterminismFact = DeterminismFact {
+  signature: det_clean_caller_symbol,
+  classification: Deterministic
+}
+
+fn det_clean_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: det_clean_body,
+    facts: claim_inferred_facts(
+      type_symbol: det_clean_type_symbol,
+      algebra_symbol: det_clean_algebra_symbol,
+      descent_symbol: det_clean_descent_symbol,
+    ),
+  )
+}
+
+type LensDeterminismCleanClaim {
+  actual: Witness<DeterminismFact>
+}
+
+data det_clean_claim: LensDeterminismCleanClaim = LensDeterminismCleanClaim {
+  actual: determinism_witness_from_facts(
+    tree: det_clean_tree(),
+    facts: [det_clean_subject, det_clean_callee_fact],
+    subject: det_clean_subject,
+    body: det_clean_body,
+  )
+}
+
+fn det_clean_claim_holds() -> Bool {
+  match det_clean_claim.actual {
+    Holds { value: fact } =>
+      fact.signature == det_clean_caller_symbol
+    _ => false
+  }
+}
+
+data det_clean_claim_passes: Bool = det_clean_claim_holds()
