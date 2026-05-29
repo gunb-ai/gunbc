@@ -292,9 +292,9 @@ placeholder remains before T-15 can consume it as a real fixed-point proof:
 `bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
 aliases dissolve on T-15 B1 content_hash supplying computed merkle digests.
 Construct-list walk landed in T-32 Phase 2 (#3907): footprint derives via
-`bootstrap_footprint_fold_state` over `bootstrap_projection_closure_node`
-(snapshot / `target_model.bundle` / runtime data edges plus construct
-inventory edges whose targets are read through `child.constructs`; declared
+per-input construct inventory queries (`bootstrap_snapshot_construct_inventory`,
+`bootstrap_target_model_construct_inventory` over `target.bundle` named edges,
+`bootstrap_runtime_model_construct_inventory` over `runtime_model`); declared
 `seed_capability` inventory is separate (`bootstrap_seed_capability_inventory_root`)
 (dissolves `feature:bootstrap-footprint-constructs-walk`).
 
