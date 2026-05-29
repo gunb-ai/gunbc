@@ -31,9 +31,6 @@ import v4.std.algebra {
   length,
   unique
 }
-import v4.workflow.bootstrap { v4_stage0_binary }
-
-
 // 🟡 coproduct dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` CiCommand / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-synced command surface; forbidden: adding release transport variants outside this coproduct + `release_pipeline`.
 type ReleaseCommand
   = CrossMuslGunbcBuild { target: String }
@@ -236,7 +233,7 @@ data release_matrix_build_coverage_gap: Symbol = release_matrix_build_coverage_g
 data release_matrix_build_target_drift_gap: Symbol = release_matrix_build_target_drift_gap
 data release_matrix_upload_drain_gap: Symbol = release_matrix_upload_drain_gap
 data release_publish_drain_gap: Symbol = release_publish_drain_gap
-data release_bootstrap_authority_violation: Symbol = release_bootstrap_authority_violation
+data release_command_authority_violation: Symbol = release_command_authority_violation
 data release_workflow_file: Symbol = release_workflow_file
 
 fn release_diagnostic(reason: Symbol) -> Diagnostic {
