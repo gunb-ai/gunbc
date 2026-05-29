@@ -71,6 +71,7 @@ jobs:
       v3: ${{ steps.detect.outputs.v3 }}
       v4: ${{ steps.detect.outputs.v4 }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
+      ci_rust: ${{ steps.detect.outputs.ci_rust }}
     steps:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -146,15 +147,22 @@ jobs:
       run: bash scripts/test-check-test-timeout.sh
     - name: Rust toolchain single-authority check (P2)
       run: bash scripts/check-rust-toolchain-single-authority.sh
+    # Rust setup + cargo cache are gated on `ci_rust` (any of v2/v3/v4/workflow_policy
+    # affected) or push-to-main. Docs-only PRs (e.g. *.md, ROADMAP, TASKS) skip every
+    # cargo-using step below via existing `if:` conditions; without this gate the
+    # toolchain install + ~GB cache restore still ran, wasting ~30-60s per docs PR.
     - name: Setup Rust
+      if: needs.affected.outputs.ci_rust == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
         components: rustfmt
         cache: false
         rustflags: ''
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      if: needs.affected.outputs.ci_rust == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (ci bootstrap gate)
+      if: needs.affected.outputs.ci_rust == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       uses: actions/cache@v4
       with:
         path: |

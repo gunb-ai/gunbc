@@ -113,10 +113,26 @@ else
   echo "workflow_policy (Gate #103 surface): no" >&2
 fi
 
+# ci_rust: union signal for "the ci job will actually invoke cargo / rustc".
+# When all of v2/v3/v4/workflow_policy are false (e.g. docs-only PRs touching
+# only *.md / ROADMAP / TASKS), every cargo-using step in the `ci` job is
+# already skipped by its own `if:`, so toolchain install + cargo cache restore
+# are pure waste. This output lets the workflow gate those setup steps too.
+# Push-to-main is handled in the workflow expression (trunk always exercises
+# the full set), not here — keeps the script event-shape-agnostic.
+if [ "$v2_state" = "true" ] || [ "$v3_state" = "true" ] || [ "$v4_state" = "true" ] || [ "$workflow_policy_state" = "true" ]; then
+  ci_rust_state="true"
+  echo "ci_rust (toolchain needed by ci job): yes" >&2
+else
+  ci_rust_state="false"
+  echo "ci_rust (toolchain needed by ci job): no (docs-only path — skipping rust setup + cargo cache)" >&2
+fi
+
 # Emit GitHub Actions outputs (or stdout if no output file given)
 {
   echo "v2=$v2_state"
   echo "v3=$v3_state"
   echo "v4=$v4_state"
   echo "workflow_policy=$workflow_policy_state"
+  echo "ci_rust=$ci_rust_state"
 } >> "$output_file"
