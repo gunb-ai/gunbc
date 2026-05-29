@@ -4126,17 +4126,20 @@ fn try_lower_config_patch_layer_invocation(
             ));
         }
     };
-    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
-        return Some(unresolved_port(
-            dag,
-            Diagnostic::ResolveError {
-                name: "config_patch_layer return type must be a record (Conj)".to_string(),
-                span: span.clone(),
-                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "LoweringDiagnostic",
-                ),
-            },
-        ));
+    let children = match &dag.declaration(conj_id).connective {
+        TypeConnective::Conj { children } => children.clone(),
+        _ => {
+            return Some(unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: "config_patch_layer return type must be a record (Conj)".to_string(),
+                    span: span.clone(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
+                },
+            ));
+        }
     };
     if !matches!(
         base_operand,
@@ -4156,13 +4159,9 @@ fn try_lower_config_patch_layer_invocation(
             },
         ));
     }
-    let patch_record_decl = match config_patch_record_decl_for_config(
-        dag,
-        symbols,
-        &HashMap::new(),
-        config_decl,
-        span,
-    ) {
+    let patch_record_decl =
+        match config_patch_record_decl_for_config(dag, symbols, &HashMap::new(), config_decl, span)
+        {
             Some(decl) => decl,
             None => {
                 return Some(unresolved_port(
