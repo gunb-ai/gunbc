@@ -1,6 +1,6 @@
 // src/v4/test/claim/workflow/ci_component_affected.dag
 // Scope: T-24 receipt — git diff path buckets → CiComponentAffected flags (dissolves detect-affected-components.sh).
-// Status: structural claims; host transport is `detect-ci-affected-components` (v3-compiler bin).
+// Status: structural claims; host transport is `detect-ci-affected-components` (`tools/ci_affected_components` bin).
 
 module v4.test.claim.workflow.ci_component_affected
 

@@ -161,7 +161,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Detect affected components" },
           id: Some { value: "detect" },
-          run: "cargo run -p v3-compiler --bin detect-ci-affected-components -- \"${{ github.event_name }}\" \"$GITHUB_OUTPUT\"",
+          run: "cargo run -p ci_affected_components --bin detect-ci-affected-components -- \"${{ github.event_name }}\" \"$GITHUB_OUTPUT\"",
           shell: Bash,
           env: none,
           working_directory: none,
