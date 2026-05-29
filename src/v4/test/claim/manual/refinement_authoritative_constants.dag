@@ -111,6 +111,15 @@ data claim_at_least_minus_one_int_authoritative_minus_two_rejects: TestClaim = E
 }
 
 
+data claim_at_least_minus_two_int_authoritative_minus_three_rejects: TestClaim = EqualsClaim {
+  label: "manual/refinement: authoritative make_at_least_minus_two_int rejects -3",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: refinement_authoritative_claim_input(ok: witness_at_least_minus_two_int_authoritative_minus_three_rejects()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
 data claim_exact_one_int_authoritative_two_rejects: TestClaim = EqualsClaim {
   label: "manual/refinement: authoritative make_exact_one_int rejects 2",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
