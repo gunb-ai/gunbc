@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +3
+
+SG-0 pairing: (c) Net +3 on `EXPECTED_HAND_AUTHORED_NON_TEST` for T-24 host-transport shims (`detect_ci_affected_components.rs`, `v4_ci_component_affected.rs`, `v4_ci_runner_pool.rs`) with matching INVARIANTS §P5(b) rows. Dissolves when `ci.dag` eval / generated CI runner owns affected-set and M1 parallelism without parallel Rust path logic (T-24 emission slice; gunbc#3853).
