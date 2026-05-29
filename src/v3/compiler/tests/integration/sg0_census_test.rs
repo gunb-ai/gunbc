@@ -859,6 +859,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
+    // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
+    "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",
     // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
     // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",

@@ -1,17 +1,40 @@
 // src/v4/test/fixture/task_manager_demo.dag
-// Scope: T-16 TaskManager omni-emission demo — data-model-only declaration.
-// Status: T-16-A modeled; no emit code; the shared Node tree consumed by
+// Scope: T-16 TaskManager omni-emission demo — data-model + Shape-B SQL projection.
+// Status: T-16-A modeled (#3867); T-16-A+ adds Task→SqlCreateTable projection
+// (sql.dag carriers, fail-closed on unmapped domain scalars). No emit code.
 // Shape A (rust backend + react frontend `DeploymentUnit` fragments) and
-// Shape B (OpenAPI / SQL / Markdown projections derived from `WireContract`
-// + `Task` carriers) lands in subsequent T-16 slices.
+// Shape B OpenAPI / Markdown projections land in sibling slices (T-16-C/D).
 
 module v4.test.fixture.task_manager_demo
 
+import v4.extdeps.formats.sql {
+  SqlColumnConstraints,
+  SqlColumnDefault,
+  SqlColumnDefaultAbsent,
+  SqlColumnDefinition,
+  SqlCreateTable,
+  SqlDataType,
+  SqlIdentifier,
+  SqlRegularIdentifier,
+  SqlSchemaOperation,
+  SqlTableDefinition,
+  SqlTypeCharacterLargeObject
+}
 import v4.std.algebra { FreeMonoid, Empty }
-import v4.std.collection { Absent }
+import v4.std.collection { Absent, optional_present }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
 import v4.std.network { NetworkAddress, UriAuthority, UriHost, rfc3986_host_abnf }
+import v4.std.node { Node, Symbol }
 import v4.std.text { String }
-import v4.std.node { Symbol }
 import v4.extdeps.coordination {
   Endpoint, EndpointRef, LanguageRef, FrameworkRef, HostedByFramework, NoFramework,
   WireContract, WireContractFacts, CoordinationBind, BindRef,
@@ -192,4 +215,113 @@ data list_tasks_contract: WireContract = WireContract {
 data task_manager_deployment: DeploymentUnit = DeploymentUnit {
   endpoints: [backend_endpoint, frontend_endpoint],
   wire_contracts: [create_task_contract, update_status_contract, list_tasks_contract]
+}
+
+// --- Shape-B SQL DDL projection (T-16-A+) ---------------------------------
+// Derives `SqlCreateTable` for the `Task` record from sql.dag carriers.
+// Column types are checked against the domain model; unmapped scalars fail
+// closed via `task_manager_reject_unmapped_domain_scalar`. OpenAPI wiring
+// is deferred to T-16-C (calm-crane-523, post-#3869).
+
+data task_manager_unmapped_domain_scalar: Symbol = task_manager_unmapped_domain_scalar
+
+data tasks_table_spelling: String = "tasks"
+data task_id_column_spelling: String = "id"
+data task_title_column_spelling: String = "title"
+data task_status_column_spelling: String = "status"
+
+// Closed set of `Task` field scalars that admit a SQL storage type.
+type TaskManagerSqlProjectableScalar
+  = ProjectTaskId
+  | ProjectString
+  | ProjectTaskStatus
+
+fn task_manager_not_null_column_constraints() -> SqlColumnConstraints {
+  SqlColumnConstraints { not_null: true }
+}
+
+fn task_manager_absent_column_default() -> SqlColumnDefault {
+  SqlColumnDefaultAbsent
+}
+
+fn task_manager_sql_identifier(name: String) -> SqlIdentifier {
+  SqlRegularIdentifier { name: name }
+}
+
+fn task_manager_projectable_scalar_to_sql_data_type(
+  scalar: TaskManagerSqlProjectableScalar
+) -> Outcome<SqlDataType> {
+  match scalar {
+    ProjectTaskId => outcome_accepted(value: SqlTypeCharacterLargeObject)
+    ProjectString => outcome_accepted(value: SqlTypeCharacterLargeObject)
+    ProjectTaskStatus => outcome_accepted(value: SqlTypeCharacterLargeObject)
+  }
+}
+
+fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<SqlDataType> {
+  outcome_rejected(d: Diagnostic {
+    reason: task_manager_unmapped_domain_scalar,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
+}
+
+fn task_manager_sql_column_definition(
+  name: String,
+  data_type: SqlDataType
+) -> SqlColumnDefinition {
+  SqlColumnDefinition {
+    name: task_manager_sql_identifier(name: name),
+    data_type: data_type,
+    constraints: task_manager_not_null_column_constraints(),
+    column_default: task_manager_absent_column_default()
+  }
+}
+
+fn task_to_sql_table_definition() -> Outcome<SqlTableDefinition> {
+  bind_outcome(
+    o: task_manager_projectable_scalar_to_sql_data_type(scalar: ProjectTaskId),
+    f: fn(id_type) {
+      bind_outcome(
+        o: task_manager_projectable_scalar_to_sql_data_type(scalar: ProjectString),
+        f: fn(title_type) {
+          bind_outcome(
+            o: task_manager_projectable_scalar_to_sql_data_type(scalar: ProjectTaskStatus),
+            f: fn(status_type) {
+              outcome_accepted(value: SqlTableDefinition {
+                name: task_manager_sql_identifier(name: tasks_table_spelling),
+                columns: [
+                  task_manager_sql_column_definition(
+                    name: task_id_column_spelling,
+                    data_type: id_type
+                  ),
+                  task_manager_sql_column_definition(
+                    name: task_title_column_spelling,
+                    data_type: title_type
+                  ),
+                  task_manager_sql_column_definition(
+                    name: task_status_column_spelling,
+                    data_type: status_type
+                  )
+                ],
+                primary_key: optional_present(value: [
+                  task_manager_sql_identifier(name: task_id_column_spelling)
+                ]),
+                table_constraints: []
+              })
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn task_to_sql_create_table() -> Outcome<SqlSchemaOperation> {
+  bind_outcome(
+    o: task_to_sql_table_definition(),
+    f: fn(table) {
+      outcome_accepted(value: SqlCreateTable { table: table })
+    }
+  )
 }
