@@ -156,8 +156,10 @@ fn eq(a: String, b: String) -> Bool {
 //   return { written: result.acted }
 // }
 
-// Concrete stub: imported by tools.bootstrap and tools.readme.
-// When pattern generics land, replace with the pattern above.
+// STRAY (2026-05-29 audit): does not implement verify-first — stub keeps
+// imports typechecking until pattern generics + resource `uses` land.
+// `written` is not authoritative; tools.bootstrap/readme must not rely on
+// real filesystem idempotency until this dissolves to pattern content_upsert.
 fn content_upsert(content: String, path: String) -> { written: Bool } {
   let matches = content == ""
   { written: !matches }
