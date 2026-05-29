@@ -143,15 +143,6 @@ type OperationEffect {
   determinism: Determinism
 }
 
-// Determinism is a typed property on the effect carrier, not a host test matrix.
-fn is_deterministic_operation(op: OperationEffect) -> Bool {
-  match op.determinism {
-    Deterministic => true
-    NonDeterministic => false
-    EventuallyConsistent => false
-  }
-}
-
 // Workflow-level idempotency judgment — a sum, not a Bool × optional
 // label product. The old `ComposedEffect { idempotent, breaking_operation }`
 // shape admitted contradictory states (e.g. idempotent true with a named

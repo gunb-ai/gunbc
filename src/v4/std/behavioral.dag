@@ -12,12 +12,3 @@ type Determinism
   = Deterministic
   | NonDeterministic
   | EventuallyConsistent
-
-
-fn determinism_is_deterministic(d: Determinism) -> Bool {
-  match d {
-    Deterministic => true
-    NonDeterministic => false
-    EventuallyConsistent => false
-  }
-}

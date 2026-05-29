@@ -6,8 +6,7 @@
 module v4.std.effects
 
 
-import v4.std.behavioral { Determinism, determinism_is_deterministic }
-import v4.std.logic { Bool }
+import v4.std.behavioral { Determinism }
 import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode }
 
 
@@ -101,11 +100,6 @@ data sample_deterministic_read_carrier: EffectCarrier = EffectCarrier {
 data sample_nondeterministic_create_carrier: EffectCarrier = EffectCarrier {
   shape: IsBreaking(CreateEffect { cause: PostAlways }),
   determinism: NonDeterministic
-}
-
-
-fn effect_carrier_is_deterministic(carrier: EffectCarrier) -> Bool {
-  determinism_is_deterministic(d: carrier.determinism)
 }
 
 
