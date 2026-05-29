@@ -103,7 +103,7 @@ type CiPipeline {
 
 // RULING-1: 🟢 pretty-much-done — GitHub Actions `affected` job outputs (v2/v3/v4/workflow_policy).
 // Structural replacement for scripts/detect-affected-components.sh (T-21/T-24); host transport:
-// `cargo run -p v3-compiler --bin detect-ci-affected-components` (must stay aligned with these predicates).
+// `cargo run -p ci_affected_components --bin detect-ci-affected-components` (must stay aligned with these predicates).
 type CiComponentAffected {
   v2: Bool
   v3: Bool
@@ -118,6 +118,7 @@ type CiComponentAffected {
 // Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
 // Fleet arch is a closed operator fact (Arm64 only) — modeled in comments, not a sum type, so Lens-CI
 // entry compile of this module does not need a coproduct the isolated v4 compiler cannot resolve.
+// 🟡 gated — feature:formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 type SelfHostedRunnerPool {
   host: Symbol
   core_count: Int // 🟡 gated: formatter-int-refinement — must be ≥1 (operator fleet spec)
@@ -673,9 +674,8 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
 fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
   ci_repo_path_has_prefix(path: changed, prefix: ".github/workflows/")
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/workflow/ci")
-    || ci_repo_path_has_prefix(path: changed, prefix: "src/v3/compiler/src/v4_ci_component_affected")
+    || ci_repo_path_has_prefix(path: changed, prefix: "tools/ci_affected_components")
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v3/compiler/src/v4_ci_runner_pool")
-    || ci_repo_path_has_prefix(path: changed, prefix: "src/v3/compiler/src/bin/detect_ci_affected_components")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/check-workflow-path-regex-inventory")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/workflow-path-regex-forbidden-substrings")
 }

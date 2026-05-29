@@ -27,15 +27,15 @@ const M1_BINDING_TEST_FILTER: &str =
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
-const V4_CI_COMPONENT_AFFECTED_RS: &str = include_str!("../../src/v4_ci_component_affected.rs");
+const CI_AFFECTED_COMPONENTS_LIB: &str =
+    include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 
 /// Single-authority workflow_policy path buckets (`ci.dag` predicates ↔ Rust host mirror).
 const CI_WORKFLOW_POLICY_PREFIXES: &[&str] = &[
     ".github/workflows/",
     "src/v4/workflow/ci",
-    "src/v3/compiler/src/v4_ci_component_affected",
+    "tools/ci_affected_components",
     "src/v3/compiler/src/v4_ci_runner_pool",
-    "src/v3/compiler/src/bin/detect_ci_affected_components",
     "scripts/check-workflow-path-regex-inventory",
     "scripts/workflow-path-regex-forbidden-substrings",
 ];
@@ -65,8 +65,8 @@ fn assert_ci_dag_rust_prefix_parity(prefixes: &[&str]) {
             "{CI_DAG_PATH}: authority must declare prefix `{prefix}`"
         );
         assert!(
-            V4_CI_COMPONENT_AFFECTED_RS.contains(&format!("\"{prefix}\"")),
-            "v4_ci_component_affected.rs mirror must declare prefix `{prefix}`"
+            CI_AFFECTED_COMPONENTS_LIB.contains(&format!("\"{prefix}\"")),
+            "ci_affected_components lib mirror must declare prefix `{prefix}`"
         );
     }
 }
@@ -78,8 +78,8 @@ fn assert_ci_dag_rust_exact_path_parity(paths: &[&str]) {
             "{CI_DAG_PATH}: authority must declare exact path `{path}`"
         );
         assert!(
-            V4_CI_COMPONENT_AFFECTED_RS.contains(&format!("\"{path}\"")),
-            "v4_ci_component_affected.rs mirror must declare exact path `{path}`"
+            CI_AFFECTED_COMPONENTS_LIB.contains(&format!("\"{path}\"")),
+            "ci_affected_components lib mirror must declare exact path `{path}`"
         );
     }
 }

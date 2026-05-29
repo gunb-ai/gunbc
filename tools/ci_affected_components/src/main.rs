@@ -1,14 +1,16 @@
 // Host transport for `v4.workflow.ci` `ci_component_affected_from_git_diff_read` (T-24).
 // Replaces scripts/detect-affected-components.sh. Modeled authority is `src/v4/workflow/ci.dag`;
-// this bin executes the Rust mirror in `v4_ci_component_affected` (parity-ratcheted to ci.dag).
+// this bin executes the Rust mirror in `ci_affected_components` (parity-ratcheted to ci.dag).
+// Crate lives outside v3-compiler so affected-set gating does not require compiling v3 first.
 #![allow(clippy::disallowed_macros)]
 
 use std::io::Write;
 use std::process::{Command, ExitCode};
 use std::{env, fs, io};
 
-use v3_compiler::v4_ci_component_affected::{
+use ci_affected_components::{
     ci_component_affected_fail_closed, ci_component_affected_from_changed_paths,
+    CiComponentAffected,
 };
 
 fn usage() -> ! {
@@ -59,10 +61,7 @@ fn git_read_changed_paths(range: &str) -> GitDiffRead {
     }
 }
 
-fn write_github_output(
-    path: &str,
-    flags: v3_compiler::v4_ci_component_affected::CiComponentAffected,
-) -> io::Result<()> {
+fn write_github_output(path: &str, flags: CiComponentAffected) -> io::Result<()> {
     let mut file = fs::OpenOptions::new().append(true).open(path)?;
     writeln!(file, "v2={}", flags.v2)?;
     writeln!(file, "v3={}", flags.v3)?;
