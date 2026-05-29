@@ -1055,7 +1055,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   spaces_in_conditional_statement: false,
   spaces_in_container_literals: true,
   spaces_in_c_style_cast_parentheses: false,
-  spaces_in_line_comment_prefix: ClangFormatSpacesInLineComment { minimum: Refined { base: 1 }, maximum: Refined { base: -1 } },
+  spaces_in_line_comment_prefix: ClangFormatSpacesInLineComment { minimum: Refined { base: 1 }, maximum: ClangFormatSpacesInLineCommentMaximumUnbounded },
   spaces_in_parens: ClangFormatSpacesInParensNever,
   spaces_in_parens_options: ClangFormatSpacesInParensCustom { except_double_parentheses: false, in_conditional_statements: false, in_c_style_casts: false, in_empty_parentheses: false, other: false },
   spaces_in_parentheses: false,
