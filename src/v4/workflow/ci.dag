@@ -1014,11 +1014,22 @@ fn ci_v3_tier0_scheduled(affected: CiComponentAffected, schedule: CiSchedulePoli
 }
 
 
+// Job command carries intended schedule (`cmd_schedule`); caller passes active run policy (`run_schedule`).
 fn ci_v3_self_host_fixed_point_scheduled(
   affected: CiComponentAffected,
-  schedule: CiSchedulePolicy
+  cmd_schedule: CiSchedulePolicy,
+  run_schedule: CiSchedulePolicy
 ) -> Bool {
-  schedule == MainPush && ci_v3_tier0_scheduled(affected: affected, schedule: schedule)
+  if run_schedule != cmd_schedule {
+    false
+  } else {
+    match cmd_schedule {
+      MainPush =>
+        ci_v3_tier0_scheduled(affected: affected, schedule: run_schedule)
+      PullRequest => false
+      Nightly => false
+    }
+  }
 }
 
 
@@ -1031,8 +1042,11 @@ fn ci_job_scheduled_by_policy(
     V3DeterminismCommand { profile: _ } =>
       ci_v3_tier0_scheduled(affected: affected, schedule: schedule)
     V3SelfHostFixedPointCommand { profile: _, schedule: cmd_schedule } =>
-      ci_v3_self_host_fixed_point_scheduled(affected: affected, schedule: schedule)
-        && schedule == cmd_schedule
+      ci_v3_self_host_fixed_point_scheduled(
+        affected: affected,
+        cmd_schedule: cmd_schedule,
+        run_schedule: schedule
+      )
     _ => false
   }
 }
@@ -1091,12 +1105,12 @@ fn ci_select_ci_jobs_needs_closure_pass(
         ci_symbol_resolves(s: n, jobs: jobs) && !ci_member(s: n, ids: selected_ids)
       }
     )
-    if length(missing_ids) == 0 {
+    if length(xs: missing_ids) == 0 {
       selected
     } else {
       let added = ci_jobs_matching_ids(jobs: jobs, ids: missing_ids)
       let merged = ci_merge_jobs_unique(acc: selected, more: added)
-      if length(merged) == length(selected) {
+      if length(xs: merged) == length(xs: selected) {
         selected
       } else {
         ci_select_ci_jobs_needs_closure_pass(
@@ -1114,7 +1128,7 @@ fn ci_select_ci_jobs_needs_closure(jobs: List[CiJob], selected: List[CiJob]) -> 
   ci_select_ci_jobs_needs_closure_pass(
     jobs: jobs,
     selected: selected,
-    passes_remaining: length(jobs: jobs)
+    passes_remaining: length(xs: jobs)
   )
 }
 
