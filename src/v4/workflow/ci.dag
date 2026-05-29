@@ -43,7 +43,8 @@ import v4.std.node {
   TypeNode,
   combine_hash,
   content_hash,
-  byte_offset_cache_digest
+  ByteOffsetCacheEligible,
+  byte_offset_cache_key
 }
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
@@ -355,6 +356,7 @@ data ci_cache_lens_unused_params_tag: Symbol = ci_cache_lens_unused_params_tag
 data ci_cache_lens_structural_resolution_tag: Symbol = ci_cache_lens_structural_resolution_tag
 data ci_cache_lens_table_decision_tree_tag: Symbol = ci_cache_lens_table_decision_tree_tag
 data ci_cache_string_empty_tag: Symbol = ci_cache_string_empty_tag
+data ci_cache_char_byte_offset_ineligible_tag: Symbol = ci_cache_char_byte_offset_ineligible_tag
 data ci_cache_bootstrap_consumes_empty_tag: Symbol = ci_cache_bootstrap_consumes_empty_tag
 data ci_cache_bootstrap_plan_rejected_tag: Symbol = ci_cache_bootstrap_plan_rejected_tag
 
@@ -383,7 +385,11 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 
 // v4.std.text Char = Nat (scalar); use O(log |c|) base-256 digest, not Peano scalar_int_hash.
 fn ci_char_cache_digest(c: Char) -> Hash {
-  byte_offset_cache_digest(i: c)
+  match byte_offset_cache_key(i: c) {
+    ByteOffsetCacheEligible { digest: digest } => digest
+    ByteOffsetCacheIneligible { boundary_tag: _, witness: _ } =>
+      ci_symbol_digest(sym: ci_cache_char_byte_offset_ineligible_tag)
+  }
 }
 
 

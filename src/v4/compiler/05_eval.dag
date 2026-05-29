@@ -71,7 +71,10 @@ import v4.std.node {
   bag_hash_digest,
   combine_hash,
   content_hash,
-  byte_offset_cache_digest,
+  ByteOffsetCacheEligible,
+  ByteOffsetCacheIneligible,
+  ByteOffsetCacheKey,
+  byte_offset_cache_key,
   fold_node,
   is_positional,
   well_formed
@@ -475,6 +478,7 @@ data test_claim_no_correction_ambiguous_intent_tag: Symbol = test_claim_no_corre
 data test_claim_no_correction_external_contract_unknown_tag: Symbol = test_claim_no_correction_external_contract_unknown_tag
 data test_claim_cache_extent_whole_file_tag: Symbol = test_claim_cache_extent_whole_file_tag
 data test_claim_cache_extent_byte_range_tag: Symbol = test_claim_cache_extent_byte_range_tag
+data test_claim_cache_byte_offset_cache_ineligible_tag: Symbol = test_claim_cache_byte_offset_cache_ineligible_tag
 data test_claim_cache_correction_suggested_tag: Symbol = test_claim_cache_correction_suggested_tag
 data test_claim_cache_correction_unavailable_tag: Symbol = test_claim_cache_correction_unavailable_tag
 data test_claim_cache_locus_node_tag: Symbol = test_claim_cache_locus_node_tag
@@ -555,9 +559,22 @@ fn correction_verdict_digest(c: Correction) -> Hash {
 }
 
 
-// ByteRange offsets use O(log |i|) base-256 `byte_offset_cache_digest` (not Peano on |i|).
-fn byte_range_offset_cache_digest(i: Int) -> Hash {
-  byte_offset_cache_digest(i: i)
+// ByteRange offsets use O(log |i|) base-256 `byte_offset_cache_key` (not Peano on |i|); ineligible offsets fail-closed at the cache boundary.
+fn byte_offset_cache_key_extent_component(key: ByteOffsetCacheKey) -> Hash {
+  match key {
+    ByteOffsetCacheEligible { digest: digest } => digest
+    ByteOffsetCacheIneligible {
+      boundary_tag: boundary_tag,
+      witness: witness
+    } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_byte_offset_cache_ineligible_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: boundary_tag),
+          b: witness
+        )
+      )
+  }
 }
 
 
@@ -569,9 +586,9 @@ fn extent_cache_digest(e: Extent) -> Hash {
       combine_hash(
         a: combine_hash(
           a: test_claim_symbol_digest(sym: test_claim_cache_extent_byte_range_tag),
-          b: byte_range_offset_cache_digest(i: sa)
+          b: byte_offset_cache_key_extent_component(key: byte_offset_cache_key(i: sa))
         ),
-        b: byte_range_offset_cache_digest(i: ea)
+        b: byte_offset_cache_key_extent_component(key: byte_offset_cache_key(i: ea))
       )
   }
 }

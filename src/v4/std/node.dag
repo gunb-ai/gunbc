@@ -460,6 +460,19 @@ type ByteOffsetCacheDigestAuthority
     }
 
 
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier replaces ByteOffsetCacheKey; interim public cache-key boundary (eligible digest vs ineligible witness — not a bare Hash at this API).
+type ByteOffsetCacheKey
+  = ByteOffsetCacheEligible { digest: Hash }
+  | ByteOffsetCacheIneligible {
+      boundary_tag: Symbol,
+      witness: Hash
+    }
+
+
+data canonical_tag_byte_offset_cache_key_eligible: Symbol = canonical_tag_byte_offset_cache_key_eligible
+data canonical_tag_byte_offset_cache_key_ineligible: Symbol = canonical_tag_byte_offset_cache_key_ineligible
+
+
 // Byte limb 0..255 only: fail-closed before Peano recursion (P4 bounded substrate).
 fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
   if limb < 0 || limb > 255 {
@@ -627,17 +640,21 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
 }
 
 
-fn byte_offset_cache_digest_authority_hash(auth: ByteOffsetCacheDigestAuthority) -> Hash {
+fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) -> ByteOffsetCacheKey {
   match auth {
-    ByteOffsetWithinCeiling { digest: digest } => digest
+    ByteOffsetWithinCeiling { digest: digest } =>
+      ByteOffsetCacheEligible { digest: digest }
     ByteOffsetCacheDigestIneligible {
       within_ceiling_digest: within_ceiling_digest,
       boundary_tag: boundary_tag
     } =>
-      byte_offset_cache_digest_ineligible_hash(
-        within_ceiling_digest: within_ceiling_digest,
-        boundary_tag: boundary_tag
-      )
+      ByteOffsetCacheIneligible {
+        boundary_tag: boundary_tag,
+        witness: byte_offset_cache_digest_ineligible_hash(
+          within_ceiling_digest: within_ceiling_digest,
+          boundary_tag: boundary_tag
+        )
+      }
     ByteOffsetOverCeiling {
       within_ceiling_digest: within_ceiling_digest,
       quotient: quotient
@@ -647,32 +664,40 @@ fn byte_offset_cache_digest_authority_hash(auth: ByteOffsetCacheDigestAuthority)
           within_ceiling_digest: tail_within_ceiling_digest,
           boundary_tag: boundary_tag
         } =>
-          byte_offset_cache_digest_ineligible_hash(
-            within_ceiling_digest: combine_hash(
-              a: within_ceiling_digest,
-              b: tail_within_ceiling_digest
-            ),
-            boundary_tag: boundary_tag
-          )
-        ByteOffsetWithinCeiling { digest: tail_digest } =>
-          combine_hash(
-            a: atom_identity_hash(s: canonical_tag_byte_offset_out_of_ceiling),
-            b: combine_hash(
-              a: within_ceiling_digest,
-              b: tail_digest
+          ByteOffsetCacheIneligible {
+            boundary_tag: boundary_tag,
+            witness: byte_offset_cache_digest_ineligible_hash(
+              within_ceiling_digest: combine_hash(
+                a: within_ceiling_digest,
+                b: tail_within_ceiling_digest
+              ),
+              boundary_tag: boundary_tag
             )
-          )
+          }
+        ByteOffsetWithinCeiling { digest: tail_digest } =>
+          ByteOffsetCacheEligible {
+            digest: combine_hash(
+              a: atom_identity_hash(s: canonical_tag_byte_offset_out_of_ceiling),
+              b: combine_hash(
+                a: within_ceiling_digest,
+                b: tail_digest
+              )
+            )
+          }
         ByteOffsetOverCeiling {
           within_ceiling_digest: tail_within_ceiling_digest,
           quotient: _
         } =>
-          byte_offset_cache_digest_ineligible_hash(
-            within_ceiling_digest: combine_hash(
-              a: within_ceiling_digest,
-              b: tail_within_ceiling_digest
-            ),
-            boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable
-          )
+          ByteOffsetCacheIneligible {
+            boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+            witness: byte_offset_cache_digest_ineligible_hash(
+              within_ceiling_digest: combine_hash(
+                a: within_ceiling_digest,
+                b: tail_within_ceiling_digest
+              ),
+              boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable
+            )
+          }
       }
   }
 }
@@ -737,27 +762,10 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
 }
 
 
-fn byte_offset_cache_digest_nonneg_bounded(i: Int, limbs_remaining: Int) -> Hash {
-  byte_offset_cache_digest_authority_hash(
-    auth: byte_offset_cache_digest_nonneg_bounded_authority(
-      i: i,
-      limbs_remaining: limbs_remaining
-    )
-  )
-}
-
-
 fn byte_offset_cache_digest_nonneg_authority(i: Int) -> ByteOffsetCacheDigestAuthority {
   byte_offset_cache_digest_nonneg_bounded_authority(
     i: i,
     limbs_remaining: byte_offset_cache_digest_max_limbs
-  )
-}
-
-
-fn byte_offset_cache_digest_nonneg(i: Int) -> Hash {
-  byte_offset_cache_digest_authority_hash(
-    auth: byte_offset_cache_digest_nonneg_authority(i: i)
   )
 }
 
@@ -801,8 +809,31 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
 }
 
 
-fn byte_offset_cache_digest(i: Int) -> Hash {
-  byte_offset_cache_digest_authority_hash(auth: byte_offset_cache_digest_authority(i: i))
+fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
+  byte_offset_cache_key_from_authority(auth: byte_offset_cache_digest_authority(i: i))
+}
+
+
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: test_claim_cache_digest_sensitivity only — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node) offset projection; NOT an IRT-4 cache-key boundary (eligible vs ineligible tagged fingerprint for aliasing claims).
+fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
+  match key {
+    ByteOffsetCacheEligible { digest: digest } =>
+      combine_hash(
+        a: atom_identity_hash(s: canonical_tag_byte_offset_cache_key_eligible),
+        b: digest
+      )
+    ByteOffsetCacheIneligible {
+      boundary_tag: boundary_tag,
+      witness: witness
+    } =>
+      combine_hash(
+        a: atom_identity_hash(s: canonical_tag_byte_offset_cache_key_ineligible),
+        b: combine_hash(
+          a: atom_identity_hash(s: boundary_tag),
+          b: witness
+        )
+      )
+  }
 }
 
 

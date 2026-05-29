@@ -66,7 +66,7 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
-  byte_offset_cache_digest,
+  byte_offset_cache_key_fingerprint,
   byte_offset_cache_digest_max_limbs
 }
 import v4.std.verification {
@@ -328,8 +328,8 @@ fn tcc_cache_byte_offset_over_ceiling() -> Int {
 }
 
 fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
-  byte_offset_cache_digest(i: tcc_cache_byte_offset_exact_ceiling()) !=
-    byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling())
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_exact_ceiling()) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling())
 }
 
 // 256^9 + 256 — same post-ceiling quotient as 256^9+1 but distinct low nine limbs.
@@ -338,44 +338,44 @@ fn tcc_cache_byte_offset_same_quotient() -> Int {
 }
 
 fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
-  byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling()) !=
-    byte_offset_cache_digest(i: tcc_cache_byte_offset_same_quotient())
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_same_quotient())
 }
 
 fn tcc_cache_byte_offset_sign_over_ceiling_digest_differs() -> Bool {
-  byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling()) !=
-    byte_offset_cache_digest(i: 0 - tcc_cache_byte_offset_over_ceiling())
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: 0 - tcc_cache_byte_offset_over_ceiling())
 }
 
 // Post-ceiling quotient beyond the overflow tail limb budget must not collapse via byte_limb_out_of_range.
 fn tcc_cache_byte_offset_large_overflow_quotient_digest_differs() -> Bool {
   let overflow_quotient = tcc_cache_byte_offset_pow_13()
-  byte_offset_cache_digest(i: overflow_quotient) !=
-    byte_offset_cache_digest(i: int_mul(a: tcc_cache_int_two, b: overflow_quotient))
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: overflow_quotient) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: overflow_quotient))
 }
 
 // Exhausted-residual band (quotient >= 256^2): must not alias via limb_out_of_range + low byte only.
 fn tcc_cache_byte_offset_exhausted_residual_quotient_digest_differs() -> Bool {
   let overflow_quotient = tcc_cache_byte_offset_pow_19()
-  byte_offset_cache_digest(i: overflow_quotient) !=
-    byte_offset_cache_digest(i: int_mul(a: tcc_cache_int_two, b: overflow_quotient))
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: overflow_quotient) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: overflow_quotient))
 }
 
 // Same retained low tail, discarded high quotient differs (256^19 vs 256^20).
 fn tcc_cache_byte_offset_exhausted_residual_adjacent_power_digest_differs() -> Bool {
-  byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_19()) !=
-    byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_20())
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_19()) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_20())
 }
 
 // First adjacent-power alias band under fixed four-limb suffix (256^21 vs 256^22) — cache-ineligible path.
 fn tcc_cache_byte_offset_exhausted_residual_adjacent_power_21_22_digest_differs() -> Bool {
-  byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_21()) !=
-    byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_22())
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_21()) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_22())
 }
 
 fn tcc_cache_byte_offset_exhausted_residual_21_double_digest_differs() -> Bool {
-  byte_offset_cache_digest(i: tcc_cache_byte_offset_pow_21()) !=
-    byte_offset_cache_digest(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_21()))
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_21()) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_21()))
 }
 
 fn tcc_cache_runtime_unit() -> RuntimeValue {
