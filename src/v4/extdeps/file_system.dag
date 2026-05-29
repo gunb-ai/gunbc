@@ -14,8 +14,6 @@ import v4.std.machine { Byte }
 // coincides: finite POSIX byte sequence.
 type PosixByteString = FreeMonoid<Byte>
 
-// tag: named pathname component spelling.
-// scaffold: POSIX byte refinements; trigger T-25-core/T-30.
 type NamedPathComponent {
   bytes: PosixByteString
 }
