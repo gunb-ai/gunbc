@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_fixture_matches_shell_script_buckets() {
+    fn aggregate_fixture_matches_modeled_buckets() {
         let flags = ci_component_affected_from_changed_paths([
             "src/v4/workflow/ci.dag",
             "docs/unrelated.md",
@@ -153,5 +153,17 @@ mod tests {
         assert!(!flags.v3);
         assert!(flags.v4);
         assert!(flags.workflow_policy);
+        assert!(!flags.release_distribution);
+    }
+
+    #[test]
+    fn release_distribution_includes_release_authority_paths() {
+        assert!(ci_changed_path_affects_release_distribution(
+            "src/v4/workflow/release.dag"
+        ));
+        assert!(ci_changed_path_affects_release_distribution("install.sh"));
+        assert!(!ci_changed_path_affects_release_distribution(
+            "src/v4/workflow/ci.dag"
+        ));
     }
 }
