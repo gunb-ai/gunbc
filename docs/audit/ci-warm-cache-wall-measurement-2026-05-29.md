@@ -91,11 +91,16 @@ runner overhead between steps.
      compile — 2 m 46 s combined. The feature-flag matrix is the
      proximate cause.
 
-2. **Manager-brief 27 s runs unconditionally**. If the authority check
-   + self-test pair can be gated on `affected.outputs.docs` (or
-   whatever covers `docs/briefs/`, `scripts/check-manager-brief-*`,
-   and consumer paths), the `ci` job drops to ~2 m 29 s on the common
-   case where briefs/scripts are untouched.
+2. **Manager-brief 27 s runs unconditionally**. The `affected` job
+   currently exposes only `v2`, `v3`, `v4`, and `workflow_policy`
+   (`.github/workflows/ci.yml:69-73`), so there is no existing output
+   to gate this pair on. Two grounded paths for the parent: (a) extend
+   `scripts/detect-affected-components.sh` + the `affected` job
+   `outputs:` map with a new component covering `docs/briefs/`,
+   `scripts/check-manager-brief-*`, and the consumer paths, then gate
+   both manager-brief steps on it; or (b) leave them ungated and
+   accept the 27 s. Do not copy `affected.outputs.docs` into CI — it
+   does not exist.
 
 3. **`v3 bootstrap snapshot freshness gate --verify` (43 s)** lives in
    `ci`, not in `v3`. On warm cache it is the largest single discipline
