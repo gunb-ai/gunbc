@@ -191,33 +191,35 @@ fn make_exact_one_int_at_authoritative(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-fn positive_int_authoritative_discharge_must_not_reject() -> PositiveInt {
-  positive_int_authoritative_discharge_must_not_reject()
+fn positive_int_authoritative_constant_rejected_outcome(base: Int) -> Outcome<PositiveInt> {
+  make_positive_int_at_authoritative(value: base)
 }
 
 
-fn non_negative_int_authoritative_discharge_must_not_reject() -> NonNegativeInt {
-  non_negative_int_authoritative_discharge_must_not_reject()
+fn non_negative_int_authoritative_constant_rejected_outcome(base: Int) -> Outcome<NonNegativeInt> {
+  make_non_negative_int_at_authoritative(value: base)
 }
 
 
-fn at_least_minus_one_int_authoritative_discharge_must_not_reject() -> AtLeastMinusOneInt {
-  at_least_minus_one_int_authoritative_discharge_must_not_reject()
+fn at_least_minus_one_int_authoritative_constant_rejected_outcome(base: Int) -> Outcome<AtLeastMinusOneInt> {
+  make_at_least_minus_one_int_at_authoritative(value: base)
 }
 
 
-fn exact_one_int_authoritative_discharge_must_not_reject() -> ExactOneInt {
-  exact_one_int_authoritative_discharge_must_not_reject()
+fn exact_one_int_authoritative_constant_rejected_outcome(base: Int) -> Outcome<ExactOneInt> {
+  make_exact_one_int_at_authoritative(value: base)
 }
 
 
-// Upstream-documented defaults: discharge only through make_* at the authoritative
-// boundary. Rejected discharge diverges (no fabricated Refined carrier). Callers must
-// pass literals that satisfy the predicate; user/config input uses make_* + Outcome.
+// Upstream-documented defaults: discharge through make_* at the authoritative boundary.
+// Rejected arms route to Outcome-returning helpers (ill-typed as PositiveInt carriers —
+// substrate authoring fault if an admitted literal ever rejects). User/config input uses
+// make_* + Outcome directly.
 fn positive_int_for_authoritative_constant(base: Int) -> PositiveInt {
   match make_positive_int_at_authoritative(value: base) {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => positive_int_authoritative_discharge_must_not_reject()
+    Rejected { diagnostics: _ } =>
+      positive_int_authoritative_constant_rejected_outcome(base: base)
   }
 }
 
@@ -225,7 +227,8 @@ fn positive_int_for_authoritative_constant(base: Int) -> PositiveInt {
 fn non_negative_int_for_authoritative_constant(base: Int) -> NonNegativeInt {
   match make_non_negative_int_at_authoritative(value: base) {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => non_negative_int_authoritative_discharge_must_not_reject()
+    Rejected { diagnostics: _ } =>
+      non_negative_int_authoritative_constant_rejected_outcome(base: base)
   }
 }
 
@@ -233,7 +236,8 @@ fn non_negative_int_for_authoritative_constant(base: Int) -> NonNegativeInt {
 fn at_least_minus_one_int_for_authoritative_constant(base: Int) -> AtLeastMinusOneInt {
   match make_at_least_minus_one_int_at_authoritative(value: base) {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => at_least_minus_one_int_authoritative_discharge_must_not_reject()
+    Rejected { diagnostics: _ } =>
+      at_least_minus_one_int_authoritative_constant_rejected_outcome(base: base)
   }
 }
 
@@ -241,6 +245,7 @@ fn at_least_minus_one_int_for_authoritative_constant(base: Int) -> AtLeastMinusO
 fn exact_one_int_for_authoritative_constant(base: Int) -> ExactOneInt {
   match make_exact_one_int_at_authoritative(value: base) {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => exact_one_int_authoritative_discharge_must_not_reject()
+    Rejected { diagnostics: _ } =>
+      exact_one_int_authoritative_constant_rejected_outcome(base: base)
   }
 }
