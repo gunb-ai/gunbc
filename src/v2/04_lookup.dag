@@ -1,11 +1,4 @@
 // Lookup and resolution helpers -- pure type lookups and scrutinee
-// resolution for the namespace reconciler.
-//
-// Dependency chain:
-//   v2.std.core, v2.compiler.infer_types, v2.compiler.infer_env,
-//   v2.compiler.infer_method, v2.compiler.infer_service
-//     -> v2.compiler.infer_lookup (this file)
-//       -> v2.compiler.infer (expression inference)
 
 module v2.compiler.infer_lookup
 
@@ -144,7 +137,6 @@ fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
-  // TypeVariable nodes are unresolved placeholders -- return as-is.
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return n }
   let normed = normalize_access_type_node(n: n)
@@ -171,8 +163,6 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
             normed
           } else {
             let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
-            // Preserve Optional scrutinee shape during alias/type-env lookup
-            // until Optional itself becomes fully structural in the lookup path.
             let is_optional = normed.return_cardinality == CardOptional
             if is_optional { with_optional_cardinality(n: result) } else { result }
           }
@@ -259,9 +249,6 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 // Known method resolution
 // =========================================================================
 
-// Structural field lookup: check if the receiver type's declaration has
-// Look up a method field in a product type and return both the field
-// node (definition) and its return type. Single lookup, no duplication.
 type MethodFieldResult {
   field_node: Node
   result_type: Node
@@ -296,22 +283,14 @@ fn lookup_field_in_product(product: Node, method_name: String, source_indices: M
 }
 
 fn lookup_structural_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> StructuralMethodLookup {
-  // First: check the receiver's own structural fields (Conj product).
   let is_product = receiver_type.connective == Conj
   if is_product {
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
     StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
-    // Second: check the algebra registry for kernel type methods.
-    // enrich_kernel_type builds a Conj product with algebraic fields
-    // (add, mul, compare, concat, etc.) for Int/Float/Bool/String.
-    // The enriched node is NOT the type binding — it's a side table
-    // so that type nodes in the graph stay as bare leaves.
     let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
     if enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
-      // Enrich with size_effect/cost_shape from the EXACT profile for this receiver type.
-      // Scoped to receiver_type.name → no global scan, no method name collisions.
       match base_result {
         Some { value: mfr } =>
           let profile = kernel_algebra_profile |> get(authored_name_at(source_indices: source_indices, node: receiver_type))
@@ -351,7 +330,6 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
         diagnostics: tier0.kernel_diagnostics
       }
     None =>
-  // Tier 1: Service method lookup
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry, source_indices: source_indices) {
     Some { value: svc_result } =>
       KnownMethodResolution {
@@ -360,7 +338,6 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
         diagnostics: tier0.kernel_diagnostics
       }
     None =>
-      // No structural field found, not a service method — method not found.
       KnownMethodResolution { semantics: none, result_type: none, diagnostics: tier0.kernel_diagnostics }
   }
   }

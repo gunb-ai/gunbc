@@ -1,19 +1,4 @@
 // v2 core types -- the compiler's domain model.
-//
-// Imports shared types from std.types (the same types used by all DSL
-// programs). Defines compiler-specific types (tokens, AST, expressions)
-// that only the compiler needs.
-//
-// This module describes the COMPILER's data model, not a runtime or
-// interpreter. The compiler reads .dag source files and emits target-
-// language source files. There is no executable DAG IR here -- the
-// compiler's output is text files, not a graph to be interpreted.
-//
-// Dependency chain:
-//   kernel primitives (String, Int, Bool, List, Map)
-//     <- std.types (FilePath, NonEmptyStr, SourceSpan)
-//       <- v2.std.core (Token, AST, ExprData, CompileResult)
-//         <- v2.compiler.* (tokenize, parse, typecheck, emit)
 
 module v2.std.core
 
@@ -28,10 +13,6 @@ import std.induction { SubValueRelation }
 
 // =========================================================================
 // Tokens
-//
-// A token is an atomic unit of source text with a classification and
-// a source location. The tokenizer produces a flat List<Token> from
-// a source string.
 // =========================================================================
 
 // Token: Layer 5 compositional type (see Composition Stack in ROADMAP).
@@ -44,49 +25,25 @@ type Token {
   shape: TokenShape
 }
 
-// TokenShape: payload-insensitive token classification.
-// Every variant is a unit variant — payloads live in Token.text.
-// This is the structural classifier; Token.text carries the semantic content.
 type TokenShape
-  // All keywords share a single variant; identity is in Token.text.
-  // Keywords are an open set defined by SyntaxSpec, not a closed enum.
   = ShKeyword
-  // Paired delimiters
   | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket
-  // Relational / arrow
   | ShLt | ShGt | ShLe | ShGe | ShFatArrow | ShArrow
-  // Separators
   | ShColon | ShComma | ShDot | ShDotDot
-  // Assignment / equality
   | ShEq | ShEqEq | ShNe
-  // Arithmetic
   | ShPlus | ShMinus | ShStar | ShSlash | ShPercent
-  // Logic
   | ShBang | ShAnd | ShOr
-  // Optionality
   | ShQuestion | ShNullCoalesce
-  // Sum type separator / pipe arrow
   | ShPipe
   | ShPipeArrow
-  // Values (payload in Token.text)
   | ShLitStr | ShLitInt | ShLitFloat | ShIdent
-  // String interpolation parts (payload in Token.text)
   | ShStrBegin | ShStrMid | ShStrEnd
-  // Structure
   | ShNewline | ShEof
   | ShUnknown
 
 
 // =========================================================================
 // AST -- Abstract Syntax Tree
-//
-// The parser produces an AST from a token list. The AST is a faithful
-// representation of the source structure with no semantic interpretation.
-// Names are strings, types are Node values, expressions are Node
-// values with ExprData. Nothing is resolved or checked yet.
-//
-// Every node that a diagnostic might blame carries a SourceSpan for
-// precise error locality.
 // =========================================================================
 
 // Module, Import, ImportNames dissolved into Node compositions.
@@ -132,7 +89,6 @@ type InferredNode
   | CompilerError { message: String, span: SourceSpan }
   | TypeVariable { id: String }
 
-// Extract the Node from an InferredNode, returning None for CompilerError.
 fn inferred_to_node(inferred: InferredNode) -> Node? {
   match inferred {
     Resolved { node: n } => Some { value: n }
@@ -141,7 +97,6 @@ fn inferred_to_node(inferred: InferredNode) -> Node? {
   }
 }
 
-// Check if an InferredNode is a compiler error.
 fn is_compiler_error(inferred: InferredNode) -> Bool {
   match inferred {
     Resolved { node: _ } => false
@@ -150,7 +105,6 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
   }
 }
 
-// Check if a Node has a inferred set (regardless of Resolved or CompilerError).
 fn has_inferred(n: Node) -> Bool {
   n.inferred != none
 }
@@ -172,9 +126,6 @@ type MethodSemantics
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 
-// Transport identity: structural detection from config properties.
-// See is_rest_transport, is_shell_transport, is_file_transport, is_local_transport.
-// Transport definitions: extdeps/transports/{rest,shell,file}.dag.
 
 // =========================================================================
 // Expressions
@@ -227,9 +178,6 @@ type MatchPattern
 // Accessors: field_binding_name_at, field_binding_pattern
 
 
-// BinOp and LiteralValue: canonical definitions in std/syntax.dag.
-// Imported here for compiler use.
-// (Imported via module header below)
 
 type UnaryOpKind = Not | Neg
 
@@ -241,9 +189,6 @@ type OperationModifier = Idempotent | Readonly | Hermetic
 
 // =========================================================================
 // Compiler output
-//
-// The compiler produces files and diagnostics. No DAG, no IR, no
-// executable artifact. The emitted files ARE the output.
 // =========================================================================
 
 type CompileResult {
@@ -258,13 +203,6 @@ type TextFile {
 
 // =========================================================================
 // Typed diagnostics — root cause by construction.
-//
-// CompilerDiagnostic is a closed enum of error variants. Each variant
-// carries its own required fields including span (provenance).
-// ErrorNode wraps a diagnostic with causal parent pointers.
-// ErrorDAG is the pipeline-level collection.
-//
-// Each variant carries its own required fields including span (provenance).
 // =========================================================================
 
 type CompilerDiagnostic
@@ -368,10 +306,6 @@ type DeclaredFuncSig {
   inferred: Node?
   is_async: Bool
   output_provenance: List<Map<String, SubValueRelation>>
-  // Per-variant per-field provenance for sum-type returns.
-  // Outer key: variant name. Middle key: field name. Inner map: caller
-  // param name → SubValueRelation. Name-keyed throughout (no positional
-  // indexing). Empty for struct returns (use output_provenance instead).
   variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
 }
 
@@ -381,29 +315,14 @@ type DeclaredFuncEnv {
 
 // =========================================================================
 // Node -- unified recursive structure
-//
-// Everything is a node in DAG composition. Keywords (fn, type, service)
-// are parse sugar that tell the parser what fields to expect. After
-// parsing, everything is a Node. The checker validates edge constraints
-// on node properties -- never asks "what keyword?"
-//
-// The type is self-referential: children: List<Node>. An operation is a
-// Node with params and inferred. A capability is a Node with
-// input/output ports. Both are constructed directly as Nodes.
 // =========================================================================
 
 type Node {
   name: String
-  // Interned identifier for name-based identity. None for anonymous or
-  // synthesized nodes that have no authored identifier. Using Int? (not
-  // Int defaulting to 0) so "no ident" is structurally distinct from a
-  // valid ident 0 and cannot be confused at a registry key.
   ident: Int?
   span: SourceSpan
   ident_span: SourceSpan?
-  // Fractal composition -- operations, capabilities, items are all children
   children: List<Node>
-  // Logical connective -- And (record/all-hold), Or (sum/one-holds), NoConnective (leaf)
   connective: Connective
   // Collection classification -- structural, not name-based (P5.7b)
   // Ports -- what flows in and out (dissolved from Param, D1c)
@@ -411,11 +330,8 @@ type Node {
   inferred: InferredNode?
   return_cardinality: Cardinality
   uses: List<Node>
-  // Computation -- how it executes (none = externally provided)
   body: Node?
-  // Binding -- external execution strategy
   transport: Node?
-  // Metadata
   properties: List<Node>
   type_annotation: Node?
   is_self_recursive: Bool
@@ -429,8 +345,6 @@ fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
   if name == "" { none } else { Some { value: span } }
 }
 
-// Extract the identifier span from a node, falling back to the node span.
-// Use this when you need a SourceSpan (not optional) for the identifier.
 fn node_name_span(n: Node) -> SourceSpan {
   match n.ident_span { Some { value: s } => s  None => n.span }
 }
@@ -466,7 +380,7 @@ fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>,
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
-   
+
     params: [], inferred: Some { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none,
@@ -483,13 +397,11 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 // Varargs emerge naturally as an N-sized list of arg Nodes.
 // =========================================================================
 
-// Argument node: the call-site dual of Param. Name carries the arg name
-// (empty string for positional args), child is the value expression.
 fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   let arg_name = match name { Some { value: n } => n  None => "" }
   Node {
     name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
-   
+
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -497,13 +409,11 @@ fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: Source
   }
 }
 
-// Match arm node: pattern as metadata, guard/body as children.
-// Children: [guard, body] when guard present, [body] when not.
 fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
   let children = match guard { Some { value: g } => [g, body]  None => [body] }
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
-   
+
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -512,7 +422,6 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
   }
 }
 
-// Resource use node: name carries the resource binding name, child is the resource type node.
 fn make_resource_use_node(name: String, resource: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
@@ -533,11 +442,10 @@ fn resource_use_resource(n: Node) -> Node {
   }
 }
 
-// Field init node: name carries the field name, child is the value expression.
 fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [value], connective: NoConnective,
-   
+
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -562,11 +470,10 @@ fn field_binding_pattern(n: Node) -> MatchPattern {
   match n.match_pattern { Some { value: p } => p  None => Wildcard }
 }
 
-// Text part node: a literal string fragment in string interpolation.
 fn make_text_part_node(text: String, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
-   
+
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -575,11 +482,10 @@ fn make_text_part_node(text: String, span: SourceSpan) -> Node {
   }
 }
 
-// Interpolation part node: child is the interpolated expression.
 fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [expr], connective: NoConnective,
-   
+
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -609,7 +515,6 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
 // Already close to how variants work in the AST.
 // =========================================================================
 
-// Param constructor: name carries param name, child[0] is type_expr, child[1] is default_value if present.
 fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
   Node {
@@ -623,7 +528,6 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: So
 
 fn param_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
-// Generic type parameter names (e.g., T, U in type<T, U>).
 fn generic_param_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
 fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
@@ -634,14 +538,9 @@ fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> St
           let text = source_text_at(index: index, span: span)
           if text == "" { "" } else { text }
         None =>
-          // Kernel spans encode the name in the file key: "<kernel:Name>".
-          // Extract the name directly without requiring pre-registration
-          // in source_indices for every possible synthesized name.
           if string_length(s: span.file) > 8 && substring(s: span.file, start: 0, end: 8) == "<kernel:" {
             substring(s: span.file, start: 8, end: string_length(s: span.file) - 1)
           } else {
-            // Remaining fallback for parser-synthesized spans with file "".
-            // These will migrate to kernel_span in a follow-up PR.
             node.name
           }
       }
@@ -679,7 +578,6 @@ fn param_node_default_value(n: Node) -> Node? {
 
 fn param_node_span(n: Node) -> SourceSpan { n.span }
 
-// Field constructor: extends Param with cardinality and from_key.
 fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
   let props = match from_key {
@@ -739,37 +637,18 @@ fn variant_node_span(n: Node) -> SourceSpan { n.span }
 
 // =========================================================================
 // IR Child Layout Model
-//
-// Executable data table encoding the child structure of each ExprData
-// variant and wrapper node type. This is the single source of truth —
-// accessor functions below implement these projections, and downstream
-// consumers (complexity analyzer, etc.) import this model rather than
-// maintaining hardcoded accessor tables.
-//
-// Adding a new ExprData variant: add an entry to expr_child_roles.
-// Adding a new wrapper node type: add an entry to wrapper_child_roles.
-// Variants with only variadic children (ExprBlock, ExprListLit,
-// ExprCall, ExprRecordLit, ExprStringInterp) or no children (ExprVar,
-// ExprLiteral, ExprError, NoExprData) are not in the table — their
-// children are accessed directly via node.children iteration.
 // =========================================================================
 
 // Bootstrap constraint: `accessor` is a function name (String). In the current
 // .dag type system, function names ARE the structural identity. When .dag supports
 // function references, accessor should become a structural reference.
 type ChildRole {
-  name: String        // role name: "left", "right", "condition"
-  accessor: String    // function that projects this child: "binop_left"
-  position: Int       // index into children (-1 = last)
-  required: Bool      // true = always present, false = optional
+  name: String
+  accessor: String
+  position: Int
+  required: Bool
 }
 
-// Expression child roles — keyed by ExprData variant name.
-// Each entry lists the fixed named child projections for that variant.
-// This data table IS the source of truth for child layout. The accessor
-// functions below implement the projections declared here. The apparent
-// duplication is intentional: the table provides the model, the functions
-// provide the implementation. Consistency is enforced by construction.
 data expr_child_roles: Map<String, List<ChildRole>> = {
   "ExprFieldAccess": [
     ChildRole { name: "base", accessor: "field_access_base", position: 0, required: true }
@@ -821,7 +700,6 @@ data expr_child_roles: Map<String, List<ChildRole>> = {
   ]
 }
 
-// Wrapper node child roles (Arg, Arm, FieldInit appear in parent children lists).
 data wrapper_child_roles: Map<String, List<ChildRole>> = {
   "Arg": [
     ChildRole { name: "value", accessor: "arg_value", position: 0, required: true }
@@ -835,7 +713,6 @@ data wrapper_child_roles: Map<String, List<ChildRole>> = {
   ]
 }
 
-// Model query: is a function name a child accessor declared in the model?
 fn is_child_accessor_in_model(name: String) -> Bool {
   (map_values(expr_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
   || (map_values(wrapper_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
@@ -850,21 +727,13 @@ fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
 
 // =========================================================================
 // Node field roles — structural descent facts for complexity analysis
-//
-// Declares which Node fields carry recursive sub-structure vs metadata.
-// The complexity analyzer queries this table instead of hardcoding field
-// names. Adding a new structural field = one line here, zero changes to
-// the analyzer.
 // =========================================================================
 
 type NodeFieldRole
-  = ChildrenListField    // List<Node> children (structural recursion carrier)
-  | SubValueField        // proper sub-value (tree_size(result) < tree_size(self))
-  | MetadataField        // non-recursive data (name, span, etc.)
+  = ChildrenListField
+  | SubValueField
+  | MetadataField
 
-// Only fields with clear structural descent witnesses are SubValueField.
-// transport, type_annotation, properties, uses, inferred are NOT included —
-// they lack declared descent witnesses. Promote via std/termination.dag.
 data node_field_roles: Map<String, NodeFieldRole> = {
   "children": ChildrenListField,
   "params": ChildrenListField,
@@ -890,16 +759,12 @@ fn is_sub_value_field(field_name: String) -> Bool {
 
 // =========================================================================
 // Function size effects — structural descent facts for complexity analysis
-//
-// Declares which functions preserve or reduce tree size of their Node
-// argument. The complexity analyzer queries this table instead of
-// hardcoding function names.
 // =========================================================================
 
 type FunctionSizeEffect
-  = TreeSizePreserving    // output tree_size == input tree_size (wrapper)
-  | TreeSizeReducing      // output tree_size < input tree_size (sub-value extractor)
-  | PropertyContraction { domain_size: Int }  // output changes a finite-domain property
+  = TreeSizePreserving
+  | TreeSizeReducing
+  | PropertyContraction { domain_size: Int }
 
 data function_size_effects: Map<String, FunctionSizeEffect> = {
   "with_required_cardinality": PropertyContraction { domain_size: 2 },
@@ -944,7 +809,6 @@ fn is_property_contraction(func_name: String) -> Bool {
 // preventing silent self-recursion from malformed nodes.
 // =========================================================================
 
-// Required child at position. Returns error node if missing.
 fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
   match texpr.children |> skip(index) |> first {
     Some { value: v } => v
@@ -952,7 +816,6 @@ fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
   }
 }
 
-// -- Wrapper node accessors (arg, arm, field-init) --
 
 fn arg_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let name = authored_name_at(source_indices: source_indices, node: n)
@@ -992,20 +855,16 @@ fn field_init_node_value(n: Node) -> Node {
   }
 }
 
-// -- ExprIf --
 fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
 fn if_then_branch(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "if then-branch") }
 fn if_else_branch(texpr: Node) -> Node? { texpr.children |> skip(2) |> first }
 
-// -- ExprMatch --
 fn match_scrutinee(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "match scrutinee") }
 fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 
-// -- ExprBinOp --
 fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
 fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "binop right") }
 
-// -- ExprUnaryOp --
 fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
 
 // -- ExprVar (D3: name dissolved into Node.name) --
@@ -1045,7 +904,6 @@ fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: 
 fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
 fn let_binding_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
-// -- ExprCast --
 fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
 fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
 
@@ -1054,19 +912,15 @@ fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 
 fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
 fn foreach_variable_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
-// -- ExprIndex --
 fn index_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "index base") }
 fn index_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "index expression") }
 
-// -- ExprSlice --
 fn slice_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "slice base") }
 fn slice_start(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "slice start") }
 fn slice_end(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 2, role: "slice end") }
 
-// -- ExprReturn --
 fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "return value") }
 
-// -- ExprBlock --
 fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 
 // -- ExprRecordLit (D3: type_name dissolved into Node.name, parent_enum stays in ExprData) --
@@ -1075,8 +929,6 @@ fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex
   if name == "" { none } else { Some { value: name } }
 }
 
-// ExprListLit, ExprStringInterp: children accessed
-// directly via texpr.children (trivial — no accessor needed).
 
 // =========================================================================
 // Transport Node constructors
@@ -1145,8 +997,6 @@ fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Nod
 }
 
 fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
-  // Shell transports set body to a marker node so they're structurally
-  // distinguishable from local even when argv and env are empty.
   let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let zero_span = make_span(start: 0, end: 0)
   let stdin_props = match stdin {
@@ -1189,12 +1039,6 @@ fn find_property_string(props: List<Node>, prop_name: String, source_indices: Ma
   }
 }
 
-// Transport identity — structural property queries.
-// Transport kind is emergent from structural properties:
-//   has base_url → URL-endpoint transport (REST)
-//   has argv children → subprocess transport (shell)
-//   has base_path → filesystem transport (file)
-//   none of the above → local (pure computation)
 fn transport_base_path(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_path_key, source_indices: source_indices)
 }
@@ -1287,10 +1131,6 @@ fn transport_env(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Nod
 
 // =========================================================================
 // ExprData structural primitives
-//
-// expr_children: extracts every child expression Node from an ExprData.
-// Map over node.children, applying transform to each child.
-// Replaces expr_children/map_expr_children — no ExprData knowledge needed.
 // =========================================================================
 
 fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
@@ -1310,10 +1150,6 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
 
 // =========================================================================
 // Self-call detection -- Node expression walkers
-//
-// These functions walk Node expr_data trees to detect self-recursive calls
-// and non-tail self-calls. Used by the reconciler to compute
-// is_self_recursive and has_non_tail_self_call on Node.
 // =========================================================================
 
 fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1356,7 +1192,6 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
       let body_bad = match let_body(texpr: texpr) { Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  None => false }
       val_bad || body_bad
     ExprBlock =>
-      // children = [stmt0, stmt1, ...]. Only last is in tail position.
       let ss = texpr.children
       let ss_count = ss |> count
       if ss_count == 0 { false }
@@ -1372,12 +1207,9 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
         init_bad || last_bad
       }
     ExprReturn =>
-      // return expr: the returned expression is always in tail position.
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: true, source_indices: source_indices))
     NoExprData =>
-      // Wrapper nodes (arg, arm, field-init) -- recurse through children preserving tail context.
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices))
-    // All remaining variants: children are never in tail position.
     _ =>
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
   }
@@ -1474,8 +1306,6 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
 }
 
 fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
-  // Wildcard imports set body to a marker node so they're structurally
-  // distinguishable from empty specific imports (import foo {}).
   let wildcard_marker = if is_all {
     Some { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
   } else { none }
@@ -1489,7 +1319,6 @@ fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, sp
   }
 }
 
-// Wildcard import: body marker set by import_node when is_all=true.
 fn import_is_all(n: Node) -> Bool {
   n.body != none
 }
@@ -1508,27 +1337,16 @@ fn module_items(n: Node) -> List<Node> {
 
 // =========================================================================
 // Node vocabulary (structural constructors and predicates)
-//
-// These operate on Node structural fields (connective, cardinality) and
-// need no environment. They are the shared vocabulary for all pipeline
-// stages — not stage-specific concepts. Moved from 04_types.dag (C1).
 // =========================================================================
 
 fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
   Node { name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-// Kernel type constants — single-authority definitions for built-in types.
-// Each constant encodes the structural form once; callers reference it.
-// Kernel span: synthetic source span for compiler-generated type names.
-// file key "<kernel:Name>" maps to a synthetic NewlineIndex containing "Name"
-// as source text. authored_name_at resolves these without node.name fallback.
 fn kernel_span(name: String) -> SourceSpan {
   SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
 
-// Unit is the terminal object (empty product: Conj + 0 children).
-// All others are bare leaves until std declarations carry richer structure.
 data unit_type: Node = Node { name: "Unit", span: kernel_span(name: "Unit"), ident_span: Some { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 data bool_type: Node = Node { name: "Bool", span: kernel_span(name: "Bool"), ident_span: Some { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 data string_type: Node = Node { name: "String", span: kernel_span(name: "String"), ident_span: Some { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -1536,10 +1354,7 @@ data hash_type: Node = Node { name: "Hash", span: kernel_span(name: "Hash"), ide
 data int_type: Node = Node { name: "Int", span: kernel_span(name: "Int"), ident_span: Some { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 data float_type: Node = Node { name: "Float", span: kernel_span(name: "Float"), ident_span: Some { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 data none_type: Node = Node { name: "None", span: kernel_span(name: "None"), ident_span: Some { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-// Tuple type name — tuples are parameterized Conj products, no bare constant.
 data tuple_type_name: String = "Tuple"
-// Error sentinel — inference failed. CompilerError in inferred field
-// propagates structurally, so no name check on "Error" needed.
 data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_span(start: Int, end: Int) -> SourceSpan {
@@ -1556,9 +1371,6 @@ fn no_span() -> SourceSpan {
 
 // =========================================================================
 // NewlineIndex — byte-offset-to-line:col translation
-//
-// Built once per source file, then shared across all diagnostics that
-// reference that file. O(n) build, O(log n) lookup.
 // =========================================================================
 
 type LineCol {
@@ -1572,7 +1384,6 @@ type NewlineIndex {
   source: String
 }
 
-// Build newline offset table from source text. O(n) single pass.
 fn build_newline_index(file: String, source: String) -> NewlineIndex {
   let char_codes = source |> chars
   let offsets = char_codes |> enumerate |> fold(init: [], f: (acc, pair) =>
@@ -1581,7 +1392,6 @@ fn build_newline_index(file: String, source: String) -> NewlineIndex {
   NewlineIndex { file: file, offsets: offsets, source: source }
 }
 
-// Byte offset -> line:col. O(n) scan on offsets.
 fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
   let clamped = if offset < 0 { 0 } else { offset }
   let line = (index.offsets |> filter(o => o < clamped) |> count) + 1
@@ -1596,7 +1406,6 @@ fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
   LineCol { line: line, col: col }
 }
 
-// Extract the text of a specific source line. O(1) via offset lookup.
 fn source_line_at(index: NewlineIndex, line: Int) -> String {
   let src_len = string_length(s: index.source)
   let line_start = if line <= 1 { 0 }
@@ -1613,8 +1422,6 @@ fn source_line_at(index: NewlineIndex, line: Int) -> String {
   substring(s: index.source, start: line_start, end: line_end)
 }
 
-// Extract source text by character-indexed span. O(n) over span width.
-// Extract source text by byte-indexed span.
 fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
   substring(s: index.source, start: span.start, end: span.end)
 }
@@ -1638,7 +1445,6 @@ type InternResult {
 }
 
 fn empty_intern_table() -> InternTable {
-  // Pre-seed ID 0 = "" (anonymous/empty). IDs are sequential list indices.
   InternTable { strings: [""], index: map_insert(empty_map(), "", 0), next_id: 1 }
 }
 
