@@ -150,6 +150,16 @@ fn v4_workflow_release_semantics_modeled() {
             && RELEASE_DAG.contains("type ReleaseCommand"),
         "{RELEASE_DAG_PATH}: ReleaseCommand must carry Practice-4 coproduct dissolution mark"
     );
+    assert!(
+        RELEASE_DAG.contains("release_build_musl_x86")
+            && RELEASE_DAG.contains("aarch64-unknown-linux-musl")
+            && RELEASE_DAG.contains("aarch64-apple-darwin"),
+        "{RELEASE_DAG_PATH}: release_pipeline must model one build job per release_build_matrix row"
+    );
+    assert!(
+        RELEASE_DAG.contains("release_pipeline_jobs_cover_matrix"),
+        "{RELEASE_DAG_PATH}: well-formedness must require pipeline jobs cover matrix targets"
+    );
     for target in RELEASE_PUBLISHED_TARGETS {
         assert!(
             RELEASE_DAG.contains(target),

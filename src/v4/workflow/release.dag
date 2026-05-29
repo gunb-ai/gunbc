@@ -116,9 +116,17 @@ fn release_matrix_row_targets(rows: List<ReleaseMatrixRow>) -> List<String> {
 // list for curl|sh install until install targets derive from `.dag` eval.
 data release_published_target_triples: List<String> = release_matrix_row_targets(rows: release_build_matrix)
 
-data release_matrix_build_execution: Symbol = release_matrix_build_execution
+// One ReleaseJob per `release_build_matrix` row (parallel); hand-synced `release.yml` projects
+// these as a single `build` job with strategy.matrix until YamlStatic emission lands.
+data release_build_musl_x86: Symbol = release_build_musl_x86
+data release_build_musl_aarch64: Symbol = release_build_musl_aarch64
+data release_build_darwin_x86: Symbol = release_build_darwin_x86
+data release_build_darwin_aarch64: Symbol = release_build_darwin_aarch64
 data release_publish_execution: Symbol = release_publish_execution
-data release_matrix_build_signal: Symbol = release_matrix_build_signal
+data release_build_musl_x86_signal: Symbol = release_build_musl_x86_signal
+data release_build_musl_aarch64_signal: Symbol = release_build_musl_aarch64_signal
+data release_build_darwin_x86_signal: Symbol = release_build_darwin_x86_signal
+data release_build_darwin_aarch64_signal: Symbol = release_build_darwin_aarch64_signal
 data release_publish_signal: Symbol = release_publish_signal
 
 data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
@@ -142,25 +150,42 @@ data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
 data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p: ReleasePipeline {
   jobs: [
     ReleaseJob {
-      id: release_matrix_build_execution,
+      id: release_build_musl_x86,
       command: CrossMuslGunbcBuild { target: "x86_64-unknown-linux-musl" },
+      needs: []
+    },
+    ReleaseJob {
+      id: release_build_musl_aarch64,
+      command: CrossMuslGunbcBuild { target: "aarch64-unknown-linux-musl" },
+      needs: []
+    },
+    ReleaseJob {
+      id: release_build_darwin_x86,
+      command: NativeDarwinGunbcBuild { target: "x86_64-apple-darwin" },
+      needs: []
+    },
+    ReleaseJob {
+      id: release_build_darwin_aarch64,
+      command: NativeDarwinGunbcBuild { target: "aarch64-apple-darwin" },
       needs: []
     },
     ReleaseJob {
       id: release_publish_execution,
       command: PublishGitHubRelease { bundle_install_sh: true },
-      needs: [release_matrix_build_execution]
+      needs: [
+        release_build_musl_x86,
+        release_build_musl_aarch64,
+        release_build_darwin_x86,
+        release_build_darwin_aarch64
+      ]
     }
   ],
   gates: [
-    ReleaseGate {
-      id: release_matrix_build_signal,
-      job: release_matrix_build_execution
-    },
-    ReleaseGate {
-      id: release_publish_signal,
-      job: release_publish_execution
-    }
+    ReleaseGate { id: release_build_musl_x86_signal, job: release_build_musl_x86 },
+    ReleaseGate { id: release_build_musl_aarch64_signal, job: release_build_musl_aarch64 },
+    ReleaseGate { id: release_build_darwin_x86_signal, job: release_build_darwin_x86 },
+    ReleaseGate { id: release_build_darwin_aarch64_signal, job: release_build_darwin_aarch64 },
+    ReleaseGate { id: release_publish_signal, job: release_publish_execution }
   ]
 })
 
@@ -172,6 +197,7 @@ data release_duplicate_gate_id: Symbol = release_duplicate_gate_id
 data release_dangling_reference: Symbol = release_dangling_reference
 data release_dependency_cycle: Symbol = release_dependency_cycle
 data release_matrix_invalid: Symbol = release_matrix_invalid
+data release_matrix_build_coverage_gap: Symbol = release_matrix_build_coverage_gap
 data release_bootstrap_authority_violation: Symbol = release_bootstrap_authority_violation
 data release_workflow_file: Symbol = release_workflow_file
 
@@ -291,6 +317,27 @@ fn release_all_commands_authority_ok(jobs: List<ReleaseJob>) -> Bool {
   })
 }
 
+fn release_command_builds_target(c: ReleaseCommand, target: String) -> Bool {
+  match c {
+    CrossMuslGunbcBuild { target: t } => t == target
+    NativeDarwinGunbcBuild { target: t } => t == target
+    UploadGunbcMatrixArtifact => false
+    PublishGitHubRelease { bundle_install_sh: _ } => false
+  }
+}
+
+fn release_jobs_cover_matrix_target(jobs: List<ReleaseJob>, target: String) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    release_command_builds_target(c: j.command, target: target)
+  }) != 0
+}
+
+fn release_pipeline_jobs_cover_matrix(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  for_all(xs: rows, predicate: fn(row) {
+    release_jobs_cover_matrix_target(jobs: jobs, target: row.target)
+  })
+}
+
 fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> {
   if release_all_job_ids_unique(jobs: p.jobs) {
     if release_all_gate_ids_unique(gates: p.gates) {
@@ -299,7 +346,11 @@ fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> 
           if release_acyclic(jobs: p.jobs) {
             if release_all_commands_authority_ok(jobs: p.jobs) {
               if release_matrix_targets_well_formed(rows: release_build_matrix) {
-                Accepted { value: p, diagnostics: None }
+                if release_pipeline_jobs_cover_matrix(jobs: p.jobs, rows: release_build_matrix) {
+                  Accepted { value: p, diagnostics: None }
+                } else {
+                  Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_build_coverage_gap)) }
+                }
               } else {
                 Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_invalid)) }
               }
