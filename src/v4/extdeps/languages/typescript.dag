@@ -32,6 +32,7 @@ import v4.std.grammar {
 }
 import v4.std.lexing {
   CharClassPattern,
+  DelimitedPattern,
   DigitChar,
   IdentContinueChar,
   IdentStartChar,
@@ -45,6 +46,7 @@ import v4.std.lexing {
   OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
+  StringTextChar,
   TokenRule
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
@@ -223,6 +225,7 @@ data ts_token_minus: Symbol = ts_token_minus
 data ts_token_star: Symbol = ts_token_star
 data ts_token_num_lit: Symbol = ts_token_num_lit
 data ts_token_pipe: Symbol = ts_token_pipe
+data ts_token_string_lit: Symbol = ts_token_string_lit
 
 data ts_production_mvp1_fn_add: Symbol = ts_production_mvp1_fn_add
 
@@ -1103,6 +1106,19 @@ fn ts_num_lit_lex_rule() -> LexRule {
   TokenRule { token_class: ts_token_num_lit, pattern: ts_num_lit_lex_pattern() }
 }
 
+// TS string literal — single-quoted form per TS handbook §Literal Types.
+// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#literal-types
+fn ts_string_lit_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ts_token_string_lit,
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "'" },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: LiteralPattern { text: "'" }
+    }
+  }
+}
+
 fn ts_wave2a_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -1121,6 +1137,7 @@ fn ts_wave2a_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ts_token_star, text: " * "),
       ts_lex_rule(token_class: ts_token_eq, text: " = "),
       ts_lex_rule(token_class: ts_token_pipe, text: " | "),
+      ts_string_lit_lex_rule(),
       ts_lex_rule(token_class: ts_token_lbrace, text: " { "),
       ts_lex_rule(token_class: ts_token_rbrace, text: " }"),
       ts_lex_rule(token_class: ts_token_lparen, text: "("),
@@ -1187,9 +1204,9 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ts_production_wave2a_union_type,
       rhs: [
-        grammar_formal_terminal(identity: ts_token_ident),
+        grammar_formal_terminal(identity: ts_token_string_lit),
         grammar_formal_terminal(identity: ts_token_pipe),
-        grammar_formal_terminal(identity: ts_token_ident)
+        grammar_formal_terminal(identity: ts_token_string_lit)
       ]
     ),
     grammar_formal_production(
@@ -1197,7 +1214,7 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_union_type),
         grammar_formal_terminal(identity: ts_token_pipe),
-        grammar_formal_terminal(identity: ts_token_ident)
+        grammar_formal_terminal(identity: ts_token_string_lit)
       ]
     ),
     grammar_formal_production(
@@ -1296,20 +1313,24 @@ fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
   }
 }
 
+// TS string-literal discriminated union per TS handbook §Literal Types:
+// `type T = 'A' | 'B' | 'C';`. Payload-free coproducts (e.g. TaskStatus from
+// src/v4/test/fixture/task_manager_demo.dag) map cleanly to this surface; tagged
+// object unions land in a later wave once arm payloads enter scope.
 fn ts_grammar_production_wave2a_union_type() -> GrammarProduction {
   GrammarProduction {
     name: ts_production_wave2a_union_type,
     expression: Sequence {
-      left: Terminal { token_class: ts_token_ident },
+      left: Terminal { token_class: ts_token_string_lit },
       right: Sequence {
         left: Sequence {
           left: Terminal { token_class: ts_token_pipe },
-          right: Terminal { token_class: ts_token_ident }
+          right: Terminal { token_class: ts_token_string_lit }
         },
         right: Repeat {
           element: Sequence {
             left: Terminal { token_class: ts_token_pipe },
-            right: Terminal { token_class: ts_token_ident }
+            right: Terminal { token_class: ts_token_string_lit }
           }
         }
       }

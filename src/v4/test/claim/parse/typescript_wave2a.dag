@@ -1,0 +1,95 @@
+// src/v4/test/claim/parse/typescript_wave2a.dag
+// Scope: TestClaim rows for TypeScript Wave 2a lex/grammar behavior, including the
+// discriminated-union production added in T-11 typescript ext PR-2 (#3909).
+// Status: T-22 runner deferred — execution pending T-22 complexity fix.
+// Note: PR-1 (#3900) authors this same file with type-alias / record-type claims.
+// On merge order, this file extends PR-1's content; conflict resolution at merge
+// time folds the two TestClaim batches into one shared file (brief: "extend,
+// don't fork"). Until PR-1 lands this PR ships the union claims standalone in
+// the same module location so the merge is mechanical.
+
+module v4.test.claim.parse.typescript_wave2a
+
+import v4.compiler.tokenize { TokenStream, tokenize }
+import v4.compiler.parse { ParseTree, parse }
+import v4.extdeps.languages.typescript { ts_wave2a_lex, ts_wave2a_grammar }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.logic { Bool }
+import v4.std.text { String }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  manual_claim_anchor
+}
+
+data ts_wave2a_file: Symbol = ts_wave2a_file
+data ts_wave2a_bool_true: Symbol = ts_wave2a_bool_true
+data ts_wave2a_bool_false: Symbol = ts_wave2a_bool_false
+
+// TaskStatus from src/v4/test/fixture/task_manager_demo.dag transcribed to TS
+// surface per TS handbook §Literal Types (single-quoted string-literal union).
+// Exercises the union_type production added in PR-2: string_lit, pipe,
+// string_lit (≥2 variants via base + left-recursive form).
+data ts_wave2a_union_task_status_source: String = "type TaskStatus = 'Open' | 'InProgress' | 'Done';"
+
+// Minimal two-variant union — guards against the left-recursive form silently
+// regressing to require ≥3 variants.
+data ts_wave2a_union_minimal_source: String = "type Bit = 'On' | 'Off';"
+
+fn ts_wave2a_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ts_wave2a_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: ts_wave2a_bool_false } }, children: [] }
+  }
+}
+
+// 🟡 predicate-dissolution scaffold — feature:std-outcome-accepted-predicate —
+// mirrors the sibling-language wave2a parse-claim shape; promote-and-replace
+// once std/diagnostic.dag exports `outcome_accepted_predicate`.
+fn ts_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ts_wave2a_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
+  match tokenize(
+    text: text,
+    file: ts_wave2a_file,
+    rules: ts_wave2a_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: ts_wave2a_grammar())
+  }
+}
+
+data claim_ts_wave2a_union_task_status_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts the TaskStatus string-literal discriminated union: type TaskStatus = 'Open' | 'InProgress' | 'Done';",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_union_task_status_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_ts_wave2a_union_minimal_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts a minimal two-variant string-literal union (regression against left-recursive form requiring ≥3 variants)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_union_minimal_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
