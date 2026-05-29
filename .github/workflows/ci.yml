@@ -71,6 +71,7 @@ jobs:
       v3: ${{ steps.detect.outputs.v3 }}
       v4: ${{ steps.detect.outputs.v4 }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
+      release_distribution: ${{ steps.detect.outputs.release_distribution }}
     steps:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -194,7 +195,7 @@ jobs:
       run: cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
     # RELEASE_TODO §5 Phase 1 — v3 integration harness uses gunbc#846 zero-test-filter; run here.
     - name: RELEASE §5 v4 workflow release model/YAML binding smoke
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_workflow_release_dag_smoke_test -- --quiet
     # v4 bootstrap viability — standalone `v4` jobs hit a ~5m Ubicloud shutdown mid-emit;
     # folding into `ci` (40m job budget) keeps one runner lifecycle. The `v4` job is a

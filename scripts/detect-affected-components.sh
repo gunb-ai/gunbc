@@ -116,10 +116,20 @@ else
   echo "workflow_policy (Gate #103 surface): no" >&2
 fi
 
+# RELEASE_TODO §5 — installer / target-authority / release workflow surfaces (orthogonal to v4 bucket).
+if echo "$changed" | grep -qE '^install\.sh$|^scripts/release-target-triples\.sh$|^src/v4/workflow/release\.dag$|^\.github/workflows/release\.yml$'; then
+  release_distribution_state="true"
+  echo "release_distribution (RELEASE §5 parity smoke): yes" >&2
+else
+  release_distribution_state="false"
+  echo "release_distribution (RELEASE §5 parity smoke): no" >&2
+fi
+
 # Emit GitHub Actions outputs (or stdout if no output file given)
 {
   echo "v2=$v2_state"
   echo "v3=$v3_state"
   echo "v4=$v4_state"
   echo "workflow_policy=$workflow_policy_state"
+  echo "release_distribution=$release_distribution_state"
 } >> "$output_file"

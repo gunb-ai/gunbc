@@ -212,6 +212,14 @@ fn v4_workflow_release_target_authority_single_writer() {
         "{INSTALL_SH_PATH}: must delegate target detection to shell authority"
     );
     assert!(
+        RELEASE_TARGET_SCRIPT.contains("release_published_target_at"),
+        "{RELEASE_TARGET_SCRIPT_PATH}: detect_release_target must project from RELEASE_PUBLISHED_TARGET_TRIPLES"
+    );
+    assert!(
+        !RELEASE_TARGET_SCRIPT.contains("printf '%s\\n' 'x86_64-unknown-linux-musl'"),
+        "{RELEASE_TARGET_SCRIPT_PATH}: must not re-author triple literals outside the published list"
+    );
+    assert!(
         INSTALL_SH.contains("releases/download/${VERSION}/")
             && INSTALL_SH.contains("releases/latest/download/"),
         "{INSTALL_SH_PATH}: target authority curl fallback must use same GH Release channel as binary"

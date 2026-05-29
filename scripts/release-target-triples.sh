@@ -8,6 +8,7 @@
 set -eu
 
 # Ordered list — must match release.dag release_build_matrix row target order.
+# Sole home of published triple literals; detector selects by index only.
 RELEASE_PUBLISHED_TARGET_TRIPLES="
 x86_64-unknown-linux-musl
 aarch64-unknown-linux-musl
@@ -15,15 +16,35 @@ x86_64-apple-darwin
 aarch64-apple-darwin
 "
 
+# Print the nth non-empty line (1-based) from RELEASE_PUBLISHED_TARGET_TRIPLES.
+release_published_target_at() {
+  n=$1
+  i=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=$(printf '%s' "$line" | tr -d '[:space:]')
+    [ -z "$line" ] && continue
+    i=$((i + 1))
+    if [ "$i" -eq "$n" ]; then
+      printf '%s\n' "$line"
+      return 0
+    fi
+  done <<EOF
+$RELEASE_PUBLISHED_TARGET_TRIPLES
+EOF
+  echo "release-target-triples: invalid target index $n" >&2
+  return 1
+}
+
 detect_release_target() {
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
   arch=$(uname -m)
+  idx=
 
   case "$os" in
     linux)
       case "$arch" in
-        x86_64 | amd64) printf '%s\n' 'x86_64-unknown-linux-musl' ;;
-        aarch64 | arm64) printf '%s\n' 'aarch64-unknown-linux-musl' ;;
+        x86_64 | amd64) idx=1 ;;
+        aarch64 | arm64) idx=2 ;;
         *)
           echo "release-target-triples: unsupported Linux architecture: $arch" >&2
           exit 1
@@ -32,8 +53,8 @@ detect_release_target() {
       ;;
     darwin)
       case "$arch" in
-        x86_64) printf '%s\n' 'x86_64-apple-darwin' ;;
-        arm64 | aarch64) printf '%s\n' 'aarch64-apple-darwin' ;;
+        x86_64) idx=3 ;;
+        arm64 | aarch64) idx=4 ;;
         *)
           echo "release-target-triples: unsupported macOS architecture: $arch" >&2
           exit 1
@@ -45,4 +66,6 @@ detect_release_target() {
       exit 1
       ;;
   esac
+
+  release_published_target_at "$idx"
 }
