@@ -216,6 +216,7 @@ data bootstrap_projection_hash_digest_unknown_tag: Symbol = bootstrap_projection
 
 
 // 🟡 derived-operation — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; replace this closed-set Hash→Atom dispatch and `bootstrap_projection_hash_digest_unknown_tag` sink with a total BootstrapHashPin digest coproduct projection (same dissolution as `bootstrap_projection_snapshot_content_hash_pin_node`).
+// CI/cache authority: `BootstrapHashPin.digest` operands are module `bootstrap_plan` fixtures (v4_stage0/1/2 + pinned aliases only); `unknown_tag` is fail-closed Phase-1 sink, not reached on that path. Snapshot pins are separately pinned by `bootstrap_projection_inputs_well_formed`.
 fn bootstrap_hash_digest_identity_atom(digest: Hash) -> Node {
   if digest == v4_stage0_hash {
     Node {

@@ -896,6 +896,17 @@ type WorkflowPipelinePlanBoundPassReceipt {
 }
 
 
+fn workflow_pipeline_receipt_failure_diagnostics(
+  run: TestClaimRun<CiPipeline, CiPipeline>
+) -> List<Diagnostic> {
+  match run.verdict {
+    Fail { actual: Rejected { diagnostics: ds } } => ds
+    _ =>
+      diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation))
+  }
+}
+
+
 // Pass arm is intentionally lossy (`aggregate_verdicts` Pass carries no payload); `workflow_pipeline_plan_bound_pass_receipt` closes over the original `run` on Pass.
 fn workflow_pipeline_pass_gate(
   run: TestClaimRun<CiPipeline, CiPipeline>,
@@ -929,9 +940,7 @@ fn workflow_pipeline_plan_bound_pass_receipt(
         diagnostics: None
       }
     Fail { actual: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation))
-      }
+      Rejected { diagnostics: workflow_pipeline_receipt_failure_diagnostics(run: run) }
     Deferred { actual: _, diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
