@@ -139,7 +139,7 @@ jobs:
     - name: R4-carve dissolution discipline
       run: bash scripts/check-r4-carve-dissolution-discipline.sh
     - name: Fabrication sentinel ratchet (P0-C)
-      run: bash scripts/check-fabrication-sentinels.sh
+      run: cargo run -p ci_host_checks --bin check-fabrication-sentinels
     - name: T-19 testgen activation self-test (Python)
       run: python3 scripts/test_check_t19_testgen_activation.py
     - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)

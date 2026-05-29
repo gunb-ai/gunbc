@@ -1,0 +1,13 @@
+[package]
+name = "ci_host_checks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "check-fabrication-sentinels"
+path = "src/bin/check_fabrication_sentinels.rs"

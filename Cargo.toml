@@ -7,6 +7,7 @@ members = [
     "src/v3/compiler",
     "tools/gen_gunbc_ci_workflow_dag",
     "tools/ci_affected_components",
+    "tools/ci_host_checks",
     "src/v3/grounding_pilot",
     "src/v3/grounding_engine",
     "src/v3/grounding_lifetime",

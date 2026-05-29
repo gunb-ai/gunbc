@@ -86,6 +86,7 @@ pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
         || path == "src/v4/workflow/ci.dag"
         || path.starts_with("src/v4/workflow/ci/")
         || path.starts_with("tools/ci_affected_components")
+        || path.starts_with("tools/ci_host_checks")
         || path.starts_with("scripts/check-workflow-path-regex-inventory")
         || path.starts_with("scripts/workflow-path-regex-forbidden-substrings")
 }
