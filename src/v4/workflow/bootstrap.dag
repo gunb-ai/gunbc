@@ -11,9 +11,17 @@ import v4.std.algebra {
   list_append
 }
 import v4.compiler.target_carriers { LanguageModel }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model {
+  TargetModel,
+  target_model_edge_selection_policy,
+  target_model_edge_translation_rules
+}
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
-import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime, v4_evaluator_runtime_wave1 }
+import v4.extdeps.runtimes.v4_evaluator {
+  V4EvaluatorRuntime,
+  v4_evaluator_runtime_id,
+  v4_evaluator_runtime_wave1
+}
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -253,64 +261,71 @@ fn bootstrap_footprint_constructs_from_node(root: Node) -> List<BootstrapConstru
   bootstrap_construct_fold_state(root: root).constructs
 }
 
-type BootstrapFootprintFoldState {
-  constructs: List<BootstrapConstruct>
-}
-
-fn bootstrap_footprint_fold_init(n: Node) -> BootstrapFootprintFoldState {
-  match n.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
-      BootstrapFootprintFoldState {
-        constructs: [BootstrapConstruct { identity: sym }]
-      }
-    _ => BootstrapFootprintFoldState { constructs: [] }
+fn bootstrap_target_model_bundle_construct_facet(label: Symbol) -> List<BootstrapConstruct> {
+  if label == target_model_edge_selection_policy {
+    [BootstrapConstruct { identity: bootstrap_construct_target_model_subset }]
+  } else if label == target_model_edge_translation_rules {
+    [BootstrapConstruct { identity: bootstrap_construct_lowering_subset }]
+  } else {
+    []
   }
 }
 
-fn bootstrap_footprint_projection_data_edge(label: Symbol) -> Bool {
-  (label == bootstrap_projection_snapshot_language_model_edge)
-    || (label == bootstrap_projection_snapshot_content_hash_edge)
-    || (label == bootstrap_projection_target_bundle_edge)
-    || (label == bootstrap_projection_runtime_identity_edge)
+fn bootstrap_target_model_bundle_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
+  BootstrapConstructFoldState { constructs: [] }
 }
 
-fn bootstrap_footprint_fold_step(
-  acc: BootstrapFootprintFoldState,
+fn bootstrap_target_model_bundle_construct_fold_step(
+  acc: BootstrapConstructFoldState,
   edge: Edge,
-  child: BootstrapFootprintFoldState
-) -> BootstrapFootprintFoldState {
+  child: BootstrapConstructFoldState
+) -> BootstrapConstructFoldState {
   let facet_constructs = match edge.label {
-    Named { name: label } =>
-      if bootstrap_footprint_projection_data_edge(label: label) {
-        []
-      } else {
-        child.constructs
-      }
+    Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
     Positional => []
   }
-  BootstrapFootprintFoldState {
+  BootstrapConstructFoldState {
     constructs: list_append(left: acc.constructs, right: facet_constructs)
   }
 }
 
-fn bootstrap_footprint_fold_algebra() -> NodeFold<BootstrapFootprintFoldState> {
+fn bootstrap_target_model_bundle_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
   NodeFold {
-    init: bootstrap_footprint_fold_init,
-    step: bootstrap_footprint_fold_step
+    init: bootstrap_target_model_bundle_construct_fold_init,
+    step: bootstrap_target_model_bundle_construct_fold_step
   }
 }
 
-fn bootstrap_footprint_fold_state(root: Node) -> BootstrapFootprintFoldState {
-  fold_node(n: root, algebra: bootstrap_footprint_fold_algebra())
+fn bootstrap_target_model_construct_inventory(target: TargetModel) -> List<BootstrapConstruct> {
+  fold_node(
+    n: target.bundle,
+    algebra: bootstrap_target_model_bundle_construct_fold_algebra()
+  ).constructs
 }
 
-// §4: fold the projection closure (actual snapshot / target bundle / runtime nodes).
+fn bootstrap_runtime_model_construct_inventory(runtime: V4EvaluatorRuntime) -> List<BootstrapConstruct> {
+  if runtime.runtime_identity == v4_evaluator_runtime_id {
+    [BootstrapConstruct { identity: bootstrap_construct_runtime_model_subset }]
+  } else {
+    [BootstrapConstruct { identity: runtime.runtime_identity }]
+  }
+}
+
+fn bootstrap_snapshot_construct_inventory(snapshot: BootstrapSourceSnapshot) -> List<BootstrapConstruct> {
+  bootstrap_footprint_constructs_from_node(root: snapshot.root)
+}
+
+// §4: construct inventory queries derived from each projection-input facet.
 fn bootstrap_footprint_constructs_from_projection_inputs(
   inputs: BootstrapProjectionInputs
 ) -> List<BootstrapConstruct> {
-  bootstrap_footprint_fold_state(
-    root: bootstrap_projection_closure_node(inputs: inputs)
-  ).constructs
+  list_append(
+    left: list_append(
+      left: bootstrap_snapshot_construct_inventory(snapshot: inputs.snapshot),
+      right: bootstrap_target_model_construct_inventory(target: inputs.target_model)
+    ),
+    right: bootstrap_runtime_model_construct_inventory(runtime: inputs.runtime_model)
+  )
 }
 
 fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
@@ -507,20 +522,8 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
         target: inputs.target_model.bundle
       },
       Edge {
-        label: Named { name: bootstrap_construct_target_model_subset },
-        target: bootstrap_construct_subset_node(identity: bootstrap_construct_target_model_subset)
-      },
-      Edge {
-        label: Named { name: bootstrap_construct_lowering_subset },
-        target: bootstrap_construct_subset_node(identity: bootstrap_construct_lowering_subset)
-      },
-      Edge {
         label: Named { name: bootstrap_projection_runtime_identity_edge },
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
-      },
-      Edge {
-        label: Named { name: bootstrap_construct_runtime_model_subset },
-        target: bootstrap_construct_subset_node(identity: bootstrap_construct_runtime_model_subset)
       }
     ]
   }
