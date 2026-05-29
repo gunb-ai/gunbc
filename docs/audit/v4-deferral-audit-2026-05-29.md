@@ -99,8 +99,8 @@ Landing the projection in this PR would dissolve all 12 consumer sites in
 one stroke.  Recommend an action item, but each consumer's deferral is
 correctly classified as a wait-on-substrate.
 
-### §1.3 `formatter-cross-field-constraints`  (3 sites · rustfmt, ktfmt,
-black)
+### §1.3 `formatter-cross-field-constraints`  (4 sites · rustfmt, ktfmt,
+black, clang_format — corrected 2026-05-29 per codex + inline review)
 
 **Bind:** T-4.16 follow-on. Dissolve-on: a `*ConfigValidation` witness that
 checks e.g. `max_width ≥ chain_width`, `max_width ≥ array_width`, … —
@@ -412,7 +412,8 @@ labelling defect: work is open, bind names a closed task.
   honest. Sweep edit.
 * **§A6 — UNNECESSARY: collapse four intra-task gates into T-4.16's
   current dispatch:**
-  * `formatter-cross-field-constraints` (3 sites) — author
+  * `formatter-cross-field-constraints` (4 sites — rustfmt, ktfmt, black,
+    clang_format) — author
     `*ConfigValidation` witnesses for rustfmt / ktfmt / black against
     existing Witness substrate.
   * `rustfmt-deprecated-alias` (1 site) — author the canonical-wins
