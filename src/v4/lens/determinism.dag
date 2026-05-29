@@ -1,9 +1,6 @@
 // src/v4/lens/determinism.dag
-// Scope: determinism lens — structural verifier for functions declaring Deterministic.
-// Status: PR-2 — forbids HashMap/HashSet, clock/RNG/env reads; enforces transitive
-//   Deterministic on direct callees (full body index lands PR-4).
-// Anchor: operator-directive 2026-05-29 determinism-as-modeled-effect lane.
-// Orthogonal to v4.lens.effect / v4.std.effects (idempotency axis).
+// Scope: structural verifier for Deterministic fns — forbids NonDetSource carriers + effect leak on callees.
+// Status: PR-2; consumes v4.std.determinism; orthogonal to v4.lens.effect.
 
 
 module v4.lens.determinism
@@ -57,7 +54,6 @@ data determinism_forbidden_random_read: Symbol = determinism_forbidden_random_re
 data determinism_forbidden_env_read: Symbol = determinism_forbidden_env_read
 data determinism_effect_leak: Symbol = determinism_effect_leak
 
-// Closed forbidden carriers — PR-4 aligns emit/infer/translate surfaces to these symbols.
 data forbidden_symbol_hash_map: Symbol = forbidden_symbol_hash_map
 data forbidden_symbol_hash_set: Symbol = forbidden_symbol_hash_set
 data forbidden_symbol_btree_map: Symbol = forbidden_symbol_btree_map
