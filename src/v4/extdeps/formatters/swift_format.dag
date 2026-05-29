@@ -6,12 +6,8 @@
 module v4.extdeps.formatters.swift_format
 
 import v4.std.collection { List }
+import v4.std.diagnostic { Outcome }
 import v4.std.patch { FieldPatch, apply_field_patch }
-import v4.std.refinement_authoritative_literals {
-  discharge_exact_one_int_catalog_row,
-  discharge_non_negative_int_catalog_row,
-  discharge_positive_int_catalog_row,
-}
 import v4.std.refinement {
   ExactOneInt,
   NonNegativeInt,
@@ -25,8 +21,8 @@ import v4.std.refinement {
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SwiftFormatIndentation
-  = SwiftFormatSpaces { count: PositiveInt }
-  | SwiftFormatTabs { count: PositiveInt }
+  = SwiftFormatSpaces { count: Outcome<PositiveInt> }
+  | SwiftFormatTabs { count: Outcome<PositiveInt> }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -67,12 +63,12 @@ type SwiftFormatOrderedImports {
 
 // 🟡 gated — feature: swift-format-rules-carrier — bind T-4.16 follow-on — dissolve-on-arrival: add rules: Map<String, Bool> field to SwiftFormatConfig once Map is available as a language-level primitive without requiring a std import; forbidden: List<SwiftFormatRuleOverride> workarounds that lose the Bool-keyed semantics of the rules dictionary.
 type SwiftFormatConfig {
-  version: ExactOneInt
-  line_length: PositiveInt
+  version: Outcome<ExactOneInt>
+  line_length: Outcome<PositiveInt>
   indentation: SwiftFormatIndentation,
-  tab_width: PositiveInt
-  maximum_blank_lines: NonNegativeInt
-  spaces_before_end_of_line_comments: NonNegativeInt
+  tab_width: Outcome<PositiveInt>
+  maximum_blank_lines: Outcome<NonNegativeInt>
+  spaces_before_end_of_line_comments: Outcome<NonNegativeInt>
   respects_existing_line_breaks: Bool,
   line_break_before_control_flow_keywords: Bool,
   line_break_before_each_argument: Bool,
@@ -94,12 +90,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: discharge_exact_one_int_catalog_row(receipt: exact_one_int_authoritative_literal(value: 1), catalog_value: 1),
-  line_length: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 100), catalog_value: 100),
-  indentation: SwiftFormatSpaces { count: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2), catalog_value: 2) },
-  tab_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 8), catalog_value: 8),
-  maximum_blank_lines: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 1), catalog_value: 1),
-  spaces_before_end_of_line_comments: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 2), catalog_value: 2),
+  version: exact_one_int_authoritative_literal(value: 1),
+  line_length: positive_int_authoritative_literal(value: 100),
+  indentation: SwiftFormatSpaces { count: positive_int_authoritative_literal(value: 2) },
+  tab_width: positive_int_authoritative_literal(value: 8),
+  maximum_blank_lines: non_negative_int_authoritative_literal(value: 1),
+  spaces_before_end_of_line_comments: non_negative_int_authoritative_literal(value: 2),
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,
@@ -129,12 +125,12 @@ data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
 
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: SwiftFormatConfigPatch projected from SwiftFormatConfig field set.
 type SwiftFormatConfigPatch {
-  version: FieldPatch<ExactOneInt>
-  line_length: FieldPatch<PositiveInt>
+  version: FieldPatch<Outcome<ExactOneInt>>
+  line_length: FieldPatch<Outcome<PositiveInt>>
   indentation: FieldPatch<SwiftFormatIndentation>
-  tab_width: FieldPatch<PositiveInt>
-  maximum_blank_lines: FieldPatch<NonNegativeInt>
-  spaces_before_end_of_line_comments: FieldPatch<NonNegativeInt>
+  tab_width: FieldPatch<Outcome<PositiveInt>>
+  maximum_blank_lines: FieldPatch<Outcome<NonNegativeInt>>
+  spaces_before_end_of_line_comments: FieldPatch<Outcome<NonNegativeInt>>
   respects_existing_line_breaks: FieldPatch<Bool>
   line_break_before_control_flow_keywords: FieldPatch<Bool>
   line_break_before_each_argument: FieldPatch<Bool>

@@ -24,13 +24,6 @@ import v4.std.refinement {
   positive_int_authoritative_literal,
   refined_base,
 }
-import v4.std.refinement_authoritative_literals {
-  discharge_at_least_minus_one_int_catalog_row,
-  discharge_at_least_minus_two_int_catalog_row,
-  discharge_exact_one_int_catalog_row,
-  discharge_non_negative_int_catalog_row,
-  discharge_positive_int_catalog_row,
-}
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.node { Node }
 import v4.std.verification {
@@ -86,7 +79,7 @@ fn witness_positive_int_authoritative_literal_2_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 2) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2), catalog_value: 2),
+        literal: positive_int_authoritative_literal(value: 2),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -110,7 +103,7 @@ fn witness_positive_int_authoritative_literal_4_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 4) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 4), catalog_value: 4),
+        literal: positive_int_authoritative_literal(value: 4),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -134,7 +127,7 @@ fn witness_positive_int_authoritative_literal_8_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 8) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 8), catalog_value: 8),
+        literal: positive_int_authoritative_literal(value: 8),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -158,7 +151,7 @@ fn witness_positive_int_authoritative_literal_10_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 10) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 10), catalog_value: 10),
+        literal: positive_int_authoritative_literal(value: 10),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -182,7 +175,7 @@ fn witness_positive_int_authoritative_literal_60_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 60) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 60), catalog_value: 60),
+        literal: positive_int_authoritative_literal(value: 60),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -206,7 +199,7 @@ fn witness_positive_int_authoritative_literal_70_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 70) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 70), catalog_value: 70),
+        literal: positive_int_authoritative_literal(value: 70),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -230,7 +223,7 @@ fn witness_positive_int_authoritative_literal_80_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 80) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 80), catalog_value: 80),
+        literal: positive_int_authoritative_literal(value: 80),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -254,7 +247,7 @@ fn witness_positive_int_authoritative_literal_88_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 88) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 88), catalog_value: 88),
+        literal: positive_int_authoritative_literal(value: 88),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -278,7 +271,7 @@ fn witness_positive_int_authoritative_literal_100_discharge() -> Bool {
   match make_positive_int_at_authoritative(value: 100) {
     Accepted { value: accepted, diagnostics: _ } =>
       positive_int_authoritative_literal_matches_accepted(
-        literal: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 100), catalog_value: 100),
+        literal: positive_int_authoritative_literal(value: 100),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -302,7 +295,7 @@ fn witness_non_negative_int_authoritative_literal_0_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 0) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 0), catalog_value: 0),
+        literal: non_negative_int_authoritative_literal(value: 0),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -326,7 +319,7 @@ fn witness_non_negative_int_authoritative_literal_1_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 1) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 1), catalog_value: 1),
+        literal: non_negative_int_authoritative_literal(value: 1),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -350,7 +343,7 @@ fn witness_non_negative_int_authoritative_literal_2_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 2) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 2), catalog_value: 2),
+        literal: non_negative_int_authoritative_literal(value: 2),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -374,7 +367,7 @@ fn witness_non_negative_int_authoritative_literal_4_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 4) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 4), catalog_value: 4),
+        literal: non_negative_int_authoritative_literal(value: 4),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -398,7 +391,7 @@ fn witness_non_negative_int_authoritative_literal_8_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 8) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 8), catalog_value: 8),
+        literal: non_negative_int_authoritative_literal(value: 8),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -422,7 +415,7 @@ fn witness_non_negative_int_authoritative_literal_10_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 10) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 10), catalog_value: 10),
+        literal: non_negative_int_authoritative_literal(value: 10),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -446,7 +439,7 @@ fn witness_non_negative_int_authoritative_literal_18_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 18) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 18), catalog_value: 18),
+        literal: non_negative_int_authoritative_literal(value: 18),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -470,7 +463,7 @@ fn witness_non_negative_int_authoritative_literal_19_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 19) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 19), catalog_value: 19),
+        literal: non_negative_int_authoritative_literal(value: 19),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -494,7 +487,7 @@ fn witness_non_negative_int_authoritative_literal_35_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 35) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 35), catalog_value: 35),
+        literal: non_negative_int_authoritative_literal(value: 35),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -518,7 +511,7 @@ fn witness_non_negative_int_authoritative_literal_50_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 50) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 50), catalog_value: 50),
+        literal: non_negative_int_authoritative_literal(value: 50),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -542,7 +535,7 @@ fn witness_non_negative_int_authoritative_literal_60_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 60) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 60), catalog_value: 60),
+        literal: non_negative_int_authoritative_literal(value: 60),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -566,7 +559,7 @@ fn witness_non_negative_int_authoritative_literal_80_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 80) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 80), catalog_value: 80),
+        literal: non_negative_int_authoritative_literal(value: 80),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -590,7 +583,7 @@ fn witness_non_negative_int_authoritative_literal_120_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 120) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 120), catalog_value: 120),
+        literal: non_negative_int_authoritative_literal(value: 120),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -614,7 +607,7 @@ fn witness_non_negative_int_authoritative_literal_150_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 150) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 150), catalog_value: 150),
+        literal: non_negative_int_authoritative_literal(value: 150),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -638,7 +631,7 @@ fn witness_non_negative_int_authoritative_literal_300_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 300) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 300), catalog_value: 300),
+        literal: non_negative_int_authoritative_literal(value: 300),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -662,7 +655,7 @@ fn witness_non_negative_int_authoritative_literal_500_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 500) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 500), catalog_value: 500),
+        literal: non_negative_int_authoritative_literal(value: 500),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -686,7 +679,7 @@ fn witness_non_negative_int_authoritative_literal_1000_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 1000) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 1000), catalog_value: 1000),
+        literal: non_negative_int_authoritative_literal(value: 1000),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -710,7 +703,7 @@ fn witness_non_negative_int_authoritative_literal_1000000_discharge() -> Bool {
   match make_non_negative_int_at_authoritative(value: 1000000) {
     Accepted { value: accepted, diagnostics: _ } =>
       non_negative_int_authoritative_literal_matches_accepted(
-        literal: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 1000000), catalog_value: 1000000),
+        literal: non_negative_int_authoritative_literal(value: 1000000),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -734,7 +727,7 @@ fn witness_at_least_minus_one_int_authoritative_literal_0_discharge() -> Bool {
   match make_at_least_minus_one_int_at_authoritative(value: 0) {
     Accepted { value: accepted, diagnostics: _ } =>
       at_least_minus_one_int_authoritative_literal_matches_accepted(
-        literal: discharge_at_least_minus_one_int_catalog_row(receipt: at_least_minus_one_int_authoritative_literal(value: 0), catalog_value: 0),
+        literal: at_least_minus_one_int_authoritative_literal(value: 0),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -758,7 +751,7 @@ fn witness_at_least_minus_one_int_authoritative_literal_minus_1_discharge() -> B
   match make_at_least_minus_one_int_at_authoritative(value: -1) {
     Accepted { value: accepted, diagnostics: _ } =>
       at_least_minus_one_int_authoritative_literal_matches_accepted(
-        literal: discharge_at_least_minus_one_int_catalog_row(receipt: at_least_minus_one_int_authoritative_literal(value: -1), catalog_value: -1),
+        literal: at_least_minus_one_int_authoritative_literal(value: -1),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -782,7 +775,7 @@ fn witness_at_least_minus_two_int_authoritative_literal_minus_2_discharge() -> B
   match make_at_least_minus_two_int_at_authoritative(value: -2) {
     Accepted { value: accepted, diagnostics: _ } =>
       at_least_minus_two_int_authoritative_literal_matches_accepted(
-        literal: discharge_at_least_minus_two_int_catalog_row(receipt: at_least_minus_two_int_authoritative_literal(value: -2), catalog_value: -2),
+        literal: at_least_minus_two_int_authoritative_literal(value: -2),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -806,7 +799,7 @@ fn witness_exact_one_int_authoritative_literal_1_discharge() -> Bool {
   match make_exact_one_int_at_authoritative(value: 1) {
     Accepted { value: accepted, diagnostics: _ } =>
       exact_one_int_authoritative_literal_matches_accepted(
-        literal: discharge_exact_one_int_catalog_row(receipt: exact_one_int_authoritative_literal(value: 1), catalog_value: 1),
+        literal: exact_one_int_authoritative_literal(value: 1),
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false

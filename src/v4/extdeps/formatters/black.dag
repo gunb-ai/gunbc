@@ -6,10 +6,8 @@
 module v4.extdeps.formatters.black
 
 import v4.std.collection { List }
+import v4.std.diagnostic { Outcome }
 import v4.std.patch { FieldPatch, apply_field_patch }
-import v4.std.refinement_authoritative_literals {
-  discharge_positive_int_catalog_row,
-}
 import v4.std.refinement {
   PositiveInt,
   positive_int_authoritative_literal,
@@ -60,7 +58,7 @@ type BlackUnstableFeature
 
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: witness checks enable_unstable_feature empty unless preview; unstable implies preview; forbidden: ad-hoc cross-field guards outside validation substrate.
 type BlackConfig {
-  line_length: PositiveInt
+  line_length: Outcome<PositiveInt>
   target_version: BlackTargetVersionPolicy
   required_version: BlackRequiredVersionPolicy
   pyi: Bool
@@ -80,7 +78,7 @@ type BlackConfig {
 
 
 data black_defaults: BlackConfig = BlackConfig {
-  line_length: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 88), catalog_value: 88),
+  line_length: positive_int_authoritative_literal(value: 88),
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
   pyi: false,
@@ -101,7 +99,7 @@ data black_defaults: BlackConfig = BlackConfig {
 
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: BlackConfigPatch projected from BlackConfig field set.
 type BlackConfigPatch {
-  line_length: FieldPatch<PositiveInt>
+  line_length: FieldPatch<Outcome<PositiveInt>>
   target_version: FieldPatch<BlackTargetVersionPolicy>
   required_version: FieldPatch<BlackRequiredVersionPolicy>
   pyi: FieldPatch<Bool>

@@ -7,10 +7,8 @@
 module v4.extdeps.formatters.prettier
 
 import v4.std.collection { List }
+import v4.std.diagnostic { Outcome }
 import v4.std.patch { FieldPatch, apply_field_patch }
-import v4.std.refinement_authoritative_literals {
-  discharge_positive_int_catalog_row,
-}
 import v4.std.refinement {
   PositiveInt,
   positive_int_authoritative_literal,
@@ -108,8 +106,8 @@ type PrettierParser
 
 
 type PrettierFormattingOptions {
-  print_width: PositiveInt
-  tab_width: PositiveInt
+  print_width: Outcome<PositiveInt>
+  tab_width: Outcome<PositiveInt>
   use_tabs: Bool
   semi: Bool
   single_quote: Bool
@@ -137,8 +135,8 @@ type PrettierFormattingOptions {
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierOverrideOptions projected from PrettierFormattingOptions field set plus parser override field.
 type PrettierOverrideOptions {
   parser: FieldPatch<PrettierParser>
-  print_width: FieldPatch<PositiveInt>
-  tab_width: FieldPatch<PositiveInt>
+  print_width: FieldPatch<Outcome<PositiveInt>>
+  tab_width: FieldPatch<Outcome<PositiveInt>>
   use_tabs: FieldPatch<Bool>
   semi: FieldPatch<Bool>
   single_quote: FieldPatch<Bool>
@@ -177,8 +175,8 @@ type PrettierConfig {
 
 
 data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
-  print_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 80), catalog_value: 80),
-  tab_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2), catalog_value: 2),
+  print_width: positive_int_authoritative_literal(value: 80),
+  tab_width: positive_int_authoritative_literal(value: 2),
   use_tabs: false,
   semi: true,
   single_quote: false,
@@ -211,8 +209,8 @@ data prettier_defaults: PrettierConfig = PrettierConfig {
 
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierFormattingOptionsPatch projected from PrettierFormattingOptions field set.
 type PrettierFormattingOptionsPatch {
-  print_width: FieldPatch<PositiveInt>
-  tab_width: FieldPatch<PositiveInt>
+  print_width: FieldPatch<Outcome<PositiveInt>>
+  tab_width: FieldPatch<Outcome<PositiveInt>>
   use_tabs: FieldPatch<Bool>
   semi: FieldPatch<Bool>
   single_quote: FieldPatch<Bool>
