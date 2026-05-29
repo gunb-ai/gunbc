@@ -46,8 +46,8 @@ const CI_V3_PREFIXES: &[&str] = &["src/v3/", "dsl/"];
 const CI_V4_PREFIXES: &[&str] = &[
     "src/v4/",
     "fixtures/v4-mvp1/",
-    "scripts/v4-mvp1",
-    "scripts/v4-m1",
+    "scripts/v4-mvp1/",
+    "scripts/v4-m1/",
     "scripts/v4-testclaim-",
     "dsl/std/",
 ];
@@ -279,16 +279,8 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: must import any from std.algebra for path-bucket existence"
     );
     assert!(
-        import_includes_name(&module, &["v4", "std", "algebra"], "non_empty"),
-        "{CI_DAG_PATH}: must import non_empty from std.algebra for runner-pool witness"
-    );
-    assert!(
         CI_DAG.contains("any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v2)"),
         "{CI_DAG_PATH}: component affected-set must use std.algebra any"
-    );
-    assert!(
-        CI_DAG.contains("non_empty(xs: pools)"),
-        "{CI_DAG_PATH}: M1 probe witness must use std.algebra non_empty"
     );
     assert!(
         !CI_DAG.contains("CiGitDiffReadOutcome"),
@@ -301,20 +293,12 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: git diff read boundary must project through std.diagnostic Outcome"
     );
     assert!(
-        !CI_DAG.contains("ci_int_div_totalizing"),
-        "{CI_DAG_PATH}: runner-pool arithmetic must not fabricate int_div Rejected into a plausible quotient"
+        !CI_DAG.contains("ci_m1_probe_cargo_fanout_slots_from_fleet"),
+        "{CI_DAG_PATH}: M1 cargo jobs must not use reverse-engineered fleet fanout derivation"
     );
     assert!(
-        !CI_DAG.contains("ci_int_min_fold_sentinel"),
-        "{CI_DAG_PATH}: fleet min folds must seed from ci_srv1_pool rows, not a magic sentinel"
-    );
-    assert!(
-        CI_DAG.contains("init: ci_srv1_pool.runner_count"),
-        "{CI_DAG_PATH}: fleet min/max folds must seed from modeled srv1 pool row"
-    );
-    assert!(
-        CI_DAG.contains("ci_m1_probe_cargo_fanout_slots_from_fleet()"),
-        "{CI_DAG_PATH}: M1 fanout must derive through witness-gated Outcome<Int> fleet API"
+        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
+        "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant in Wave-0"
     );
     assert!(
         CI_DAG.contains("RerunNodeSetFailClosed { evidence: _ } => roster"),
@@ -425,14 +409,13 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
     );
     assert!(
-        CI_DAG.contains("data m1_probe_cargo_check_jobs: Outcome<Int>"),
-        "{CI_DAG_PATH}: M1 cargo parallelism must remain Outcome<Int> (no Rejected→0 collapse)"
+        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
+        "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant"
     );
-    let m1_jobs = v3_compiler::v4_ci_runner_pool::m1_probe_cargo_check_jobs()
-        .expect("fleet model must derive M1 cargo-check jobs");
+    let m1_jobs = v3_compiler::v4_ci_runner_pool::m1_probe_cargo_check_jobs();
     assert_eq!(
         m1_jobs, 4,
-        "Rust transport mirror of m1_probe_cargo_check_jobs must match ci.dag fleet model"
+        "Rust transport mirror of m1_probe_cargo_check_jobs must match ci.dag operator constant"
     );
     assert!(
         m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),

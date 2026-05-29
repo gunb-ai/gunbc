@@ -34,37 +34,8 @@ pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
 
 pub const CI_SELF_HOSTED_RUNNER_POOLS: [SelfHostedRunnerPool; 2] = [CI_SRV1_POOL, CI_SRV2_POOL];
 
-pub fn ci_fleet_min_jobserver_token_cap() -> u32 {
-    CI_SELF_HOSTED_RUNNER_POOLS
-        .iter()
-        .fold(CI_SRV1_POOL.jobserver_token_cap, |acc, pool| {
-            acc.min(pool.jobserver_token_cap)
-        })
-}
-
-pub fn ci_fleet_max_runner_count() -> u32 {
-    CI_SELF_HOSTED_RUNNER_POOLS
-        .iter()
-        .fold(CI_SRV1_POOL.runner_count, |acc, pool| {
-            acc.max(pool.runner_count)
-        })
-}
-
-pub fn ci_fleet_min_runner_count() -> u32 {
-    CI_SELF_HOSTED_RUNNER_POOLS
-        .iter()
-        .fold(CI_SRV1_POOL.runner_count, |acc, pool| {
-            acc.min(pool.runner_count)
-        })
-}
-
-pub fn ci_runner_pool_total_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
-    pools.iter().map(|p| p.runner_count).sum()
-}
-
-pub fn ci_runner_pool_host_count(pools: &[SelfHostedRunnerPool]) -> u32 {
-    pools.len() as u32
-}
+/// Operator M1 probe cargo-check parallelism (`data m1_probe_cargo_check_jobs` in `ci.dag`).
+pub const M1_PROBE_CARGO_CHECK_JOBS: u32 = 4;
 
 pub fn ci_int_positive(n: u32) -> bool {
     n >= 1
@@ -82,38 +53,9 @@ pub fn ci_runner_pool_fleet_capacities_valid() -> bool {
         .all(|pool| ci_runner_pool_capacity_valid(*pool))
 }
 
-pub fn ci_runner_pool_m1_probe_witness_holds() -> bool {
-    ci_runner_pool_fleet_capacities_valid()
-        && !CI_SELF_HOSTED_RUNNER_POOLS.is_empty()
-        && ci_fleet_max_runner_count() != ci_fleet_min_runner_count()
-}
-
-pub fn ci_m1_probe_cargo_fanout_slots_from_fleet() -> Option<u32> {
-    if !ci_runner_pool_m1_probe_witness_holds() {
-        return None;
-    }
-    let min_runners = ci_fleet_min_runner_count();
-    let max_runners = ci_fleet_max_runner_count();
-    let spread = max_runners - min_runners;
-    if spread == 0 {
-        return None;
-    }
-    let total_runners = ci_runner_pool_total_runner_count(&CI_SELF_HOSTED_RUNNER_POOLS);
-    let hosts = ci_runner_pool_host_count(&CI_SELF_HOSTED_RUNNER_POOLS);
-    Some((total_runners - min_runners) * hosts / spread)
-}
-
-pub fn ci_m1_probe_cargo_check_jobs_from_fleet() -> Option<u32> {
-    let fanout = ci_m1_probe_cargo_fanout_slots_from_fleet()?;
-    if !ci_int_positive(fanout) {
-        return None;
-    }
-    Some(ci_fleet_min_jobserver_token_cap() / fanout)
-}
-
 /// Modeled authority for `data m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
-pub fn m1_probe_cargo_check_jobs() -> Option<u32> {
-    ci_m1_probe_cargo_check_jobs_from_fleet()
+pub fn m1_probe_cargo_check_jobs() -> u32 {
+    M1_PROBE_CARGO_CHECK_JOBS
 }
 
 #[cfg(test)]
@@ -129,15 +71,8 @@ mod tests {
     }
 
     #[test]
-    fn m1_probe_cargo_check_jobs_derived_as_four() {
+    fn m1_probe_cargo_check_jobs_is_operator_constant() {
         assert!(ci_runner_pool_fleet_capacities_valid());
-        assert_eq!(ci_m1_probe_cargo_fanout_slots_from_fleet(), Some(6));
-        assert_eq!(ci_m1_probe_cargo_check_jobs_from_fleet(), Some(4));
-        assert_eq!(m1_probe_cargo_check_jobs(), Some(4));
-    }
-
-    #[test]
-    fn witness_required_for_fleet_m1_derivation() {
-        assert!(ci_runner_pool_m1_probe_witness_holds());
+        assert_eq!(m1_probe_cargo_check_jobs(), 4);
     }
 }

@@ -50,7 +50,6 @@ import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.text { Char, String }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
-import v4.std.integer { int_mul, int_div }
 import v4.std.algebra {
   any,
   count_equal,
@@ -59,7 +58,6 @@ import v4.std.algebra {
   for_all,
   is_prefix_of,
   length,
-  non_empty,
   unique
 }
 import v4.std.verification {
@@ -257,7 +255,6 @@ data ci_dangling_reference: Symbol = ci_dangling_reference
 data ci_dependency_cycle: Symbol = ci_dependency_cycle
 data ci_bootstrap_authority_violation: Symbol = ci_bootstrap_authority_violation
 data ci_workflow_file: Symbol = ci_workflow_file
-data ci_runner_pool_non_positive_capacity: Symbol = ci_runner_pool_non_positive_capacity
 
 fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
@@ -736,112 +733,7 @@ fn ci_runner_pool_fleet_capacities_valid() -> Bool {
 }
 
 
-fn ci_runner_pool_total_runner_count(pools: List<SelfHostedRunnerPool>) -> Int {
-  fold(pools, init: 0, f: fn(acc, pool) {
-    acc + pool.runner_count
-  })
-}
-
-
-fn ci_runner_pool_host_count(pools: List<SelfHostedRunnerPool>) -> Int {
-  length(xs: pools)
-}
-
-
-fn ci_fleet_min_runner_count() -> Int {
-  fold(ci_self_hosted_runner_pools, init: ci_srv1_pool.runner_count, f: fn(acc, pool) {
-    if pool.runner_count < acc {
-      pool.runner_count
-    } else {
-      acc
-    }
-  })
-}
-
-
-fn ci_fleet_max_runner_count() -> Int {
-  fold(ci_self_hosted_runner_pools, init: ci_srv1_pool.runner_count, f: fn(acc, pool) {
-    if pool.runner_count > acc {
-      pool.runner_count
-    } else {
-      acc
-    }
-  })
-}
-
-
-fn ci_fleet_min_jobserver_token_cap() -> Int {
-  fold(
-    ci_self_hosted_runner_pools,
-    init: ci_srv1_pool.jobserver_token_cap,
-    f: fn(acc, pool) {
-      if pool.jobserver_token_cap < acc {
-        pool.jobserver_token_cap
-      } else {
-        acc
-      }
-    }
-  )
-}
-
-
-fn ci_runner_pool_has_nonuniform_runner_counts_on_fleet() -> Bool {
-  ci_fleet_max_runner_count() != ci_fleet_min_runner_count()
-}
-
-
-fn ci_runner_pool_m1_probe_witness_holds() -> Bool {
-  ci_runner_pool_fleet_capacities_valid()
-    && non_empty(xs: ci_self_hosted_runner_pools)
-    && ci_runner_pool_has_nonuniform_runner_counts_on_fleet()
-}
-
-
-data ci_runner_pool_m1_probe_witness: Bool = ci_runner_pool_m1_probe_witness_holds()
-
-
-fn ci_m1_probe_cargo_fanout_slots_from_fleet() -> Outcome<Int> {
-  if ci_runner_pool_m1_probe_witness {
-    let min_runners = ci_fleet_min_runner_count()
-    let max_runners = ci_fleet_max_runner_count()
-    let spread = max_runners - min_runners
-    int_div(
-      a: int_mul(
-        a: ci_runner_pool_total_runner_count(pools: ci_self_hosted_runner_pools) - min_runners,
-        b: ci_runner_pool_host_count(pools: ci_self_hosted_runner_pools)
-      ),
-      b: spread,
-      at: Textual { file: ci_workflow_file, extent: WholeFile }
-    )
-  } else {
-    Rejected {
-      diagnostics: diagnostics_singleton(
-        d: ci_diagnostic(reason: ci_runner_pool_m1_witness_violation)
-      )
-    }
-  }
-}
-
-
-fn ci_m1_probe_cargo_check_jobs_from_fleet() -> Outcome<Int> {
-  match ci_m1_probe_cargo_fanout_slots_from_fleet() {
-    Accepted { value: fanout_slots, diagnostics: _ } =>
-      if ci_int_positive(n: fanout_slots) {
-        int_div(
-          a: ci_fleet_min_jobserver_token_cap(),
-          b: fanout_slots,
-          at: Textual { file: ci_workflow_file, extent: WholeFile }
-        )
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: ci_diagnostic(reason: ci_runner_pool_non_positive_fanout)
-          )
-        }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-
-data m1_probe_cargo_check_jobs: Outcome<Int> = ci_m1_probe_cargo_check_jobs_from_fleet()
+// RULING-1: 🟢 operator fact — M1 rust-emit probe `cargo check --jobs` cap (operator 2026-05-28).
+// Wave-0: explicit constant, not fleet-derived (jobserver÷runner allocation rule unpublished).
+// ci_srv1_pool/ci_srv2_pool retain host capacity facts for YamlStatic projection follow-on (T-24/#98).
+data m1_probe_cargo_check_jobs: Int = 4

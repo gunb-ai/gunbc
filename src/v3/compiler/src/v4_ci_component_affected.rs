@@ -63,8 +63,8 @@ pub fn ci_changed_path_affects_v3(path: &str) -> bool {
 pub fn ci_changed_path_affects_v4(path: &str) -> bool {
     path.starts_with("src/v4/")
         || path.starts_with("fixtures/v4-mvp1/")
-        || path.starts_with("scripts/v4-mvp1")
-        || path.starts_with("scripts/v4-m1")
+        || path.starts_with("scripts/v4-mvp1/")
+        || path.starts_with("scripts/v4-m1/")
         || path.starts_with("scripts/v4-testclaim-")
         || path.starts_with("dsl/std/")
         || path == "Cargo.toml"
