@@ -687,7 +687,7 @@ fn witness_authoritative_at_least_minus_two_int_minus_2_discharge() -> Bool {
   match make_at_least_minus_two_int_at_authoritative(value: -2) {
     Accepted { value: accepted, diagnostics: _ } =>
       at_least_minus_two_int_authoritative_literal_matches_accepted(
-        literal: authoritative_at_least_minus_two_int_minus_()2(),
+        literal: authoritative_at_least_minus_two_int_minus_2,
         accepted: accepted
       )
     Rejected { diagnostics: _ } => false
@@ -711,7 +711,7 @@ data claim_authoritative_at_least_minus_two_int_minus_2_discharge: TestClaim = E
 fn witness_authoritative_exact_one_int_1_discharge() -> Bool {
   match make_exact_one_int_at_authoritative(value: 1) {
     Accepted { value: accepted, diagnostics: _ } =>
-      exact_one_int_authoritative_literal_matches_accepted(literal: authoritative_exact_one_int_()1(), accepted: accepted)
+      exact_one_int_authoritative_literal_matches_accepted(literal: authoritative_exact_one_int_1, accepted: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
