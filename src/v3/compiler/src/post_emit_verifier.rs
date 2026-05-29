@@ -127,12 +127,16 @@ pub enum VerifierParseError {
     },
 }
 
-/// Runner failures. `InvocationFailed` fires when the OS cannot
-/// spawn the verifier process (binary missing from PATH, etc.);
-/// `WrongExitCode` and `PolicyViolation` fire after a successful
-/// spawn when the verdict does not match the contract.
+/// Runner failures. `SpecUnavailable` fires when the bootstrap dag lacks a
+/// clean-emission spec or the contract record cannot be parsed.
+/// `InvocationFailed` fires when the OS cannot spawn the verifier process
+/// (binary missing from PATH, etc.); `WrongExitCode` and `PolicyViolation`
+/// fire after a successful spawn when the verdict does not match the contract.
 #[derive(Debug)]
 pub enum VerifierRunError {
+    SpecUnavailable {
+        detail: String,
+    },
     InvocationFailed {
         command: String,
         io_error: String,
@@ -265,6 +269,9 @@ pub fn run_post_emit_verifier(
 impl fmt::Display for VerifierRunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            VerifierRunError::SpecUnavailable { detail } => {
+                write!(f, "post_emit_verifier contract unavailable: {detail}")
+            }
             VerifierRunError::InvocationFailed { command, io_error } => {
                 write!(f, "failed to invoke `{command}`: {io_error}")
             }
@@ -316,9 +323,8 @@ pub fn verify_emitted_source_file(
 }
 
 fn verifier_parse_error_to_run_error(err: VerifierParseError) -> VerifierRunError {
-    VerifierRunError::InvocationFailed {
-        command: "post_emit_verifier_contract".to_string(),
-        io_error: err.to_string(),
+    VerifierRunError::SpecUnavailable {
+        detail: err.to_string(),
     }
 }
 
