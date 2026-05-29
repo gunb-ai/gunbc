@@ -474,6 +474,7 @@ data ci_projection_char_offset_neg_edge: Symbol = ci_projection_char_offset_neg_
 data ci_projection_char_offset_quotient_edge: Symbol = ci_projection_char_offset_quotient_edge
 data ci_projection_char_offset_byte_edge: Symbol = ci_projection_char_offset_byte_edge
 data ci_projection_command_variant_edge: Symbol = ci_projection_command_variant_edge
+data ci_cache_bootstrap_hash_pin_projection_fail_closed_tag: Symbol = ci_cache_bootstrap_hash_pin_projection_fail_closed_tag
 data ci_projection_command_produces_edge: Symbol = ci_projection_command_produces_edge
 data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_name_edge
 data ci_projection_command_lenses_edge: Symbol = ci_projection_command_lenses_edge
@@ -519,6 +520,15 @@ fn ci_symbol_list_projection_node(xs: List<Symbol>) -> Node {
 }
 
 
+fn ci_bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Node {
+  match bootstrap_hash_pin_projection_node(pin: pin) {
+    Accepted { value: node, diagnostics: _ } => node
+    Rejected { diagnostics: _ } =>
+      ci_atom(sym: ci_cache_bootstrap_hash_pin_projection_fail_closed_tag)
+  }
+}
+
+
 fn ci_compile_stage_projection_node(stage: CompileStage) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -527,7 +537,7 @@ fn ci_compile_stage_projection_node(stage: CompileStage) -> Node {
       ci_named_edge(name: ci_projection_compile_stage_compiled_by_edge, target: ci_atom(sym: stage.compiled_by)),
       ci_named_edge(
         name: ci_projection_compile_stage_produces_hash_edge,
-        target: bootstrap_hash_pin_projection_node(pin: stage.produces_hash)
+        target: ci_bootstrap_hash_pin_projection_node(pin: stage.produces_hash)
       ),
       ci_named_edge(
         name: ci_projection_compile_stage_consumes_edge,
@@ -546,15 +556,15 @@ fn ci_fixpt_stage_projection_node(fixpt: FixptStage1Stage2) -> Node {
       ci_named_edge(name: ci_projection_fixpt_right_edge, target: ci_atom(sym: fixpt.right)),
       ci_named_edge(
         name: ci_projection_fixpt_left_hash_edge,
-        target: bootstrap_hash_pin_projection_node(pin: fixpt.left_hash)
+        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.left_hash)
       ),
       ci_named_edge(
         name: ci_projection_fixpt_right_hash_edge,
-        target: bootstrap_hash_pin_projection_node(pin: fixpt.right_hash)
+        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.right_hash)
       ),
       ci_named_edge(
         name: ci_projection_fixpt_pinned_hash_edge,
-        target: bootstrap_hash_pin_projection_node(pin: fixpt.pinned_hash)
+        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.pinned_hash)
       )
     ]
   }
