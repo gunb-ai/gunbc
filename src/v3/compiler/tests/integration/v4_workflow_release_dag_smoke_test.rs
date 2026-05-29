@@ -214,8 +214,15 @@ fn v4_workflow_release_target_authority_single_writer() {
         "{INSTALL_SH_PATH}: must delegate target detection to shell authority"
     );
     assert!(
-        RELEASE_TARGET_SCRIPT.contains("release_published_target_at"),
-        "{RELEASE_TARGET_SCRIPT_PATH}: detect_release_target must project from RELEASE_PUBLISHED_TARGET_TRIPLES"
+        RELEASE_TARGET_SCRIPT.contains("release_published_target_lookup"),
+        "{RELEASE_TARGET_SCRIPT_PATH}: detect_release_target must resolve triples from RELEASE_PUBLISHED_TARGET_TRIPLES by string (not matrix row index)"
+    );
+    assert!(
+        !RELEASE_TARGET_SCRIPT.contains("idx=1")
+            && !RELEASE_TARGET_SCRIPT.contains("idx=2")
+            && !RELEASE_TARGET_SCRIPT.contains("idx=3")
+            && !RELEASE_TARGET_SCRIPT.contains("idx=4"),
+        "{RELEASE_TARGET_SCRIPT_PATH}: OS/arch detection must not bind to positional matrix indices (reorder-safe P2)"
     );
     assert!(
         !RELEASE_TARGET_SCRIPT.contains("printf '%s\\n' 'x86_64-unknown-linux-musl'"),
