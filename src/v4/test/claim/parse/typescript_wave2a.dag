@@ -1,5 +1,10 @@
 // src/v4/test/claim/parse/typescript_wave2a.dag
+<<<<<<< HEAD
 // Scope: TestClaim rows for TypeScript Wave 2a lex/grammar behavior.
+=======
+// Scope: TestClaim rows for TypeScript Wave 2a lex/grammar behavior, including the
+// type-alias / record-type production added in T-11 typescript ext PR-1 (#3900).
+>>>>>>> origin/main
 // Status: T-22 runner deferred — execution pending T-22 complexity fix.
 
 module v4.test.claim.parse.typescript_wave2a
@@ -25,6 +30,7 @@ data ts_wave2a_file: Symbol = ts_wave2a_file
 data ts_wave2a_bool_true: Symbol = ts_wave2a_bool_true
 data ts_wave2a_bool_false: Symbol = ts_wave2a_bool_false
 
+<<<<<<< HEAD
 // TaskStatus surface from src/v4/test/fixture/task_manager_demo.dag transcribed
 // to a TS const annotation: 3-variant string-literal union (Open/InProgress/Done).
 data ts_wave2a_union_task_status_source: String = "const status: 'Open' | 'InProgress' | 'Done' = status;"
@@ -32,6 +38,14 @@ data ts_wave2a_union_task_status_source: String = "const status: 'Open' | 'InPro
 // Minimal two-variant union — guards against the left-recursive form silently
 // regressing to require ≥3 variants.
 data ts_wave2a_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
+=======
+// 🟡 feature:ts-wave2a-whitespace-trivia owner:cool-moth-495 lane:node://adhoc-ece453af-47e tracker:#3900 dissolve-on: substrate lex moves punctuation literals to a whitespace-trivia model.
+data ts_wave2a_type_alias_task_source: String = "type Task =  { id: TaskId, title: string, status: TaskStatus };"
+
+data ts_wave2a_type_alias_minimal_source: String = "type Box =  { value: number };"
+
+data ts_wave2a_type_alias_missing_eq_source: String = "type Box { value: number };"
+>>>>>>> origin/main
 
 fn ts_wave2a_bool_atom(b: Bool) -> Node {
   match b {
@@ -40,7 +54,11 @@ fn ts_wave2a_bool_atom(b: Bool) -> Node {
   }
 }
 
+<<<<<<< HEAD
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:std-outcome-accepted-predicate — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 typescript ext lane — dissolve-on-arrival: when std/diagnostic.dag exports a canonical outcome_accepted_predicate(out: Outcome<T>) -> Bool, every wave2a parse-claim file (rust/kotlin/python/swift/lean/typescript) replaces its local copy with the canonical import in one PR and deletes ts_wave2a_parse_accepted in that same commit; forbidden: permanent local Outcome→Bool match wrappers outside std/diagnostic.
+=======
+// 🟡 feature:std-outcome-accepted-predicate owner:cool-moth-495 lane:node://adhoc-ece453af-47e tracker:#3900 dissolve-on: std/diagnostic.dag exports canonical outcome_accepted_predicate (one-pass replace across all wave2a parse-claim files).
+>>>>>>> origin/main
 fn ts_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
@@ -60,26 +78,59 @@ fn ts_wave2a_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
   }
 }
 
+<<<<<<< HEAD
 data claim_ts_wave2a_union_task_status_parses: TestClaim = EqualsClaim {
   label: "TS Wave 2a accepts a 3-variant string-literal discriminated union in a const annotation (TaskStatus surface): const status: 'Open' | 'InProgress' | 'Done' = status;",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_wave2a_bool_atom(
     b: ts_wave2a_parse_accepted(
       out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_union_task_status_source)
+=======
+data claim_ts_wave2a_type_alias_task_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts the Task record-type alias: type Task = { id: TaskId, title: string, status: TaskStatus };",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_type_alias_task_source)
+>>>>>>> origin/main
     )
   ),
   rhs: ts_wave2a_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
+<<<<<<< HEAD
 data claim_ts_wave2a_union_minimal_parses: TestClaim = EqualsClaim {
   label: "TS Wave 2a accepts a minimal two-variant string-literal union (regression against left-recursive form requiring ≥3 variants)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_wave2a_bool_atom(
     b: ts_wave2a_parse_accepted(
       out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_union_minimal_source)
+=======
+data claim_ts_wave2a_type_alias_minimal_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts a minimal single-field record-type alias with the spec-required `=` token",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_type_alias_minimal_source)
+>>>>>>> origin/main
     )
   ),
   rhs: ts_wave2a_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
+<<<<<<< HEAD
+=======
+
+data claim_ts_wave2a_type_alias_missing_eq_rejected: TestClaim = EqualsClaim {
+  label: "TS Wave 2a REJECTS the no-`=` form `type Box { value: number };` — negative regression against the prior bug",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_type_alias_missing_eq_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+>>>>>>> origin/main

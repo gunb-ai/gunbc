@@ -227,6 +227,8 @@ data ts_token_num_lit: Symbol = ts_token_num_lit
 data ts_token_pipe: Symbol = ts_token_pipe
 data ts_token_string_lit: Symbol = ts_token_string_lit
 
+data ts_token_kw_type: Symbol = ts_token_kw_type
+
 data ts_production_mvp1_fn_add: Symbol = ts_production_mvp1_fn_add
 
 data ts_production_wave2a_type_annotation: Symbol = ts_production_wave2a_type_annotation
@@ -234,9 +236,17 @@ data ts_production_wave2a_type_number: Symbol = ts_production_wave2a_type_number
 data ts_production_wave2a_type_string: Symbol = ts_production_wave2a_type_string
 data ts_production_wave2a_type_boolean: Symbol = ts_production_wave2a_type_boolean
 data ts_production_wave2a_type_void: Symbol = ts_production_wave2a_type_void
+data ts_production_wave2a_type_name: Symbol = ts_production_wave2a_type_name
 data ts_production_wave2a_let_decl: Symbol = ts_production_wave2a_let_decl
 data ts_production_wave2a_const_decl: Symbol = ts_production_wave2a_const_decl
+<<<<<<< HEAD
 data ts_production_wave2a_union_type: Symbol = ts_production_wave2a_union_type
+=======
+data ts_production_wave2a_record_field: Symbol = ts_production_wave2a_record_field
+data ts_production_wave2a_record_fields: Symbol = ts_production_wave2a_record_fields
+data ts_production_wave2a_record_type: Symbol = ts_production_wave2a_record_type
+data ts_production_wave2a_type_alias_decl: Symbol = ts_production_wave2a_type_alias_decl
+>>>>>>> origin/main
 data ts_production_wave2a_item: Symbol = ts_production_wave2a_item
 
 data ts_surface_fn_item: Symbol = ts_surface_fn_item
@@ -246,10 +256,18 @@ data ts_surface_bin_add: Symbol = ts_surface_bin_add
 data ts_surface_type_string: Symbol = ts_surface_type_string
 data ts_surface_type_boolean: Symbol = ts_surface_type_boolean
 data ts_surface_type_void: Symbol = ts_surface_type_void
+data ts_surface_type_name: Symbol = ts_surface_type_name
 data ts_surface_type_annotation: Symbol = ts_surface_type_annotation
 data ts_surface_let_decl: Symbol = ts_surface_let_decl
 data ts_surface_const_decl: Symbol = ts_surface_const_decl
+<<<<<<< HEAD
 data ts_surface_union_type: Symbol = ts_surface_union_type
+=======
+data ts_surface_record_field: Symbol = ts_surface_record_field
+data ts_surface_record_fields: Symbol = ts_surface_record_fields
+data ts_surface_record_type: Symbol = ts_surface_record_type
+data ts_surface_type_alias_decl: Symbol = ts_surface_type_alias_decl
+>>>>>>> origin/main
 data ts_surface_item: Symbol = ts_surface_item
 
 data ts_binding_fn_add: Symbol = ts_binding_fn_add
@@ -1126,6 +1144,7 @@ fn ts_wave2a_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ts_token_kw_return, text: "return "),
       ts_lex_rule(token_class: ts_token_kw_let, text: "let "),
       ts_lex_rule(token_class: ts_token_kw_const, text: "const "),
+      ts_lex_rule(token_class: ts_token_kw_type, text: "type "),
       ts_ident_lex_rule(),
       ts_lex_rule(token_class: ts_token_ty_number, text: "number"),
       ts_lex_rule(token_class: ts_token_ty_string, text: "string"),
@@ -1202,6 +1221,7 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_void)]
     ),
     grammar_formal_production(
+<<<<<<< HEAD
       lhs: ts_production_wave2a_union_type,
       rhs: [
         grammar_formal_terminal(identity: ts_token_string_lit),
@@ -1215,11 +1235,64 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_union_type),
         grammar_formal_terminal(identity: ts_token_pipe),
         grammar_formal_terminal(identity: ts_token_string_lit)
+=======
+      lhs: ts_production_wave2a_type_name,
+      rhs: [grammar_formal_terminal(identity: ts_token_ident)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_type_annotation,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_name)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_record_field,
+      rhs: [
+        grammar_formal_terminal(identity: ts_token_ident),
+        grammar_formal_terminal(identity: ts_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_annotation)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_record_fields,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_record_field)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_record_fields,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_record_fields),
+        grammar_formal_terminal(identity: ts_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_record_field)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_record_type,
+      rhs: [
+        grammar_formal_terminal(identity: ts_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_record_fields),
+        grammar_formal_terminal(identity: ts_token_rbrace)
+>>>>>>> origin/main
       ]
     ),
     grammar_formal_production(
       lhs: ts_production_wave2a_type_annotation,
+<<<<<<< HEAD
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_union_type)]
+=======
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_record_type)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_type_alias_decl,
+      rhs: [
+        grammar_formal_terminal(identity: ts_token_kw_type),
+        grammar_formal_terminal(identity: ts_token_ident),
+        grammar_formal_terminal(identity: ts_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_annotation),
+        grammar_formal_terminal(identity: ts_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_item,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_alias_decl)]
+>>>>>>> origin/main
     ),
     grammar_formal_production(
       lhs: ts_production_wave2a_let_decl,
@@ -1293,6 +1366,58 @@ fn ts_grammar_production_wave2a_type_void() -> GrammarProduction {
   }
 }
 
+fn ts_grammar_production_wave2a_type_name() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_name,
+    expression: Terminal { token_class: ts_token_ident },
+    emitted: ts_grammar_atom(id: ts_surface_type_name)
+  }
+}
+
+fn ts_grammar_production_wave2a_record_field() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_record_field,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_ident },
+      right: Sequence {
+        left: Terminal { token_class: ts_token_colon },
+        right: Nonterminal { production: ts_production_wave2a_type_annotation }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_record_field)
+  }
+}
+
+fn ts_grammar_production_wave2a_record_fields() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_record_fields,
+    expression: Sequence {
+      left: Nonterminal { production: ts_production_wave2a_record_field },
+      right: Repeat {
+        element: Sequence {
+          left: Terminal { token_class: ts_token_comma },
+          right: Nonterminal { production: ts_production_wave2a_record_field }
+        }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_record_fields)
+  }
+}
+
+fn ts_grammar_production_wave2a_record_type() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_record_type,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_lbrace },
+      right: Sequence {
+        left: Nonterminal { production: ts_production_wave2a_record_fields },
+        right: Terminal { token_class: ts_token_rbrace }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_record_type)
+  }
+}
+
 fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
   GrammarProduction {
     name: ts_production_wave2a_type_annotation,
@@ -1304,7 +1429,14 @@ fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
           left: Nonterminal { production: ts_production_wave2a_type_boolean },
           right: Choice {
             left: Nonterminal { production: ts_production_wave2a_type_void },
+<<<<<<< HEAD
             right: Nonterminal { production: ts_production_wave2a_union_type }
+=======
+            right: Choice {
+              left: Nonterminal { production: ts_production_wave2a_type_name },
+              right: Nonterminal { production: ts_production_wave2a_record_type }
+            }
+>>>>>>> origin/main
           }
         }
       }
@@ -1313,6 +1445,7 @@ fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
   }
 }
 
+<<<<<<< HEAD
 // TS string-literal discriminated union per TS handbook §Literal Types:
 // `type T = 'A' | 'B' | 'C';`. Payload-free coproducts (e.g. TaskStatus from
 // src/v4/test/fixture/task_manager_demo.dag) map cleanly to this surface; tagged
@@ -1331,11 +1464,29 @@ fn ts_grammar_production_wave2a_union_type() -> GrammarProduction {
           element: Sequence {
             left: Terminal { token_class: ts_token_pipe },
             right: Terminal { token_class: ts_token_string_lit }
+=======
+fn ts_grammar_production_wave2a_type_alias_decl() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_alias_decl,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_kw_type },
+      right: Sequence {
+        left: Terminal { token_class: ts_token_ident },
+        right: Sequence {
+          left: Terminal { token_class: ts_token_eq },
+          right: Sequence {
+            left: Nonterminal { production: ts_production_wave2a_type_annotation },
+            right: Terminal { token_class: ts_token_semicolon }
+>>>>>>> origin/main
           }
         }
       }
     },
+<<<<<<< HEAD
     emitted: ts_grammar_atom(id: ts_surface_union_type)
+=======
+    emitted: ts_grammar_atom(id: ts_surface_type_alias_decl)
+>>>>>>> origin/main
   }
 }
 
@@ -1398,7 +1549,10 @@ fn ts_grammar_production_wave2a_item() -> GrammarProduction {
       left: Nonterminal { production: ts_production_mvp1_fn_add },
       right: Choice {
         left: Nonterminal { production: ts_production_wave2a_let_decl },
-        right: Nonterminal { production: ts_production_wave2a_const_decl }
+        right: Choice {
+          left: Nonterminal { production: ts_production_wave2a_const_decl },
+          right: Nonterminal { production: ts_production_wave2a_type_alias_decl }
+        }
       }
     },
     emitted: ts_grammar_atom(id: ts_surface_item)
@@ -1411,14 +1565,26 @@ fn ts_wave2a_grammar_root() -> GrammarRoot {
   let ty_str = ts_grammar_production_wave2a_type_string()
   let ty_bool = ts_grammar_production_wave2a_type_boolean()
   let ty_void = ts_grammar_production_wave2a_type_void()
+  let ty_name = ts_grammar_production_wave2a_type_name()
+  let rec_field = ts_grammar_production_wave2a_record_field()
+  let rec_fields = ts_grammar_production_wave2a_record_fields()
+  let rec_type = ts_grammar_production_wave2a_record_type()
   let type_annot = ts_grammar_production_wave2a_type_annotation()
   let let_decl = ts_grammar_production_wave2a_let_decl()
   let const_decl = ts_grammar_production_wave2a_const_decl()
+<<<<<<< HEAD
   let union_type = ts_grammar_production_wave2a_union_type()
   let item = ts_grammar_production_wave2a_item()
   GrammarRoot {
     start: ts_production_wave2a_item,
     productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, union_type, type_annot, let_decl, const_decl, item],
+=======
+  let type_alias_decl = ts_grammar_production_wave2a_type_alias_decl()
+  let item = ts_grammar_production_wave2a_item()
+  GrammarRoot {
+    start: ts_production_wave2a_item,
+    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, type_annot, let_decl, const_decl, type_alias_decl, item],
+>>>>>>> origin/main
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
