@@ -11,9 +11,11 @@ Canonical anchor for the CI-efficiency lane. Code-fix PRs reference this doc; do
 
 | Owner | Artifact |
 |-------|----------|
-| wise-otter-34 / PR #3853 | `ci.dag` authority; dissolve `detect-affected-components.sh` |
-| clever-cat-115 / PR #3883 | M1 emit-probe timeout fail-closed + `v4`-only gating (draft) |
-| vivid-raven-55 | Deferral / scaffold-ratchet scan in INVARIANTS (dissolution triggers) |
+| clever-cat-115 / PR **#3886** | **Design canvas** — authoritative migration atoms A0–A14 (no bridging) |
+| wise-otter-34 / PR #3853 | **A1 only:** `CiGitDiffReadOutcome` + detect bin — **not** bucket→GHA `if:` wiring |
+| neat-wren-762 / T-38 | **A0 active:** interpreter harness + host effects |
+| vivid-raven-55 | Scaffold-ratchet deletions (INVARIANTS triggers) |
+| *(superseded)* | #3883, #3879, #3882 — closed; micro YAML/shell path abandoned |
 
 ---
 
@@ -254,24 +256,24 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 | v4-affected typical | **20–40 min** | **2–5 min** cold / **10–30s** warm | **−15–35 min** |
 | M1 timeout path (B01) | 20m silent green | skip or fail-closed | correctness + time |
 
-**Why affected-set feels weak today:** T-21 `ci_select_from_affected_set` narrows TestClaims in the model; GitHub Actions still uses coarse booleans (R10). #3853 swaps authority without merkle keyed skips.
+**Why affected-set feels weak today:** T-21 `ci_select_from_affected_set` narrows TestClaims in the model, but GitHub Actions still schedules via coarse `v2`/`v3`/`v4`/`workflow_policy` booleans (R10) instead of the interpreter walking the frontier. **Fix shape (operator 2026-05-29):** drop bucket gating; **S2′ interpreter-direct** per PR **#3886** — not staged YAML tuning or `CiComponentAffected`→`if:` bridging.
 
 ---
 
 ## 7. Recommended action plan
 
-| Rank | Target | Owner / ref | Expected Δ | Notes |
-|------|--------|-------------|------------|-------|
-| P0 | M1 timeout fail-closed + `v4`-only gate | PR **#3883** | correctness; −20m on policy-only PRs | Land + `gh pr ready` |
-| P0 | `rustfmt` + `ci_rust` outputs | `adhoc-f7412ade-2d2` | **−55–65s** docs-only | Skip fmt/ci rust when no cargo work |
-| P0 | Path-gate discipline shells | `adhoc-73481895-3d7` | **−6–25s** per PR | fabrication / sg0 / briefs |
-| P1 | Merge #3853; wire finer buckets from `ci.dag` | wise-otter-34 | enables R03/R10 | Parity mirror ≠ speed |
-| P1 | M1 merkle cache + bootstrap artifact sharing | new work-item | **−10–20 min** v4 PRs | R07/R08 |
-| P1 | Single integration binary compile per workflow | CI refactor | **−5–15 min** | R05/O4 |
-| P1 | Test input-declaration + IRT frontier (§8) | T-21/T-19/T-38 + #3853 | **−5–30 min** when skips work | declare inputs; do not bulk-delete overlaps |
-| P1 | Scaffold-ratchet dissolution (delete) | vivid-raven-55 | varies | INVARIANTS trigger met only |
-| P2 | Shared cargo home across jobs on host | infra | R06 | conflicts w/ rustup race fix |
-| P2 | Restore v3 integration filter (#846) | operator | quality | after amortization |
+**Authority:** implementation program = PR **#3886** (`docs/design-ci-dag-overhaul.md` §6.3 atoms **A0–A14**). Each atom = one PR authoring modeled Nodes + deleting legacy paths in the same diff. **No** parallel micro-optimization PRs; **no** “merge #3853 bucket wiring then tune YAML” phase.
+
+| Atom | Target | Owner | Notes |
+|------|--------|-------|-------|
+| **A0** | Host-effect substrate for CI interpreter | neat-wren-762 (T-38) | **Start now** (substrate only) |
+| **A1** | `CiGitDiffReadOutcome`; dissolve detect script; **drop bucket `if:` scheduling** | wise-otter-34 + clever-cat-115 | #3853 reframe — witness only, not GHA buckets |
+| **A2** | End-state harness + interpreter on `ci_pipeline` | clever-cat-115 + neat-wren-762 | Deletes hand `ci.yml` job graph |
+| **A3–A14** | Per-command Nodes + deletions (M1, discipline, v3 cluster, …) | clever-cat-115 | See #3886 §6.3 |
+| — | Scaffold-ratchet dissolution | vivid-raven-55 | When INVARIANTS trigger fires |
+| **Out of lane** | YamlStatic `ci.yml` emission; `ci_rust` YAML gates; path-only shell tuning | — | Superseded #3879/#3882/#3883 |
+
+**Expected Δ** (when A0–A14 complete): Table B (§6) — docs-only **~8–12s**; v4-affected **minutes not tens of minutes** on unchanged subgraphs; M1 fail-closed (B01).
 
 ---
 
