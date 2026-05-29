@@ -134,8 +134,21 @@ fn v4_workflow_release_semantics_modeled() {
         "{RELEASE_DAG_PATH}: must document YamlStatic emission deferral"
     );
     assert!(
-        RELEASE_DAG.contains("data release_published_target_triples"),
+        RELEASE_DAG.contains("data release_published_target_triples: List<String> ="),
         "{RELEASE_DAG_PATH}: must declare published target triple authority"
+    );
+    assert!(
+        RELEASE_DAG.contains("release_matrix_row_targets(rows: release_build_matrix)"),
+        "{RELEASE_DAG_PATH}: published triples must project from release_build_matrix (single source)"
+    );
+    assert!(
+        RELEASE_DAG.contains("import v4.std.node { Symbol }"),
+        "{RELEASE_DAG_PATH}: job/gate ids must import Symbol from v4.std.node"
+    );
+    assert!(
+        RELEASE_DAG.contains("🟡 coproduct dissolution")
+            && RELEASE_DAG.contains("type ReleaseCommand"),
+        "{RELEASE_DAG_PATH}: ReleaseCommand must carry Practice-4 coproduct dissolution mark"
     );
     for target in RELEASE_PUBLISHED_TARGETS {
         assert!(
@@ -168,6 +181,10 @@ fn v4_workflow_release_target_authority_single_writer() {
     assert!(
         INSTALL_SH.contains("detect_release_target"),
         "{INSTALL_SH_PATH}: must delegate target detection to shell authority"
+    );
+    assert!(
+        INSTALL_SH.contains("GUNBC_RELEASE_TARGETS_REF"),
+        "{INSTALL_SH_PATH}: pinned GUNBC_VERSION must fetch release-target-triples from same tag"
     );
     assert!(
         !INSTALL_SH.contains("printf '%s\\n' 'x86_64-unknown-linux-musl'"),

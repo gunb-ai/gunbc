@@ -1,12 +1,13 @@
 #!/usr/bin/env sh
 # Single shell authority for release binary target triples (gunbc-{triple} asset names).
-# Semantic authority: src/v4/workflow/release.dag `release_published_target_triples`.
+# Semantic authority: src/v4/workflow/release.dag `release_build_matrix` (targets via
+# `release_published_target_triples` = projection of matrix row targets).
 # Do not edit target strings here without updating the model first.
 # Ratchet: v4_workflow_release_dag_smoke_test::v4_workflow_release_target_authority_single_writer
 
 set -eu
 
-# Ordered list — must match release.dag release_published_target_triples.
+# Ordered list — must match release.dag release_build_matrix row target order.
 RELEASE_PUBLISHED_TARGET_TRIPLES="
 x86_64-unknown-linux-musl
 aarch64-unknown-linux-musl

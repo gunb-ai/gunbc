@@ -12,6 +12,7 @@
 #   GUNBC_INSTALL_REPO   default gunb-ai/gunbc
 #   GUNBC_INSTALL_DIR    default /usr/local/bin
 #   GUNBC_VERSION        tag (e.g. v0.1.0) or empty for latest release
+#   GUNBC_RELEASE_TARGETS_REF    git ref for release-target-triples.sh (default: GUNBC_VERSION or main)
 #   GUNBC_RELEASE_TARGETS_URL  override raw URL for release-target-triples.sh
 
 set -eu
@@ -41,7 +42,8 @@ load_release_target_authority() {
   fi
   _authority=$(mktemp "${TMPDIR:-/tmp}/gunbc-release-targets.XXXXXX")
   trap 'rm -f "$_authority"' EXIT INT HUP TERM
-  _targets_url="${GUNBC_RELEASE_TARGETS_URL:-https://raw.githubusercontent.com/${REPO}/main/scripts/release-target-triples.sh}"
+  _targets_ref="${GUNBC_RELEASE_TARGETS_REF:-${VERSION:-main}}"
+  _targets_url="${GUNBC_RELEASE_TARGETS_URL:-https://raw.githubusercontent.com/${REPO}/${_targets_ref}/scripts/release-target-triples.sh}"
   curl -fsSL "$_targets_url" -o "$_authority"
   # shellcheck source=/dev/null
   . "$_authority"

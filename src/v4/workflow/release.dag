@@ -34,7 +34,7 @@ import v4.std.algebra {
 import v4.workflow.bootstrap { v4_stage0_binary }
 
 
-// 🟡 coproduct dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` CiCommand / LB-P4-3213 posture)
+// 🟡 coproduct dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` CiCommand / LB-P4-3213) — dissolve-on-arrival: YamlStatic `release_pipeline` emission retires hand-synced command surface; forbidden: adding release transport variants outside this coproduct + `release_pipeline`.
 type ReleaseCommand
   = CrossMuslGunbcBuild { target: String }
   | NativeDarwinGunbcBuild { target: String }
@@ -105,14 +105,17 @@ data release_build_matrix: List<ReleaseMatrixRow> = [
   }
 ]
 
-// Published GH Release asset triples (`gunbc-{target}`) — installer/transport projection of
-// `release_build_matrix` row targets (must match; `release_published_triples_align_with_matrix`).
-data release_published_target_triples: List<String> = [
-  "x86_64-unknown-linux-musl",
-  "aarch64-unknown-linux-musl",
-  "x86_64-apple-darwin",
-  "aarch64-apple-darwin"
-]
+fn release_matrix_row_targets(rows: List<ReleaseMatrixRow>) -> List<String> {
+  fold(rows, init: [], f: fn(acc, row) {
+    concat(acc, [row.target])
+  })
+}
+
+// Published GH Release asset triples (`gunbc-{target}`) — projection of `release_build_matrix`
+// row targets (single modeled source). Shell `scripts/release-target-triples.sh` mirrors this
+// list for curl|sh install until install targets derive from `.dag` eval.
+data release_published_target_triples: List<String> =
+  release_matrix_row_targets(rows: release_build_matrix)
 
 data release_matrix_build_execution: Symbol = release_matrix_build_execution
 data release_publish_execution: Symbol = release_publish_execution
@@ -259,12 +262,6 @@ fn release_kahn_fixpoint(jobs: List<ReleaseJob>) -> List<Symbol> {
 
 fn release_acyclic(jobs: List<ReleaseJob>) -> Bool {
   length(xs: release_kahn_fixpoint(jobs: jobs)) == 0
-}
-
-fn release_matrix_row_targets(rows: List<ReleaseMatrixRow>) -> List<String> {
-  fold(rows, init: [], f: fn(acc, row) {
-    concat([row.target], acc)
-  })
 }
 
 fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
