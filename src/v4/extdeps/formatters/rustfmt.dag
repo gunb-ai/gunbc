@@ -55,9 +55,10 @@ fn make_rustfmt_non_neg_int(value: Int, at: Locus) -> Outcome<RustfmtNonNegInt> 
 }
 
 
-// Predicate excludes "*" (representable by RustfmtMacroAll) and non-identifier strings.
-// Identifier check is structural: non-empty and contains no embedded "*"; refining further to a strict
-// Rust ident grammar is a follow-on once string char-class predicates land.
+// Predicate currently enforces only "name is not the bare "*" sentinel reserved for RustfmtMacroAll".
+// 🟡 gated — feature: text-char-class-predicates — bind v4.std.text — dissolve-on-arrival: tighten admits
+// to reject non-identifier strings (Rust macro ident grammar) once v4.std.text exposes a char-class /
+// substring query primitive beyond string_is_empty; forbidden: hand-rolled char tests outside std/text.
 type RustfmtMacroIdent = Refined<String>
 
 
@@ -104,8 +105,11 @@ fn make_rustfmt_semver_version(value: String, at: Locus) -> Outcome<RustfmtSemve
 }
 
 
-// gitignore-format path predicate: v1.6.0 excludes Windows backslash paths; predicate rejects '\\'.
-// Strict gitignore-grammar refinement is a follow-on once char-class string predicates land.
+// Predicate currently enforces only non-empty.
+// 🟡 gated — feature: text-char-class-predicates — bind v4.std.text — dissolve-on-arrival: tighten admits
+// to reject Windows-backslash paths and validate gitignore-format Unix '/' separators (v1.6.0 explicitly
+// excludes backslash paths) once v4.std.text exposes substring / char-class query primitives beyond
+// string_is_empty; forbidden: hand-rolled char tests outside std/text.
 type RustfmtIgnorePathPattern = Refined<String>
 
 
