@@ -254,7 +254,7 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 | R07 | `M1RustEmitProbeCommand` | `content_hash(src/v4/**.dag)` + v2 binary | replace `ci_cache_cmd_m1_probe_tag` | **0s** reuse |
 | R08 | Bootstrap → M1 `needs` edge | dag emit digest → rust emit | shared artifact | one compile / unique input |
 | R09 | `BootstrapStageCompile` + `LensCiCommand` | stage0 + entry closure | gunbc/emit cache | **seconds** warm |
-| R10 | All `ci_command_cache_digest` | real input merkle | frontier → `if:` | exact-once |
+| R10 | All `ci_command_cache_digest` | real input merkle | interpreter frontier selection (`ci_select_from_affected_set`; **no** GHA bucket `if:`) | exact-once |
 | R11 | v3 `TestCommand` + freeze | v3 subgraph merkle | T-21 on claims | **0s** when untouched |
 | R12 | Receipt `CiGate` | prior verdict hash | stub if stale | **0s** |
 
