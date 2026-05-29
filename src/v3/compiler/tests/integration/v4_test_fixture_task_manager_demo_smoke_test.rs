@@ -36,7 +36,8 @@ fn v4_test_fixture_task_manager_demo_parses() {
 fn v4_test_fixture_task_manager_demo_exports_sql_create_table_projection() {
     let _module = task_manager_demo_surface_or_panic();
     assert!(
-        TASK_MANAGER_DEMO_DAG.contains("fn task_to_sql_create_table() -> Outcome<SqlSchemaOperation>"),
+        TASK_MANAGER_DEMO_DAG
+            .contains("fn task_to_sql_create_table() -> Outcome<SqlSchemaOperation>"),
         "fixture must export Task→SqlCreateTable Shape-B projection"
     );
     assert!(
