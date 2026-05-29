@@ -347,7 +347,7 @@ Pairs below share behavior on the **same `.dag` / module closure**. Not deletion
 | T-IG-01 | ~15 `v4_*_dag_smoke_test.rs` modules | Run whenever CI filter fires | Bind each `#[test]` to `content_hash(.dag)` via TestClaim or generated metadata | T-19 + T-38 |
 | T-IG-02 | `v3-compiler` integration (~140 modules) | Whole binary on `v3` job; #846 runs 0 tests but pays libtest | Per-module `AffectedSet` registration or claim migration | T-21 + #846 |
 | T-IG-03 | Host-Rust tests without claim backing | No `input: Node` | Synthetic TestClaim wrapper with fixture merkle | T-24 CI runner |
-| T-IG-04 | `ci.yml` coarse `if: v4` | All integration filters on any v4 path change | `ci_select_from_affected_set` → step frontier (#3853) | wise-otter-34 |
+| T-IG-04 | `ci.yml` coarse `if: v4` | All integration filters on any v4 path change | Drop bucket `if:`; `ci_select_from_affected_set` on integration roster via **#3886 A1/A2** (S2′ interpreter) — **not** #3853 (witness-only per §7) | clever-cat-115 + neat-wren-762 (T-38) |
 | T-IG-05 | `v4-testclaim-corpus-gate.sh` | Structural only; no verdict cache | T-38 `TestClaimCorpusEvalCommand` + IRT-4 | T-38 |
 
 **Enumeration procedure:** `cargo test -p v3-compiler --test integration -- --list` → infer `include_str!` / fixture paths → merkle → cross-check `src/v4/test/claim/**` → mark declared vs T-IG row.
@@ -400,7 +400,7 @@ When the PR diff does not touch a claim’s **input frontier**, **IRT-1** exclud
 |-----------|--------|
 | **vivid-raven-55** | SCAFFOLD-RATCHET dissolution only; cross-ref T-IG table |
 | Suggested child | T-IG-01: bind `v4_*_dag_smoke` tests to claim input merkle |
-| Suggested child | T-IG-04: wire `ci_select_from_affected_set` to integration roster |
+| Suggested child | T-IG-04: wire `ci_select_from_affected_set` to integration roster (**#3886 A2**; #3853 = diff witness only) |
 | **Not dispatched** | “Delete all duplicate smokes” — superseded by affected-set model |
 | Each **delete** PR | INVARIANTS dissolution row or DEAD proof only |
 
