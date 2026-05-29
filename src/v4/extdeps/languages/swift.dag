@@ -1,9 +1,9 @@
 // src/v4/extdeps/languages/swift.dag
-// Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.
+// Scope: Swift language/standard-library scalar fact-bundles, ModelCore wave-1 (primitives), wave-2b (inhabitance+laws+effects+partiality).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
+// Status: T-4 Swift wave-1+2b; fixed-width integer spellings explicit, Int/UInt platform-word-width, Float/Double IEEE-754; wave-2b: signed int OrderedRing + unsigned int CommutativeSemiring + float ApproximateField + bool BooleanAlgebra + string FreeMonoid inhabitance; laws+effects+partiality; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
 // Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/
-// Ledger: CP-3229-GREEN-TERMINAL.
+// Ledger: CP-3229-GREEN-TERMINAL, SL-T4-WAVE2B-SWIFT-LAW-KEY.
 // 🟡
 
 module v4.extdeps.languages.swift
@@ -57,10 +57,19 @@ import v4.std.lexing {
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
   EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
+  model_core_wave1_law_field_algebra,
+  model_core_wave1_law_field_kind,
+  model_core_wave1_law_field_subject,
   ModelCore,
   PartialitySemanticsDecl,
+  PartialOperationDecl,
   PrimitiveFactBundle,
+  PrimitiveOperationRef,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
@@ -98,7 +107,19 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  approximate_field_type_node,
+  boolean_algebra_type_node,
+  BooleanAlgebra,
+  commutative_semiring_type_node,
+  Cons,
+  Empty,
+  fold_list,
+  free_monoid_type_node,
+  list_append,
+  list_snoc_item,
+  ordered_ring_type_node
+}
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
@@ -2090,5 +2111,644 @@ fn swift_language_model_wave1() -> SwiftLanguageModel {
     language_identity: swift_language_model_surface_id,
     canonical_symbols: swift_language_model_canonical_symbols(),
     core: swift_model_core_wave1()
+  }
+}
+
+
+
+
+data swift_witness_signed_int_ordered_ring: Symbol = swift_witness_signed_int_ordered_ring
+data swift_witness_unsigned_int_commutative_semiring: Symbol = swift_witness_unsigned_int_commutative_semiring
+data swift_witness_float_approximate_field: Symbol = swift_witness_float_approximate_field
+data swift_witness_bool_boolean_algebra: Symbol = swift_witness_bool_boolean_algebra
+data swift_witness_string_free_monoid: Symbol = swift_witness_string_free_monoid
+
+data swift_inhabitant_unicode_scalar: Symbol = swift_inhabitant_unicode_scalar
+
+fn swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(name: swift_inhabitant_field_atom, target: swift_atom(id: id)),
+      swift_named_edge(
+        name: swift_inhabitant_field_facts,
+        target: swift_float_facts_node(facts: facts)
+      )
+    ]
+  }
+}
+
+fn swift_signed_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_witness_signed_int_ordered_ring,
+        target: swift_atom(id: swift_witness_signed_int_ordered_ring)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_signedness,
+        target: swift_signedness_node(signedness: facts.signedness)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_width,
+        target: swift_width_node(width: facts.width)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_overflow,
+        target: swift_overflow_node(overflow: facts.overflow)
+      )
+    ]
+  }
+}
+
+fn swift_unsigned_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_witness_unsigned_int_commutative_semiring,
+        target: swift_atom(id: swift_witness_unsigned_int_commutative_semiring)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_signedness,
+        target: swift_signedness_node(signedness: facts.signedness)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_width,
+        target: swift_width_node(width: facts.width)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_overflow,
+        target: swift_overflow_node(overflow: facts.overflow)
+      )
+    ]
+  }
+}
+
+fn swift_float_algebra_witness_node(facts: SwiftFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_witness_float_approximate_field,
+        target: swift_atom(id: swift_witness_float_approximate_field)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_ieee754_binary,
+        target: swift_atom(id: facts.ieee754_binary)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_width,
+        target: swift_float_width_node(width: facts.width)
+      )
+    ]
+  }
+}
+
+fn swift_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_witness_bool_boolean_algebra,
+        target: swift_atom(id: swift_witness_bool_boolean_algebra)
+      )
+    ]
+  }
+}
+
+fn swift_string_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_witness_string_free_monoid,
+        target: swift_atom(id: swift_witness_string_free_monoid)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_value_fact,
+        target: swift_atom(id: swift_tag_string_unicode_text)
+      )
+    ]
+  }
+}
+
+fn swift_integer_algebra_inhabitance(facts: SwiftIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = swift_integer_inhabitant_node(id: facts.surface_spelling, facts: facts)
+  match facts.signedness {
+    Signed => AlgebraInhabitanceDecl {
+      algebra: ordered_ring_type_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: swift_signed_int_algebra_witness_node(facts: facts)
+    }
+    Unsigned => AlgebraInhabitanceDecl {
+      algebra: commutative_semiring_type_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: swift_unsigned_int_algebra_witness_node(facts: facts)
+    }
+  }
+}
+
+fn swift_float_algebra_inhabitance(facts: SwiftFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = swift_float_inhabitant_node(id: facts.surface_spelling, facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: swift_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn swift_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_bool)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: swift_bool_algebra_witness_node()
+  }
+}
+
+fn swift_string_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_string)
+  let code_unit = swift_atom(id: swift_inhabitant_unicode_scalar)
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_type_node(inhabitant: code_unit),
+    inhabitant: inhabitant,
+    witness: swift_string_algebra_witness_node()
+  }
+}
+
+fn swift_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: swift_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: swift_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn swift_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: swift_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: swift_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn swift_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: swift_integer_algebra_inhabitance_decls(),
+        right: swift_float_algebra_inhabitance_decls()
+      ),
+      right: [swift_bool_algebra_inhabitance()]
+    ),
+    right: [swift_string_algebra_inhabitance()]
+  )
+}
+
+
+// 🟡 coproduct dissolution — SL-T4-WAVE2B-SWIFT-LAW-KEY — feature:model-core-law-expression-carrier — scaffold:T-4-wave-2b · law-kind coproduct for swift_model_core_law_node kind edge — owner:T-4 swift language model lane — dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
+type SwiftModelCoreLawKey
+  = SwiftLawSignedIntAddAssociative
+  | SwiftLawSignedIntAddCommutative
+  | SwiftLawSignedIntMulAssociative
+  | SwiftLawSignedIntMulCommutative
+  | SwiftLawSignedIntDistributive
+  | SwiftLawSignedIntTotalOrder
+  | SwiftLawUnsignedIntAddAssociative
+  | SwiftLawUnsignedIntAddCommutative
+  | SwiftLawUnsignedIntMulAssociative
+  | SwiftLawUnsignedIntMulCommutative
+  | SwiftLawUnsignedIntDistributive
+  | SwiftLawFloatIeee754Rounding
+  | SwiftLawFloatNanInfCarriedByIeee754
+  | SwiftLawBoolBoundedLattice
+  | SwiftLawBoolComplement
+  | SwiftLawStringConcatAssociative
+  | SwiftLawStringConcatLeftIdentity
+  | SwiftLawStringConcatRightIdentity
+
+data swift_law_kind_signed_int_add_associative: Symbol = swift_law_kind_signed_int_add_associative
+data swift_law_kind_signed_int_add_commutative: Symbol = swift_law_kind_signed_int_add_commutative
+data swift_law_kind_signed_int_mul_associative: Symbol = swift_law_kind_signed_int_mul_associative
+data swift_law_kind_signed_int_mul_commutative: Symbol = swift_law_kind_signed_int_mul_commutative
+data swift_law_kind_signed_int_distributive: Symbol = swift_law_kind_signed_int_distributive
+data swift_law_kind_signed_int_total_order: Symbol = swift_law_kind_signed_int_total_order
+data swift_law_kind_unsigned_int_add_associative: Symbol = swift_law_kind_unsigned_int_add_associative
+data swift_law_kind_unsigned_int_add_commutative: Symbol = swift_law_kind_unsigned_int_add_commutative
+data swift_law_kind_unsigned_int_mul_associative: Symbol = swift_law_kind_unsigned_int_mul_associative
+data swift_law_kind_unsigned_int_mul_commutative: Symbol = swift_law_kind_unsigned_int_mul_commutative
+data swift_law_kind_unsigned_int_distributive: Symbol = swift_law_kind_unsigned_int_distributive
+data swift_law_kind_float_ieee754_rounding: Symbol = swift_law_kind_float_ieee754_rounding
+data swift_law_kind_float_nan_inf_carried_by_ieee754: Symbol = swift_law_kind_float_nan_inf_carried_by_ieee754
+data swift_law_kind_bool_bounded_lattice: Symbol = swift_law_kind_bool_bounded_lattice
+data swift_law_kind_bool_complement: Symbol = swift_law_kind_bool_complement
+data swift_law_kind_string_concat_associative: Symbol = swift_law_kind_string_concat_associative
+data swift_law_kind_string_concat_left_identity: Symbol = swift_law_kind_string_concat_left_identity
+data swift_law_kind_string_concat_right_identity: Symbol = swift_law_kind_string_concat_right_identity
+
+fn swift_law_kind_symbol(key: SwiftModelCoreLawKey) -> Symbol {
+  match key {
+    SwiftLawSignedIntAddAssociative => swift_law_kind_signed_int_add_associative
+    SwiftLawSignedIntAddCommutative => swift_law_kind_signed_int_add_commutative
+    SwiftLawSignedIntMulAssociative => swift_law_kind_signed_int_mul_associative
+    SwiftLawSignedIntMulCommutative => swift_law_kind_signed_int_mul_commutative
+    SwiftLawSignedIntDistributive => swift_law_kind_signed_int_distributive
+    SwiftLawSignedIntTotalOrder => swift_law_kind_signed_int_total_order
+    SwiftLawUnsignedIntAddAssociative => swift_law_kind_unsigned_int_add_associative
+    SwiftLawUnsignedIntAddCommutative => swift_law_kind_unsigned_int_add_commutative
+    SwiftLawUnsignedIntMulAssociative => swift_law_kind_unsigned_int_mul_associative
+    SwiftLawUnsignedIntMulCommutative => swift_law_kind_unsigned_int_mul_commutative
+    SwiftLawUnsignedIntDistributive => swift_law_kind_unsigned_int_distributive
+    SwiftLawFloatIeee754Rounding => swift_law_kind_float_ieee754_rounding
+    SwiftLawFloatNanInfCarriedByIeee754 => swift_law_kind_float_nan_inf_carried_by_ieee754
+    SwiftLawBoolBoundedLattice => swift_law_kind_bool_bounded_lattice
+    SwiftLawBoolComplement => swift_law_kind_bool_complement
+    SwiftLawStringConcatAssociative => swift_law_kind_string_concat_associative
+    SwiftLawStringConcatLeftIdentity => swift_law_kind_string_concat_left_identity
+    SwiftLawStringConcatRightIdentity => swift_law_kind_string_concat_right_identity
+  }
+}
+
+fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLawKey) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(name: model_core_wave1_law_field_subject, target: witness),
+      swift_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      swift_named_edge(
+        name: model_core_wave1_law_field_kind,
+        target: swift_atom(id: swift_law_kind_symbol(key: key))
+      )
+    ]
+  }
+}
+
+fn swift_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: witness,
+    law: law
+  }
+}
+
+fn swift_signed_int_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let inhabitant = swift_integer_inhabitant_node(id: facts.surface_spelling, facts: facts)
+  let algebra = ordered_ring_type_node(inhabitant: inhabitant)
+  let witness = swift_signed_int_algebra_witness_node(facts: facts)
+  [
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawSignedIntAddAssociative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawSignedIntAddCommutative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawSignedIntMulAssociative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawSignedIntMulCommutative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawSignedIntDistributive)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawSignedIntTotalOrder)
+    )
+  ]
+}
+
+fn swift_unsigned_int_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let inhabitant = swift_integer_inhabitant_node(id: facts.surface_spelling, facts: facts)
+  let algebra = commutative_semiring_type_node(inhabitant: inhabitant)
+  let witness = swift_unsigned_int_algebra_witness_node(facts: facts)
+  [
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawUnsignedIntAddAssociative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawUnsignedIntAddCommutative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawUnsignedIntMulAssociative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawUnsignedIntMulCommutative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawUnsignedIntDistributive)
+    )
+  ]
+}
+
+fn swift_integer_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  match facts.signedness {
+    Signed => swift_signed_int_law_obligations(facts: facts)
+    Unsigned => swift_unsigned_int_law_obligations(facts: facts)
+  }
+}
+
+fn swift_float_law_obligations(facts: SwiftFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let inhabitant = swift_float_inhabitant_node(id: facts.surface_spelling, facts: facts)
+  let algebra = approximate_field_type_node(inhabitant: inhabitant)
+  let witness = swift_float_algebra_witness_node(facts: facts)
+  [
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawFloatIeee754Rounding)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawFloatNanInfCarriedByIeee754)
+    )
+  ]
+}
+
+fn swift_bool_law_obligations() -> List<AlgebraLawObligation> {
+  let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_bool)
+  let algebra = boolean_algebra_type_node(inhabitant: inhabitant)
+  let witness = swift_bool_algebra_witness_node()
+  [
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawBoolBoundedLattice)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawBoolComplement)
+    )
+  ]
+}
+
+fn swift_string_law_obligations() -> List<AlgebraLawObligation> {
+  let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_string)
+  let code_unit = swift_atom(id: swift_inhabitant_unicode_scalar)
+  let algebra = free_monoid_type_node(inhabitant: code_unit)
+  let witness = swift_string_algebra_witness_node()
+  [
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawStringConcatAssociative)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawStringConcatLeftIdentity)
+    ),
+    swift_model_core_law_obligation(
+      witness: witness,
+      law: swift_model_core_law_node(witness: witness, algebra: algebra, key: SwiftLawStringConcatRightIdentity)
+    )
+  ]
+}
+
+fn swift_integer_law_step(
+  acc: List<AlgebraLawObligation>,
+  facts: SwiftIntegerPrimitiveFacts
+) -> List<AlgebraLawObligation> {
+  list_append(left: acc, right: swift_integer_law_obligations(facts: facts))
+}
+
+fn swift_float_law_step(
+  acc: List<AlgebraLawObligation>,
+  facts: SwiftFloatPrimitiveFacts
+) -> List<AlgebraLawObligation> {
+  list_append(left: acc, right: swift_float_law_obligations(facts: facts))
+}
+
+fn swift_integer_law_decls() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: swift_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) { swift_integer_law_step(acc: acc, facts: facts) }
+  )
+}
+
+fn swift_float_law_decls() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: swift_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) { swift_float_law_step(acc: acc, facts: facts) }
+  )
+}
+
+fn swift_model_core_law_obligations() -> List<AlgebraLawObligation> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: swift_integer_law_decls(),
+        right: swift_float_law_decls()
+      ),
+      right: swift_bool_law_obligations()
+    ),
+    right: swift_string_law_obligations()
+  )
+}
+
+
+data swift_effect_signature_pure_value: Symbol = swift_effect_signature_pure_value
+data swift_op_int_add: Symbol = swift_op_int_add
+data swift_op_int_sub: Symbol = swift_op_int_sub
+data swift_op_int_mul: Symbol = swift_op_int_mul
+data swift_op_int_div: Symbol = swift_op_int_div
+data swift_op_int_rem: Symbol = swift_op_int_rem
+data swift_op_int_neg: Symbol = swift_op_int_neg
+data swift_op_int_compare: Symbol = swift_op_int_compare
+data swift_op_uint_add: Symbol = swift_op_uint_add
+data swift_op_uint_sub: Symbol = swift_op_uint_sub
+data swift_op_uint_mul: Symbol = swift_op_uint_mul
+data swift_op_uint_div: Symbol = swift_op_uint_div
+data swift_op_uint_rem: Symbol = swift_op_uint_rem
+data swift_op_uint_compare: Symbol = swift_op_uint_compare
+data swift_op_float_add: Symbol = swift_op_float_add
+data swift_op_float_sub: Symbol = swift_op_float_sub
+data swift_op_float_mul: Symbol = swift_op_float_mul
+data swift_op_float_div: Symbol = swift_op_float_div
+data swift_op_float_neg: Symbol = swift_op_float_neg
+data swift_op_float_compare: Symbol = swift_op_float_compare
+data swift_op_bool_and: Symbol = swift_op_bool_and
+data swift_op_bool_or: Symbol = swift_op_bool_or
+data swift_op_bool_not: Symbol = swift_op_bool_not
+data swift_op_string_concat: Symbol = swift_op_string_concat
+
+fn swift_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: swift_atom(id: operation),
+    effect_signature: EffectSignature {
+      signature: swift_atom(id: swift_effect_signature_pure_value)
+    }
+  }
+}
+
+fn swift_effect_semantics_wave2b() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      swift_pure_operation(operation: swift_op_int_add),
+      swift_pure_operation(operation: swift_op_int_sub),
+      swift_pure_operation(operation: swift_op_int_mul),
+      swift_pure_operation(operation: swift_op_int_div),
+      swift_pure_operation(operation: swift_op_int_rem),
+      swift_pure_operation(operation: swift_op_int_neg),
+      swift_pure_operation(operation: swift_op_int_compare),
+      swift_pure_operation(operation: swift_op_uint_add),
+      swift_pure_operation(operation: swift_op_uint_sub),
+      swift_pure_operation(operation: swift_op_uint_mul),
+      swift_pure_operation(operation: swift_op_uint_div),
+      swift_pure_operation(operation: swift_op_uint_rem),
+      swift_pure_operation(operation: swift_op_uint_compare),
+      swift_pure_operation(operation: swift_op_float_add),
+      swift_pure_operation(operation: swift_op_float_sub),
+      swift_pure_operation(operation: swift_op_float_mul),
+      swift_pure_operation(operation: swift_op_float_div),
+      swift_pure_operation(operation: swift_op_float_neg),
+      swift_pure_operation(operation: swift_op_float_compare),
+      swift_pure_operation(operation: swift_op_bool_and),
+      swift_pure_operation(operation: swift_op_bool_or),
+      swift_pure_operation(operation: swift_op_bool_not),
+      swift_pure_operation(operation: swift_op_string_concat)
+    ]
+  }
+}
+
+
+data swift_partial_int_divide_by_zero: Symbol = swift_partial_int_divide_by_zero
+data swift_partial_int_remainder_by_zero: Symbol = swift_partial_int_remainder_by_zero
+data swift_partial_uint_divide_by_zero: Symbol = swift_partial_uint_divide_by_zero
+data swift_partial_uint_remainder_by_zero: Symbol = swift_partial_uint_remainder_by_zero
+data swift_precondition_divisor_nonzero: Symbol = swift_precondition_divisor_nonzero
+data swift_precondition_signed_division_not_min_over_negative_one: Symbol = swift_precondition_signed_division_not_min_over_negative_one
+data swift_partial_signed_min_divide_by_negative_one: Symbol = swift_partial_signed_min_divide_by_negative_one
+
+data swift_precondition_neither_arg_nan: Symbol = swift_precondition_neither_arg_nan
+data swift_partial_float_compare_nan: Symbol = swift_partial_float_compare_nan
+
+data swift_precondition_no_overflow: Symbol = swift_precondition_no_overflow
+data swift_partial_int_add_overflow: Symbol = swift_partial_int_add_overflow
+data swift_partial_int_sub_overflow: Symbol = swift_partial_int_sub_overflow
+data swift_partial_int_mul_overflow: Symbol = swift_partial_int_mul_overflow
+data swift_partial_int_neg_overflow: Symbol = swift_partial_int_neg_overflow
+data swift_partial_uint_add_overflow: Symbol = swift_partial_uint_add_overflow
+data swift_partial_uint_sub_overflow: Symbol = swift_partial_uint_sub_overflow
+data swift_partial_uint_mul_overflow: Symbol = swift_partial_uint_mul_overflow
+
+fn swift_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: swift_atom(id: operation),
+    precondition: swift_atom(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn swift_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_div,
+        precondition: swift_precondition_divisor_nonzero,
+        reason: swift_partial_int_divide_by_zero
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_rem,
+        precondition: swift_precondition_divisor_nonzero,
+        reason: swift_partial_int_remainder_by_zero
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_div,
+        precondition: swift_precondition_signed_division_not_min_over_negative_one,
+        reason: swift_partial_signed_min_divide_by_negative_one
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_rem,
+        precondition: swift_precondition_signed_division_not_min_over_negative_one,
+        reason: swift_partial_signed_min_divide_by_negative_one
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_uint_div,
+        precondition: swift_precondition_divisor_nonzero,
+        reason: swift_partial_uint_divide_by_zero
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_uint_rem,
+        precondition: swift_precondition_divisor_nonzero,
+        reason: swift_partial_uint_remainder_by_zero
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_add,
+        precondition: swift_precondition_no_overflow,
+        reason: swift_partial_int_add_overflow
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_sub,
+        precondition: swift_precondition_no_overflow,
+        reason: swift_partial_int_sub_overflow
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_mul,
+        precondition: swift_precondition_no_overflow,
+        reason: swift_partial_int_mul_overflow
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_neg,
+        precondition: swift_precondition_no_overflow,
+        reason: swift_partial_int_neg_overflow
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_uint_add,
+        precondition: swift_precondition_no_overflow,
+        reason: swift_partial_uint_add_overflow
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_uint_sub,
+        precondition: swift_precondition_no_overflow,
+        reason: swift_partial_uint_sub_overflow
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_uint_mul,
+        precondition: swift_precondition_no_overflow,
+        reason: swift_partial_uint_mul_overflow
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_float_compare,
+        precondition: swift_precondition_neither_arg_nan,
+        reason: swift_partial_float_compare_nan
+      )
+    ]
+  }
+}
+
+
+fn swift_model_core_wave2b() -> ModelCore {
+  ModelCore {
+    primitives: swift_wave1_primitive_fact_bundles(),
+    inhabitance: swift_model_core_inhabitance_decls(),
+    laws: swift_model_core_law_obligations(),
+    effects: swift_effect_semantics_wave2b(),
+    partiality: swift_partiality_semantics_wave2b()
+  }
+}
+
+fn swift_language_model_wave2b() -> SwiftLanguageModel {
+  SwiftLanguageModel {
+    language_identity: swift_language_model_surface_id,
+    canonical_symbols: swift_language_model_canonical_symbols(),
+    core: swift_model_core_wave2b()
   }
 }
