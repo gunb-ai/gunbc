@@ -27,6 +27,9 @@ const M1_BINDING_TEST_FILTER: &str =
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted";
 const CI_MODEL_YAML_BINDING_STEP_NAME: &str = "M1 v4 workflow CI model/YAML binding smoke";
+const T15_SELF_HOST_STEP_NAME: &str = "T-15 self-host fixed-point harness (stage1==stage2)";
+const T15_SELF_HOST_HARNESS_TEST_FILTER: &str =
+    "v4_t15_self_host_fixed_point_harness_test::t_15_self_host_fixed_point";
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
@@ -654,6 +657,7 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         "| V2BootstrapCompileCommand",
         "| V3DeterminismCommand",
         "| V3SelfHostFixedPointCommand",
+        "| V4T15SelfHostFixedPointCommand",
     ] {
         assert!(
             CI_DAG.contains(arm),
@@ -672,6 +676,10 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         CI_DAG.contains("v3_self_host_fixed_point_execution"),
         "{CI_DAG_PATH}: ci_pipeline must include v3_self_host_fixed_point_execution"
     );
+    assert!(
+        CI_DAG.contains("v4_t15_self_host_fixed_point_execution"),
+        "{CI_DAG_PATH}: ci_pipeline must include v4_t15_self_host_fixed_point_execution (I7 / T-15)"
+    );
     for legacy_job in ["  v2:", "  v3:", "  v4:", "  self_host_ratchet:"] {
         assert!(
             !CI_YML.contains(legacy_job),
@@ -685,6 +693,11 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     assert!(
         CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
         "{CI_YML_PATH}: Tier-0 I4 must run inside the ci harness job"
+    );
+    let t15_step = workflow_step_block(CI_YML, T15_SELF_HOST_STEP_NAME);
+    assert!(
+        t15_step.contains(T15_SELF_HOST_HARNESS_TEST_FILTER),
+        "{CI_YML_PATH}: `{T15_SELF_HOST_STEP_NAME}` must run the T-15 self-host fixed-point harness (I7)"
     );
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
