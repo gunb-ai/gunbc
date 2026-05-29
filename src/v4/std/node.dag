@@ -554,6 +554,17 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
           ),
           boundary_tag: boundary_tag
         }
+      ByteOffsetOverCeiling {
+        within_ceiling_digest: within_ceiling_digest,
+        quotient: tail_quotient
+      } =>
+        ByteOffsetOverCeiling {
+          within_ceiling_digest: combine_hash(
+            a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
+            b: within_ceiling_digest
+          ),
+          quotient: tail_quotient
+        }
     }
   }
 }
@@ -585,6 +596,14 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
           ByteOffsetCacheDigestIneligible {
             within_ceiling_digest: prefix,
             boundary_tag: boundary_tag
+          }
+        ByteOffsetOverCeiling {
+          within_ceiling_digest: within_ceiling_digest,
+          quotient: tail_quotient
+        } =>
+          ByteOffsetOverCeiling {
+            within_ceiling_digest: combine_hash(a: prefix, b: within_ceiling_digest),
+            quotient: tail_quotient
           }
       }
     ByteOffsetCacheDigestIneligible {
@@ -634,6 +653,22 @@ fn byte_offset_cache_digest_authority_hash(auth: ByteOffsetCacheDigestAuthority)
               b: tail_digest
             )
           )
+        ByteOffsetOverCeiling {
+          within_ceiling_digest: tail_within_ceiling_digest,
+          quotient: tail_quotient
+        } =>
+          combine_hash(
+            a: atom_identity_hash(s: canonical_tag_byte_offset_out_of_ceiling),
+            b: combine_hash(
+              a: within_ceiling_digest,
+              b: byte_offset_cache_digest_authority_hash(
+                auth: ByteOffsetOverCeiling {
+                  within_ceiling_digest: tail_within_ceiling_digest,
+                  quotient: tail_quotient
+                }
+              )
+            )
+          )
       }
   }
 }
@@ -681,6 +716,17 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
             b: prefix
           ),
           quotient: quotient
+        }
+      ByteOffsetCacheDigestIneligible {
+        within_ceiling_digest: within_ceiling_digest,
+        boundary_tag: boundary_tag
+      } =>
+        ByteOffsetCacheDigestIneligible {
+          within_ceiling_digest: combine_hash(
+            a: byte_offset_byte_digest(b: i - (i / 256) * 256),
+            b: within_ceiling_digest
+          ),
+          boundary_tag: boundary_tag
         }
     }
   }
