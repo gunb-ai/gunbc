@@ -1,0 +1,52 @@
+// src/v4/test/claim/manual/multi_target_emit_verification_gate.dag
+// Scope: operator-directive 2026-05-29 — receipt that arbitrary user-program
+// emission is gated by each target's E-5 `post_emit_verifier`, not only the M1
+// self-host rust-emit probe.
+//
+// Authority (consumer landed): v3 `post_emit_verifier` +
+// `emit_verification_gates_test` + `r1c_e_gates::check_program_fixtures_post_emit_clean_all_targets`.
+// Dissolve-on-arrival: v4 modeled runner evaluates this obligation via T-22 eval
+// without referencing the v3 integration harness.
+
+module v4.test.claim.manual.multi_target_emit_verification_gate
+
+import v4.std.node { Symbol, atom_node }
+import v4.std.verification {
+  CompilesClaim,
+  EqualsClaim,
+  ManualClaimAnchor,
+  ManualNatAddLeftIdentity,
+  TestClaim,
+  TestClassification,
+  TestgenLayer,
+  TestgenTier,
+  test_claim_input
+}
+
+data emit_verification_gate_symbol: Symbol = emit_verification_gate_symbol
+
+data emit_verification_gate_anchor: ManualClaimAnchor = ManualNatAddLeftIdentity
+
+data emit_verification_gate_classification: TestClassification = {
+  tier: Tier1
+  layer: Boundary
+}
+
+// Receipt row: the obligation is modeled as a CompilesClaim over a minimal
+// program node — full multi-target verifier execution remains on the v3 harness
+// until T-38 closes the structural bridge for manual claims.
+data claim_emit_verification_gate_obligation_modeled: TestClaim = CompilesClaim {
+  label: "multi-target emit verification gate obligation is modeled (v3 harness is authority until T-38)"
+  anchor: ManualClaimAnchor { manual_anchor: emit_verification_gate_anchor }
+  input: atom_node(s: emit_verification_gate_symbol)
+  expected_value: atom_node(s: emit_verification_gate_symbol)
+  classification: emit_verification_gate_classification
+}
+
+data claim_emit_verification_gate_input_is_claim_subject: TestClaim = EqualsClaim {
+  label: "emit verification gate claim subject is test_claim_input"
+  anchor: ManualClaimAnchor { manual_anchor: emit_verification_gate_anchor }
+  lhs: test_claim_input(c: claim_emit_verification_gate_obligation_modeled)
+  rhs: atom_node(s: emit_verification_gate_symbol)
+  classification: emit_verification_gate_classification
+}
