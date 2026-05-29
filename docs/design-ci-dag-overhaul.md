@@ -231,8 +231,8 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 | Atom | Node / work | Legacy deleted (same PR) | Owner | Status |
 |------|-------------|--------------------------|-------|--------|
 | **A0** | Host-effect substrate for CI (`cargo`, `git`, …) | n/a | **neat-wren-762** | **active** (Q-R2 — start now) |
-| **A1** | `CiGitDiffReadOutcome` + frontier schedule wiring; **dissolve bucket GHA outputs** | `scripts/detect-affected-components.sh`; `affected` job bucket outputs; bucket-driven `if:` on downstream jobs | wise-otter-34 + clever-cat-115 | **ready** — **#3853 must reframe** (no bucket `if:` landing) |
-| **A2** | End-state `ci.yml` harness + interpreter entry on `ci_pipeline` | Hand-authored job graph in `ci.yml`; `dsl/gunbc/ci_github_actions_workflow.dag` mirror | clever-cat-115 + neat-wren-762 | paused |
+| **A1** | `CiGitDiffReadOutcome` + detect bin; wire `AffectedSet` witness into `ci_pipeline` eval context | `scripts/detect-affected-components.sh`; `affected` job bucket **outputs** (do **not** land bucket→GHA `if:` in #3853) | wise-otter-34 + clever-cat-115 | **ready** — **#3853 reframe** |
+| **A2** | **`ci_select_ci_jobs_from_affected_set`** (or generalize `ci_select_from_affected_set`) over `CiPipeline` + fail-closed superset; S2′ harness + interpreter entry; **then** delete bucket `if:` | Hand-authored job graph + bucket gates in `ci.yml`; `dsl/gunbc/ci_github_actions_workflow.dag` mirror | clever-cat-115 + neat-wren-762 | paused |
 | **A3** | `CiRunnerPool` / M1 parallelism in model | `V4_M1_CARGO_CHECK_JOBS` shell hacks | clever-cat-115 | paused |
 | **A4** | `RustToolchainPoolCommand` | duplicate rustup/cache steps | clever-cat-115 | paused |
 | **A5** | `LintCommand` + merkle | standalone `fmt` job blob | clever-cat-115 | paused |
@@ -275,6 +275,7 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 |----|----------|------------|
 | **Q-R1** | T-24 close requires Shape-B `ci.yml` emission? | **Yes (A15).** **No** staged YAML *bridging* (buckets / hand policy). S2′ = Phase 1 execution only. |
 | **Q-R6** | C4 vs S2′ / TASKS Shape-B bullet | **Reconciled in TASKS.md + §6.1.1:** two-phase close; C4 satisfied at **A15**, not by hand harness |
+| **Q-R7** | `ci_select_from_affected_set` “already” grounds bucket drop? | **No.** TestClaim roster fn exists (`ci.dag` ~L585); **CiJob** scheduling fn is **A2** deliverable with fail-closed superset (§5) |
 | **Q-R2** | A0 before canvas ratification? | **Yes.** neat-wren-762 starts **immediately** (substrate/host-effects only). |
 | **Q-R3** | `CiComponentAffected` scheduling | **Drop** as schedule driver (default **a**). Frontier only. |
 | **Q-R4** | Staged S0/S1/S2/S3 | **Reject.** Single end-state **S2′**; S0 = today’s audit baseline only. |
