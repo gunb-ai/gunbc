@@ -3800,7 +3800,8 @@ fn materialize_config_patch_record_connective(
         return None;
     }
     let config_ty = type_angle_arg_to_declaration_id(&args[0], symbols, local, dag);
-    let conj_id = walk_to_conj_decl(dag, config_ty)?;
+    let mut subst = LowerSubstStack::default();
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, config_ty, &mut subst)?;
     let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
         return None;
     };
@@ -3809,6 +3810,8 @@ fn materialize_config_patch_record_connective(
     let patch_children: Vec<Field> = children
         .iter()
         .map(|field| {
+            let field_ty =
+                resolve_decl_with_subst_lower(dag, field.ty, &subst, 0).unwrap_or(field.ty);
             let patch_field_ty = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id: patch_field_ty,
@@ -3817,7 +3820,7 @@ fn materialize_config_patch_record_connective(
                     template: field_patch_tpl,
                     arguments: vec![TemplateArgument {
                         parameter: field_patch_param,
-                        value: field.ty,
+                        value: field_ty,
                     }],
                 },
                 type_params: Vec::new(),
@@ -3845,45 +3848,98 @@ fn declaration_named(dag: &Dag, decl_id: DeclarationId, expected: &str) -> bool 
     dag.declaration(decl_id).name.as_deref() == Some(expected)
 }
 
-fn surface_path_expr(file: &str, segments: &[&str], span: &SourceSpan) -> SurfaceExpr {
-    let segment_spans: Vec<SourceSpan> = segments
-        .iter()
-        .map(|_| SourceSpan::new(file, span.byte_start, span.byte_end))
-        .collect();
-    SurfaceExpr::Path {
-        segments: segments.iter().map(|s| (*s).to_string()).collect(),
-        segment_spans,
+fn config_patch_layer_args_diagnostic(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: "config_patch_layer requires exactly named arguments (base: <config>, patch: <config-patch>)"
+            .to_string(),
         span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
     }
 }
 
-fn surface_apply_field_patch_expr(
-    file: &str,
+/// Parse `config_patch_layer(base: …, patch: …)` call-site named operands.
+fn extract_config_patch_layer_operands<'a>(
+    args: &'a [SurfaceExpr],
+) -> Option<(&'a SurfaceExpr, &'a SurfaceExpr)> {
+    let [SurfaceExpr::Record { fields, .. }] = args else {
+        return None;
+    };
+    let mut base = None;
+    let mut patch = None;
+    for field in fields {
+        match field.name.as_str() {
+            "base" if base.is_none() => base = Some(&field.value),
+            "patch" if patch.is_none() => patch = Some(&field.value),
+            _ => return None,
+        }
+    }
+    Some((base?, patch?))
+}
+
+/// Project one record field from a Var or Path carrier (the call-site base/patch expressions).
+fn surface_field_access_expr(
+    carrier: &SurfaceExpr,
     field_label: &str,
     span: &SourceSpan,
-) -> SurfaceExpr {
-    SurfaceExpr::Call {
+) -> Option<SurfaceExpr> {
+    let field_span = SourceSpan::new(span.file.as_str(), span.byte_start, span.byte_end);
+    match carrier {
+        SurfaceExpr::Var { name, span: carrier_span } => Some(SurfaceExpr::Path {
+            segments: vec![name.clone(), field_label.to_string()],
+            segment_spans: vec![carrier_span.clone(), field_span],
+            span: span.clone(),
+        }),
+        SurfaceExpr::Path {
+            segments,
+            segment_spans,
+            span: path_span,
+        } => {
+            let mut segs = segments.clone();
+            let mut spans = segment_spans.clone();
+            segs.push(field_label.to_string());
+            spans.push(field_span);
+            Some(SurfaceExpr::Path {
+                segments: segs,
+                segment_spans: spans,
+                span: path_span.clone(),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn surface_apply_field_patch_from_operands(
+    base_operand: &SurfaceExpr,
+    patch_operand: &SurfaceExpr,
+    field_label: &str,
+    span: &SourceSpan,
+) -> Option<SurfaceExpr> {
+    let base_field = surface_field_access_expr(base_operand, field_label, span)?;
+    let patch_field = surface_field_access_expr(patch_operand, field_label, span)?;
+    Some(SurfaceExpr::Call {
         target: "apply_field_patch".to_string(),
         args: vec![SurfaceExpr::Record {
             fields: vec![
                 SurfaceRecordField {
                     name: "base".to_string(),
-                    value: surface_path_expr(file, &["base", field_label], span),
+                    value: base_field,
                     span: span.clone(),
                 },
                 SurfaceRecordField {
                     name: "patch".to_string(),
-                    value: surface_path_expr(file, &["patch", field_label], span),
+                    value: patch_field,
                     span: span.clone(),
                 },
             ],
             span: span.clone(),
         }],
         span: span.clone(),
-    }
+    })
 }
 
-/// Expand `config_patch_layer(base: base, patch: patch)` into per-field `apply_field_patch`
+/// Expand `config_patch_layer(base: …, patch: …)` into per-field `apply_field_patch`
 /// and a config record rebuild (same semantics as hand-written `*_layer` mirrors).
 fn try_lower_config_patch_layer_invocation(
     base_target_decl: DeclarationId,
@@ -3898,24 +3954,83 @@ fn try_lower_config_patch_layer_invocation(
     if !declaration_named(dag, base_target_decl, "config_patch_layer") {
         return None;
     }
-    let config_decl = expected_decl?;
-    let conj_id = walk_to_conj_decl(dag, config_decl)?;
+    let config_decl = match expected_decl {
+        Some(decl) => decl,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_layer_args_diagnostic(span),
+            ));
+        }
+    };
+    let (base_operand, patch_operand) = match extract_config_patch_layer_operands(args) {
+        Some(operands) => operands,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_layer_args_diagnostic(span),
+            ));
+        }
+    };
+    let conj_id = match walk_to_conj_decl(dag, config_decl) {
+        Some(id) => id,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: "config_patch_layer return type must be a record (Conj)".to_string(),
+                    span: span.clone(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
+                },
+            ));
+        }
+    };
     let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
-        return None;
+        return Some(unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: "config_patch_layer return type must be a record (Conj)".to_string(),
+                span: span.clone(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
+            },
+        ));
     };
-    let _named_args = match args {
-        [SurfaceExpr::Record { fields, .. }] => fields,
-        _ => return None,
-    };
-    let file = span.file.as_str();
-    let record_fields: Vec<SurfaceRecordField> = children
-        .iter()
-        .map(|field| SurfaceRecordField {
+    let mut record_fields: Vec<SurfaceRecordField> = Vec::with_capacity(children.len());
+    for field in children {
+        let value = match surface_apply_field_patch_from_operands(
+            base_operand,
+            patch_operand,
+            &field.label,
+            span,
+        ) {
+            Some(expr) => expr,
+            None => {
+                return Some(unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "config_patch_layer operands must be variables or paths so field `{}` can be projected",
+                            field.label
+                        ),
+                        span: span.clone(),
+                        correction:
+                            crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                "LoweringDiagnostic",
+                            ),
+                    },
+                ));
+            }
+        };
+        record_fields.push(SurfaceRecordField {
             name: field.label.clone(),
-            value: surface_apply_field_patch_expr(file, &field.label, span),
+            value,
             span: span.clone(),
-        })
-        .collect();
+        });
+    }
     Some(lower_record_literal_expr(
         &record_fields,
         span,
