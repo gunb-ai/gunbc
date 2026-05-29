@@ -40,7 +40,7 @@ fn ts_wave2a_bool_atom(b: Bool) -> Node {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:std-outcome-accepted-predicate — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 typescript ext lane (this PR #3909, parent lane cool-moth-495) — dissolve-on-arrival: when std/diagnostic.dag exports a canonical outcome_accepted_predicate(out: Outcome<T>) -> Bool, every wave2a parse-claim file (rust/kotlin/python/swift/lean/typescript) replaces its local copy with the canonical import in one PR and deletes ts_wave2a_parse_accepted in that same commit; forbidden: permanent local Outcome→Bool match wrappers outside std/diagnostic.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:std-outcome-accepted-predicate — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 typescript ext lane — dissolve-on-arrival: when std/diagnostic.dag exports a canonical outcome_accepted_predicate(out: Outcome<T>) -> Bool, every wave2a parse-claim file (rust/kotlin/python/swift/lean/typescript) replaces its local copy with the canonical import in one PR and deletes ts_wave2a_parse_accepted in that same commit; forbidden: permanent local Outcome→Bool match wrappers outside std/diagnostic.
 fn ts_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
