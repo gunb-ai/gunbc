@@ -144,14 +144,18 @@ type ImportRule {
   import_path: String
 }
 type SharingStrategy {
-  needs_sharing: Bool
+  needs_sharing: Bool // Rust: true (ownership), Python/Go: false (GC)
   wrap_template: String
+  // Clone templates: {0}=value, {1}=field (for field_clone).
+  // In GC'd languages these are identity — no ownership transfer needed.
   clone_value: String
   deref_clone: String
   field_clone: String
   iter_owned: String
   clone_suffix: String
-  borrow_param_template: String
+  // Borrow templates: {0}=type (param) or {0}=expr (arg).
+  // Rust: "&{0}" wraps both types and expressions. GC languages: identity (no borrows needed).
+  borrow_param_template: String // wraps param type: Rust "&Rc<T>", Go/Python identity
   borrow_arg_template: String
 }
 type IndexingSemantics {
@@ -177,6 +181,13 @@ type ServiceFieldTemplates {
   shell_ctor: String
   file_ctor: String
 }
+// -- Block syntax: structural formatting facts per target language -----------
+// Two authorities:
+//   Language spec — block delimiters, statement terminators, significant
+//     whitespace. These are correctness requirements (Python).
+//   Style spec — indent unit, readability conventions. These are readability
+//     requirements (correctness during bootstrap; optional post-bootstrap
+//     via gofmt/rustfmt).
 type BlockSyntax {
   block_open: String
   block_close: String
@@ -319,6 +330,8 @@ type LanguageSpec {
   void_type: String
   tuple_syntax: TupleSyntax
   string_interp: StringInterpSyntax
+  // Callable type rendering: non-null overrides CallableRepr.template entirely.
+  // Rust: "Rc<dyn Fn({params}) -> {return}>". Others: null (use CallableRepr).
   callable_type_template: String?
   naming_case: NamingCase
   async_call_prefix: String
@@ -1012,6 +1025,8 @@ fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
 fn expression_semantics_for_target(target: RenderTarget) -> ExpressionSemantics {
   language_spec_for_target(target: target).expression_semantics
 }
+// Apply sharing wrap template to a type string.
+// Rust: "Rc<{0}>" → "Rc<MyType>", Python/Go: "{0}" → "MyType"
 fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
   let tmpl = sharing_for_target(target: target).wrap_template
   replace(tmpl, "{0}", inner)

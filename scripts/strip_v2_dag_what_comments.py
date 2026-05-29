@@ -31,8 +31,19 @@ WHY_KEEP_RE = re.compile(
     r"|feature:"
     r"|fail[s]?\s+closed"
     r"|fail-closed|Fail-closed"
+    r"|fail-fast|Fail-fast"
     r"|fail-closes"
     r"|Fails?\s+closed"
+    r"|silent self-recursion"
+    r"|malformed node"
+    r"|ownership transfer"
+    r"|ownership\)"
+    r"|GC'd|GC languages"
+    r"|Two authorities"
+    r"|correctness requirements"
+    r"|nested pattern matching"
+    r"|Rc-aware|Rc<"
+    r"|\.as_ref\(\)"
     r"|CX-[A-Za-z0-9-]+"
     r"|M\d+:"
     r"|BRIDGE\s+DEBT"
@@ -126,6 +137,8 @@ STANDALONE_KEEP_PREFIX_RE = re.compile(
 
 def is_orphan_comment_fragment(line: str, *, inline: bool = False) -> bool:
     """Drop mid-sentence debris (never applied inside an active WHY paragraph)."""
+    if why_keep(line):
+        return False
     m = re.match(r"^\s*//\s*(.*)$", line)
     if not m:
         return False
@@ -260,6 +273,14 @@ def process_file_lines(lines: list[str]) -> list[str]:
             return
 
         if in_section:
+            if in_why_paragraph and COMMENT_LINE_RE.match(line):
+                out.append(emit_line(line.rstrip("\n")))
+                return
+            if why_keep(line):
+                out.append(emit_line(line.rstrip("\n")))
+                in_why_paragraph = True
+                section_title_kept = True
+                return
             if not section_title_kept and is_section_title_line(line):
                 out.append(emit_line(line.rstrip("\n")))
                 section_title_kept = True

@@ -860,6 +860,15 @@ fn has_complex_variants(item: Node) -> Bool {
 }
 // =========================================================================
 // RC2: Rc type wrapping helpers
+//
+// Non-Copy types (structs, complex enums) are wrapped in Rc<T> in the
+// emitted Rust code to match the DAG language's value semantics.
+// Simple enums (all-unit variants) and a small exclusion list are exempt.
+//
+// shared_types is still derived inside the Rust emitter entry points instead of
+// via a sibling helper that returns Set<String>. The bootstrap
+// interpreter mis-handles empty map returns as "no outputs", which breaks
+// modules with no Rc-wrapped user types.
 // =========================================================================
 fn is_simple_disj(item: Node) -> Bool {
   let complex = item.children |> filter(v => v.children |> count > 0)
@@ -904,10 +913,16 @@ fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type
   }
 }
 fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
+  // needs_sharing: Rust=true (ownership), Python/Go=false (GC).
+  // When false, both folds produce empty results → identity SharingStrategy
+  // templates produce no-op wrapping/cloning.
   let sharing = sharing_for_target(target: target)
   let user_shared = map_values(type_summaries) |> fold(init: empty_set(), f: (acc, summary) =>
     maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing)
   )
+  // Collection types: any template key whose bare type has O(n) clone cost.
+  // "optional" and "boolean_algebra" excluded. GC languages: sharing.needs_sharing
+  // is false so the filter produces an empty list.
   let collection_keys = map_keys(rust_container_templates)
     |> filter(k => sharing.needs_sharing && k != "optional" && k != "boolean_algebra")
   collection_keys |> fold(init: user_shared, f: (acc, key) =>
@@ -1343,6 +1358,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
 // =========================================================================
 // Connective-based type emission -- dispatches on Node children
 // =========================================================================
+// Check if a type node references a recursive type that needs Box indirection.
+// List and Map provide heap indirection naturally; Optional does not.
+// RC2: Rc<T> also provides heap indirection, so skip Box for Rc-wrapped types.
 fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.children |> count == 0 {
     let name = authored_name_at(source_indices: source_indices, node: n)
@@ -2285,6 +2303,11 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
 }
 // =========================================================================
 // Rc-aware pattern matching
+//
+// When a variant field holds an Rc-wrapped type (e.g. ExprData::ExprLiteral.value
+// is Rc<LiteralValue>), nested pattern matching fails in Rust. These helpers
+// detect such fields, emit `ref field_name` in the pattern, and generate
+// a let-else prelude that destructures via .as_ref().
 // =========================================================================
 type RcPatternAnalysis {
   matches_rc_variant: Bool
@@ -2366,6 +2389,10 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
+  // Optional<Rc<T>> matches directly — no deref needed. The Some(x) binding
+  // gives x: Rc<T> which is correct. Only use .as_deref().cloned() when arms
+  // destructure the inner value (matches_option_rc_variant from arm analysis).
+  // Never use (*...).clone() on Optional — it can't deref Option.
   RcMatchAnalysis {
     needs_option_deref: arms_want_option,
     needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
@@ -2602,6 +2629,9 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
+    // `movable` is the sole authority for emitting plain variable references
+    // by value. `owned_bindings` is a different concept: bindings already
+    // unwrapped from Rc<T> to owned T for field projection.
     let moves_by_value = set_contains(emit_info.movable, name)
     let sharing = language_spec(target: Rust).sharing
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
@@ -2837,6 +2867,8 @@ fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> B
     || map_contains_key(rust_method_wraps_result(), function_name)
 }
 fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {
+  // With Rc-baked container templates, map values are already Rc<V>
+  // for user types. Adding .map(Rc::new) would double-wrap.
   false
 }
 fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, result_type: InferredNode?) -> String {
@@ -3386,6 +3418,9 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      // If the accumulator is in owned_bindings, unwrap Rc at iteration start.
+      // This rebinds the acc from Rc<T> to owned T so field accesses move
+      // instead of clone, keeping Rc refcounts at 1 for in-place mutation.
       let acc_name = match ps |> first { Some { value: n } => n  None => "" }
       let needs_unwrap = acc_name != "" && set_contains(emit_info.owned_bindings, acc_name)
       if needs_unwrap {
@@ -3549,6 +3584,10 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
       emit_typed_collection_lambda(lambda_expr: arg_value(n: a), elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     None => "compile_error!(\"missing sort_by key function argument\")"
   }
+  // Use iter().cloned().collect() which works for both Rc<Vec<T>> (auto-deref)
+  // and bare Vec<T>. Avoids the (*recv).clone() issue with slices.
+  // When elem_type_str is "_", omit type annotations and use a.clone() directly
+  // as sort key — avoids the (|name: _| ...)(a.clone()) wrapper that Rust can't infer.
   let sharing = language_spec(target: Rust).sharing
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
@@ -3638,8 +3677,6 @@ fn emit_rust_get_method_call(receiver: Node, args: List<Node>, registry: Map<Str
     Some { value: a } => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     None => "compile_error!(\"get method missing index\")"
   }
-  // Distinguish Map.get (key lookup) from List.get (index access).
-  // Guard: if receiver type is unresolved, don't fabricate list indexing.
   let receiver_resolved = match receiver.inferred {
     Some { value: Resolved { node: _ } } => true
     _ => false
@@ -3821,6 +3858,10 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   }
   let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
   let arms_str = arm_strs |> join(separator: "\n")
+  // RC5: If scrutinee is Option<Rc<T>>, use .as_deref().cloned() to get Option<T>.
+  // If scrutinee is Rc<T>, use (*s).clone() to get owned T.
+  // When all arms are string literal patterns, convert scrutinee to &str
+  // so Rust can match &str patterns against String values.
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
   let needs_string_from = has_string_lit_with_bind(arms: arms)
   if rc_match.needs_option_deref {
@@ -4561,11 +4602,6 @@ fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<S
 }
 // =========================================================================
 // Service definition emission
-//
-// Each service becomes:
-//   - A client struct with config fields
-//   - An impl block with one async method per operation
-//   - Transport-specific call scaffolding (REST -> reqwest, Shell -> Command)
 // =========================================================================
 fn emit_service_def(
   item: Node,

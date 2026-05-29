@@ -49,6 +49,12 @@ import v2.std.core {
 import v2.compiler.emit { to_string }
 // =========================================================================
 // Edge classification
+//
+// Each use of a binding is classified by how it affects the value:
+//   Consumed  -- value is moved/destructured (ownership transferred)
+//   Read      -- value is read but not consumed (borrow)
+//   Threaded  -- administrative: TCO accumulator threading
+//   Projected -- field projection (partial read)
 // =========================================================================
 type EdgeKind = Consumed | Read | Threaded | Projected
 type EdgeClassification {
@@ -318,6 +324,11 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
 }
 // =========================================================================
 // Movable set -- emit-facing projection of ownership analysis
+//
+// A binding is "movable" when its fan-out is exactly 1 AND it is an owned
+// local (parameter or let-binding). Match-bound variables produce &T
+// references in Rust (from .as_ref() destructuring) and must always clone.
+// The binding_kind field on BindingUsage carries this fact from inference.
 // =========================================================================
 fn is_owned_local(kind: VarBindingKind?) -> Bool {
   match kind {
@@ -330,6 +341,12 @@ fn build_movable_set(proof: OwnershipProof) -> Set<String> {
     |> filter(usage => binding_fan_out(usage: usage) == 1 && is_owned_local(kind: usage.binding_kind))
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
+// Read-only params: function parameters where all usage edges are
+// Read/Projected/Threaded (no Consumed). These can be passed by borrow
+// (&Rc<T>) instead of owned (Rc<T>), eliminating clone at each call site.
+// Fan-out=1 params are excluded — they're already movable (zero cost).
+// param_names restricts to actual function parameters (VarBindingKind
+// doesn't distinguish params from let-bindings).
 fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
   proof.bindings |> map_values
     |> filter(usage =>

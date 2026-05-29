@@ -4223,11 +4223,6 @@ fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>,
     None => empty_map()
   }
 }
-// Walk return-position expressions collecting ExprRecordLit nodes whose
-// parent_enum matches. Only recurses into return positions: match arm bodies,
-// if then/else branches, let bodies, block last statements. Does NOT recurse
-// into match scrutinees, if conditions, or let values — those are not return
-// positions and could fabricate contracts from temporary same-enum literals.
 fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, Map<String, Map<String, SubValueRelation>>>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
   match body.expr_data {
     ExprRecordLit { parent_enum: pe } =>
@@ -5030,8 +5025,6 @@ fn build_module_context(contributions: List<ItemContribution>,
           Some { value: prev } =>
             let prev_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: prev.resolved)) != none
             if curr_is_imported && prev_is_imported {
-              // Both enums explicitly imported — ambiguous. Remove the
-              // binding so later phases cannot consume a fabricated choice.
               VariantFoldState {
                 locals: vacc.locals,
                 collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: authored_name_at(source_indices: env.source_indices, node: child), enum1: authored_name_at(source_indices: env.source_indices, node: prev.resolved), enum2: authored_name_at(source_indices: env.source_indices, node: binding.resolved), span: no_span() }, module_name: module_name))

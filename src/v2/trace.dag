@@ -30,6 +30,7 @@ fn empty_trace() -> Trace {
 fn trace_push_event(trace: Trace, event: TraceEvent) -> Trace {
   Trace { events: list_push(trace.events, event), stack: trace.stack }
 }
+// Push a frame onto the trace stack (function entry). O(1) with Rc<Vec>.
 fn trace_push_frame(trace: Trace, frame: TraceFrame) -> Trace {
   Trace { events: trace.events, stack: list_push(trace.stack, frame) }
 }

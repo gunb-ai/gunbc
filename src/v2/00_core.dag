@@ -659,6 +659,13 @@ fn is_property_contraction(func_name: String) -> Bool {
 }
 // =========================================================================
 // Compositional child Node accessors (P5.11)
+//
+// Implementations of the child projections declared in expr_child_roles
+// and wrapper_child_roles above. The model is the source of truth;
+// these functions implement the projections.
+//
+// Required children return an error node when missing (fail-fast),
+// preventing silent self-recursion from malformed nodes.
 // =========================================================================
 fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
   match texpr.children |> skip(index) |> first {
