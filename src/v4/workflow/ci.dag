@@ -754,6 +754,15 @@ fn ci_runner_pool_host_count(pools: List<SelfHostedRunnerPool>) -> Int {
 }
 
 
+fn ci_runner_pool_runner_spread(max_runners: Int, min_runners: Int) -> Int {
+  if max_runners == min_runners {
+    1
+  } else {
+    max_runners - min_runners
+  }
+}
+
+
 // Modeled concurrent M1 cargo-check fanout across the fleet: spread peer slots across
 // hosts so one probe does not claim more than min(jobserver_token_cap) / fanout_slots.
 fn ci_m1_probe_cargo_fanout_slots(pools: List<SelfHostedRunnerPool>) -> Int {
@@ -761,7 +770,9 @@ fn ci_m1_probe_cargo_fanout_slots(pools: List<SelfHostedRunnerPool>) -> Int {
   let max_runners = ci_runner_pool_max_runner_count(pools: pools)
   let total_runners = ci_runner_pool_total_runner_count(pools: pools)
   let hosts = ci_runner_pool_host_count(pools: pools)
-  (total_runners - min_runners) * hosts / (max_runners - min_runners)
+  (total_runners - min_runners)
+    * hosts
+    / ci_runner_pool_runner_spread(max_runners: max_runners, min_runners: min_runners)
 }
 
 

@@ -63,15 +63,20 @@ pub fn ci_runner_pool_host_count(pools: &[SelfHostedRunnerPool]) -> u32 {
     pools.len() as u32
 }
 
+pub fn ci_runner_pool_runner_spread(max_runners: u32, min_runners: u32) -> u32 {
+    if max_runners == min_runners {
+        1
+    } else {
+        max_runners - min_runners
+    }
+}
+
 pub fn ci_m1_probe_cargo_fanout_slots(pools: &[SelfHostedRunnerPool]) -> u32 {
     let min_runners = ci_runner_pool_min_runner_count(pools);
     let max_runners = ci_runner_pool_max_runner_count(pools);
     let total_runners = ci_runner_pool_total_runner_count(pools);
     let hosts = ci_runner_pool_host_count(pools);
-    let spread = max_runners.saturating_sub(min_runners);
-    if spread == 0 {
-        return 1;
-    }
+    let spread = ci_runner_pool_runner_spread(max_runners, min_runners);
     (total_runners - min_runners) * hosts / spread
 }
 
