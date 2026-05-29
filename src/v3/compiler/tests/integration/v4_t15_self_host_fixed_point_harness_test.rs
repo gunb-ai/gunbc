@@ -39,7 +39,8 @@ fn gunbc_release_binary(root: &Path) -> PathBuf {
 }
 
 fn assert_parseable(source: &str, path: &str) {
-    let tokens = tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
+    let tokens =
+        tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
     parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"));
 }
 
@@ -85,7 +86,8 @@ fn assert_bootstrap_fixpt_is_stage1_stage2_not_stage0() {
     assert!(
         BOOTSTRAP_DAG.contains("p.fixpt.left_hash.digest == p.self0.produces_hash.digest")
             && BOOTSTRAP_DAG.contains("p.fixpt.right_hash.digest == p.self1.produces_hash.digest")
-            && BOOTSTRAP_DAG.contains("p.self0.produces_hash.digest == p.self1.produces_hash.digest"),
+            && BOOTSTRAP_DAG
+                .contains("p.self0.produces_hash.digest == p.self1.produces_hash.digest"),
         "{BOOTSTRAP_PATH}: bootstrap_plan_well_formed must require stage1==stage2 digest equality"
     );
     assert!(
@@ -116,17 +118,11 @@ fn assert_t15_claim_wiring() {
 fn try_v2_compile_main_dag_entry(root: &Path) {
     let bin = gunbc_release_binary(root);
     if !bin.exists() {
-        eprintln!(
-            "note: skip v2 main.dag entry compile — gunbc not found at {} (build v2-compiler --release)",
-            bin.display()
-        );
+        // Optional receipt: build `v2-compiler --release` locally to exercise entry-root compile.
         return;
     }
 
-    let out = std::env::temp_dir().join(format!(
-        "v4-t15-main-entry-{}",
-        std::process::id()
-    ));
+    let out = std::env::temp_dir().join(format!("v4-t15-main-entry-{}", std::process::id()));
     let entry_root = out.join("entry");
     let deps_root = out.join("deps");
     fs::remove_dir_all(&out).ok();
@@ -139,7 +135,8 @@ fn try_v2_compile_main_dag_entry(root: &Path) {
     )
     .expect("copy main.dag entry");
     copy_dir_all(&root.join("src/v4"), &deps_root).expect("copy src/v4 deps");
-    fs::remove_file(deps_root.join("v4/bin/main.dag")).expect("remove duplicate main.dag from deps");
+    fs::remove_file(deps_root.join("v4/bin/main.dag"))
+        .expect("remove duplicate main.dag from deps");
 
     let compile_log = out.join("compile.log");
     let status = Command::new(&bin)
