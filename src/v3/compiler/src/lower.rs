@@ -3873,9 +3873,9 @@ fn config_patch_layer_body_fallback_diagnostic(span: &SourceSpan) -> Diagnostic 
 }
 
 /// Parse `config_patch_layer(base: …, patch: …)` call-site named operands.
-fn extract_config_patch_layer_operands<'a>(
-    args: &'a [SurfaceExpr],
-) -> Option<(&'a SurfaceExpr, &'a SurfaceExpr)> {
+fn extract_config_patch_layer_operands(
+    args: &[SurfaceExpr],
+) -> Option<(&SurfaceExpr, &SurfaceExpr)> {
     let [SurfaceExpr::Record { fields, .. }] = args else {
         return None;
     };
@@ -3957,6 +3957,7 @@ fn surface_apply_field_patch_from_operands(
 
 /// Expand `config_patch_layer(base: …, patch: …)` into per-field `apply_field_patch`
 /// and a config record rebuild (same semantics as hand-written `*_layer` mirrors).
+#[allow(clippy::too_many_arguments)]
 fn try_lower_config_patch_layer_invocation(
     base_target_decl: DeclarationId,
     args: &[SurfaceExpr],
@@ -7784,7 +7785,10 @@ fn lower_fn_item_expr_body(
     if name == "config_patch_layer" {
         let body_span = surface_expr_span(body).clone();
         let err_port = dag.alloc_port(None);
-        dag.mark_unresolved(err_port, config_patch_layer_body_fallback_diagnostic(&body_span));
+        dag.mark_unresolved(
+            err_port,
+            config_patch_layer_body_fallback_diagnostic(&body_span),
+        );
         if let Some(return_ty) = return_ty {
             dag.set_port_type(err_port, return_ty);
         } else if let Some(diag) = return_type_diagnostic {
