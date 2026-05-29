@@ -392,9 +392,21 @@ formatter configs (e.g. clang-format's *staging-area* lines, rustfmt's
 *staged* / *unstable* terminology). **These are noun usage of the upstream
 tools' jargon, not deferral markers** for v4 substrate. None misclassified.
 
-Sampled: `extdeps/formatters/clang_format.dag` 39 `staging|gated` hits —
-all of "gated" rows trace to §1.1 (`formatter-int-refinement`); zero v4
-deferral inside a "staging" noun.
+Sampled: `extdeps/formatters/clang_format.dag` — **regenerated from
+`grep -oE '🟡 gated[: ]+[a-z-]+'` 2026-05-29:**
+
+| Gate | Annotation rows in clang_format.dag | Routes to |
+| --- | ---: | --- |
+| `formatter-int-refinement` | 35 | §1.1 (UNNECESSARY) |
+| `formatter-cross-field-constraints` | 3 | §1.3 (UNNECESSARY) |
+| `consumer:config-patch-record-projection` (consumer tag) | 1 | §1.2 (NECESSARY) |
+
+Plus header `feature:` declarations for each (not field annotations).
+**Earlier claim that "all clang_format gated rows trace to §1.1" was
+wrong** — corrected per inline review 2026-05-29. The §4 conclusion
+holds: **zero v4 deferral inside a "staging" noun**; every gated row
+in clang_format routes to a tabulated §1 entry. The original sentence
+under-counted the route by omitting §1.2 and §1.3.
 
 ---
 
