@@ -135,7 +135,7 @@ data {claim}: TestClaim = EqualsClaim {{
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: {claim}_input(ok: {witness}()),
   rhs: stub_empty_conj,
-  classification: TestClassification {{ tier: Tier1, unit: Unit }},
+  classification: TestClassification {{ tier: Tier1, layer: Unit }},
 }}
 
 """

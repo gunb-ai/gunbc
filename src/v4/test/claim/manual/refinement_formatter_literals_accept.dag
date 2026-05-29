@@ -116,7 +116,7 @@ data claim_positive_int_authoritative_literal_2_discharge: TestClaim = EqualsCla
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_2_discharge_input(ok: witness_positive_int_authoritative_literal_2_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_positive_int_authoritative_literal_4_discharge() -> Bool {
@@ -140,7 +140,7 @@ data claim_positive_int_authoritative_literal_4_discharge: TestClaim = EqualsCla
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_4_discharge_input(ok: witness_positive_int_authoritative_literal_4_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_positive_int_authoritative_literal_8_discharge() -> Bool {
@@ -164,7 +164,7 @@ data claim_positive_int_authoritative_literal_8_discharge: TestClaim = EqualsCla
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_8_discharge_input(ok: witness_positive_int_authoritative_literal_8_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_positive_int_authoritative_literal_10_discharge() -> Bool {
@@ -188,7 +188,7 @@ data claim_positive_int_authoritative_literal_10_discharge: TestClaim = EqualsCl
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_10_discharge_input(ok: witness_positive_int_authoritative_literal_10_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_positive_int_authoritative_literal_60_discharge() -> Bool {
@@ -212,7 +212,7 @@ data claim_positive_int_authoritative_literal_60_discharge: TestClaim = EqualsCl
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_60_discharge_input(ok: witness_positive_int_authoritative_literal_60_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_positive_int_authoritative_literal_70_discharge() -> Bool {
@@ -236,7 +236,7 @@ data claim_positive_int_authoritative_literal_70_discharge: TestClaim = EqualsCl
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_70_discharge_input(ok: witness_positive_int_authoritative_literal_70_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_positive_int_authoritative_literal_80_discharge() -> Bool {
@@ -260,7 +260,7 @@ data claim_positive_int_authoritative_literal_80_discharge: TestClaim = EqualsCl
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_80_discharge_input(ok: witness_positive_int_authoritative_literal_80_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_positive_int_authoritative_literal_88_discharge() -> Bool {
@@ -284,7 +284,7 @@ data claim_positive_int_authoritative_literal_88_discharge: TestClaim = EqualsCl
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_88_discharge_input(ok: witness_positive_int_authoritative_literal_88_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_positive_int_authoritative_literal_100_discharge() -> Bool {
@@ -308,7 +308,7 @@ data claim_positive_int_authoritative_literal_100_discharge: TestClaim = EqualsC
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_positive_int_authoritative_literal_100_discharge_input(ok: witness_positive_int_authoritative_literal_100_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_0_discharge() -> Bool {
@@ -332,7 +332,7 @@ data claim_non_negative_int_authoritative_literal_0_discharge: TestClaim = Equal
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_0_discharge_input(ok: witness_non_negative_int_authoritative_literal_0_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_1_discharge() -> Bool {
@@ -356,7 +356,7 @@ data claim_non_negative_int_authoritative_literal_1_discharge: TestClaim = Equal
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_1_discharge_input(ok: witness_non_negative_int_authoritative_literal_1_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_2_discharge() -> Bool {
@@ -380,7 +380,7 @@ data claim_non_negative_int_authoritative_literal_2_discharge: TestClaim = Equal
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_2_discharge_input(ok: witness_non_negative_int_authoritative_literal_2_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_4_discharge() -> Bool {
@@ -404,7 +404,7 @@ data claim_non_negative_int_authoritative_literal_4_discharge: TestClaim = Equal
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_4_discharge_input(ok: witness_non_negative_int_authoritative_literal_4_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_8_discharge() -> Bool {
@@ -428,7 +428,7 @@ data claim_non_negative_int_authoritative_literal_8_discharge: TestClaim = Equal
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_8_discharge_input(ok: witness_non_negative_int_authoritative_literal_8_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_10_discharge() -> Bool {
@@ -452,7 +452,7 @@ data claim_non_negative_int_authoritative_literal_10_discharge: TestClaim = Equa
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_10_discharge_input(ok: witness_non_negative_int_authoritative_literal_10_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_18_discharge() -> Bool {
@@ -476,7 +476,7 @@ data claim_non_negative_int_authoritative_literal_18_discharge: TestClaim = Equa
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_18_discharge_input(ok: witness_non_negative_int_authoritative_literal_18_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_19_discharge() -> Bool {
@@ -500,7 +500,7 @@ data claim_non_negative_int_authoritative_literal_19_discharge: TestClaim = Equa
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_19_discharge_input(ok: witness_non_negative_int_authoritative_literal_19_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_35_discharge() -> Bool {
@@ -524,7 +524,7 @@ data claim_non_negative_int_authoritative_literal_35_discharge: TestClaim = Equa
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_35_discharge_input(ok: witness_non_negative_int_authoritative_literal_35_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_50_discharge() -> Bool {
@@ -548,7 +548,7 @@ data claim_non_negative_int_authoritative_literal_50_discharge: TestClaim = Equa
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_50_discharge_input(ok: witness_non_negative_int_authoritative_literal_50_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_60_discharge() -> Bool {
@@ -572,7 +572,7 @@ data claim_non_negative_int_authoritative_literal_60_discharge: TestClaim = Equa
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_60_discharge_input(ok: witness_non_negative_int_authoritative_literal_60_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_80_discharge() -> Bool {
@@ -596,7 +596,7 @@ data claim_non_negative_int_authoritative_literal_80_discharge: TestClaim = Equa
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_80_discharge_input(ok: witness_non_negative_int_authoritative_literal_80_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_120_discharge() -> Bool {
@@ -620,7 +620,7 @@ data claim_non_negative_int_authoritative_literal_120_discharge: TestClaim = Equ
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_120_discharge_input(ok: witness_non_negative_int_authoritative_literal_120_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_150_discharge() -> Bool {
@@ -644,7 +644,7 @@ data claim_non_negative_int_authoritative_literal_150_discharge: TestClaim = Equ
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_150_discharge_input(ok: witness_non_negative_int_authoritative_literal_150_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_300_discharge() -> Bool {
@@ -668,7 +668,7 @@ data claim_non_negative_int_authoritative_literal_300_discharge: TestClaim = Equ
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_300_discharge_input(ok: witness_non_negative_int_authoritative_literal_300_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_500_discharge() -> Bool {
@@ -692,7 +692,7 @@ data claim_non_negative_int_authoritative_literal_500_discharge: TestClaim = Equ
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_500_discharge_input(ok: witness_non_negative_int_authoritative_literal_500_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_1000_discharge() -> Bool {
@@ -716,7 +716,7 @@ data claim_non_negative_int_authoritative_literal_1000_discharge: TestClaim = Eq
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_1000_discharge_input(ok: witness_non_negative_int_authoritative_literal_1000_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_non_negative_int_authoritative_literal_1000000_discharge() -> Bool {
@@ -740,7 +740,7 @@ data claim_non_negative_int_authoritative_literal_1000000_discharge: TestClaim =
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_non_negative_int_authoritative_literal_1000000_discharge_input(ok: witness_non_negative_int_authoritative_literal_1000000_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_at_least_minus_one_int_authoritative_literal_0_discharge() -> Bool {
@@ -764,7 +764,7 @@ data claim_at_least_minus_one_int_authoritative_literal_0_discharge: TestClaim =
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_at_least_minus_one_int_authoritative_literal_0_discharge_input(ok: witness_at_least_minus_one_int_authoritative_literal_0_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_at_least_minus_one_int_authoritative_literal_minus_1_discharge() -> Bool {
@@ -788,7 +788,7 @@ data claim_at_least_minus_one_int_authoritative_literal_minus_1_discharge: TestC
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_at_least_minus_one_int_authoritative_literal_minus_1_discharge_input(ok: witness_at_least_minus_one_int_authoritative_literal_minus_1_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_at_least_minus_two_int_authoritative_literal_minus_2_discharge() -> Bool {
@@ -812,7 +812,7 @@ data claim_at_least_minus_two_int_authoritative_literal_minus_2_discharge: TestC
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_at_least_minus_two_int_authoritative_literal_minus_2_discharge_input(ok: witness_at_least_minus_two_int_authoritative_literal_minus_2_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 
 fn witness_exact_one_int_authoritative_literal_1_discharge() -> Bool {
@@ -836,6 +836,6 @@ data claim_exact_one_int_authoritative_literal_1_discharge: TestClaim = EqualsCl
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_exact_one_int_authoritative_literal_1_discharge_input(ok: witness_exact_one_int_authoritative_literal_1_discharge()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, unit: Unit },
+  classification: TestClassification { tier: Tier1, layer: Unit },
 }
 

@@ -258,5 +258,10 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Formatter upstream defaults: *_authoritative_literal (Outcome) on config fields; witnesses in refinement_formatter_literals_accept.dag.
-// Runtime/user input: make_* + Outcome directly.
+// Formatter config fields use Outcome<Carrier> (not bare Carrier): *_authoritative_literal and refine
+// return Outcome; .dag data literals cannot unwrap Rejected at assignment. Rejected defaults are
+// type-inhabitable but witness-proved Accepted for upstream catalog values; emit/runtime match or
+// call make_*. Steady-state target is bare Carrier on fields (former formatter-int-refinement
+// Refined<Int> intent) — bind T-25-tail / refinement-opaque-carrier for Outcome→Carrier once the
+// substrate supports closed proof or discharge without stripping the receipt.
+// Witnesses: refinement_formatter_literals_accept.dag; runtime/user input: make_* + Outcome.
