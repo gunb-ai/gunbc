@@ -33,8 +33,7 @@ fn task_manager_demo_surface_or_panic() -> v3_compiler::parse_surface::SurfaceMo
 fn sql_dag_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
     let tokens = tokenize_for_test(SQL_DAG, SQL_DAG_PATH)
         .unwrap_or_else(|e| panic!("{SQL_DAG_PATH}: tokenize: {e:?}"));
-    parse_for_test(&tokens, SQL_DAG_PATH)
-        .unwrap_or_else(|e| panic!("{SQL_DAG_PATH}: parse: {e:?}"))
+    parse_for_test(&tokens, SQL_DAG_PATH).unwrap_or_else(|e| panic!("{SQL_DAG_PATH}: parse: {e:?}"))
 }
 
 fn type_record_fields<'a>(
@@ -146,8 +145,12 @@ fn v4_test_fixture_task_manager_demo_sql_projection_uses_canonical_carriers() {
         ["MappedProjectable", "UnmappedDomainScalar"]
     );
 
-    let sql_table = type_record_fields(&sql_dag_surface_or_panic(), "SqlTableDefinition");
-    assert_eq!(record_field_type(sql_table, "primary_key"), "?List<SqlIdentifier>");
+    let sql_module = sql_dag_surface_or_panic();
+    let sql_table = type_record_fields(&sql_module, "SqlTableDefinition");
+    assert_eq!(
+        record_field_type(sql_table, "primary_key"),
+        "?List<SqlIdentifier>"
+    );
     assert!(
         TASK_MANAGER_DEMO_DAG.contains("primary_key: optional_present(value: [")
             && TASK_MANAGER_DEMO_DAG.contains("SqlTableDefinition {"),
