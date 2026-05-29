@@ -232,32 +232,6 @@ fn make_exact_one_int_at_authoritative(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Authoritative upstream literal boundary — partial; returns Outcome (fail-closed).
-fn positive_int_authoritative_constant(base: Int) -> Outcome<PositiveInt> {
-  make_positive_int_at_authoritative(value: base)
-}
-
-
-fn non_negative_int_authoritative_constant(base: Int) -> Outcome<NonNegativeInt> {
-  make_non_negative_int_at_authoritative(value: base)
-}
-
-
-fn at_least_minus_one_int_authoritative_constant(base: Int) -> Outcome<AtLeastMinusOneInt> {
-  make_at_least_minus_one_int_at_authoritative(value: base)
-}
-
-
-fn at_least_minus_two_int_authoritative_constant(base: Int) -> Outcome<AtLeastMinusTwoInt> {
-  make_at_least_minus_two_int_at_authoritative(value: base)
-}
-
-
-fn exact_one_int_authoritative_constant(base: Int) -> Outcome<ExactOneInt> {
-  make_exact_one_int_at_authoritative(value: base)
-}
-
-
 // Authoritative catalog literal boundary — partial; returns Outcome (fail-closed).
 fn positive_int_authoritative_literal(value: Int) -> Outcome<PositiveInt> {
   make_positive_int_at_authoritative(value: value)
