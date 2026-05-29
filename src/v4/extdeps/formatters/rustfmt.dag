@@ -82,8 +82,12 @@ fn make_rustfmt_macro_ident(value: String, at: Locus) -> Outcome<RustfmtMacroIde
 }
 
 
-// Predicate validates published-version format (non-empty); strict semver grammar refinement is a
-// follow-on once char-class string predicates land.
+// Predicate currently enforces only non-empty.
+// 🟡 gated — feature: rustfmt-version-semver-grammar — bind v4.std.text char-class predicate substrate —
+// dissolve-on-arrival: tighten admits to validate published semver version strings (e.g. "0.3.8" — the
+// format rustfmt v1.6.0 documents for pinned RequiredVersion values) once v4.std.text exposes char-class
+// / digit / dot-segment query primitives beyond string_is_empty; forbidden: hand-rolled char tests
+// outside std/text.
 type RustfmtSemverVersion = Refined<String>
 
 
