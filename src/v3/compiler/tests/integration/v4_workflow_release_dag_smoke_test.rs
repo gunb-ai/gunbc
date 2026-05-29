@@ -157,8 +157,9 @@ fn v4_workflow_release_semantics_modeled() {
         "{RELEASE_DAG_PATH}: release_pipeline must model one build job per release_build_matrix row"
     );
     assert!(
-        RELEASE_DAG.contains("release_pipeline_jobs_cover_matrix"),
-        "{RELEASE_DAG_PATH}: well-formedness must require pipeline jobs cover matrix targets"
+        RELEASE_DAG.contains("release_pipeline_jobs_cover_matrix")
+            && RELEASE_DAG.contains("release_build_commands_use_matrix_targets_only"),
+        "{RELEASE_DAG_PATH}: well-formedness must bind hand-expanded build targets to release_build_matrix"
     );
     assert!(
         RELEASE_DAG.contains("command: UploadGunbcMatrixArtifact")
@@ -206,6 +207,10 @@ fn v4_workflow_release_target_authority_single_writer() {
         INSTALL_SH.contains("releases/download/${VERSION}/")
             && INSTALL_SH.contains("releases/latest/download/"),
         "{INSTALL_SH_PATH}: target authority curl fallback must use same GH Release channel as binary"
+    );
+    assert!(
+        !INSTALL_SH.contains("./scripts/release-target-triples.sh"),
+        "{INSTALL_SH_PATH}: must not source cwd ./scripts before release channel (P2 single authority)"
     );
     assert!(
         !INSTALL_SH.contains("printf '%s\\n' 'x86_64-unknown-linux-musl'"),

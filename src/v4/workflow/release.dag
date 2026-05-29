@@ -116,8 +116,10 @@ fn release_matrix_row_targets(rows: List<ReleaseMatrixRow>) -> List<String> {
 // list for curl|sh install until install targets derive from `.dag` eval.
 data release_published_target_triples: List<String> = release_matrix_row_targets(rows: release_build_matrix)
 
-// One ReleaseJob per `release_build_matrix` row (parallel); hand-synced `release.yml` projects
-// these as a single `build` job with strategy.matrix until YamlStatic emission lands.
+// `release_pipeline` jobs are hand-expanded (M1 interim; mirror `ci.dag` `ci_pipeline`) until
+// YamlStatic derives them from `release_build_matrix`. Target-bearing authority is the matrix:
+// `release_pipeline_jobs_cover_matrix` + `release_matrix_upload_jobs_present` +
+// `release_build_commands_use_matrix_targets_only` fail-closed against drift.
 data release_build_musl_x86: Symbol = release_build_musl_x86
 data release_build_musl_aarch64: Symbol = release_build_musl_aarch64
 data release_build_darwin_x86: Symbol = release_build_darwin_x86
@@ -230,6 +232,7 @@ data release_dangling_reference: Symbol = release_dangling_reference
 data release_dependency_cycle: Symbol = release_dependency_cycle
 data release_matrix_invalid: Symbol = release_matrix_invalid
 data release_matrix_build_coverage_gap: Symbol = release_matrix_build_coverage_gap
+data release_matrix_build_target_drift_gap: Symbol = release_matrix_build_target_drift_gap
 data release_matrix_upload_drain_gap: Symbol = release_matrix_upload_drain_gap
 data release_bootstrap_authority_violation: Symbol = release_bootstrap_authority_violation
 data release_workflow_file: Symbol = release_workflow_file
@@ -373,6 +376,48 @@ fn release_pipeline_jobs_cover_matrix(jobs: List<ReleaseJob>, rows: List<Release
   })
 }
 
+fn release_target_in_matrix(target: String, rows: List<ReleaseMatrixRow>) -> Bool {
+  count_where(xs: rows, predicate: fn(row) { row.target == target }) != 0
+}
+
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
+fn release_command_is_build(c: ReleaseCommand) -> Bool {
+  match c {
+    CrossMuslGunbcBuild { target: _ } => true
+    NativeDarwinGunbcBuild { target: _ } => true
+    UploadGunbcMatrixArtifact => false
+    PublishGitHubRelease { bundle_install_sh: _ } => false
+  }
+}
+
+fn release_all_build_targets_in_matrix(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  for_all(xs: jobs, predicate: fn(j) {
+    match j.command {
+      CrossMuslGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
+      NativeDarwinGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
+      UploadGunbcMatrixArtifact => true
+      PublishGitHubRelease { bundle_install_sh: _ } => true
+    }
+  })
+}
+
+fn release_jobs_build_matrix_target_once(jobs: List<ReleaseJob>, target: String) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    release_command_builds_target(c: j.command, target: target)
+  }) == 1
+}
+
+// Hand-expanded pipeline literals must not drift from `release_build_matrix` (single target authority).
+fn release_build_commands_use_matrix_targets_only(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  release_all_build_targets_in_matrix(jobs: jobs, rows: rows)
+    && for_all(xs: rows, predicate: fn(row) {
+      release_jobs_build_matrix_target_once(jobs: jobs, target: row.target)
+    })
+    && length(xs: rows) == count_where(xs: jobs, predicate: fn(j) {
+      release_command_is_build(c: j.command)
+    })
+}
+
 // 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (mechanical `is_upload` over `ReleaseCommand`; same bounded posture as `ci.dag`).
 fn release_command_is_upload(c: ReleaseCommand) -> Bool {
   match c {
@@ -414,10 +459,14 @@ fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> 
             if release_all_commands_authority_ok(jobs: p.jobs) {
               if release_matrix_targets_well_formed(rows: release_build_matrix) {
                 if release_pipeline_jobs_cover_matrix(jobs: p.jobs, rows: release_build_matrix) {
-                  if release_matrix_upload_jobs_present(jobs: p.jobs, rows: release_build_matrix) {
-                    Accepted { value: p, diagnostics: None }
+                  if release_build_commands_use_matrix_targets_only(jobs: p.jobs, rows: release_build_matrix) {
+                    if release_matrix_upload_jobs_present(jobs: p.jobs, rows: release_build_matrix) {
+                      Accepted { value: p, diagnostics: None }
+                    } else {
+                      Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_upload_drain_gap)) }
+                    }
                   } else {
-                    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_upload_drain_gap)) }
+                    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_build_target_drift_gap)) }
                   }
                 } else {
                   Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_build_coverage_gap)) }

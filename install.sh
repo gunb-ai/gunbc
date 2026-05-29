@@ -12,8 +12,9 @@
 #   GUNBC_INSTALL_REPO   default gunb-ai/gunbc
 #   GUNBC_INSTALL_DIR    default /usr/local/bin
 #   GUNBC_VERSION        tag (e.g. v0.1.0) or empty for latest release
-#   GUNBC_RELEASE_TARGETS_URL  override URL for release-target-triples.sh (default: same GH
-#                              Release tag/latest channel as the gunbc-{triple} binary)
+#   GUNBC_RELEASE_TARGETS_URL  explicit override URL for release-target-triples.sh (default:
+#                              same GH Release tag/latest channel as the gunbc-{triple} binary;
+#                              no cwd discovery — bundled beside this script or curl only)
 
 set -eu
 
@@ -39,12 +40,6 @@ load_release_target_authority() {
       GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
       return 0
     fi
-  fi
-  if [ -f "./scripts/release-target-triples.sh" ]; then
-    # shellcheck source=scripts/release-target-triples.sh
-    . "./scripts/release-target-triples.sh"
-    GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
-    return 0
   fi
   _authority=$(mktemp "${TMPDIR:-/tmp}/gunbc-release-targets.XXXXXX")
   trap 'rm -f "$_authority"' EXIT INT HUP TERM
