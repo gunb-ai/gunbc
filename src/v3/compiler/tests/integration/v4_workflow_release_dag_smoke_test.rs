@@ -25,6 +25,8 @@ const RELEASE_TARGET_SCRIPT: &str =
 const RELEASE_TARGET_SCRIPT_PATH: &str = "scripts/release-target-triples.sh";
 const INSTALL_SH: &str = include_str!("../../../../../install.sh");
 const INSTALL_SH_PATH: &str = "install.sh";
+const V2_COMPILER_CARGO_TOML: &str = include_str!("../../../../v2/stage0/Cargo.toml");
+const V2_COMPILER_CARGO_TOML_PATH: &str = "src/v2/stage0/Cargo.toml";
 
 const RELEASE_PUBLISHED_TARGETS: &[&str] = &[
     "x86_64-unknown-linux-musl",
@@ -288,6 +290,16 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
     assert!(
         RELEASE_YML.contains(&format!("-p {cargo_package} --bin {cargo_bin}")),
         "{RELEASE_YML_PATH}: build must target modeled package/bin"
+    );
+    assert!(
+        V2_COMPILER_CARGO_TOML.contains("name = \"v2-compiler\"")
+            && V2_COMPILER_CARGO_TOML.contains("[[bin]]")
+            && V2_COMPILER_CARGO_TOML.contains("name = \"gunbc\""),
+        "{V2_COMPILER_CARGO_TOML_PATH}: release cargo_package/cargo_bin must match declared [[bin]] authority"
+    );
+    assert!(
+        cargo_package == "v2-compiler" && cargo_bin == "gunbc",
+        "{RELEASE_DAG_PATH}: cargo_package/cargo_bin must mirror {V2_COMPILER_CARGO_TOML_PATH}"
     );
     assert!(
         RELEASE_YML.contains("matrix.cross"),
