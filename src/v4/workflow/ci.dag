@@ -44,6 +44,7 @@ import v4.std.node {
   combine_hash,
   content_hash,
   ByteOffsetCacheEligible,
+  ByteOffsetCacheIneligible,
   byte_offset_cache_key
 }
 import v4.std.algebra { fold_list }
@@ -387,8 +388,17 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 fn ci_char_cache_digest(c: Char) -> Hash {
   match byte_offset_cache_key(i: c) {
     ByteOffsetCacheEligible { digest: digest } => digest
-    ByteOffsetCacheIneligible { boundary_tag: _, witness: _ } =>
-      ci_symbol_digest(sym: ci_cache_char_byte_offset_ineligible_tag)
+    ByteOffsetCacheIneligible {
+      boundary_tag: boundary_tag,
+      witness: witness
+    } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_cache_char_byte_offset_ineligible_tag),
+        b: combine_hash(
+          a: ci_symbol_digest(sym: boundary_tag),
+          b: witness
+        )
+      )
   }
 }
 
