@@ -20,7 +20,8 @@ const RELEASE_DAG: &str = include_str!("../../../../v4/workflow/release.dag");
 const RELEASE_DAG_PATH: &str = "src/v4/workflow/release.dag";
 const RELEASE_YML: &str = include_str!("../../../../../.github/workflows/release.yml");
 const RELEASE_YML_PATH: &str = ".github/workflows/release.yml";
-const RELEASE_TARGET_SCRIPT: &str = include_str!("../../../../../scripts/release-target-triples.sh");
+const RELEASE_TARGET_SCRIPT: &str =
+    include_str!("../../../../../scripts/release-target-triples.sh");
 const RELEASE_TARGET_SCRIPT_PATH: &str = "scripts/release-target-triples.sh";
 const INSTALL_SH: &str = include_str!("../../../../../install.sh");
 const INSTALL_SH_PATH: &str = "install.sh";
@@ -169,9 +170,8 @@ fn v4_workflow_release_target_authority_single_writer() {
         "{INSTALL_SH_PATH}: must delegate target detection to shell authority"
     );
     assert!(
-        !INSTALL_SH.contains("unsupported Linux architecture")
-            || INSTALL_SH.contains("load_release_target_authority"),
-        "{INSTALL_SH_PATH}: must not embed a parallel detect_target mapping"
+        !INSTALL_SH.contains("printf '%s\\n' 'x86_64-unknown-linux-musl'"),
+        "{INSTALL_SH_PATH}: must not embed a parallel OS/arch → triple mapping"
     );
 }
 
