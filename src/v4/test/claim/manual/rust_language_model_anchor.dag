@@ -1,15 +1,26 @@
 // src/v4/test/claim/manual/rust_language_model_anchor.dag
-// Scope: T-4 compile anchor — rust.dag LanguageModel, inhabitant facts on carrier, MVP target model.
+// Scope: T-4 compile anchor — rust.dag LanguageModel, inhabitant facts on carrier, MVP target model,
+//        Wave 2b AlgebraInhabitanceDecl fill (signed OrderedRing / unsigned CommutativeSemiring / str FreeMonoid).
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.rust_language_model_anchor
 
 import v4.extdeps.languages.rust {
   RustLanguageModel,
+  rust_bool_algebra_inhabitance,
+  rust_facts_f64,
+  rust_facts_i32,
+  rust_facts_u32,
+  rust_float_algebra_inhabitance,
   rust_inhabitant_i32_node,
+  rust_integer_algebra_inhabitance,
   rust_language_model_wave1,
-  rust_mvp1_target_model_node
+  rust_model_core_inhabitance_decls,
+  rust_mvp1_target_model_node,
+  rust_string_algebra_inhabitance
 }
+import v4.std.collection { List }
+import v4.std.model_core { AlgebraInhabitanceDecl }
 import v4.std.node { Node }
 
 type rust_anchor_language_model = RustLanguageModel
@@ -17,3 +28,9 @@ type rust_anchor_language_model = RustLanguageModel
 data rust_anchor_wave1: rust_anchor_language_model = rust_language_model_wave1()
 data rust_anchor_i32: Node = rust_inhabitant_i32_node()
 data rust_anchor_mvp1: Node = rust_mvp1_target_model_node()
+data rust_anchor_inhabitance: List<AlgebraInhabitanceDecl> = rust_model_core_inhabitance_decls()
+data rust_anchor_signed_int_inhabitance: AlgebraInhabitanceDecl = rust_integer_algebra_inhabitance(facts: rust_facts_i32)
+data rust_anchor_unsigned_int_inhabitance: AlgebraInhabitanceDecl = rust_integer_algebra_inhabitance(facts: rust_facts_u32)
+data rust_anchor_float_inhabitance: AlgebraInhabitanceDecl = rust_float_algebra_inhabitance(facts: rust_facts_f64)
+data rust_anchor_bool_inhabitance: AlgebraInhabitanceDecl = rust_bool_algebra_inhabitance()
+data rust_anchor_string_inhabitance: AlgebraInhabitanceDecl = rust_string_algebra_inhabitance()

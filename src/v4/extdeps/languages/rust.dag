@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). Wave-1 MVP-1 and wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave1_formal_productions`, `rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). Wave-2 keyword/operator lexemes are layout-free; `WhitespaceChar` trivia separates tokens. Wave-1 MVP-1 lex still has layout-in-literals — 🟡 T-6 TokenLayout. bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2b — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). ModelCore inhabitance grounded in std.algebra Node constructors: signed ints → OrderedRing, unsigned ints → CommutativeSemiring (checked arithmetic traps on underflow → no additive inverse in the nonnegative cone), Float → ApproximateField, Bool → BooleanAlgebra, `str` → FreeMonoid over the `u8` (UTF-8 code unit) generator; integer/float/bool law obligations + pure-effect + fail-closed partiality wired (FreeMonoid concat laws deferred — 🟡 feature:rust-string-algebra-laws). Wave-1 MVP-1 and wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave1_formal_productions`, `rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). Wave-2 keyword/operator lexemes are layout-free; `WhitespaceChar` trivia separates tokens. Wave-1 MVP-1 lex still has layout-in-literals — 🟡 T-6 TokenLayout. bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
@@ -499,8 +499,13 @@ data rust_law_kind_bool_bounded_lattice: Symbol = rust_law_kind_bool_bounded_lat
 data rust_law_kind_bool_complement: Symbol = rust_law_kind_bool_complement
 
 data rust_witness_checked_integer_arithmetic: Symbol = rust_witness_checked_integer_arithmetic
+// Signed ints carry additive inverse within representable range → ordered ring; unsigned saturate
+// the nonnegative cone and trap (not wrap) on underflow → no additive inverse → commutative semiring.
+data rust_witness_signed_integer_ordered_ring: Symbol = rust_witness_signed_integer_ordered_ring
+data rust_witness_unsigned_integer_commutative_semiring: Symbol = rust_witness_unsigned_integer_commutative_semiring
 data rust_witness_float_approximate_field: Symbol = rust_witness_float_approximate_field
 data rust_witness_bool_boolean_algebra: Symbol = rust_witness_bool_boolean_algebra
+data rust_witness_string_free_monoid: Symbol = rust_witness_string_free_monoid
 
 data rust_effect_signature_pure_value: Symbol = rust_effect_signature_pure_value
 data rust_op_integer_add: Symbol = rust_op_integer_add
@@ -1736,11 +1741,37 @@ fn rust_symbol_node(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
 }
 
+fn rust_integer_algebra_class_witness(kind: RustIntKind) -> Symbol {
+  match kind {
+    Signed => rust_witness_signed_integer_ordered_ring
+    Unsigned => rust_witness_unsigned_integer_commutative_semiring
+  }
+}
+
+fn rust_integer_algebra_node(kind: RustIntKind, inhabitant: Node) -> Node {
+  match kind {
+    Signed => ordered_ring_node(inhabitant: inhabitant)
+    Unsigned => commutative_semiring_node(inhabitant: inhabitant)
+  }
+}
+
+fn rust_integer_algebra_type_node(kind: RustIntKind, inhabitant: Node) -> Node {
+  match kind {
+    Signed => ordered_ring_type_node(inhabitant: inhabitant)
+    Unsigned => commutative_semiring_type_node(inhabitant: inhabitant)
+  }
+}
+
 fn rust_integer_algebra_witness_node(facts: RustIntegerPrimitiveFacts) -> Node {
+  let kind = facts.overflow_disposition.ir_carrier.kind
+  let algebra_class = rust_integer_algebra_class_witness(kind: kind)
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(name: rust_witness_checked_integer_arithmetic, target: rust_symbol_node(id: rust_witness_checked_integer_arithmetic)),
+      rust_named_edge(name: algebra_class, target: rust_symbol_node(id: algebra_class)),
+      rust_named_edge(name: rust_facts_field_signedness, target: rust_int_kind_node(kind: kind)),
+      rust_named_edge(name: rust_facts_field_width, target: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)),
       rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection)),
       rust_named_edge(name: rust_facts_field_overflow_disposition, target: rust_overflow_disposition_node(disposition: facts.overflow_disposition))
     ]
@@ -1771,7 +1802,10 @@ fn rust_bool_algebra_witness_node() -> Node {
 fn rust_integer_algebra_inhabitance(facts: RustIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = rust_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: ordered_ring_node(inhabitant: inhabitant),
+    algebra: rust_integer_algebra_node(
+      kind: facts.overflow_disposition.ir_carrier.kind,
+      inhabitant: inhabitant
+    ),
     inhabitant: inhabitant,
     witness: rust_integer_algebra_witness_node(facts: facts)
   }
@@ -1793,6 +1827,42 @@ fn rust_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
     inhabitant: inhabitant,
     witness: rust_bool_algebra_witness_node()
   }
+}
+
+// Rust `str`/`String` concatenation is the free monoid over UTF-8 code units (`u8`),
+// mirroring the byte-oriented string model (`str` is `[u8]` guaranteed valid UTF-8;
+// `len()` and indexing are byte-based). The generator alphabet is the `u8` carrier.
+// Anchor: https://doc.rust-lang.org/reference/types/textual.html
+fn rust_string_element_node() -> Node {
+  rust_integer_facts_node(facts: rust_facts_u8)
+}
+
+fn rust_string_algebra_witness_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_witness_string_free_monoid, target: rust_symbol_node(id: rust_witness_string_free_monoid)),
+      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection)),
+      rust_named_edge(name: rust_facts_field_representation, target: rust_symbol_node(id: facts.representation))
+    ]
+  }
+}
+
+fn rust_string_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_node(inhabitant: rust_string_element_node()),
+    inhabitant: rust_noninteger_facts_node(facts: rust_facts_str),
+    witness: rust_string_algebra_witness_node(facts: rust_facts_str)
+  }
+}
+
+// 🟡 needs-more-work — feature:rust-string-algebra-laws — scaffold:T-4-wave-2b ·
+// FreeMonoid concat associativity + L/R identity law obligations deferred until the
+// string law-key coproduct lands (same staging as the integer/float/bool law keys above).
+fn rust_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    rust_string_algebra_inhabitance()
+  ]
 }
 
 fn rust_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
@@ -1824,10 +1894,13 @@ fn rust_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 fn rust_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   list_append(
     left: list_append(
-      left: rust_integer_algebra_inhabitance_decls(),
-      right: rust_float_algebra_inhabitance_decls()
+      left: list_append(
+        left: rust_integer_algebra_inhabitance_decls(),
+        right: rust_float_algebra_inhabitance_decls()
+      ),
+      right: rust_bool_algebra_inhabitance_decls()
     ),
-    right: rust_bool_algebra_inhabitance_decls()
+    right: rust_string_algebra_inhabitance_decls()
   )
 }
 
@@ -1876,7 +1949,10 @@ fn rust_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligat
 fn rust_integer_law_obligations(facts: RustIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
   let witness = rust_integer_algebra_witness_node(facts: facts)
   let inhabitant = rust_integer_facts_node(facts: facts)
-  let algebra = ordered_ring_type_node(inhabitant: inhabitant)
+  let algebra = rust_integer_algebra_type_node(
+    kind: facts.overflow_disposition.ir_carrier.kind,
+    inhabitant: inhabitant
+  )
   [
     rust_model_core_law_obligation(
       witness: witness,
