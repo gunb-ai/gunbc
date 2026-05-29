@@ -441,6 +441,8 @@ data canonical_tag_byte_offset_out_of_ceiling: Symbol = canonical_tag_byte_offse
 data canonical_tag_byte_offset_overflow_peel_exhausted: Symbol = canonical_tag_byte_offset_overflow_peel_exhausted
 data canonical_tag_byte_offset_overflow_residual_unrepresentable: Symbol = canonical_tag_byte_offset_overflow_residual_unrepresentable
 data canonical_tag_byte_offset_overflow_residual_discarded_high_zero: Symbol = canonical_tag_byte_offset_overflow_residual_discarded_high_zero
+data canonical_tag_byte_offset_overflow_residual_discarded_high_band: Symbol = canonical_tag_byte_offset_overflow_residual_discarded_high_band
+data canonical_tag_byte_offset_overflow_residual_discarded_high_truncated: Symbol = canonical_tag_byte_offset_overflow_residual_discarded_high_truncated
 data canonical_tag_byte_offset_cache_digest_ineligible: Symbol = canonical_tag_byte_offset_cache_digest_ineligible
 data byte_offset_cache_digest_max_limbs: Int = 9
 // Bounded overflow tail after the 9-limb ceiling — P4-safe remainder encoding for over-ceiling offsets (also caps overflow_quotient_peel).
@@ -502,17 +504,52 @@ fn byte_offset_byte_digest(b: Int) -> Hash {
 }
 
 
+// P4: Hash-only high-band peel — never re-enters byte_offset_cache_key_from_authority / witness_digest.
+fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining: Int) -> Hash {
+  if limbs_remaining == 0 {
+    if quotient == 0 {
+      atom_identity_hash(s: canonical_tag_byte_offset_zero)
+    } else if quotient < 256 * 256 {
+      combine_hash(
+        a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_peel_exhausted),
+        b: combine_hash(
+          a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
+          b: byte_offset_byte_digest(b: quotient / 256)
+        )
+      )
+    } else {
+      combine_hash(
+        a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_residual_discarded_high_truncated),
+        b: combine_hash(
+          a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
+          b: byte_offset_byte_digest(b: (quotient / 256) - (quotient / 65536) * 256)
+        )
+      )
+    }
+  } else if quotient == 0 {
+    atom_identity_hash(s: canonical_tag_byte_offset_zero)
+  } else {
+    combine_hash(
+      a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
+      b: byte_offset_overflow_quotient_high_band_digest(
+        quotient: quotient / 256,
+        limbs_remaining: limbs_remaining - 1
+      )
+    )
+  }
+}
+
+
 // Quotient bands above the two-limb exhausted-residual suffix (fail-closed witness material, not cache-eligible).
 fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> Hash {
   if quotient < 65536 {
     atom_identity_hash(s: canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
   } else {
-    byte_offset_cache_key_fingerprint(
-      key: byte_offset_cache_key_from_authority(
-        auth: byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
-          quotient: quotient / 65536,
-          limbs_remaining: byte_offset_cache_digest_overflow_limbs
-        )
+    combine_hash(
+      a: atom_identity_hash(s: canonical_tag_byte_offset_overflow_residual_discarded_high_band),
+      b: byte_offset_overflow_quotient_high_band_digest(
+        quotient: quotient / 65536,
+        limbs_remaining: byte_offset_cache_digest_overflow_limbs
       )
     )
   }
