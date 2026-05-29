@@ -28,6 +28,9 @@
 #                    run fail-closed workflow policy checks (INVARIANTS P2/P3) and the
 #                    MVP-1 end-to-end gate when its ci.yml wiring changes (ci job gates
 #                    MVP-1 on workflow_policy || v4).
+#   release_distribution=true|false — true if RELEASE_TODO §5 authority surfaces changed
+#                    (release.dag, release.yml, install.sh, target-triple script). Gates
+#                    the release workflow smoke on the ci job (orthogonal to v4 bucket).
 #
 # Why this lives in a script (not inline in ci.yml):
 # Gate #103 (`ci_uses_affected_set_selection`) policy forbids path-selection

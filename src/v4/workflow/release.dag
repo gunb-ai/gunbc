@@ -347,7 +347,7 @@ fn release_command_authority_ok(c: ReleaseCommand) -> Bool {
     NativeDarwinGunbcBuild { target: t } =>
       t == "x86_64-apple-darwin" || t == "aarch64-apple-darwin"
     UploadGunbcMatrixArtifact => true
-    PublishGitHubRelease { bundle_install_sh: _ } => true
+    PublishGitHubRelease { bundle_install_sh: bundle } => bundle == true
   }
 }
 
@@ -399,7 +399,7 @@ fn release_all_build_targets_in_matrix(jobs: List<ReleaseJob>, rows: List<Releas
       CrossMuslGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
       NativeDarwinGunbcBuild { target: t } => release_target_in_matrix(target: t, rows: rows)
       UploadGunbcMatrixArtifact => true
-      PublishGitHubRelease { bundle_install_sh: _ } => true
+      PublishGitHubRelease { bundle_install_sh: bundle } => bundle == true
     }
   })
 }
