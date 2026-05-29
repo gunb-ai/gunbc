@@ -1,14 +1,4 @@
 // v2 tokenizer -- pure function from source string to token list.
-//
-// No I/O -- file reading is handled by the pipeline.
-// Emits all token shapes declared in core.dag, including Newline tokens
-// (significant for the parser's statement separation).
-//
-// String interpolation: "hello {name}" emits StrBegin("hello "), then
-// expression tokens for `name`, then StrEnd(""). Nested braces inside
-// interpolation expressions are tracked via interp_depth stack.
-//
-// Escape sequences: \" \\ \n \t are processed in string literals.
 
 module v2.compiler.tokenize
 
@@ -53,13 +43,6 @@ data single_punct: Map<String, TokenShape> = {
   "+": ShPlus, "*": ShStar, "%": ShPercent, "/": ShSlash
 }
 
-// === Tokenizer state ===
-//
-// interp_depth is a stack of brace-nesting counters. Each entry
-// corresponds to one level of string interpolation. When we enter
-// "hello {..." the stack gets a 0 pushed. Nested { increments the
-// top, } decrements. When top reaches 0 and we see }, the
-// interpolation expression ends and we resume string scanning.
 
 type TokenizerState {
   pos: Int
@@ -67,19 +50,11 @@ type TokenizerState {
   interp_depth: List<Int>
 }
 
-// TokPos: tokenizer position state without tokens.
-// By threading tokens as a standalone parameter (not inside an Rc-wrapped
-// struct), Rc::try_unwrap succeeds on each list_push -- O(1) per push
-// instead of O(N) clone.
 type TokPos {
   pos: Int
   interp_depth: List<Int>
 }
 
-// ScanResult: what a single-token scan helper returns.
-// Contains exactly one token plus the updated position/interp state.
-// The caller (tokenize_loop) is responsible for appending the token to
-// the accumulator list -- helpers never see or touch the list.
 type ScanResult {
   pos: Int
   token: Token
@@ -104,17 +79,10 @@ type SourceRef {
   source_chars: List<Int>
 }
 
-// === Token construction helper ===
-//
 fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
   Token { text: text, span: span, shape: shape }
 }
 
-// === Source character access ===
-//
-// O(1) character access via pre-computed source_chars list.
-// Replaces char_at/scan_while/substring on raw string (which are
-// O(n) per call on non-ASCII UTF-8 input).
 
 fn source_char(source: SourceRef, pos: Int) -> String {
   from_code_point(cp: source.source_chars[pos])
@@ -150,7 +118,6 @@ fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
   else { source_scan_to_eol(source: source, start: start + 1) }
 }
 
-// === Entry point ===
 
 fn tokenize(source: String, file: String) -> List<Token> {
   let c = chars(source)
@@ -161,14 +128,10 @@ fn tokenize(source: String, file: String) -> List<Token> {
   list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof))
 }
 
-// === Main loop ===
 
-// Dispatch newlines, interpolation-close, and normal tokens to a ScanResult.
-// Factored out so tokenize_loop has exactly one tail call (TCO-friendly).
 fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanResult {
   let ch = source_char(source: source, pos: pos.pos)
 
-  // Newlines are significant (statement separation)
   if ch == "\n" {
     return ScanResult {
       pos: pos.pos + 1,
@@ -177,8 +140,6 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanResult {
     }
   }
 
-  // When inside string interpolation and we hit }, check if this
-  // closes the interpolation expression (top of depth stack == 0).
   if ch == "}" && count(pos.interp_depth) > 0 {
     let top = last(pos.interp_depth).value
     if top == 0 {
@@ -206,14 +167,12 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos, fuel: Int)
   tokenize_loop(source: source, tokens: list_push(tokens, result.token), pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1)
 }
 
-// === Token scanning ===
 
 fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
   if ch == "\"" { return scan_string(source: source, pos: pos) }
   if is_digit(ch: ch) { return scan_number(source: source, pos: pos) }
   if is_ident_start(ch: ch) { return scan_ident(source: source, pos: pos) }
 
-  // Two-character operators (guard against EOF lookahead)
   let next_ch = if pos.pos + 1 < source_len(source: source) {
     source_char(source: source, pos: pos.pos + 1)
   } else { "" }
@@ -231,7 +190,6 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
   if ch == "?" && next_ch == "?" { return emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2, file: source.file) }
   if ch == "." && next_ch == "." { return emit(pos: pos, shape: ShDotDot, text: "..", len: 2, file: source.file) }
 
-  // Single-character operators not in the table
   if ch == "=" { return emit(pos: pos, shape: ShEq, text: "=", len: 1, file: source.file) }
   if ch == "<" { return emit(pos: pos, shape: ShLt, text: "<", len: 1, file: source.file) }
   if ch == ">" { return emit(pos: pos, shape: ShGt, text: ">", len: 1, file: source.file) }
@@ -239,7 +197,6 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
   if ch == "!" { return emit(pos: pos, shape: ShBang, text: "!", len: 1, file: source.file) }
   if ch == "?" { return emit(pos: pos, shape: ShQuestion, text: "?", len: 1, file: source.file) }
 
-  // Braces -- need special handling for interpolation depth tracking
   if ch == "{" {
     let new_depth = if count(pos.interp_depth) > 0 {
       replace_last(stack: pos.interp_depth, value: last(pos.interp_depth).value + 1)
@@ -253,22 +210,18 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
   }
 
   if ch == "}" {
-    // Not inside interpolation (that case handled in tokenize_loop).
-    // This is a normal RBrace.
     let tok = make_token(text: "}", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShRBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: pos.interp_depth
     }
   }
 
-  // Single-char punctuation from table
   match lookup(single_punct, key: ch) {
     Some { value: sh } => emit(pos: pos, shape: sh, text: ch, len: 1, file: source.file)
     None => emit(pos: pos, shape: ShUnknown, text: ch, len: 1, file: source.file)
   }
 }
 
-// === Helpers ===
 
 fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) -> ScanResult {
   let token = make_token(text: text, span: make_file_span(file: file, start: pos.pos, end: pos.pos + len), shape: shape)
@@ -289,7 +242,6 @@ fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
 
 fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   let int_end = source_scan_while(source: source, start: pos.pos, pred: is_digit)
-  // Check for decimal point -> float (guard against EOF)
   if int_end + 1 < source_len(source: source) && source_char(source: source, pos: int_end) == "." && is_digit(ch: source_char(source: source, pos: int_end + 1)) {
     let frac_end = source_scan_while(source: source, start: int_end + 1, pred: is_digit)
     let text = source_substring(source: source, start: pos.pos, end: frac_end)
@@ -306,22 +258,12 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   ScanResult { pos: int_end, token: token, interp_depth: pos.interp_depth }
 }
 
-// === String scanning ===
-//
-// Strings are scanned character-by-character to handle:
-// - Escape sequences: \" \\ \n \t
-// - Interpolation: "hello {name}" splits into StrBegin/StrEnd tokens
-//
-// The result type captures what terminated the scan: a closing quote,
-// an interpolation opening brace, or end of input.
 
 type StringScanResult
   = ClosedString { content: String, end_pos: Int }
   | InterpolationStart { content: String, end_pos: Int }
   | UnterminatedString { content: String, end_pos: Int }
 
-// scan_string: called when we see opening " in the source.
-// Scans the string body looking for closing ", interpolation {, or escapes.
 fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
   let span_start = pos.pos
   let body_start = pos.pos + 1
@@ -355,9 +297,6 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
   }
 }
 
-// scan_str_cont: called after } closes an interpolation expression.
-// Resumes scanning the string body for more content, interpolation, or
-// the closing quote. Emits StrMid (if another { found) or StrEnd (if " found).
 fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult {
   let result = scan_string_body(source: source, pos: pos.pos, acc: [])
   match result {
@@ -389,47 +328,32 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
   }
 }
 
-// scan_string_body: character-by-character scan of string content.
-// Stops at closing " (ClosedString), interpolation { (InterpolationStart),
-// or end of input (UnterminatedString).
-// Escape sequences are preserved in the raw content and processed later.
-// Uses full if/else chains -- return inside if-without-else does not
-// early-return in the DSL evaluator.
 fn scan_string_body(source: SourceRef, pos: Int, acc: List<String>) -> StringScanResult {
   if pos >= source_len(source: source) {
     UnterminatedString { content: join(acc, separator: ""), end_pos: pos }
   } else {
     let ch = source_char(source: source, pos: pos)
     if ch == "\"" {
-      // Closing quote -- end of string
       ClosedString { content: join(acc, separator: ""), end_pos: pos }
     } else if ch == "\\" {
-      // Backslash -- escape sequence, consume two characters raw
       if pos + 1 < source_len(source: source) {
         let escaped = source_char(source: source, pos: pos + 1)
         scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, "\\"), escaped))
       } else {
-        // Trailing backslash at EOF
         UnterminatedString { content: join(list_push(acc, "\\"), separator: ""), end_pos: pos + 1 }
       }
     } else if ch == "{" {
-      // Opening brace -- potential interpolation start
       if should_start_interpolation(source: source, pos: pos) {
         InterpolationStart { content: join(acc, separator: ""), end_pos: pos }
       } else {
-        // Literal brace, not interpolation
         scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, "{"))
       }
     } else {
-      // Ordinary character
       scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, ch))
     }
   }
 }
 
-// should_start_interpolation: check if { at pos starts an interpolation.
-// Interpolation starts when the character after { is an identifier start
-// character (a-z, A-Z, _) or one of (, !, -.
 fn should_start_interpolation(source: SourceRef, pos: Int) -> Bool {
   if pos + 1 >= source_len(source: source) {
     false
@@ -439,11 +363,6 @@ fn should_start_interpolation(source: SourceRef, pos: Int) -> Bool {
   }
 }
 
-// === Escape sequence processing ===
-//
-// process_escapes: takes a raw string containing escape sequences like
-// \", \\, \n, \t and returns the string with escapes resolved.
-// Uses a recursive character-by-character scan.
 
 fn process_escapes(raw: String) -> String {
   process_escapes_loop(source: raw, pos: 0, acc: [])
@@ -470,12 +389,7 @@ fn process_escapes_loop(source: String, pos: Int, acc: List<String>) -> String {
   }
 }
 
-// === Stack helpers ===
-//
-// Immutable stack operations on List<Int>. Used for the interp_depth
-// brace-nesting counter stack.
 
-// drop_last: returns a new list with the last element removed (pop).
 fn drop_last(stack: List<Int>) -> List<Int> {
   let len = count(stack)
   fold(enumerate(stack), init: [], f: fn(result, pair) {
@@ -487,15 +401,11 @@ fn drop_last(stack: List<Int>) -> List<Int> {
   })
 }
 
-// replace_last: returns a new list with the last element replaced.
-// Used for incrementing/decrementing the top of the interp_depth stack.
 fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
   let prefix = drop_last(stack: stack)
   prefix |> append(items: value)
 }
 
-// Skip spaces and tabs (NOT newlines -- those are tokens).
-// Also skip line comments (// to end of line).
 fn skip_spaces_and_comments(source: SourceRef, pos: TokPos, fuel: Int) -> TokPos {
   let p = source_skip_ws(source: source, start: pos.pos)
   if p + 1 < source_len(source: source) && source_char(source: source, pos: p) == "/" && source_char(source: source, pos: p + 1) == "/" {
@@ -507,7 +417,6 @@ fn skip_spaces_and_comments(source: SourceRef, pos: TokPos, fuel: Int) -> TokPos
   TokPos { pos: p, interp_depth: pos.interp_depth }
 }
 
-// === Character predicates ===
 
 fn is_digit(ch: String) -> Bool {
   ch >= "0" && ch <= "9"

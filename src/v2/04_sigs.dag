@@ -1,14 +1,4 @@
 // SCC-aware function signature resolution.
-//
-// Converts DeclaredFuncSig (optional inferred) to ResolvedFuncSig
-// (concrete inferred) using topological ordering of the call graph.
-// Self-/mutual-recursive functions without annotations produce diagnostics.
-//
-// Dependency chain:
-//   v2.std.core (DeclaredFuncSig, Node, ExprCall)
-//     -> v2.compiler.infer_types (emit_map_has)
-//       -> v2.compiler.infer_sigs (resolve_func_sigs, ResolvedFuncSig, ResolvedFuncEnv)
-//         -> v2.compiler.infer (typecheck pipeline)
 
 module v2.compiler.infer_sigs
 
@@ -28,15 +18,12 @@ import std.induction { SubValueRelation }
 // Types
 // =========================================================================
 
-// ResolvedFuncSig: function signature with concrete return type (never placeholder).
-// Produced by resolve_func_sigs after SCC-aware return type resolution.
 type ResolvedFuncSig {
   name: String
   params: List<Node>
   inferred: Node
   is_async: Bool
   output_provenance: List<Map<String, SubValueRelation>>
-  // Per-variant per-field provenance for sum-type returns. See DeclaredFuncSig.
   variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
 }
 
@@ -49,14 +36,11 @@ type ResolveFuncSigsResult {
   diagnostics: List<ErrorNode>
 }
 
-// Accumulator for single-pass fold over function signatures:
-// collects resolved signatures and diagnostics together.
 type SigsAccum {
   signatures: Map<String, ResolvedFuncSig>
   diagnostics: List<ErrorNode>
 }
 
-// Call edge between two local functions.
 type CallEdge {
   caller: String
   callee: String
@@ -66,8 +50,6 @@ type CallEdge {
 // Call graph construction
 // =========================================================================
 
-// Collect call edges from function body ASTs.
-// Only includes edges where the callee is a local function (in local_func_set).
 fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
@@ -78,9 +60,7 @@ fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>,
   )
 }
 
-// Walk a Node expression tree to find ExprCall nodes whose func is a local function.
 fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
-  // Per-node logic: detect local function calls and produce call edges.
   let this_edges = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
@@ -88,7 +68,6 @@ fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String
       else { [] }
     _ => []
   }
-  // Structural recursion into all child expressions.
   let child_edges = texpr.children |> flat_map(child =>
     collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set, source_indices: source_indices)
   )
@@ -96,7 +75,6 @@ fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String
   result
 }
 
-// Check if a function reaches itself through the call graph (DFS).
 fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {
   if emit_map_has(m: visited, key: current) { false }
   else {
@@ -113,13 +91,10 @@ fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, 
 // Signature resolution
 // =========================================================================
 
-// Build a name → true set from a list. Typed return ensures fold(init:
-// empty_map()) resolves to Map<String, Bool>.
 fn build_name_set(names: List<String>) -> Map<String, Bool> {
   fold(names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
 }
 
-// Collect resolved sigs from parent declarations, excluding local functions.
 fn collect_parent_resolved_sigs(declared_sigs: Map<String, DeclaredFuncSig>, local_func_set: Map<String, Bool>) -> Map<String, ResolvedFuncSig> {
   fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
     if emit_map_has(m: local_func_set, key: dsig.name) {
@@ -132,13 +107,10 @@ fn collect_parent_resolved_sigs(declared_sigs: Map<String, DeclaredFuncSig>, loc
   )
 }
 
-// Convert a single DeclaredFuncSig with inferred: Some to ResolvedFuncSig.
-// Caller must ensure inferred is not None.
 fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
   ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
 }
 
-// Merge all remaining declared sigs (with inferred: Some) into a resolved map.
 fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
   fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
     if dsig.inferred != none {
@@ -147,8 +119,6 @@ fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolve
   )
 }
 
-// Topological resolution loop: process functions whose local callees are all resolved.
-// When no more progress can be made, remaining functions form cycles.
 fn topo_resolve_loop(
     remaining: List<String>,
     resolved: Map<String, ResolvedFuncSig>,
@@ -160,7 +130,6 @@ fn topo_resolve_loop(
     fuel: Int
 ) -> ResolveFuncSigsResult {
   if remaining |> count == 0 {
-    // Include non-local (parent) sigs -- they have inferred: Some from conversion.
     let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
       if dsig.inferred != none {
         map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
@@ -172,7 +141,6 @@ fn topo_resolve_loop(
     }
   }
 
-  // Find functions whose local callees are all resolved
   let ready = remaining |> filter(fn_name =>
     let local_callees = call_edges
       |> filter(e => e.caller == fn_name)
@@ -182,7 +150,6 @@ fn topo_resolve_loop(
   )
 
   if ready |> count == 0 {
-    // Stuck -- remaining functions form cycles. All must have annotations.
     let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
       match map_get(declared_sigs, fn_name) {
         Some { value: dsig } =>
@@ -194,7 +161,6 @@ fn topo_resolve_loop(
         None => acc
       }
     )
-    // Terminate with cycle results
     let all_resolved = fold(map_values(declared_sigs), init: cycle_accum.signatures, f: (acc, dsig) =>
       if dsig.inferred != none {
         map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
@@ -206,7 +172,6 @@ fn topo_resolve_loop(
     }
   }
 
-  // Resolve ready functions — single pass collects resolved sigs and diagnostics.
   let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
       Some { value: dsig } =>
@@ -219,7 +184,6 @@ fn topo_resolve_loop(
     }
   )
 
-  // Remove resolved from remaining and recurse
   let ready_set = fold(ready, init: empty_map(), f: (acc, fn_name) => map_insert(acc, fn_name, true))
   let next_remaining = remaining |> filter(fn_name => emit_map_has(m: ready_set, key: fn_name) == false)
 
@@ -235,17 +199,12 @@ fn topo_resolve_loop(
   )
 }
 
-// Main entry: resolve declared function signatures to resolved ones.
-// Converts DeclaredFuncSig (inferred: Node?) to ResolvedFuncSig (inferred: Node)
-// using SCC-aware topological ordering of the call graph.
 fn resolve_func_sigs(
     declared_sigs: Map<String, DeclaredFuncSig>,
     items: List<Node>,
     module_name: String,
     source_indices: Map<String, NewlineIndex>
 ) -> ResolveFuncSigsResult {
-  // Filter to functions only: items with params AND a body.
-  // Bare generic type declarations (type List<element>) have params but no body.
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)
     |> map(item => authored_name_at(source_indices: source_indices, node: item))

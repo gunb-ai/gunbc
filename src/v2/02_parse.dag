@@ -1,19 +1,4 @@
 // v2 parser -- recursive descent, first-error-halt.
-//
-// Consumes a flat List<Token> (from the tokenizer) and produces a
-// Module AST. Every production function takes a List<Token> (the remaining
-// tokens) and a ParseContext, returning a record with the result, remaining
-// tokens, and ctx. Helpers (advance, eat, expect) return tokens only. On error,
-// functions return a ParseError record that halts parsing.
-//
-// Operator precedence (Pratt binding powers):
-//   ||          bp 2  (left)
-//   &&          bp 4  (left)
-//   == != < > <= >=  bp 6  (left)
-//   + - +     bp 8  (left, +is list/string concat)
-//   * /         bp 10 (left)
-//   ! - (unary) bp 12 (prefix)
-//   . () []     bp 14 (postfix, handled separately)
 
 module v2.compiler.parse
 
@@ -93,25 +78,14 @@ type ParseWithTableResult {
   intern_table: InternTable
 }
 
-// Typed parse results -- replace the untyped PR type.
-// Each result type has the value fields directly (no val nesting),
-// plus state and err for threading.
 
-// Helper result types — tokens only, no ctx.
-// Callers use ctx from their own scope.
-// Sum type: AdvanceOk carries the strictly shorter tokens (one consumed);
-// AdvanceEof signals empty input. Callers match-destructure, making the
-// structural consume-one-token relationship visible to CX.
 type AdvanceResult
   = AdvanceOk { token: Token, tokens: List<Token> }
   | AdvanceEof
-// Sum type: EatConsumed carries the strictly shorter tokens (one consumed);
-// EatUnchanged signals the expected token was not found.
 type EatResult
   = EatConsumed { token: Token, tokens: List<Token> }
   | EatUnchanged { tokens: List<Token> }
 
-// Typed PR replacements (flat -- r.val.X becomes r.X)
 type TokenResult { token: Token, tokens: List<Token>, err: ErrorNode? }
 type NameResult { name: String, span: SourceSpan, tokens: List<Token>, err: ErrorNode? }
 type ExprResult { expr: Node, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
@@ -132,7 +106,6 @@ type FieldResult { field: Node, tokens: List<Token>, ctx: ParseContext, err: Err
 type FieldInitResult { field: Node, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 type ResUseResult { resource_use: Node, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 
-// Generic prefix result: shared across TypeBody, ExprBody, BlockBody items.
 type ItemPrefixResult {
   name: String
   name_span: SourceSpan
@@ -150,7 +123,6 @@ type ItemPrefixResult {
 type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
 type ConfigResult { config: ServiceConfig, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 
-// Pratt parser binding power
 type BindingPower { left: Int, right: Int }
 
 type ExpectedToken
@@ -172,7 +144,6 @@ type ExpectedToken
   | ExpectQuestion
   | ExpectPipe
 
-// List results
 type ImportsResult { imports: List<Node>, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 type ItemsResult { items: List<Node>, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 type NamesResult { names: List<Node>, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
@@ -200,12 +171,10 @@ fn parse_recovery_placeholder() -> Node {
   )
 }
 
-// Optional results
 type OptRetResult { inferred: InferredNode?, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 type GuardResult { guard: Node?, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 type FromKeyResult { from_key: String?, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 
-// Multi-field results
 type PostfixResult { expr: Node, changed: Bool, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 type ParserParam { name: String, span: SourceSpan }
 type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
@@ -247,14 +216,12 @@ type ParserResultWitness
   | ParserWitnessCall { callee: ParserCallIdentity }
   | ParserWitnessOpaque
 
-// For parse_optional_from_key/parse_config_fields/parse_op_body_entries desc:
 type DescResult { desc: String?, tokens: List<Token> }
 
 // =========================================================================
 // Helpers
 // =========================================================================
 
-// token_span: extract span from Token? (replaces current_span)
 fn token_span(tok: Token?) -> SourceSpan {
   match tok { Some { value: t } => t.span  None => make_span(start: 0, end: 0) }
 }
@@ -313,8 +280,6 @@ fn parse_int_literal_value(tokens: List<Token>) -> IntLitResult {
   }
 }
 
-// Shape predicates -- payload-insensitive token classification.
-// Payload variants
 fn is_ident_shape(shape: TokenShape) -> Bool { match shape { ShIdent => true  _ => false } }
 fn is_lit_str_shape(shape: TokenShape) -> Bool { match shape { ShLitStr => true  _ => false } }
 fn is_lit_int_shape(shape: TokenShape) -> Bool { match shape { ShLitInt => true  _ => false } }
@@ -323,50 +288,40 @@ fn is_str_begin_shape(shape: TokenShape) -> Bool { match shape { ShStrBegin => t
 fn is_str_mid_shape(shape: TokenShape) -> Bool { match shape { ShStrMid => true  _ => false } }
 fn is_str_end_shape(shape: TokenShape) -> Bool { match shape { ShStrEnd => true  _ => false } }
 fn is_unknown_shape(shape: TokenShape) -> Bool { match shape { ShUnknown => true  _ => false } }
-// Structure
 fn is_newline_shape(shape: TokenShape) -> Bool { match shape { ShNewline => true  _ => false } }
 fn is_eof_shape(shape: TokenShape) -> Bool { match shape { ShEof => true  _ => false } }
-// Keyword shape — single variant for all keywords, identity is in Token.text
 fn is_keyword_shape(shape: TokenShape) -> Bool { match shape { ShKeyword => true  _ => false } }
 
 
-// Paired delimiters
 fn is_lbrace_shape(shape: TokenShape) -> Bool { match shape { ShLBrace => true  _ => false } }
 fn is_rbrace_shape(shape: TokenShape) -> Bool { match shape { ShRBrace => true  _ => false } }
 fn is_lparen_shape(shape: TokenShape) -> Bool { match shape { ShLParen => true  _ => false } }
 fn is_rparen_shape(shape: TokenShape) -> Bool { match shape { ShRParen => true  _ => false } }
 fn is_lbracket_shape(shape: TokenShape) -> Bool { match shape { ShLBracket => true  _ => false } }
 fn is_rbracket_shape(shape: TokenShape) -> Bool { match shape { ShRBracket => true  _ => false } }
-// Relational / arrow
 fn is_lt_shape(shape: TokenShape) -> Bool { match shape { ShLt => true  _ => false } }
 fn is_gt_shape(shape: TokenShape) -> Bool { match shape { ShGt => true  _ => false } }
 fn is_le_shape(shape: TokenShape) -> Bool { match shape { ShLe => true  _ => false } }
 fn is_ge_shape(shape: TokenShape) -> Bool { match shape { ShGe => true  _ => false } }
 fn is_fat_arrow_shape(shape: TokenShape) -> Bool { match shape { ShFatArrow => true  _ => false } }
 fn is_arrow_shape(shape: TokenShape) -> Bool { match shape { ShArrow => true  _ => false } }
-// Separators
 fn is_colon_shape(shape: TokenShape) -> Bool { match shape { ShColon => true  _ => false } }
 fn is_comma_shape(shape: TokenShape) -> Bool { match shape { ShComma => true  _ => false } }
 fn is_dot_shape(shape: TokenShape) -> Bool { match shape { ShDot => true  _ => false } }
 fn is_dot_dot_shape(shape: TokenShape) -> Bool { match shape { ShDotDot => true  _ => false } }
-// Assignment / equality
 fn is_eq_shape(shape: TokenShape) -> Bool { match shape { ShEq => true  _ => false } }
 fn is_eq_eq_shape(shape: TokenShape) -> Bool { match shape { ShEqEq => true  _ => false } }
 fn is_ne_shape(shape: TokenShape) -> Bool { match shape { ShNe => true  _ => false } }
-// Arithmetic
 fn is_plus_shape(shape: TokenShape) -> Bool { match shape { ShPlus => true  _ => false } }
 fn is_minus_shape(shape: TokenShape) -> Bool { match shape { ShMinus => true  _ => false } }
 fn is_star_shape(shape: TokenShape) -> Bool { match shape { ShStar => true  _ => false } }
 fn is_slash_shape(shape: TokenShape) -> Bool { match shape { ShSlash => true  _ => false } }
 fn is_percent_shape(shape: TokenShape) -> Bool { match shape { ShPercent => true  _ => false } }
-// Logic
 fn is_bang_shape(shape: TokenShape) -> Bool { match shape { ShBang => true  _ => false } }
 fn is_and_shape(shape: TokenShape) -> Bool { match shape { ShAnd => true  _ => false } }
 fn is_or_shape(shape: TokenShape) -> Bool { match shape { ShOr => true  _ => false } }
-// Optionality
 fn is_question_shape(shape: TokenShape) -> Bool { match shape { ShQuestion => true  _ => false } }
 fn is_null_coalesce_shape(shape: TokenShape) -> Bool { match shape { ShNullCoalesce => true  _ => false } }
-// Pipe
 fn is_pipe_shape(shape: TokenShape) -> Bool { match shape { ShPipe => true  _ => false } }
 fn is_pipe_arrow_shape(shape: TokenShape) -> Bool { match shape { ShPipeArrow => true  _ => false } }
 
@@ -614,9 +569,6 @@ fn expect_ident(tokens: List<Token>) -> NameResult {
   }
 }
 
-// Like expect_ident but also accepts keywords in name position.
-// Used for record field names and other contexts where DSL keywords
-// (type, resource, capability, operation, pattern, etc.) are valid names.
 fn expect_name(tokens: List<Token>) -> NameResult {
   let tok = tokens |> first
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
@@ -627,7 +579,6 @@ fn expect_name(tokens: List<Token>) -> NameResult {
       NameResult { name: n, span: span, tokens: tokens |> skip(1), err: none }
     }
     _ => {
-      // Try to extract keyword name -- keyword tokens can be field names.
       let kw_name = tok_keyword_to_name(tok: tok)
       match kw_name {
         Some { value: n } => {
@@ -670,14 +621,10 @@ fn skip_newlines(tokens: List<Token>) -> List<Token> {
   }
 }
 
-// Is the token shape a continuation operator (|>, ., ||, &&)?
 fn is_continuation_shape(shape: TokenShape) -> Bool {
   is_pipe_arrow_shape(shape: shape) || is_dot_shape(shape: shape) || is_or_shape(shape: shape) || is_and_shape(shape: shape)
 }
 
-// Skip newlines only if the next non-newline token is a continuation
-// operator. This allows multi-line expressions using pipes, method chains,
-// and boolean operators without breaking statement boundaries.
 fn skip_continuation_newlines(tokens: List<Token>) -> List<Token> {
   let tok = tokens |> first
   let is_continuation = if tok_is_newline(tok: tok) {
@@ -696,7 +643,6 @@ fn skip_continuation_newlines(tokens: List<Token>) -> List<Token> {
   }
 }
 
-// Eat: consume the token if it matches, otherwise leave tokens unchanged.
 fn eat(tokens: List<Token>, expected: ExpectedToken) -> EatResult {
   match tokens |> first {
     Some { value: t } =>
@@ -814,7 +760,6 @@ fn leaf_type_node(name: String, span: SourceSpan) -> Node {
   Node { name: name, span: span, ident_span: if name == "" { none } else { Some { value: span } }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-// Check if a Node represents an inline record (Conj with children).
 fn is_conj_with_children(n: Node) -> Bool {
   n.connective == Conj && n.children |> count > 0
 }
@@ -861,8 +806,6 @@ fn parse_dotted_ident_rest(tokens: List<Token>, acc: String, span: SourceSpan) -
   EatConsumed { token: _, tokens: __ec } =>
     let r = expect_name(tokens: __ec)
     if has_err(err: r.err) { return r }
-    // Extend span to cover the full dotted path so authored_name_at
-    // reads "shell.Codegen", not just "shell".
     let extended = SourceSpan { file: span.file, start: span.start, end: r.span.end }
     parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: extended)
   EatUnchanged { tokens: __eu } =>
@@ -903,7 +846,6 @@ fn parse_module(tokens: List<Token>, ctx: ParseContext) -> ModuleResult {
   let tokens = skip_newlines(tokens: tokens)
   let start_span = token_span(tok: tokens |> first)
 
-  // module path.name
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "module" })
   if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
@@ -914,25 +856,20 @@ fn parse_module(tokens: List<Token>, ctx: ParseContext) -> ModuleResult {
   let mod_name_span = r.span
   let tokens = skip_newlines(tokens: r.tokens)
 
-  // imports
   let r = parse_imports(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let imports = r.imports
   let tokens = r.tokens
   let ctx = r.ctx
 
-  // items
   let r = parse_items(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let items = r.items
   let tokens = r.tokens
   let ctx = r.ctx
 
-  // Intern the module name for future identity lookup
   let mod_ir = intern(table: ctx.intern_table, s: mod_name)
   let ctx = with(ctx, { intern_table: mod_ir.table })
-  // Build module node with the name-token ident_span so authored_name_at
-  // returns the dotted name (not the full module source).
   let base_mod = Node {
     name: mod_name, span: start_span,
     ident_span: Some { value: mod_name_span },
@@ -962,9 +899,6 @@ fn parse_imports_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) ->
 }
 
 fn parse_items(tokens: List<Token>, ctx: ParseContext) -> ItemsResult {
-  // Iterative item collection -- avoids O(items) recursion depth.
-  // The old recursive version created 130+ stack frames for 02_parse.dag,
-  // each holding an ItemsResult with a growing items list.
   parse_items_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
@@ -996,7 +930,6 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let mod_path_span = r.span
   let tokens = r.tokens
 
-  // Optional binding list: { Name1, Name2 }
   match eat(tokens: tokens, expected: ExpectLBrace) {
   EatConsumed { token: _, tokens: __ec } =>
     let r = parse_import_names(tokens: __ec, ctx: ctx)
@@ -1013,7 +946,6 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
     let imp = with(base_imp, { ident: Some { value: imp_ir.id } })
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
-    // Bare import (no braces): import all from module.
     let tokens = skip_newlines(tokens: tokens)
     let base_imp = import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
@@ -1027,11 +959,6 @@ fn parse_import_names(tokens: List<Token>, ctx: ParseContext) -> NamesResult {
   parse_import_names_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-// Parser-produced name leaf. Currently delegates to the core leaf
-// constructor, but exists as a single indirection point: if parser
-// name leaves later need different provenance (e.g., carrying ident_span
-// or distinguishing parsed names from synthetic ones), only this
-// function changes — not every lambda/import call site.
 fn parsed_name_leaf(name: String, span: SourceSpan) -> Node {
   leaf_node_with_span(name: name, span: span)
 }
@@ -1053,9 +980,6 @@ fn parse_import_names_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
 
 // =========================================================================
 // 4. parse_item -- spec-driven dispatch
-//
-// Looks up the keyword in dag_syntax_spec.item_forms (from SyntaxSpec).
-// Adding a new item type with a standard body kind = one entry in syntax.dag.
 // =========================================================================
 
 fn find_item_form(forms: List<ItemForm>, keyword: String) -> ItemForm? {
@@ -1078,17 +1002,13 @@ fn parse_item(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
   }
 }
 
-// Generic prefix parser: consumes ident, optional type_params, optional params,
-// optional return type, and optional uses clause based on ItemForm fields.
 fn parse_item_prefix(tokens: List<Token>, ctx: ParseContext, form: ItemForm) -> ItemPrefixResult {
-  // 1. Expect identifier
   let r = expect_ident(tokens: tokens)
   if has_err(err: r.err) { return ItemPrefixResult { name: "", name_span: r.span, type_params: [], params: [], inferred: none, uses: [], tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
   let tokens = r.tokens
 
-  // 2. Optional type params (if form.has_type_params)
   let tp_result = if form.has_type_params {
     parse_optional_type_params(tokens: tokens, ctx: ctx)
   } else {
@@ -1097,7 +1017,6 @@ fn parse_item_prefix(tokens: List<Token>, ctx: ParseContext, form: ItemForm) -> 
   let tokens = tp_result.tokens
   let ctx = tp_result.ctx
 
-  // 3. Params (if form.has_params)
   let params_result = if form.has_params {
     parse_params(tokens: tokens, ctx: ctx)
   } else {
@@ -1107,7 +1026,6 @@ fn parse_item_prefix(tokens: List<Token>, ctx: ParseContext, form: ItemForm) -> 
   let tokens = params_result.tokens
   let ctx = params_result.ctx
 
-  // 4. Return type (if form.has_return_type)
   let ret_result = if form.has_return_type {
     parse_optional_inferred(tokens: tokens, ctx: ctx)
   } else {
@@ -1116,13 +1034,11 @@ fn parse_item_prefix(tokens: List<Token>, ctx: ParseContext, form: ItemForm) -> 
   if has_err(err: ret_result.err) { return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, inferred: none, uses: [], tokens: ret_result.tokens, ctx: ret_result.ctx, err: ret_result.err } }
   let tokens = ret_result.tokens
   let ctx = ret_result.ctx
-  // Enforce return_required: if the form demands a return type and none was provided, error
   let missing_required_ret = form.return_required && match ret_result.inferred { Some { value: _ } => false  None => true }
   if missing_required_ret {
     return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, inferred: none, uses: [], tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: concat("expected return type annotation (-> Type) for '", concat(form.keyword, concat(" ", name))), span: token_span(tok: tokens |> first)) } }
   }
 
-  // 5. Uses clause (if form.has_uses)
   let uses_result = if form.has_uses {
     parse_uses_clause(tokens: skip_newlines(tokens: tokens), ctx: ctx)
   } else {
@@ -1136,11 +1052,9 @@ fn parse_item_prefix(tokens: List<Token>, ctx: ParseContext, form: ItemForm) -> 
 fn parse_item_by_form(tokens: List<Token>, ctx: ParseContext, form: ItemForm) -> ItemResult {
   let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  // Eat the keyword generically — enables new keywords with existing body kinds
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: form.keyword })
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
-  // Standard body kinds: generic prefix, then body-specific parser
   match form.body_kind {
     TypeBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
@@ -1157,7 +1071,6 @@ fn parse_item_by_form(tokens: List<Token>, ctx: ParseContext, form: ItemForm) ->
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_block_body_from_prefix(prefix: prefix, start_span: start_span)
     }
-    // Non-standard prefixes: keep their own prefix logic
     ServiceBody => parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     ResourceBody => parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     ValueBody => parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
@@ -1171,10 +1084,6 @@ fn parse_item_by_form(tokens: List<Token>, ctx: ParseContext, form: ItemForm) ->
 
 // =========================================================================
 // Type structure -> child Node conversion
-//
-// Record fields become child Nodes with inferred.
-// Sum variants become child Nodes with their own children.
-// Default values: Field.default_value -> body on the child Node
 // =========================================================================
 
 fn field_to_child_node(field: Node, source_indices: Map<String, NewlineIndex>) -> Node {
@@ -1203,12 +1112,8 @@ fn variant_to_child_node(variant: Node, source_indices: Map<String, NewlineIndex
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-// Derive inferred from an output field list.
-// Single output -> its type (Node). Multiple -> anonymous Conj node. None -> none.
 fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> InferredNode? {
   if outputs |> count > 0 {
-    // Always create an anonymous Conj record, even for single-output operations,
-    // so field names are preserved (e.g., output { branch: String } -> { branch: String }).
     Some { value: Resolved { node: Node { name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f, source_indices: source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } } }
   } else {
     none
@@ -1273,14 +1178,12 @@ fn parse_type_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
   let name_span = r.span
   let tokens = r.tokens
 
-  // Optional type parameters: type Name<element> or type Name<key, value>
   let type_params_result = parse_optional_type_params(tokens: tokens, ctx: ctx)
   let type_params = type_params_result.params
   let tokens = skip_newlines(tokens: type_params_result.tokens)
   let ctx = type_params_result.ctx
   let tokens = type_body_tokens_after_modifiers(tokens: tokens)
 
-  // Record type: type Name { fields }
   match eat(tokens: tokens, expected: ExpectLBrace) {
   EatConsumed { token: _, tokens: __ec } =>
     let r = parse_field_list(tokens: skip_newlines(tokens: __ec), ctx: ctx)
@@ -1294,22 +1197,17 @@ fn parse_type_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
     let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
-    // Sum type or alias: type Name = ...
-    // Or bare primitive declaration: type Name (no body)
     match eat(tokens: tokens, expected: ExpectEq) {
       EatConsumed { token: _, tokens: __ec } =>
         let tokens = skip_newlines(tokens: __ec)
         parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
       EatUnchanged { tokens: __eu } =>
-        // Bare type declaration -- primitive type with no structural expansion
         let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
 }
 
-// Body-only parser for TypeBody items. Receives prefix (name, type_params) from parse_item_prefix.
-// Handles { fields } (record), = variants (sum), = alias, or bare declaration.
 fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
@@ -1318,7 +1216,6 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let tokens = type_body_tokens_after_modifiers(tokens: skip_newlines(tokens: prefix.tokens))
 
-  // Record type: type Name { fields }
   match eat(tokens: tokens, expected: ExpectLBrace) {
   EatConsumed { token: _, tokens: __ec } =>
     let r = parse_field_list(tokens: skip_newlines(tokens: __ec), ctx: ctx)
@@ -1331,26 +1228,19 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
     let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
-    // Sum type or alias: type Name = ...
-    // Or bare primitive declaration: type Name (no body)
     match eat(tokens: tokens, expected: ExpectEq) {
       EatConsumed { token: _, tokens: __ec } =>
         let tokens = skip_newlines(tokens: __ec)
         parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
       EatUnchanged { tokens: __eu } =>
-        // Bare type declaration -- primitive type with no structural expansion
         let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
 }
 
-// After `type Name =`, determine if this is a sum type or alias.
 fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>) -> ItemResult {
   let dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  // Check if the first token is an identifier (potential variant name)
-  // followed by LBrace or Pipe (sum type indicators).
-  // If it's an identifier, try to parse as a sum type.
   if tok_is_ident(tok: tokens |> first) {
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -1358,8 +1248,6 @@ fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String
     let first_name_span = r.span
     let tokens = skip_newlines(tokens: r.tokens)
 
-    // If followed by {, (, or |, it's a sum type (PR-A.3 record payload; positional
-    // generic type application payload e.g. NodeAt(LocusAnchor<Node>)).
     if tok_is_lbrace(tok: tokens |> first) || tok_is_lparen(tok: tokens |> first) || tok_is_pipe(tok: tokens |> first) {
       let r = parse_variant_fields(tokens: tokens, ctx: ctx, vname: first_name, vname_span: first_name_span)
       if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -1371,20 +1259,16 @@ fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String
       let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: rest.ctx, err: none }
     } else {
-      // It's an alias: type Name = SomeType
       let r = finish_type_expr_from_name(tokens: tokens, ctx: ctx, type_name: first_name, start_span: first_name_span)
       if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      // Check for where clause: type Name = BaseType where predicate(...)
       let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
       let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: wr.ctx, err: none }
     }
   } else {
-    // Not an identifier -- parse as type expression (e.g., { fields })
     let r = parse_type_expr(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    // Check for where clause
     let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
     let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -1392,8 +1276,6 @@ fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String
   }
 }
 
-// try_where_clause: if the next token is KwWhere, parse predicates and
-// wrap the base type in a Refined Node. Otherwise, return the base type unchanged.
 fn try_where_clause(tokens: List<Token>, ctx: ParseContext, base_te: Node, start_span: SourceSpan) -> TypeResult {
   if tok_is_keyword(tok: tokens |> first, kw: "where") {
     match advance(tokens: tokens) {
@@ -1410,7 +1292,6 @@ fn try_where_clause(tokens: List<Token>, ctx: ParseContext, base_te: Node, start
   }
 }
 
-// parse_predicates: comma-separated list of predicate(args).
 fn parse_predicates(tokens: List<Token>, ctx: ParseContext) -> PredsResult {
   parse_predicates_acc(tokens: tokens, ctx: ctx, acc: [])
 }
@@ -1427,18 +1308,14 @@ fn parse_predicates_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>)
   }
 }
 
-// parse_single_predicate: pattern("...") | range(min: N, max: N) | non_empty | format(name) | brand("...") | content(name)
-// Returns Node directly -- no intermediate Predicate type needed.
 fn parse_single_predicate(tokens: List<Token>, ctx: ParseContext) -> PredResult {
   let zero_span = make_span(start: 0, end: 0)
   let dummy_pred = make_field_init_node(name: "", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)
-  // Use expect_name to accept keywords (like "pattern") as predicate names.
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return PredResult { predicate: dummy_pred, tokens: r.tokens, ctx: ctx, err: r.err } }
   let pred_name = r.name
   let tokens = r.tokens
 
-  // Check for (args)
   match eat(tokens: tokens, expected: ExpectLParen) {
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = __ec
@@ -1479,12 +1356,10 @@ fn parse_single_predicate(tokens: List<Token>, ctx: ParseContext) -> PredResult 
         PredResult { predicate: make_field_init_node(name: "Domain", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: r3.tokens, ctx: ctx, err: none }
       }
       "range" => {
-        // range(min: N) | range(max: N) | range(min: N, max: N)
         let r2 = parse_named_int_args(tokens: tokens, ctx: ctx)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
         let r3 = expect(tokens: r2.tokens, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
-        // Preserve min/max values as structured record fields
         let min_fields = if r2.min_val != none {
           [make_field_init_node(name: "min", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.min_val.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)]
         } else { [] }
@@ -1497,8 +1372,6 @@ fn parse_single_predicate(tokens: List<Token>, ctx: ParseContext) -> PredResult 
         PredResult { predicate: dummy_pred, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: token_span(tok: tokens |> first)) } }
     }
   EatUnchanged { tokens: __eu } =>
-    // No args -- bare predicate names (non_empty, is_text_readable, etc.)
-    // Accept any identifier; later phases validate semantics.
     match pred_name {
       "non_empty" =>
         PredResult { predicate: make_field_init_node(name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: tokens, ctx: ctx, err: none }
@@ -1508,8 +1381,6 @@ fn parse_single_predicate(tokens: List<Token>, ctx: ParseContext) -> PredResult 
   }
 }
 
-// parse_named_int_args: parse `min: N, max: N` style named integer arguments.
-// Returns { min_val: Int?, max_val: Int? }. Both are optional.
 fn parse_named_int_args(tokens: List<Token>, ctx: ParseContext) -> RangeArgsResult {
   let r = parse_single_named_int(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return RangeArgsResult { min_val: none, max_val: none, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -1531,7 +1402,6 @@ fn parse_named_int_args(tokens: List<Token>, ctx: ParseContext) -> RangeArgsResu
   }
 }
 
-// parse_single_named_int: parse `name: integer_literal`.
 fn parse_single_named_int(tokens: List<Token>, ctx: ParseContext) -> NamedIntResult {
   let r = expect_ident(tokens: tokens)
   if has_err(err: r.err) { return NamedIntResult { arg_name: "", arg_value: 0, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -1543,8 +1413,6 @@ fn parse_single_named_int(tokens: List<Token>, ctx: ParseContext) -> NamedIntRes
   NamedIntResult { arg_name: name, arg_value: r3.value, tokens: r3.tokens, ctx: ctx, err: none }
 }
 
-// Positional sum-variant payload: `Variant(Type)` only — synthetic field `"0"`.
-// Comma-separated multi-arg payloads are rejected until pattern lowering supports them.
 fn parse_positional_variant_type_fields(tokens: List<Token>, ctx: ParseContext) -> FieldsResult {
   let tokens = skip_newlines(tokens: tokens)
   let r = parse_type_expr(tokens: tokens, ctx: ctx)
@@ -1592,7 +1460,6 @@ fn parse_variant_fields(tokens: List<Token>, ctx: ParseContext, vname: String, v
       let v = make_variant_node(name: vname, fields: r.fields, span: start_span, name_span: vname_span)
       VariantResult { variant: v, tokens: r2.tokens, ctx: r.ctx, err: none }
     EatUnchanged { tokens: __eu2 } =>
-      // Unit variant (no fields)
       let v = make_variant_node(name: vname, fields: [], span: vname_span, name_span: vname_span)
       VariantResult { variant: v, tokens: tokens, ctx: ctx, err: none }
     }
@@ -1620,7 +1487,6 @@ fn parse_more_variants_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Nod
 
 // =========================================================================
 // 6. parse_type_body -- Record { fields } vs Sum variants
-//    (Used internally; top-level dispatches via parse_type_def)
 // =========================================================================
 
 // =========================================================================
@@ -1633,7 +1499,6 @@ fn parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
   let span = token_span(tok: tok)
   match sh {
-    // Inline record type: { fields }
     Some { value: ShLBrace } => {
       let r = parse_field_list(tokens: skip_newlines(tokens: tokens |> skip(1)), ctx: ctx)
       if has_err(err: r.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -1643,7 +1508,6 @@ fn parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
       let te = Node { name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f, source_indices: ctx.source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       TypeResult { type_expr: te, tokens: r2.tokens, ctx: r.ctx, err: none }
     }
-    // Callable type: fn(T1, T2) -> R
     Some { value: ShKeyword } => {
       if tok.value.text == "fn" {
         parse_callable_type_expr(tokens: tokens |> skip(1), ctx: ctx, start_span: span)
@@ -1651,7 +1515,6 @@ fn parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
         TypeResult { type_expr: leaf_type_node(name: "", span: span), tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "expected type expression", span: span) } }
       }
     }
-    // Named type
     Some { value: ShIdent } => {
       let n = tok.value.text
       finish_type_expr_from_name(tokens: tokens |> skip(1), ctx: ctx, type_name: n, start_span: span)
@@ -1660,19 +1523,15 @@ fn parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
   }
 }
 
-// Parse callable type: fn(T1, T2) -> R
-// Called after 'fn' keyword has been consumed.
 fn parse_callable_type_expr(tokens: List<Token>, ctx: ParseContext, start_span: SourceSpan) -> TypeResult {
   // Error recovery produces an empty-named node, not "Callable" — errors
   // must be orthogonal to the node graph (invariant #2). A "Callable"-named
   // dummy would leak into emit and be indistinguishable from a real callable.
   let dummy_te = leaf_type_node(name: "", span: start_span)
-  // Expect opening paren
   let r = expect(tokens: tokens, expected: ExpectLParen)
   if has_err(err: r.err) { return TypeResult { type_expr: dummy_te, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = skip_newlines(tokens: r.tokens)
 
-  // Parse parameter types (unnamed type expressions)
   let params_result = if tok_is_rparen(tok: tokens |> first) {
     ParamsResult { params: [], tokens: tokens, ctx: ctx, err: none }
   } else {
@@ -1680,16 +1539,13 @@ fn parse_callable_type_expr(tokens: List<Token>, ctx: ParseContext, start_span: 
   }
   if has_err(err: params_result.err) { return TypeResult { type_expr: dummy_te, tokens: params_result.tokens, ctx: params_result.ctx, err: params_result.err } }
 
-  // Expect closing paren
   let tokens = skip_newlines(tokens: params_result.tokens)
   let r2 = expect(tokens: tokens, expected: ExpectRParen)
   if has_err(err: r2.err) { return TypeResult { type_expr: dummy_te, tokens: r2.tokens, ctx: params_result.ctx, err: r2.err } }
 
-  // Expect arrow ->
   let r3 = expect(tokens: r2.tokens, expected: ExpectArrow)
   if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, tokens: r3.tokens, ctx: params_result.ctx, err: r3.err } }
 
-  // Parse return type
   let ret = parse_type_expr(tokens: r3.tokens, ctx: params_result.ctx)
   if has_err(err: ret.err) { return TypeResult { type_expr: dummy_te, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
 
@@ -1697,8 +1553,6 @@ fn parse_callable_type_expr(tokens: List<Token>, ctx: ParseContext, start_span: 
   maybe_optional(tokens: ret.tokens, ctx: ret.ctx, te: te, start_span: start_span)
 }
 
-// Parse comma-separated type expressions for callable parameter types.
-// Each type expression is wrapped in a Param with empty name (positional).
 fn parse_callable_param_types(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> ParamsResult {
   let r = parse_type_expr(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ParamsResult { params: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -1709,7 +1563,6 @@ fn parse_callable_param_types(tokens: List<Token>, ctx: ParseContext, acc: List<
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = skip_newlines(tokens: __ec)
     if tok_is_rparen(tok: tokens |> first) {
-      // Trailing comma
       ParamsResult { params: acc, tokens: tokens, ctx: r.ctx, err: none }
     } else {
       parse_callable_param_types(tokens: tokens, ctx: r.ctx, acc: acc)
@@ -1721,14 +1574,12 @@ fn parse_callable_param_types(tokens: List<Token>, ctx: ParseContext, acc: List<
 
 fn finish_type_expr_from_name(tokens: List<Token>, ctx: ParseContext, type_name: String, start_span: SourceSpan) -> TypeResult {
   let dummy_te = leaf_type_node(name: type_name, span: start_span)
-  // Check for generic: Name<T> or Map<K,V>
   match eat(tokens: tokens, expected: ExpectLt) {
   EatConsumed { token: _, tokens: __ec } =>
     let r = parse_type_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return r }
     let first_arg = r.type_expr
 
-    // Collect all type args: Name<A, B, C, ...>
     let type_args = collect_type_args(tokens: r.tokens, ctx: r.ctx, args: [first_arg])
     if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, tokens: type_args.tokens, ctx: type_args.ctx, err: type_args.err } }
     let r3 = expect(tokens: type_args.tokens, expected: ExpectGt)
@@ -1736,7 +1587,6 @@ fn finish_type_expr_from_name(tokens: List<Token>, ctx: ParseContext, type_name:
     let te = Node { name: type_name, span: start_span, ident_span: Some { value: start_span }, children: type_args.args, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     maybe_optional(tokens: r3.tokens, ctx: type_args.ctx, te: te, start_span: start_span)
   EatUnchanged { tokens: __eu } =>
-    // Plain named type
     let te = leaf_type_node(name: type_name, span: start_span)
     maybe_optional(tokens: tokens, ctx: ctx, te: te, start_span: start_span)
   }
@@ -1748,14 +1598,11 @@ type TypeParamsResult {
   ctx: ParseContext
 }
 
-// Parse optional type parameters: <name, name, ...>
-// Returns empty params if no < is found.
 fn parse_optional_type_params(tokens: List<Token>, ctx: ParseContext) -> TypeParamsResult {
   match eat(tokens: tokens, expected: ExpectLt) {
   EatConsumed { token: _, tokens: __ec } =>
     let params_result = collect_type_param_names(tokens: __ec, ctx: ctx, params: [])
     let r = expect(tokens: params_result.tokens, expected: ExpectGt)
-    // If Gt parsing fails, return what we have — the error propagates from caller
     TypeParamsResult { params: params_result.params, tokens: r.tokens, ctx: params_result.ctx }
   EatUnchanged { tokens: __eu } =>
     TypeParamsResult { params: [], tokens: tokens, ctx: ctx }
@@ -1786,7 +1633,6 @@ type TypeArgsResult {
   err: ErrorNode?
 }
 
-// Collect comma-separated type args until > is reached.
 fn collect_type_args(tokens: List<Token>, ctx: ParseContext, args: List<Node>) -> TypeArgsResult {
   match eat(tokens: tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
@@ -1822,8 +1668,6 @@ fn parse_field_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>)
   if tok_is_rbrace(tok: tok) || tok_is_rparen(tok: tok) || tok_is_eof(tok: tok) {
     FieldsResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    // Accept identifiers OR keywords as field names (keywords like "type",
-    // "resource", "capability" are valid field names in record definitions).
     if tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok) {
       let r = parse_field(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return FieldsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -1852,20 +1696,17 @@ fn parse_field(tokens: List<Token>, ctx: ParseContext) -> FieldResult {
   let r3 = parse_type_expr(tokens: r2.tokens, ctx: ctx)
   if has_err(err: r3.err) { return FieldResult { field: dummy_field, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
 
-  // Optional where clause: field: Type where range(min: 1, max: 100)
   let wr = try_where_clause(tokens: r3.tokens, ctx: r3.ctx, base_te: r3.type_expr, start_span: start_span)
   if has_err(err: wr.err) { return FieldResult { field: dummy_field, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
   let te = wr.type_expr
   let tokens = wr.tokens
   let ctx = wr.ctx
 
-  // Check for from "key" binding: name: Type from "json_key"
   let from_r = parse_optional_from_key(tokens: tokens, ctx: ctx)
   let from_key = from_r.from_key
   let tokens = from_r.tokens
   let ctx = from_r.ctx
 
-  // Check for default value: = expr
   match eat(tokens: tokens, expected: ExpectEq) {
   EatConsumed { token: _, tokens: __ec } =>
     let r4 = parse_expr(tokens: __ec, ctx: ctx)
@@ -1884,7 +1725,6 @@ fn parse_field(tokens: List<Token>, ctx: ParseContext) -> FieldResult {
   }
 }
 
-// Parse optional from "json_key" after a field type expression.
 fn parse_optional_from_key(tokens: List<Token>, ctx: ParseContext) -> FromKeyResult {
   let tok = tokens |> first
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
@@ -1898,7 +1738,6 @@ fn parse_optional_from_key(tokens: List<Token>, ctx: ParseContext) -> FromKeyRes
             let key = tok2.value.text
             FromKeyResult { from_key: Some { value: key }, tokens: tokens |> skip(2), ctx: ctx, err: none }
           }
-          // "from" without string literal -- not a from clause, backtrack
           _ =>
             FromKeyResult { from_key: none, tokens: tokens, ctx: ctx, err: none }
         }
@@ -1939,14 +1778,12 @@ fn parse_fn_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: SourceS
   let tokens = r.tokens
   let ctx = r.ctx
 
-  // Optional return type: -> Type
   let ret = parse_optional_inferred(tokens: tokens, ctx: ctx)
   if has_err(err: ret.err) { return ItemResult { item: named_dummy, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
   let inferred = ret.inferred
   let tokens = ret.tokens
   let ctx = ret.ctx
 
-  // Body: { exprs }
   let r = parse_block(tokens: skip_newlines(tokens: tokens), ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
@@ -1959,8 +1796,6 @@ fn parse_fn_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: SourceS
   ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
 }
 
-// Body-only parser for ExprBody items. Receives prefix (name, params, inferred)
-// from parse_item_prefix. Parses the block body and assembles the Node.
 fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
@@ -1980,7 +1815,6 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let all_params = concat(type_params, params)
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  // Body: { exprs }
   let r = parse_block(tokens: skip_newlines(tokens: prefix.tokens), ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
@@ -2000,14 +1834,12 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
 fn parse_func_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  // Accept func, pattern, or interface as the leading keyword
   let kw = tok_keyword_text(tok: tokens |> first)
   let r = if kw == "func" { expect(tokens: tokens, expected: ExpectKeyword { text: "func" }) }
     else if kw == "pattern" { expect(tokens: tokens, expected: ExpectKeyword { text: "pattern" }) }
     else if kw == "interface" { expect(tokens: tokens, expected: ExpectKeyword { text: "interface" }) }
     else { expect(tokens: tokens, expected: ExpectKeyword { text: "func" }) }
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
-  // All three keywords use BlockBody with has_uses varying per form
   let has_uses = kw == "func"
   let form = ItemForm { kind: OtherForm, keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
   let prefix = parse_item_prefix(tokens: r.tokens, ctx: ctx, form: form)
@@ -2037,7 +1869,6 @@ fn parse_block_item_after_kw(tokens: List<Token>, ctx: ParseContext, start_span:
   let tokens = ret.tokens
   let ctx = ret.ctx
 
-  // Optional uses clause (only for forms that support it)
   let uses_r = if form.has_uses { parse_uses_clause(tokens: skip_newlines(tokens: tokens), ctx: ctx) }
     else { UsesResult { uses: [], tokens: tokens, ctx: ctx, err: none } }
   if has_err(err: uses_r.err) { return ItemResult { item: named_dummy, tokens: uses_r.tokens, ctx: uses_r.ctx, err: uses_r.err } }
@@ -2057,8 +1888,6 @@ fn parse_block_item_after_kw(tokens: List<Token>, ctx: ParseContext, start_span:
   ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
 }
 
-// Body-only parser for BlockBody items. Receives prefix (name, params, inferred, uses)
-// from parse_item_prefix. Parses block body and assembles the Node.
 fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
@@ -2092,7 +1921,6 @@ fn parse_no_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
 
 fn parse_uses_clause(tokens: List<Token>, ctx: ParseContext) -> UsesResult {
   let tokens = skip_newlines(tokens: tokens)
-  // "uses" is not a keyword -- it's an identifier in v2
   let tok = tokens |> first
   let is_uses = match tok {
     Some { value: t } => is_ident_shape(shape: t.shape) && t.text == "uses"
@@ -2138,14 +1966,12 @@ fn parse_uses_entry(tokens: List<Token>, ctx: ParseContext) -> ResUseResult {
   let r3 = parse_type_expr(tokens: r2.tokens, ctx: ctx)
   if has_err(err: r3.err) { return ResUseResult { resource_use: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
 
-  // Optional resource params: Filesystem(mode: ReadWrite)
   match eat(tokens: r3.tokens, expected: ExpectLParen) {
   EatConsumed { token: _, tokens: __ec } =>
     let ar = parse_resource_config_args(tokens: __ec, ctx: r3.ctx)
     if has_err(err: ar.err) { return ResUseResult { resource_use: dummy, tokens: ar.tokens, ctx: ar.ctx, err: ar.err } }
     let r4 = expect(tokens: ar.tokens, expected: ExpectRParen)
     if has_err(err: r4.err) { return ResUseResult { resource_use: dummy, tokens: r4.tokens, ctx: ar.ctx, err: r4.err } }
-    // Store config as properties on the resource type node
     let res_node = Node { name: r3.type_expr.name, span: r3.type_expr.span, ident_span: r3.type_expr.ident_span, children: r3.type_expr.children,
       params: r3.type_expr.params, inferred: r3.type_expr.inferred, return_cardinality: r3.type_expr.return_cardinality,
       uses: r3.type_expr.uses, body: r3.type_expr.body,       connective: r3.type_expr.connective, transport: r3.type_expr.transport,
@@ -2160,8 +1986,6 @@ fn parse_uses_entry(tokens: List<Token>, ctx: ParseContext) -> ResUseResult {
   }
 }
 
-// Parse resource config args: comma-separated name: ident pairs.
-// e.g. mode: ReadWrite, scope: Local
 type ResConfigResult { fields: List<Node>, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 
 fn parse_resource_config_args(tokens: List<Token>, ctx: ParseContext) -> ResConfigResult {
@@ -2228,7 +2052,6 @@ fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: So
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = skip_newlines(tokens: r.tokens)
 
-  // Parse service body: config, transport, operations
   let r = parse_service_body(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
@@ -2254,7 +2077,6 @@ fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: So
 }
 
 fn parse_service_body(tokens: List<Token>, ctx: ParseContext) -> ServiceBodyResult {
-  // Parse all entries in the service block
   parse_service_entries(
     tokens: tokens, ctx: ctx,
     config: none,
@@ -2307,7 +2129,6 @@ fn parse_service_entries(tokens: List<Token>, ctx: ParseContext, config: Service
 }
 
 fn parse_service_config_block(tokens: List<Token>, ctx: ParseContext) -> ConfigResult {
-  // Parse key: value pairs for config
   parse_config_fields(tokens: tokens, ctx: ctx, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none)
 }
 
@@ -2385,18 +2206,15 @@ fn parse_transport_binding(tokens: List<Token>, ctx: ParseContext) -> TransportR
         if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
         TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: r2.ctx, err: none }
       } else {
-        // Default: local binding
         TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: none }
       }
     }
-    // Default: local binding (reuse dummy which already holds local_transport_node(span))
     _ =>
       TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
 fn parse_rest_binding_body(tokens: List<Token>, ctx: ParseContext) -> TransportResult {
-  // Parse REST transport fields (auth always empty at parse time)
   parse_rest_fields(tokens: tokens, ctx: ctx, base_url: none, method: none, path_template: none, query: none, request_body: none, response_format: none, headers: [])
 }
 
@@ -2446,7 +2264,6 @@ fn parse_rest_fields(tokens: List<Token>, ctx: ParseContext, base_url: Node?, me
 }
 
 fn parse_shell_binding_body(tokens: List<Token>, ctx: ParseContext) -> TransportResult {
-  // Parse argv (env always empty at parse time)
   parse_shell_fields(tokens: tokens, ctx: ctx, argv: [], stdin: none)
 }
 
@@ -2532,7 +2349,6 @@ fn parse_operation_def(tokens: List<Token>, ctx: ParseContext) -> OpResult {
   let name_span = r.span
   let tokens = skip_newlines(tokens: r.tokens)
 
-  // Dispatch: LBrace = v1 block style, otherwise = v2 inline style
   if tok_is_lbrace(tok: tokens |> first) {
     parse_operation_v1_body(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span)
   } else {
@@ -2540,7 +2356,6 @@ fn parse_operation_def(tokens: List<Token>, ctx: ParseContext) -> OpResult {
   }
 }
 
-// v2 inline: operation Name modifiers? (params) -> RetType response? mock_response?
 fn parse_operation_v2_inline(tokens: List<Token>, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
   let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
   let mods_r = parse_operation_modifiers(tokens: tokens, ctx: ctx)
@@ -2586,7 +2401,6 @@ fn parse_operation_v2_inline(tokens: List<Token>, ctx: ParseContext, name: Strin
   OpResult { operation: op, tokens: tokens, ctx: ctx, err: none }
 }
 
-// v1 block: operation Name { input {} output {} modifiers transport exit response mock_response }
 fn parse_operation_v1_body(tokens: List<Token>, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
   let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
   let r = expect(tokens: tokens, expected: ExpectLBrace)
@@ -2612,8 +2426,6 @@ fn parse_operation_v1_body(tokens: List<Token>, ctx: ParseContext, name: String,
   OpResult { operation: op, tokens: skip_newlines(tokens: r3.tokens), ctx: r2.ctx, err: none }
 }
 
-// Parse entries inside a v1 operation body block.
-// Modifiers, responses, exits, mocks are collected as Node properties.
 fn parse_op_body_entries(
   tokens: List<Token>, ctx: ParseContext,
   inputs: List<Node>, outputs: List<Node>,
@@ -2683,7 +2495,6 @@ fn parse_op_body_entries(
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: r.mocks)
         } else {
-          // Unknown identifier entry -- skip it (name: value)
           if peek_is_colon_after_ident(tokens: tokens) {
             let r = expect_ident(tokens: tokens)
             if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2708,12 +2519,10 @@ fn parse_op_body_entries(
 // Convert parsed operation/capability metadata into Node properties.
 // =========================================================================
 
-// Convert a modifier keyword to a Node property.
 fn modifier_to_prop(name: String, span: SourceSpan) -> Node {
   make_field_init_node(name: name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: span), span: span, name_span: span)
 }
 
-// Convert a list of OperationModifier values to Node properties.
 fn modifiers_to_props(modifiers: List<OperationModifier>, span: SourceSpan) -> List<Node> {
   modifiers |> map(m => match m {
     Idempotent => modifier_to_prop(name: "idempotent", span: span)
@@ -2722,7 +2531,6 @@ fn modifiers_to_props(modifiers: List<OperationModifier>, span: SourceSpan) -> L
   })
 }
 
-// Extract a string key from a status/exit code expression.
 fn status_expr_to_str(expr: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match expr.expr_data {
     ExprLiteral { value: v } => match v {
@@ -2735,7 +2543,6 @@ fn status_expr_to_str(expr: Node, source_indices: Map<String, NewlineIndex>) -> 
   }
 }
 
-// Simple int-to-string for status codes (non-negative only, sufficient for HTTP status codes).
 fn int_to_string(value: Int) -> String {
   if value == 0 { "0" }
   else {
@@ -2754,12 +2561,10 @@ fn int_to_string_acc(value: Int, acc: List<String>) -> List<String> {
       Some { value: p } => p.second
       None => "?"
     }
-    // Prepend digit (most significant digits are extracted last)
     int_to_string_acc(value: rest, acc: concat([ch], acc))
   }
 }
 
-// Get the first child of a node, or the node itself if no children.
 fn first_child_or_self(n: Node) -> Node {
   match n.children |> first {
     Some { value: ch } => ch
@@ -2767,7 +2572,6 @@ fn first_child_or_self(n: Node) -> Node {
   }
 }
 
-// Get the last child of a node, or the node itself if no children.
 fn last_child_or_self(n: Node) -> Node {
   match n.children |> last {
     Some { value: ch } => ch
@@ -2813,8 +2617,6 @@ fn node_to_name_str(n: Node, source_indices: Map<String, NewlineIndex>) -> Strin
   }
 }
 
-// Parse exit block entries: code => Type optional_description
-// Produces Node properties: { name: "exit_<code>", value: type_name_as_var }
 fn parse_exit_entries(tokens: List<Token>, ctx: ParseContext) -> ExitEntriesResult {
   parse_exit_entries_acc(tokens: tokens, ctx: ctx, acc: [])
 }
@@ -2831,14 +2633,12 @@ fn parse_exit_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
     if has_err(err: r2.err) { return ExitEntriesResult { entries: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     let r3 = parse_type_expr(tokens: r2.tokens, ctx: r.ctx)
     if has_err(err: r3.err) { return ExitEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
-    // Optional description string after type
     let desc_tok = r3.tokens |> first
     let desc_sh = match desc_tok { Some { value: t } => Some { value: t.shape }  None => none }
     let desc_tokens = match desc_sh {
       Some { value: ShLitStr } => r3.tokens |> skip(1)
       _ => r3.tokens
     }
-    // Convert to property: exit_<code> = type_name
     let code_str = status_expr_to_str(expr: code, source_indices: ctx.source_indices)
     let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
     let prop_name = concat("exit_", code_str)
@@ -2867,11 +2667,8 @@ fn parse_operation_modifiers_acc(tokens: List<Token>, ctx: ParseContext, acc: Li
 }
 
 // =========================================================================
-// response/mock_response block helpers
 // =========================================================================
 
-// Parse a status/exit code pattern: integer, Nxx wildcard (5xx), or identifier (nonzero).
-// Nxx: tokenizer produces LitInt(N) + Ident("xx") -- combine into LitStr("Nxx").
 fn parse_status_pattern(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let tok = tokens |> first
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
@@ -2880,7 +2677,6 @@ fn parse_status_pattern(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
     Some { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
       let n = match n_opt { Some { value: v } => v  None => { return ExprResult { expr: make_expr_error_node(kind: InternalExprError, message: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: span), tokens: tokens, ctx: ctx, err: none } } }
-      // Check if next token is Ident("xx") -> wildcard like 5xx
       let next_tok = tokens |> skip(1) |> first
       match next_tok {
         Some { value: t } => {
@@ -2905,7 +2701,6 @@ fn parse_status_pattern(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// Parse optional response { 200 => Type, ... } block.
 fn parse_optional_response_block(tokens: List<Token>, ctx: ParseContext) -> ResponsesResult {
   let tok = tokens |> first
   let is_response = match tok {
@@ -2941,7 +2736,6 @@ fn parse_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<
     if has_err(err: r2.err) { return RespEntriesResult { entries: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     let r3 = parse_type_expr(tokens: r2.tokens, ctx: r.ctx)
     if has_err(err: r3.err) { return RespEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
-    // Convert to property: response_<status> = type_name
     let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
     let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
     let prop_name = concat("response_", status_str)
@@ -2952,7 +2746,6 @@ fn parse_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<
   }
 }
 
-// Parse optional mock_response { 200 => expr "description", ... } block.
 fn parse_optional_mock_response_block(tokens: List<Token>, ctx: ParseContext) -> MocksResult {
   let tok = tokens |> first
   let is_mock = match tok {
@@ -2989,14 +2782,12 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: 
     let r3 = parse_expr(tokens: r2.tokens, ctx: r.ctx)
     if has_err(err: r3.err) { return MockEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     let body = r3.expr
-    // Optional description string
     let desc_tok = r3.tokens |> first
     let desc_sh = match desc_tok { Some { value: t } => Some { value: t.shape }  None => none }
     let desc_tokens = match desc_sh {
       Some { value: ShLitStr } => r3.tokens |> skip(1)
       _ => r3.tokens
     }
-    // Convert to property: mock_<status> = body_expr
     let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
     let prop_name = concat("mock_", status_str)
     let entry = make_field_init_node(name: prop_name, value: body, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
@@ -3046,7 +2837,6 @@ fn parse_resource_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: S
   ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: r.ctx, err: none }
 }
 
-// Parse resource block entries: properties, acquire/release, capabilities.
 fn parse_resource_entries(tokens: List<Token>, ctx: ParseContext, properties: List<Node>, capabilities: List<Node>) -> ResPropResult {
   let tokens = skip_newlines(tokens: tokens)
   let tok = tokens |> first
@@ -3100,7 +2890,6 @@ fn parse_resource_entries(tokens: List<Token>, ctx: ParseContext, properties: Li
   }
 }
 
-// Skip tokens until matching RBrace (handles nested brace blocks).
 fn skip_until_rbrace(tokens: List<Token>) -> UnitResult {
   let tokens = skip_newlines(tokens: tokens)
   let tok = tokens |> first
@@ -3122,7 +2911,6 @@ fn skip_until_rbrace(tokens: List<Token>) -> UnitResult {
   }
 }
 
-// Parse capability in v1 block or v2 inline form.
 fn parse_capability(tokens: List<Token>, ctx: ParseContext) -> CapResult {
   let start_span = token_span(tok: tokens |> first)
   let dummy_cap = make_capability_node(name: "", ident_span: none, inputs: [], outputs: [], span: start_span, source_indices: ctx.source_indices)
@@ -3135,7 +2923,6 @@ fn parse_capability(tokens: List<Token>, ctx: ParseContext) -> CapResult {
   let name_span = r.span
   let tokens = r.tokens
 
-  // Dispatch: LBrace = v1 block, LParen = v2 inline
   if tok_is_lbrace(tok: tokens |> first) {
     let r2 = expect(tokens: tokens, expected: ExpectLBrace)
     if has_err(err: r2.err) { return CapResult { capability: dummy_cap, tokens: r2.tokens, ctx: ctx, err: r2.err } }
@@ -3167,7 +2954,6 @@ fn parse_capability(tokens: List<Token>, ctx: ParseContext) -> CapResult {
   }
 }
 
-// Parse v1 input { fields } output { fields } blocks (used in capabilities and operations).
 fn parse_input_output_blocks(tokens: List<Token>, ctx: ParseContext) -> IOResult {
   parse_io_blocks_acc(tokens: tokens, ctx: ctx, inputs: [], outputs: [])
 }
@@ -3276,7 +3062,6 @@ fn parse_param_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>)
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = skip_newlines(tokens: __ec)
     if tok_is_rparen(tok: tokens |> first) {
-      // Trailing comma
       ParamsResult { params: acc, tokens: tokens, ctx: r.ctx, err: none }
     } else {
       parse_param_list_acc(tokens: tokens, ctx: r.ctx, acc: acc)
@@ -3300,14 +3085,12 @@ fn parse_param(tokens: List<Token>, ctx: ParseContext) -> ParamResult {
   let r3 = parse_type_expr(tokens: r2.tokens, ctx: ctx)
   if has_err(err: r3.err) { return ParamResult { param: dummy_param, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
 
-  // Optional where clause: param: Type where range(min: 1, max: 100)
   let wr = try_where_clause(tokens: r3.tokens, ctx: r3.ctx, base_te: r3.type_expr, start_span: start_span)
   if has_err(err: wr.err) { return ParamResult { param: dummy_param, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
   let type_expr = wr.type_expr
   let tokens = wr.tokens
   let ctx = wr.ctx
 
-  // Optional default value
   match eat(tokens: tokens, expected: ExpectEq) {
   EatConsumed { token: _, tokens: __ec } =>
     let r4 = parse_expr(tokens: __ec, ctx: ctx)
@@ -3345,7 +3128,6 @@ fn parse_block(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let r = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  // If only one statement, unwrap from Block
   if count(stmts) == 1 {
     ExprResult { expr: first(stmts).value, tokens: r.tokens, ctx: ctx, err: none }
   } else {
@@ -3354,7 +3136,6 @@ fn parse_block(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
 }
 
 fn parse_stmts(tokens: List<Token>, ctx: ParseContext) -> StmtsResult {
-  // Iterative -- avoids O(statements) recursion depth per block.
   parse_stmts_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
@@ -3378,7 +3159,6 @@ fn parse_stmt(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
       if kw_text == "let" { parse_let(tokens: tokens, ctx: ctx) }
       else if kw_text == "return" { parse_return(tokens: tokens, ctx: ctx) }
       else if peek_is_eq_after_ident(tokens: tokens) {
-        // Keywords used as binding names: `hermetic = ...` etc.
         parse_bare_assignment(tokens: tokens, ctx: ctx)
       } else {
         parse_expr(tokens: tokens, ctx: ctx)
@@ -3399,7 +3179,6 @@ fn parse_stmt(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// Peek two tokens: is second token an Eq (=)? Used for bare assignment detection.
 fn peek_is_eq_after_ident(tokens: List<Token>) -> Bool {
   match tokens |> skip(1) |> first {
     Some { value: t } => is_eq_shape(shape: t.shape)
@@ -3407,9 +3186,7 @@ fn peek_is_eq_after_ident(tokens: List<Token>) -> Bool {
   }
 }
 
-// Check if "node <name> :" or "node <name> [" pattern (node declaration, not variable use).
 fn peek_is_node_decl(tokens: List<Token>) -> Bool {
-  // tokens[0] is at "node", tokens[1] should be name (ident), tokens[2] should be : or [
   let t1 = tokens |> skip(1) |> first
   let t2 = tokens |> skip(2) |> first
   let name_ok = match t1 {
@@ -3423,7 +3200,6 @@ fn peek_is_node_decl(tokens: List<Token>) -> Bool {
   name_ok && decl_ok
 }
 
-// Check if ident [after/when ...] = ... pattern (constraint before assignment)
 fn is_constraint_bracket_after_ident(tokens: List<Token>) -> Bool {
   match tokens |> skip(1) |> first {
     Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens |> skip(1))
@@ -3431,7 +3207,6 @@ fn is_constraint_bracket_after_ident(tokens: List<Token>) -> Bool {
   }
 }
 
-// Parse: name [constraints] = expr
 fn parse_constrained_assignment(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -3456,7 +3231,6 @@ fn parse_constrained_assignment(tokens: List<Token>, ctx: ParseContext) -> ExprR
   ExprResult { expr: node, tokens: r3.tokens, ctx: r3.ctx, err: none }
 }
 
-// Check if current token is an identifier with a specific text.
 fn peek_text_is(tokens: List<Token>, expected: String) -> Bool {
   match tokens |> first {
     Some { value: t } => is_ident_shape(shape: t.shape) && t.text == expected
@@ -3464,36 +3238,26 @@ fn peek_text_is(tokens: List<Token>, expected: String) -> Bool {
   }
 }
 
-// Parse node declaration: node <name> [constraints]: <expr>
-// Represented as ExprLet with type_annotation for the node type and properties for constraints.
 fn parse_node_decl(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  // Consume "node" identifier
   let tokens = tokens |> skip(1)
-  // Parse node name
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
-  // Optional constraint annotations: [after X, when Y]
   let cr = try_constraint_annotations(tokens: r.tokens, ctx: ctx)
   if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, tokens: cr.tokens, ctx: cr.ctx, err: cr.err } }
-  // Expect colon or equals: node x: Type  OR  node x = expr
   let e_colon = eat(tokens: cr.tokens, expected: ExpectColon)
   let tokens = match e_colon { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } =>
     let r2 = expect(tokens: cr.tokens, expected: ExpectEq)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: cr.ctx, err: r2.err } }
     r2.tokens
   }
-  // Parse node type/value expression
   let r3 = parse_expr(tokens: tokens, ctx: cr.ctx)
   if has_err(err: r3.err) { return r3 }
-  // Optional return type annotation: node x: call() -> { fields }
   let ret = parse_optional_inferred(tokens: r3.tokens, ctx: r3.ctx)
   if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
-  // If colon form was used (node x: Type), the expression IS the type annotation.
-  // Preserve this fact for downstream phases.
   let type_ann = match e_colon { EatConsumed { token: _, tokens: _ } => Some { value: r3.expr }  EatUnchanged { tokens: _ } => none }
   let node = Node { name: name, span: span, ident_span: Some { value: name_span }, children: [r3.expr],
     connective: NoConnective,    params: [], inferred: ret.inferred, return_cardinality: Required,
@@ -3504,7 +3268,6 @@ fn parse_node_decl(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   ExprResult { expr: node, tokens: ret.tokens, ctx: ret.ctx, err: none }
 }
 
-// Parse bare assignment: name = expr -> desugar to Let { name, value, body: none }
 fn parse_bare_assignment(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -3516,7 +3279,6 @@ fn parse_bare_assignment(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: ctx, err: r2.err } }
   let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
   if has_err(err: r3.err) { return r3 }
-  // Optional constraint annotations: name = expr [after X, when Y]
   let cr = try_constraint_annotations(tokens: r3.tokens, ctx: r3.ctx)
   if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, tokens: cr.tokens, ctx: cr.ctx, err: cr.err } }
   let node = make_named_expr_node(name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span)
@@ -3546,7 +3308,6 @@ fn parse_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
 // =========================================================================
 
 fn parse_expr_bp(tokens: List<Token>, ctx: ParseContext, min_bp: Int) -> ExprResult {
-  // Parse prefix (unary ops or primary)
   let r = parse_prefix(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
   let lhs = r.expr
@@ -3558,10 +3319,7 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
   } else {
     let loop_span = token_span(tok: tokens |> first)
-    // Skip newlines if the next non-newline token is a continuation operator
-    // (|> or .) -- these operators work across line breaks.
     let tokens = skip_continuation_newlines(tokens: tokens)
-    // Try postfix: .field, (args), as Type
     let post = try_postfix(tokens: tokens, ctx: ctx, lhs: lhs, min_bp: min_bp)
     if has_err(err: post.err) {
       ExprResult { expr: lhs, tokens: post.tokens, ctx: post.ctx, err: post.err }
@@ -3569,7 +3327,6 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
     if post.changed {
       parse_expr_loop(tokens: post.tokens, ctx: post.ctx, lhs: post.expr, min_bp: min_bp)
     } else {
-      // Try infix: binary operators (use tokens which has continuation newlines skipped)
       let bp = infix_bp(tokens: tokens)
       match bp {
         Some { value: bps } => {
@@ -3579,7 +3336,6 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
             match advance(tokens: tokens) {
               AdvanceOk { token: op_tok, tokens: rest } =>
                 let op_shape = op_tok.shape
-                // Special case: dot is field access
                 if is_dot_shape(shape: op_shape) {
                   let r = expect_name(tokens: rest)
                   if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -3613,8 +3369,6 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
   }
 }
 
-// Operator precedence: data-driven from dag_syntax_spec.operators (SyntaxSpec).
-// Adding a new operator = one entry in syntax.dag.
 
 fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
   let matching = ops |> filter(op => op.symbol == symbol)
@@ -3642,9 +3396,6 @@ fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
   }
 }
 
-// parse_pipe_rhs: after |>, parse the method name and optional (args).
-// Produces MethodCall { receiver, method, args }.
-// Supports: lhs |> method, lhs |> method(args), lhs |> method(name: arg)
 fn parse_pipe_rhs(tokens: List<Token>, ctx: ParseContext, receiver: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens)
@@ -3652,7 +3403,6 @@ fn parse_pipe_rhs(tokens: List<Token>, ctx: ParseContext, receiver: Node, span: 
   let method = r.name
   let tokens = skip_newlines(tokens: r.tokens)
 
-  // Check for (args) after method name
   if tok_is_lparen(tok: tokens |> first) {
     let r2 = parse_call_args(tokens: tokens, ctx: ctx)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
@@ -3692,14 +3442,12 @@ fn parse_primary(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   match sh {
     Some { value: ShKeyword } => {
       let kw_text = tok.value.text
-      // Check literal keywords from spec (true, false, none, null)
       let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
         Some { value: lv } => {
           ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
         }
         None => {
-      // Expression keywords (structural forms, not data-drivable)
       if kw_text == "match" { parse_match(tokens: tokens, ctx: ctx) }
       else if kw_text == "if" { parse_if(tokens: tokens, ctx: ctx) }
       else if kw_text == "for" { parse_for(tokens: tokens, ctx: ctx) }
@@ -3707,7 +3455,6 @@ fn parse_primary(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
       else if kw_text == "return" { parse_return(tokens: tokens, ctx: ctx) }
       else if kw_text == "fn" { parse_fn_lambda(tokens: tokens, ctx: ctx) }
       else {
-        // Keywords used as variable names (e.g., module, type, pattern).
         let kw_name = tok_keyword_to_name(tok: tok)
         match kw_name {
           Some { value: n } => parse_ident_expr(tokens: tokens, ctx: ctx, name: n)
@@ -3782,7 +3529,6 @@ fn parse_lambda_body(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// Collect statements for implicit lambda block, stopping at ) or } or EOF.
 fn parse_lambda_stmts(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> StmtsResult {
   let tokens = skip_newlines(tokens: tokens)
   let tok = tokens |> first
@@ -3803,7 +3549,6 @@ fn parse_ident_expr(tokens: List<Token>, ctx: ParseContext, name: String) -> Exp
   let span = token_span(tok: tokens |> first)
   let tokens = tokens |> skip(1)
 
-  // Check for lambda: name => body (may be multi-line: name =>\n  body)
   if tok_is_fat_arrow(tok: tokens |> first) {
     let r = parse_lambda_body(tokens: tokens |> skip(1), ctx: ctx)
     if has_err(err: r.err) { return r }
@@ -3858,7 +3603,6 @@ fn try_postfix(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: Int) -
       if 14 < min_bp {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
-        // Bail if this is a constraint annotation [after ...] or [when ...]
         if is_constraint_bracket(tokens: tokens) {
           PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
         } else {
@@ -3891,10 +3635,7 @@ fn try_postfix(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: Int) -
   }
 }
 
-// Check if `[` starts a constraint annotation ([after ...] or [when ...])
-// by peeking at the token after `[`.
 fn is_constraint_bracket(tokens: List<Token>) -> Bool {
-  // tokens[0] is at `[`, check tokens[1]
   match tokens |> skip(1) |> first {
     Some { value: t } => {
       if is_ident_shape(shape: t.shape) {
@@ -3905,8 +3646,6 @@ fn is_constraint_bracket(tokens: List<Token>) -> Bool {
   }
 }
 
-// Parse constraint annotations: [after X, when Y, ...]
-// Returns list of Node where name is "after" or "when" and value is the expression.
 type ConstraintsResult { constraints: List<Node>, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 
 fn parse_constraint_annotations(tokens: List<Token>, ctx: ParseContext) -> ConstraintsResult {
@@ -3924,7 +3663,6 @@ fn parse_constraint_annotations(tokens: List<Token>, ctx: ParseContext) -> Const
 
 fn parse_constraint_list(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> ConstraintsResult {
   let tokens = skip_newlines(tokens: tokens)
-  // Expect "after" or "when" identifier
   let tok = tokens |> first
   let is_constraint_kw = match tok {
     Some { value: t } => is_ident_shape(shape: t.shape) && (t.text == "after" || t.text == "when")
@@ -3946,7 +3684,6 @@ fn parse_constraint_list(tokens: List<Token>, ctx: ParseContext, acc: List<Node>
   }
 }
 
-// Try to parse optional constraint annotations if next token starts [after/when.
 fn try_constraint_annotations(tokens: List<Token>, ctx: ParseContext) -> ConstraintsResult {
   if is_constraint_bracket(tokens: tokens) {
     parse_constraint_annotations(tokens: tokens, ctx: ctx)
@@ -3956,8 +3693,6 @@ fn try_constraint_annotations(tokens: List<Token>, ctx: ParseContext) -> Constra
 }
 
 fn make_call_expr(lhs: Node, args: List<Node>, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> Node {
-  // Use lhs.span so ident_span points to the function/method name,
-  // not the opening paren. Required for authored_name_at recovery.
   match lhs.expr_data {
     ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name_at(texpr: lhs, source_indices: source_indices), expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
     ExprFieldAccess { summary: _ } => make_named_expr_node(name: field_access_field_at(texpr: lhs, source_indices: source_indices), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
@@ -3974,14 +3709,12 @@ fn parse_index_or_slice(tokens: List<Token>, ctx: ParseContext, base: Node, span
   let r = expect(tokens: tokens, expected: ExpectLBracket)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  // Parse the first expression (index or slice start)
   let r = parse_expr(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let first_expr = r.expr
   let tokens = r.tokens
   let ctx = r.ctx
 
-  // Check for DotDot -> slice
   if tok_is_dot_dot(tok: tokens |> first) {
     let r = parse_expr(tokens: tokens |> skip(1), ctx: ctx)
     if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -3990,7 +3723,6 @@ fn parse_index_or_slice(tokens: List<Token>, ctx: ParseContext, base: Node, span
     if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
     ExprResult { expr: make_expr_node(expr_data: ExprSlice, children: [base, first_expr, end_expr], inferred: none, span: span), tokens: r.tokens, ctx: ctx, err: none }
   } else {
-    // Index
     let r = expect(tokens: tokens, expected: ExpectRBracket)
     if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
     ExprResult { expr: make_expr_node(expr_data: ExprIndex, children: [base, first_expr], inferred: none, span: span), tokens: r.tokens, ctx: ctx, err: none }
@@ -4044,27 +3776,21 @@ fn parse_arg_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -
 fn parse_single_arg(tokens: List<Token>, ctx: ParseContext) -> ArgResult {
   let span = token_span(tok: tokens |> first)
   let dummy_arg = make_arg_node(name: none, value: parse_recovery_placeholder(), span: span, name_span: span)
-  // Try to parse as a named argument (ident: value or keyword: value).
-  // Uses expect_name which handles both identifiers and keywords.
   let tok = tokens |> first
   let is_name_token = tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok)
   if is_name_token {
-    // Speculatively consume name — original `tokens` is still available for fallback
     let name_r = expect_name(tokens: tokens)
     if has_err(err: name_r.err) {
-      // Shouldn't happen since is_name_token is true, but handle gracefully
       let r = parse_expr(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ArgResult { arg: dummy_arg, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let arg = make_arg_node(name: none, value: r.expr, span: span, name_span: span)
       ArgResult { arg: arg, tokens: r.tokens, ctx: r.ctx, err: none }
     } else if tok_is_colon(tok: name_r.tokens |> first) {
-      // Named argument: name: value
       let r = parse_expr(tokens: name_r.tokens |> skip(1), ctx: ctx)
       if has_err(err: r.err) { return ArgResult { arg: dummy_arg, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let arg = make_arg_node(name: Some { value: name_r.name }, value: r.expr, span: span, name_span: name_r.span)
       ArgResult { arg: arg, tokens: r.tokens, ctx: r.ctx, err: none }
     } else {
-      // Not a named arg — parse from original tokens as positional expression
       let r = parse_expr(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ArgResult { arg: dummy_arg, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let arg = make_arg_node(name: none, value: r.expr, span: span, name_span: span)
@@ -4122,8 +3848,6 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, ctx: ParseContext, lhs: Node, m
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
   } else {
     let loop_span = token_span(tok: tok)
-    // Skip newlines if the next non-newline token is a continuation operator
-    // (|> or .) -- same as parse_expr_loop, enables multi-line pipe chains.
     let tokens = skip_continuation_newlines(tokens: tokens)
     if tok_is_lparen(tok: tokens |> first) && 14 >= min_bp {
       let r = parse_call_args(tokens: tokens, ctx: ctx)
@@ -4179,7 +3903,6 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, ctx: ParseContext, lhs: Node, m
 }
 
 fn parse_match_arms(tokens: List<Token>, ctx: ParseContext) -> ArmsResult {
-  // Iterative -- avoids O(arms) recursion depth per match.
   parse_match_arms_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
@@ -4230,8 +3953,6 @@ fn parse_match_arm(tokens: List<Token>, ctx: ParseContext) -> ArmResult {
   ArmResult { arm: arm, tokens: r.tokens, ctx: r.ctx, err: none }
 }
 
-// Parse match arm body: single expression or implicit block (let/return).
-// Implicit blocks collect statements until } or a new arm start.
 fn parse_match_arm_body(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let tok = tokens |> first
   let is_block = tok_is_keyword(tok: tok, kw: "let") || tok_is_keyword(tok: tok, kw: "return")
@@ -4249,8 +3970,6 @@ fn parse_match_arm_body(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// Collect statements for implicit match arm block.
-// Stops at } or when the next tokens look like a new arm (e.g., Name =>, _ =>).
 fn parse_match_arm_stmts(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> StmtsResult {
   let tokens = skip_newlines(tokens: tokens)
   if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
@@ -4264,8 +3983,6 @@ fn parse_match_arm_stmts(tokens: List<Token>, ctx: ParseContext, acc: List<Node>
   }
 }
 
-// Check if current position looks like the start of a new match arm.
-// Returns true for: Name =>, Name { ... } =>, _ =>
 fn looks_like_arm_start(tokens: List<Token>) -> Bool {
   let tok = tokens |> first
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
@@ -4273,10 +3990,8 @@ fn looks_like_arm_start(tokens: List<Token>) -> Bool {
     Some { value: ShIdent } => {
       let n = tok.value.text
       if n == "_" {
-        // _ => is a wildcard arm
         peek_is_fat_arrow_at(tokens: tokens, offset: 1)
       } else if is_uppercase_start(name: n) {
-        // Name => or Name { ... } =>
         if peek_is_fat_arrow_at(tokens: tokens, offset: 1) {
           true
         } else if peek_is_expected_at(tokens: tokens, offset: 1, expected: ExpectLBrace) {
@@ -4292,7 +4007,6 @@ fn looks_like_arm_start(tokens: List<Token>) -> Bool {
   }
 }
 
-// Check if token at offset from current position is a FatArrow.
 fn peek_is_fat_arrow_at(tokens: List<Token>, offset: Int) -> Bool {
   match tokens |> skip(offset) |> first {
     Some { value: t } => is_fat_arrow_shape(shape: t.shape)
@@ -4300,7 +4014,6 @@ fn peek_is_fat_arrow_at(tokens: List<Token>, offset: Int) -> Bool {
   }
 }
 
-// Check if token at offset matches the expected token shape.
 fn peek_is_expected_at(tokens: List<Token>, offset: Int, expected: ExpectedToken) -> Bool {
   match tokens |> skip(offset) |> first {
     Some { value: t } => token_matches_expected(token: t, expected: expected)
@@ -4308,10 +4021,8 @@ fn peek_is_expected_at(tokens: List<Token>, offset: Int, expected: ExpectedToken
   }
 }
 
-// Scan forward to find matching } then =>.
 fn scan_for_fat_arrow_after_braces(remaining: List<Token>, depth: Int) -> Bool {
   if depth <= 0 {
-    // Check if next token is FatArrow
     match remaining |> first {
       Some { value: t } => is_fat_arrow_shape(shape: t.shape)
       None => false
@@ -4395,7 +4106,6 @@ fn parse_variant_pattern(tokens: List<Token>, ctx: ParseContext, name: String) -
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else if tok_is_lparen(tok: tokens |> first) {
-    // Paren variant: Some(binding) or Some(_)
     let r = parse_pattern(tokens: tokens |> skip(1), ctx: ctx)
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let r2 = expect(tokens: r.tokens, expected: ExpectRParen)
@@ -4660,8 +4370,6 @@ fn parse_expr_list_until_acc(tokens: List<Token>, ctx: ParseContext, end_expecte
 
 // =========================================================================
 // 28. parse_lambda: x => expr or (x, y) => expr
-//     Single-param lambda handled in parse_ident_expr
-//     Multi-param lambda handled in parse_paren_expr
 // =========================================================================
 
 // =========================================================================
@@ -4684,7 +4392,6 @@ fn parse_paren_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
     } else {
-      // lambda_r.tokens is restored to original tokens on failure
       let r = parse_expr(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let tokens = skip_newlines(tokens: r.tokens)
@@ -4696,38 +4403,27 @@ fn parse_paren_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
 }
 
 // =========================================================================
-// fn(param1, param2) { body } -- lambda expression with fn keyword
-//
-// Parses the fn keyword, a parenthesized parameter list (names only, no types),
-// and a brace-delimited body. Produces a Lambda AST node.
 // =========================================================================
 
 fn parse_fn_lambda(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy = parse_recovery_placeholder()
-  // Consume 'fn'
   let r1 = expect(tokens: tokens, expected: ExpectKeyword { text: "fn" })
   if has_err(err: r1.err) { return ExprResult { expr: dummy, tokens: r1.tokens, ctx: ctx, err: r1.err } }
-  // Consume '('
   let r2 = expect(tokens: r1.tokens, expected: ExpectLParen)
   if has_err(err: r2.err) { return ExprResult { expr: dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
-  // Collect parameter names
   let params_r = collect_fn_lambda_params(tokens: r2.tokens, ctx: ctx, acc: [])
-  // Consume ')'
   let r3 = expect(tokens: params_r.tokens, expected: ExpectRParen)
   if has_err(err: r3.err) { return ExprResult { expr: dummy, tokens: r3.tokens, ctx: params_r.ctx, err: r3.err } }
   let tokens = skip_newlines(tokens: r3.tokens)
-  // Parse body: { ... }
   let body_r = parse_brace_expr(tokens: tokens, ctx: params_r.ctx)
   if has_err(err: body_r.err) { return body_r }
   ExprResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), tokens: body_r.tokens, ctx: body_r.ctx, err: none }
 }
 
-// Collect comma-separated identifiers for fn lambda params.
 fn collect_fn_lambda_params(tokens: List<Token>, ctx: ParseContext, acc: List<ParserParam>) -> IdentCollectResult {
   let tokens = skip_newlines(tokens: tokens)
   if tok_is_rparen(tok: tokens |> first) {
-    // End of params
     IdentCollectResult { success: true, params: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
     let name_r = expect_ident(tokens: tokens)
@@ -4738,7 +4434,6 @@ fn collect_fn_lambda_params(tokens: List<Token>, ctx: ParseContext, acc: List<Pa
       if tok_is_comma(tok: tokens |> first) {
         collect_fn_lambda_params(tokens: tokens |> skip(1), ctx: ctx, acc: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }))
       } else {
-        // Last param (no trailing comma)
         IdentCollectResult { success: true, params: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }), tokens: tokens, ctx: ctx, err: none }
       }
     }
@@ -4746,7 +4441,6 @@ fn collect_fn_lambda_params(tokens: List<Token>, ctx: ParseContext, acc: List<Pa
 }
 
 fn try_lambda_params(tokens: List<Token>, ctx: ParseContext) -> LambdaCheckResult {
-  // Speculatively collect idents — original `tokens` available for fallback
   let r = collect_lambda_idents(tokens: tokens, ctx: ctx, acc: [])
   if r.success && count(r.params) >= 2 {
     if tok_is_rparen(tok: r.tokens |> first) {
@@ -4754,7 +4448,6 @@ fn try_lambda_params(tokens: List<Token>, ctx: ParseContext) -> LambdaCheckResul
       if tok_is_fat_arrow(tok: after_rparen |> first) {
         LambdaCheckResult { is_lambda: true, params: r.params, tokens: after_rparen |> skip(1), ctx: r.ctx, err: none }
       } else {
-        // Not a lambda — return original tokens for fallback
         LambdaCheckResult { is_lambda: false, params: [], tokens: tokens, ctx: ctx, err: none }
       }
     } else {
@@ -4870,7 +4563,6 @@ fn parse_brace_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
             ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
           }
         } else {
-          // Keyword used as field name in record literal
           if tok_is_keyword_name(tok: tok) && peek_is_colon_after_ident(tokens: tokens) {
             let r = parse_field_init_list(tokens: tokens, ctx: ctx)
             if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -4879,7 +4571,6 @@ fn parse_brace_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
             if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
             ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
           } else {
-            // Fall through to expression parsing
             let r = parse_expr(tokens: tokens, ctx: ctx)
             if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
             let tokens = skip_newlines(tokens: r.tokens)
