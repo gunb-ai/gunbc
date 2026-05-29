@@ -269,7 +269,11 @@ Close-the-loop + late substrate:
 The compiler pipeline (T-1…T-11, T-36) is necessary but not sufficient for
 T-15 to close. Two gaps gate the close condition (T-37 landed; live dispatch: T-15 Close-status):
 
-**T-37 → serializer fix LANDED ([#3791](https://github.com/gunb-ai/gunbc/pull/3791)).** v2 `--target dag` completes without SIGTERM on `main` (probe royal-carp-716 EXIT:0; `dag_node_key` Resolved-peel + stage0 Rc). Dissolution trigger (b) met — emit no longer OOM-masks failure on probe. **P5 bridge removal still open:** `scripts/v4-bootstrap-resolve-posture-gate.sh` and `.github/workflows/ci.yml:249` remain until script + paired CI step are deleted per script header (14 consecutive main-CI days). Root cause + fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
+**T-37 → serializer fix LANDED ([#3791](https://github.com/gunb-ai/gunbc/pull/3791)).** v2 `--target dag` completes without SIGTERM on `main` (probe royal-carp-716 EXIT:0; `dag_node_key` Resolved-peel + stage0 Rc). Dissolution trigger (b) met — emit no longer OOM-masks failure on probe. **P5 bridge removal still open:** `scripts/v4-bootstrap-resolve-posture-gate.sh` and `.github/workflows/ci.yml:252` remain until script + paired CI step are deleted per script header (14 consecutive main-CI days).
+
+> **P5 window status (2026-05-29, sleek-dove-595):** #3791 merged 2026-05-28T10:37:59Z. Day 1 of the 14-consecutive-main-CI-day window. Earliest eligible removal: **2026-06-11**, conditional on `main` CI staying green every intervening day (any red CI day on `main` resets the counter). Verifier on the removal session must re-check `gh run list --branch main --workflow ci.yml` for an unbroken green run on the merge SHA through the removal SHA before deleting the script and the `.github/workflows/ci.yml` bridge step.
+
+Root cause + fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
 
 **T-38 → claim-suite structural bridge.** The CI gate
 `scripts/v4-testclaim-corpus-gate.sh` now compiles `src/v4` to emitted Rust and
