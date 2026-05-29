@@ -53,6 +53,35 @@ table covers all repeated annotation sites of that gate.
 
 ---
 
+## §0. Census reproducibility — canonical grep commands
+
+The audit uses **three distinct populations**, each measured by its own
+grep. Each population answers a different question; the reader needs all
+three to spot-check the §1/§5/§A numbers. **Run from repo root:**
+
+| Population | Question it answers | Canonical grep | Result on `origin/main` |
+| --- | --- | --- | ---: |
+| **A. Distinct gate names** (`feature:NAME`) | how many *gates* exist? | `git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sort -u \| wc -l` | **97** |
+| **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -cE '🟡 gated' origin/main -- src/v4/ \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **~282** (audit-time grep) |
+| **C. Per-gate annotation rows for gate X** | how many annotation rows carry gate X? — used for §1.1/§1.3 "sites" counts | `git grep -cE 'gated[:—] ?(feature: )?X' origin/main -- src/v4/ \| awk ...` (substitute X) | varies per gate |
+
+**Important distinction (P2 single-authority for this audit's own
+surface):** §1.1 ("63 sites · 9 formatter files") and §1.3 ("7 annotation
+rows across 4 formatter files") use **population C** — they count
+per-field shorthand annotations like `🟡 gated: formatter-int-refinement`,
+not just the `feature:` header declarations. §1.9's distribution table
+uses **population A** — distinct `feature:NAME` declarations only, which
+is why formatter-int-refinement contributes 1 to the 97 there but 63 to
+§1.1's site count. Both numbers are correct for their respective
+populations.
+
+Reviewers running an alternative grep (e.g. counting only
+`🟡 gated — feature:` headers, which yields 43; or `— feature:` allowing
+a space, which yields 120) will get different numbers — none of those
+are the audit's canonical commands.
+
+---
+
 ## §1. Gate vocabulary — `🟡 gated — feature:NAME`
 
 97 distinct `feature:NAME` strings appear in the corpus. The top-population
