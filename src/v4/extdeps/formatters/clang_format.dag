@@ -33,27 +33,21 @@ fn make_clang_format_non_neg_int(value: Int, at: Locus) -> Outcome<ClangFormatNo
 }
 
 
-// "disabled / use-default" sentinel: -1 is valid; admits Int >= -1.
-type ClangFormatBaseOrDisabledInt = Refined<Int>
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// clang-format documents -1 as the discrete sentinel "disabled" for the integer-literal-separator
+// binary/decimal/hex fields; non-negative values are threshold counts. Model the sentinel as a
+// discrete arm (illegal-states-unrepresentable per P1/P2) and project the -1 only at the emit boundary.
+type ClangFormatIntegerLiteralSeparator
+  = ClangFormatIntegerLiteralSeparatorDisabled
+  | ClangFormatIntegerLiteralSeparatorEnabled { threshold: ClangFormatNonNegInt }
 
 
-data clang_format_base_or_disabled_out_of_range: Symbol = clang_format_base_or_disabled_out_of_range
-
-
-fn clang_format_base_or_disabled_admits(value: Int) -> Bool {
-  value >= -1
-}
-
-
-data clang_format_base_or_disabled_validation: Validation<Int> = Validation {
-  reason: clang_format_base_or_disabled_out_of_range,
-  admits: clang_format_base_or_disabled_admits
-}
-
-
-fn make_clang_format_base_or_disabled_int(value: Int, at: Locus) -> Outcome<ClangFormatBaseOrDisabledInt> {
-  refine(base: value, by: clang_format_base_or_disabled_validation, at: at)
-}
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// clang-format documents -1 as the discrete sentinel "no upper bound" for SpacesInLineComment.maximum;
+// non-negative values are real upper bounds. Same M9 treatment as ClangFormatIntegerLiteralSeparator.
+type ClangFormatSpacesInLineCommentMaximum
+  = ClangFormatSpacesInLineCommentMaximumUnbounded
+  | ClangFormatSpacesInLineCommentMaximumBounded { bound: ClangFormatNonNegInt }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -392,13 +386,13 @@ type ClangFormatTrailingCommaStyle
 
 
 type ClangFormatIntegerLiteralSeparatorStyle {
-  binary: ClangFormatBaseOrDisabledInt,
+  binary: ClangFormatIntegerLiteralSeparator,
   binary_min_digits_insert: ClangFormatNonNegInt,
   binary_max_digits_remove: ClangFormatNonNegInt,
-  decimal: ClangFormatBaseOrDisabledInt,
+  decimal: ClangFormatIntegerLiteralSeparator,
   decimal_min_digits_insert: ClangFormatNonNegInt,
   decimal_max_digits_remove: ClangFormatNonNegInt,
-  hex: ClangFormatBaseOrDisabledInt,
+  hex: ClangFormatIntegerLiteralSeparator,
   hex_min_digits_insert: ClangFormatNonNegInt,
   hex_max_digits_remove: ClangFormatNonNegInt,
 }
@@ -626,7 +620,7 @@ type ClangFormatSpacesInAnglesStyle
 
 type ClangFormatSpacesInLineComment {
   minimum: ClangFormatNonNegInt,
-  maximum: ClangFormatBaseOrDisabledInt, // 🟡 gated: formatter-cross-field-constraints — must be ≥ minimum unless -1
+  maximum: ClangFormatSpacesInLineCommentMaximum, // 🟡 gated: formatter-cross-field-constraints — Bounded { bound } must be ≥ minimum
 }
 
 
@@ -981,7 +975,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   insert_braces: false,
   insert_newline_at_eof: false,
   insert_trailing_commas: ClangFormatTrailingCommaNone,
-  integer_literal_separator: ClangFormatIntegerLiteralSeparatorStyle { binary: Refined { base: 0 }, binary_min_digits_insert: Refined { base: 0 }, binary_max_digits_remove: Refined { base: 0 }, decimal: Refined { base: 0 }, decimal_min_digits_insert: Refined { base: 0 }, decimal_max_digits_remove: Refined { base: 0 }, hex: Refined { base: 0 }, hex_min_digits_insert: Refined { base: 0 }, hex_max_digits_remove: Refined { base: 0 } },
+  integer_literal_separator: ClangFormatIntegerLiteralSeparatorStyle { binary: ClangFormatIntegerLiteralSeparatorEnabled { threshold: Refined { base: 0 } }, binary_min_digits_insert: Refined { base: 0 }, binary_max_digits_remove: Refined { base: 0 }, decimal: ClangFormatIntegerLiteralSeparatorEnabled { threshold: Refined { base: 0 } }, decimal_min_digits_insert: Refined { base: 0 }, decimal_max_digits_remove: Refined { base: 0 }, hex: ClangFormatIntegerLiteralSeparatorEnabled { threshold: Refined { base: 0 } }, hex_min_digits_insert: Refined { base: 0 }, hex_max_digits_remove: Refined { base: 0 } },
   java_script_quotes: ClangFormatJavaScriptQuoteLeave,
   java_script_wrap_imports: true,
   keep_empty_lines: ClangFormatKeepEmptyLinesStyle { at_end_of_file: false, at_start_of_block: true, at_start_of_file: true },
