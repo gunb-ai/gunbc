@@ -35,8 +35,8 @@ snapshot** under an explicit one-shot operator directive (2026-05-29). It is
 
 1.  Enumerate every marker. Three populations:
     * **gate vocabulary** — `🟡 gated — feature:NAME — bind X — dissolve-on Y`.
-      282 occurrences across the corpus collapse to a small set of distinct
-      `feature:` gate names; one row per gate.
+      279 occurrences across the corpus collapse to a small set of distinct
+      `feature:` gate names (130 distinct per §0 population A); one row per gate.
     * **needs-more-work** — 53 `🟡 needs-more-work` markers. Each carries a
       `bind T-X — dissolve-on:` rider; classified by upstream task.
     * **prose-level deferrals** in `TASKS.md`, `src/v4/DECISIONS.md`,
@@ -95,7 +95,7 @@ rows across 4 formatter files") use **population C** — they count
 per-field shorthand annotations like `🟡 gated: formatter-int-refinement`,
 not just the `feature:` header declarations. §1.9's distribution table
 uses **population A** — distinct `feature:NAME` declarations only, which
-is why formatter-int-refinement contributes 1 to the 97 there but 63 to
+is why formatter-int-refinement contributes 1 to the 130 there but 63 to
 §1.1's site count. Both numbers are correct for their respective
 populations.
 
@@ -248,28 +248,30 @@ not a T-4.16 follow-on; it is a v4-language-level substrate gap.
 Recommend retagging the bind to `bind v4-lang:map-primitive`
 (action §A3).
 
-### §1.9  Long-tail gates — remaining 89 distinct gates
+### §1.9  Long-tail gates — remaining 122 distinct gates
 
-**Census (corrected 2026-05-29 per codex + inline review):** the original
-draft's "75 single-occurrence gates" heading was wrong — the long tail
-contains both singletons and un-tabulated multi-site gates. True
-distribution across all 97 `feature:NAME` gate names (from
-`grep -rhoE 'feature:[a-z][a-z0-9_-]+' src/v4/ | sort | uniq -c`):
+**Census (regenerated 2026-05-29 from unified spaced+unspaced grep
+per inline review):** the original draft cited 97 distinct gates from
+the no-space `feature:[a-z]` form; that undercounted by 33 because
+**33 gates use spaced `feature: NAME` headers** (including the
+headline `formatter-int-refinement`). True unified distribution
+across all **130** distinct gate names (from §0 population A):
 
 | Site count | # of gates | Status |
 | ---: | ---: | --- |
 | 13 sites | 1 | tabulated as §1.2 (`config-patch-record-projection`) |
+| 9 sites  | 1 | long tail |
 | 7 sites  | 1 | long tail (`canonical-b-grounding-consumer`) |
 | 6 sites  | 1 | long tail (`free-monoid-entry-generic-inference`) |
-| 5 sites  | 1 | long tail (`section-ref-identity-evidence`) |
-| 4 sites  | 2 | long tail (`python-wave2a-decimal-int-literal`, `model-core-law-expression-carrier`) |
-| 3 sites  | 2 | long tail (`testclaim-coproduct-reflection`, `t19-claim-anchor-split`) |
-| 2 sites  | 17 | long tail (14 NECESSARY long-tail; 3 already tabulated in §1.3/§1.4) |
-| 1 site   | 72 | long tail singletons (§1.5–§1.8 are four of these) |
-| **Total** | **97** | — |
+| 5 sites  | 3 | long tail |
+| 4 sites  | 4 | long tail |
+| 3 sites  | 4 | long tail |
+| 2 sites  | 20 | long tail (17 NECESSARY long-tail; 3 already tabulated in §1.3/§1.4) |
+| 1 site   | 95 | long tail singletons (§1.5–§1.8 are four of these) |
+| **Total** | **130** | — |
 
 Tabulated by name in §1.1–§1.8: **8 gates** (5 multi-site, 3 singletons).
-**Remaining 89 long-tail gates** are summarized below; representative
+**Remaining 122 long-tail gates** are summarized below; representative
 examples (multi-site first, then singleton patterns):
 
 * `feature:canonical-b-grounding-consumer` (7 sites) — bind T-9 algebra-ref
@@ -428,8 +430,8 @@ under-counted the route by omitting §1.2 and §1.3.
 
 | Population | Sites | NECESSARY | UNNECESSARY |
 | --- | ---: | ---: | ---: |
-| `🟡 gated — feature:*` distinct gates | 97 | 90 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
-| `🟡 gated` annotation occurrences | 282 | ~207 | **~75** (§1.1 alone is 63 sites; +2 long-tail T-25-core binds; §1.3 corrected to 7 rows across 4 formatter files per 2026-05-29 codex/inline review) |
+| `🟡 gated — feature:*` distinct gates | 130 | 123 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
+| `🟡 gated` annotation occurrences | 279 | ~204 | **~75** (§1.1 alone is 63 sites; +2 long-tail T-25-core binds; §1.3 corrected to 7 rows across 4 formatter files per 2026-05-29 codex/inline review; total updated to live origin/main count of 279) |
 | `🟡 needs-more-work` | 53 | 36 | 17 (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
 
