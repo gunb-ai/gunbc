@@ -12627,16 +12627,16 @@ mod tests {
 
         let span = test_span();
         let args = [TypeAngleArg::TypeExpr {
-            ty: SurfaceType::Parameterized {
+            ty: Box::new(SurfaceType::Parameterized {
                 name: "Cfg".to_string(),
                 args: vec![TypeAngleArg::TypeExpr {
-                    ty: SurfaceType::Named {
+                    ty: Box::new(SurfaceType::Named {
                         name: "Int".to_string(),
                         span: span.clone(),
-                    },
+                    }),
                 }],
                 span: span.clone(),
-            },
+            }),
         }];
 
         let patch_conj = materialize_config_patch_record_connective(
