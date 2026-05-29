@@ -4,7 +4,7 @@
 
 **Date:** 2026-05-29  
 **Author lane:** clever-cat-115 (CI EFFICIENCY MANAGER, `node://adhoc-0972e492-c72`)  
-**Companion read (what is wrong today):** [CI anatomy audit](audit/ci-anatomy-and-redundancy-2026-05-29.md) — PR [#3885](https://github.com/gunb-ai/gunbc/pull/3885)  
+**Companion read (what is wrong today):** [CI anatomy audit](https://github.com/gunb-ai/gunbc/pull/3885) (`docs/audit/ci-anatomy-and-redundancy-2026-05-29.md`, lands with #3885)  
 **This document (what we build):** modeled CI authority in `src/v4/workflow/ci.dag`, migration atoms, emission end-state, coordination boundaries.
 
 **Precedent canvases:** `docs/design-ci-workflow-substrate-shape-2026-05-12.md` (substrate shape, ratified), `docs/design-ci-workflow-emitter-dispatch.md` (`WorkflowRuntime` / projection targets), `docs/design-affected-set-lens.md` (T-21 frontier).
