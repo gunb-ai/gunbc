@@ -113,18 +113,15 @@ runner_required = [
     "pub fn corpus_report_deferred_count",
     "pub fn corpus_report_total",
     "manual_corpus_node_runtime_value_rows",
-    "ManualCorpusRow",
+    "test_claim_run_claim",
+    "test_claim_run_verdict",
 ]
 
 roster_required = [
     "manual_corpus_node_runtime_value_rows",
-    "ManualCorpusRow",
     "run_eval_mvp2_test_claim_route",
     "run_rust_language_model_emit_mechanical_reverification_claim",
     "run_rust_language_model_emit_subsumption_reverifies",
-    "claim_eval_mvp2_test_claim_route",
-    "claim_rust_language_model_emit_mechanical_reverification",
-    "claim_rust_language_model_emit_subsumption_reverifies",
 ]
 
 

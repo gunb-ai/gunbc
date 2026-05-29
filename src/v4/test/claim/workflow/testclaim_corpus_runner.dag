@@ -32,32 +32,34 @@
 module v4.test.claim.workflow.testclaim_corpus_runner
 
 
-import v4.compiler.eval { TestClaimRun }
+import v4.compiler.eval {
+  TestClaimRun,
+  test_claim_run_claim,
+  test_claim_run_verdict
+}
 import v4.std.collection { List }
+import v4.std.nat { Nat }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verdict {
-  Verdict,
   VerdictTally,
   verdict_tally_add,
   verdict_tally_empty,
   verdict_tally_total
 }
-import v4.std.verification { TestClaim, test_claim_label }
+import v4.std.verification { test_claim_label }
 import v4.test.claim.manual.manual_corpus_roster {
-  ManualCorpusRow,
   manual_corpus_node_runtime_value_rows
 }
 
 
-// One row of the corpus report — closed authority: holds the TestClaim
-// (single authority for label/anchor/classification) and the faithful
-// Verdict<RuntimeValue> the underlying run produced. No verdict erasure to
-// Symbol tags; Fail and Deferred payloads (Outcome<RuntimeValue>,
-// Diagnostic) survive to the host boundary.
+// One row of the corpus report — preserves the full TestClaimRun (cache
+// receipt + eval subject + verdict) so all upstream facts flow forward to
+// the report boundary (facts-flow-forward). Claim and verdict are reached
+// canonically via the stepped accessors in v4.compiler.eval; no parallel
+// claim/verdict field is constructible beside `run`.
 type CorpusEvalEntry {
-  claim: TestClaim
-  verdict: Verdict<RuntimeValue>
+  run: TestClaimRun<Node, RuntimeValue>
 }
 
 
@@ -70,58 +72,56 @@ type CorpusEvalReport {
 
 
 fn corpus_entry_label(e: CorpusEvalEntry) -> String {
-  test_claim_label(c: e.claim)
+  test_claim_label(c: test_claim_run_claim(run: e.run))
 }
 
 
 // Single-authority count surface: derive a `VerdictTally` by folding
-// `verdict_tally_add` over the entries' verdicts (canonical std/verdict
+// `verdict_tally_add` over each entry's verdict (canonical std/verdict
 // tally — genuinely distinct per-variant work, no per-variant Bool
 // helpers). The pass / fail / deferred / total projections all read off
 // the tally so counts cannot diverge from entries (M4) and no per-variant
 // match lives outside `verdict_tally_add` (predicate-dissolution clean).
+// Populations are `Nat` (substrate-enforced non-negative) per std/verdict.
 fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
-    verdict_tally_add(t: acc, v: e.verdict)
+    verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
   })
 }
 
 
-fn corpus_report_pass_count(r: CorpusEvalReport) -> Int {
+fn corpus_report_pass_count(r: CorpusEvalReport) -> Nat {
   corpus_report_tally(r: r).pass
 }
 
 
-fn corpus_report_fail_count(r: CorpusEvalReport) -> Int {
+fn corpus_report_fail_count(r: CorpusEvalReport) -> Nat {
   corpus_report_tally(r: r).fail
 }
 
 
-fn corpus_report_deferred_count(r: CorpusEvalReport) -> Int {
+fn corpus_report_deferred_count(r: CorpusEvalReport) -> Nat {
   corpus_report_tally(r: r).deferred
 }
 
 
-fn corpus_report_total(r: CorpusEvalReport) -> Int {
+fn corpus_report_total(r: CorpusEvalReport) -> Nat {
   verdict_tally_total(t: corpus_report_tally(r: r))
 }
 
 
-fn corpus_entry_from_node_runtime_value_row(
-  row: ManualCorpusRow<RuntimeValue>
+fn corpus_entry_from_node_runtime_value_run(
+  run: TestClaimRun<Node, RuntimeValue>
 ) -> CorpusEvalEntry {
-  CorpusEvalEntry {
-    claim: row.claim,
-    verdict: row.run.verdict
-  }
+  CorpusEvalEntry { run: run }
 }
 
 
-fn corpus_entries_from_node_runtime_value_rows(
-  rows: List<ManualCorpusRow<RuntimeValue>>
+fn corpus_entries_from_node_runtime_value_runs(
+  runs: List<TestClaimRun<Node, RuntimeValue>>
 ) -> List<CorpusEvalEntry> {
-  fold(rows, init: [], f: fn(acc, row) {
-    concat(acc, [corpus_entry_from_node_runtime_value_row(row: row)])
+  fold(runs, init: [], f: fn(acc, run) {
+    concat(acc, [corpus_entry_from_node_runtime_value_run(run: run)])
   })
 }
 
@@ -133,8 +133,8 @@ fn corpus_entries_from_node_runtime_value_rows(
 // authority stays in the model.
 fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
   CorpusEvalReport {
-    entries: corpus_entries_from_node_runtime_value_rows(
-      rows: manual_corpus_node_runtime_value_rows
+    entries: corpus_entries_from_node_runtime_value_runs(
+      runs: manual_corpus_node_runtime_value_rows
     )
   }
 }
