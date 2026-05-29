@@ -354,23 +354,9 @@ data kotlin_integer_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
   kotlin_facts_long
 ]
 
-data kotlin_ordered_ring_facts_int: KotlinOrderedRingIntegerFacts = KotlinOrderedRingIntegerFacts {
-  surface_spelling: kotlin_surface_spelling_int,
-  width: Bits32,
-  overflow: kotlin_integer_overflow_unspecified,
-  representation: kotlin_platform_specific_runtime_representation,
-}
-
-data kotlin_ordered_ring_facts_long: KotlinOrderedRingIntegerFacts = KotlinOrderedRingIntegerFacts {
-  surface_spelling: kotlin_surface_spelling_long,
-  width: Bits64,
-  overflow: kotlin_integer_overflow_unspecified,
-  representation: kotlin_platform_specific_runtime_representation,
-}
-
 data kotlin_integer_algebra_inhabitance_facts_catalog: List<KotlinOrderedRingIntegerFacts> = [
-  kotlin_ordered_ring_facts_int,
-  kotlin_ordered_ring_facts_long
+  kotlin_ordered_ring_integer_from_primitive_facts(facts: kotlin_facts_int),
+  kotlin_ordered_ring_integer_from_primitive_facts(facts: kotlin_facts_long)
 ]
 
 data kotlin_float_facts_catalog: List<KotlinFloatPrimitiveFacts> = [
