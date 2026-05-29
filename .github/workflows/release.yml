@@ -1,0 +1,99 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            cross: true
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04
+            cross: true
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            cross: false
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            cross: false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          cache: true
+          cache-workspaces: src/v2/stage0
+          rustflags: ''
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --version 0.2.5 --locked
+      - name: Build gunbc
+        run: |
+          set -eux
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release -p v2-compiler --bin gunbc --target '${{ matrix.target }}'
+            bin="target/${{ matrix.target }}/release/gunbc"
+          else
+            cargo build --release -p v2-compiler --bin gunbc
+            bin="target/release/gunbc"
+          fi
+          mkdir -p dist
+          cp "$bin" "dist/gunbc-${{ matrix.target }}"
+          strip "dist/gunbc-${{ matrix.target }}" || true
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gunbc-${{ matrix.target }}
+          path: dist/gunbc-${{ matrix.target }}
+          if-no-files-found: error
+
+  release:
+    name: publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Stage release assets
+        run: |
+          set -eux
+          cp install.sh dist/install.sh
+          chmod +x dist/install.sh
+          ls -la dist
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
