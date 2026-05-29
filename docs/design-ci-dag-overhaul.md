@@ -163,6 +163,20 @@ Exact CLI lands in A0/A2 with T-38. **There is no S1, S2, or S3 in this lane.**
 | `ci_select_ci_jobs_from_affected_set` (or equivalent) | **not yet** | Required to replace GHA `if: v2/v3/v4` with interpreter schedule over `ci_pipeline` |
 | `CiComponentAffected` | **not in `ci.dag`** | Shell/YAML bucket authority only — **A1** deletes outputs; **A2** makes buckets unnecessary |
 
+**Selector authority chain (live in `ci.dag` today — cite when reviewing):**
+
+```text
+AffectedSet  ←  CiGitDiffReadOutcome witness (A1)
+     ↓
+affected_set_rerun_nodes  (v4.lens.affected_set)
+     ↓
+ci_select_from_affected_set(roster, affected) → List<TestClaim>   # fn L585–590
+     ↓
+TestClaimCorpusEvalCommand.selection_fn = ci_testclaim_corpus_selection_fn  # L77, L121, L170
+```
+
+**Not yet in substrate:** `ci_select_ci_jobs_from_affected_set(pipeline, affected) → List<CiJob>` — **A2** deliverable. **Not yet executing:** T-38 eval of corpus command — **A12** (replaces `scripts/v4-testclaim-corpus-gate.sh`). The canvas does **not** claim bucket deletion or interpreter scheduling without these atoms.
+
 **Viability — dropping `CiComponentAffected` scheduling:**
 
 | Question | Answer |
