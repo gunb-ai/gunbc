@@ -388,7 +388,7 @@ fn interpretation_v4_evaluator_wave1_registry_semantics_digest(
 fn interpretation_registry_semantics_digest(
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra,
-  structure_witness: InterpretationStructureWitness
+  _structure_witness: InterpretationStructureWitness
 ) -> Hash {
   if runtime_identity == v4_evaluator_runtime_id {
     if interpretation == v4_evaluator_interpretation_wave1() {
