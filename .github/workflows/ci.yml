@@ -210,9 +210,6 @@ jobs:
     - name: T-15 v4 bin main.dag smoke (live integration receipt)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_bin_main_dag_smoke_test::v4_bin_main_dag_tokenizes_and_parses_with_trampoline_source_anchor -- --exact --quiet
-    - name: T-15 self-host fixed-point harness (stage1==stage2)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      run: cargo test -p v3-compiler --test integration v4_t15_self_host_fixed_point_harness_test::t_15_self_host_fixed_point -- --exact --quiet
     - name: Lens-CI registry activation smoke
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_lens_registry_dag_smoke_test -- --quiet
@@ -240,6 +237,9 @@ jobs:
     - name: Build v2 compiler (v4 bootstrap / host eval gate)
       if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
+    - name: T-15 self-host fixed-point harness (stage1==stage2)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: cargo test -p v3-compiler --test integration v4_t15_self_host_fixed_point_harness_test::t_15_self_host_fixed_point -- --exact --quiet
     - name: MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: bash scripts/v4-mvp1-e2e-gate.sh
