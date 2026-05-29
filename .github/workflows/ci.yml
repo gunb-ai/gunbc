@@ -94,6 +94,8 @@ jobs:
     - name: Detect affected components
       id: detect
       run: bash scripts/detect-affected-components.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
+    - name: detect-affected-components path buckets (self-test)
+      run: bash scripts/detect-affected-components.sh --self-test
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]

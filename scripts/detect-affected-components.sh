@@ -6,6 +6,7 @@
 #
 # Usage:
 #   scripts/detect-affected-components.sh <event_name> <output_file>
+#   scripts/detect-affected-components.sh --self-test
 #
 # event_name:  "pull_request" | "push"
 # output_file: a file to write GitHub Actions outputs into (one per line:
@@ -30,6 +31,10 @@
 # substrings.txt.
 
 set -euo pipefail
+
+if [ "${1:-}" = "--self-test" ]; then
+  exec bash "$(cd "$(dirname "$0")" && pwd)/test-detect-affected-components.sh"
+fi
 
 event_name="${1:-pull_request}"
 output_file="${2:-/dev/stdout}"
@@ -108,7 +113,7 @@ else
 fi
 
 # Gate #103 workflow / policy surface.
-if changed_matches '^\.github/workflows/|^scripts/detect-affected-components\.sh|^scripts/check-workflow-path-regex-inventory\.sh|^scripts/workflow-path-regex-forbidden-substrings\.txt'; then
+if changed_matches '^\.github/workflows/|^scripts/detect-affected-components\.sh|^scripts/test-detect-affected-components\.sh|^scripts/check-workflow-path-regex-inventory\.sh|^scripts/workflow-path-regex-forbidden-substrings\.txt'; then
   workflow_policy_state=true
   echo "workflow_policy (Gate #103 surface): yes" >&2
 else
