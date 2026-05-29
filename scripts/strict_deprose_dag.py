@@ -295,6 +295,8 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "SwiftConcreteSyntaxToken",
         ):
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        # T-4 Wave 2b law-kind coproduct (absent at merge-base; scaffold:T-4-wave-2b).
+        out["SwiftModelCoreLawKey"] = ("🟡", "SL-T4-WAVE2B-SWIFT-LAW-KEY")
     if rel == "src/v4/extdeps/languages/wasm.dag":
         # New T-4/T-11 language slice (absent at merge-base).
         for nm in (
@@ -304,6 +306,8 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "WasmConcreteSyntaxToken",
         ):
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        # T-4 Wave 2b law-kind coproduct (absent at merge-base; scaffold:T-4-wave-2b).
+        out["WasmModelCoreLawKey"] = ("🟡", "SL-T4-WAVE2B-WASM-LAW-KEY")
     if rel == "src/v4/std/integer.dag":
         # T-3A shared-fact vocabulary for T-4 language primitive fact-bundles
         # (absent at merge-base).
@@ -435,6 +439,24 @@ def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> 
             "feature:model-core-law-expression-carrier — "
             "scaffold:T-4-wave-2b · law-kind coproduct for ts_model_core_law_node kind edge — "
             "owner:T-4 typescript language model lane — "
+            "dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing "
+            "kind atoms (same gate as model_core ModelCoreWave1BoolLawKey)."
+        )
+    if type_name == "WasmModelCoreLawKey":
+        return (
+            "// 🟡 coproduct dissolution — SL-T4-WAVE2B-WASM-LAW-KEY — "
+            "feature:model-core-law-expression-carrier — "
+            "scaffold:T-4-wave-2b · law-kind coproduct for wasm_model_core_law_node kind edge — "
+            "owner:T-4 wasm language model lane — "
+            "dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing "
+            "kind atoms (same gate as model_core ModelCoreWave1BoolLawKey)."
+        )
+    if type_name == "SwiftModelCoreLawKey":
+        return (
+            "// 🟡 coproduct dissolution — SL-T4-WAVE2B-SWIFT-LAW-KEY — "
+            "feature:model-core-law-expression-carrier — "
+            "scaffold:T-4-wave-2b · law-kind coproduct for swift_model_core_law_node kind edge — "
+            "owner:T-4 swift language model lane — "
             "dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing "
             "kind atoms (same gate as model_core ModelCoreWave1BoolLawKey)."
         )
