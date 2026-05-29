@@ -6,7 +6,7 @@
 module v4.extdeps.formatters.black
 
 import v4.std.collection { List }
-import v4.std.patch { FieldPatch, apply_field_patch }
+import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -91,45 +91,10 @@ data black_defaults: BlackConfig = BlackConfig {
 }
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: BlackConfigPatch projected from BlackConfig field set.
-type BlackConfigPatch {
-  line_length: FieldPatch<Int>
-  target_version: FieldPatch<BlackTargetVersionPolicy>
-  required_version: FieldPatch<BlackRequiredVersionPolicy>
-  pyi: FieldPatch<Bool>
-  ipynb: FieldPatch<Bool>
-  python_cell_magics: FieldPatch<List<String>>
-  skip_source_first_line: FieldPatch<Bool>
-  skip_string_normalization: FieldPatch<Bool>
-  skip_magic_trailing_comma: FieldPatch<Bool>
-  preview: FieldPatch<Bool>
-  unstable: FieldPatch<Bool>
-  enable_unstable_feature: FieldPatch<List<BlackUnstableFeature>>
-  include: FieldPatch<String>
-  exclude: FieldPatch<String>
-  extend_exclude: FieldPatch<String>
-  force_exclude: FieldPatch<String>
-}
+type BlackConfigPatch = ConfigPatchRecord<BlackConfig>
 
 
 fn black_layer(base: BlackConfig, patch: BlackConfigPatch) -> BlackConfig {
-  BlackConfig {
-    line_length: apply_field_patch(base: base.line_length, patch: patch.line_length),
-    target_version: apply_field_patch(base: base.target_version, patch: patch.target_version),
-    required_version: apply_field_patch(base: base.required_version, patch: patch.required_version),
-    pyi: apply_field_patch(base: base.pyi, patch: patch.pyi),
-    ipynb: apply_field_patch(base: base.ipynb, patch: patch.ipynb),
-    python_cell_magics: apply_field_patch(base: base.python_cell_magics, patch: patch.python_cell_magics),
-    skip_source_first_line: apply_field_patch(base: base.skip_source_first_line, patch: patch.skip_source_first_line),
-    skip_string_normalization: apply_field_patch(base: base.skip_string_normalization, patch: patch.skip_string_normalization),
-    skip_magic_trailing_comma: apply_field_patch(base: base.skip_magic_trailing_comma, patch: patch.skip_magic_trailing_comma),
-    preview: apply_field_patch(base: base.preview, patch: patch.preview),
-    unstable: apply_field_patch(base: base.unstable, patch: patch.unstable),
-    enable_unstable_feature: apply_field_patch(base: base.enable_unstable_feature, patch: patch.enable_unstable_feature),
-    include: apply_field_patch(base: base.include, patch: patch.include),
-    exclude: apply_field_patch(base: base.exclude, patch: patch.exclude),
-    extend_exclude: apply_field_patch(base: base.extend_exclude, patch: patch.extend_exclude),
-    force_exclude: apply_field_patch(base: base.force_exclude, patch: patch.force_exclude),
-  }
+  config_patch_layer(base: base, patch: patch)
 }
 

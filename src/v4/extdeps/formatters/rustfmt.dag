@@ -5,7 +5,7 @@
 
 module v4.extdeps.formatters.rustfmt
 
-import v4.std.patch { FieldPatch, apply_field_patch }
+import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -330,168 +330,9 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
 }
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: RustfmtConfigPatch projected from RustfmtConfig field set.
-type RustfmtConfigPatch {
-  indent_style: FieldPatch<RustfmtIndentStyle>
-  tab_spaces: FieldPatch<Int>
-  hard_tabs: FieldPatch<Bool>
-  max_width: FieldPatch<Int>
-  comment_width: FieldPatch<Int>
-  chain_width: FieldPatch<Int>
-  single_line_if_else_max_width: FieldPatch<Int>
-  single_line_let_else_max_width: FieldPatch<Int>
-  fn_call_width: FieldPatch<Int>
-  attr_fn_like_width: FieldPatch<Int>
-  struct_lit_width: FieldPatch<Int>
-  struct_variant_width: FieldPatch<Int>
-  array_width: FieldPatch<Int>
-  short_array_element_width_threshold: FieldPatch<Int>
-  brace_style: FieldPatch<RustfmtBraceStyle>
-  control_brace_style: FieldPatch<RustfmtControlBraceStyle>
-  where_single_line: FieldPatch<Bool>
-  trailing_comma: FieldPatch<RustfmtTrailingComma>
-  trailing_semicolon: FieldPatch<Bool>
-  match_arm_leading_pipes: FieldPatch<RustfmtMatchArmLeadingPipes>
-  match_arm_blocks: FieldPatch<Bool>
-  match_block_trailing_comma: FieldPatch<Bool>
-  imports_granularity: FieldPatch<RustfmtImportsGranularity>
-  group_imports: FieldPatch<RustfmtGroupImports>
-  imports_layout: FieldPatch<RustfmtImportsLayout>
-  imports_indent: FieldPatch<RustfmtIndentStyle>
-  reorder_imports: FieldPatch<Bool>
-  merge_imports: FieldPatch<Bool>
-  fn_params_layout: FieldPatch<RustfmtFnParamsLayout>
-  fn_args_layout: FieldPatch<RustfmtFnParamsLayout>
-  fn_single_line: FieldPatch<Bool>
-  inline_attribute_width: FieldPatch<Int>
-  reorder_modules: FieldPatch<Bool>
-  reorder_impl_items: FieldPatch<Bool>
-  newline_style: FieldPatch<RustfmtNewlineStyle>
-  blank_lines_upper_bound: FieldPatch<Int>
-  blank_lines_lower_bound: FieldPatch<Int>
-  wrap_comments: FieldPatch<Bool>
-  normalize_comments: FieldPatch<Bool>
-  normalize_doc_attributes: FieldPatch<Bool>
-  format_strings: FieldPatch<Bool>
-  format_code_in_doc_comments: FieldPatch<Bool>
-  doc_comment_code_block_width: FieldPatch<Int>
-  format_generated_files: FieldPatch<Bool>
-  hide_parse_errors: FieldPatch<Bool>
-  merge_derives: FieldPatch<Bool>
-  use_field_init_shorthand: FieldPatch<Bool>
-  use_try_shorthand: FieldPatch<Bool>
-  force_explicit_abi: FieldPatch<Bool>
-  format_macro_matchers: FieldPatch<Bool>
-  format_macro_bodies: FieldPatch<Bool>
-  binop_separator: FieldPatch<RustfmtBinopSeparator>
-  use_small_heuristics: FieldPatch<RustfmtSmallHeuristics>
-  overflow_delimited_expr: FieldPatch<Bool>
-  remove_nested_parens: FieldPatch<Bool>
-  combine_control_expr: FieldPatch<Bool>
-  hex_literal_case: FieldPatch<RustfmtHexLiteralCase>
-  enum_discrim_align_threshold: FieldPatch<Int>
-  struct_field_align_threshold: FieldPatch<Int>
-  spaces_around_ranges: FieldPatch<Bool>
-  space_after_colon: FieldPatch<Bool>
-  space_before_colon: FieldPatch<Bool>
-  empty_item_single_line: FieldPatch<Bool>
-  struct_lit_single_line: FieldPatch<Bool>
-  condense_wildcard_suffixes: FieldPatch<Bool>
-  force_multiline_blocks: FieldPatch<Bool>
-  error_on_line_overflow: FieldPatch<Bool>
-  error_on_unformatted: FieldPatch<Bool>
-  skip_children: FieldPatch<Bool>
-  skip_macro_invocations: FieldPatch<List<RustfmtMacroSelector>>
-  type_punctuation_density: FieldPatch<RustfmtTypePunctuationDensity>
-  disable_all_formatting: FieldPatch<Bool>
-  color: FieldPatch<RustfmtColor>
-  edition: FieldPatch<RustfmtEdition>
-  version: FieldPatch<RustfmtVersion>
-  unstable_features: FieldPatch<Bool>
-  required_version: FieldPatch<RustfmtRequiredVersion>
-  ignore: FieldPatch<List<String>>
-}
+type RustfmtConfigPatch = ConfigPatchRecord<RustfmtConfig>
 
 
 fn rustfmt_layer(base: RustfmtConfig, patch: RustfmtConfigPatch) -> RustfmtConfig {
-  RustfmtConfig {
-    indent_style: apply_field_patch(base: base.indent_style, patch: patch.indent_style),
-    tab_spaces: apply_field_patch(base: base.tab_spaces, patch: patch.tab_spaces),
-    hard_tabs: apply_field_patch(base: base.hard_tabs, patch: patch.hard_tabs),
-    max_width: apply_field_patch(base: base.max_width, patch: patch.max_width),
-    comment_width: apply_field_patch(base: base.comment_width, patch: patch.comment_width),
-    chain_width: apply_field_patch(base: base.chain_width, patch: patch.chain_width),
-    single_line_if_else_max_width: apply_field_patch(base: base.single_line_if_else_max_width, patch: patch.single_line_if_else_max_width),
-    single_line_let_else_max_width: apply_field_patch(base: base.single_line_let_else_max_width, patch: patch.single_line_let_else_max_width),
-    fn_call_width: apply_field_patch(base: base.fn_call_width, patch: patch.fn_call_width),
-    attr_fn_like_width: apply_field_patch(base: base.attr_fn_like_width, patch: patch.attr_fn_like_width),
-    struct_lit_width: apply_field_patch(base: base.struct_lit_width, patch: patch.struct_lit_width),
-    struct_variant_width: apply_field_patch(base: base.struct_variant_width, patch: patch.struct_variant_width),
-    array_width: apply_field_patch(base: base.array_width, patch: patch.array_width),
-    short_array_element_width_threshold: apply_field_patch(base: base.short_array_element_width_threshold, patch: patch.short_array_element_width_threshold),
-    brace_style: apply_field_patch(base: base.brace_style, patch: patch.brace_style),
-    control_brace_style: apply_field_patch(base: base.control_brace_style, patch: patch.control_brace_style),
-    where_single_line: apply_field_patch(base: base.where_single_line, patch: patch.where_single_line),
-    trailing_comma: apply_field_patch(base: base.trailing_comma, patch: patch.trailing_comma),
-    trailing_semicolon: apply_field_patch(base: base.trailing_semicolon, patch: patch.trailing_semicolon),
-    match_arm_leading_pipes: apply_field_patch(base: base.match_arm_leading_pipes, patch: patch.match_arm_leading_pipes),
-    match_arm_blocks: apply_field_patch(base: base.match_arm_blocks, patch: patch.match_arm_blocks),
-    match_block_trailing_comma: apply_field_patch(base: base.match_block_trailing_comma, patch: patch.match_block_trailing_comma),
-    imports_granularity: apply_field_patch(base: base.imports_granularity, patch: patch.imports_granularity),
-    group_imports: apply_field_patch(base: base.group_imports, patch: patch.group_imports),
-    imports_layout: apply_field_patch(base: base.imports_layout, patch: patch.imports_layout),
-    imports_indent: apply_field_patch(base: base.imports_indent, patch: patch.imports_indent),
-    reorder_imports: apply_field_patch(base: base.reorder_imports, patch: patch.reorder_imports),
-    merge_imports: apply_field_patch(base: base.merge_imports, patch: patch.merge_imports),
-    fn_params_layout: apply_field_patch(base: base.fn_params_layout, patch: patch.fn_params_layout),
-    fn_args_layout: apply_field_patch(base: base.fn_args_layout, patch: patch.fn_args_layout),
-    fn_single_line: apply_field_patch(base: base.fn_single_line, patch: patch.fn_single_line),
-    inline_attribute_width: apply_field_patch(base: base.inline_attribute_width, patch: patch.inline_attribute_width),
-    reorder_modules: apply_field_patch(base: base.reorder_modules, patch: patch.reorder_modules),
-    reorder_impl_items: apply_field_patch(base: base.reorder_impl_items, patch: patch.reorder_impl_items),
-    newline_style: apply_field_patch(base: base.newline_style, patch: patch.newline_style),
-    blank_lines_upper_bound: apply_field_patch(base: base.blank_lines_upper_bound, patch: patch.blank_lines_upper_bound),
-    blank_lines_lower_bound: apply_field_patch(base: base.blank_lines_lower_bound, patch: patch.blank_lines_lower_bound),
-    wrap_comments: apply_field_patch(base: base.wrap_comments, patch: patch.wrap_comments),
-    normalize_comments: apply_field_patch(base: base.normalize_comments, patch: patch.normalize_comments),
-    normalize_doc_attributes: apply_field_patch(base: base.normalize_doc_attributes, patch: patch.normalize_doc_attributes),
-    format_strings: apply_field_patch(base: base.format_strings, patch: patch.format_strings),
-    format_code_in_doc_comments: apply_field_patch(base: base.format_code_in_doc_comments, patch: patch.format_code_in_doc_comments),
-    doc_comment_code_block_width: apply_field_patch(base: base.doc_comment_code_block_width, patch: patch.doc_comment_code_block_width),
-    format_generated_files: apply_field_patch(base: base.format_generated_files, patch: patch.format_generated_files),
-    hide_parse_errors: apply_field_patch(base: base.hide_parse_errors, patch: patch.hide_parse_errors),
-    merge_derives: apply_field_patch(base: base.merge_derives, patch: patch.merge_derives),
-    use_field_init_shorthand: apply_field_patch(base: base.use_field_init_shorthand, patch: patch.use_field_init_shorthand),
-    use_try_shorthand: apply_field_patch(base: base.use_try_shorthand, patch: patch.use_try_shorthand),
-    force_explicit_abi: apply_field_patch(base: base.force_explicit_abi, patch: patch.force_explicit_abi),
-    format_macro_matchers: apply_field_patch(base: base.format_macro_matchers, patch: patch.format_macro_matchers),
-    format_macro_bodies: apply_field_patch(base: base.format_macro_bodies, patch: patch.format_macro_bodies),
-    binop_separator: apply_field_patch(base: base.binop_separator, patch: patch.binop_separator),
-    use_small_heuristics: apply_field_patch(base: base.use_small_heuristics, patch: patch.use_small_heuristics),
-    overflow_delimited_expr: apply_field_patch(base: base.overflow_delimited_expr, patch: patch.overflow_delimited_expr),
-    remove_nested_parens: apply_field_patch(base: base.remove_nested_parens, patch: patch.remove_nested_parens),
-    combine_control_expr: apply_field_patch(base: base.combine_control_expr, patch: patch.combine_control_expr),
-    hex_literal_case: apply_field_patch(base: base.hex_literal_case, patch: patch.hex_literal_case),
-    enum_discrim_align_threshold: apply_field_patch(base: base.enum_discrim_align_threshold, patch: patch.enum_discrim_align_threshold),
-    struct_field_align_threshold: apply_field_patch(base: base.struct_field_align_threshold, patch: patch.struct_field_align_threshold),
-    spaces_around_ranges: apply_field_patch(base: base.spaces_around_ranges, patch: patch.spaces_around_ranges),
-    space_after_colon: apply_field_patch(base: base.space_after_colon, patch: patch.space_after_colon),
-    space_before_colon: apply_field_patch(base: base.space_before_colon, patch: patch.space_before_colon),
-    empty_item_single_line: apply_field_patch(base: base.empty_item_single_line, patch: patch.empty_item_single_line),
-    struct_lit_single_line: apply_field_patch(base: base.struct_lit_single_line, patch: patch.struct_lit_single_line),
-    condense_wildcard_suffixes: apply_field_patch(base: base.condense_wildcard_suffixes, patch: patch.condense_wildcard_suffixes),
-    force_multiline_blocks: apply_field_patch(base: base.force_multiline_blocks, patch: patch.force_multiline_blocks),
-    error_on_line_overflow: apply_field_patch(base: base.error_on_line_overflow, patch: patch.error_on_line_overflow),
-    error_on_unformatted: apply_field_patch(base: base.error_on_unformatted, patch: patch.error_on_unformatted),
-    skip_children: apply_field_patch(base: base.skip_children, patch: patch.skip_children),
-    skip_macro_invocations: apply_field_patch(base: base.skip_macro_invocations, patch: patch.skip_macro_invocations),
-    type_punctuation_density: apply_field_patch(base: base.type_punctuation_density, patch: patch.type_punctuation_density),
-    disable_all_formatting: apply_field_patch(base: base.disable_all_formatting, patch: patch.disable_all_formatting),
-    color: apply_field_patch(base: base.color, patch: patch.color),
-    edition: apply_field_patch(base: base.edition, patch: patch.edition),
-    version: apply_field_patch(base: base.version, patch: patch.version),
-    unstable_features: apply_field_patch(base: base.unstable_features, patch: patch.unstable_features),
-    required_version: apply_field_patch(base: base.required_version, patch: patch.required_version),
-    ignore: apply_field_patch(base: base.ignore, patch: patch.ignore),
-  }
+  config_patch_layer(base: base, patch: patch)
 }
