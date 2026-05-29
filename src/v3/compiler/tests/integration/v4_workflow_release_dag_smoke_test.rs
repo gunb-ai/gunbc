@@ -162,8 +162,13 @@ fn v4_workflow_release_semantics_modeled() {
     );
     assert!(
         RELEASE_DAG.contains("command: UploadGunbcMatrixArtifact")
-            && RELEASE_DAG.contains("release_matrix_upload_jobs_present"),
+            && RELEASE_DAG.contains("release_matrix_upload_jobs_present")
+            && RELEASE_DAG.contains("release_upload_needs_build_for_target"),
         "{RELEASE_DAG_PATH}: pipeline must model matrix artifact upload drain before publish"
+    );
+    assert!(
+        !RELEASE_DAG.contains("!row.cross"),
+        "{RELEASE_DAG_PATH}: M1(2.7) surface cannot tokenize unary ! on fields; use row.cross == false"
     );
     for target in RELEASE_PUBLISHED_TARGETS {
         assert!(

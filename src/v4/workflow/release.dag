@@ -328,8 +328,8 @@ fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
     && for_all(xs: rows, predicate: fn(row) {
       (row.cross && row.target == "x86_64-unknown-linux-musl")
         || (row.cross && row.target == "aarch64-unknown-linux-musl")
-        || (!row.cross && row.target == "x86_64-apple-darwin")
-        || (!row.cross && row.target == "aarch64-apple-darwin")
+        || (row.cross == false && row.target == "x86_64-apple-darwin")
+        || (row.cross == false && row.target == "aarch64-apple-darwin")
     })
 }
 
@@ -380,9 +380,25 @@ fn release_command_is_upload(c: ReleaseCommand) -> Bool {
   }
 }
 
+fn release_upload_needs_build_for_target(j: ReleaseJob, jobs: List<ReleaseJob>, target: String) -> Bool {
+  release_command_is_upload(c: j.command)
+    && length(xs: j.needs) != 0
+    && for_all(xs: j.needs, predicate: fn(need) {
+      count_where(xs: jobs, predicate: fn(b) {
+        b.id == need && release_command_builds_target(c: b.command, target: target)
+      }) != 0
+    })
+}
+
+fn release_matrix_row_has_upload_drain(jobs: List<ReleaseJob>, row: ReleaseMatrixRow) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    release_upload_needs_build_for_target(j: j, jobs: jobs, target: row.target)
+  }) != 0
+}
+
 fn release_matrix_upload_jobs_present(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
-  length(xs: rows) == count_where(xs: jobs, predicate: fn(j) {
-    release_command_is_upload(c: j.command)
+  for_all(xs: rows, predicate: fn(row) {
+    release_matrix_row_has_upload_drain(jobs: jobs, row: row)
   })
 }
 
