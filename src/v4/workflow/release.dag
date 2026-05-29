@@ -393,6 +393,7 @@ fn release_command_is_build(c: ReleaseCommand) -> Bool {
   }
 }
 
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission (per-job `ReleaseCommand` projection in well-formedness).
 fn release_all_build_targets_in_matrix(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
   for_all(xs: jobs, predicate: fn(j) {
     match j.command {
