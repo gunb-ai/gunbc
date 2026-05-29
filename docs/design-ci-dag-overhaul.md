@@ -322,7 +322,7 @@ Each row = **one PR** = modeled Node(s) authored + legacy path deleted + dashboa
 | Q3 | Branch protection check names | Rename allowed vs stable aliases | **Stable `CiGate.id` → check name map** for migration; document renames |
 | Q4 | Coarse buckets during transition | Keep `v2/v3/v4/workflow_policy` outputs | **Yes until A17**; per-command schedule bitmap behind the scenes |
 | Q5 | M1 probe blocking | Informational vs required | **Required fail-closed** (B01); notices OK, green-on-timeout forbidden |
-| Q6 | `fmt` as separate GHA job | Separate vs merged into pool job | **Merged into pool** at S2 (one rustup) |
+| Q6 | `fmt` as separate GHA job | Separate vs merged into pool job | **Merged into pool** at S2′ (one rustup) |
 | Q7 | v3 on docs-only PRs | Skip entire job vs skip via frontier | **Frontier-only** (no hand `ci_rust` YAML — superseded #3879) |
 | Q8 | External cache backend | None vs sccache vs shared CARGO_HOME | **Defer** (R06); per-runner temp stays until infra decision |
 | Q9 | `#846` zero-filter tests | Move receipt vs fix filter | **Model `IgnoredTestCommand`** + run at correct site (audit §8) |
