@@ -6,7 +6,7 @@
 //! prefix parity. Lives outside `v3-compiler` so the affected job can emit `v3=false` without
 //! compiling the frozen v3 package first (INVARIANTS P3 fail-closed boundary).
 
-/// Structural mirror of `CiComponentAffected` in `src/v4/workflow/ci.dag`.
+pub mod runner_pool;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CiComponentAffected {
     pub v2: bool,
@@ -78,7 +78,6 @@ pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
     path.starts_with(".github/workflows/")
         || path.starts_with("src/v4/workflow/ci")
         || path.starts_with("tools/ci_affected_components")
-        || path.starts_with("src/v3/compiler/src/v4_ci_runner_pool")
         || path.starts_with("scripts/check-workflow-path-regex-inventory")
         || path.starts_with("scripts/workflow-path-regex-forbidden-substrings")
 }
@@ -125,10 +124,7 @@ mod tests {
             ".github/workflows/ci.yml"
         ));
         assert!(ci_changed_path_affects_workflow_policy(
-            "src/v3/compiler/src/v4_ci_runner_pool.rs"
-        ));
-        assert!(ci_changed_path_affects_workflow_policy(
-            "tools/ci_affected_components/src/lib.rs"
+            "tools/ci_affected_components/src/runner_pool.rs"
         ));
     }
 

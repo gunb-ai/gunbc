@@ -35,7 +35,6 @@ const CI_WORKFLOW_POLICY_PREFIXES: &[&str] = &[
     ".github/workflows/",
     "src/v4/workflow/ci",
     "tools/ci_affected_components",
-    "src/v3/compiler/src/v4_ci_runner_pool",
     "scripts/check-workflow-path-regex-inventory",
     "scripts/workflow-path-regex-forbidden-substrings",
 ];
@@ -331,6 +330,14 @@ fn v4_workflow_ci_component_bucket_prefixes_align_rust_mirror() {
 
 #[test]
 fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
+    // ci.dag ↔ Rust mirror parity (P2 consumer — must run in CI via this `--exact` step).
+    assert_ci_dag_rust_prefix_parity(CI_WORKFLOW_POLICY_PREFIXES);
+    assert_ci_dag_rust_prefix_parity(CI_V2_PREFIXES);
+    assert_ci_dag_rust_prefix_parity(CI_V3_PREFIXES);
+    assert_ci_dag_rust_prefix_parity(CI_V4_PREFIXES);
+    assert_ci_dag_rust_exact_path_parity(CI_V2_EXACT_PATHS);
+    assert_ci_dag_rust_exact_path_parity(CI_V4_EXACT_PATHS);
+
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
         module.items.iter().any(|item| matches!(

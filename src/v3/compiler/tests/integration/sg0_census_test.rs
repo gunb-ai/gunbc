@@ -356,7 +356,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_tokenize.rs",
     "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
-    "src/v3/compiler/src/v4_ci_runner_pool.rs",
     "src/v3/compiler/src/v4_hollow_alias_gate.rs",
     "src/v3/compiler/src/wall_clock_ratchet_manifest.rs",
 ];

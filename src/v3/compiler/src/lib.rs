@@ -4101,7 +4101,6 @@ pub mod gunbc_ci;
 pub mod post_emit_verifier;
 pub mod r1c_e_gates;
 pub mod test_runner;
-pub mod v4_ci_runner_pool;
 pub mod wall_clock_ratchet_manifest;
 pub mod serialize {
     use crate::dag::{Behavior, Dag};

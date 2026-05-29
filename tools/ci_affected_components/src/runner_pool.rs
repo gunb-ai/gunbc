@@ -1,4 +1,5 @@
 //! Structural mirror of `SelfHostedRunnerPool` / `m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
+//! Lives outside `v3-compiler` (same crate as affected-set host transport).
 
 /// Structural mirror of `SelfHostedRunnerPool` in `src/v4/workflow/ci.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
