@@ -10,6 +10,7 @@ module v4.extdeps.languages.typescript
 
 import v4.std.grammar {
   grammar_formal_terminal,
+  grammar_formal_terminal_bound,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   Choice,
@@ -28,7 +29,10 @@ import v4.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  grammar_production_to_node
+  derive_grammar_relation_row,
+  derive_grammar_relation_row_node,
+  grammar_production_to_node,
+  grammar_relation_row_to_node
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -154,7 +158,7 @@ type TsConcreteSyntaxToken
 
 // 🟢 grounded.
 type TsGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<TsConcreteSyntaxToken>
 }
@@ -642,7 +646,7 @@ fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
 
 fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   TsGrammarRelationRow {
-    production: ts_grammar_production_mvp1_fn_add(),
+    production: ts_formal_production_mvp1_fn_add(),
     emitted: ts_mvp1_emitted_add_fn_node(),
     tokens: ts_mvp1_concrete_tokens()
   }
@@ -662,23 +666,13 @@ fn ts_relation_token_edges(tokens: List<TsConcreteSyntaxToken>) -> List<Edge> {
 }
 
 fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(
-        name: grammar_relation_field_production,
-        target: grammar_production_to_node(production: row.production)
-      ),
-      ts_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
-      ts_named_edge(
-        name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: ts_relation_token_edges(tokens: row.tokens)
-        }
-      )
-    ]
-  }
+  grammar_relation_row_to_node(
+    row: derive_grammar_relation_row(production: row.production, emitted: row.emitted),
+    tokens: Node {
+      kind: TypeNode { connective: Conj },
+      children: ts_relation_token_edges(tokens: row.tokens)
+    }
+  )
 }
 
 fn ts_mvp1_translation_rules_node() -> Node {
@@ -1148,10 +1142,11 @@ fn ts_wave2a_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ts_token_plus, text: " + "),
       ts_lex_rule(token_class: ts_token_minus, text: " - "),
       ts_lex_rule(token_class: ts_token_star, text: " * "),
-      ts_lex_rule(token_class: ts_token_eq, text: " = "),
+      // `=` keeps leading space only so `= {` tokenizes (= consumes ` =`, `{` matches `{ `).
+      ts_lex_rule(token_class: ts_token_eq, text: " ="),
       ts_lex_rule(token_class: ts_token_pipe, text: " | "),
       ts_string_lit_lex_rule(),
-      ts_lex_rule(token_class: ts_token_lbrace, text: " { "),
+      ts_lex_rule(token_class: ts_token_lbrace, text: "{ "),
       ts_lex_rule(token_class: ts_token_rbrace, text: " }"),
       ts_lex_rule(token_class: ts_token_lparen, text: "("),
       ts_lex_rule(token_class: ts_token_rparen, text: ")"),
@@ -1172,6 +1167,13 @@ fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
 
 
 
+fn ts_formal_grammar_symbol_from_token(token: TsConcreteSyntaxToken) -> FormalGrammarSymbol {
+  match token {
+    TsFixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    TsBoundToken { token_class: c, binding: b } => grammar_formal_terminal_bound(identity: c, binding: b)
+  }
+}
+
 fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -1179,7 +1181,7 @@ fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<Formal
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: ts_concrete_token_class(token: token))
+        item: ts_formal_grammar_symbol_from_token(token: token)
       )
     }
   )
