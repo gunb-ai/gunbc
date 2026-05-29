@@ -475,7 +475,7 @@ data ci_projection_char_offset_neg_edge: Symbol = ci_projection_char_offset_neg_
 data ci_projection_char_offset_quotient_edge: Symbol = ci_projection_char_offset_quotient_edge
 data ci_projection_char_offset_byte_edge: Symbol = ci_projection_char_offset_byte_edge
 data ci_projection_command_variant_edge: Symbol = ci_projection_command_variant_edge
-data ci_cache_bootstrap_hash_pin_projection_fail_closed_tag: Symbol = ci_cache_bootstrap_hash_pin_projection_fail_closed_tag
+data ci_cache_bootstrap_plan_hash_pins_rejected_tag: Symbol = ci_cache_bootstrap_plan_hash_pins_rejected_tag
 data ci_projection_command_produces_edge: Symbol = ci_projection_command_produces_edge
 data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_name_edge
 data ci_projection_command_lenses_edge: Symbol = ci_projection_command_lenses_edge
@@ -521,16 +521,7 @@ fn ci_symbol_list_projection_node(xs: List<Symbol>) -> Node {
 }
 
 
-fn ci_bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Node {
-  match bootstrap_hash_pin_projection_node(pin: pin) {
-    Accepted { value: node, diagnostics: _ } => node
-    Rejected { diagnostics: _ } =>
-      ci_atom(sym: ci_cache_bootstrap_hash_pin_projection_fail_closed_tag)
-  }
-}
-
-
-fn ci_compile_stage_projection_node(stage: CompileStage) -> Node {
+fn ci_compile_stage_projection_node(stage: CompileStage, produces_hash_node: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -538,7 +529,7 @@ fn ci_compile_stage_projection_node(stage: CompileStage) -> Node {
       ci_named_edge(name: ci_projection_compile_stage_compiled_by_edge, target: ci_atom(sym: stage.compiled_by)),
       ci_named_edge(
         name: ci_projection_compile_stage_produces_hash_edge,
-        target: ci_bootstrap_hash_pin_projection_node(pin: stage.produces_hash)
+        target: produces_hash_node
       ),
       ci_named_edge(
         name: ci_projection_compile_stage_consumes_edge,
@@ -549,7 +540,24 @@ fn ci_compile_stage_projection_node(stage: CompileStage) -> Node {
 }
 
 
-fn ci_fixpt_stage_projection_node(fixpt: FixptStage1Stage2) -> Node {
+fn ci_compile_stage_projection_outcome(stage: CompileStage) -> Outcome<Node> {
+  match bootstrap_hash_pin_projection_node(pin: stage.produces_hash) {
+    Accepted { value: produces_hash_node, diagnostics: _ } =>
+      Accepted {
+        value: ci_compile_stage_projection_node(stage: stage, produces_hash_node: produces_hash_node),
+        diagnostics: None
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+
+fn ci_fixpt_stage_projection_node(
+  fixpt: FixptStage1Stage2,
+  left_hash_node: Node,
+  right_hash_node: Node,
+  pinned_hash_node: Node
+) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -557,29 +565,86 @@ fn ci_fixpt_stage_projection_node(fixpt: FixptStage1Stage2) -> Node {
       ci_named_edge(name: ci_projection_fixpt_right_edge, target: ci_atom(sym: fixpt.right)),
       ci_named_edge(
         name: ci_projection_fixpt_left_hash_edge,
-        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.left_hash)
+        target: left_hash_node
       ),
       ci_named_edge(
         name: ci_projection_fixpt_right_hash_edge,
-        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.right_hash)
+        target: right_hash_node
       ),
       ci_named_edge(
         name: ci_projection_fixpt_pinned_hash_edge,
-        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.pinned_hash)
+        target: pinned_hash_node
       )
     ]
   }
 }
 
 
-fn ci_bootstrap_plan_accepted_projection_node(plan: BootstrapPlan) -> Node {
+fn ci_fixpt_stage_projection_outcome(fixpt: FixptStage1Stage2) -> Outcome<Node> {
+  match bootstrap_hash_pin_projection_node(pin: fixpt.left_hash) {
+    Accepted { value: left_hash_node, diagnostics: _ } =>
+      match bootstrap_hash_pin_projection_node(pin: fixpt.right_hash) {
+        Accepted { value: right_hash_node, diagnostics: _ } =>
+          match bootstrap_hash_pin_projection_node(pin: fixpt.pinned_hash) {
+            Accepted { value: pinned_hash_node, diagnostics: _ } =>
+              Accepted {
+                value: ci_fixpt_stage_projection_node(
+                  fixpt: fixpt,
+                  left_hash_node: left_hash_node,
+                  right_hash_node: right_hash_node,
+                  pinned_hash_node: pinned_hash_node
+                ),
+                diagnostics: None
+              }
+            Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+          }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+
+fn ci_bootstrap_plan_accepted_projection_outcome(plan: BootstrapPlan) -> Outcome<Node> {
+  match ci_compile_stage_projection_outcome(stage: plan.seed) {
+    Accepted { value: seed_node, diagnostics: _ } =>
+      match ci_compile_stage_projection_outcome(stage: plan.self0) {
+        Accepted { value: self0_node, diagnostics: _ } =>
+          match ci_compile_stage_projection_outcome(stage: plan.self1) {
+            Accepted { value: self1_node, diagnostics: _ } =>
+              match ci_fixpt_stage_projection_outcome(fixpt: plan.fixpt) {
+                Accepted { value: fixpt_node, diagnostics: _ } =>
+                  Accepted {
+                    value: Node {
+                      kind: TypeNode { connective: Conj },
+                      children: [
+                        ci_named_edge(name: ci_projection_bootstrap_plan_seed_edge, target: seed_node),
+                        ci_named_edge(name: ci_projection_bootstrap_plan_self0_edge, target: self0_node),
+                        ci_named_edge(name: ci_projection_bootstrap_plan_self1_edge, target: self1_node),
+                        ci_named_edge(name: ci_projection_bootstrap_plan_fixpt_edge, target: fixpt_node)
+                      ]
+                    },
+                    diagnostics: None
+                  }
+                Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+              }
+            Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+          }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+
+fn ci_bootstrap_plan_hash_pins_rejected_projection_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      ci_named_edge(name: ci_projection_bootstrap_plan_seed_edge, target: ci_compile_stage_projection_node(stage: plan.seed)),
-      ci_named_edge(name: ci_projection_bootstrap_plan_self0_edge, target: ci_compile_stage_projection_node(stage: plan.self0)),
-      ci_named_edge(name: ci_projection_bootstrap_plan_self1_edge, target: ci_compile_stage_projection_node(stage: plan.self1)),
-      ci_named_edge(name: ci_projection_bootstrap_plan_fixpt_edge, target: ci_fixpt_stage_projection_node(fixpt: plan.fixpt))
+      ci_named_edge(
+        name: ci_projection_bootstrap_plan_outcome_edge,
+        target: ci_atom(sym: ci_cache_bootstrap_plan_hash_pins_rejected_tag)
+      )
     ]
   }
 }
@@ -588,7 +653,10 @@ fn ci_bootstrap_plan_accepted_projection_node(plan: BootstrapPlan) -> Node {
 fn ci_bootstrap_plan_projection_node() -> Node {
   match bootstrap_plan {
     Accepted { value: plan, diagnostics: _ } =>
-      ci_bootstrap_plan_accepted_projection_node(plan: plan)
+      match ci_bootstrap_plan_accepted_projection_outcome(plan: plan) {
+        Accepted { value: node, diagnostics: _ } => node
+        Rejected { diagnostics: _ } => ci_bootstrap_plan_hash_pins_rejected_projection_node()
+      }
     Rejected { diagnostics: _ } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -915,9 +983,17 @@ fn ci_lens_id_cache_digest(lens: LensIdV0) -> Hash {
 
 
 // IRT-4: bootstrap_plan is the authority ci_command_authority_ok uses for BootstrapStageCompile.
-// 🟢 derived-operation — feature:T22-EVAL-PASS-RECEIPT — plan-bound: reads module bootstrap_plan at cache boundary.
-fn ci_bootstrap_plan_cache_hash() -> Hash {
-  content_hash(n: ci_bootstrap_plan_projection_node())
+// 🟢 derived-operation — feature:T22-EVAL-PASS-RECEIPT — plan-bound: hashes only Accepted plan projections (no pin-level fabricated Node).
+fn ci_bootstrap_plan_cache_hash() -> Outcome<Hash> {
+  match bootstrap_plan {
+    Accepted { value: plan, diagnostics: _ } =>
+      match ci_bootstrap_plan_accepted_projection_outcome(plan: plan) {
+        Accepted { value: node, diagnostics: _ } =>
+          Accepted { value: content_hash(n: node), diagnostics: None }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
 }
 
 
@@ -1007,12 +1083,16 @@ fn workflow_pipeline_plan_bound_pass_receipt(
 ) -> Outcome<WorkflowPipelinePlanBoundPassReceipt> {
   match workflow_pipeline_pass_gate(run: run, at: at) {
     Pass =>
-      Accepted {
-        value: WorkflowPipelinePlanBoundPassReceipt {
-          run: run,
-          plan_hash: ci_bootstrap_plan_cache_hash()
-        },
-        diagnostics: None
+      match ci_bootstrap_plan_cache_hash() {
+        Accepted { value: plan_hash, diagnostics: _ } =>
+          Accepted {
+            value: WorkflowPipelinePlanBoundPassReceipt {
+              run: run,
+              plan_hash: plan_hash
+            },
+            diagnostics: None
+          }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     Fail { actual: _ } =>
       Rejected { diagnostics: workflow_pipeline_receipt_failure_diagnostics(run: run) }

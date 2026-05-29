@@ -351,7 +351,7 @@ fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
 }
 
 
-data bootstrap_plan_accepted_hash_pins_projectable_ok: Bool = bootstrap_plan_accepted_hash_pins_projectable_ok()
+data bootstrap_plan_accepted_hash_pins_projectable_witness: Bool = bootstrap_plan_accepted_hash_pins_projectable_ok()
 
 // Phase-1 closure: Node-projectable projection facts (B1 content_hash). BootstrapHashPin.digest
 // (Hash), TargetModel non-bundle fields, and V4EvaluatorRuntime fields beyond runtime_identity
