@@ -30,57 +30,171 @@ const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 
-/// Single-authority workflow_policy path buckets (`ci.dag` predicates ↔ Rust host mirror).
-const CI_WORKFLOW_POLICY_PREFIXES: &[&str] = &[
-    ".github/workflows/",
-    "src/v4/workflow/ci",
-    "tools/ci_affected_components",
-    "scripts/check-workflow-path-regex-inventory",
-    "scripts/workflow-path-regex-forbidden-substrings",
+const CI_CHANGED_PATH_AFFECTS_FNS: &[&str] = &[
+    "ci_changed_path_affects_v2",
+    "ci_changed_path_affects_v3",
+    "ci_changed_path_affects_v4",
+    "ci_changed_path_affects_workflow_policy",
 ];
 
-const CI_V2_PREFIXES: &[&str] = &["src/v2/"];
-const CI_V2_EXACT_PATHS: &[&str] = &["Cargo.toml", "Cargo.lock"];
-const CI_V3_PREFIXES: &[&str] = &["src/v3/", "dsl/"];
-const CI_V4_PREFIXES: &[&str] = &[
-    "src/v4/",
-    "fixtures/v4-mvp1/",
-    "scripts/v4-mvp1",
-    "scripts/v4-m1",
-    "scripts/v4-testclaim-",
-    "dsl/std/",
-];
-const CI_V4_EXACT_PATHS: &[&str] = &[
-    "Cargo.toml",
-    "Cargo.lock",
-    "scripts/v4-mvp1-e2e-gate.sh",
-    "scripts/v4-m1-rust-emit-probe.sh",
+struct CiAffectedFixture {
+    path: &'static str,
+    v2: bool,
+    v3: bool,
+    v4: bool,
+    workflow_policy: bool,
+}
+
+/// Behavioral fixtures aligned with `src/v4/test/claim/workflow/ci_component_affected.dag`.
+const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
+    CiAffectedFixture {
+        path: "src/v2/stage0/Cargo.toml",
+        v2: true,
+        v3: false,
+        v4: false,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "dsl/gunbc/ci.dag",
+        v2: false,
+        v3: true,
+        v4: false,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "dsl/std/node.dag",
+        v2: false,
+        v3: true,
+        v4: true,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "scripts/v4-m1-rust-emit-probe.sh",
+        v2: false,
+        v3: false,
+        v4: true,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "src/v4/workflow/ci.dag",
+        v2: false,
+        v3: false,
+        v4: true,
+        workflow_policy: true,
+    },
+    CiAffectedFixture {
+        path: "Cargo.lock",
+        v2: true,
+        v3: false,
+        v4: true,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "docs/README.md",
+        v2: false,
+        v3: false,
+        v4: false,
+        workflow_policy: false,
+    },
 ];
 
-fn assert_ci_dag_rust_prefix_parity(prefixes: &[&str]) {
-    for prefix in prefixes {
-        assert!(
-            CI_DAG.contains(&format!("prefix: \"{prefix}\"")),
-            "{CI_DAG_PATH}: authority must declare prefix `{prefix}`"
-        );
-        assert!(
-            CI_AFFECTED_COMPONENTS_LIB.contains(&format!("\"{prefix}\"")),
-            "ci_affected_components lib mirror must declare prefix `{prefix}`"
+fn extract_fn_body<'a>(source: &'a str, fn_name: &str) -> &'a str {
+    let marker = format!("fn {fn_name}");
+    let start = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing fn `{fn_name}`"));
+    let rest = &source[start + marker.len()..];
+    let end = rest.find("\nfn ").unwrap_or(rest.len());
+    &source[start..start + marker.len() + end]
+}
+
+fn dag_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        if let Some(idx) = line.find("prefix: \"") {
+            let rest = &line[idx + 9..];
+            if let Some(end) = rest.find('"') {
+                out.insert(rest[..end].to_string());
+            }
+        }
+    }
+    out
+}
+
+fn rust_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        if let Some(idx) = line.find(".starts_with(\"") {
+            let rest = &line[idx + 15..];
+            if let Some(end) = rest.find('"') {
+                out.insert(rest[..end].to_string());
+            }
+        }
+    }
+    out
+}
+
+fn dag_exact_path_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        if let Some(idx) = line.find("changed == \"") {
+            let rest = &line[idx + 12..];
+            if let Some(end) = rest.find('"') {
+                out.insert(rest[..end].to_string());
+            }
+        }
+    }
+    out
+}
+
+fn rust_exact_path_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        if let Some(idx) = line.find("path == \"") {
+            let rest = &line[idx + 9..];
+            if let Some(end) = rest.find('"') {
+                out.insert(rest[..end].to_string());
+            }
+        }
+    }
+    out
+}
+
+fn assert_ci_dag_rust_bucket_parity(fn_name: &str) {
+    let dag_body = extract_fn_body(CI_DAG, fn_name);
+    let rust_body = extract_fn_body(CI_AFFECTED_COMPONENTS_LIB, fn_name);
+    assert_eq!(
+        dag_prefix_literals_in_fn(dag_body),
+        rust_prefix_literals_in_fn(rust_body),
+        "{fn_name}: prefix literal sets must match between {CI_DAG_PATH} and ci_affected_components lib"
+    );
+    assert_eq!(
+        dag_exact_path_literals_in_fn(dag_body),
+        rust_exact_path_literals_in_fn(rust_body),
+        "{fn_name}: exact-path literal sets must match between {CI_DAG_PATH} and ci_affected_components lib"
+    );
+}
+
+fn assert_ci_dag_rust_mirror_behavioral_parity() {
+    use ci_affected_components::ci_component_affected_from_changed_paths;
+    for fixture in CI_AFFECTED_BEHAVIORAL_FIXTURES {
+        let flags = ci_component_affected_from_changed_paths([fixture.path]);
+        assert_eq!(flags.v2, fixture.v2, "path `{}`: v2 flag", fixture.path);
+        assert_eq!(flags.v3, fixture.v3, "path `{}`: v3 flag", fixture.path);
+        assert_eq!(flags.v4, fixture.v4, "path `{}`: v4 flag", fixture.path);
+        assert_eq!(
+            flags.workflow_policy, fixture.workflow_policy,
+            "path `{}`: workflow_policy flag",
+            fixture.path
         );
     }
 }
 
-fn assert_ci_dag_rust_exact_path_parity(paths: &[&str]) {
-    for path in paths {
-        assert!(
-            CI_DAG.contains(&format!("changed == \"{path}\"")),
-            "{CI_DAG_PATH}: authority must declare exact path `{path}`"
-        );
-        assert!(
-            CI_AFFECTED_COMPONENTS_LIB.contains(&format!("\"{path}\"")),
-            "ci_affected_components lib mirror must declare exact path `{path}`"
-        );
+fn assert_ci_dag_rust_mirror_full_parity() {
+    for fn_name in CI_CHANGED_PATH_AFFECTS_FNS {
+        assert_ci_dag_rust_bucket_parity(fn_name);
     }
+    assert_ci_dag_rust_mirror_behavioral_parity();
 }
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
@@ -316,27 +430,24 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
 
 #[test]
 fn v4_workflow_ci_workflow_policy_prefixes_align_rust_mirror() {
-    assert_ci_dag_rust_prefix_parity(CI_WORKFLOW_POLICY_PREFIXES);
+    assert_ci_dag_rust_bucket_parity("ci_changed_path_affects_workflow_policy");
 }
 
 #[test]
 fn v4_workflow_ci_component_bucket_prefixes_align_rust_mirror() {
-    assert_ci_dag_rust_prefix_parity(CI_V2_PREFIXES);
-    assert_ci_dag_rust_prefix_parity(CI_V3_PREFIXES);
-    assert_ci_dag_rust_prefix_parity(CI_V4_PREFIXES);
-    assert_ci_dag_rust_exact_path_parity(CI_V2_EXACT_PATHS);
-    assert_ci_dag_rust_exact_path_parity(CI_V4_EXACT_PATHS);
+    for fn_name in [
+        "ci_changed_path_affects_v2",
+        "ci_changed_path_affects_v3",
+        "ci_changed_path_affects_v4",
+    ] {
+        assert_ci_dag_rust_bucket_parity(fn_name);
+    }
 }
 
 #[test]
 fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
-    // ci.dag ↔ Rust mirror parity (P2 consumer — must run in CI via this `--exact` step).
-    assert_ci_dag_rust_prefix_parity(CI_WORKFLOW_POLICY_PREFIXES);
-    assert_ci_dag_rust_prefix_parity(CI_V2_PREFIXES);
-    assert_ci_dag_rust_prefix_parity(CI_V3_PREFIXES);
-    assert_ci_dag_rust_prefix_parity(CI_V4_PREFIXES);
-    assert_ci_dag_rust_exact_path_parity(CI_V2_EXACT_PATHS);
-    assert_ci_dag_rust_exact_path_parity(CI_V4_EXACT_PATHS);
+    // ci.dag ↔ Rust mirror parity (P2 consumer — set equality + behavioral fixtures; CI `--exact` step).
+    assert_ci_dag_rust_mirror_full_parity();
 
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
