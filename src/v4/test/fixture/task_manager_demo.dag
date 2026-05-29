@@ -219,22 +219,53 @@ data task_manager_deployment: DeploymentUnit = DeploymentUnit {
 
 // --- Shape-B SQL DDL projection (T-16-A+) ---------------------------------
 // Derives `SqlCreateTable` for the `Task` record from sql.dag carriers.
-// Column types are checked against the domain model; unmapped scalars fail
-// closed via `task_manager_reject_unmapped_domain_scalar`. OpenAPI wiring
-// is deferred to T-16-C (calm-crane-523, post-#3869).
+// `TaskManagerTaskField` is the single authority for which Task record
+// fields participate in SQL projection; column spellings and scalar kinds
+// dispatch only through that coproduct. OpenAPI wiring is deferred to
+// T-16-C (calm-crane-523, post-#3869).
 
 data task_manager_unmapped_domain_scalar: Symbol = task_manager_unmapped_domain_scalar
 
 data tasks_table_spelling: String = "tasks"
-data task_id_column_spelling: String = "id"
-data task_title_column_spelling: String = "title"
-data task_status_column_spelling: String = "status"
 
-// 🟢 coproduct dissolution — T-16-A+ Task scalar SQL projection (closed over Task { id, title, status }).
+// 🟢 coproduct dissolution — T-16-A+ Task record field SQL authority (bijection with Task { id, title, status }).
+type TaskManagerTaskField
+  = TaskFieldId
+  | TaskFieldTitle
+  | TaskFieldStatus
+
+// 🟢 coproduct dissolution — T-16-A+ Task scalar SQL projection (closed over Task field scalar kinds).
 type TaskManagerSqlProjectableScalar
   = ProjectTaskId
   | ProjectString
   | ProjectTaskStatus
+
+// 🟢 coproduct dissolution — T-16-A+ SQL scalar dispatch (projectable vs fail-closed unmapped).
+type TaskManagerSqlScalarDispatch
+  = MappedProjectable { scalar: TaskManagerSqlProjectableScalar }
+  | UnmappedDomainScalar { anchor: Node }
+
+data task_manager_task_field_catalog: List<TaskManagerTaskField> = [
+  TaskFieldId,
+  TaskFieldTitle,
+  TaskFieldStatus
+]
+
+fn task_manager_task_field_column_spelling(field: TaskManagerTaskField) -> String {
+  match field {
+    TaskFieldId => "id"
+    TaskFieldTitle => "title"
+    TaskFieldStatus => "status"
+  }
+}
+
+fn task_manager_task_field_scalar(field: TaskManagerTaskField) -> TaskManagerSqlProjectableScalar {
+  match field {
+    TaskFieldId => ProjectTaskId
+    TaskFieldTitle => ProjectString
+    TaskFieldStatus => ProjectTaskStatus
+  }
+}
 
 fn task_manager_not_null_column_constraints() -> SqlColumnConstraints {
   SqlColumnConstraints { not_null: true }
@@ -266,6 +297,27 @@ fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<SqlDataType
   })
 }
 
+fn task_manager_sql_data_type_for_scalar(
+  dispatch: TaskManagerSqlScalarDispatch
+) -> Outcome<SqlDataType> {
+  match dispatch {
+    MappedProjectable { scalar } =>
+      task_manager_projectable_scalar_to_sql_data_type(scalar: scalar)
+    UnmappedDomainScalar { anchor } =>
+      task_manager_reject_unmapped_domain_scalar(node: anchor)
+  }
+}
+
+fn task_manager_task_field_to_sql_data_type(
+  field: TaskManagerTaskField
+) -> Outcome<SqlDataType> {
+  task_manager_sql_data_type_for_scalar(
+    dispatch: MappedProjectable {
+      scalar: task_manager_task_field_scalar(field: field)
+    }
+  )
+}
+
 fn task_manager_sql_column_definition(
   name: String,
   data_type: SqlDataType
@@ -278,34 +330,37 @@ fn task_manager_sql_column_definition(
   }
 }
 
+fn task_manager_task_field_to_sql_column_definition(
+  field: TaskManagerTaskField
+) -> Outcome<SqlColumnDefinition> {
+  bind_outcome(
+    o: task_manager_task_field_to_sql_data_type(field: field),
+    f: fn(data_type) {
+      outcome_accepted(value: task_manager_sql_column_definition(
+        name: task_manager_task_field_column_spelling(field: field),
+        data_type: data_type
+      ))
+    }
+  )
+}
+
 fn task_to_sql_table_definition() -> Outcome<SqlTableDefinition> {
   bind_outcome(
-    o: task_manager_projectable_scalar_to_sql_data_type(scalar: ProjectTaskId),
-    f: fn(id_type) {
+    o: task_manager_task_field_to_sql_column_definition(field: TaskFieldId),
+    f: fn(id_col) {
       bind_outcome(
-        o: task_manager_projectable_scalar_to_sql_data_type(scalar: ProjectString),
-        f: fn(title_type) {
+        o: task_manager_task_field_to_sql_column_definition(field: TaskFieldTitle),
+        f: fn(title_col) {
           bind_outcome(
-            o: task_manager_projectable_scalar_to_sql_data_type(scalar: ProjectTaskStatus),
-            f: fn(status_type) {
+            o: task_manager_task_field_to_sql_column_definition(field: TaskFieldStatus),
+            f: fn(status_col) {
               outcome_accepted(value: SqlTableDefinition {
                 name: task_manager_sql_identifier(name: tasks_table_spelling),
-                columns: [
-                  task_manager_sql_column_definition(
-                    name: task_id_column_spelling,
-                    data_type: id_type
-                  ),
-                  task_manager_sql_column_definition(
-                    name: task_title_column_spelling,
-                    data_type: title_type
-                  ),
-                  task_manager_sql_column_definition(
-                    name: task_status_column_spelling,
-                    data_type: status_type
-                  )
-                ],
+                columns: [id_col, title_col, status_col],
                 primary_key: optional_present(value: [
-                  task_manager_sql_identifier(name: task_id_column_spelling)
+                  task_manager_sql_identifier(
+                    name: task_manager_task_field_column_spelling(field: TaskFieldId)
+                  )
                 ]),
                 table_constraints: []
               })
