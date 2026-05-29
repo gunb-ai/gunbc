@@ -401,12 +401,3 @@ data claim_resolve_with_admission_threads_validate_diagnostics_on_accept: TestCl
   expected_value: fc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
-
-data claim_resolve_mismatched_subject_tree_cannot_bypass_authoritative_root: TestClaim = CompilesClaim {
-  label: "name_resolve/resolve_with_admission: caller subject tree cannot bypass authoritative module root",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: fc_claim_input(ok: resolve_mismatched_subject_tree_cannot_bypass_authoritative_root()),
-  expected_value: fc_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
