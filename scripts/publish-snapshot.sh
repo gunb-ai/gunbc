@@ -144,8 +144,14 @@ done
 # public history is a single root commit per snapshot — no internal SHAs leak.
 git checkout --orphan "$SNAPSHOT_BRANCH"
 git add -A
+# Commit message must not embed the internal SHA — that would leak the
+# private repo's identity into the public history (Boundary Discipline).
+# A UTC date stamp is enough to identify the snapshot externally; the
+# internal correspondence is recorded only in the publishing operator's
+# own records, never in the published commit.
+SNAPSHOT_LABEL="$(date -u +%Y-%m-%d)"
 git -c user.name="gunbc-release" -c user.email="release@gunb.ai" \
-    commit -m "snapshot from internal@${SNAPSHOT_SHA}"
+    commit -m "snapshot ${SNAPSHOT_LABEL}"
 
 popd >/dev/null
 
