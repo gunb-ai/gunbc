@@ -117,7 +117,9 @@ fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
             && OPENAPI_DAG.contains("fn openapi_operation_wire_contract_facts(")
             && OPENAPI_DAG.contains("-> Outcome<OpenApiOperationWireContractFacts>")
             && OPENAPI_DAG.contains("fn openapi_operation_wire_contract(")
+            && OPENAPI_DAG.contains("bind: BindRef")
+            && OPENAPI_DAG.contains("bind: openapi_http_coordination_bind(bind: bind)")
             && OPENAPI_DAG.contains("facts: facts.coordination"),
-        "OpenApiOperationWireContractFacts must compose coordination WireContract via Outcome-guarded facts.coordination"
+        "OpenApi operation WireContract must pair Http-derived facts with Http CoordinationBind only (BindRef in, not open CoordinationBind)"
     );
 }

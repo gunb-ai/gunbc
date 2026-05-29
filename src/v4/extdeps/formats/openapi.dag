@@ -653,11 +653,11 @@ fn openapi_operation_wire_contract_facts(
 
 fn openapi_operation_wire_contract(
   facts: OpenApiOperationWireContractFacts,
-  bind: CoordinationBind
+  bind: BindRef
 ) -> WireContract {
   WireContract {
     facts: facts.coordination,
-    bind: bind
+    bind: openapi_http_coordination_bind(bind: bind)
   }
 }
 
