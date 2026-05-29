@@ -307,6 +307,8 @@ mod v4_lens_testgen_dag_smoke_test;
 mod v4_p9_llvm_instruction_cost_single_owner_test;
 #[path = "integration/v4_std_model_core_dag_smoke_test.rs"]
 mod v4_std_model_core_dag_smoke_test;
+#[path = "integration/v4_t15_self_host_fixed_point_harness_test.rs"]
+mod v4_t15_self_host_fixed_point_harness_test;
 #[path = "integration/v4_test_bootstrap_infra_closeout_test.rs"]
 mod v4_test_bootstrap_infra_closeout_test;
 #[path = "integration/v4_workflow_ci_runner_dag_smoke_test.rs"]
