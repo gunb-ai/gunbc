@@ -183,8 +183,9 @@ fn v4_workflow_release_target_authority_single_writer() {
         "{INSTALL_SH_PATH}: must delegate target detection to shell authority"
     );
     assert!(
-        INSTALL_SH.contains("GUNBC_RELEASE_TARGETS_REF"),
-        "{INSTALL_SH_PATH}: pinned GUNBC_VERSION must fetch release-target-triples from same tag"
+        INSTALL_SH.contains("releases/download/${VERSION}/")
+            && INSTALL_SH.contains("releases/latest/download/"),
+        "{INSTALL_SH_PATH}: target authority curl fallback must use same GH Release channel as binary"
     );
     assert!(
         !INSTALL_SH.contains("printf '%s\\n' 'x86_64-unknown-linux-musl'"),
@@ -267,6 +268,10 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
         RELEASE_YML
             .contains("scripts/release-target-triples.sh dist/scripts/release-target-triples.sh"),
         "{RELEASE_YML_PATH}: publish bundle must ship target-authority script beside install.sh"
+    );
+    assert!(
+        RELEASE_YML.contains("scripts/release-target-triples.sh dist/release-target-triples.sh"),
+        "{RELEASE_YML_PATH}: publish bundle must ship flat target-authority asset for releases/latest/download"
     );
     assert!(
         RELEASE_YML.contains("dist/*") && RELEASE_YML.contains("dist/scripts/*"),

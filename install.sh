@@ -12,8 +12,8 @@
 #   GUNBC_INSTALL_REPO   default gunb-ai/gunbc
 #   GUNBC_INSTALL_DIR    default /usr/local/bin
 #   GUNBC_VERSION        tag (e.g. v0.1.0) or empty for latest release
-#   GUNBC_RELEASE_TARGETS_REF    git ref for release-target-triples.sh (default: GUNBC_VERSION or main)
-#   GUNBC_RELEASE_TARGETS_URL  override raw URL for release-target-triples.sh
+#   GUNBC_RELEASE_TARGETS_URL  override URL for release-target-triples.sh (default: same GH
+#                              Release tag/latest channel as the gunbc-{triple} binary)
 
 set -eu
 
@@ -33,6 +33,12 @@ load_release_target_authority() {
       GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
       return 0
     fi
+    if [ -n "$_install_dir" ] && [ -f "$_install_dir/release-target-triples.sh" ]; then
+      # shellcheck source=release-target-triples.sh
+      . "$_install_dir/release-target-triples.sh"
+      GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+      return 0
+    fi
   fi
   if [ -f "./scripts/release-target-triples.sh" ]; then
     # shellcheck source=scripts/release-target-triples.sh
@@ -42,8 +48,14 @@ load_release_target_authority() {
   fi
   _authority=$(mktemp "${TMPDIR:-/tmp}/gunbc-release-targets.XXXXXX")
   trap 'rm -f "$_authority"' EXIT INT HUP TERM
-  _targets_ref="${GUNBC_RELEASE_TARGETS_REF:-${VERSION:-main}}"
-  _targets_url="${GUNBC_RELEASE_TARGETS_URL:-https://raw.githubusercontent.com/${REPO}/${_targets_ref}/scripts/release-target-triples.sh}"
+  _targets_asset="release-target-triples.sh"
+  if [ -n "${GUNBC_RELEASE_TARGETS_URL:-}" ]; then
+    _targets_url="${GUNBC_RELEASE_TARGETS_URL}"
+  elif [ -n "$VERSION" ]; then
+    _targets_url="https://github.com/${REPO}/releases/download/${VERSION}/${_targets_asset}"
+  else
+    _targets_url="https://github.com/${REPO}/releases/latest/download/${_targets_asset}"
+  fi
   curl -fsSL "$_targets_url" -o "$_authority"
   # shellcheck source=/dev/null
   . "$_authority"
