@@ -230,7 +230,7 @@ data task_id_column_spelling: String = "id"
 data task_title_column_spelling: String = "title"
 data task_status_column_spelling: String = "status"
 
-// Closed set of `Task` field scalars that admit a SQL storage type.
+// 🟢 coproduct dissolution — T-16-A+ Task scalar SQL projection (closed over Task { id, title, status }).
 type TaskManagerSqlProjectableScalar
   = ProjectTaskId
   | ProjectString
