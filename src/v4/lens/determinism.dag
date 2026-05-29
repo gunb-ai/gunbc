@@ -30,7 +30,6 @@ import v4.std.determinism {
   determinism_registry_from_facts,
   determinism_registry_lookup
 }
-// tree: reserved for PR-4 signature→body resolution; claims pass body explicitly today.
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
@@ -40,9 +39,7 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
-  Bind,
   ComputationNode,
-  Connective,
   Edge,
   Named,
   Node,
