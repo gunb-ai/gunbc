@@ -5,8 +5,8 @@
 //
 // Authority (consumer landed): v3 `post_emit_verifier` +
 // `emit_verification_gates_test` + `r1c_e_gates::check_program_fixtures_post_emit_clean_all_targets`.
-// Dissolve-on-arrival: v4 modeled runner evaluates this obligation via T-22 eval
-// without referencing the v3 integration harness.
+// Dissolve-on-arrival (P5): delete when T-38 closes the manual-claim structural bridge so
+// multi-target post-emit obligations execute as `.dag` TestClaim rows without the v3 host harness.
 
 module v4.test.claim.manual.multi_target_emit_verification_gate
 
@@ -33,9 +33,7 @@ data emit_verification_gate_classification: TestClassification = {
   layer: Boundary
 }
 
-// Receipt row: the obligation is modeled as a CompilesClaim over a minimal
-// program node — full multi-target verifier execution remains on the v3 harness
-// until T-38 closes the structural bridge for manual claims.
+// Receipt row: CompilesClaim over a minimal program node until T-38 (above) retires this scaffold.
 data claim_emit_verification_gate_obligation_modeled: TestClaim = CompilesClaim {
   label: "multi-target emit verification gate obligation is modeled (v3 harness is authority until T-38)"
   anchor: manual_claim_anchor(anchor: emit_verification_gate_anchor)
