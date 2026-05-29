@@ -1,0 +1,183 @@
+// src/v4/test/claim/name_resolve/admission_fail_closed.dag
+// Scope: TestClaim corpus — fail-closed admission receipts for duplicate module roots
+//         and missing import targets (T-QN-1 Change 2 / catalog dissolution follow-on).
+// Status: behavior receipts; execution deferred to T-22 runner bridge.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
+// Anchor: INVARIANTS P3 (Fail-Closed) — duplicate/missing module names must reject.
+
+module v4.test.claim.name_resolve.admission_fail_closed
+
+
+import v4.compiler.name_resolve {
+  Admission,
+  AdmissionAccepted,
+  AdmissionRejected,
+  AdmissionState,
+  Import,
+  ImportVisible,
+  ResolutionSubject,
+  admit_import_entry,
+  resolve_with_admission
+}
+import v4.extdeps.languages.dag {
+  dag_c3_surface_sugar_service,
+  dag_grammar_atom,
+  dag_language_model_surface_empty_prelude,
+  dag_named_edge,
+  dag_surface_module_header,
+  dag_surface_module_header_qualified_name
+}
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import v4.std.collection { empty_map }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v4.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+
+data fc_dup_seg: Symbol = fc_dup_seg
+data fc_found_seg: Symbol = fc_found_seg
+data fc_missing_seg: Symbol = fc_missing_seg
+data fc_export_sym: Symbol = fc_export_sym
+data fc_pass_sym: Symbol = fc_pass_sym
+data fc_fail_sym: Symbol = fc_fail_sym
+
+
+fn fc_pass_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: fc_pass_sym } }, children: [] }
+}
+fn fc_fail_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: fc_fail_sym } }, children: [] }
+}
+fn fc_claim_input(ok: Bool) -> Node {
+  if ok { fc_pass_node() } else { fc_fail_node() }
+}
+
+
+fn fc_qn_node(seg: Symbol) -> Node {
+  fold_list_node(
+    xs: Cons { head: seg, tail: Empty },
+    item_node: fn(sym) {
+      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [] }
+    }
+  )
+}
+
+
+fn fc_module_root(seg: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: dag_surface_module_header,
+        target: dag_grammar_atom(id: dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: dag_surface_module_header_qualified_name,
+        target: fc_qn_node(seg: seg)
+      ),
+      Edge {
+        label: Named { name: fc_export_sym },
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: dag_c3_surface_sugar_service }
+          },
+          children: []
+        }
+      }
+    ]
+  }
+}
+
+
+fn fc_qn(seg: Symbol) -> QualifiedName {
+  QnCons { head: seg, tail: QnEmpty }
+}
+
+
+fn fc_subject_tree() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: fc_export_sym } },
+    children: []
+  }
+}
+
+
+fn fc_duplicate_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: fc_module_root(seg: fc_dup_seg),
+    tail: Cons { head: fc_module_root(seg: fc_dup_seg), tail: Empty }
+  }
+}
+
+
+fn fc_single_found_root() -> FreeMonoid<Node> {
+  Cons { head: fc_module_root(seg: fc_found_seg), tail: Empty }
+}
+
+
+fn fc_import_missing_target() -> Import {
+  Import { target: fc_qn(seg: fc_missing_seg), visibility: ImportVisible }
+}
+
+
+fn fc_initial_admission_state() -> AdmissionState {
+  AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
+}
+
+
+fn admit_import_missing_module_is_rejected() -> Bool {
+  match admit_import_entry(
+    roots: fc_single_found_root(),
+    import_edge: fc_import_missing_target(),
+    state: fc_initial_admission_state()
+  ) {
+    AdmissionAccepted { bindings: _, origins: _ } => false
+    AdmissionRejected { diagnostics: _ } => true
+  }
+}
+
+
+fn resolve_duplicate_module_roots_is_rejected() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: fc_duplicate_roots(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: QnEmpty,
+        tree: fc_subject_tree()
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+
+data claim_admit_import_missing_module_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/admit_import_entry: missing import target is rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: admit_import_missing_module_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_resolve_duplicate_module_roots_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/validate_module_roots: duplicate projected module names are rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_duplicate_module_roots_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
