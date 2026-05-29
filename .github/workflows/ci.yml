@@ -35,30 +35,43 @@ env:
 # or job-level `env:` blocks, so a shell step is the canonical mechanism.)
 jobs:
   fmt:
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.ci_fmt == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    # Job always runs so branch-protection required check `fmt` is never
+    # skipped (skipped required contexts block merges). Rustfmt runs only when
+    # `ci_fmt` or push-to-main; otherwise a cheap stub step succeeds.
+    if: github.event.pull_request.draft != true
     needs: [affected]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     steps:
+    - name: cargo fmt skipped (no rust paths in diff)
+      if: needs.affected.outputs.ci_fmt != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+      run: |
+        echo "::notice::fmt: no .rs / Cargo.toml / rust-toolchain paths in diff; required check satisfied without rustfmt."
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      if: needs.affected.outputs.ci_fmt == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
     - name: Clear inherited GitHub auth header (shared runner HOME)
+      if: needs.affected.outputs.ci_fmt == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
+      if: needs.affected.outputs.ci_fmt == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
     - name: Setup Rust
+      if: needs.affected.outputs.ci_fmt == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
         components: rustfmt
         cache: false
         rustflags: ''
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      if: needs.affected.outputs.ci_fmt == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
+      if: needs.affected.outputs.ci_fmt == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo fmt --all --check
   # Affected-set detection — drives gating of v2/v3 jobs (frozen components
   # only run their heavy CI when their source is touched, or on push-to-main

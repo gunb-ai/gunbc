@@ -76,6 +76,19 @@ fabrication_affected() {
   changed_matches '^scripts/check-fabrication-sentinels\.sh$'
 }
 
+# .rs outside docs/, or workspace toolchain manifests (consumer: fmt job).
+fmt_affected() {
+  local f
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    [[ "$f" == docs/* ]] && continue
+    case "$f" in
+      *.rs) return 0 ;;
+    esac
+  done <<<"$changed"
+  changed_matches '^rust-toolchain\.toml$|Cargo\.(toml|lock)$'
+}
+
 log_bucket() {
   local val="$1" yes_msg="$2" no_msg="$3"
   if [ "$val" = true ]; then
@@ -150,6 +163,7 @@ log_bucket "$ci_fabrication_state" \
   "ci_fabrication bucket: yes" \
   "ci_fabrication bucket: no (skipping fabrication sentinel ratchet)"
 
+# Keep in sync with RELEASE_DOCS in scripts/check-release-doc-authority.sh.
 if changed_matches '^docs/r2-structure\.md$|^docs/r3-structure\.md$|^docs/thesis/r2-r3-thesis-mapping\.md$|^scripts/check-release-doc-authority\.sh$|^scripts/test-check-release-doc-authority\.sh$'; then
   ci_release_doc_state=true
 else
@@ -195,7 +209,7 @@ log_bucket "$ci_t19_state" \
   "ci_t19 bucket: yes" \
   "ci_t19 bucket: no (skipping T-19 testgen self-test)"
 
-if changed_matches '\.rs$|^rust-toolchain\.toml$|Cargo\.(toml|lock)$'; then
+if fmt_affected; then
   ci_fmt_state=true
 else
   ci_fmt_state=false
