@@ -92,21 +92,29 @@ data exact_one_int_validation: Validation<Int> = Validation {
 
 // Nominal external-spec carriers — distinct record types so ≥1 / ≥0 / ≥-1 / ==1
 // obligations are not interchangeable Refined<Int> aliases (posix.dag pattern).
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare PositiveInt { refined: Refined { base } }.
 type PositiveInt {
   refined: Refined<Int>
 }
 
 
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare NonNegativeInt { refined: Refined { base } }.
 type NonNegativeInt {
   refined: Refined<Int>
 }
 
 
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare AtLeastMinusOneInt { refined: Refined { base } }.
 type AtLeastMinusOneInt {
   refined: Refined<Int>
 }
 
 
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare ExactOneInt { refined: Refined { base } }.
 type ExactOneInt {
   refined: Refined<Int>
 }
@@ -191,21 +199,25 @@ fn make_exact_one_int_at_authoritative(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
+// Diverges at type-check when used as a PositiveInt (returns Outcome) — see L217 contract.
 fn positive_int_authoritative_constant_rejected_outcome(base: Int) -> Outcome<PositiveInt> {
   make_positive_int_at_authoritative(value: base)
 }
 
 
+// Diverges at type-check when used as a NonNegativeInt (returns Outcome) — see L217 contract.
 fn non_negative_int_authoritative_constant_rejected_outcome(base: Int) -> Outcome<NonNegativeInt> {
   make_non_negative_int_at_authoritative(value: base)
 }
 
 
+// Diverges at type-check when used as an AtLeastMinusOneInt (returns Outcome) — see L217 contract.
 fn at_least_minus_one_int_authoritative_constant_rejected_outcome(base: Int) -> Outcome<AtLeastMinusOneInt> {
   make_at_least_minus_one_int_at_authoritative(value: base)
 }
 
 
+// Diverges at type-check when used as an ExactOneInt (returns Outcome) — see L217 contract.
 fn exact_one_int_authoritative_constant_rejected_outcome(base: Int) -> Outcome<ExactOneInt> {
   make_exact_one_int_at_authoritative(value: base)
 }
