@@ -1,6 +1,6 @@
 //! Structural mirror of `SelfHostedRunnerPool` / `m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
 
-/// Closed fleet fact: operator srv1/srv2 are Arm64 only (`type RunnerArch = Arm64` in `ci.dag`).
+/// Closed fleet fact: operator srv1/srv2 are Arm64 only (single-variant `RunnerArch` in `ci.dag`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunnerArch {
     Arm64,

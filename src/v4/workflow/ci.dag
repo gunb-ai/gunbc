@@ -117,7 +117,8 @@ type CiComponentAffected {
 // RULING-1: 🟢 pretty-much-done — self-hosted fleet substrate (operator 2026-05-28: srv1/srv2 Ampere Altra).
 // Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
 // Closed fleet fact: operator srv1/srv2 are Ampere Altra (Arm64) only — no open fallback variant.
-type RunnerArch = Arm64
+type RunnerArch
+  = Arm64
 
 type SelfHostedRunnerPool {
   host: Symbol
