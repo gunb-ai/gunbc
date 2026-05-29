@@ -56,7 +56,10 @@ Other notable `ci` steps for context (warm cache):
 
 ## `v3` job — step breakdown (warm cache)
 
-`v3` job: 12 m 31 s wall. The four steps below account for 96 % of it.
+`v3` job: 12 m 31 s wall (751 s). The top four steps below sum to
+605 s ≈ 81 %; the full row set (through "L-7 / L-8 / consolidation /
+banked-dissolutions ratchets") sums to ~99 % — the residual is
+runner overhead between steps.
 
 | Step                                                                | Wall   | Share |
 | ------------------------------------------------------------------- | ------ | ----- |
