@@ -1,0 +1,21 @@
+// src/v4/std/refinement_authoritative_literals.dag
+// Scope: upstream formatter default literals — discharged at authoritative locus.
+// Status: T-25-core formatter dissolution; acceptance witnessed in refinement_formatter_literals_accept.dag.
+
+
+module v4.std.refinement_authoritative_literals
+
+
+import v4.std.refinement {
+  PositiveInt,
+  NonNegativeInt,
+  AtLeastMinusOneInt,
+  ExactOneInt,
+  Refined,
+}
+
+
+// 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail — dissolve-on-arrival:
+// each data row discharged by manual claim in refinement_formatter_literals_accept.dag;
+// forbidden: bare carrier construction without matching acceptance witness.
+
