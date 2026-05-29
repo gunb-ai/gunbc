@@ -179,7 +179,8 @@ M4/T-15. Reaching M3 is a necessary step toward that target, not the target itse
 2. **T-8 resolve cross-file bindings.** The live boundary is
    `compiler/03_name_resolve.dag`: `resolve_with_admission(lm, roots, admission)`
    calls `namespace_for_subject`, which admits visible imports from module roots
-   by projecting each root through `qualified_name_from_node`
+   by projecting each root through `qualified_name_from_module_node`
+   (extdeps/languages/dag.dag; post-normalize module Nodes)
    before delegating to `resolve_with_namespace`. M3 still needs this admission
    path wired into the full loader/self-compile path for arbitrary user-module
    graph walking.

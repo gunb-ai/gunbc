@@ -1297,7 +1297,9 @@ Theme-B "module-loading" dependency.)
 **Disposition — DISSOLVED (T-QN-1 Change 2 follow-on).**
 `std/catalog.dag` and its `Catalog` / `Entry` bridge are deleted. Cross-file
 admission now consumes enumerable module roots directly (`FreeMonoid<Node>`) and
-projects each root's `QualifiedName` through `qualified_name_from_node`.
+projects each root's `QualifiedName` through `qualified_name_from_module_node`
+(in `extdeps/languages/dag.dag`; compiler/ admission layer — not the std/
+`qualified_name_from_node` fold_list_node primitive).
 `AncestorRelation` and the ancestor-prefix witness were cut as speculative in
 Change 3; they are not part of the live module-root surface.
 **Residual:** `rust.dag`'s `PubInPath` visibility still needs a visibility
@@ -1310,7 +1312,8 @@ ancestor witness through the catalog carrier without a fresh modeling decision.
 **Landed boundary:** `compiler/03_name_resolve.dag` owns module-root admission.
 The stage receives enumerable module roots (`FreeMonoid<Node>`) plus an
 `Admission { subject, imports }`, projects names through
-`qualified_name_from_node`, enforces import visibility and ambiguity rules, and
+`qualified_name_from_module_node` (extdeps/languages/dag.dag; post-normalize
+module Nodes), enforces import visibility and ambiguity rules, and
 produces the exact `Namespace` admitted for that subject module via
 `namespace_for_subject`. `resolve_with_admission(lm, roots, admission)` then delegates to
 `compiler/03_resolve.resolve_with_namespace`; `03_resolve.dag` remains
