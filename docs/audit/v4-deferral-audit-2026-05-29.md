@@ -61,20 +61,33 @@ three to spot-check the §1/§5/§A numbers. **Run from repo root:**
 
 | Population | Question it answers | Canonical grep | Result on `origin/main` |
 | --- | --- | --- | ---: |
-| **A. Distinct gate names** (`feature:NAME`) | how many *gates* exist? | `git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sort -u \| wc -l` | **97** |
+| **A. Distinct gate names** (`feature:NAME` or `feature: NAME`) | how many *gates* exist? | `{ git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sed 's/feature://'; git grep -hoE 'feature: [a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sed 's/feature: //'; } \| sort -u \| wc -l` | **130** |
 | **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -c '🟡 gated' origin/main -- src/v4/ \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **279** |
 | **C. Per-gate annotation rows for gate X** | how many annotation rows carry gate X? — used for §1.1/§1.3 "sites" counts | `git grep -cE 'gated[:—] ?(feature: )?X' origin/main -- src/v4/ \| awk ...` (substitute X) | varies per gate |
 
 **Last reproduced 2026-05-29 against `origin/main` @ `df91abc2b`:**
-populations A=97, B=279, audit-time author run yielded A=97, B=~282
-(B drifted by 3 rows as gates landed/dissolved between authoring and
-re-verification — within the "~" tolerance §5 already advertises).
-**The numbers are reproducible from these commands**, not transcribed
-from notes; if a reviewer's grep yields a materially different
-number (e.g. 84 distinct names, 242 rows), the discrepancy is in
-the reviewer's command or ref, not in the audit. The audit's
-**Non-maintenance pledge** (preamble) explicitly permits B-population
-drift; A-population is stable until new `feature:NAME` strings land.
+populations A=**130**, B=279.
+
+**Corrected per inline review 2026-05-29:** the original audit cited
+A=97, derived from `feature:[a-z]` (no-space form only). Inline review
+caught that the inline marks use **both** spaced (`feature: NAME`,
+e.g. headers in formatter files like rustfmt/clang_format) and
+unspaced (`feature:NAME`) forms. The unspaced grep yields 97; the
+spaced grep yields 35 distinct names; overlap = 2; **true unified
+distinct = 130**. Headline gates including `formatter-int-refinement`,
+`formatter-cross-field-constraints`, `lean4-option-closed-set` use
+the spaced form for their headers and were excluded from the original
+97 census. **The 97/89/75 figures in §1, §1.9, and downstream tables
+were all undercounts** and have been corrected to 130/122/95
+respectively (see §1.9 for the regenerated distribution).
+
+This does **not** change the substantive classifications — every
+gate examined for NECESSARY/UNNECESSARY in §1.1–§1.8 was a
+spot-checked gate whose status was verified directly. The undercount
+was in the *long-tail census denominator*, not in the tabulated
+classifications. §A1's 66-site dissolve-now set is unchanged
+(derived from population C per-gate counts, which were correct);
+§A6's intra-task slicing list is unchanged.
 
 **Important distinction (P2 single-authority for this audit's own
 surface):** §1.1 ("63 sites · 9 formatter files") and §1.3 ("7 annotation
@@ -95,14 +108,15 @@ are the audit's canonical commands.
 
 ## §1. Gate vocabulary — `🟡 gated — feature:NAME`
 
-97 distinct `feature:NAME` strings appear in the corpus. **§1.1–§1.8
-tabulate 8 representative gates** (5 multi-site: §1.1–§1.4 + the
-13-site §1.2; 3 singletons: §1.6–§1.8); **§1.9 summarizes the
-remaining 89 gates**, which contain both un-tabulated multi-site gates
-(at 2–7 sites each) **and** the bulk of the singleton tail. See §1.9
-for the full site-count distribution table; the original "≥2
-tabulated / singletons in the long tail" framing was wrong and was
-corrected 2026-05-29.
+**130 distinct gate names** appear in the corpus (corrected 2026-05-29
+per inline review — see §0 for the unified spaced+unspaced grep that
+yields this; the original 97 figure missed 33 spaced-form gates
+including `formatter-int-refinement` itself). **§1.1–§1.8 tabulate 8
+representative gates** (5 multi-site: §1.1–§1.4 + the 13-site §1.2;
+3 singletons: §1.6–§1.8); **§1.9 summarizes the remaining 122
+gates**, which contain both un-tabulated multi-site gates (at 2–9
+sites each) **and** the bulk of the singleton tail. See §1.9 for the
+full site-count distribution table.
 
 ### §1.1 `formatter-int-refinement`  (63 sites · 9 formatter files)
 
