@@ -1,22 +1,35 @@
 // src/v4/test/fixture/task_manager_demo.dag
 // Scope: T-16 TaskManager omni-emission demo — data-model-only declaration.
-// Status: T-16-A modeled; no emit code; the shared Node tree consumed by
-// Shape A (rust backend + react frontend `DeploymentUnit` fragments) and
-// Shape B (OpenAPI / SQL / Markdown projections derived from `WireContract`
-// + `Task` carriers) lands in subsequent T-16 slices.
+// Status: T-16-A domain + DeploymentUnit; T-16-C Shape-B route projection re-eval —
+// `OpenApiOperationWireContractFacts` carries HTTP method/path; coordination
+// `WireContract` derived via `openapi_operation_wire_contract`; canonical
+// `RestRoute` receipts for OpenAPI / Markdown / SQL drift-lock.
 
 module v4.test.fixture.task_manager_demo
 
 import v4.std.algebra { FreeMonoid, Empty }
-import v4.std.collection { Absent }
+import v4.std.collection { Absent, List }
 import v4.std.network { NetworkAddress, UriAuthority, UriHost, rfc3986_host_abnf }
 import v4.std.text { String }
 import v4.std.node { Symbol }
 import v4.extdeps.coordination {
   Endpoint, EndpointRef, LanguageRef, FrameworkRef, HostedByFramework, NoFramework,
-  WireContract, WireContractFacts, CoordinationBind, BindRef,
-  Http, RequestReply, ImmediateSettlement, NoReplicaConvergence,
+  WireContract, CoordinationBind, BindRef,
   DeploymentUnit
+}
+import v4.extdeps.formats.openapi {
+  OpenApiOperationWireContractFacts,
+  OpenApiHttpWireContractFacts,
+  OpenApiHttpRequestReplyWitness,
+  OpenApiHttpImmediateSettlementWitness,
+  OpenApiHttpNoReplicaConvergenceWitness,
+  OpenApiPathTemplateKey,
+  OpenApiPost,
+  OpenApiPatch,
+  OpenApiGet,
+  RestRoute,
+  openapi_operation_wire_contract,
+  rest_route_from_openapi_operation_wire_contract_facts
 }
 
 // --- Domain ---------------------------------------------------------------
@@ -132,60 +145,86 @@ data frontend_endpoint: Endpoint = Endpoint {
   framework: HostedByFramework { framework: FrameworkRef { identity: react_framework } }
 }
 
-// --- Wire contracts -------------------------------------------------------
-// One `WireContract` per TaskManager operation. `BindRef.identity` is the
-// function name itself — the Arrow declared above is the single authority
-// for argument and response types. `Http` effect facts match
-// `coordination_effect_obligation(effect: Http)` — RequestReply /
-// ImmediateSettlement / NoReplicaConvergence.
+// --- Wire contracts (OpenAPI operation facts → coordination WireContract) -
+// Operator-ratified routes (TASKS.md T-16): POST /tasks, PATCH /tasks/{id},
+// GET /tasks. Method + path_template authority is `OpenApiOperationWireContractFacts`;
+// coordination exchange/settlement/consistency derived via openapi morphisms.
 
-data create_task_facts: WireContractFacts = WireContractFacts {
+data task_manager_http_coordination: OpenApiHttpWireContractFacts = OpenApiHttpWireContractFacts {
   from: EndpointRef { identity: react_frontend_endpoint },
   to: EndpointRef { identity: rust_backend_endpoint },
-  exchange: RequestReply,
-  settlement: ImmediateSettlement,
-  consistency: NoReplicaConvergence
+  http_exchange: OpenApiHttpRequestReplyWitness {},
+  http_settlement: OpenApiHttpImmediateSettlementWitness {},
+  http_consistency: OpenApiHttpNoReplicaConvergenceWitness {}
 }
 
-data create_task_contract: WireContract = WireContract {
-  facts: create_task_facts,
-  bind: CoordinationBind {
-    bind: BindRef { identity: create_task },
-    effect: Http
-  }
+data create_task_path_template: OpenApiPathTemplateKey = OpenApiPathTemplateKey {
+  after_slash: "/tasks"
 }
 
-data update_status_facts: WireContractFacts = WireContractFacts {
-  from: EndpointRef { identity: react_frontend_endpoint },
-  to: EndpointRef { identity: rust_backend_endpoint },
-  exchange: RequestReply,
-  settlement: ImmediateSettlement,
-  consistency: NoReplicaConvergence
+data update_status_path_template: OpenApiPathTemplateKey = OpenApiPathTemplateKey {
+  after_slash: "/tasks/{id}"
 }
 
-data update_status_contract: WireContract = WireContract {
-  facts: update_status_facts,
-  bind: CoordinationBind {
-    bind: BindRef { identity: update_status },
-    effect: Http
-  }
+data list_tasks_path_template: OpenApiPathTemplateKey = OpenApiPathTemplateKey {
+  after_slash: "/tasks"
 }
 
-data list_tasks_facts: WireContractFacts = WireContractFacts {
-  from: EndpointRef { identity: react_frontend_endpoint },
-  to: EndpointRef { identity: rust_backend_endpoint },
-  exchange: RequestReply,
-  settlement: ImmediateSettlement,
-  consistency: NoReplicaConvergence
+data create_task_openapi_facts: OpenApiOperationWireContractFacts = OpenApiOperationWireContractFacts {
+  coordination: task_manager_http_coordination,
+  admitted_method: OpenApiPost,
+  path_template: create_task_path_template
 }
 
-data list_tasks_contract: WireContract = WireContract {
-  facts: list_tasks_facts,
-  bind: CoordinationBind {
-    bind: BindRef { identity: list_tasks },
-    effect: Http
-  }
+data update_status_openapi_facts: OpenApiOperationWireContractFacts = OpenApiOperationWireContractFacts {
+  coordination: task_manager_http_coordination,
+  admitted_method: OpenApiPatch,
+  path_template: update_status_path_template
 }
+
+data list_tasks_openapi_facts: OpenApiOperationWireContractFacts = OpenApiOperationWireContractFacts {
+  coordination: task_manager_http_coordination,
+  admitted_method: OpenApiGet,
+  path_template: list_tasks_path_template
+}
+
+data create_task_contract: WireContract = openapi_operation_wire_contract(
+  facts: create_task_openapi_facts,
+  bind: BindRef { identity: create_task }
+)
+
+data update_status_contract: WireContract = openapi_operation_wire_contract(
+  facts: update_status_openapi_facts,
+  bind: BindRef { identity: update_status }
+)
+
+data list_tasks_contract: WireContract = openapi_operation_wire_contract(
+  facts: list_tasks_openapi_facts,
+  bind: BindRef { identity: list_tasks }
+)
+
+// --- Shape-B canonical route projection -----------------------------------
+
+data create_task_rest_route: RestRoute = rest_route_from_openapi_operation_wire_contract_facts(
+  facts: create_task_openapi_facts,
+  path_parameters: []
+)
+
+data update_status_rest_route: RestRoute = rest_route_from_openapi_operation_wire_contract_facts(
+  facts: update_status_openapi_facts,
+  path_parameters: ["id"]
+)
+
+data list_tasks_rest_route: RestRoute = rest_route_from_openapi_operation_wire_contract_facts(
+  facts: list_tasks_openapi_facts,
+  path_parameters: []
+)
+
+data task_manager_shape_b_routes: List<RestRoute> = [
+  create_task_rest_route,
+  update_status_rest_route,
+  list_tasks_rest_route
+]
 
 // --- DeploymentUnit -------------------------------------------------------
 

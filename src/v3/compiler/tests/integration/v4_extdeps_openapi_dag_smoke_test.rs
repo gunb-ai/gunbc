@@ -138,3 +138,18 @@ fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
         "OpenApi operation WireContract must use Http-only fact carrier and derive coordination WireContractFacts in the constructor path only"
     );
 }
+
+#[test]
+fn v4_extdeps_openapi_rest_route_shape_b_projection_carrier() {
+    let module = openapi_surface_or_panic();
+    let route = type_record_fields(&module, "RestRoute");
+    assert_eq!(record_field_type(route, "method"), "HttpMethod");
+    assert_eq!(record_field_type(route, "path"), "String");
+    assert_eq!(record_field_type(route, "path_parameters"), "List<String>");
+    assert!(
+        OPENAPI_DAG.contains("fn rest_route_from_openapi_operation_wire_contract_facts(")
+            && OPENAPI_DAG.contains("openapi_admitted_to_http_method(method: facts.admitted_method)")
+            && OPENAPI_DAG.contains("path: facts.path_template.after_slash"),
+        "RestRoute must project method/path from OpenApiOperationWireContractFacts only"
+    );
+}
