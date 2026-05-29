@@ -221,9 +221,9 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 
 | ID | Severity | Step | Symptom | Root cause | Fix status |
 |----|----------|------|---------|------------|------------|
-| B01 | **P0** | M1 full-tree rust emit probe | **20m timeout but job stays green** | (1) `continue-on-error: true` for modeled `non_blocking`; (2) script `exit 0` unless `V4_M1_RUST_EMIT_PROBE_STRICT=1` even when `timeout` returns 124; (3) GHA step timeout SIGTERM with no fail-closed follower | **PR #3883** (draft): `failure_class=timeout`, exit 124, `M1 probe timeout fail-closed` step; gate to `v4` only |
-| B02 | **P0** | M1 probe scope | Full tree every run (`indexed 280 modules…`) | No content-hash skip; `ci_command_cache_digest(M1)` is static symbol tag | Modeled in §6; depends on T-21/T-24 |
-| B03 | P1 | M1 on `workflow_policy` only | 20m emit when only `ci.yml` changed | `if: v4 \|\| workflow_policy` — binding smoke suffices | **#3883**: `v4` only |
+| B01 | **P0** | M1 full-tree rust emit probe | **20m timeout but job stays green** | (1) `continue-on-error: true` for modeled `non_blocking`; (2) script `exit 0` unless `V4_M1_RUST_EMIT_PROBE_STRICT=1` even when `timeout` returns 124; (3) GHA step timeout SIGTERM with no fail-closed follower | **Open:** #3886 **A9** (`M1RustEmitProbeCommand` + interpreter, fail-closed, delete `v4-m1-rust-emit-probe.sh`). **#3883 closed/superseded** — do not reopen |
+| B02 | **P0** | M1 probe scope | Full tree every run (`indexed 280 modules…`) | No content-hash skip; `ci_command_cache_digest(M1)` is static symbol tag | **Open:** #3886 **A9** + Table B R07 (merkle); frontier via **A1** |
+| B03 | P1 | M1 on `workflow_policy` only | 20m emit when only `ci.yml` changed | Coarse `if: v4 \|\| workflow_policy` — binding smoke suffices | **Open:** #3886 **A1** (drop bucket `if:` scheduling) + **A9**; not YAML micro-gate (**#3883 superseded**) |
 | B04 | P1 | v4 bootstrap `continue-on-error` + bridge | Failed compile can still yield green via bridge step | Intentional emit-wall bridge; easy to misread as “compile passed” | Document; tighten when emit wall clears |
 | B05 | P2 | `self_host_ratchet` / DB-8 steps | `continue-on-error: true` on staged checks | Informational staging | Track in DB-8 lane |
 | B06 | P2 | `v3` integration | Zero-test filter still runs libtest setup | #846 hot-fix — pays compile, runs 0 tests | Restore when per-test ≤2s |
