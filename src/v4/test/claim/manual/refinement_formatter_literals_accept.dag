@@ -24,7 +24,7 @@ import v4.std.refinement {
   positive_int_authoritative_literal,
   refined_base,
 }
-import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.node { Node }
 import v4.std.verification {
   EqualsClaim,
@@ -41,38 +41,58 @@ import v4.test.claim.manual.connective_anchors {
 }
 
 fn positive_int_authoritative_literal_matches_accepted(
-  literal: PositiveInt,
+  literal: Outcome<PositiveInt>,
   accepted: PositiveInt,
 ) -> Bool {
-  refined_base(r: literal.refined) == refined_base(r: accepted.refined)
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn non_negative_int_authoritative_literal_matches_accepted(
-  literal: NonNegativeInt,
+  literal: Outcome<NonNegativeInt>,
   accepted: NonNegativeInt,
 ) -> Bool {
-  refined_base(r: literal.refined) == refined_base(r: accepted.refined)
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn at_least_minus_one_int_authoritative_literal_matches_accepted(
-  literal: AtLeastMinusOneInt,
+  literal: Outcome<AtLeastMinusOneInt>,
   accepted: AtLeastMinusOneInt,
 ) -> Bool {
-  refined_base(r: literal.refined) == refined_base(r: accepted.refined)
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn at_least_minus_two_int_authoritative_literal_matches_accepted(
-  literal: AtLeastMinusTwoInt,
+  literal: Outcome<AtLeastMinusTwoInt>,
   accepted: AtLeastMinusTwoInt,
 ) -> Bool {
-  refined_base(r: literal.refined) == refined_base(r: accepted.refined)
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn exact_one_int_authoritative_literal_matches_accepted(
-  literal: ExactOneInt,
+  literal: Outcome<ExactOneInt>,
   accepted: ExactOneInt,
 ) -> Bool {
-  refined_base(r: literal.refined) == refined_base(r: accepted.refined)
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn witness_positive_int_authoritative_literal_2_discharge() -> Bool {
