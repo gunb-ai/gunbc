@@ -1570,7 +1570,7 @@ carriers (option C)" + §"Ratified Q1 supersession — option C runtime split".
 
 ---
 
-### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [SCHEDULED]
+### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [DONE]
 
 **Operator-ratified 2026-05-27.** `ModulePath = FreeMonoid<ModulePathSegment>`
 where `ModulePathSegment = { name: Symbol }` is structurally a nickname for
