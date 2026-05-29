@@ -39,7 +39,7 @@ snapshot** under an explicit one-shot operator directive (2026-05-29). It is
       `feature:` gate names; one row per gate.
     * **needs-more-work** — 53 `🟡 needs-more-work` markers. Each carries a
       `bind T-X — dissolve-on:` rider; classified by upstream task.
-    * **prose-level deferrals** in `TASKS.md`, `DECISIONS.md`,
+    * **prose-level deferrals** in `TASKS.md`, `src/v4/DECISIONS.md`,
       `docs/v4-compilation-milestones.md`,
       `docs/design-v4-compiler-homomorphism.md`,
       `docs/v4-close-interrogation.md`. Each row is a named scheduled-but-
@@ -363,7 +363,7 @@ question) rather than T-19 to remove the false-closed signal (action §A5).
 
 Same two items as §3.3 line 598 & 670 (cross-referenced); already covered.
 
-### §3.6 `DECISIONS.md`
+### §3.6 `src/v4/DECISIONS.md`
 
 Single `deferred` hit — historical context, no live item.
 
