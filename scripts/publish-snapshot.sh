@@ -110,6 +110,10 @@ STRIP_PATHS=(
   # Editor/agent metadata.
   ".cursor"
   "_internal"
+
+  # Internal interp_test fixtures (not user-facing demo material).
+  "dsl/examples/interp_test/rest_test.dag"
+  "dsl/examples/interp_test/shell_test.dag"
 )
 
 # Clean any prior export dir/worktree.
