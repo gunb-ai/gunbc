@@ -1,34 +1,59 @@
 // src/v4/extdeps/languages/python.dag
 // Scope: Python 3.14 Reference primitive fact-bundles + T-11 MVP-1 grammar-data target model.
-// Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonConcreteSyntaxToken, PythonGrammarRelationRow, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_surface_spelling_int, python_surface_spelling_float, python_surface_spelling_complex, python_surface_spelling_bool, python_surface_spelling_none, python_surface_spelling_notimplemented, python_surface_spelling_ellipsis, python_std_projection_int, python_std_projection_float, python_std_projection_complex, python_std_projection_bool, python_std_projection_none, python_std_projection_notimplemented, python_std_projection_ellipsis, python_repr_int_arbitrary_precision, python_repr_float_machine_double_precision, python_repr_complex_pair_machine_double_precision, python_repr_bool_int_subtype, python_repr_singleton_sole_inhabitant, python_facts_field_surface_spelling, python_facts_field_encoding, python_facts_field_machine_representation, python_facts_field_component_machine_representation, python_facts_field_std_projection, python_facts_field_singleton_kind, python_inhabitant_int, python_inhabitant_float, python_inhabitant_field_atom, python_inhabitant_field_facts, python_inhabitant_field_int, python_inhabitant_field_float, python_witness_int_ordered_ring_arbitrary_precision, python_witness_float_approximate_field, python_witness_bool_boolean_algebra, python_tag_singleton_none, python_tag_singleton_notimplemented, python_tag_singleton_ellipsis, python_token_kw_def, python_token_kw_return, python_token_ident, python_token_colon, python_token_lparen, python_token_rparen, python_token_comma, python_token_plus, python_production_mvp1_fn_add, python_binding_fn_add, python_binding_param_x, python_binding_param_y, python_relation_rule_mvp1_fn_add, python_mvp1_source_literal, python_mvp1_source_text_field, python_mvp1_source_grammar_field, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_singleton_kind_tag, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_integer_spec_facts, python_float_spec_facts, python_complex_spec_facts, python_bool_spec_facts, python_singleton_spec_facts, python_primitive_bundle_from_integer_facts, python_primitive_bundle_from_float_facts, python_primitive_bundle_from_complex_facts, python_primitive_bundle_from_bool_facts, python_primitive_bundles_from_integer_catalog, python_primitive_bundles_from_float_catalog, python_primitive_bundles_from_complex_catalog, python_primitive_bundles_from_bool_catalog, python_primitive_bundles_from_singleton_catalog, python_wave1_primitive_fact_bundles, python_integer_algebra_witness_node, python_float_algebra_witness_node, python_bool_algebra_witness_node, python_integer_algebra_inhabitance, python_float_algebra_inhabitance, python_bool_algebra_inhabitance, python_integer_algebra_inhabitance_decls, python_float_algebra_inhabitance_decls, python_bool_algebra_inhabitance_decls, python_model_core_inhabitance_decls, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_class, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_formal_terminal_symbol, python_formal_rhs_from_token_classes, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_wave1_lex_rules, python_wave1_lex
+// Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonConcreteSyntaxToken, PythonGrammarRelationRow, PythonLanguageModel, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_language_model_surface_id, python_surface_spelling_int, python_surface_spelling_float, python_surface_spelling_complex, python_surface_spelling_bool, python_surface_spelling_none, python_surface_spelling_notimplemented, python_surface_spelling_ellipsis, python_std_projection_int, python_std_projection_float, python_std_projection_complex, python_std_projection_bool, python_std_projection_none, python_std_projection_notimplemented, python_std_projection_ellipsis, python_repr_int_arbitrary_precision, python_repr_float_machine_double_precision, python_repr_complex_pair_machine_double_precision, python_repr_bool_int_subtype, python_repr_singleton_sole_inhabitant, python_facts_field_surface_spelling, python_facts_field_encoding, python_facts_field_machine_representation, python_facts_field_component_machine_representation, python_facts_field_std_projection, python_facts_field_singleton_kind, python_inhabitant_int, python_inhabitant_float, python_inhabitant_field_atom, python_inhabitant_field_facts, python_inhabitant_field_int, python_inhabitant_field_float, python_witness_int_ordered_ring_arbitrary_precision, python_witness_float_approximate_field, python_witness_bool_boolean_algebra, python_tag_singleton_none, python_tag_singleton_notimplemented, python_tag_singleton_ellipsis, python_token_kw_def, python_token_kw_return, python_token_kw_if, python_token_ident, python_token_int_literal, python_token_colon, python_token_rparen_suite_indent, python_token_colon_if_suite_indent, python_token_newline_if_stmt, python_token_newline_return_outer, python_token_newline_return_inner, python_token_lparen, python_token_rparen, python_token_comma, python_token_equal, python_token_plus, python_token_greater, python_production_mvp1_fn_add, python_production_fn_def, python_production_suite, python_production_stmt, python_production_assign_stmt, python_production_if_stmt, python_production_return_stmt, python_production_comparison, python_production_additive, python_production_primary, python_production_additive_tail, python_production_comparison_tail, python_formal_epsilon_shim_terminal, python_surface_fn_item, python_surface_suite, python_surface_stmt, python_surface_assign_stmt, python_surface_if_stmt, python_surface_return_stmt, python_surface_comparison, python_surface_additive, python_surface_primary, python_surface_additive_tail, python_surface_comparison_tail, python_mvp1_parse_fixture_file, python_binding_fn_add, python_binding_param_x, python_binding_param_y, python_relation_rule_mvp1_fn_add, python_mvp1_source_literal, python_mvp1_source_text_field, python_mvp1_source_grammar_field, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_singleton_kind_tag, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_integer_spec_facts, python_float_spec_facts, python_complex_spec_facts, python_bool_spec_facts, python_singleton_spec_facts, python_primitive_bundle_from_integer_facts, python_primitive_bundle_from_float_facts, python_primitive_bundle_from_complex_facts, python_primitive_bundle_from_bool_facts, python_primitive_bundle_from_singleton_facts, python_primitive_bundles_from_integer_catalog, python_primitive_bundles_from_float_catalog, python_primitive_bundles_from_complex_catalog, python_primitive_bundles_from_bool_catalog, python_primitive_bundles_from_singleton_catalog, python_wave1_primitive_fact_bundles, python_integer_algebra_witness_node, python_float_algebra_witness_node, python_bool_algebra_witness_node, python_integer_algebra_inhabitance, python_float_algebra_inhabitance, python_bool_algebra_inhabitance, python_integer_algebra_inhabitance_decls, python_float_algebra_inhabitance_decls, python_bool_algebra_inhabitance_decls, python_model_core_inhabitance_decls, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_class, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_formal_rhs_from_token_classes, python_formal_symbol_to_grammar_expr, python_formal_epsilon_grammar_expr, PythonFormalRhsToExprState, python_formal_rhs_to_grammar_expr, PythonFormalAltChoiceState, python_formal_alternatives_to_choice_expr, python_formal_rhs_alternatives_accum_empty, python_formal_collect_rhs_alternative, python_formal_rhs_alternatives_from_productions, python_formal_productions_to_grammar_expr, python_formal_production_alts, python_formal_productions_to_grammar_production, python_formal_production_mvp1_fn_add, python_wave1_formal_productions, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_ident_lex_pattern, python_ident_lex_rule, python_nonzero_digit_char_pattern, python_decimal_int_literal_pattern, python_int_literal_lex_rule, python_wave1_lex_rules, python_wave1_lex, python_grammar_atom, python_wave1_grammar_root, python_wave1_grammar, python_wave1_lex_token_symbol, python_catalog_surface_spelling_eq, python_catalog_surface_fold_false, python_integer_catalog_surface_step, python_integer_catalog_surface_symbol, python_float_catalog_surface_step, python_float_catalog_surface_symbol, python_complex_catalog_surface_step, python_complex_catalog_surface_symbol, python_bool_catalog_surface_step, python_bool_catalog_surface_symbol, python_singleton_catalog_surface_step, python_singleton_catalog_surface_symbol, python_catalog_surface_symbol, python_language_model_canonical_symbols, python_language_model_wave1
 // Consumes: v4.std.model_core (ModelCore + axis symbols), v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra.
-// Status: T-4 python slice — Python Reference primitives (not CPython library types); int is honestly width-axis-omitted (unbounded — see C-PYINT below); wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`python_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` operational scaffold not used for MVP-1 (relation rows consume `FormalProduction` directly). ModelCore.primitives includes complex fact bundles; inhabitance filled for int/float/bool only (int→OrderedRing, float→ApproximateField, bool→BooleanAlgebra, each folded from its facts catalog); complex inhabitance deferred — component_machine_representation is inexact (pair of IEEE doubles) and Python complex is unordered, so neither Field nor ApproximateField is faithful until std.algebra exports an unordered-approximate carrier; singletons primitives-only; laws/effects/partiality empty (wave-2+); `python_model_core_wave1` itself is 🟡 E-6(b) consumer-less until PythonLanguageModel lands (wave-2). canonical-B bool decl-ref is 🟡 E-6(b) staging (mirrors rust slice).
+// Status: T-4 python slice + T-4.17 wave-2a lex/grammar — Python Reference primitives; ModelCore inhabitance for int/float/bool; complex inhabitance deferred; laws/effects/partiality empty (wave-2b); 🟡 gated feature:T-6-token-layout-trivia-policy + feature:python-wave2a-decimal-int-literal (decimal 0|[1-9][0-9]* only; not 0b/0o/0x/underscores); canonical_symbols via catalog + wave-1 lex/grammar/MVP; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW.
 // 🟡
 
 module v4.extdeps.languages.python
 
+import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item }
 import v4.std.grammar {
+  ParseGrammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Choice,
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalNonterminalOccurrence,
   FormalProduction,
   FormalTerminal,
   FormalTerminalOccurrence,
+  Nonterminal,
+  Optional,
+  Sequence,
+  Terminal,
+  grammar_carries_symbol,
+  grammar_empty_sync_tokens,
   formal_production_to_node
 }
 import v4.std.lexing {
+  CharClassPattern,
+  CharPattern,
+  ChoicePattern,
+  DigitChar,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
   LexRule,
   LexRuleSet,
   LexRules,
   LiteralPattern,
   ModeledLexRules,
-  TokenRule
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  lex_rule_set_token_class_member
 }
 import v4.std.target_model { TargetModel }
-import v4.std.collection { List, Map, empty_map, map_insert }
+import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -72,10 +97,6 @@ import v4.std.algebra {
   BooleanAlgebra,
   approximate_field_node,
   boolean_algebra_node,
-  Empty,
-  fold_list,
-  list_append,
-  list_snoc_item,
   ordered_ring_node
 }
 import v4.std.text { String }
@@ -104,6 +125,19 @@ type PythonGrammarRelationRow {
   production: FormalProduction
   emitted: Node
   tokens: List<PythonConcreteSyntaxToken>
+}
+
+// 🟡 gated — feature:language-model-lex-grammar-bundle — per-language lex/grammar/core
+// authoring record; compiler ingest authority is `v4.compiler.target_carriers` `LanguageModel = Node`
+// (TASKS.md Theme-A #9: LexRules/Grammar are projections, not parallel authorities). Peer:
+// `KotlinLanguageModel`, `SwiftLanguageModel`, `JavaLanguageModel`. dissolve-on: wave-1 bundle
+// projects to `Node` at the ingest boundary (cf. `kotlin_mvp1_target_model_node`).
+type PythonLanguageModel {
+  lex: LexRules
+  grammar: ParseGrammar
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
 }
 
 // 🟢 grounded.
@@ -140,6 +174,8 @@ type PythonSingletonPrimitiveFacts {
   kind: PythonSingletonKind
   std_projection: Symbol
 }
+
+data python_language_model_surface_id: Symbol = python_language_model_surface_id
 
 data python_surface_spelling_int: Symbol = python_surface_spelling_int
 data python_surface_spelling_float: Symbol = python_surface_spelling_float
@@ -187,13 +223,49 @@ data python_tag_singleton_ellipsis: Symbol = python_tag_singleton_ellipsis
 
 data python_token_kw_def: Symbol = python_token_kw_def
 data python_token_kw_return: Symbol = python_token_kw_return
+data python_token_kw_if: Symbol = python_token_kw_if
 data python_token_ident: Symbol = python_token_ident
+data python_token_int_literal: Symbol = python_token_int_literal
 data python_token_colon: Symbol = python_token_colon
+data python_token_rparen_suite_indent: Symbol = python_token_rparen_suite_indent
+data python_token_colon_if_suite_indent: Symbol = python_token_colon_if_suite_indent
+data python_token_newline_if_stmt: Symbol = python_token_newline_if_stmt
+data python_token_newline_return_outer: Symbol = python_token_newline_return_outer
+data python_token_newline_return_inner: Symbol = python_token_newline_return_inner
 data python_token_lparen: Symbol = python_token_lparen
 data python_token_rparen: Symbol = python_token_rparen
 data python_token_comma: Symbol = python_token_comma
+data python_token_equal: Symbol = python_token_equal
 data python_token_plus: Symbol = python_token_plus
+data python_token_greater: Symbol = python_token_greater
 data python_production_mvp1_fn_add: Symbol = python_production_mvp1_fn_add
+data python_production_fn_def: Symbol = python_production_fn_def
+data python_production_suite: Symbol = python_production_suite
+data python_production_stmt: Symbol = python_production_stmt
+data python_production_assign_stmt: Symbol = python_production_assign_stmt
+data python_production_if_stmt: Symbol = python_production_if_stmt
+data python_production_return_stmt: Symbol = python_production_return_stmt
+data python_production_comparison: Symbol = python_production_comparison
+data python_production_additive: Symbol = python_production_additive
+data python_production_primary: Symbol = python_production_primary
+data python_production_additive_tail: Symbol = python_production_additive_tail
+data python_production_comparison_tail: Symbol = python_production_comparison_tail
+// 🟡 gated — feature:python-formal-epsilon-shim-terminal — bind TASKS.md T-7 / CP-1b —
+// dissolve-on: std/grammar canonical epsilon carrier; empty FormalProduction.rhs lowers
+// without fabricated parse-only token_class.
+data python_formal_epsilon_shim_terminal: Symbol = python_formal_epsilon_shim_terminal
+data python_surface_fn_item: Symbol = python_surface_fn_item
+data python_surface_suite: Symbol = python_surface_suite
+data python_surface_stmt: Symbol = python_surface_stmt
+data python_surface_assign_stmt: Symbol = python_surface_assign_stmt
+data python_surface_if_stmt: Symbol = python_surface_if_stmt
+data python_surface_return_stmt: Symbol = python_surface_return_stmt
+data python_surface_comparison: Symbol = python_surface_comparison
+data python_surface_additive: Symbol = python_surface_additive
+data python_surface_primary: Symbol = python_surface_primary
+data python_surface_additive_tail: Symbol = python_surface_additive_tail
+data python_surface_comparison_tail: Symbol = python_surface_comparison_tail
+data python_mvp1_parse_fixture_file: Symbol = python_mvp1_parse_fixture_file
 data python_binding_fn_add: Symbol = python_binding_fn_add
 data python_binding_param_x: Symbol = python_binding_param_x
 data python_binding_param_y: Symbol = python_binding_param_y
@@ -863,6 +935,7 @@ fn python_mvp1_serialize_source_node() -> Node {
   }
 }
 
+// --- FormalProduction authority (flat rhs) + GrammarExpr operational shim (parse.dag) ---
 
 fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   fold_list(
@@ -877,6 +950,130 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
+// 🟡 gated — feature:python-formal-symbol-to-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
+// interim FormalGrammarSymbol → GrammarExpr projection for operational parse lowering only;
+// dissolve-on: std/grammar substrate projects FormalGrammarSymbol to GrammarExpr directly.
+fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
+  match sym {
+    FormalTerminalOccurrence { terminal: terminal } =>
+      Terminal { token_class: terminal.identity }
+    FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      Nonterminal { production: nonterminal.identity }
+  }
+}
+
+// 🟡 gated — feature:python-formal-epsilon-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
+// dissolve-on: std/grammar epsilon projection replaces Optional+sentinel terminal shim.
+fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
+  Optional {
+    element: Terminal { token_class: python_formal_epsilon_shim_terminal }
+  }
+}
+
+// 🟡 gated — feature:python-formal-rhs-to-expr-shim-fold — bind TASKS.md T-7 / CP-1b —
+// interim fold carrier for FormalProduction.rhs → GrammarExpr Sequence lowering only;
+// dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
+type PythonFormalRhsToExprState
+  = PythonFormalRhsToExprUninitialized
+  | PythonFormalRhsToExprReady { expr: GrammarExpr }
+
+fn python_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarExpr {
+  match fold_list(
+    xs: rhs,
+    empty: PythonFormalRhsToExprUninitialized,
+    cons: fn(state, sym) {
+      let piece = python_formal_symbol_to_grammar_expr(sym: sym)
+      match state {
+        PythonFormalRhsToExprUninitialized =>
+          PythonFormalRhsToExprReady { expr: piece }
+        PythonFormalRhsToExprReady { expr: acc } =>
+          PythonFormalRhsToExprReady {
+            expr: Sequence { left: acc, right: piece }
+          }
+      }
+    }
+  ) {
+    PythonFormalRhsToExprUninitialized => python_formal_epsilon_grammar_expr()
+    PythonFormalRhsToExprReady { expr: result } => result
+  }
+}
+
+// 🟡 gated — feature:python-formal-alt-choice-shim-fold — bind TASKS.md T-7 / CP-1b —
+// interim fold carrier for multi-alt FormalProduction lhs → GrammarExpr Choice lowering only;
+// dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
+type PythonFormalAltChoiceState
+  = PythonFormalAltChoiceUninitialized
+  | PythonFormalAltChoiceReady { expr: GrammarExpr }
+
+fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol>>) -> GrammarExpr {
+  match fold_list(
+    xs: alts,
+    empty: PythonFormalAltChoiceUninitialized,
+    cons: fn(state, rhs) {
+      let alt_expr = python_formal_rhs_to_grammar_expr(rhs: rhs)
+      match state {
+        PythonFormalAltChoiceUninitialized =>
+          PythonFormalAltChoiceReady { expr: alt_expr }
+        PythonFormalAltChoiceReady { expr: acc } =>
+          PythonFormalAltChoiceReady {
+            expr: Choice { left: acc, right: alt_expr }
+          }
+      }
+    }
+  ) {
+    PythonFormalAltChoiceUninitialized => python_formal_epsilon_grammar_expr()
+    PythonFormalAltChoiceReady { expr: result } => result
+  }
+}
+
+fn python_formal_rhs_alternatives_accum_empty() -> List<List<FormalGrammarSymbol>> {
+  Empty
+}
+
+fn python_formal_collect_rhs_alternative(
+  acc: List<List<FormalGrammarSymbol>>,
+  prod: FormalProduction
+) -> List<List<FormalGrammarSymbol>> {
+  list_snoc_item(xs: acc, item: prod.rhs)
+}
+
+fn python_formal_rhs_alternatives_from_productions(
+  prods: List<FormalProduction>
+) -> List<List<FormalGrammarSymbol>> {
+  fold_list(
+    xs: prods,
+    empty: python_formal_rhs_alternatives_accum_empty(),
+    cons: python_formal_collect_rhs_alternative
+  )
+}
+
+fn python_formal_productions_to_grammar_expr(prods: List<FormalProduction>) -> GrammarExpr {
+  python_formal_alternatives_to_choice_expr(
+    alts: python_formal_rhs_alternatives_from_productions(prods: prods)
+  )
+}
+
+fn python_formal_production_alts(
+  head: FormalProduction,
+  alts: List<FormalProduction>
+) -> List<FormalProduction> {
+  list_append(left: [head], right: alts)
+}
+
+fn python_formal_productions_to_grammar_production(
+  head: FormalProduction,
+  alts: List<FormalProduction>,
+  emitted: Symbol
+) -> GrammarProduction {
+  GrammarProduction {
+    name: head.lhs.identity,
+    expression: python_formal_productions_to_grammar_expr(
+      prods: python_formal_production_alts(head: head, alts: alts)
+    ),
+    emitted: python_grammar_atom(id: emitted)
+  }
+}
+
 fn python_formal_production_mvp1_fn_add() -> FormalProduction {
   grammar_formal_production(
     lhs: python_production_mvp1_fn_add,
@@ -888,13 +1085,19 @@ fn python_wave1_formal_productions() -> List<FormalProduction> {
   [python_formal_production_mvp1_fn_add()]
 }
 
-fn python_grammar_production_mvp1_fn_add() -> FormalProduction {
-  python_formal_production_mvp1_fn_add()
+fn python_grammar_production_mvp1_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: python_production_mvp1_fn_add,
+    expression: python_formal_productions_to_grammar_expr(
+      prods: [python_formal_production_mvp1_fn_add()]
+    ),
+    emitted: python_mvp1_emitted_add_fn_node()
+  }
 }
 
 fn python_mvp1_grammar_relation_row() -> PythonGrammarRelationRow {
   PythonGrammarRelationRow {
-    production: python_grammar_production_mvp1_fn_add(),
+    production: python_formal_production_mvp1_fn_add(),
     emitted: python_mvp1_emitted_add_fn_node(),
     tokens: python_mvp1_concrete_tokens()
   }
@@ -976,18 +1179,416 @@ fn python_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
-fn python_wave1_lex_rules() -> List<LexRule> {
-  [
-    python_lex_rule(token_class: python_token_kw_def, text: "def "),
-    python_lex_rule(token_class: python_token_lparen, text: "("),
-    python_lex_rule(token_class: python_token_comma, text: ", "),
-    python_lex_rule(token_class: python_token_rparen, text: ")"),
-    python_lex_rule(token_class: python_token_colon, text: ": "),
-    python_lex_rule(token_class: python_token_kw_return, text: "return "),
-    python_lex_rule(token_class: python_token_plus, text: " + ")
-  ]
+fn python_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn python_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: python_token_ident,
+    pattern: python_ident_lex_pattern()
+  }
+}
+
+// 🟡 predicate dissolution — feature:python-wave2a-decimal-int-literal — bind TASKS.md T-6/T-7 —
+// dissolve-on: std LexCharClass carries NonZeroDigitChar (or full integerliteral LexPattern).
+// 🟡 gated — feature:python-wave2a-decimal-int-literal — ASCII 49–57 ladder until
+// `NonZeroDigitChar` lands on v4.std.lexing; consumed only by python_decimal_int_literal_pattern.
+fn python_nonzero_digit_char_pattern() -> LexPattern {
+  ChoicePattern {
+    left: CharPattern { char: 49 },
+    right: ChoicePattern {
+      left: CharPattern { char: 50 },
+      right: ChoicePattern {
+        left: CharPattern { char: 51 },
+        right: ChoicePattern {
+          left: CharPattern { char: 52 },
+          right: ChoicePattern {
+            left: CharPattern { char: 53 },
+            right: ChoicePattern {
+              left: CharPattern { char: 54 },
+              right: ChoicePattern {
+                left: CharPattern { char: 55 },
+                right: ChoicePattern {
+                  left: CharPattern { char: 56 },
+                  right: CharPattern { char: 57 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// 🟡 gated — feature:python-wave2a-decimal-int-literal — decimal subset `0` | [1-9][0-9]* only;
+// wave-2a fixture uses 0/1. Does not model 0b/0o/0x bases or underscore separators per
+// Python 3.14 integer-literals. Dissolves when T-6/T-7 lands full integerliteral LexPattern.
+fn python_decimal_int_literal_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "0" },
+    right: SequencePattern {
+      left: python_nonzero_digit_char_pattern(),
+      right: RepeatPattern { element: CharClassPattern { class: DigitChar } }
+    }
+  }
+}
+
+fn python_int_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: python_token_int_literal,
+    pattern: python_decimal_int_literal_pattern()
+  }
+}
+
+// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout/newline/indent is baked into
+// LiteralPattern.text below (e.g. "):\n    ", "\n    if ") instead of Py3.14 NEWLINE/INDENT/DEDENT
+// stack tokens. Dissolves when T-6 supplies TokenLayout/TriviaPolicy and token_sequence_to_source
+// interleaves layout (https://docs.python.org/3.14/reference/lexical_analysis.html#indentation).
+fn python_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      python_lex_rule(token_class: python_token_rparen_suite_indent, text: "):\n    "),
+      python_lex_rule(token_class: python_token_colon_if_suite_indent, text: ":\n        "),
+      python_lex_rule(token_class: python_token_newline_if_stmt, text: "\n    if "),
+      python_lex_rule(token_class: python_token_newline_return_inner, text: "\n        return "),
+      python_lex_rule(token_class: python_token_newline_return_outer, text: "\n    return "),
+      python_lex_rule(token_class: python_token_kw_def, text: "def "),
+      python_lex_rule(token_class: python_token_kw_return, text: "return "),
+      python_lex_rule(token_class: python_token_kw_if, text: "if "),
+      python_int_literal_lex_rule(),
+      python_ident_lex_rule(),
+      python_lex_rule(token_class: python_token_equal, text: " = "),
+      python_lex_rule(token_class: python_token_plus, text: " + "),
+      python_lex_rule(token_class: python_token_greater, text: " > "),
+      python_lex_rule(token_class: python_token_lparen, text: "("),
+      python_lex_rule(token_class: python_token_comma, text: ", "),
+      python_lex_rule(token_class: python_token_rparen, text: ")"),
+      python_lex_rule(token_class: python_token_colon, text: ": ")
+    ]
+  }
 }
 
 fn python_wave1_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: python_wave1_lex_rules() } }
+  ModeledLexRules { root: python_wave1_lex_rules() }
+}
+
+fn python_grammar_atom(id: Symbol) -> Node {
+  python_inhabitant_atom(id: id)
+}
+
+fn python_wave1_grammar_root() -> GrammarRoot {
+  GrammarRoot {
+    start: python_production_fn_def,
+    productions: [
+      python_grammar_production_mvp1_fn_add(),
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_fn_def,
+          rhs: [
+            grammar_formal_terminal(identity: python_token_kw_def),
+            grammar_formal_terminal(identity: python_token_ident),
+            grammar_formal_terminal(identity: python_token_lparen),
+            grammar_formal_terminal(identity: python_token_ident),
+            grammar_formal_terminal(identity: python_token_rparen_suite_indent),
+            grammar_formal_nonterminal_occurrence(identity: python_production_suite)
+          ]
+        ),
+        alts: Empty,
+        emitted: python_surface_fn_item
+      ),
+      // Left-biased Choice: longer/recursive suite alt must precede single-stmt alt.
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_suite,
+          rhs: [
+            grammar_formal_nonterminal_occurrence(identity: python_production_stmt),
+            grammar_formal_nonterminal_occurrence(identity: python_production_suite)
+          ]
+        ),
+        alts: [
+          grammar_formal_production(
+            lhs: python_production_suite,
+            rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_stmt)]
+          )
+        ],
+        emitted: python_surface_suite
+      ),
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_stmt,
+          rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_assign_stmt)]
+        ),
+        alts: [
+          grammar_formal_production(
+            lhs: python_production_stmt,
+            rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_if_stmt)]
+          ),
+          grammar_formal_production(
+            lhs: python_production_stmt,
+            rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_return_stmt)]
+          )
+        ],
+        emitted: python_surface_stmt
+      ),
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_assign_stmt,
+          rhs: [
+            grammar_formal_terminal(identity: python_token_ident),
+            grammar_formal_terminal(identity: python_token_equal),
+            grammar_formal_nonterminal_occurrence(identity: python_production_additive)
+          ]
+        ),
+        alts: Empty,
+        emitted: python_surface_assign_stmt
+      ),
+      // colon_if_suite_indent carries ":\n        " (layout boundary); if-body return uses
+      // kw_return+primary alt (no leading newline) so token/grammar paths stay consistent.
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_if_stmt,
+          rhs: [
+            grammar_formal_terminal(identity: python_token_newline_if_stmt),
+            grammar_formal_nonterminal_occurrence(identity: python_production_comparison),
+            grammar_formal_terminal(identity: python_token_colon_if_suite_indent),
+            grammar_formal_nonterminal_occurrence(identity: python_production_return_stmt)
+          ]
+        ),
+        alts: Empty,
+        emitted: python_surface_if_stmt
+      ),
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_return_stmt,
+          rhs: [
+            grammar_formal_terminal(identity: python_token_newline_return_inner),
+            grammar_formal_nonterminal_occurrence(identity: python_production_primary)
+          ]
+        ),
+        alts: [
+          grammar_formal_production(
+            lhs: python_production_return_stmt,
+            rhs: [
+              grammar_formal_terminal(identity: python_token_newline_return_outer),
+              grammar_formal_nonterminal_occurrence(identity: python_production_primary)
+            ]
+          ),
+          grammar_formal_production(
+            lhs: python_production_return_stmt,
+            rhs: [
+              grammar_formal_terminal(identity: python_token_kw_return),
+              grammar_formal_nonterminal_occurrence(identity: python_production_primary)
+            ]
+          )
+        ],
+        emitted: python_surface_return_stmt
+      ),
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_comparison,
+          rhs: [
+            grammar_formal_nonterminal_occurrence(identity: python_production_additive),
+            grammar_formal_nonterminal_occurrence(identity: python_production_comparison_tail)
+          ]
+        ),
+        alts: Empty,
+        emitted: python_surface_comparison
+      ),
+      // Left-biased Choice: consuming alt before empty tail alt.
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_comparison_tail,
+          rhs: [
+            grammar_formal_terminal(identity: python_token_greater),
+            grammar_formal_nonterminal_occurrence(identity: python_production_additive)
+          ]
+        ),
+        alts: [grammar_formal_production(lhs: python_production_comparison_tail, rhs: Empty)],
+        emitted: python_surface_comparison_tail
+      ),
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_additive,
+          rhs: [
+            grammar_formal_nonterminal_occurrence(identity: python_production_primary),
+            grammar_formal_nonterminal_occurrence(identity: python_production_additive_tail)
+          ]
+        ),
+        alts: Empty,
+        emitted: python_surface_additive
+      ),
+      // Left-biased Choice: consuming alt before empty tail alt.
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_additive_tail,
+          rhs: [
+            grammar_formal_terminal(identity: python_token_plus),
+            grammar_formal_nonterminal_occurrence(identity: python_production_primary),
+            grammar_formal_nonterminal_occurrence(identity: python_production_additive_tail)
+          ]
+        ),
+        alts: [grammar_formal_production(lhs: python_production_additive_tail, rhs: Empty)],
+        emitted: python_surface_additive_tail
+      ),
+      python_formal_productions_to_grammar_production(
+        head: grammar_formal_production(
+          lhs: python_production_primary,
+          rhs: [grammar_formal_terminal(identity: python_token_ident)]
+        ),
+        alts: [
+          grammar_formal_production(
+            lhs: python_production_primary,
+            rhs: [grammar_formal_terminal(identity: python_token_int_literal)]
+          )
+        ],
+        emitted: python_surface_primary
+      )
+    ],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn python_wave1_grammar() -> ParseGrammar {
+  ModeledGrammar { root: python_wave1_grammar_root() }
+}
+
+fn python_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_token_class_member(
+    rules: python_wave1_lex_rules(),
+    token_class: sym
+  )
+}
+
+fn python_catalog_surface_spelling_eq(sym: Symbol, spelling: Symbol) -> Bool {
+  sym == spelling
+}
+
+fn python_catalog_surface_fold_false() -> Bool {
+  false
+}
+
+fn python_integer_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonIntegerPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+}
+
+fn python_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_integer_facts_catalog,
+    empty: python_catalog_surface_fold_false(),
+    cons: fn(acc, facts) {
+      python_integer_catalog_surface_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn python_float_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonFloatPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+}
+
+fn python_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_float_facts_catalog,
+    empty: python_catalog_surface_fold_false(),
+    cons: fn(acc, facts) {
+      python_float_catalog_surface_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn python_complex_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonComplexPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+}
+
+fn python_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_complex_facts_catalog,
+    empty: python_catalog_surface_fold_false(),
+    cons: fn(acc, facts) {
+      python_complex_catalog_surface_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn python_bool_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonBoolPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+}
+
+fn python_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_bool_facts_catalog,
+    empty: python_catalog_surface_fold_false(),
+    cons: fn(acc, facts) {
+      python_bool_catalog_surface_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn python_singleton_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonSingletonPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+}
+
+fn python_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_singleton_facts_catalog,
+    empty: python_catalog_surface_fold_false(),
+    cons: fn(acc, facts) {
+      python_singleton_catalog_surface_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn python_catalog_surface_symbol(sym: Symbol) -> Bool {
+  python_integer_catalog_surface_symbol(sym: sym) ||
+    python_float_catalog_surface_symbol(sym: sym) ||
+    python_complex_catalog_surface_symbol(sym: sym) ||
+    python_bool_catalog_surface_symbol(sym: sym) ||
+    python_singleton_catalog_surface_symbol(sym: sym)
+}
+
+fn python_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      python_catalog_surface_symbol(sym: sym) ||
+        python_wave1_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: python_wave1_grammar(), sym: sym) ||
+        sym == python_surface_fn_item ||
+        sym == python_production_mvp1_fn_add ||
+        sym == python_mvp1_source_literal
+    }
+  }
+}
+
+fn python_language_model_wave1() -> PythonLanguageModel {
+  PythonLanguageModel {
+    lex: python_wave1_lex(),
+    grammar: python_wave1_grammar(),
+    language_identity: python_language_model_surface_id,
+    canonical_symbols: python_language_model_canonical_symbols(),
+    core: python_model_core_wave1()
+  }
 }

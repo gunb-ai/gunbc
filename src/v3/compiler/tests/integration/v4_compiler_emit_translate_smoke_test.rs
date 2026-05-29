@@ -13,13 +13,15 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
-//! land in the same PR. **This PR (+0 census paths):** expands the existing harness (no new
-//! census path) to ratchet T-11 grammar-inverse compile-inferred TestClaim parse/import receipts
-//! for python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`) via
-//! `v4_mvp1_python_add_claim_tokenizes_and_parses`, `v4_mvp1_go_add_claim_tokenizes_and_parses`,
-//! `v4_mvp1_cpp_add_claim_tokenizes_and_parses`, `v4_mvp1_typescript_add_claim_tokenizes_and_parses`,
-//! and `v4_mvp1_shape_a_add_claims_import_compile_inferred`; dissolves
-//! `feature:T-11-grammar-inverse-serializer-remaining-targets` status mark in `06_translate.dag`.
+//! land in the same PR. **This PR (+0 census paths):** structural serialize-measure ratchet
+//! on `06_translate.dag` via parsed-surface `fn`/`import`/`data` inventory in
+//! `v4_translate_dag_dispatches_token_sequence_items`; fail-closed semantics exercised by
+//! `run_mvp1_serialize_rejects_missing_translation_rules` in `mvp1_rust_add_translate.dag`
+//! (not host `str::contains` probes). **PR #3798 (+0 census paths):** extends
+//! `v4_python_language_model_declares_t11_translation_rules` for T-4.17 python wave-2a
+//! LanguageModel / lex/grammar surface on `python.dag`. **PR #3840 (+0 census paths):**
+//! adds T-11 grammar-inverse compile-inferred TestClaim parse/import receipts for
+//! python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`).
 //! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
 //! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
 //!
@@ -56,6 +58,8 @@ const WASM_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/w
 const WASM_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/wasm.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
+const KOTLIN_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/kotlin.dag");
+const KOTLIN_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/kotlin.dag";
 const DAG_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/dag.dag");
 const DAG_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/dag.dag";
 const MVP1_CLAIM_DAG: &str =
@@ -414,10 +418,19 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         ),
         "{PYTHON_LANGUAGE_PATH}: Python grammar rows must consume the shared FormalProduction Node projection"
     );
-    for name in ["GrammarExpr", "Sequence", "Terminal"] {
+    // Bounded FormalProduction → GrammarExpr operational parse shim (CP-1b interim):
+    // grammar rows import projection carriers only for python_formal_productions_to_grammar_expr.
+    for name in [
+        "GrammarExpr",
+        "Sequence",
+        "Terminal",
+        "Choice",
+        "Nonterminal",
+        "Optional",
+    ] {
         assert!(
-            !import_includes_name(&module, &["v4", "std", "grammar"], name),
-            "{PYTHON_LANGUAGE_PATH}: Python grammar rows must not import legacy nested GrammarExpr helper `{name}`"
+            import_includes_name(&module, &["v4", "std", "grammar"], name),
+            "{PYTHON_LANGUAGE_PATH}: operational parse shim must import `{name}` from v4.std.grammar"
         );
     }
     assert!(
@@ -438,7 +451,15 @@ fn v4_python_language_model_declares_t11_translation_rules() {
     );
     assert!(
         surface_declares_fn(&module, "python_formal_rhs_from_token_classes"),
-        "{PYTHON_LANGUAGE_PATH}: must build grammar production RHS as a flat formal-symbol list"
+        "{PYTHON_LANGUAGE_PATH}: must build MVP-1 grammar production RHS as a flat formal-symbol list"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_formal_productions_to_grammar_expr"),
+        "{PYTHON_LANGUAGE_PATH}: must derive GrammarExpr from FormalProduction authority (operational parse shim)"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_formal_production_mvp1_fn_add"),
+        "{PYTHON_LANGUAGE_PATH}: must expose FormalProduction authority for MVP-1 relation rows"
     );
     for name in [
         "python_formal_nonterminal_node",
@@ -453,6 +474,18 @@ fn v4_python_language_model_declares_t11_translation_rules() {
             "{PYTHON_LANGUAGE_PATH}: Python must not mirror std FormalProduction projection helper `{name}`"
         );
     }
+    assert!(
+        surface_declares_type(&module, "PythonLanguageModel"),
+        "{PYTHON_LANGUAGE_PATH}: must declare the LanguageModel carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_language_model_wave1"),
+        "{PYTHON_LANGUAGE_PATH}: must expose wave-1 LanguageModel with lex/grammar data"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_wave1_grammar"),
+        "{PYTHON_LANGUAGE_PATH}: must expose ModeledGrammar for bidirectional ingest"
+    );
 }
 
 #[test]
@@ -503,6 +536,155 @@ fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
             surface_fn_count(&module, name),
             0,
             "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must not declare faithful algebra inhabitance for deferred complex/singleton facts via `{name}`"
+        );
+    }
+}
+
+#[test]
+fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
+    let module = parse_module(KOTLIN_LANGUAGE_DAG, KOTLIN_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "AlgebraInhabitanceDecl"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must consume ModelCore algebra inhabitance rows"
+    );
+    for name in [
+        "ordered_ring_node",
+        "approximate_field_node",
+        "boolean_algebra_node",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "algebra"], name),
+            "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must use grounded std.algebra Node constructor `{name}`"
+        );
+    }
+    for name in [
+        "kotlin_ordered_ring_int_facts",
+        "kotlin_ordered_ring_long_facts",
+        "kotlin_integer_algebra_witness_node",
+        "kotlin_float_algebra_witness_node",
+        "kotlin_bool_algebra_witness_node",
+        "kotlin_integer_algebra_inhabitance",
+        "kotlin_float_algebra_inhabitance",
+        "kotlin_bool_algebra_inhabitance",
+        "kotlin_model_core_inhabitance_decls",
+        "kotlin_model_core_wave1",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare `{name}`"
+        );
+    }
+    assert!(
+        surface_declares_type(&module, "KotlinOrderedRingIntegerFacts"),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare algebra-closed integer inhabitance carrier `KotlinOrderedRingIntegerFacts`"
+    );
+    assert!(
+        surface_declares_type(&module, "KotlinOrderedRingIntWidth"),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare algebra-closed integer width coproduct `KotlinOrderedRingIntWidth`"
+    );
+    assert!(
+        type_sum_has_variant(
+            &module,
+            "KotlinOrderedRingIntegerFacts",
+            "KotlinOrderedRingIntFacts"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare closed Int ordered-ring variant `KotlinOrderedRingIntFacts`"
+    );
+    assert!(
+        type_sum_has_variant(
+            &module,
+            "KotlinOrderedRingIntegerFacts",
+            "KotlinOrderedRingLongFacts"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare closed Long ordered-ring variant `KotlinOrderedRingLongFacts`"
+    );
+    for name in [
+        "kotlin_ordered_ring_integer_from_int_primitive_facts",
+        "kotlin_ordered_ring_integer_from_long_primitive_facts",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{KOTLIN_LANGUAGE_PATH}: must not expose broad `KotlinIntegerPrimitiveFacts` ordered-ring constructors via `{name}`"
+        );
+    }
+    assert_eq!(
+        surface_fn_first_param_named_type(&module, "kotlin_integer_algebra_inhabitance"),
+        Some("KotlinOrderedRingIntegerFacts".to_string()),
+        "{KOTLIN_LANGUAGE_PATH}: `kotlin_integer_algebra_inhabitance` must accept only `KotlinOrderedRingIntegerFacts` (Byte/Short excluded at API level)"
+    );
+    assert_eq!(
+        data_list_element_var_names(&module, KOTLIN_LANGUAGE_DAG, "kotlin_integer_algebra_inhabitance_facts_catalog"),
+        vec![
+            "kotlin_ordered_ring_facts_int".to_string(),
+            "kotlin_ordered_ring_facts_long".to_string(),
+        ],
+        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must name closed Int/Long ordered-ring rows"
+    );
+    assert!(
+        data_body_source_contains(
+            &module,
+            KOTLIN_LANGUAGE_DAG,
+            "kotlin_ordered_ring_facts_int",
+            "kotlin_ordered_ring_int_facts()"
+        ) && data_body_source_contains(
+            &module,
+            KOTLIN_LANGUAGE_DAG,
+            "kotlin_ordered_ring_facts_long",
+            "kotlin_ordered_ring_long_facts()"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: closed ordered-ring rows must be built only via zero-arg Int/Long constructors"
+    );
+    assert!(
+        !data_body_source_contains(
+            &module,
+            KOTLIN_LANGUAGE_DAG,
+            "kotlin_integer_algebra_inhabitance_facts_catalog",
+            "kotlin_facts_byte"
+        ) && !data_body_source_contains(
+            &module,
+            KOTLIN_LANGUAGE_DAG,
+            "kotlin_integer_algebra_inhabitance_facts_catalog",
+            "kotlin_facts_short"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must exclude Byte/Short primitive facts"
+    );
+    assert_eq!(
+        data_named_type(&module, "kotlin_integer_algebra_inhabitance_facts_catalog"),
+        Some("List<KotlinOrderedRingIntegerFacts>".to_string()),
+        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must be typed as `List<KotlinOrderedRingIntegerFacts>`"
+    );
+    assert!(
+        fn_external_body_contains(
+            &module,
+            KOTLIN_LANGUAGE_DAG,
+            "kotlin_model_core_wave1",
+            "inhabitance: kotlin_model_core_inhabitance_decls()"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: `kotlin_model_core_wave1` must wire `ModelCore.inhabitance` through `kotlin_model_core_inhabitance_decls()`"
+    );
+    for name in [
+        "kotlin_char_algebra_witness_node",
+        "kotlin_string_algebra_witness_node",
+        "kotlin_unit_algebra_witness_node",
+        "kotlin_nothing_algebra_witness_node",
+        "kotlin_char_algebra_inhabitance",
+        "kotlin_string_algebra_inhabitance",
+        "kotlin_unit_algebra_inhabitance",
+        "kotlin_nothing_algebra_inhabitance",
+        "kotlin_char_algebra_inhabitance_decls",
+        "kotlin_string_algebra_inhabitance_decls",
+        "kotlin_unit_algebra_inhabitance_decls",
+        "kotlin_nothing_algebra_inhabitance_decls",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must not declare faithful algebra inhabitance for deferred char/string/unit/nothing facts via `{name}`"
         );
     }
 }
@@ -967,6 +1149,181 @@ fn surface_fn_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &s
         .count()
 }
 
+fn surface_fn_first_param_named_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    fn_name: &str,
+) -> Option<String> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Fn { name, params, .. } | SurfaceItem::FnExternalBody { name, params, .. }
+            if name == fn_name =>
+        {
+            params.first().and_then(|param| match &param.ty {
+                SurfaceType::Named { name, .. } => Some(name.clone()),
+                _ => None,
+            })
+        }
+        _ => None,
+    })
+}
+
+fn data_named_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> Option<String> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Data {
+            name: item_name,
+            ty,
+            ..
+        } if item_name == name => Some(surface_type_name(ty)),
+        _ => None,
+    })
+}
+
+fn data_body_source<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    source: &'a str,
+    name: &str,
+) -> Option<&'a str> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Data {
+            name: item_name,
+            body: Some(body),
+            ..
+        } if item_name == name => Some(match body {
+            SurfaceExpr::List { .. } | SurfaceExpr::Record { .. } => {
+                source_span_text(source, &body.span())
+            }
+            _ => return None,
+        }),
+        SurfaceItem::Data {
+            name: item_name,
+            body: None,
+            body_span,
+            ..
+        } if item_name == name => Some(source_span_text(source, body_span)),
+        _ => None,
+    })
+}
+
+fn data_body_source_contains(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    name: &str,
+    needle: &str,
+) -> bool {
+    data_body_source(module, source, name).is_some_and(|body| body.contains(needle))
+}
+
+fn data_list_element_surface_text(source: &str, element: &SurfaceExpr) -> String {
+    match element {
+        SurfaceExpr::Var { name, .. } => name.clone(),
+        _ => source_span_text(source, &element.span()).trim().to_string(),
+    }
+}
+
+fn data_list_element_var_names(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    name: &str,
+) -> Vec<String> {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(SurfaceExpr::List { elements, .. }),
+                ..
+            } if item_name == name => Some(
+                elements
+                    .iter()
+                    .map(|element| data_list_element_surface_text(source, element))
+                    .collect(),
+            ),
+            SurfaceItem::Data {
+                name: item_name,
+                body: None,
+                body_span,
+                ..
+            } if item_name == name => {
+                let body = source_span_text(source, body_span);
+                Some(
+                    body.split(',')
+                        .map(str::trim)
+                        .filter(|line| !line.is_empty() && *line != "[" && *line != "]")
+                        .map(|line| line.trim_end_matches(',').to_string())
+                        .collect(),
+                )
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data list body `{name}`"))
+}
+
+fn fn_external_body_contains(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    fn_name: &str,
+    needle: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::FnExternalBody {
+            name, body_span, ..
+        } if name == fn_name => source_span_text(source, body_span).contains(needle),
+        SurfaceItem::Fn { name, body, .. } if name == fn_name => match body {
+            SurfaceExpr::Record { fields, .. } => fields
+                .iter()
+                .any(|field| expr_source_contains(&field.value, needle)),
+            _ => source_span_text(source, &body.span()).contains(needle),
+        },
+        _ => false,
+    })
+}
+
+fn source_span_text<'a>(source: &'a str, span: &v3_compiler::SourceSpan) -> &'a str {
+    source
+        .get(span.byte_start as usize..span.byte_end as usize)
+        .unwrap_or_else(|| panic!("invalid source span {}..{}", span.byte_start, span.byte_end))
+}
+
+fn expr_source_contains(expr: &SurfaceExpr, needle: &str) -> bool {
+    match expr {
+        SurfaceExpr::Var { name, .. } => name.contains(needle),
+        SurfaceExpr::Call { target, args, .. } => {
+            target.contains(needle) || args.iter().any(|arg| expr_source_contains(arg, needle))
+        }
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields
+            .iter()
+            .any(|field| expr_source_contains(&field.value, needle)),
+        _ => false,
+    }
+}
+
+trait SurfaceExprSpan {
+    fn span(&self) -> v3_compiler::SourceSpan;
+}
+
+impl SurfaceExprSpan for SurfaceExpr {
+    fn span(&self) -> v3_compiler::SourceSpan {
+        match self {
+            SurfaceExpr::Literal { span, .. }
+            | SurfaceExpr::Var { span, .. }
+            | SurfaceExpr::Path { span, .. }
+            | SurfaceExpr::Call { span, .. }
+            | SurfaceExpr::PathCall { span, .. }
+            | SurfaceExpr::VariantRecord { span, .. }
+            | SurfaceExpr::Operator { span, .. }
+            | SurfaceExpr::Lambda { span, .. }
+            | SurfaceExpr::If { span, .. }
+            | SurfaceExpr::Match { span, .. }
+            | SurfaceExpr::Record { span, .. }
+            | SurfaceExpr::List { span, .. }
+            | SurfaceExpr::Map { span, .. } => span.clone(),
+        }
+    }
+}
+
 fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
     module.items.iter().any(|item| match item {
         SurfaceItem::Data {
@@ -1071,6 +1428,19 @@ fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, nam
         | SurfaceItem::TypeAtom {
             name: item_name, ..
         } => item_name == name,
+        _ => false,
+    })
+}
+
+fn type_sum_has_variant(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    type_name: &str,
+    variant_name: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::TypeSum { name, variants, .. } if name == type_name => {
+            variants.iter().any(|variant| variant.name == variant_name)
+        }
         _ => false,
     })
 }
