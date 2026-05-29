@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/java.dag
 // Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar aligned to JLS production boundaries (§8.1.7 ClassBodyDeclaration, §8.4 MethodHeader/MethodBody/MethodDeclarator/FormalParameterList, §14.17 optional return Expression). Wave-2 productions declared as `FormalProduction` flat rhs (`java_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence. canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. inhabitance: [] (Wave 2b). bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2a/2b — wave-1 MVP-1 + wave-2 lex/grammar aligned to JLS production boundaries (§8.1.7 ClassBodyDeclaration, §8.4 MethodHeader/MethodBody/MethodDeclarator/FormalParameterList, §14.17 optional return Expression). Wave-2 productions declared as `FormalProduction` flat rhs (`java_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence. canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. ModelCore wave-2b: primitive storage on full integer catalog; arithmetic inhabitance/laws on `int`/`long` only (JLS §5.6 promotion — byte/short/char stay primitives-only); wrapping int/long → commutative_semiring modular laws; float/double primitives-only (JLS §15.20.1 NaN compare); bool algebra; div/rem-by-zero partiality only. bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v4.extdeps.languages.java
@@ -46,10 +46,19 @@ import v4.std.lexing {
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
   EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
   ModelCore,
+  model_core_wave1_law_field_algebra,
+  model_core_wave1_law_field_kind,
+  model_core_wave1_law_field_subject,
+  PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
+  PrimitiveOperationRef,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
@@ -87,11 +96,21 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, fold_list, fold_list_right, list_append, list_snoc_item }
+import v4.std.algebra {
+  BooleanAlgebra,
+  boolean_algebra_node,
+  boolean_algebra_type_node,
+  commutative_semiring_node,
+  commutative_semiring_type_node,
+  fold_list,
+  fold_list_right,
+  list_append,
+  list_snoc_item
+}
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// JLS has no unsigned integral primitives; `Unsigned` arm mirrors rust.dag carrier shape for v2 compile (never cataloged).
+// `Unsigned` arm is cataloged for `char` (JLS §4.2.1 — 16-bit unsigned UTF-16 code unit); signed integrals use `Signed`.
 type JavaIntKind
   = Signed
   | Unsigned
@@ -340,6 +359,51 @@ data java_tag_scalar_bool: Symbol = java_tag_scalar_bool
 data java_tag_scalar_char: Symbol = java_tag_scalar_char
 data java_tag_scalar_void: Symbol = java_tag_scalar_void
 
+// Law-kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
+// 🟡 needs-more-work — feature:java-model-core-law-keys — scaffold:T-4-wave-2b · declared law-kind coproduct for java_model_core_law_node kind edge; dissolve-on: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
+type JavaModelCoreLawKey
+  = JavaLawIntegerAddAssociativeModular
+  | JavaLawIntegerAddCommutativeModular
+  | JavaLawIntegerMulAssociativeModular
+  | JavaLawIntegerMulCommutativeModular
+  | JavaLawIntegerDistributiveModular
+  | JavaLawIntegerModularWrap
+  | JavaLawBoolBoundedLattice
+  | JavaLawBoolComplement
+
+data java_law_kind_integer_add_associative_modular: Symbol = java_law_kind_integer_add_associative_modular
+data java_law_kind_integer_add_commutative_modular: Symbol = java_law_kind_integer_add_commutative_modular
+data java_law_kind_integer_mul_associative_modular: Symbol = java_law_kind_integer_mul_associative_modular
+data java_law_kind_integer_mul_commutative_modular: Symbol = java_law_kind_integer_mul_commutative_modular
+data java_law_kind_integer_distributive_modular: Symbol = java_law_kind_integer_distributive_modular
+data java_law_kind_integer_modular_wrap: Symbol = java_law_kind_integer_modular_wrap
+data java_law_kind_bool_bounded_lattice: Symbol = java_law_kind_bool_bounded_lattice
+data java_law_kind_bool_complement: Symbol = java_law_kind_bool_complement
+
+data java_witness_integer_commutative_semiring_modular: Symbol = java_witness_integer_commutative_semiring_modular
+data java_witness_bool_boolean_algebra: Symbol = java_witness_bool_boolean_algebra
+
+data java_effect_signature_pure_value: Symbol = java_effect_signature_pure_value
+data java_op_integer_add: Symbol = java_op_integer_add
+data java_op_integer_sub: Symbol = java_op_integer_sub
+data java_op_integer_mul: Symbol = java_op_integer_mul
+data java_op_integer_neg: Symbol = java_op_integer_neg
+data java_op_integer_div: Symbol = java_op_integer_div
+data java_op_integer_rem: Symbol = java_op_integer_rem
+data java_op_integer_compare: Symbol = java_op_integer_compare
+data java_op_float_add: Symbol = java_op_float_add
+data java_op_float_sub: Symbol = java_op_float_sub
+data java_op_float_mul: Symbol = java_op_float_mul
+data java_op_float_div: Symbol = java_op_float_div
+data java_op_float_compare: Symbol = java_op_float_compare
+data java_op_bool_and: Symbol = java_op_bool_and
+data java_op_bool_or: Symbol = java_op_bool_or
+data java_op_bool_not: Symbol = java_op_bool_not
+
+data java_partial_integer_divide_by_zero: Symbol = java_partial_integer_divide_by_zero
+data java_partial_integer_remainder_by_zero: Symbol = java_partial_integer_remainder_by_zero
+data java_precondition_integer_divisor_nonzero: Symbol = java_precondition_integer_divisor_nonzero
+
 data java_mvp1_source_literal: Symbol = java_mvp1_source_literal
 data java_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data java_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
@@ -438,10 +502,21 @@ data java_integer_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
   java_facts_char,
 ]
 
+// JLS §5.6 — numeric promotion: byte/short/char arithmetic is performed on int; only int/long carry ModelCore algebra.
+data java_integer_algebra_inhabitance_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
+  java_facts_int,
+  java_facts_long,
+]
+
 data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [
   java_facts_float,
   java_facts_double,
 ]
+
+// JLS §15.20.1 — float/double relational ops are boolean-valued with NaN unordered; std
+// `ApproximateField` bundles an Ordering-valued compare. Float primitive facts stay in
+// `ModelCore.primitives`; AlgebraInhabitanceDecl/laws withheld until std exports a
+// NaN-aware float arithmetic carrier (kotlin.dag char / go.dag complex precedent).
 
 // §4.2 boolean only — char is integral (integer catalog); void is declared-inhabitant-only (not ModelCore).
 data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
@@ -1987,13 +2062,293 @@ fn java_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
+fn java_symbol_node(id: Symbol) -> Node {
+  java_inhabitant_atom(id: id)
+}
+
+fn java_wrapping_integer_algebra_witness_node(facts: JavaIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: java_witness_integer_commutative_semiring_modular,
+        target: java_symbol_node(id: java_witness_integer_commutative_semiring_modular)
+      ),
+      java_named_edge(
+        name: java_facts_field_signedness,
+        target: java_int_kind_node(kind: facts.signedness)
+      ),
+      java_named_edge(
+        name: java_facts_field_width,
+        target: java_int_width_node(width: facts.width)
+      ),
+      java_named_edge(
+        name: java_facts_field_std_projection,
+        target: java_symbol_node(id: facts.std_projection)
+      ),
+      java_named_edge(
+        name: java_facts_field_overflow_release,
+        target: java_overflow_node(overflow: facts.overflow_release)
+      )
+    ]
+  }
+}
+
+fn java_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: java_witness_bool_boolean_algebra,
+        target: java_symbol_node(id: java_witness_bool_boolean_algebra)
+      ),
+      java_named_edge(
+        name: java_facts_field_std_projection,
+        target: java_symbol_node(id: java_facts_boolean.std_projection)
+      )
+    ]
+  }
+}
+
+fn java_wrapping_integer_algebra_inhabitance(facts: JavaIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = java_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: commutative_semiring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: java_wrapping_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn java_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = java_noninteger_facts_node(facts: java_facts_boolean)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: java_bool_algebra_witness_node()
+  }
+}
+
+fn java_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: java_integer_algebra_inhabitance_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: java_wrapping_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn java_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    java_bool_algebra_inhabitance()
+  ]
+}
+
+fn java_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: java_integer_algebra_inhabitance_decls(),
+    right: java_bool_algebra_inhabitance_decls()
+  )
+}
+
+fn java_law_kind_symbol(key: JavaModelCoreLawKey) -> Symbol {
+  match key {
+    JavaLawIntegerAddAssociativeModular => java_law_kind_integer_add_associative_modular
+    JavaLawIntegerAddCommutativeModular => java_law_kind_integer_add_commutative_modular
+    JavaLawIntegerMulAssociativeModular => java_law_kind_integer_mul_associative_modular
+    JavaLawIntegerMulCommutativeModular => java_law_kind_integer_mul_commutative_modular
+    JavaLawIntegerDistributiveModular => java_law_kind_integer_distributive_modular
+    JavaLawIntegerModularWrap => java_law_kind_integer_modular_wrap
+    JavaLawBoolBoundedLattice => java_law_kind_bool_bounded_lattice
+    JavaLawBoolComplement => java_law_kind_bool_complement
+  }
+}
+
+fn java_model_core_law_node(witness: Node, algebra: Node, key: JavaModelCoreLawKey) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(name: model_core_wave1_law_field_subject, target: witness),
+      java_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      java_named_edge(
+        name: model_core_wave1_law_field_kind,
+        target: java_inhabitant_atom(id: java_law_kind_symbol(key: key))
+      )
+    ]
+  }
+}
+
+fn java_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: witness,
+    law: law
+  }
+}
+
+fn java_wrapping_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = java_wrapping_integer_algebra_witness_node(facts: facts)
+  let inhabitant = java_integer_facts_node(facts: facts)
+  let algebra = commutative_semiring_type_node(inhabitant: inhabitant)
+  [
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerAddAssociativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerAddCommutativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerMulAssociativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerMulCommutativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerDistributiveModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawIntegerModularWrap
+      )
+    )
+  ]
+}
+
+fn java_bool_algebra_laws() -> List<AlgebraLawObligation> {
+  let witness = java_bool_algebra_witness_node()
+  let inhabitant = java_noninteger_facts_node(facts: java_facts_boolean)
+  let algebra = boolean_algebra_type_node(inhabitant: inhabitant)
+  [
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawBoolBoundedLattice
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawBoolComplement
+      )
+    )
+  ]
+}
+
+fn java_integer_algebra_laws() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: java_integer_algebra_inhabitance_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(left: acc, right: java_wrapping_integer_law_obligations(facts: facts))
+    }
+  )
+}
+
+fn java_model_core_law_obligations() -> List<AlgebraLawObligation> {
+  list_append(
+    left: java_integer_algebra_laws(),
+    right: java_bool_algebra_laws()
+  )
+}
+
+fn java_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: java_symbol_node(id: operation),
+    effect_signature: EffectSignature {
+      signature: java_symbol_node(id: java_effect_signature_pure_value)
+    }
+  }
+}
+
+fn java_effect_semantics_wave2b() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      java_pure_operation(operation: java_op_integer_add),
+      java_pure_operation(operation: java_op_integer_sub),
+      java_pure_operation(operation: java_op_integer_mul),
+      java_pure_operation(operation: java_op_integer_neg),
+      java_pure_operation(operation: java_op_integer_div),
+      java_pure_operation(operation: java_op_integer_rem),
+      java_pure_operation(operation: java_op_integer_compare),
+      java_pure_operation(operation: java_op_float_add),
+      java_pure_operation(operation: java_op_float_sub),
+      java_pure_operation(operation: java_op_float_mul),
+      java_pure_operation(operation: java_op_float_div),
+      java_pure_operation(operation: java_op_float_compare),
+      java_pure_operation(operation: java_op_bool_and),
+      java_pure_operation(operation: java_op_bool_or),
+      java_pure_operation(operation: java_op_bool_not)
+    ]
+  }
+}
+
+fn java_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: java_symbol_node(id: operation),
+    precondition: java_symbol_node(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn java_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      java_fail_closed_partial_operation(
+        operation: java_op_integer_div,
+        precondition: java_precondition_integer_divisor_nonzero,
+        reason: java_partial_integer_divide_by_zero
+      ),
+      java_fail_closed_partial_operation(
+        operation: java_op_integer_rem,
+        precondition: java_precondition_integer_divisor_nonzero,
+        reason: java_partial_integer_remainder_by_zero
+      )
+    ]
+  }
+}
+
 fn java_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: java_wave1_primitive_fact_bundles(),
-    inhabitance: [],
-    laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    inhabitance: java_model_core_inhabitance_decls(),
+    laws: java_model_core_law_obligations(),
+    effects: java_effect_semantics_wave2b(),
+    partiality: java_partiality_semantics_wave2b()
   }
 }
 
