@@ -403,8 +403,13 @@ fn grammar_concrete_bound_token_node(token_class: Symbol, binding: Symbol) -> No
 }
 
 
+fn grammar_bindings_lookup(bindings: Map<Symbol, Symbol>, key: Symbol) -> Witness<Symbol> {
+  bindings.lookup(key)
+}
+
+
 fn grammar_terminal_to_token_edge(terminal: FormalTerminal, bindings: Map<Symbol, Symbol>) -> Edge {
-  match bindings.lookup(terminal.identity) {
+  match grammar_bindings_lookup(bindings: bindings, key: terminal.identity) {
     Holds { value: binding } =>
       Edge {
         label: Positional,
@@ -419,6 +424,14 @@ fn grammar_terminal_to_token_edge(terminal: FormalTerminal, bindings: Map<Symbol
 }
 
 
+fn grammar_conj_positional_targets_step(acc: List<Node>, edge: Edge) -> List<Node> {
+  match edge.label {
+    Positional => list_snoc_item(xs: acc, item: edge.target)
+    Named { name: _ } => acc
+  }
+}
+
+
 fn grammar_conj_positional_targets(parent: Node) -> List<Node> {
   match parent.kind {
     TypeNode { connective: Conj } =>
@@ -426,11 +439,7 @@ fn grammar_conj_positional_targets(parent: Node) -> List<Node> {
         xs: parent.children,
         empty: Empty,
         cons: fn(acc, edge) {
-          match edge.label {
-            Positional =>
-              list_snoc_item(xs: acc, item: edge.target)
-            Named { name: _ } => acc
-          }
+          grammar_conj_positional_targets_step(acc: acc, edge: edge)
         }
       )
     _ => Empty
@@ -454,6 +463,23 @@ fn grammar_derive_positional_child_at(parent: Node, index: Int) -> Node {
 }
 
 
+fn formal_production_for_lhs_step(
+  acc: Witness<FormalProduction>,
+  candidate: FormalProduction,
+  lhs: Symbol
+) -> Witness<FormalProduction> {
+  match acc {
+    Holds { value: _ } => acc
+    Violates { diagnostic: _ } =>
+      if candidate.lhs.identity == lhs {
+        Holds { value: candidate }
+      } else {
+        acc
+      }
+  }
+}
+
+
 fn formal_production_for_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Witness<FormalProduction> {
   fold_list(
     xs: productions,
@@ -465,15 +491,7 @@ fn formal_production_for_lhs(productions: List<FormalProduction>, lhs: Symbol) -
       }
     },
     cons: fn(acc, candidate) {
-      match acc {
-        Holds { value: _ } => acc
-        Violates { diagnostic: _ } =>
-          if candidate.lhs.identity == lhs {
-            Holds { value: candidate }
-          } else {
-            acc
-          }
-      }
+      formal_production_for_lhs_step(acc: acc, candidate: candidate, lhs: lhs)
     }
   )
 }
