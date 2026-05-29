@@ -282,15 +282,33 @@ type IterationOrdering
   = StructurallyOrdered
   | StructurallyUnordered
 data naming_the_leak: Symbol = naming_the_leak
+// Ordering classifier — mirrors `Validation<B>` above. The classifier is
+// parametric on the carrier `B`; concrete `IterationClassifier<HashMap<K,V>>` /
+// `IterationClassifier<BTreeMap<K,V>>` instances are authored *per carrier* at
+// the layer that owns each carrier's type identity (PR-2 lens / PR-4 compiler
+// retrofit / `v4.std.collection` for substrate carriers), and ALWAYS return
+// `StructurallyUnordered` for hash carriers, `StructurallyOrdered` for ordered
+// carriers — there is no caller choice. The refinement consumes the classifier;
+// passing a forged `fn(B) -> StructurallyOrdered` for an unordered B is the
+// same caller-discipline boundary as forging `Validation<B>.admits` to always
+// return `true`. INVARIANTS P2 (named-edge derivation, no parallel caller-
+// supplied facts beside `base`) is preserved because the classification is
+// derived from `base` by the obligation discharger, not declared alongside it.
+type IterationClassifier<B> {
+  classify: fn(B) -> IterationOrdering
+}
 // Refinement constructor: admits a base collection for iteration inside a
-// Deterministic context (PR-1 `DeterminismClass::Deterministic`) only when its
-// ordering marker is `StructurallyOrdered`. The unordered arm fails closed with
-// the `naming_the_leak` diagnostic — the refinement-level companion to PR-2's
-// import-time lens, catching the case where an unordered collection reaches an
-// iteration site through a deferred-origin or third-party carrier the lens
-// couldn't reject at import. Shape matches `refine` above.
-fn refine_ordered_iteration<B>(base: B, ordering: IterationOrdering, at: Locus) -> Outcome<Refined<B>> {
-  match ordering {
+// Deterministic context (PR-1 `DeterminismClass::Deterministic`) only when the
+// supplied classifier derives `StructurallyOrdered` from `base`. The unordered
+// arm fails closed with the `naming_the_leak` diagnostic — the refinement-level
+// companion to PR-2's import-time lens, catching the case where an unordered
+// collection reaches an iteration site through a deferred-origin or third-party
+// carrier the lens couldn't reject at import. Shape mirrors `refine` above:
+// caller passes `base` and a B-parametric obligation; the constructor matches
+// on the discharged classification.
+fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: Locus) -> Outcome<Refined<B>> {
+  let classify = by.classify
+  match classify(base) {
     StructurallyOrdered =>
       Accepted { value: Refined { base: base }, diagnostics: None }
     StructurallyUnordered =>
