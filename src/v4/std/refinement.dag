@@ -8,8 +8,28 @@ module v4.std.refinement
 
 
 import v4.std.logic { Bool }
-import v4.std.diagnostic {Diagnostic, Locus, Outcome, Accepted, Rejected, None, Unavailable, UserInputBoundary, diagnostics_singleton}
+import v4.std.diagnostic {
+  Diagnostic,
+  Locus,
+  LocusAnchor,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  PortLocus,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_singleton
+}
 import v4.std.node { Symbol }
+
+
+data refinement_authoritative_locus_port: Symbol = refinement_authoritative_locus
+
+
+fn refinement_authoritative_locus() -> Locus {
+  PortLocus { anchor: LocusAnchor { at: refinement_authoritative_locus_port } }
+}
 type Validation<B> {
   reason: Symbol
   admits: fn(B) -> Bool
