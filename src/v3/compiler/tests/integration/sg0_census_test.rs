@@ -855,6 +855,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-4.16: `ConfigPatchRecord` / `config_patch_layer` consumer smoke on `black.dag`
     // (zero diagnostics; `BlackConfigPatch` materializes `FieldPatch<T>` fields).
     // SG-0 + INVARIANTS §P5(b) receipt.
+    // §A1 dissolution P5(b) deferral 2026-05-29 (PR #3914): the smoke test is
+    // currently `#[ignore]`'d because the §A1 sweep adds `import v4.std.refinement`
+    // to `black.dag`, which transitively pulls `src/v4/std/diagnostic.dag`; the v3
+    // bootstrap parser does not yet accept that file's v4 fn-param trailing-comma
+    // syntax. Bounded deferral lane: `_internal/ROADMAP_OPS.md` § Nine lanes row
+    // T-PB-B / `pb_rust_tests_outside_residual_zero`. Re-enable trigger lives at
+    // `v4_extdeps_formatters_black_dag_smoke_test.rs:46-52`. The census line stays
+    // (file still exists / file-level ratchet unchanged); see INVARIANTS_OPS.md
+    // black row for the matching P5(b) deferral record.
     "src/v3/compiler/tests/integration/v4_extdeps_formatters_black_dag_smoke_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
