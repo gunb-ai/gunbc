@@ -1,0 +1,355 @@
+// src/v4/install/install.dag
+// Scope: gunbc binary distribution substrate AS DATA — the set of (arch × os × libc-env) tuples the
+//        June 1 release covers, their Rust target-triple ground form, and the distribution channels
+//        (GitHub Releases tarball, Homebrew formula, deb package, cargo install) the release ships to.
+//        Phase 1b: substrate only. Lowerings (release.yml build matrix, install.sh detection script,
+//        Formula.rb, .deb metadata) project FROM this data in later phases — they are NOT in this file.
+// Status: Release Jun1 §5 Phase 1b substrate — operator brief 2026-05-29: "all common platforms
+//         modeled/supported from day 1 — this should all be modeled properly in .dag". Single
+//         authority per INVARIANTS P2; downstream channel projections import; do not redeclare.
+// Anchor: RELEASE_TODO.md §5 (Phase 1 GitHub Releases build matrix; Phase 2 Homebrew tap;
+//         Phase 3 apt/deb; Phase 4 cargo install).
+
+module v4.install.install
+
+
+import v4.std.collection { List, Optional }
+import v4.std.logic { Bool }
+import v4.std.node { Symbol }
+import v4.std.text { String }
+
+
+// Anchor: https://doc.rust-lang.org/rustc/platform-support.html — Rust platform-support tiers
+// (arch-vendor-os-env target-triple convention). The v3-era vocabulary in dsl/std/types.dag
+// (`Arch`, `Vendor`, `Os`, `AbiEnv`) covers the same fact set; install.dag carries the v4 home for
+// the release-distribution subset — when v4/std hoists the cross-cutting platform vocabulary, the
+// release/runtime/build axes converge there and these in-module variants dissolve onto that
+// single authority (M2 — no duplicate authorities).
+// 🟡 needs-more-work — feature:platform-vocabulary-v4-std-hoist — bind src/v4/TASKS.md (post-Jun1) ·
+// dissolve-on: v4/std/platform.dag (or similar) lands canonical CpuArchitecture / OperatingSystem /
+// LibcEnv / Vendor authorities; install.dag's local enums dissolve to import + reuse.
+
+// Anchor: Rust's `arch` axis (https://doc.rust-lang.org/rustc/platform-support.html). Common
+// platforms operator named (2026-05-29 "all common platforms ... from day 1"): the four Phase 1
+// build-matrix archs are X86_64 and Aarch64; X86, Armv7, Riscv64, and Wasm32 are also modeled so
+// that Phase 2+ targets are first-class from substrate creation, not bolted on later.
+// 🟢 coproduct dissolution — CpuArchitecture.
+type CpuArchitecture
+  = X86_64
+  | Aarch64
+  | X86
+  | Armv7
+  | Riscv64
+  | Wasm32
+
+// Anchor: Rust's `os` axis + POSIX `uname -s` outputs (Linux, Darwin) + Microsoft Windows.
+// Linux + Darwin + Windows are the Phase 1 / Phase 2 targets; the rest are modeled so future
+// distribution channels can extend without revisiting the substrate.
+// 🟢 coproduct dissolution — OperatingSystem.
+type OperatingSystem
+  = Linux
+  | Darwin
+  | Windows
+  | Freebsd
+  | Wasi
+
+// Anchor: Rust's `vendor` axis (https://doc.rust-lang.org/rustc/platform-support.html). The set
+// is closed because Rust's target-triple grammar enumerates it; vendors not in this list are not
+// expressible as Rust target triples without substrate extension.
+// 🟢 coproduct dissolution — TargetTripleVendor.
+type TargetTripleVendor
+  = UnknownVendor
+  | Apple
+  | Pc
+
+// Anchor: Linux libc convention (https://musl.libc.org/about.html for musl; glibc per GNU).
+// Phase 1 build matrix pins musl for hermetic Linux binaries (avoids glibc-version skew across
+// host distros). Darwin / Windows / Wasi do not select a libc on this axis — modeled below as
+// LibcEnv = LinuxLibc(family) | NotApplicableLibc rather than collapsing into the OS variant,
+// because the libc choice is independent of the OS variant on Linux (musl vs glibc) and absent
+// elsewhere.
+// 🟢 coproduct dissolution — LinuxLibcFamily.
+type LinuxLibcFamily
+  = Musl
+  | Glibc
+
+// 🟢 coproduct dissolution — LibcEnv (carries libc-family fact for Linux only; absent elsewhere).
+type LibcEnv
+  = LinuxLibc { family: LinuxLibcFamily }
+  | NotApplicableLibc
+
+// Anchor: https://doc.rust-lang.org/rustc/platform-support.html — Rust target-triple is the
+// authority Cargo / rustc consume; release-matrix entries name a target-triple per artifact and
+// `cargo build --target=<triple>` projects from these facts. Modeled as a Conj fact-bundle (M1)
+// with named edges — the (arch, vendor, os, env) tuple is the spec-stated shape.
+type RustTargetTriple {
+  arch: CpuArchitecture
+  vendor: TargetTripleVendor
+  os: OperatingSystem
+  env: LibcEnv
+}
+
+// Anchor: RELEASE_TODO.md §5 Phase 1 ("Build matrix: x86_64-unknown-linux-musl, aarch64-unknown-
+// linux-musl, x86_64-apple-darwin, aarch64-apple-darwin"). An InstallTarget is the substrate
+// fact-bundle the release pipeline iterates over; downstream lowerings (release.yml matrix rows,
+// install.sh case-arms, Formula.rb arch blocks, .deb architecture metadata) project FROM this
+// list. Single-authority per M2.
+type InstallTarget {
+  arch: CpuArchitecture
+  os: OperatingSystem
+  libc_env: LibcEnv
+  rust_target_triple: RustTargetTriple
+  // GitHub Releases asset filename — derived form: gunbc-<version>-<rust_target_triple>.tar.gz.
+  // Carried here as a Symbol identity so the projection-to-release-asset-naming lens can resolve
+  // it without recomputing from the triple. 🟡 needs-more-work — feature:install-asset-naming-
+  // projection-lens — dissolve-on: a lens projects asset_identity from rust_target_triple +
+  // release version; this field becomes derived rather than declared.
+  asset_identity: Symbol
+}
+
+// Anchor: RELEASE_TODO.md §5 Phase 1–4. Distribution channels are the closed set of mechanisms
+// users run to obtain gunbc; each variant carries the channel-specific configuration the
+// downstream emitter consumes.
+// 🟢 coproduct dissolution — InstallChannel.
+type InstallChannel
+  = GitHubReleaseTarball {
+      // Anchor: https://docs.github.com/en/repositories/releasing-projects-on-github
+      release_tag_authority: Symbol     // e.g. v0.1.0 — pinned at release-cut time, not here.
+      install_script_name: String       // install.sh
+      install_prefix_path: String       // /usr/local/bin/gunbc
+      targets: List<InstallTarget>
+    }
+  | HomebrewFormula {
+      // Anchor: https://docs.brew.sh/Formula-Cookbook
+      tap_repo_identity: Symbol         // gunb-ai/homebrew-gunbc
+      formula_class_name: String        // Gunbc
+      formula_homepage: String          // https://github.com/gunb-ai/gunbc
+      // Homebrew Phase 2 covers macOS first; Linux brew supported as second-cohort.
+      targets: List<InstallTarget>
+    }
+  | DebPackage {
+      // Anchor: https://www.debian.org/doc/debian-policy/ ch-controlfields (Architecture field
+      // uses Debian arch names — amd64, arm64 — projected FROM CpuArchitecture by the emitter).
+      package_section: String           // devel
+      package_priority: String          // optional
+      targets: List<InstallTarget>
+    }
+  | AptRepository {
+      // Anchor: https://wiki.debian.org/DebianRepository/Format. Distinct from DebPackage
+      // because the repo channel adds Release/InRelease metadata and a hosting boundary; the
+      // .deb is the unit, the apt repo is the distribution.
+      repo_root_authority: Symbol       // hosting endpoint identity (GH Pages / R2 / …) — pinned
+                                        // at infra-cut time, not here.
+      suite_name: String                // e.g. stable
+      component_name: String            // e.g. main
+    }
+  | CargoInstall {
+      // Anchor: https://doc.rust-lang.org/cargo/commands/cargo-install.html. crates.io is the
+      // implicit registry; Phase 4 requires workspace metadata cleanup (RELEASE_TODO §5 Phase 4).
+      crate_name: String                // gunbc
+      registry_authority: Symbol        // crates_io_registry — pinned identity.
+    }
+
+// Anchor: POSIX `uname` (https://pubs.opengroup.org/onlinepubs/9799919799/utilities/uname.html).
+// install.sh's detection logic is `uname -s` → OperatingSystem, `uname -m` → CpuArchitecture.
+// The mapping is modeled as data so the install.sh emitter (Phase 1 deliverable) is a derived
+// projection over UnameDetectionRow, not hand-authored case arms (M7 — single-authority data
+// tables; M8 — predicates and dispatch are structural).
+type UnameDetectionRow {
+  uname_s_output: String                // e.g. "Linux", "Darwin"
+  uname_m_output: String                // e.g. "x86_64", "aarch64", "arm64"
+  detected_os: OperatingSystem
+  detected_arch: CpuArchitecture
+  // The libc family is not observable from `uname` alone on Linux; install.sh defaults to musl
+  // because the Phase 1 build matrix is musl-only. When glibc Linux ships, this carrier extends
+  // (or the detection becomes a real probe — `ldd --version` parse). Carrying the assumed family
+  // here keeps the assumption declared rather than buried in shell.
+  // 🟡 needs-more-work — feature:libc-detection-probe — dissolve-on: ldd-version detection probe
+  // or per-distro fact carrier replaces this field; today's musl-only matrix makes the default
+  // safe but the assumption is declared.
+  assumed_libc_env: LibcEnv
+}
+
+// Anchor: RELEASE_TODO.md §5 Phase 1 build matrix (the four musl/darwin targets named verbatim
+// in the release plan). Asset-identity Symbols here are pinned slot identities — the
+// release-asset-naming projection lens resolves them to the actual <name>-<version>-<triple>.tar.gz
+// strings when the release tag is known. 🟡 needs-more-work — feature:install-asset-naming-
+// projection-lens (same gate as InstallTarget.asset_identity).
+
+data x86_64_unknown_linux_musl_asset: Symbol = x86_64_unknown_linux_musl_asset
+data aarch64_unknown_linux_musl_asset: Symbol = aarch64_unknown_linux_musl_asset
+data x86_64_apple_darwin_asset: Symbol = x86_64_apple_darwin_asset
+data aarch64_apple_darwin_asset: Symbol = aarch64_apple_darwin_asset
+
+data x86_64_unknown_linux_musl_triple: RustTargetTriple = RustTargetTriple {
+  arch: X86_64,
+  vendor: UnknownVendor,
+  os: Linux,
+  env: LinuxLibc { family: Musl }
+}
+
+data aarch64_unknown_linux_musl_triple: RustTargetTriple = RustTargetTriple {
+  arch: Aarch64,
+  vendor: UnknownVendor,
+  os: Linux,
+  env: LinuxLibc { family: Musl }
+}
+
+data x86_64_apple_darwin_triple: RustTargetTriple = RustTargetTriple {
+  arch: X86_64,
+  vendor: Apple,
+  os: Darwin,
+  env: NotApplicableLibc
+}
+
+data aarch64_apple_darwin_triple: RustTargetTriple = RustTargetTriple {
+  arch: Aarch64,
+  vendor: Apple,
+  os: Darwin,
+  env: NotApplicableLibc
+}
+
+data x86_64_unknown_linux_musl_target: InstallTarget = InstallTarget {
+  arch: X86_64,
+  os: Linux,
+  libc_env: LinuxLibc { family: Musl },
+  rust_target_triple: x86_64_unknown_linux_musl_triple,
+  asset_identity: x86_64_unknown_linux_musl_asset
+}
+
+data aarch64_unknown_linux_musl_target: InstallTarget = InstallTarget {
+  arch: Aarch64,
+  os: Linux,
+  libc_env: LinuxLibc { family: Musl },
+  rust_target_triple: aarch64_unknown_linux_musl_triple,
+  asset_identity: aarch64_unknown_linux_musl_asset
+}
+
+data x86_64_apple_darwin_target: InstallTarget = InstallTarget {
+  arch: X86_64,
+  os: Darwin,
+  libc_env: NotApplicableLibc,
+  rust_target_triple: x86_64_apple_darwin_triple,
+  asset_identity: x86_64_apple_darwin_asset
+}
+
+data aarch64_apple_darwin_target: InstallTarget = InstallTarget {
+  arch: Aarch64,
+  os: Darwin,
+  libc_env: NotApplicableLibc,
+  rust_target_triple: aarch64_apple_darwin_triple,
+  asset_identity: aarch64_apple_darwin_asset
+}
+
+// The four targets are listed in the order the release.yml build matrix iterates over them;
+// downstream matrix projection reads this list as-is (M7 — data table is the authority).
+data release_phase1_build_matrix: List<InstallTarget> = [
+  x86_64_unknown_linux_musl_target,
+  aarch64_unknown_linux_musl_target,
+  x86_64_apple_darwin_target,
+  aarch64_apple_darwin_target
+]
+
+// install.sh `uname` mapping table. Darwin's `uname -m` reports arm64 on Apple Silicon (not
+// aarch64) and x86_64 on Intel; Linux reports aarch64 / x86_64 directly. Each row pairs the
+// observed (uname -s, uname -m) with the (OS, arch) it identifies; install.sh's emitter projects
+// case-arms from this list (M7 / M8).
+// Anchor: https://www.unix.com/man-page/POSIX/1posix/uname/ + Apple-platform `uname` behavior
+// (Darwin reports the kernel name, not "macOS"; arm64 not aarch64).
+data uname_linux_x86_64: UnameDetectionRow = UnameDetectionRow {
+  uname_s_output: "Linux",
+  uname_m_output: "x86_64",
+  detected_os: Linux,
+  detected_arch: X86_64,
+  assumed_libc_env: LinuxLibc { family: Musl }
+}
+
+data uname_linux_aarch64: UnameDetectionRow = UnameDetectionRow {
+  uname_s_output: "Linux",
+  uname_m_output: "aarch64",
+  detected_os: Linux,
+  detected_arch: Aarch64,
+  assumed_libc_env: LinuxLibc { family: Musl }
+}
+
+data uname_darwin_x86_64: UnameDetectionRow = UnameDetectionRow {
+  uname_s_output: "Darwin",
+  uname_m_output: "x86_64",
+  detected_os: Darwin,
+  detected_arch: X86_64,
+  assumed_libc_env: NotApplicableLibc
+}
+
+data uname_darwin_arm64: UnameDetectionRow = UnameDetectionRow {
+  uname_s_output: "Darwin",
+  uname_m_output: "arm64",
+  detected_os: Darwin,
+  detected_arch: Aarch64,
+  assumed_libc_env: NotApplicableLibc
+}
+
+data install_sh_uname_table: List<UnameDetectionRow> = [
+  uname_linux_x86_64,
+  uname_linux_aarch64,
+  uname_darwin_x86_64,
+  uname_darwin_arm64
+]
+
+// Channel inhabitants. Each binds the Phase-1 InstallTarget list (where applicable) and pins the
+// channel-specific identity / config the corresponding emitter consumes. Channels whose hosting
+// or registry identity is not yet pinned (apt repo root, crates.io registry symbol) carry slot
+// Symbols here that resolve when infra lands.
+// 🟡 needs-more-work — feature:install-channel-emitters — dissolve-on: per-channel emit projections
+// land (release.yml matrix + install.sh from GitHubReleaseTarball; Formula.rb from HomebrewFormula;
+// .deb control metadata from DebPackage; sources.list from AptRepository; Cargo.toml publish
+// metadata from CargoInstall). Today the channel inhabitants are substrate-only; no projection
+// reads them yet — the Phase 1 release pipeline still hand-authors release.yml and install.sh.
+
+data gunbc_release_tag_v0_1_0: Symbol = gunbc_release_tag_v0_1_0
+data gunbc_homebrew_tap_repo: Symbol = gunbc_homebrew_tap_repo
+data gunbc_apt_repo_root: Symbol = gunbc_apt_repo_root
+data crates_io_registry: Symbol = crates_io_registry
+
+data github_release_tarball_channel: InstallChannel = GitHubReleaseTarball {
+  release_tag_authority: gunbc_release_tag_v0_1_0,
+  install_script_name: "install.sh",
+  install_prefix_path: "/usr/local/bin/gunbc",
+  targets: release_phase1_build_matrix
+}
+
+data homebrew_formula_channel: InstallChannel = HomebrewFormula {
+  tap_repo_identity: gunbc_homebrew_tap_repo,
+  formula_class_name: "Gunbc",
+  formula_homepage: "https://github.com/gunb-ai/gunbc",
+  targets: release_phase1_build_matrix
+}
+
+data deb_package_channel: InstallChannel = DebPackage {
+  package_section: "devel",
+  package_priority: "optional",
+  // Phase 3 (apt/deb) ships Linux musl targets only; Darwin / Windows are not Debian targets.
+  targets: [x86_64_unknown_linux_musl_target, aarch64_unknown_linux_musl_target]
+}
+
+data apt_repository_channel: InstallChannel = AptRepository {
+  repo_root_authority: gunbc_apt_repo_root,
+  suite_name: "stable",
+  component_name: "main"
+}
+
+data cargo_install_channel: InstallChannel = CargoInstall {
+  crate_name: "gunbc",
+  registry_authority: crates_io_registry
+}
+
+// The full set of channels the June 1+ release plan covers. Ordered by RELEASE_TODO.md §5 phase
+// (Phase 1 → Phase 4); downstream tooling that picks "which channel to project today" reads from
+// this list and filters by readiness gate (substrate carrier only; channel readiness flags land
+// when each emitter does).
+data gunbc_install_channels: List<InstallChannel> = [
+  github_release_tarball_channel,
+  homebrew_formula_channel,
+  deb_package_channel,
+  apt_repository_channel,
+  cargo_install_channel
+]
