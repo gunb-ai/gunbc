@@ -20,7 +20,7 @@ import v4.extdeps.formats.sql {
   SqlTableDefinition,
   SqlTypeCharacterLargeObject
 }
-import v4.std.algebra { FreeMonoid, Empty, fold }
+import v4.std.algebra { FreeMonoid, Empty }
 import v4.std.collection { Absent, optional_present }
 import v4.std.diagnostic {
   Diagnostic,

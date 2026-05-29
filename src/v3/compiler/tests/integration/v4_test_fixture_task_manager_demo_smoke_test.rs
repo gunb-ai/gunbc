@@ -20,12 +20,21 @@ use v3_compiler::tokenize_for_test;
 const TASK_MANAGER_DEMO_DAG: &str =
     include_str!("../../../../v4/test/fixture/task_manager_demo.dag");
 const TASK_MANAGER_DEMO_PATH: &str = "src/v4/test/fixture/task_manager_demo.dag";
+const SQL_DAG: &str = include_str!("../../../../v4/extdeps/formats/sql.dag");
+const SQL_DAG_PATH: &str = "src/v4/extdeps/formats/sql.dag";
 
 fn task_manager_demo_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
     let tokens = tokenize_for_test(TASK_MANAGER_DEMO_DAG, TASK_MANAGER_DEMO_PATH)
         .unwrap_or_else(|e| panic!("{TASK_MANAGER_DEMO_PATH}: tokenize: {e:?}"));
     parse_for_test(&tokens, TASK_MANAGER_DEMO_PATH)
         .unwrap_or_else(|e| panic!("{TASK_MANAGER_DEMO_PATH}: parse: {e:?}"))
+}
+
+fn sql_dag_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens = tokenize_for_test(SQL_DAG, SQL_DAG_PATH)
+        .unwrap_or_else(|e| panic!("{SQL_DAG_PATH}: tokenize: {e:?}"));
+    parse_for_test(&tokens, SQL_DAG_PATH)
+        .unwrap_or_else(|e| panic!("{SQL_DAG_PATH}: parse: {e:?}"))
 }
 
 fn type_record_fields<'a>(
@@ -137,8 +146,13 @@ fn v4_test_fixture_task_manager_demo_sql_projection_uses_canonical_carriers() {
         ["MappedProjectable", "UnmappedDomainScalar"]
     );
 
-    let sql_table = type_record_fields(&module, "SqlTableDefinition");
+    let sql_table = type_record_fields(&sql_dag_surface_or_panic(), "SqlTableDefinition");
     assert_eq!(record_field_type(sql_table, "primary_key"), "?List<SqlIdentifier>");
+    assert!(
+        TASK_MANAGER_DEMO_DAG.contains("primary_key: optional_present(value: [")
+            && TASK_MANAGER_DEMO_DAG.contains("SqlTableDefinition {"),
+        "fixture must populate SqlTableDefinition.primary_key via optional_present"
+    );
 
     assert!(
         TASK_MANAGER_DEMO_DAG.contains("UnmappedDomainScalar { anchor } =>")
