@@ -1,8 +1,10 @@
 // src/v4/extdeps/languages/wasm.dag
 // Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
+// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); wave-2a: labelidx/funcidx + br_if/call WAT substrate; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` (#3474); canonical_symbols = catalog + wave-1 lex/grammar/MVP + emit-side context token_class tags; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
 // Anchor: https://webassembly.github.io/spec/core/types.html#number-types
+// Anchor: https://webassembly.github.io/spec/core/syntax/modules.html#indices
+// Anchor: https://webassembly.github.io/spec/core/syntax/instructions.html#syntax-instr-control
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T4-WAVE2B-WASM-LAW-KEY.
 // 🟡
 
@@ -1869,6 +1871,13 @@ fn wasm_wave1_lex_token_symbol(sym: Symbol) -> Bool {
   )
 }
 
+// Emit-side token_class tags on numeric/immediate carriers; lex uses wasm_token_int_numeric_literal.
+fn wasm_wat_wave1_emit_context_token_symbol(sym: Symbol) -> Bool {
+  sym == wasm_token_localidx_literal ||
+    sym == wasm_token_i32_numeric_literal ||
+    sym == wasm_token_i64_numeric_literal
+}
+
 fn wasm_integer_catalog_surface_symbol_step(
   sym: Symbol,
   acc: Bool,
@@ -1915,6 +1924,7 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
     member: fn(sym) {
       wasm_catalog_surface_symbol(sym: sym) ||
         wasm_wave1_lex_token_symbol(sym: sym) ||
+        wasm_wat_wave1_emit_context_token_symbol(sym: sym) ||
         sym == wasm_surface_fn_item ||
         sym == wasm_surface_text_fragment ||
         sym == wasm_surface_mvp1_module_item ||
