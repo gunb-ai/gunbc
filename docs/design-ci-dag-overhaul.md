@@ -210,6 +210,8 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 | Q5 | M1 fail-closed | **Required** (B01) |
 | Q11 | Discipline | **Resolved** — TestClaim only; delete scripts same PR |
 
+**Infra compounding (operator, separate lane — 2026-05-29):** On srv2, `ctrl-jobserver` may crash-loop when `host.fifo` is not a FIFO → jobserver token starvation → emit-phase stalls until the 20m step cap (exit 143). This is **independent** of the modeled overhaul; operator owns infra fix. **A9** still required: real `src/v4` merkle skip + fail-closed so timeouts never pass green. Cross-ref audit `§5.1`.
+
 ---
 
 ## 9. Acceptance criteria (“CI overhaul done”)
