@@ -126,7 +126,7 @@ are the audit's canonical commands.
 per inline review — see §0 for the unified spaced+unspaced grep that
 yields this; the original 97 figure missed 33 spaced-form gates
 including `formatter-int-refinement` itself). **§1.1–§1.8 tabulate 8
-representative gates** (5 multi-site: §1.1–§1.4 + the 13-site §1.2;
+representative gates** (5 multi-site: §1.1–§1.4 + the 12-row §1.2;
 3 singletons: §1.6–§1.8); **§1.9 summarizes the remaining 132
 gates**, which contain both un-tabulated multi-site gates (at 2–9
 sites each) **and** the bulk of the singleton tail. See §1.9 for the
@@ -276,7 +276,7 @@ per inline review):** the original draft cited 97 distinct gates from
 the no-space `feature:[a-z]` form; that undercounted by 33 because
 **33 gates use spaced `feature: NAME` headers** (including the
 headline `formatter-int-refinement`). True unified distribution
-across all **130** distinct gate names (from §0 population A):
+across all **140** distinct gate names (from §0 Population A — pinned df91abc2b):
 
 **Distribution at pinned `origin/main` @ `df91abc2b`** (regenerated
 2026-05-29 from unified Population A grep — see §0; per-name counts
