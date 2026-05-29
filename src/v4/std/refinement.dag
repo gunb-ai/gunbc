@@ -174,22 +174,22 @@ fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
 
 
 // Upstream-documented defaults: structural admits proof + make_* at the authoritative
-// boundary. Ill-formed substrate literals (!admits) discharge through a non-recursive
-// rejection path (no minimum-value substitution). User/config input must use make_*.
+// boundary. Ill-formed substrate literals (!admits) fail closed without recursive
+// minimum-value substitution. User/config input must use make_* with a real Locus.
 fn positive_int_for_authoritative_constant(base: Int) -> PositiveInt {
   if positive_int_admits(base) {
     match make_positive_int(value: base, at: refinement_authoritative_locus()) {
       Accepted { value: v, diagnostics: _ } => v
       Rejected { diagnostics: _ } =>
-        positive_int_authoritative_discharge_failure(base: base)
+        positive_int_authoritative_ill_formed(base: base)
     }
   } else {
-    positive_int_authoritative_discharge_failure(base: base)
+    positive_int_authoritative_ill_formed(base: base)
   }
 }
 
 
-fn positive_int_authoritative_discharge_failure(base: Int) -> PositiveInt {
+fn positive_int_authoritative_ill_formed(base: Int) -> PositiveInt {
   match make_positive_int(value: base, at: refinement_authoritative_locus()) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } =>
@@ -203,15 +203,15 @@ fn non_negative_int_for_authoritative_constant(base: Int) -> NonNegativeInt {
     match make_non_negative_int(value: base, at: refinement_authoritative_locus()) {
       Accepted { value: v, diagnostics: _ } => v
       Rejected { diagnostics: _ } =>
-        non_negative_int_authoritative_discharge_failure(base: base)
+        non_negative_int_authoritative_ill_formed(base: base)
     }
   } else {
-    non_negative_int_authoritative_discharge_failure(base: base)
+    non_negative_int_authoritative_ill_formed(base: base)
   }
 }
 
 
-fn non_negative_int_authoritative_discharge_failure(base: Int) -> NonNegativeInt {
+fn non_negative_int_authoritative_ill_formed(base: Int) -> NonNegativeInt {
   match make_non_negative_int(value: base, at: refinement_authoritative_locus()) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } =>
@@ -225,15 +225,15 @@ fn at_least_minus_one_int_for_authoritative_constant(base: Int) -> AtLeastMinusO
     match make_at_least_minus_one_int(value: base, at: refinement_authoritative_locus()) {
       Accepted { value: v, diagnostics: _ } => v
       Rejected { diagnostics: _ } =>
-        at_least_minus_one_int_authoritative_discharge_failure(base: base)
+        at_least_minus_one_int_authoritative_ill_formed(base: base)
     }
   } else {
-    at_least_minus_one_int_authoritative_discharge_failure(base: base)
+    at_least_minus_one_int_authoritative_ill_formed(base: base)
   }
 }
 
 
-fn at_least_minus_one_int_authoritative_discharge_failure(base: Int) -> AtLeastMinusOneInt {
+fn at_least_minus_one_int_authoritative_ill_formed(base: Int) -> AtLeastMinusOneInt {
   match make_at_least_minus_one_int(value: base, at: refinement_authoritative_locus()) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } =>
@@ -247,15 +247,15 @@ fn exact_one_int_for_authoritative_constant(base: Int) -> ExactOneInt {
     match make_exact_one_int(value: base, at: refinement_authoritative_locus()) {
       Accepted { value: v, diagnostics: _ } => v
       Rejected { diagnostics: _ } =>
-        exact_one_int_authoritative_discharge_failure(base: base)
+        exact_one_int_authoritative_ill_formed(base: base)
     }
   } else {
-    exact_one_int_authoritative_discharge_failure(base: base)
+    exact_one_int_authoritative_ill_formed(base: base)
   }
 }
 
 
-fn exact_one_int_authoritative_discharge_failure(base: Int) -> ExactOneInt {
+fn exact_one_int_authoritative_ill_formed(base: Int) -> ExactOneInt {
   match make_exact_one_int(value: base, at: refinement_authoritative_locus()) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } =>
