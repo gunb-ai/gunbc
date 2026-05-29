@@ -181,6 +181,7 @@ data grammar_root_start_production_node_projection: Symbol = grammar_root_start_
 data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
 data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
 data formal_terminal_identity_node_projection: Symbol = formal_terminal_identity_node_projection
+data formal_terminal_occurrence_binding_node_projection: Symbol = formal_terminal_occurrence_binding_node_projection
 data formal_nonterminal_identity_node_projection: Symbol = formal_nonterminal_identity_node_projection
 data formal_symbol_terminal_node_projection: Symbol = formal_symbol_terminal_node_projection
 data formal_symbol_nonterminal_node_projection: Symbol = formal_symbol_nonterminal_node_projection
@@ -269,6 +270,29 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
 }
 
 
+fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optional<Symbol>) -> Node {
+  match binding {
+    Present { value: binding } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(
+            name: formal_terminal_identity_node_projection,
+            target: grammar_atom(identity: terminal.identity)
+          ),
+          grammar_named_edge(
+            name: formal_terminal_occurrence_binding_node_projection,
+            target: grammar_atom(identity: binding)
+          )
+        ]
+      }
+    Absent => formal_terminal_to_node(terminal: terminal)
+  }
+}
+
+
 fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
   Node {
     kind: TypeNode {
@@ -283,13 +307,16 @@ fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
 
 fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
   match symbol {
-    FormalTerminalOccurrence { terminal: terminal, binding: _ } =>
+    FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
       Node {
         kind: TypeNode {
           connective: Conj
         },
         children: [
-          grammar_named_edge(name: formal_symbol_terminal_node_projection, target: formal_terminal_to_node(terminal: terminal))
+          grammar_named_edge(
+            name: formal_symbol_terminal_node_projection,
+            target: formal_terminal_occurrence_to_node(terminal: terminal, binding: binding)
+          )
         ]
       }
     FormalNonterminalOccurrence { nonterminal: nonterminal } =>
