@@ -556,11 +556,19 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
         "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare algebra-closed integer width coproduct `KotlinOrderedRingIntWidth`"
     );
     assert!(
-        surface_declares_type(&module, "KotlinOrderedRingIntFacts"),
+        type_sum_has_variant(
+            &module,
+            "KotlinOrderedRingIntegerFacts",
+            "KotlinOrderedRingIntFacts"
+        ),
         "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare closed Int ordered-ring variant `KotlinOrderedRingIntFacts`"
     );
     assert!(
-        surface_declares_type(&module, "KotlinOrderedRingLongFacts"),
+        type_sum_has_variant(
+            &module,
+            "KotlinOrderedRingIntegerFacts",
+            "KotlinOrderedRingLongFacts"
+        ),
         "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare closed Long ordered-ring variant `KotlinOrderedRingLongFacts`"
     );
     for name in [
@@ -1353,6 +1361,19 @@ fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, nam
         | SurfaceItem::TypeAtom {
             name: item_name, ..
         } => item_name == name,
+        _ => false,
+    })
+}
+
+fn type_sum_has_variant(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    type_name: &str,
+    variant_name: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::TypeSum { name, variants, .. } if name == type_name => {
+            variants.iter().any(|variant| variant.name == variant_name)
+        }
         _ => false,
     })
 }
