@@ -110,7 +110,12 @@ type ModeledFileEffects {
   file_write: fn(FileWrite) -> FileWriteResult
 }
 
-// 🟡 P5 bridge — wave2-c2-testgen-modeled-file-effects.
+// 🟡 P5 bridge — legacy POSIX operation payload table (consumer: v4.lens.testgen
+// only — CorpusEnumerationRequest.operations: FileSystemOperations). Dissolution
+// trigger: wave2-c2-testgen-modeled-file-effects — delete ReadFileRequest,
+// WriteFileRequest, ListDirRequest, FileKindRequest, and FileSystemOperations
+// when v4/lens/testgen.dag CorpusEnumerationRequest.operations is
+// ModeledFileEffects-only.
 type ReadFileRequest {
   filesystem: Filesystem
   path: AbsolutePath
