@@ -9,6 +9,7 @@
 
 module v4.workflow.release_dist
 
+import v4.std.node { Symbol }
 import v4.std.collection { List }
 import v4.std.text { String }
 import v4.std.diagnostic {
@@ -33,6 +34,7 @@ import v4.std.algebra {
 import v4.workflow.bootstrap { v4_stage0_binary }
 
 
+// 🟡 coproduct dissolution — RELEASE_TODO §5 Phase 1 (mirror `ci.dag` CiCommand / LB-P4-3213 posture)
 type ReleaseCommand
   = CrossMuslGunbcBuild { target: String }
   | NativeDarwinGunbcBuild { target: String }
@@ -103,8 +105,8 @@ data release_build_matrix: List<ReleaseMatrixRow> = [
   }
 ]
 
-// Published GH Release asset triples (`gunbc-{target}`) — single authority for release.yml matrix,
-// `scripts/release-target-triples.sh`, and install.sh (via that script).
+// Published GH Release asset triples (`gunbc-{target}`) — installer/transport projection of
+// `release_build_matrix` row targets (must match; `release_published_triples_align_with_matrix`).
 data release_published_target_triples: List<String> = [
   "x86_64-unknown-linux-musl",
   "aarch64-unknown-linux-musl",
