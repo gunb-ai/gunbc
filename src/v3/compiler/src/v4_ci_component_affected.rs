@@ -112,11 +112,15 @@ mod tests {
             true
         );
         assert_eq!(
-            ci_changed_path_affects_workflow_policy("src/v3/compiler/src/v4_ci_component_affected.rs"),
+            ci_changed_path_affects_workflow_policy(
+                "src/v3/compiler/src/v4_ci_component_affected.rs"
+            ),
             true
         );
         assert_eq!(
-            ci_changed_path_affects_workflow_policy("src/v3/compiler/src/bin/detect_ci_affected_components.rs"),
+            ci_changed_path_affects_workflow_policy(
+                "src/v3/compiler/src/bin/detect_ci_affected_components.rs"
+            ),
             true
         );
     }

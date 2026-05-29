@@ -32,8 +32,7 @@ pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     jobserver_token_cap: 36,
 };
 
-pub const CI_SELF_HOSTED_RUNNER_POOLS: [SelfHostedRunnerPool; 2] =
-    [CI_SRV1_POOL, CI_SRV2_POOL];
+pub const CI_SELF_HOSTED_RUNNER_POOLS: [SelfHostedRunnerPool; 2] = [CI_SRV1_POOL, CI_SRV2_POOL];
 
 pub fn ci_runner_pool_min_jobserver_token_cap(pools: &[SelfHostedRunnerPool]) -> u32 {
     pools
@@ -48,11 +47,7 @@ pub fn ci_runner_pool_max_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
 }
 
 pub fn ci_runner_pool_min_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
-    pools
-        .iter()
-        .map(|p| p.runner_count)
-        .min()
-        .unwrap_or(0)
+    pools.iter().map(|p| p.runner_count).min().unwrap_or(0)
 }
 
 pub fn ci_runner_pool_total_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
@@ -104,7 +99,15 @@ mod tests {
 
     #[test]
     fn m1_probe_cargo_check_jobs_derived_as_four() {
-        assert_eq!(ci_m1_probe_cargo_fanout_slots(&CI_SELF_HOSTED_RUNNER_POOLS), 6);
+        assert_eq!(
+            ci_m1_probe_cargo_fanout_slots(&CI_SELF_HOSTED_RUNNER_POOLS),
+            6
+        );
         assert_eq!(m1_probe_cargo_check_jobs(), 4);
+    }
+
+    #[test]
+    fn runner_spread_fail_closed_when_max_equals_min() {
+        assert_eq!(ci_runner_pool_runner_spread(20, 20), 1);
     }
 }

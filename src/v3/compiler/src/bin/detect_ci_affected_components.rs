@@ -49,7 +49,10 @@ fn git_changed_paths(range: &str) -> Vec<String> {
     }
 }
 
-fn write_github_output(path: &str, flags: v3_compiler::v4_ci_component_affected::CiComponentAffected) -> io::Result<()> {
+fn write_github_output(
+    path: &str,
+    flags: v3_compiler::v4_ci_component_affected::CiComponentAffected,
+) -> io::Result<()> {
     let mut file = fs::OpenOptions::new().append(true).open(path)?;
     writeln!(file, "v2={}", flags.v2)?;
     writeln!(file, "v3={}", flags.v3)?;
@@ -83,7 +86,11 @@ fn main() -> ExitCode {
 
     eprintln!(
         "v2 affected: {}",
-        if flags.v2 { "yes" } else { "no (skipping v2 fixed-point)" }
+        if flags.v2 {
+            "yes"
+        } else {
+            "no (skipping v2 fixed-point)"
+        }
     );
     eprintln!(
         "v3 affected: {}",
