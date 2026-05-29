@@ -292,6 +292,7 @@ data ci_duplicate_gate_id: Symbol = ci_duplicate_gate_id
 data ci_dangling_reference: Symbol = ci_dangling_reference
 data ci_dependency_cycle: Symbol = ci_dependency_cycle
 data ci_bootstrap_authority_violation: Symbol = ci_bootstrap_authority_violation
+data ci_workflow_receipt_unexpected_verdict: Symbol = ci_workflow_receipt_unexpected_verdict
 data ci_workflow_file: Symbol = ci_workflow_file
 
 fn ci_diagnostic(reason: Symbol) -> Diagnostic {
@@ -974,9 +975,9 @@ fn workflow_pipeline_receipt_failure_diagnostics(
 ) -> List<Diagnostic> {
   match run.verdict {
     Fail { actual: Rejected { diagnostics: ds } } => ds
-    // Fallback when verdict is not `Fail/Rejected` (e.g. unexpected Pass on receipt path).
+    // Unreachable from `workflow_pipeline_plan_bound_pass_receipt` Fail arm today; honest tag if call sites change.
     _ =>
-      diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation))
+      diagnostics_singleton(d: ci_diagnostic(reason: ci_workflow_receipt_unexpected_verdict))
   }
 }
 
