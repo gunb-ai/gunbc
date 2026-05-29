@@ -13,7 +13,7 @@
 
 ## Program scope (T-ImpossibleBugs)
 
-R2's Goal 4 — **Remaining R2+ impossible-bug classes**. Three classes currently tagged `[R2+]` in `ROADMAP.md §"Lane acceptance — .dag gates"` (T-Demo row); THESIS §"Enumerable impossible-bug classes" is authority on scheduling tags.
+R2's Goal 4 — **Remaining R2+ impossible-bug classes**. Three classes currently tagged `[R2+]` in [`_internal/ROADMAP_OPS.md §"Lane acceptance — .dag gates"`](../../_internal/ROADMAP_OPS.md) (T-Demo row); THESIS §"Enumerable impossible-bug classes" is authority on scheduling tags.
 
 | Class | Design authority + implementation worker (post PR #836 merge) | Implementation status | Substrate gating |
 |---|---|---|---|

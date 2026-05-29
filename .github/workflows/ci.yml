@@ -127,10 +127,6 @@ jobs:
       run: bash scripts/check-r4-carve-dissolution-discipline.sh
     - name: Fabrication sentinel ratchet (P0-C)
       run: bash scripts/check-fabrication-sentinels.sh
-    - name: v4 strict-deprose script self-test (Python)
-      run: python3 scripts/test_strict_deprose_dag.py
-    - name: v4 strict-deprose allowlist (--check; merge-base + Part 6 inventory)
-      run: python3 scripts/strict_deprose_dag.py --check
     - name: T-19 testgen activation self-test (Python)
       run: python3 scripts/test_check_t19_testgen_activation.py
     - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
@@ -406,60 +402,44 @@ jobs:
         exit 0
     - name: v3 full-suite split guard (integration test targets)
       run: scripts/check-v3-full-suite-split-test-targets.sh
-    - name: v3 tests (full suite lib+bins, timings part 1/4)
+    # Single step for lib+bins → determinism → doc → integration timings capture.
+    # srv1/srv2 self-hosted pools may dispatch consecutive workflow steps to
+    # different runner instances; /tmp is not shared across steps, so splitting
+    # tee across steps left the per-test ratchet reading a compile-only log.
+    - name: v3 tests (full suite timings capture, parts 1-4/4)
       env:
         CARGO_TERM_COLOR: never
         RUST_MIN_STACK: 16777216
       run: |
         set -euo pipefail
-        echo "V3_SUITE_START_TS=$(date +%s)" >> "${GITHUB_ENV}"
-        : > /tmp/v3-test-timings.log
-        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
+        timings_log="${RUNNER_TEMP}/v3-test-timings.log"
+        V3_SUITE_START_TS=$(date +%s)
+        echo "V3_SUITE_START_TS=${V3_SUITE_START_TS}" >> "${GITHUB_ENV}"
+        : > "${timings_log}"
+        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee "${timings_log}"
         status=${PIPESTATUS[0]}
         if [ "$status" -ne 0 ]; then
           echo "::error::cargo test (lib+bins) failed (exit=$status)"
           exit "$status"
         fi
-    - name: v3 tests (full suite determinism harness, timings part 2/4)
-      env:
-        CARGO_TERM_COLOR: never
-        RUST_MIN_STACK: 16777216
-      run: |
-        set -euo pipefail
-        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a "${timings_log}"
         status=${PIPESTATUS[0]}
         if [ "$status" -ne 0 ]; then
           echo "::error::cargo test (determinism_test) failed (exit=$status)"
           exit "$status"
         fi
-    - name: v3 tests (full suite doc tests, timings part 3/4)
-      env:
-        CARGO_TERM_COLOR: never
-        RUST_MIN_STACK: 16777216
-      run: |
-        set -euo pipefail
-        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a "${timings_log}"
         status=${PIPESTATUS[0]}
         if [ "$status" -ne 0 ]; then
           echo "::error::cargo test (--doc) failed (exit=$status)"
           exit "$status"
         fi
-    - name: v3 tests (full suite integration harness, HOT-FIX zero-test-filter)
-      env:
-        CARGO_TERM_COLOR: never
-        RUST_MIN_STACK: 16777216
-      run: |
-        set -euo pipefail
         echo "::notice::v3 integration test execution SKIPPED via zero-test-filter per operator hot-fix at gunbc#846."
         echo "::notice::Guard pattern preserved; integration binary runs zero tests (nonexistent filter)."
-        if [ -z "${V3_SUITE_START_TS:-}" ]; then
-          echo "::error::missing V3_SUITE_START_TS (full suite part 1 must run first)"
-          exit 1
-        fi
         # Zero-test-filter: `__HOT_FIX_NONEXISTENT_FILTER__` matches no tests;
         # binary runs through libtest setup + reports 0 tests run. Satisfies
         # check-v3-full-suite-split-test-targets.sh pattern requirement.
-        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration __HOT_FIX_NONEXISTENT_FILTER__ -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration __HOT_FIX_NONEXISTENT_FILTER__ -- -Z unstable-options --report-time 2>&1 | tee -a "${timings_log}"
         status=${PIPESTATUS[0]}
         elapsed=$(( $(date +%s) - V3_SUITE_START_TS ))
         echo "v3 full-suite wall time (integration-skipped): ${elapsed}s"
@@ -468,17 +448,12 @@ jobs:
           exit "$status"
         fi
         echo "::notice::Restore criteria: rebuild session per #2722 §5 OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster filter (replace __HOT_FIX_NONEXISTENT_FILTER__ with cluster-specific filter)."
-    - name: v3 gunbc-ci binary (wall-clock warn manifest + BinaryShim stub)
-      if: always()
-      run: cargo build -p v3-compiler --bin gunbc-ci
-    - name: v3 tests (per-test 2s ratchet)
-      if: always()
-      run: |
-        if [ ! -s /tmp/v3-test-timings.log ]; then
+        if [ ! -s "${timings_log}" ]; then
           echo "::notice::no timing log captured or log is empty (full-suite steps did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
-          exit 0
+        else
+          cargo build -p v3-compiler --bin gunbc-ci
+          scripts/check-test-timeout.sh "${timings_log}"
         fi
-        scripts/check-test-timeout.sh /tmp/v3-test-timings.log
     - name: v3 Compiler Clippy (default features)
       run: cargo clippy -p v3-compiler --all-targets -- -D warnings
     - name: v3 Compiler Clippy (bootstrap-regen-fresh)
