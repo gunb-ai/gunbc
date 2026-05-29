@@ -1,0 +1,203 @@
+// src/v4/test/fixture/task_manager_demo.dag
+// Scope: T-16 TaskManager omni-emission demo — data-model-only declaration.
+// Status: T-16-A modeled; no emit code; the shared Node tree consumed by
+// Shape A (rust backend + react frontend `DeploymentUnit` fragments) and
+// Shape B (OpenAPI / SQL / Markdown projections derived from `WireContract`
+// + `Task` carriers) lands in subsequent T-16 slices.
+
+module v4.test.fixture.task_manager_demo
+
+import v4.std.algebra { FreeMonoid, Empty }
+import v4.std.collection { Optional, Absent, Present }
+import v4.std.network { NetworkAddress, UriAuthority, UriHost, UriPort, rfc3986_host_abnf }
+import v4.std.text { String }
+import v4.std.node { Symbol }
+import v4.extdeps.coordination {
+  Endpoint, EndpointRef, LanguageRef, FrameworkRef, FrameworkBinding, HostedByFramework, NoFramework,
+  WireContract, WireContractFacts, CoordinationBind, BindRef,
+  CoordinationEffectKind, Http,
+  ExchangePattern, RequestReply,
+  SettlementGuarantee, ImmediateSettlement,
+  ConsistencyGuarantee, NoReplicaConvergence,
+  SettleBound, ConvergeBound,
+  DeploymentUnit
+}
+
+// --- Domain ---------------------------------------------------------------
+
+// Symbol-backed opaque identifier (not a numeric alias) per operator
+// 2026-05-27 modeling decision — avoids the hollow-alias trap at the
+// domain level.
+type TaskId {
+  identity: Symbol
+}
+
+// 🟢 coproduct dissolution — TaskManager workflow lifecycle.
+type TaskStatus
+  = Open
+  | InProgress
+  | Done
+
+type Task {
+  id: TaskId,
+  title: String,
+  status: TaskStatus
+}
+
+// --- Bind identities ------------------------------------------------------
+// Canonical TaskManager operation identities. Referenced from
+// `CoordinationBind` below; the function's Arrow (argument types + return
+// type) is the single authority for the wire type — never restated as a
+// parallel `response_type` field on the contract.
+
+data create_task: Symbol = create_task
+data update_status: Symbol = update_status
+data list_tasks: Symbol = list_tasks
+
+// --- Endpoint identities --------------------------------------------------
+
+data rust_backend_endpoint: Symbol = rust_backend_endpoint
+data react_frontend_endpoint: Symbol = react_frontend_endpoint
+
+data rust_language: Symbol = rust_language
+data typescript_language: Symbol = typescript_language
+
+data react_framework: Symbol = react_framework
+
+// --- Endpoint addresses ---------------------------------------------------
+// Minimal `NetworkAddress` instances — host spellings are placeholders; the
+// data-model demo cares about authority shape, not reachability. `port:
+// Absent` avoids requiring Succ-chain Nat literals for a value the demo
+// does not exercise.
+
+data backend_host: UriHost = UriHost {
+  spelling: "backend.local",
+  grammar: rfc3986_host_abnf
+}
+
+data backend_address: NetworkAddress = NetworkAddress {
+  authority: UriAuthority {
+    userinfo: Absent,
+    host: backend_host,
+    port: Absent
+  }
+}
+
+data frontend_host: UriHost = UriHost {
+  spelling: "frontend.local",
+  grammar: rfc3986_host_abnf
+}
+
+data frontend_address: NetworkAddress = NetworkAddress {
+  authority: UriAuthority {
+    userinfo: Absent,
+    host: frontend_host,
+    port: Absent
+  }
+}
+
+// --- DeploymentUnit fragments --------------------------------------------
+
+data backend_endpoint: Endpoint = Endpoint {
+  identity: EndpointRef { identity: rust_backend_endpoint },
+  address: backend_address,
+  language: LanguageRef { identity: rust_language },
+  framework: NoFramework
+}
+
+data frontend_endpoint: Endpoint = Endpoint {
+  identity: EndpointRef { identity: react_frontend_endpoint },
+  address: frontend_address,
+  language: LanguageRef { identity: typescript_language },
+  framework: HostedByFramework { framework: FrameworkRef { identity: react_framework } }
+}
+
+// --- Wire contracts -------------------------------------------------------
+// One `WireContract` per TaskManager operation. Each binds the canonical
+// function symbol; the `Arrow` declared at the bind site (see the function
+// declarations below) is the single authority for argument and response
+// types. `Http` effect facts match `coordination_effect_obligation(effect:
+// Http)` — RequestReply / ImmediateSettlement / NoReplicaConvergence.
+
+data create_task_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: react_frontend_endpoint },
+  to: EndpointRef { identity: rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data create_task_contract: WireContract = WireContract {
+  facts: create_task_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: create_task },
+    effect: Http
+  }
+}
+
+data update_status_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: react_frontend_endpoint },
+  to: EndpointRef { identity: rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data update_status_contract: WireContract = WireContract {
+  facts: update_status_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: update_status },
+    effect: Http
+  }
+}
+
+data list_tasks_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: react_frontend_endpoint },
+  to: EndpointRef { identity: rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data list_tasks_contract: WireContract = WireContract {
+  facts: list_tasks_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: list_tasks },
+    effect: Http
+  }
+}
+
+// --- DeploymentUnit -------------------------------------------------------
+
+data task_manager_deployment: DeploymentUnit = DeploymentUnit {
+  endpoints: [backend_endpoint, frontend_endpoint],
+  wire_contracts: [create_task_contract, update_status_contract, list_tasks_contract]
+}
+
+// --- Operation arrows -----------------------------------------------------
+// The three operations declared on the shared Node tree. Their Arrows are
+// the single authority that the `BindRef.identity` symbols above resolve
+// to; emission slices (Shape A rust/react fragments, Shape B OpenAPI / SQL
+// projections) consume these arrows — they are restated nowhere. Bodies
+// are minimal stand-ins; emission of real handler bodies and persistence
+// lands in subsequent T-16 slices.
+
+fn create_task_op(title: String) -> Task {
+  Task {
+    id: TaskId { identity: create_task },
+    title: title,
+    status: Open
+  }
+}
+
+fn update_status_op(id: TaskId, status: TaskStatus) -> Task {
+  Task {
+    id: id,
+    title: "",
+    status: status
+  }
+}
+
+fn list_tasks_op() -> FreeMonoid<Task> {
+  Empty
+}
