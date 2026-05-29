@@ -30,6 +30,7 @@ import v4.std.determinism {
   determinism_registry_from_facts,
   determinism_registry_lookup
 }
+// tree: reserved for PR-4 signature→body resolution; claims pass body explicitly today.
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
@@ -287,7 +288,7 @@ fn first_violation_in_body(
 }
 
 fn determinism_witness(
-  tree: InferredTree,
+  _tree: InferredTree,
   registry: Map<Symbol, DeterminismClass>,
   subject: DeterminismFact,
   body: Node

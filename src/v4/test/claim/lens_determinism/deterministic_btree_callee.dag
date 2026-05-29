@@ -34,6 +34,7 @@ data det_clean_type_symbol: Symbol = det_clean_type_symbol
 data det_clean_algebra_symbol: Symbol = det_clean_algebra_symbol
 data det_clean_descent_symbol: Symbol = det_clean_descent_symbol
 
+data det_clean_map_field: Symbol = det_clean_map_field
 data det_clean_map_node: Node = claim_atom_node(s: forbidden_symbol_btree_map)
 data det_clean_callee_target: Node = claim_atom_node(s: det_clean_callee_symbol)
 
@@ -41,7 +42,7 @@ data det_clean_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge {
-      label: Named { name: det_clean_map_node },
+      label: Named { name: det_clean_map_field },
       target: det_clean_map_node
     },
     Edge {
