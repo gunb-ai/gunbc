@@ -678,6 +678,7 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
 
 fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
   ci_repo_path_has_prefix(path: changed, prefix: ".github/workflows/")
+    || changed == "src/v4/workflow/ci.dag"
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/workflow/ci/")
     || ci_repo_path_has_prefix(path: changed, prefix: "tools/ci_affected_components")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/check-workflow-path-regex-inventory")
