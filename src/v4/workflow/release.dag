@@ -122,11 +122,19 @@ data release_build_musl_x86: Symbol = release_build_musl_x86
 data release_build_musl_aarch64: Symbol = release_build_musl_aarch64
 data release_build_darwin_x86: Symbol = release_build_darwin_x86
 data release_build_darwin_aarch64: Symbol = release_build_darwin_aarch64
+data release_upload_musl_x86: Symbol = release_upload_musl_x86
+data release_upload_musl_aarch64: Symbol = release_upload_musl_aarch64
+data release_upload_darwin_x86: Symbol = release_upload_darwin_x86
+data release_upload_darwin_aarch64: Symbol = release_upload_darwin_aarch64
 data release_publish_execution: Symbol = release_publish_execution
 data release_build_musl_x86_signal: Symbol = release_build_musl_x86_signal
 data release_build_musl_aarch64_signal: Symbol = release_build_musl_aarch64_signal
 data release_build_darwin_x86_signal: Symbol = release_build_darwin_x86_signal
 data release_build_darwin_aarch64_signal: Symbol = release_build_darwin_aarch64_signal
+data release_upload_musl_x86_signal: Symbol = release_upload_musl_x86_signal
+data release_upload_musl_aarch64_signal: Symbol = release_upload_musl_aarch64_signal
+data release_upload_darwin_x86_signal: Symbol = release_upload_darwin_x86_signal
+data release_upload_darwin_aarch64_signal: Symbol = release_upload_darwin_aarch64_signal
 data release_publish_signal: Symbol = release_publish_signal
 
 data release_live_workflow_signal: ReleaseLiveWorkflowSignal = {
@@ -170,13 +178,33 @@ data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p
       needs: []
     },
     ReleaseJob {
+      id: release_upload_musl_x86,
+      command: UploadGunbcMatrixArtifact,
+      needs: [release_build_musl_x86]
+    },
+    ReleaseJob {
+      id: release_upload_musl_aarch64,
+      command: UploadGunbcMatrixArtifact,
+      needs: [release_build_musl_aarch64]
+    },
+    ReleaseJob {
+      id: release_upload_darwin_x86,
+      command: UploadGunbcMatrixArtifact,
+      needs: [release_build_darwin_x86]
+    },
+    ReleaseJob {
+      id: release_upload_darwin_aarch64,
+      command: UploadGunbcMatrixArtifact,
+      needs: [release_build_darwin_aarch64]
+    },
+    ReleaseJob {
       id: release_publish_execution,
       command: PublishGitHubRelease { bundle_install_sh: true },
       needs: [
-        release_build_musl_x86,
-        release_build_musl_aarch64,
-        release_build_darwin_x86,
-        release_build_darwin_aarch64
+        release_upload_musl_x86,
+        release_upload_musl_aarch64,
+        release_upload_darwin_x86,
+        release_upload_darwin_aarch64
       ]
     }
   ],
@@ -185,6 +213,10 @@ data release_pipeline: Outcome<ReleasePipeline> = release_pipeline_well_formed(p
     ReleaseGate { id: release_build_musl_aarch64_signal, job: release_build_musl_aarch64 },
     ReleaseGate { id: release_build_darwin_x86_signal, job: release_build_darwin_x86 },
     ReleaseGate { id: release_build_darwin_aarch64_signal, job: release_build_darwin_aarch64 },
+    ReleaseGate { id: release_upload_musl_x86_signal, job: release_upload_musl_x86 },
+    ReleaseGate { id: release_upload_musl_aarch64_signal, job: release_upload_musl_aarch64 },
+    ReleaseGate { id: release_upload_darwin_x86_signal, job: release_upload_darwin_x86 },
+    ReleaseGate { id: release_upload_darwin_aarch64_signal, job: release_upload_darwin_aarch64 },
     ReleaseGate { id: release_publish_signal, job: release_publish_execution }
   ]
 })
@@ -198,6 +230,7 @@ data release_dangling_reference: Symbol = release_dangling_reference
 data release_dependency_cycle: Symbol = release_dependency_cycle
 data release_matrix_invalid: Symbol = release_matrix_invalid
 data release_matrix_build_coverage_gap: Symbol = release_matrix_build_coverage_gap
+data release_matrix_upload_drain_gap: Symbol = release_matrix_upload_drain_gap
 data release_bootstrap_authority_violation: Symbol = release_bootstrap_authority_violation
 data release_workflow_file: Symbol = release_workflow_file
 
@@ -338,6 +371,21 @@ fn release_pipeline_jobs_cover_matrix(jobs: List<ReleaseJob>, rows: List<Release
   })
 }
 
+fn release_command_is_upload(c: ReleaseCommand) -> Bool {
+  match c {
+    UploadGunbcMatrixArtifact => true
+    CrossMuslGunbcBuild { target: _ } => false
+    NativeDarwinGunbcBuild { target: _ } => false
+    PublishGitHubRelease { bundle_install_sh: _ } => false
+  }
+}
+
+fn release_matrix_upload_jobs_present(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  length(xs: rows) == count_where(xs: jobs, predicate: fn(j) {
+    release_command_is_upload(c: j.command)
+  })
+}
+
 fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> {
   if release_all_job_ids_unique(jobs: p.jobs) {
     if release_all_gate_ids_unique(gates: p.gates) {
@@ -347,7 +395,11 @@ fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> 
             if release_all_commands_authority_ok(jobs: p.jobs) {
               if release_matrix_targets_well_formed(rows: release_build_matrix) {
                 if release_pipeline_jobs_cover_matrix(jobs: p.jobs, rows: release_build_matrix) {
-                  Accepted { value: p, diagnostics: None }
+                  if release_matrix_upload_jobs_present(jobs: p.jobs, rows: release_build_matrix) {
+                    Accepted { value: p, diagnostics: None }
+                  } else {
+                    Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_upload_drain_gap)) }
+                  }
                 } else {
                   Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_build_coverage_gap)) }
                 }

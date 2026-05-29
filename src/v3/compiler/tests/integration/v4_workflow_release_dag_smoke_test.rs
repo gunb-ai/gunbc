@@ -160,6 +160,11 @@ fn v4_workflow_release_semantics_modeled() {
         RELEASE_DAG.contains("release_pipeline_jobs_cover_matrix"),
         "{RELEASE_DAG_PATH}: well-formedness must require pipeline jobs cover matrix targets"
     );
+    assert!(
+        RELEASE_DAG.contains("command: UploadGunbcMatrixArtifact")
+            && RELEASE_DAG.contains("release_matrix_upload_jobs_present"),
+        "{RELEASE_DAG_PATH}: pipeline must model matrix artifact upload drain before publish"
+    );
     for target in RELEASE_PUBLISHED_TARGETS {
         assert!(
             RELEASE_DAG.contains(target),
