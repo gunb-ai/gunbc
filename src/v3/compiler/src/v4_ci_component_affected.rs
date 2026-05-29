@@ -104,7 +104,9 @@ mod tests {
 
     #[test]
     fn v4_m1_probe_script_triggers_v4_bucket() {
-        assert!(ci_changed_path_affects_v4("scripts/v4-m1-rust-emit-probe.sh"));
+        assert!(ci_changed_path_affects_v4(
+            "scripts/v4-m1-rust-emit-probe.sh"
+        ));
         assert!(ci_changed_path_affects_v4("scripts/v4-mvp1-e2e-gate.sh"));
     }
 
