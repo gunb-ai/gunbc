@@ -669,7 +669,7 @@ fn ci_int_offset_authority_projection_node(i: Int) -> Node {
         ),
         ci_named_edge(
           name: ci_projection_char_offset_byte_edge,
-          target: ci_byte_limb_projection_node(limb: i % 256)
+          target: ci_byte_limb_projection_node(limb: i - (i / 256) * 256)
         )
       ]
     }
