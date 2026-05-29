@@ -5813,7 +5813,20 @@ fn needs_parallelism_lens_authority_prepended(module: &parse::SurfaceModule) -> 
 
 #[allow(clippy::result_large_err)]
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
-    compile_to_dag_modules_in_order(&[(source, file)])
+    let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
+    let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
+    let mut dag = lower::lower_compile_module(
+        &surface,
+        needs_complexity_lens_authority_prepended(&surface),
+        needs_parallelism_lens_authority_prepended(&surface),
+    );
+    infer::infer(&mut dag);
+    r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
+    if dag.diagnostics().is_empty() {
+        Ok(dag)
+    } else {
+        Err(CompileError::Semantic(dag))
+    }
 }
 
 /// Lower `sources` in order into one bootstrap [`Dag`], then infer.
