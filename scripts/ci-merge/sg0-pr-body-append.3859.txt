@@ -1,3 +1,3 @@
-SG-0 hand-path delta: +1
+SG-0 hand-path delta: +0
 
-SG-0 pairing: (c) follow-up dispatch via gunb-ai/gunbc#3859 — RELEASE_TODO.md §5 Phase 1 net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_workflow_release_dag_smoke_test.rs` (INVARIANTS §P5(b) parse smoke on `src/v4/workflow/release.dag` + hand-synced `release.yml` / `install.sh` target-authority parity via `scripts/release-target-triples.sh`). Dissolves when `release_pipeline` YamlStatic emits `.github/workflows/release.yml` and install targets derive from `.dag` eval without host parse probes (T-24-style emission slice).
+# Net vs origin/main: +1 `v4_workflow_release_dag_smoke_test.rs`, −1 `v4_extdeps_formatters_black_dag_smoke_test.rs` (on main via #3890; not on this branch). Pairing not required for +0.
