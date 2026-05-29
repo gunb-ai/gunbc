@@ -125,9 +125,9 @@ type RunnerArch
 type SelfHostedRunnerPool {
   host: Symbol
   arch: RunnerArch
-  core_count: Int
-  runner_count: Int
-  jobserver_token_cap: Int
+  core_count: Int // 🟡 gated: formatter-int-refinement — must be ≥1 (operator fleet spec)
+  runner_count: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  jobserver_token_cap: Int // 🟡 gated: formatter-int-refinement — must be ≥1
 }
 
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
@@ -258,6 +258,8 @@ data ci_dependency_cycle: Symbol = ci_dependency_cycle
 data ci_bootstrap_authority_violation: Symbol = ci_bootstrap_authority_violation
 data ci_workflow_file: Symbol = ci_workflow_file
 data ci_runner_pool_m1_witness_violation: Symbol = ci_runner_pool_m1_witness_violation
+data ci_runner_pool_non_positive_capacity: Symbol = ci_runner_pool_non_positive_capacity
+data ci_runner_pool_non_positive_fanout: Symbol = ci_runner_pool_non_positive_fanout
 
 fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
