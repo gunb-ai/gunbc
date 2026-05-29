@@ -194,6 +194,8 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 | **merry-carp-814** | `release.dag` pattern only — not CI execution |
 | **vivid-raven-55** | Scaffold-ratchet deletions when triggered |
 
+**No overlap rule:** one authority per fact. Any `ci.yml` step must be projectable from `ci.dag` **or** deleted in the same atom PR that authors its modeled replacement. **Forbidden:** a standing “interim allowlist” of hand YAML steps (retired **S2 BinaryShim** / bespoke `gunbc ci run` path). **S0** (today’s hand `ci.yml`) exists only as audit baseline until **A2** lands the S2′ harness; no parallel YAML-tuning phase.
+
 ---
 
 ## 8. Ratification decisions (operator 2026-05-29)
