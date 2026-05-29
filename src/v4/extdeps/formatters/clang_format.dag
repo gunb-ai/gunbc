@@ -351,13 +351,13 @@ type ClangFormatTrailingCommaStyle
 
 
 type ClangFormatIntegerLiteralSeparatorStyle {
-  binary: Outcome<AtLeastMinusOneInt>,
+  binary: Int // upstream: int8_t — any negative disables separators (not ≥-1)
   binary_min_digits_insert: Outcome<NonNegativeInt>,
   binary_max_digits_remove: Outcome<NonNegativeInt>,
-  decimal: Outcome<AtLeastMinusOneInt>,
+  decimal: Int // upstream: int8_t — any negative disables separators (not ≥-1)
   decimal_min_digits_insert: Outcome<NonNegativeInt>,
   decimal_max_digits_remove: Outcome<NonNegativeInt>,
-  hex: Outcome<AtLeastMinusOneInt>,
+  hex: Int // upstream: int8_t — any negative disables separators (not ≥-1)
   hex_min_digits_insert: Outcome<NonNegativeInt>,
   hex_max_digits_remove: Outcome<NonNegativeInt>,
 }
@@ -681,7 +681,7 @@ type ClangFormatConfig {
   bin_pack_long_braced_list: Bool
   bin_pack_parameters: ClangFormatBinPackParametersStyle
   bit_field_colon_spacing: ClangFormatBitFieldColonSpacingStyle
-  braced_initializer_indent_width: Outcome<NonNegativeInt>
+  braced_initializer_indent_width: Int // upstream: negative/unset falls back to ContinuationIndentWidth
   brace_wrapping: ClangFormatBraceWrappingFlags
   break_adjacent_string_literals: Bool
   break_after_attributes: ClangFormatAttributeBreakingStyle
@@ -878,7 +878,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   bin_pack_long_braced_list: true,
   bin_pack_parameters: ClangFormatBinPackParametersBinPack,
   bit_field_colon_spacing: ClangFormatBitFieldColonBoth,
-  braced_initializer_indent_width: non_negative_int_authoritative_literal(value: 2),
+  braced_initializer_indent_width: 2,
   brace_wrapping: ClangFormatBraceWrappingFlags { after_case_label: false, after_class: false, after_control_statement: ClangFormatBraceWrapAfterControlNever, after_enum: false, after_extern_block: false, after_function: false, after_namespace: false, after_obj_c_declaration: false, after_struct: false, after_union: false, before_catch: false, before_else: false, before_lambda_body: false, before_while: false, indent_braces: false, split_empty_function: true, split_empty_record: true, split_empty_namespace: true },
   break_adjacent_string_literals: true,
   break_after_attributes: ClangFormatAttributeBreakNever,
@@ -940,7 +940,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   insert_braces: false,
   insert_newline_at_eof: false,
   insert_trailing_commas: ClangFormatTrailingCommaNone,
-  integer_literal_separator: ClangFormatIntegerLiteralSeparatorStyle { binary: at_least_minus_one_int_authoritative_literal(value: 0), binary_min_digits_insert: non_negative_int_authoritative_literal(value: 0), binary_max_digits_remove: non_negative_int_authoritative_literal(value: 0), decimal: at_least_minus_one_int_authoritative_literal(value: 0), decimal_min_digits_insert: non_negative_int_authoritative_literal(value: 0), decimal_max_digits_remove: non_negative_int_authoritative_literal(value: 0), hex: at_least_minus_one_int_authoritative_literal(value: 0), hex_min_digits_insert: non_negative_int_authoritative_literal(value: 0), hex_max_digits_remove: non_negative_int_authoritative_literal(value: 0) },
+  integer_literal_separator: ClangFormatIntegerLiteralSeparatorStyle { binary: 0, binary_min_digits_insert: non_negative_int_authoritative_literal(value: 0), binary_max_digits_remove: non_negative_int_authoritative_literal(value: 0), decimal: 0, decimal_min_digits_insert: non_negative_int_authoritative_literal(value: 0), decimal_max_digits_remove: non_negative_int_authoritative_literal(value: 0), hex: 0, hex_min_digits_insert: non_negative_int_authoritative_literal(value: 0), hex_max_digits_remove: non_negative_int_authoritative_literal(value: 0) },
   java_script_quotes: ClangFormatJavaScriptQuoteLeave,
   java_script_wrap_imports: true,
   keep_empty_lines: ClangFormatKeepEmptyLinesStyle { at_end_of_file: false, at_start_of_block: true, at_start_of_file: true },
