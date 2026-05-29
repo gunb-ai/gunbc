@@ -67,6 +67,7 @@ fn write_github_output(path: &str, flags: CiComponentAffected) -> io::Result<()>
     writeln!(file, "v3={}", flags.v3)?;
     writeln!(file, "v4={}", flags.v4)?;
     writeln!(file, "workflow_policy={}", flags.workflow_policy)?;
+    writeln!(file, "release_distribution={}", flags.release_distribution)?;
     Ok(())
 }
 
@@ -126,6 +127,14 @@ fn main() -> ExitCode {
     eprintln!(
         "workflow_policy (Gate #103 surface): {}",
         if flags.workflow_policy { "yes" } else { "no" }
+    );
+    eprintln!(
+        "release_distribution (RELEASE §5 parity smoke): {}",
+        if flags.release_distribution {
+            "yes"
+        } else {
+            "no"
+        }
     );
 
     if let Err(e) = write_github_output(&output_file, flags) {
