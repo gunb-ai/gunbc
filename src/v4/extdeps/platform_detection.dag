@@ -13,7 +13,7 @@ module v4.extdeps.platform_detection
 
 
 import v4.std.collection { List }
-import v4.std.platform { Aarch64, Architecture, Linux, Macos, OperatingSystem, Windows, X86_64 }
+import v4.std.platform { Aarch64, Architecture, Linux, Macos, OperatingSystem, Windows, X86, X86_64 }
 import v4.std.text { String }
 
 
@@ -106,9 +106,21 @@ data ps_arm64: PowerShellArchMapping = PowerShellArchMapping {
   canonical: Aarch64
 }
 
+// 32-bit Windows hosts. gunbc does not currently ship an x86-Windows InstallTarget (no tier1/
+// tier2 32-bit MSVC release in src/v4/std/target_triple.dag), but closing the PowerShell ABI
+// set here keeps the detection table faithful to Windows ABI docs (Practice 1 / P3 — every
+// documented external value has a substrate row). Install-channel selection downstream maps
+// X86 hosts to a fail-closed "unsupported architecture" diagnostic rather than fabricating an
+// aarch64/x86_64 fallback.
+data ps_x86: PowerShellArchMapping = PowerShellArchMapping {
+  raw_processor_architecture_value: "x86",
+  canonical: X86
+}
+
 data powershell_arch_mapping_table: List<PowerShellArchMapping> = [
   ps_amd64,
-  ps_arm64
+  ps_arm64,
+  ps_x86
 ]
 
 
