@@ -1,17 +1,20 @@
 //! Structural mirror of `SelfHostedRunnerPool` / `m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
-//! Operator fleet is Ampere Altra (Arm64) only — arch is a comment-level closed fact in `ci.dag`, not a field.
 
 /// Structural mirror of `SelfHostedRunnerPool` in `src/v4/workflow/ci.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelfHostedRunnerPool {
     pub host: &'static str,
+    pub arch: &'static str,
     pub core_count: u32,
     pub runner_count: u32,
     pub jobserver_token_cap: u32,
 }
 
+pub const CI_RUNNER_ARCH_ARM64: &str = "arm64";
+
 pub const CI_SRV1_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     host: "srv1",
+    arch: CI_RUNNER_ARCH_ARM64,
     core_count: 128,
     runner_count: 20,
     jobserver_token_cap: 25,
@@ -19,6 +22,7 @@ pub const CI_SRV1_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
 
 pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     host: "srv2",
+    arch: CI_RUNNER_ARCH_ARM64,
     core_count: 128,
     runner_count: 30,
     jobserver_token_cap: 36,
@@ -56,6 +60,8 @@ mod tests {
 
     #[test]
     fn srv_pools_match_operator_spec() {
+        assert_eq!(CI_SRV1_POOL.arch, CI_RUNNER_ARCH_ARM64);
+        assert_eq!(CI_SRV2_POOL.arch, CI_RUNNER_ARCH_ARM64);
         assert_eq!(CI_SRV1_POOL.runner_count, 20);
         assert_eq!(CI_SRV1_POOL.jobserver_token_cap, 25);
         assert_eq!(CI_SRV2_POOL.runner_count, 30);
