@@ -293,10 +293,10 @@ placeholder remains before T-15 can consume it as a real fixed-point proof:
 aliases dissolve on T-15 B1 content_hash supplying computed merkle digests.
 Construct-list walk landed in T-32 Phase 2 (#3907): footprint derives via
 `bootstrap_footprint_fold_state` over `bootstrap_projection_closure_node`
-(actual snapshot / `target_model.bundle` / runtime facts per
-design-bootstrap-fact-model.md §4); declared `seed_capability` inventory
-is separate (`bootstrap_seed_capability_inventory_root`) (dissolves
-`feature:bootstrap-footprint-constructs-walk`).
+(snapshot / `target_model.bundle` / runtime data edges plus construct
+inventory edges whose targets are read through `child.constructs`; declared
+`seed_capability` inventory is separate (`bootstrap_seed_capability_inventory_root`)
+(dissolves `feature:bootstrap-footprint-constructs-walk`).
 
 ---
 

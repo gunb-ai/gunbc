@@ -267,24 +267,26 @@ fn bootstrap_footprint_fold_init(n: Node) -> BootstrapFootprintFoldState {
   }
 }
 
+fn bootstrap_footprint_projection_data_edge(label: Symbol) -> Bool {
+  (label == bootstrap_projection_snapshot_language_model_edge)
+    || (label == bootstrap_projection_snapshot_content_hash_edge)
+    || (label == bootstrap_projection_target_bundle_edge)
+    || (label == bootstrap_projection_runtime_identity_edge)
+}
+
 fn bootstrap_footprint_fold_step(
   acc: BootstrapFootprintFoldState,
   edge: Edge,
   child: BootstrapFootprintFoldState
 ) -> BootstrapFootprintFoldState {
   let facet_constructs = match edge.label {
-    Named { name: bootstrap_projection_snapshot_root_edge } => child.constructs
-    Named { name: bootstrap_projection_snapshot_language_model_edge } => []
-    Named { name: bootstrap_projection_snapshot_content_hash_edge } => []
-    Named { name: bootstrap_projection_target_bundle_edge } =>
-      list_append(
-        left: [BootstrapConstruct { identity: bootstrap_construct_target_model_subset }],
-        right: [BootstrapConstruct { identity: bootstrap_construct_lowering_subset }]
-      )
-    Named { name: bootstrap_projection_runtime_identity_edge } =>
-      [BootstrapConstruct { identity: bootstrap_construct_runtime_model_subset }]
+    Named { name: label } =>
+      if bootstrap_footprint_projection_data_edge(label: label) {
+        []
+      } else {
+        child.constructs
+      }
     Positional => []
-    Named { name: _ } => []
   }
   BootstrapFootprintFoldState {
     constructs: list_append(left: acc.constructs, right: facet_constructs)
@@ -505,8 +507,20 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
         target: inputs.target_model.bundle
       },
       Edge {
+        label: Named { name: bootstrap_construct_target_model_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_target_model_subset)
+      },
+      Edge {
+        label: Named { name: bootstrap_construct_lowering_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_lowering_subset)
+      },
+      Edge {
         label: Named { name: bootstrap_projection_runtime_identity_edge },
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
+      },
+      Edge {
+        label: Named { name: bootstrap_construct_runtime_model_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_runtime_model_subset)
       }
     ]
   }
