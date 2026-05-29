@@ -432,7 +432,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
         "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant"
     );
-    let m1_jobs = v3_compiler::v4_ci_runner_pool::m1_probe_cargo_check_jobs();
+    let m1_jobs = ci_affected_components::runner_pool::m1_probe_cargo_check_jobs();
     assert_eq!(
         m1_jobs, 4,
         "Rust transport mirror of m1_probe_cargo_check_jobs must match ci.dag operator constant"
