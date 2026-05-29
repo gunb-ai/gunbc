@@ -86,8 +86,6 @@ fn make_signal_num(value: Int, at: Locus) -> Outcome<SignalNum> {
 
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
-// tag: POSIX exec byte strings.
-// scaffold: POSIX exec byte refinements; staging in OS-1.
 type PosixArgument {
   bytes: PosixByteString
 }
@@ -149,7 +147,6 @@ type CaptureSource
 
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
-// Opaque OS resource — analogous to Filesystem; internal representation is platform-defined.
 type ProcessTable
 
 type ProcessResources {
@@ -157,11 +154,9 @@ type ProcessResources {
   filesystem: Filesystem
 }
 
-// coincides: finite POSIX pipe byte sequence.
 type CapturedByteStream = FreeMonoid<Byte>
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/pipe.html
-// stdout and stderr are separate capture axes — P2 single authority per stream.
 type CapturedOutputPipes {
   stdout: CapturedByteStream
   stderr: CapturedByteStream
