@@ -1,0 +1,13 @@
+[package]
+name = "ci_affected_components"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "detect-ci-affected-components"
+path = "src/main.rs"
