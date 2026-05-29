@@ -1,5 +1,5 @@
 // src/v4/test/claim/manual/protobuf_map_key_type_anchor.dag
-// Scope: Compile anchors for ProtoMapKeyType coproduct arms (map key grammar subset).
+// Scope: Compile anchors for ProtoMapKeyType coproduct arms (map grammar keyType set).
 // Status: compile-only groundedness testcase.
 
 module v4.test.claim.manual.protobuf_map_key_type_anchor

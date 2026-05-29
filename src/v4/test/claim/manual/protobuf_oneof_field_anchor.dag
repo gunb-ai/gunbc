@@ -1,0 +1,22 @@
+// src/v4/test/claim/manual/protobuf_oneof_field_anchor.dag
+// Scope: Compile anchor for ProtoOneofField (unlabeled oneof member grammar).
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_oneof_field_anchor
+
+import v4.extdeps.formats.protobuf {
+  ProtoFieldNumber,
+  ProtoOneofField,
+  ProtoTypeReference,
+  ProtoTypeScalar,
+  ProtoString,
+}
+import v4.std.cardinality { NonZeroNat }
+import v4.std.nat { Succ, Zero }
+
+
+data protobuf_anchor_oneof_field: ProtoOneofField = ProtoOneofField {
+  number: ProtoFieldNumber { value: NonZeroNat { prev: Succ { prev: Zero } } },
+  name: "result",
+  type_ref: ProtoTypeScalar { scalar: ProtoString },
+}
