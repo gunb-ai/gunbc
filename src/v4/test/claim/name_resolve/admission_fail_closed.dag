@@ -54,7 +54,6 @@ data fc_subject_seg: Symbol = fc_subject_seg
 data fc_export_sym: Symbol = fc_export_sym
 data fc_export_a_sym: Symbol = fc_export_a_sym
 data fc_export_b_sym: Symbol = fc_export_b_sym
-data fc_fake_sym: Symbol = fc_fake_sym
 data fc_malformed_seg: Symbol = fc_malformed_seg
 data fc_malformed_child_sym: Symbol = fc_malformed_child_sym
 data fc_pass_sym: Symbol = fc_pass_sym
@@ -188,8 +187,7 @@ fn resolve_duplicate_module_roots_is_rejected() -> Bool {
     roots: fc_duplicate_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: fc_qn(seg: fc_dup_seg),
-        tree: fc_subject_tree()
+        name: fc_qn(seg: fc_dup_seg)
       },
       imports: Empty
     }
@@ -206,8 +204,7 @@ fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
     roots: fc_single_found_root(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: fc_qn(seg: fc_missing_seg),
-        tree: fc_subject_tree()
+        name: fc_qn(seg: fc_missing_seg)
       },
       imports: Empty
     }
@@ -249,8 +246,7 @@ fn resolve_malformed_subject_root_is_rejected() -> Bool {
     roots: fc_malformed_subject_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: fc_qn(seg: fc_malformed_seg),
-        tree: fc_subject_tree()
+        name: fc_qn(seg: fc_malformed_seg)
       },
       imports: Empty
     }
@@ -281,8 +277,7 @@ fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
     roots: fc_dual_import_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: fc_qn(seg: fc_subject_seg),
-        tree: fc_subject_tree()
+        name: fc_qn(seg: fc_subject_seg)
       },
       imports: Cons {
         head: Import { target: fc_qn(seg: fc_import_a_seg), visibility: ImportVisible },
@@ -307,8 +302,7 @@ fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
         roots: fc_dual_import_roots(),
         admission: Admission {
           subject: ResolutionSubject {
-            name: fc_qn(seg: fc_subject_seg),
-            tree: fc_subject_tree()
+            name: fc_qn(seg: fc_subject_seg)
           },
           imports: Cons {
             head: Import { target: fc_qn(seg: fc_import_a_seg), visibility: ImportVisible },
@@ -323,45 +317,6 @@ fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
           diagnostics_eq(a: resolve_diag, b: validate_diag)
         Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-
-fn fc_mismatched_subject_tree() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: fc_fake_sym },
-        target: Node {
-          kind: TypeNode {
-            connective: Atom { identity: dag_c3_surface_sugar_service }
-          },
-          children: []
-        }
-      }
-    ]
-  }
-}
-
-
-fn resolve_mismatched_subject_tree_cannot_bypass_authoritative_root() -> Bool {
-  match resolve_with_admission(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: Cons {
-      head: fc_module_root(seg: fc_subject_seg),
-      tail: Empty
-    },
-    admission: Admission {
-      subject: ResolutionSubject {
-        name: fc_qn(seg: fc_subject_seg),
-        tree: fc_mismatched_subject_tree()
-      },
-      imports: Empty
-    }
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
