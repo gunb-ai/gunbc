@@ -27,6 +27,178 @@ const M1_BINDING_TEST_FILTER: &str =
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
+const CI_AFFECTED_COMPONENTS_LIB: &str =
+    include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
+
+const CI_CHANGED_PATH_AFFECTS_FNS: &[&str] = &[
+    "ci_changed_path_affects_v2",
+    "ci_changed_path_affects_v3",
+    "ci_changed_path_affects_v4",
+    "ci_changed_path_affects_workflow_policy",
+];
+
+struct CiAffectedFixture {
+    path: &'static str,
+    v2: bool,
+    v3: bool,
+    v4: bool,
+    workflow_policy: bool,
+}
+
+/// Behavioral fixtures aligned with `src/v4/test/claim/workflow/ci_component_affected.dag`.
+const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
+    CiAffectedFixture {
+        path: "src/v2/stage0/Cargo.toml",
+        v2: true,
+        v3: false,
+        v4: false,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "dsl/gunbc/ci.dag",
+        v2: false,
+        v3: true,
+        v4: false,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "dsl/std/node.dag",
+        v2: false,
+        v3: true,
+        v4: true,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "scripts/v4-m1-rust-emit-probe.sh",
+        v2: false,
+        v3: false,
+        v4: true,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "src/v4/workflow/ci.dag",
+        v2: false,
+        v3: false,
+        v4: true,
+        workflow_policy: true,
+    },
+    CiAffectedFixture {
+        path: "Cargo.lock",
+        v2: true,
+        v3: false,
+        v4: true,
+        workflow_policy: false,
+    },
+    CiAffectedFixture {
+        path: "docs/README.md",
+        v2: false,
+        v3: false,
+        v4: false,
+        workflow_policy: false,
+    },
+];
+
+fn fn_body_end(rest: &str) -> usize {
+    ["\npub fn ", "\nfn ", "\n#[cfg(test)]"]
+        .iter()
+        .filter_map(|prefix| rest.find(prefix))
+        .min()
+        .unwrap_or(rest.len())
+}
+
+fn extract_fn_body<'a>(source: &'a str, fn_name: &str) -> &'a str {
+    let marker = format!("fn {fn_name}");
+    let start = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing fn `{fn_name}`"));
+    let after = start + marker.len();
+    let rest = &source[after..];
+    &source[start..after + fn_body_end(rest)]
+}
+
+fn literals_after_marker(line: &str, marker: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    let mut search = line;
+    while let Some(idx) = search.find(marker) {
+        let rest = &search[idx + marker.len()..];
+        if let Some(end) = rest.find('"') {
+            out.insert(rest[..end].to_string());
+            search = &rest[end + 1..];
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+fn dag_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        out.extend(literals_after_marker(line, "prefix: \""));
+    }
+    out
+}
+
+fn rust_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        out.extend(literals_after_marker(line, ".starts_with(\""));
+    }
+    out
+}
+
+fn dag_exact_path_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        out.extend(literals_after_marker(line, "changed == \""));
+    }
+    out
+}
+
+fn rust_exact_path_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        out.extend(literals_after_marker(line, "path == \""));
+    }
+    out
+}
+
+fn assert_ci_dag_rust_bucket_parity(fn_name: &str) {
+    let dag_body = extract_fn_body(CI_DAG, fn_name);
+    let rust_body = extract_fn_body(CI_AFFECTED_COMPONENTS_LIB, fn_name);
+    assert_eq!(
+        dag_prefix_literals_in_fn(dag_body),
+        rust_prefix_literals_in_fn(rust_body),
+        "{fn_name}: prefix literal sets must match between {CI_DAG_PATH} and ci_affected_components lib"
+    );
+    assert_eq!(
+        dag_exact_path_literals_in_fn(dag_body),
+        rust_exact_path_literals_in_fn(rust_body),
+        "{fn_name}: exact-path literal sets must match between {CI_DAG_PATH} and ci_affected_components lib"
+    );
+}
+
+fn assert_ci_dag_rust_mirror_behavioral_parity() {
+    use ci_affected_components::ci_component_affected_from_changed_paths;
+    for fixture in CI_AFFECTED_BEHAVIORAL_FIXTURES {
+        let flags = ci_component_affected_from_changed_paths([fixture.path]);
+        assert_eq!(flags.v2, fixture.v2, "path `{}`: v2 flag", fixture.path);
+        assert_eq!(flags.v3, fixture.v3, "path `{}`: v3 flag", fixture.path);
+        assert_eq!(flags.v4, fixture.v4, "path `{}`: v4 flag", fixture.path);
+        assert_eq!(
+            flags.workflow_policy, fixture.workflow_policy,
+            "path `{}`: workflow_policy flag",
+            fixture.path
+        );
+    }
+}
+
+fn assert_ci_dag_rust_mirror_full_parity() {
+    for fn_name in CI_CHANGED_PATH_AFFECTS_FNS {
+        assert_ci_dag_rust_bucket_parity(fn_name);
+    }
+    assert_ci_dag_rust_mirror_behavioral_parity();
+}
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -186,6 +358,7 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
     for name in [
         "ci_select_from_rerun_nodes",
         "ci_select_from_affected_set",
+        "ci_component_affected_from_git_diff",
         "test_claim_in_rerun_frontier",
         "ci_all_gate_run_policies_resolve",
     ] {
@@ -223,6 +396,32 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: must import filter from std.algebra"
     );
     assert!(
+        import_includes_name(&module, &["v4", "std", "algebra"], "any"),
+        "{CI_DAG_PATH}: must import any from std.algebra for path-bucket existence"
+    );
+    assert!(
+        CI_DAG.contains("any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v2)"),
+        "{CI_DAG_PATH}: component affected-set must use std.algebra any"
+    );
+    assert!(
+        !CI_DAG.contains("CiGitDiffReadOutcome"),
+        "{CI_DAG_PATH}: git diff read must use canonical Outcome<GitDiffNameOnly>, not a parallel coproduct"
+    );
+    assert!(
+        CI_DAG.contains(
+            "ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>)"
+        ),
+        "{CI_DAG_PATH}: git diff read boundary must project through std.diagnostic Outcome"
+    );
+    assert!(
+        !CI_DAG.contains("ci_m1_probe_cargo_fanout_slots_from_fleet"),
+        "{CI_DAG_PATH}: M1 cargo jobs must not use reverse-engineered fleet fanout derivation"
+    );
+    assert!(
+        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
+        "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant in Wave-0"
+    );
+    assert!(
         CI_DAG.contains("RerunNodeSetFailClosed { evidence: _ } => roster"),
         "{CI_DAG_PATH}: fail-closed must return full roster on RerunNodeSetFailClosed (AI-16/R1-7)"
     );
@@ -233,7 +432,26 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
 }
 
 #[test]
+fn v4_workflow_ci_workflow_policy_prefixes_align_rust_mirror() {
+    assert_ci_dag_rust_bucket_parity("ci_changed_path_affects_workflow_policy");
+}
+
+#[test]
+fn v4_workflow_ci_component_bucket_prefixes_align_rust_mirror() {
+    for fn_name in [
+        "ci_changed_path_affects_v2",
+        "ci_changed_path_affects_v3",
+        "ci_changed_path_affects_v4",
+    ] {
+        assert_ci_dag_rust_bucket_parity(fn_name);
+    }
+}
+
+#[test]
 fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
+    // ci.dag ↔ Rust mirror parity (P2 consumer — set equality + behavioral fixtures; CI `--exact` step).
+    assert_ci_dag_rust_mirror_full_parity();
+
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
         module.items.iter().any(|item| matches!(
@@ -302,6 +520,40 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         m1_step.contains(&format!("run: bash {script_path}")),
         "{CI_YML_PATH}: `{step_name}` must invoke the modeled probe script"
+    );
+    assert!(
+        CI_DAG.contains("type SelfHostedRunnerPool"),
+        "{CI_DAG_PATH}: must model self-hosted runner pools (T-24 addendum)"
+    );
+    assert!(
+        CI_DAG.contains("arch: ci_runner_arch_arm64"),
+        "{CI_DAG_PATH}: fleet arch must be a typed Symbol field on SelfHostedRunnerPool"
+    );
+    assert!(
+            !CI_DAG.contains("RunnerArch"),
+            "{CI_DAG_PATH}: fleet arch uses Symbol field — no RunnerArch coproduct in Lens-CI entry compile"
+        );
+    assert!(
+        CI_DAG.contains("data ci_srv1_pool: SelfHostedRunnerPool")
+            && CI_DAG.contains("runner_count: 20")
+            && CI_DAG.contains("jobserver_token_cap: 25")
+            && CI_DAG.contains("data ci_srv2_pool: SelfHostedRunnerPool")
+            && CI_DAG.contains("runner_count: 30")
+            && CI_DAG.contains("jobserver_token_cap: 36"),
+        "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
+    );
+    assert!(
+        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
+        "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant"
+    );
+    let m1_jobs = ci_affected_components::runner_pool::m1_probe_cargo_check_jobs();
+    assert_eq!(
+        m1_jobs, 4,
+        "Rust transport mirror of m1_probe_cargo_check_jobs must match ci.dag operator constant"
+    );
+    assert!(
+        m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),
+        "{CI_YML_PATH}: M1 step must project modeled cargo-check job cap"
     );
 }
 
