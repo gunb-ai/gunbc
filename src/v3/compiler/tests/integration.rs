@@ -315,6 +315,8 @@ mod v4_test_bootstrap_infra_closeout_test;
 mod v4_test_fixture_task_manager_demo_smoke_test;
 #[path = "integration/v4_workflow_ci_runner_dag_smoke_test.rs"]
 mod v4_workflow_ci_runner_dag_smoke_test;
+#[path = "integration/v4_workflow_release_dag_smoke_test.rs"]
+mod v4_workflow_release_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/common/wiring_scanner_test.rs"]
