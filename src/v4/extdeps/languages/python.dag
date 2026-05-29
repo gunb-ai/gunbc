@@ -955,7 +955,7 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
 // dissolve-on: std/grammar substrate projects FormalGrammarSymbol to GrammarExpr directly.
 fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
   match sym {
-    FormalTerminalOccurrence { terminal: terminal } =>
+    FormalTerminalOccurrence { terminal: terminal, binding: _ } =>
       Terminal { token_class: terminal.identity }
     FormalNonterminalOccurrence { nonterminal: nonterminal } =>
       Nonterminal { production: nonterminal.identity }

@@ -220,7 +220,7 @@ type RefinementPreservationSubject {
 // 🟡 coproduct dissolution — LB-P4-3212.
 type TestgenConcept
 // 🟡 coproduct dissolution — LB-P4-3212
-// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms; LBE = L6 form×language)
+// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms) until LBE = L6 form×language coproduct shape ruled.
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
   | DiagnosticExhaustiveness { omitted_variant: TestClaimCoproductVariant }
@@ -233,6 +233,7 @@ type TestgenConcept
   | RefinementPreservation { subject: RefinementPreservationSubject }
 
 
+// RULING-1: 🟡 needs-more-work — scheduling generator slot until LBE = L6 form×language coproduct shape ruled.
 type Generator<C> {
   kind: TestClaimCoproductVariant
   classification: TestClassification
@@ -241,14 +242,14 @@ type Generator<C> {
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntry {
   path: AbsolutePath
   body: FileBody
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusTraversalScope
 // 🟢 coproduct dissolution — LB-P4-3212
@@ -256,7 +257,7 @@ type CorpusTraversalScope
   | SingleDirectoryCorpusWalk
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusTraversalOrder
 // 🟢 coproduct dissolution — LB-P4-3212
@@ -264,7 +265,7 @@ type CorpusTraversalOrder
   | FilesystemNativeOrder
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 // 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusDuplicatePolicy
 // 🟢 coproduct dissolution — LB-P4-3212
@@ -272,7 +273,7 @@ type CorpusDuplicatePolicy
   | RejectDuplicatePaths
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusTraversalPolicy {
   scope: CorpusTraversalScope
   order: CorpusTraversalOrder
@@ -280,7 +281,7 @@ type CorpusTraversalPolicy {
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerationRequest {
   filesystem: Filesystem
   root: AbsolutePath
@@ -290,34 +291,34 @@ type CorpusEnumerationRequest {
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntryIngestResult = Outcome<Node>
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensReadResult<C> = Outcome<C>
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensReader<C> {
   lens: Symbol
   read: fn(Node) -> CorpusLensReadResult<C>
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensObservation<C> {
   entry: CorpusEntry
   program: Node
@@ -325,11 +326,11 @@ type CorpusLensObservation<C> {
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensDriver<C> = fn(
   CorpusEnumerationRequest,
   CorpusEnumerator,
