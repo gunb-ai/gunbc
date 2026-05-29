@@ -275,6 +275,22 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: must import filter from std.algebra"
     );
     assert!(
+        import_includes_name(&module, &["v4", "std", "algebra"], "any"),
+        "{CI_DAG_PATH}: must import any from std.algebra for path-bucket existence"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "algebra"], "non_empty"),
+        "{CI_DAG_PATH}: must import non_empty from std.algebra for runner-pool witness"
+    );
+    assert!(
+        CI_DAG.contains("any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v2)"),
+        "{CI_DAG_PATH}: component affected-set must use std.algebra any"
+    );
+    assert!(
+        CI_DAG.contains("non_empty(xs: pools)"),
+        "{CI_DAG_PATH}: M1 probe witness must use std.algebra non_empty"
+    );
+    assert!(
         CI_DAG.contains("RerunNodeSetFailClosed { evidence: _ } => roster"),
         "{CI_DAG_PATH}: fail-closed must return full roster on RerunNodeSetFailClosed (AI-16/R1-7)"
     );
