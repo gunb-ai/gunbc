@@ -72,7 +72,10 @@ fn v4_extdeps_openapi_dag_parses() {
 fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
     let module = openapi_surface_or_panic();
     let facts = type_record_fields(&module, "OpenApiOperationWireContractFacts");
-    assert_eq!(record_field_type(facts, "coordination"), "WireContractFacts");
+    assert_eq!(
+        record_field_type(facts, "coordination"),
+        "WireContractFacts"
+    );
     assert_eq!(
         record_field_type(facts, "admitted_method"),
         "OpenApiAdmittedHttpMethod"
