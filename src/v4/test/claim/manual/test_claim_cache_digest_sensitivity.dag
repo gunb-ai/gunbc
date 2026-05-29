@@ -66,6 +66,7 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
+  byte_offset_cache_key,
   byte_offset_cache_key_fingerprint,
   byte_offset_cache_digest_max_limbs
 }
@@ -328,8 +329,8 @@ fn tcc_cache_byte_offset_over_ceiling() -> Int {
 }
 
 fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
-  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_exact_ceiling()) !=
-    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling())
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_exact_ceiling())) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()))
 }
 
 // 256^9 + 256 — same post-ceiling quotient as 256^9+1 but distinct low nine limbs.
@@ -338,8 +339,8 @@ fn tcc_cache_byte_offset_same_quotient() -> Int {
 }
 
 fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
-  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()) !=
-    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_same_quotient())
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling())) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_same_quotient()))
 }
 
 fn tcc_cache_byte_offset_sign_over_ceiling_digest_differs() -> Bool {
