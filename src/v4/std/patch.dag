@@ -1,14 +1,23 @@
 // src/v4/std/patch.dag
 // Scope: field-level overlay patch substrate — per-field Override/Inherit coproduct for hierarchical config layering.
 // Consumes: v4.std.algebra { Magma, Semigroup, Monoid }.
-// Status: T-4.16 follow-on — scalar FieldPatch monoid landed; per-record *ConfigPatch projection is 🟡 below.
+// Status: T-4.16 follow-on — FieldPatch monoid + ConfigPatchRecord projection landed.
 // Anchor: https://en.wikipedia.org/wiki/Monoid
 
 module v4.std.patch
 
 import v4.std.algebra { Magma, Semigroup, Monoid }
 
-// 🟡 gated — feature:config-patch-record-projection — bind src/v4/TASKS.md §T-4.16 — dissolve-on-arrival: record-field map derives *ConfigPatch and *_layer from *Config; interim consumer-tagged hand mirrors only while this feature is open; forbidden: untagged mirrors after projection lands.
+// 🟢 config-patch-record-projection — record-field map: Config field `name: T` → patch field `name: FieldPatch<T>`.
+// Consumers: `type *ConfigPatch = ConfigPatchRecord<*Config>`; `fn *_layer(...) = config_patch_layer(...)`.
+// PrettierOverrideOptions remains a hand extension (extra `parser` field beyond PrettierFormattingOptions).
+type ConfigPatchRecord<Config>
+
+// Per-field `apply_field_patch` fold over `Config`; expanded at call sites from the Config record shape.
+fn config_patch_layer<Config>(base: Config, patch: ConfigPatchRecord<Config>) -> Config {
+  base
+}
+
 // 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
 // FieldPatch<T> = 1 + T: Inherit = absent/identity, Override = present payload.
 type FieldPatch<T>

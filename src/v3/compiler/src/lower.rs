@@ -49,7 +49,8 @@ use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::expr_span as surface_expr_span;
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, TypeAngleArg, VariantPayload,
+    SurfacePattern, SurfacePatternField, SurfaceRecordField, SurfaceType, SurfaceVariant,
+    TypeAngleArg, VariantPayload,
 };
 use crate::types::TypeShape;
 
@@ -3786,6 +3787,146 @@ fn materialize_algebra_machine_width_width_nat(
     compose_algebra_machine_width_connective(dag, compose_tpl, algebra_id, mw_inst)
 }
 
+/// Record-field map for `ConfigPatchRecord<Config>`: each `name: T` in `Config` becomes
+/// `name: FieldPatch<T>` in the patch record (T-4.16 `config-patch-record-projection`).
+fn materialize_config_patch_record_connective(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    args: &[TypeAngleArg],
+    span: &SourceSpan,
+) -> Option<TypeConnective> {
+    if args.len() != 1 {
+        return None;
+    }
+    let config_ty = type_angle_arg_to_declaration_id(&args[0], symbols, local, dag);
+    let conj_id = walk_to_conj_decl(dag, config_ty)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    let field_patch_tpl = dag.declaration_by_name("FieldPatch")?.id;
+    let field_patch_param = template_param_id(dag, field_patch_tpl, 0)?;
+    let patch_children: Vec<Field> = children
+        .iter()
+        .map(|field| {
+            let patch_field_ty = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id: patch_field_ty,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template: field_patch_tpl,
+                    arguments: vec![TemplateArgument {
+                        parameter: field_patch_param,
+                        value: field.ty,
+                    }],
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: span.clone(),
+            });
+            Field {
+                label: field.label.clone(),
+                ty: patch_field_ty,
+            }
+        })
+        .collect();
+    Some(TypeConnective::Conj {
+        children: patch_children,
+    })
+}
+
+fn declaration_named(dag: &Dag, decl_id: DeclarationId, expected: &str) -> bool {
+    dag.declaration(decl_id).name.as_deref() == Some(expected)
+}
+
+fn surface_path_expr(file: &str, segments: &[&str], span: &SourceSpan) -> SurfaceExpr {
+    let segment_spans: Vec<SourceSpan> = segments
+        .iter()
+        .map(|_| SourceSpan::new(file, span.byte_start, span.byte_end))
+        .collect();
+    SurfaceExpr::Path {
+        segments: segments.iter().map(|s| (*s).to_string()).collect(),
+        segment_spans,
+        span: span.clone(),
+    }
+}
+
+fn surface_apply_field_patch_expr(
+    file: &str,
+    field_label: &str,
+    span: &SourceSpan,
+) -> SurfaceExpr {
+    SurfaceExpr::Call {
+        target: "apply_field_patch".to_string(),
+        args: vec![SurfaceExpr::Record {
+            fields: vec![
+                SurfaceRecordField {
+                    name: "base".to_string(),
+                    value: surface_path_expr(file, &["base", field_label], span),
+                    span: span.clone(),
+                },
+                SurfaceRecordField {
+                    name: "patch".to_string(),
+                    value: surface_path_expr(file, &["patch", field_label], span),
+                    span: span.clone(),
+                },
+            ],
+            span: span.clone(),
+        }],
+        span: span.clone(),
+    }
+}
+
+/// Expand `config_patch_layer(base: base, patch: patch)` into per-field `apply_field_patch`
+/// and a config record rebuild (same semantics as hand-written `*_layer` mirrors).
+fn try_lower_config_patch_layer_invocation(
+    base_target_decl: DeclarationId,
+    args: &[SurfaceExpr],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
+) -> Option<PortId> {
+    if !declaration_named(dag, base_target_decl, "config_patch_layer") {
+        return None;
+    }
+    let config_decl = expected_decl?;
+    let conj_id = walk_to_conj_decl(dag, config_decl)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    let _named_args = match args {
+        [SurfaceExpr::Record { fields, .. }] => fields,
+        _ => return None,
+    };
+    let file = span.file.as_str();
+    let record_fields: Vec<SurfaceRecordField> = children
+        .iter()
+        .map(|field| SurfaceRecordField {
+            name: field.label.clone(),
+            value: surface_apply_field_patch_expr(file, &field.label, span),
+            span: span.clone(),
+        })
+        .collect();
+    Some(lower_record_literal_expr(
+        &record_fields,
+        span,
+        dag,
+        scope,
+        callable_scope,
+        symbols,
+        Some(config_decl),
+    ))
+}
+
 /// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
 /// Arrow parameters, and template arguments. Allocates anonymous (unnamed)
 /// declarations for composite shapes; looks up named references against
@@ -3828,6 +3969,28 @@ fn type_to_declaration_id(
                     span: span.clone(),
                 });
                 return id;
+            }
+            if name == "ConfigPatchRecord" {
+                if let Some(connective) =
+                    materialize_config_patch_record_connective(dag, symbols, local, args, span)
+                {
+                    let id = dag.alloc_declaration_id();
+                    dag.push_declaration(Declaration {
+                        id,
+                        name: None,
+                        connective,
+                        type_params: Vec::new(),
+                        phantom_params: Vec::new(),
+                        meta_tag: None,
+                        specialization_parent: None,
+                        inhabits: None,
+                        value_body: None,
+                        refinement: None,
+                        nominal_opacity: None,
+                        span: span.clone(),
+                    });
+                    return id;
+                }
             }
             let template_id = local
                 .get(name)
@@ -3928,6 +4091,13 @@ fn type_to_connective(
                 materialize_algebra_machine_width_width_nat(dag, symbols, local, name, args, span)
             {
                 return conn;
+            }
+            if name == "ConfigPatchRecord" {
+                if let Some(conn) =
+                    materialize_config_patch_record_connective(dag, symbols, local, args, span)
+                {
+                    return conn;
+                }
             }
             let template = local
                 .get(name)
@@ -9032,6 +9202,18 @@ fn lower_resolved_callable_invocation(
     symbols: &HashMap<String, DeclarationId>,
     expected_decl: Option<DeclarationId>,
 ) -> PortId {
+    if let Some(port) = try_lower_config_patch_layer_invocation(
+        base_target_decl,
+        args,
+        span,
+        dag,
+        scope,
+        callable_scope,
+        symbols,
+        expected_decl,
+    ) {
+        return port;
+    }
     let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
     let mut input_ports: Vec<PortId> = Vec::new();
     let mut template_arguments: Vec<TemplateArgument> = Vec::new();
