@@ -183,6 +183,7 @@ type BlockInferState {
   typed_stmts: List<Node>
 }
 // SG-9: Tail-recursive block inference. Each accumulated list is a standalone
+// parameter (Rc refcount=1) so list_push avoids deep clone.
 fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferScope,
     typed_stmts: List<Node>, diag_chunks: List<List<ErrorNode>>,
     last_type: Node, expected: Node?) -> BlockInferState {
@@ -945,6 +946,10 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     }
   } else { none }
 }
+// Derive element provenance from a collection expression.
+// Single authority for the "collection has known provenance AND element type
+// has ListRecursion inductive fields → IteratedSubValue" pattern.
+// Used by ExprForEach, ExprCall bridge, and ExprMethodCall.
 fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope) -> SubValueRelation {
   let coll_prov = classify_binding_provenance(val: coll_expr, scope: scope)
   match coll_prov {
@@ -2938,6 +2943,14 @@ fn classify_call_arg_provenance(arg_expr: Node, ctx: DescentContext) -> SubValue
     _ => classify_let_value(val: arg_expr, ctx: ctx)
   }
 }
+// Merge SubValueRelations across branches using the structural lattice
+// meet from std/induction.dag. No lossy projection — meet_sub_value is
+// the single authority for SubValueRelation lattice operations.
+//
+// Uses first-element-as-init because the lattice has no unique top
+// (structural variants are incomparable). Empty list → SubValueUnknown
+// (fail-closed; shouldn't occur in practice since match/if always has
+// at least one branch).
 fn merge_argument_relations(rels: List<SubValueRelation>) -> SubValueRelation {
   match rels |> first {
     None => SubValueUnknown
@@ -3030,7 +3043,10 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
       }
     ExprMethodCall { method_semantics: _ } =>
       classify_collection_shrink(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    // Arithmetic descent: param - k, param / k, param + k (position advance on bounded domain).
+    // P4: literal `k` is bridged only through `std.termination` Peano materializers, which
     // fail closed for k outside (0, 256] (subtract) / [2, 256] (divide) — no unbounded recursion
+    // on user-sized integers (see `positive_descent_amount_from_positive_int` caps).
     ExprBinOp { op: op } =>
       let left = binop_left(texpr: arg_expr)
       let right = binop_right(texpr: arg_expr)
@@ -3051,6 +3067,8 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
               _ => SubValueUnknown
             }
           } else {
+            // k - param (e.g., 0 - n) is NOT well-founded descent.
+            // f(n) = f(0 - n) can oscillate. Fail closed.
             SubValueUnknown
           }
         Div =>
@@ -3079,6 +3097,8 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           SubValueUnknown
         _ => SubValueUnknown
       }
+    // ── Transparent wrappers: propagate evidence through control flow ──
+    // These are not value constructors — they pass through an existing value.
     // Worst-case across branches ensures soundness.
     ExprMatch =>
       let arm_rels = match_arm_nodes(texpr: arg_expr) |> map(arm =>
@@ -3215,6 +3235,11 @@ fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> St
 fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
   match body.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      // Annotate ALL calls with descent evidence — not just self-calls.
+      // Evidence says "this argument is a sub-value of the caller's parameter."
+      // For self-calls, this proves direct recursion terminates.
+      // For cross-calls, the SCC proof system reads this to build cross-edges.
+      // Single authority: no parallel analysis needed.
       let evidence = build_call_evidence(call_node: body, ctx: ctx)
       let source_type = body.children |> fold(init: "", f: (found, arg_node) =>
         descent_source_type(found: found, arg_node: arg_node, ctx: ctx)
@@ -3282,6 +3307,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           }
         _ =>
           // Fail closed: non-variable scrutinees have no proven provenance
+          // from the caller's parameters. Using inferred type alone would
+          // fabricate sub-value evidence for arm bindings.
           ""
       }
       let scrut_inducing_field = match scrut.expr_data {
@@ -3614,6 +3641,13 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             lparams |> skip(elem_position.value) |> first
           None => none
         }
+        // Fold has an accumulator — captured sub_value_vars can alias it,
+        // making descent evidence unsound. (e.g., [1,2] |> fold(f: (acc, x) => self(t: child))
+        // is T(n) = 2T(n-1) = O(2^n), not O(n).)
+        // Map/filter/any/all have no accumulator — each invocation is independent,
+        // so captured sub_value_vars remain valid descent evidence.
+        // S7: detect fold structurally — element at position > 0 means earlier params
+        // are accumulators, which implies fold semantics.
         let is_fold = elem_position.value > 0
         let inner_ctx = match lambda_elem_info {
           Some { value: elem_name } =>
@@ -3728,6 +3762,8 @@ fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, sc
     if pname != "" && ptype != "" { map_insert(acc, pname, ptype) } else { acc }
   )
   // Try scalar provenance first (preserves existing consumer compatibility).
+  // Only use per-field when scalar is empty — per-field captures struct-return
+  // provenance that scalar can't express.
   let scalar = classify_body_provenance(
     expr: body, param_names: param_names, param_types: param_types,
     type_env: type_env, func_sigs: func_sigs, let_prov: empty_map()
@@ -4117,6 +4153,9 @@ fn compose_callee_param_map(callee_prov: Map<String, SubValueRelation>, arg_by_n
     }
   )
 }
+// Compose two sub-value relations across a function call boundary.
+// Delegates to std/induction.dag's compose_sub_value_relations — the
+// single authority for SubValueRelation sequential composition.
 fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
   compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
 }
@@ -4521,9 +4560,14 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 // =========================================================================
 // Build type environment for a single module
 // =========================================================================
+// Names from the algebra type system that should not leak as ambient
+// type bindings when importing from std.types. These are template
+// metavariables, not user-facing type definitions.
 fn is_type_variable_name(name: String) -> Bool {
   name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }
+// Merge type bindings from parent environments, filtering out algebra
+// type variable names that should not be visible to importing modules.
 fn collect_parent_bindings_filtered(envs: List<TypeEnv>) -> Map<Int, TypeBinding> {
   fold(envs, init: empty_map(), f: (acc, env) =>
     fold(map_keys(env.bindings), init: acc, f: (bacc, ident) =>
@@ -4570,6 +4614,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let some_variant = Node { name: "Some", span: kernel_span(name: "Some"), ident_span: Some { value: kernel_span(name: "Some") }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Some { value: kernel_span(name: "Optional") }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
+  // Compiler types' inductive fields are declared in std/node.dag.
+  // This provides the structural facts for CX-L2 to prove tree-walk
+  // functions are O(n). See ROADMAP CX-NEXT Phase 2.
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
@@ -4586,6 +4633,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
+  // Filter algebra type variable names from std.types imports so they
+  // do not leak as ambient user-facing type bindings.
   let std_import_bindings = collect_parent_bindings_filtered(envs: std_types_parent_env)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
@@ -4991,6 +5040,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let env = env_result.env
   let env_diags = env_result.diagnostics
   // Gate: if type environment construction produced errors (unresolved types),
+  // halt before inference. This makes unresolved nodes structurally impossible
+  // downstream -- inference and emit never see them.
   let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
   let seed_diags = builtin_kernel_seed_diagnostics()
   if env_errors |> count > 0 {
@@ -5264,10 +5315,23 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
 }
 // =========================================================================
 // Main entry point: typecheck
+//
+// Processes modules in dependency order (from the resolver's dep_order).
+// Each module sees the type environments of all its dependencies.
+//
 // Invariant: after this function returns, no unresolved Named references
+// survive (except recursive cycle-breakers that are guaranteed to be
+// defined in the graph).
 // =========================================================================
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
   // SG-9: Use explicit recursion with standalone parameters instead of fold
+  // with a struct accumulator. Standalone Rc parameters have refcount 1 in
+  // TCO loops, enabling O(1) list_push/map_insert via Rc::try_unwrap.
+  // A fold accumulator struct forces O(N) clones on every field access.
+  //
+  // Diagnostics use chunked accumulation (List<List<Node>>) instead of
+  // concat to avoid O(M^2) cloning. Each iteration pushes diagnostic lists;
+  // flat_map flattens once at the end.
   typecheck_modules(
     remaining: graph.modules,
     modules: [],
@@ -5309,7 +5373,11 @@ fn typecheck_modules(
 }
 // =========================================================================
 // Reconcile namespaces in one call.
+//
+// Returns the reconciled graph with graph-level item metadata attached.
 // Historical note: collect_unresolved_in_expr and the rest of the
+// validate_no_unresolved walk family were removed once the env-error gate
+// made unresolved expression-tree validation redundant downstream.
 // =========================================================================
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
   let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)

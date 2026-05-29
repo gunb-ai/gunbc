@@ -1,5 +1,16 @@
+// v2 Rust renderer -- emits Rust source files from a typed module graph.
+//
 // This module contains all Rust-specific rendering logic: Rust syntax
+// generation, Rust type mapping, Rust reserved word handling, serde
+// derives, reqwest calls, etc.
+//
+// Target-agnostic helpers (scope management, item registry, name
+// conversion, indent, service call collection) live in 05_emit.dag.
+//
 // Invariant 6: "DAG nodes are facts, rendering is separate."
+// This file IS the Rust rendering. Swapping to a different target
+// means using a different renderer -- 05_emit_python.dag, etc. -- with
+// no changes to the IR or 05_emit.dag.
 module v2.compiler.emit_rust
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -221,6 +232,7 @@ fn rust_source_ext() -> String {
   scaffold_for_target(target: Rust).source_file_extension
 }
 fn rust_visibility_prefix() -> String {
+  // M5: Rust uses KeywordVisibility. Any other variant is a data bug.
   // Fail closed with error marker instead of fabricating "".
   match visibility_for_target(target: Rust) {
     KeywordVisibility { prefix: p } => p
@@ -500,6 +512,13 @@ fn resolve_wire_serde_policy(wire_item: Node, source_indices: Map<String, Newlin
 fn item_binding_is_named(env: TypeEnv, node: Node, name: String) -> Bool {
   authored_name(env: env, node: node) == name || node.name == name
 }
+// `wire_contract_item` from emit_module_full is the `data wire_contract = …` node.
+// The data item's `body` is the initializer expression; when it aliases an imported
+// `VariantEncoding` constant (e.g. `llm_snake_wire_contract`), follow the authored
+// data binding through the data-item index before consulting inference. Ambiguous
+// data names and alias cycles fail closed instead of falling back to default serde.
+// Typed `data wire_contract: VariantEncoding = StringVariant { … }` bodies keep
+// `ExprRecordLit` while `inferred` may point at the type expression — prefer the literal.
 fn resolve_wire_serde_policy_for_coproduct(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>) -> RustEnumWireSerde {
   resolve_wire_serde_policy_for_coproduct_seen(
     wire_contract_item: wire_contract_item,
@@ -794,6 +813,7 @@ fn rust_async_test_decorator() -> String {
 }
 // =========================================================================
 // SG-9: Tail-recursive block statement emitters.
+// Standalone list parameters avoid Rc refcount>1 deep clone on list_push.
 // =========================================================================
 fn emit_rust_block_stmts(remaining: List<Node>, text: List<String>,
     scope: InferScope, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> BlockEmitState {
@@ -867,6 +887,11 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Set<String>) -> Bo
       }
   }
 }
+// Build the shared_types map: the SINGLE authority for sharing (Rc) decisions.
+// For languages with needs_sharing=false (GC languages), returns empty map —
+// all Rc wrapping and cloning become no-ops via identity SharingStrategy templates.
+// For Rust: includes user-defined types (structs, data enums) and built-in
+// collection types. Constant types (fixed-width carriers) skip sharing.
 fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Set<String> {
   let needs_sharing = target_needs_sharing && match summary.repr {
     StructRepr => true
@@ -1007,6 +1032,10 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
     let mod_name = substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
     concat(rust_visibility_prefix(), rust_items().module_keyword, " ", mod_name, ";")
   )
+  // Hand-maintained modules: interpreter, CLI run handler, REST transport
+  // facts (bootstrap-only; dissolution when facts are graph-exported — see
+  // rest_transport_facts.rs and INVARIANTS bounded substrate seed).
+  // These are not generated — they survive regen as non-generated files.
   let hand_maintained_mods = if has_compiler_tests {
     "\npub mod v2_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;"
   } else {
@@ -1290,6 +1319,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       read_only_params_index: emit_info.read_only_params_index,
       read_only_params: fn_read_only
     }
+    // Items with resource uses or service calls are emitted as async workflow functions.
+    // Single authority: service_names + resource_names on ItemInfo (not uses on the Node).
     let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
       Some { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
       None => false
@@ -1334,7 +1365,33 @@ fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex
     concat("<", names |> join(separator: ", "), ">")
   }
 }
+// Split a fn item's `params` slot (which holds type params prepended to value
+// params, per parse_fn_body_from_prefix) at emit time, post-resolve.
+//
+// Structural basis (post-resolve):
+//   - resolve_item_types (04_resolve.dag:923) registers each declared type
+//     param T as a TypeEnv binding whose resolved node carries
+//     `inferred: Some(TypeVariable { id: T })`.
+//   - For a type-param Node `T: T`, resolve rewrites the type_expr to that
+//     binding node, so after resolve the type_expr carries
+//     `inferred: TypeVariable` AND the authored name of the type_expr
+//     matches the authored name of the param.
+//   - For a value-param Node `x: T`, only the type_expr carries TypeVariable;
+//     the param's authored name differs from the type_expr's authored name.
+//   - For any other value-param `n: Int` etc., the type_expr carries
+//     `inferred: Resolved { ... }`, not TypeVariable.
+// These two conditions together uniquely identify a declared type param
+// after resolve has run.
+//
 // Recovery-dummy note: parse_param's error-path dummy (02_parse.dag:3232)
+// has identical spans but its type_expr has `inferred: none`, so this check
+// correctly returns false. In any case, recovery dummies only appear when
+// parse already emitted an error, and fail-closed discipline halts the
+// pipeline before emission is reached.
+//
+// Dissolution target: partition Node's `params` slot into `type_params` /
+// `value_params`, or add a `ParamKind` discriminator. When that lands,
+// these helpers collapse to the partitioned read.
 fn is_function_type_param(param: Node) -> Bool {
   let type_expr = param_node_type_expr(n: param)
   let type_expr_is_var = match type_expr.inferred {
@@ -1342,6 +1399,14 @@ fn is_function_type_param(param: Node) -> Bool {
     None => false
   }
   let same_source_span = param.span.file == type_expr.span.file && param.span.start == type_expr.span.start && param.span.end == type_expr.span.end
+  // Name match via Node.name — stable across both source spans and the
+  // kernel spans installed by resolve_item_types's TypeVariable bindings.
+  // The param.name != "" guard is belt-and-suspenders: the primary filter
+  // for parse_param's recovery dummy (name: "", type_expr.inferred: none)
+  // is type_expr_is_var above. The empty-string guard only fires if some
+  // future pipeline change populates TypeVariable on an unnamed node —
+  // in which case falling through "" == "" would silently classify it as
+  // a type param. Cheap to keep until ParamKind dissolves the classifier.
   param.name != "" && param.name == type_expr.name && (type_expr_is_var || same_source_span)
 }
 fn function_type_params(params: List<Node>) -> List<Node> {
@@ -1350,6 +1415,26 @@ fn function_type_params(params: List<Node>) -> List<Node> {
 fn function_value_params(params: List<Node>) -> List<Node> {
   params |> filter(p => !is_function_type_param(param: p))
 }
+// Detect the ambiguity `fn f<T>(T: T)` where a value param's name collides
+// with a declared type param. Both params satisfy is_function_type_param
+// (name == type_expr.name AND type_expr.inferred is TypeVariable, because
+// resolve_item_types registered T as a TypeVariable binding). The emit-time
+// splitter can't tell them apart — that's the P1 shape flagged by the
+// dissolution target (partition Node.params into type/value, or add
+// ParamKind).
+//
+// Primary fail-closed for this ambiguity already lives upstream as a typed
+// gunbc Diagnostic at resolve_item_types (04_resolve.dag:923, using
+// has_duplicate_type_param_name). This emit-time `compile_error!` is kept
+// as belt-and-suspenders against pipelines that bypass resolve (direct
+// emit_fn_def calls in tests, partial pipelines) and would otherwise emit
+// silent `<T, T>`.
+//
+// Dissolution trigger for deleting THIS emit-time guard: when the
+// ParamKind / params-slot partition dissolution lands, the classifier and
+// this collision detector both evaporate — the boundary becomes
+// structural instead of heuristic. (The upstream resolve-layer diagnostic
+// would likely also change shape or dissolve at the same time.)
 fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   let names = type_params |> map(p => p.name)
   (names |> count) > (unique_strings(items: names) |> count)
@@ -1745,6 +1830,9 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let type_params = function_type_params(params: params)
   let value_params = function_value_params(params: params)
   // Fail closed on the `fn f<T>(T: T)` name-shadowing ambiguity — the
+  // emit-time splitter can't distinguish the declared type param from the
+  // value param. Emit a target-compile-time error rather than silent
+  // `<T, T>`. Dissolution: partition Node.params or add ParamKind.
   if function_type_params_have_collision(type_params: type_params) {
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
@@ -1795,6 +1883,12 @@ fn emit_func_def(
   emit_info: EmitGraphInfo
 ) -> String {
   // Note: `func`/`pattern`/`interface` items parse through
+  // parse_block_body_from_prefix, which stores `prefix.params` directly and
+  // drops `prefix.type_params`. Unlike `fn` (parse_fn_body_from_prefix), the
+  // `params` slot here carries value params only, so no type/value split is
+  // needed. Fail closed if that invariant ever breaks — e.g., a future
+  // parser change that prepends type params into this slot would silently
+  // emit them as value params without the guard below.
   if function_type_params(params: params) |> count > 0 {
     return concat("compile_error!(\"emit_func_def saw type params in `", name, "` — func/pattern/interface don't route through the generic-fn split today; the parser invariant at parse_block_body_from_prefix has changed. Plumb type_params through this path or dissolve via ParamKind/params-slot partition.\");\n")
   }
@@ -1888,7 +1982,20 @@ fn emit_params(params: List<Node>, shared_types: Set<String>, source_indices: Ma
   let strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params))
   strs |> join(separator: ", ")
 }
+// Callable-shaped parameters (first-class `fn(A)->B` in source) lower to
+// `impl Fn(A) -> B + Clone` in Rust parameter position.
+//
+// Emitter-fidelity / #650 boundary:
 // - Source types do not spell a Clone obligation; `+ Clone` is an explicit
+//   Rust target contract so callables may be invoked from multiple use sites
+//   via `.clone()` when `emit_var_ref` decides the binding is not movable.
+//   Emitted call sites are often plain `f(arg)` (no spelled `Fn::call`); some
+//   bodies still omit a visible `f.clone()` while relying on this bound elsewhere.
+// - `emit_info.movable` remains the sole authority for move vs `.clone()` on
+//   ordinary variable references (`emit_var_ref`). Do not remove `+ Clone`
+//   here and "compensate" only in the emitter: that splits clone authority
+//   between the type signature and ownership analysis and breaks fixed-point.
+//   See docs/postmortems/pr-650-emitter-callable-clone-bound.md.
 fn emit_rust_param_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   if n.params |> count > 0 {
     let param_types = n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))
@@ -2717,7 +2824,12 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
       "v2_rt::rc_empty_set::<_>()"
   }
 }
+// rust_runtime_bridge_wraps_result_in_rc: DELETED.
+// With shared_types as single authority, map values are already Rc-wrapped
+// for non-Copy types. lookup/map_get return the correct type directly.
 fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
+  // Two derived maps, single authority each: RuntimeFunction.wraps_result
+  // for runtime functions, SimpleMethodSpec.wraps_result for method templates.
   map_contains_key(rt_wraps_result(), function_name)
     || map_contains_key(rust_method_wraps_result(), function_name)
 }
@@ -2958,6 +3070,11 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
+  // No lookup Rc-wrapping needed: shared_types is the single authority for
+  // Rc decisions. Map values are already Rc-wrapped if they're non-Copy
+  // types, so lookup/map_get return the correct type directly.
+  // Runtime functions that return bare collections (map_keys, map_values)
+  // need Rc wrapping so their result is Rc<Vec<_>>, matching List<T>.
   if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
     concat("Rc::new(", call_str, ")")
   } else { call_str }
@@ -4732,6 +4849,13 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
   let auth_input = service_config_auth_input(n: service_item, source_indices: source_indices)
   match auth_scheme {
     Some { value: auth } => {
+      // Single authority: when auth_source is declared, the credential lives
+      // in self.auth_token (acquired at construction time) and auth_input is
+      // not consulted. When auth_source is absent, auth_input names the
+      // per-call parameter. The operation input parameter (auth_token: Secret)
+      // still appears in the .dag definition for both cases — filtering it
+      // from the emitted signature when auth_source is present requires
+      // operation parameter pruning at emit time (tracked as RE follow-up #10).
       let has_auth_source = match service_config_auth_source(n: service_item, source_indices: source_indices) { Some { value: _ } => true  None => false }
       let token_param = if has_auth_source { "self.auth_token.clone()" }
       else {
@@ -5545,6 +5669,10 @@ fn extract_literal_string(expr: Node) -> String? {
     _ => none
   }
 }
+// Resolve a param's default expression to a literal string value.
+// Direct literals are extracted immediately. ExprVar references are
+// resolved through the registry (for DataItem identity) and module
+// items (for body content) — single authority chain, no scanning.
 fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_items: List<Node>, source_indices: Map<String, NewlineIndex>) -> String? {
   match param_node_default_value(n: param) {
     Some { value: dv } => match dv.expr_data {
@@ -5598,11 +5726,18 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
     source_indices: source_indices
   }
 }
+// Determine if a body-bearing item is a workflow function (CLI subcommand).
+// Uses registry as the single authority for service/resource dependencies.
+// Items with explicit `uses` clauses are always workflow funcs.
+// Items without `uses` are workflow funcs if they have transitive service deps.
 fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if item.body == none { false }
   else if item.uses |> count > 0 { true }
   else {
+    // Registry is total for body-bearing items that went through inference.
     // A missing entry is a compiler invariant violation — the item should
+    // have been registered during inference. Fail-closed: include the item
+    // so the diagnostic surfaces rather than silently dropping a subcommand.
     match lookup_item(registry: registry, name: authored_name_at(source_indices: source_indices, node: item)) {
       Some { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
       None => true

@@ -35,12 +35,33 @@ type TypeSummary {
   generic_param_names: List<String>
   has_fn_fields: Bool
 }
+// EmitGraphInfo: the reconcile→emit boundary contract.
+//
 // Invariant: emit never calls back into infer. All data the emitter needs
+// about graph-level type structure is precomputed here during reconcile
+// (build_emit_graph_info in 04_infer.dag).
+//
+// Fields and guarantees:
+//   type_summaries    — one entry per named type definition (Conj or Disj)
+//                       in the typed module graph. Keyed by type name.
+//                       Guaranteed non-empty for modules with type definitions.
+//                       For enums, variant_name_set provides O(1) membership.
+//                       variant_to_enum and enum_variant_membership are derived
+//                       from type_summaries at the point of use (not stored).
+//   recursive_type_set — type names that participate in recursive cycles
+//                       (detected by 04_cycle.dag). Used by emit to decide
+//                       Rc wrapping (Rust) or pointer indirection (Go/C).
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
+  // Per-type sharing decision: type names that need shared-pointer
+  // wrapping (Rc in Rust). Computed from type_summaries ×
+  // recursive_type_set. The Rust emitter also adds collection types.
+  // This is the SINGLE authority for sharing decisions — build_type_rendering
+  // reads it, and direct emit sites read it for Rc-aware pattern matching
+  // and construction.
   shared_types: Set<String>
   ownership_index: Map<String, Set<String>>
   movable: Set<String>
@@ -220,6 +241,7 @@ fn build_field_type_map(children: List<Node>, source_indices: Map<String, Newlin
       Some { value: Resolved { node: ft } } =>
         let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
         let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
+        // Fail-closed: exclude empty names, type variables, and placeholder types.
         // Dynamic is a compatibility placeholder that must not enter the authority surface.
         let key = authored_name_at(source_indices: source_indices, node: child)
         if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {

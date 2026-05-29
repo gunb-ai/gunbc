@@ -3,6 +3,7 @@
 
 Preserves: module identity (first header line), section === dividers and titles,
 🟡/🟢/🔴 marks, Anchor:, and WHY-style comments (invariants, gates, dissolve, etc.).
+Multi-line WHY paragraphs are kept intact once any line in the paragraph matches WHY_KEEP_RE.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import sys
 from pathlib import Path
 
 DIVIDER_RE = re.compile(r"^\s*//\s*=+\s*$")
+COMMENT_LINE_RE = re.compile(r"^\s*//")
 
 WHY_KEEP_RE = re.compile(
     r"(?:"
@@ -22,11 +24,13 @@ WHY_KEEP_RE = re.compile(
     r"|invariant"
     r"|Invariant\s+\d"
     r"|must not|must NOT|Must not"
+    r"|should not|should NOT|Should not"
     r"|Do NOT|do NOT|DO NOT"
     r"|workaround"
     r"|Gate:"
     r"|feature:"
     r"|fail closed|Fail closed"
+    r"|fail-closes"
     r"|non-obvious"
     r"|otherwise look wrong"
     r"|compatibility"
@@ -47,17 +51,12 @@ WHY_KEEP_RE = re.compile(
     r"|audit\b"
     r"|unsound"
     r"|ROADMAP"
+    r"|single authority"
     r")",
     re.IGNORECASE,
 )
 
 TODO_STRIP_RE = re.compile(r"^\s*//\s*TODO:", re.IGNORECASE)
-
-# Lines kept only because "because" matched, but the prose continues on the next line.
-TRUNCATED_BECAUSE_RE = re.compile(
-    r"^\s*//.*\bbecause\b(?![^/\n]*[.!?:])",
-    re.IGNORECASE,
-)
 
 
 def why_keep(text: str) -> bool:
@@ -67,6 +66,11 @@ def why_keep(text: str) -> bool:
 def is_blank_comment(line: str) -> bool:
     s = line.strip()
     return s == "//" or s == ""
+
+
+def is_comment_only_line(line: str) -> bool:
+    code, comment = split_code_and_comment(line)
+    return comment is not None and code.strip() == ""
 
 
 CONTINUATION_PREFIX_RE = re.compile(
@@ -110,7 +114,7 @@ STANDALONE_KEEP_PREFIX_RE = re.compile(
 
 
 def is_orphan_comment_fragment(line: str, *, inline: bool = False) -> bool:
-    """Drop mid-sentence debris left when a multi-line WHY block was line-stripped."""
+    """Drop mid-sentence debris (never applied inside an active WHY paragraph)."""
     m = re.match(r"^\s*//\s*(.*)$", line)
     if not m:
         return False
@@ -118,9 +122,7 @@ def is_orphan_comment_fragment(line: str, *, inline: bool = False) -> bool:
         return False
     text = m.group(1).strip()
     if not text:
-        return True
-    if TRUNCATED_BECAUSE_RE.match(line):
-        return True
+        return False
     if CONTINUATION_PREFIX_RE.match(text):
         return True
     if text.endswith("-") or text.endswith(","):
@@ -129,7 +131,6 @@ def is_orphan_comment_fragment(line: str, *, inline: bool = False) -> bool:
         return True
     if inline:
         return False
-    # Standalone full-line comment starting mid-sentence.
     if re.match(r"^[a-z(`]", text) and not text.startswith("http"):
         return True
     return False
@@ -165,72 +166,111 @@ def is_section_title_line(line: str) -> bool:
 def process_file_lines(lines: list[str]) -> list[str]:
     out: list[str] = []
     past_header = False
-    header_title_kept = False
+    first_header_line_kept = False
+    comment_run: list[str] = []
+
+    def flush_comment_run() -> None:
+        nonlocal in_why_paragraph, in_feature_marker_block
+        if not comment_run:
+            return
+        if any(why_keep(ln) for ln in comment_run):
+            for ln in comment_run:
+                out.append(emit_line(ln.rstrip("\n")))
+            if any(
+                re.search(r"[\U0001f7e1\U0001f7e2\U0001f534]|dissolve-on:", ln)
+                for ln in comment_run
+            ):
+                in_feature_marker_block = True
+        else:
+            for ln in comment_run:
+                _process_standalone_comment(ln)
+        comment_run.clear()
 
     in_section = False
     section_title_kept = False
     seen_divider_in_section = False
     in_feature_marker_block = False
+    in_why_paragraph = False
+
+    def _process_standalone_comment(line: str) -> None:
+        nonlocal in_why_paragraph, in_feature_marker_block, section_title_kept
+        nonlocal in_section, seen_divider_in_section, first_header_line_kept, past_header
+
+        if in_why_paragraph and COMMENT_LINE_RE.match(line):
+            out.append(emit_line(line.rstrip("\n")))
+            return
+
+        if is_blank_comment(line):
+            in_feature_marker_block = False
+            in_why_paragraph = False
+            return
+
+        if in_feature_marker_block:
+            out.append(emit_line(line.rstrip("\n")))
+            return
+
+        if is_orphan_comment_fragment(line, inline=False):
+            return
+
+        if why_keep(line):
+            out.append(emit_line(line.rstrip("\n")))
+            in_why_paragraph = True
+            if re.search(r"[\U0001f7e1\U0001f7e2\U0001f534]|dissolve-on:", line):
+                in_feature_marker_block = True
+            if in_section:
+                section_title_kept = True
+            return
+
+        if TODO_STRIP_RE.match(line):
+            return
+
+        if DIVIDER_RE.match(line):
+            in_why_paragraph = False
+            if in_section and seen_divider_in_section:
+                out.append(emit_line(line.rstrip("\n")))
+                in_section = False
+                section_title_kept = False
+                seen_divider_in_section = False
+            else:
+                out.append(emit_line(line.rstrip("\n")))
+                in_section = True
+                section_title_kept = False
+                seen_divider_in_section = True
+            return
+
+        if not past_header:
+            if not first_header_line_kept and COMMENT_LINE_RE.match(line):
+                out.append(emit_line(line.rstrip("\n")))
+                first_header_line_kept = True
+                return
+            if why_keep(line):
+                out.append(emit_line(line.rstrip("\n")))
+                return
+            return
+
+        if in_section:
+            if not section_title_kept and is_section_title_line(line):
+                out.append(emit_line(line.rstrip("\n")))
+                section_title_kept = True
+            return
 
     for line in lines:
         if not past_header:
             stripped = line.strip()
             if stripped and not stripped.startswith("//"):
+                flush_comment_run()
                 past_header = True
 
         code, comment = split_code_and_comment(line)
 
         if comment is not None and code.strip() == "":
-            if is_blank_comment(line):
-                in_feature_marker_block = False
-                continue
-
-            if in_feature_marker_block:
-                out.append(emit_line(line.rstrip("\n")))
-                continue
-
-            if is_orphan_comment_fragment(line, inline=False):
-                continue
-
-            if why_keep(line):
-                out.append(emit_line(line.rstrip("\n")))
-                if re.search(r"[\U0001f7e1\U0001f7e2\U0001f534]|dissolve-on:", line):
-                    in_feature_marker_block = True
-                if in_section:
-                    section_title_kept = True
-                continue
-
-            if TODO_STRIP_RE.match(line):
-                continue
-
-            if DIVIDER_RE.match(line):
-                if in_section and seen_divider_in_section:
-                    out.append(emit_line(line.rstrip("\n")))
-                    in_section = False
-                    section_title_kept = False
-                    seen_divider_in_section = False
-                else:
-                    out.append(emit_line(line.rstrip("\n")))
-                    in_section = True
-                    section_title_kept = False
-                    seen_divider_in_section = True
-                continue
-
-            if not past_header:
-                if not header_title_kept and is_section_title_line(line):
-                    out.append(emit_line(line.rstrip("\n")))
-                    header_title_kept = True
-                continue
-
-            if in_section:
-                if not section_title_kept and is_section_title_line(line):
-                    out.append(emit_line(line.rstrip("\n")))
-                    section_title_kept = True
-                continue
-
+            comment_run.append(line.rstrip("\n"))
             continue
 
+        flush_comment_run()
+
         if comment is not None and code.strip() != "":
+            in_why_paragraph = False
             full = code + " " + comment
             if why_keep(comment) and not is_orphan_comment_fragment(
                 full, inline=True
@@ -242,19 +282,11 @@ def process_file_lines(lines: list[str]) -> list[str]:
 
         if line.strip():
             in_feature_marker_block = False
+            in_why_paragraph = False
             out.append(emit_line(line.rstrip("\n")))
 
-    collapsed: list[str] = []
-    blank_run = 0
-    for line in out:
-        if line.strip() == "":
-            blank_run += 1
-            if blank_run <= 2:
-                collapsed.append(line)
-        else:
-            blank_run = 0
-            collapsed.append(line)
-    return collapsed
+    flush_comment_run()
+    return out
 
 
 def transform_file(path: Path) -> tuple[int, int]:

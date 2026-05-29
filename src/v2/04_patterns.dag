@@ -48,7 +48,10 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 // =========================================================================
 // Variant lookup
 // =========================================================================
+// Temporary bridge: synthesize a "Some { value: T }" variant node for
+// Optional pattern matching. Optional is still represented as
 // [inner_type, None] — no explicit "Some" child. Track in the roadmap until
+// pattern lookup gains a fully structural Optional subject.
 fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
   let value_field = Node { name: "value", span: scrut.span, ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -56,6 +59,9 @@ fn synthesize_optional_some_variant(scrut: Node) -> Node {
   some_node
 }
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
+  // Structural check: CompilerError in inferred means error sentinel.
+  // Dynamic/Error name checks dissolved — no .dag source declares these types,
+  // and error_type uses name: "" with CompilerError in inferred.
   let is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if is_error {
     PatternLookupBlocked
@@ -111,6 +117,8 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         node_lookup_failed(diagnostics: [])
       } else {
         let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
+        // Record / generic-record destructuring: `LocusAnchor { at: x }` against
+        // `LocusAnchor<A>` (Conj) — requires brace syntax (field_binding_count > 0).
         // Bare `LocusAnchor` without `{…}` must not match; direct_match on sum variants still wins.
         let record_destructure = field_binding_count > 0
           && scrut_node.connective == Conj

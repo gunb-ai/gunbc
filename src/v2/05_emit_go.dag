@@ -1,5 +1,23 @@
+// v2 Go renderer -- emits Go source files from a typed module graph.
+//
+// This module contains all Go-specific rendering logic: struct types,
+// interface satisfaction (structural typing), multi-return error handling,
+// package-level organization, fmt.Errorf wrapping, goroutine-based
+// concurrency, Go-idiomatic naming (PascalCase exports, camelCase locals).
+//
 // Target-agnostic helpers (scope management, item registry, name
+// conversion, indent, service call collection) live in 05_emit.dag.
+//
 // Invariant 6: "DAG nodes are facts, rendering is separate."
+// This file IS the Go rendering. No IR changes needed.
+//
+// Go-specific semantics modeled here:
+//   - No Result type: errors are second return values
+//   - Structural typing: interfaces are satisfied implicitly
+//   - Package-level organization: one package per module
+//   - No exceptions: multi-return (value, error) pattern
+//   - Pointer receivers for mutating methods
+//   - No sum types: tagged unions use interface + type switch
 module v2.compiler.emit_go
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
@@ -540,6 +558,11 @@ fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<St
 // Identifier conversion -- Go target
 // =========================================================================
 fn go_export_ident(name: String) -> String {
+  // Go uses case-based visibility: PascalCase = exported.
+  // Ref: Go Spec "Exported identifiers".
+  // Matches on VisibilitySpec coproduct — CaseVisibility carries
+  // the export naming case, applied via shared apply_naming_case.
+  // M5: Go requires CaseVisibility. Any other variant is a data bug.
   // Fail closed with error marker instead of silently dropping export semantics.
   match language_spec(target: Go).visibility {
     CaseVisibility { export_case: ec } => {

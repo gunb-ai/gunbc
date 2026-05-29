@@ -1,4 +1,11 @@
 // Compiler-local language-spec projection.
+//
+// Imports shared types from `dsl/std/languages.dag` (the single authority for
+// language facts) and adds compiler-specific types (SerializationSpec,
+// TestConventions, SharingStrategy, IndexingSemantics, AnnotationRequirements)
+// that the emitter needs but that are not (yet) in std.
+//
+// Accessor functions route RenderTarget → concrete extdep data.
 module v2.compiler.languages
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.std.core {
@@ -13,6 +20,10 @@ import std.syntax {
   BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody
 }
+// NamingCase: mirrors std.languages.NamingCase (single authority).
+// Cannot import directly — std/languages.dag contains CommentSyntax
+// with String? fields the bootstrap compiler doesn't yet emit correctly.
+// Import from std.languages once bootstrap handles optional string fields.
 import extdeps.languages.rust.syntax { rust_operators, rust_item_forms }
 import extdeps.languages.python.syntax { python_operators, python_item_forms }
 import extdeps.languages.go.syntax { go_operators, go_item_forms }
@@ -247,6 +258,15 @@ fn service_return_str(spec: LanguageSpec, ret_type: String) -> String {
     ErrorTupleReturn { error_type: et } => concat(" (", ret_type, ", ", et, ")")
   }
 }
+// Item definition facts — individual tokens the emitter composes.
+// Not templates: each field is one language fact.
+//
+// RELATION TO SyntaxSpec: SyntaxSpec.ItemForm.keyword is the PARSING
+// keyword (what to recognize). ItemKeywords.*_keyword is the EMISSION
+// keyword (what to produce). For same-language compilation (Rust→Rust)
+// these are identical. For cross-language (.dag→Rust) they differ
+// (parse "fn", emit "fn"/"def"/"func"). When each target language has
+// a full SyntaxSpec, ItemKeywords should derive from it (single authority).
 type ItemKeywords {
   func_keyword: String
   async_prefix: String
@@ -324,7 +344,11 @@ type RecordLitSyntax {
   anon_suffix: String
   anon_field_indent: String
 }
+// String interpolation — three structurally different models:
+//   FormatArgs: format function + positional args (Rust format!, Go fmt.Sprintf)
+//   InlineExpr: inline interpolation (Python f-strings)
 // C-1: dissolves `match target` in emit_simple_string_interp.
+// InterpStyle: FormatArgs carries its placeholder; InlineExpr has none.
 type InterpStyle
   = FormatArgs { placeholder: String }
   | InlineExpr
@@ -340,6 +364,7 @@ type StringInterpSyntax {
 }
 // =========================================================================
 // SyntaxSpec — unified with std.syntax (single authority)
+// ItemForm, OperatorSpec, SyntaxSpec, BodyKind imported above.
 // =========================================================================
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {

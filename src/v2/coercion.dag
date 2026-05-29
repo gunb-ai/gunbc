@@ -163,6 +163,8 @@ fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
     }]
   }
 }
+// Generate container test: coerce_container_template(target, name) == Some(template)
+// Derived from canonical_container_names (std/types.dag) — single authority.
 fn inhabitant_test_names() -> List<String> {
   canonical_container_names()
 }

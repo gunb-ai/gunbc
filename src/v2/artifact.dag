@@ -66,6 +66,7 @@ type ArtifactOutput {
 // =========================================================================
 // Default plan -- compatibility wrapper
 // =========================================================================
+// Create a default single-artifact plan from the current pipeline state.
 // This is the compatibility wrapper -- current behavior becomes an explicit plan.
 fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> ArtifactPlan {
   plan_artifacts(rule: Explicit { artifacts: [Artifact {

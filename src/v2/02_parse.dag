@@ -106,6 +106,7 @@ type ItemPrefixResult {
   err: ErrorNode?
 }
 // Parser-local intermediate: ServiceConfig is dissolved into Node properties at the
+// service Node construction boundary. This type exists only inside the parser.
 type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
 type ConfigResult { config: ServiceConfig, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 type BindingPower { left: Int, right: Int }
@@ -291,6 +292,7 @@ fn is_pipe_shape(shape: TokenShape) -> Bool { match shape { ShPipe => true  _ =>
 fn is_pipe_arrow_shape(shape: TokenShape) -> Bool { match shape { ShPipeArrow => true  _ => false } }
 // =========================================================================
 // Minimal-information token inspectors: take Token?, not List<Token>.
+// Callers extract the token explicitly — no ambiguity about which list.
 // See INVARIANTS.md "Minimal information per interface".
 // =========================================================================
 fn tok_is_keyword(tok: Token?, kw: String) -> Bool {
@@ -547,6 +549,9 @@ fn expect_name(tokens: List<Token>) -> NameResult {
     }
   }
 }
+// Keywords that are valid as names (field names, type names).
+// Derived structurally: any keyword NOT in dag_non_name_keywords
+// (literals + lifecycle). Single authority: dag/syntax.dag.
 fn is_name_keyword(token: Token) -> Bool {
   if is_keyword_shape(shape: token.shape) {
     match lookup(dag_non_name_keywords, key: token.text) {
@@ -695,6 +700,8 @@ fn leaf_type_node(name: String, span: SourceSpan) -> Node {
 fn is_conj_with_children(n: Node) -> Bool {
   n.connective == Conj && n.children |> count > 0
 }
+// Extract the inferred type from a child Node.
+// Typed: use resolved type. All other states: propagate error_type (fail-closed).
 // Note: node_inferred_to_outputs gate ensures only Typed children reach here.
 fn child_inferred_or_empty(ch: Node) -> Node {
   match ch.inferred {
@@ -1008,7 +1015,10 @@ fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan, source_indices: Ma
 }
 // =========================================================================
 // Operation / Capability Node constructors (D2d/D2e)
+//
 // OperationDef and CapabilityDef were parser intermediates that dissolved
+// into Node at the service/resource parse sites. Now the parser functions
+// construct Node directly using these constructors.
 // =========================================================================
 fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> Node {
   let all_props = concat(modifier_props, response_props, exit_props, mock_props)
@@ -1380,6 +1390,9 @@ fn parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
   }
 }
 fn parse_callable_type_expr(tokens: List<Token>, ctx: ParseContext, start_span: SourceSpan) -> TypeResult {
+  // Error recovery produces an empty-named node, not "Callable" — errors
+  // must be orthogonal to the node graph (invariant #2). A "Callable"-named
+  // dummy would leak into emit and be indistinguishable from a real callable.
   let dummy_te = leaf_type_node(name: "", span: start_span)
   let r = expect(tokens: tokens, expected: ExpectLParen)
   if has_err(err: r.err) { return TypeResult { type_expr: dummy_te, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -1622,6 +1635,15 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let params = prefix.params
   let inferred = prefix.inferred
   let ctx = prefix.ctx
+  // Type params prepend to params (same slot as type definitions).
+  // At parse time they're distinguishable via span-identity
+  // (collect_type_param_names builds both the param's name_span and the
+  // type_expr's span from the same token). Post-resolve, consumers use
+  // the grounded invariant installed by resolve_item_types:909 —
+  // type_expr.inferred == TypeVariable && param.name == type_expr.name.
+  // See is_function_type_param in src/v2/05_emit_rust.dag for the
+  // emit-time classifier. Dissolution: partition this slot into
+  // type_params/value_params or add a ParamKind discriminator.
   let all_params = concat(type_params, params)
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let r = parse_block(tokens: skip_newlines(tokens: prefix.tokens), ctx: ctx)
@@ -2315,6 +2337,12 @@ fn last_child_or_self(n: Node) -> Node {
     None => n
   }
 }
+// Extract a string name from a Node for use in property values.
+// Keyed-container detection derives from container_type_arity (single authority
+// for container identity and arity) plus structural child count — no parallel name list.
+// Recursion is structurally bounded: all self-calls pass a strict child of n.
+// Optional handling uses with_required_cardinality (TreeSizePreserving wrapper);
+// the CX analyzer sees through this via wrapper transparency in SCC edge classification.
 fn node_to_name_str(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let is_optional = n.return_cardinality == CardOptional
   let effective_n = if is_optional { with_required_cardinality(n: n) } else { n }

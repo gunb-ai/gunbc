@@ -12,6 +12,9 @@ import std.induction { SubValueRelation }
 // Tokens
 // =========================================================================
 // Token: Layer 5 compositional type (see Composition Stack in ROADMAP).
+// Token<Shape> = { text: String, span: SourceSpan, shape: Shape }
+// text carries semantic content (identifier name, literal value, keyword text).
+// shape carries payload-insensitive structural classification.
 type Token {
   text: String
   span: SourceSpan
@@ -36,15 +39,21 @@ type TokenShape
 // AST -- Abstract Syntax Tree
 // =========================================================================
 // Module, Import, ImportNames dissolved into Node compositions.
+// See dissolution helpers: module_node(), import_node(), module_imports(),
+// module_items(), import_is_all(), import_specific_names_at().
 type Connective = Conj | Disj | NoConnective | Arrow
 type Cardinality = Required | CardOptional
 // Field, Variant, Param dissolved into Node (D1c).
+// See make_param_node, make_field_node constructors and param_node_*/field_node_* accessors.
 type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
 type FieldValueShape = PlainValue | OptionalValue
 type FieldSummary {
   access_style: FieldAccessStyle
   value_shape: FieldValueShape
 }
+// Kernel and container type sets: canonical definitions live in
+// dsl/std/types.dag. Imported via the top-level import above and
+// re-exported for backward compatibility with v2.std.core consumers.
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
@@ -111,6 +120,10 @@ type MatchPattern
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
 // FieldBinding dissolved into Node (D2c):
+//   field_name → node.name
+//   binding    → node.match_pattern
+// Constructor: make_field_binding_node
+// Accessors: field_binding_name_at, field_binding_pattern
 type UnaryOpKind = Not | Neg
 type StringPart
   = Text { value: String }
@@ -197,6 +210,16 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   true
 }
+// Scoped to the `dag run` path only. The interpreter carves out exactly
+// one diagnostic class — ComplexityUnknown — because the CX analysis is
+// documented as partial in ROADMAP M1 (active reduction, currently
+// non-blocking compile gate). OwnershipViolation is a real semantic
+// error (the repo explicitly promoted it from warning); the interpreter
+// must not execute programs that violate ownership.
+//
+// Adding more carve-outs requires upstream justification: a structural
+// reason the diagnostic class is non-fatal at the interpreter boundary
+// specifically, not a convenience to make `dag run` not fail.
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
@@ -227,6 +250,7 @@ type Node {
   ident_span: SourceSpan?
   children: List<Node>
   connective: Connective
+  // Collection classification -- structural, not name-based (P5.7b)
   // Ports -- what flows in and out (dissolved from Param, D1c)
   params: List<Node>
   inferred: InferredNode?
@@ -248,6 +272,7 @@ fn node_name_span(n: Node) -> SourceSpan {
   match n.ident_span { Some { value: s } => s  None => n.span }
 }
 // Construct a Node carrying expression data (P5.11 dissolved form).
+// Children are passed explicitly — ExprData is pure operator metadata.
 fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children,
@@ -259,6 +284,7 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
   }
 }
 // Construct a Node carrying expression data with a dissolved identifier (D3).
+// The name field carries the identifier that was formerly in ExprData.
 fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
@@ -362,8 +388,24 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
 }
 // =========================================================================
 // Param / Field / Variant dissolution (D1c)
+//
 // Param, Field, and Variant are dissolved into Node. This follows the same
+// pattern as FieldInit and ResourceUse dissolutions (D1a/D1b).
+//
+// Param node layout:
+//   name = param name
+//   children = [type_expr] or [type_expr, default_value]
+//   span = source span
+//
+// Field node layout (extends Param):
+//   name = field name
+//   children = [type_expr] or [type_expr, default_value]
+//   return_cardinality = field cardinality
+//   properties = [from_key_node] if from_key is present
+//   span = source span
+//
 // Variant node: a Node with name + span + children (the dissolved Field nodes).
+// Already close to how variants work in the AST.
 // =========================================================================
 fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
@@ -450,6 +492,7 @@ fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> St
 }
 fn field_node_span(n: Node) -> SourceSpan { n.span }
 // Variant constructor: a Node with name + span + children (dissolved Field nodes).
+// name_span is the span of the variant identifier token (for ident_span accuracy).
 fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: fields, connective: NoConnective,
@@ -650,12 +693,15 @@ fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
 fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "binop right") }
 fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
+// -- ExprVar (D3: name dissolved into Node.name) --
 fn expr_var_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+// -- ExprFieldAccess (D3: field dissolved into Node.name) --
 fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
 fn field_access_field_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
   match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
 }
+// -- ExprCall (D3: func dissolved into Node.name) --
 fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
   match texpr.expr_data {
@@ -663,19 +709,23 @@ fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
     _ => none
   }
 }
+// -- ExprMethodCall (D3: method dissolved into Node.name) --
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 fn expr_method_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
   match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
 }
+// -- ExprLambda (D3: params dissolved into child Nodes after body) --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
 fn lambda_param_names_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_indices: source_indices, node: n)) }
+// -- ExprLet (D3: name dissolved into Node.name) --
 fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
 fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
 fn let_binding_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
 fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
+// -- ExprForEach (D3: variable dissolved into Node.name) --
 fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
 fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
 fn foreach_variable_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
@@ -686,12 +736,20 @@ fn slice_start(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role
 fn slice_end(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 2, role: "slice end") }
 fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "return value") }
 fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
+// -- ExprRecordLit (D3: type_name dissolved into Node.name, parent_enum stays in ExprData) --
 fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let name = authored_name_at(source_indices: source_indices, node: texpr)
   if name == "" { none } else { Some { value: name } }
 }
 // =========================================================================
 // Transport Node constructors
+//
+// Transport is a Node where name = transport kind, properties = config,
+// children = ordered argv (shell only).
+//
+// Property name constants — single authority for transport config keys.
+// Constructors, predicates, accessors, and is_config_reserved_key all
+// reference these instead of bare strings.
 // =========================================================================
 data transport_url_key: String = "base_url"
 data transport_path_key: String = "base_path"
@@ -936,8 +994,19 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
 }
 // =========================================================================
 // Dissolution infrastructure -- Node-based representations of types that
+// will eventually dissolve. Each type gets:
+//   1. A Node constructor that encodes the type's fields as Node properties
+//   2. Accessor functions that extract fields from the Node representation
+//   3. A predicate that identifies nodes of this kind
+//
+// The migration path: producers switch to constructors, consumers switch
+// to accessors, then the dedicated type definition is deleted.
 // =========================================================================
+// --- ServiceConfig as Node properties ---
 // A ServiceConfig dissolves into Node properties where:
+//   "svc_endpoint" = endpoint Node, "svc_auth" = auth Node,
+//   "svc_rate_limit" = rate_limit Node, "svc_retry" = retry Node.
+// Only non-none fields are included.
 fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
   let zero_span = make_span(start: 0, end: 0)
   let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
@@ -984,7 +1053,12 @@ fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>)
 fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: n.properties, prop_name: "svc_auth_source", source_indices: source_indices)
 }
+// --- Module as Node ---
 // A Module dissolves into a Node where:
+//   name = module name, params = import nodes, children = item nodes.
+// Import nodes: name = module_path, children = specific imported names.
+// Wildcard import: children is empty. Specific import: children are name nodes.
+// No metadata markers — structural position (params vs children) IS the distinction.
 fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: items, connective: NoConnective,

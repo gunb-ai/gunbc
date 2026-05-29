@@ -1,5 +1,31 @@
+// v2 ownership analysis -- static proof that try_unwrap fallbacks are unnecessary.
+//
 // D-ownership: Classify every use of every binding by how it consumes the value.
+// Compute semantic_consumer_count after removing administrative edges (TCO
+// threading, pass-through reads). At try_unwrap sites:
+//
+//   semantic_consumers == 1  -> Rc::into_inner().expect("sole owner")
+//   semantic_consumers > 1   -> compile error: cannot guarantee O(1) mutation
+//   unclassified             -> completeness bug in this analysis
+//
+// One pass over each function body. No heuristics, no fallbacks.
+//
+// Clone elision (FF-1 exploitation):
+//
 // The .dag language guarantees fan-out is a syntactic property (INVARIANTS.md
+// "Facts Flow Forward"). This analysis computes binding_fan_out and the emitter
+// reads it: fan-out=0 → dead code, fan-out=1 → move, fan-out>1 → Rc + clone.
+//
+// VarBindingKind flows from inference through the ownership proof to emission.
+// BindingUsage carries binding_kind so the proof is self-contained:
+//
+//   LocalValueBinding   (params, let-bindings) → Rc<T> owned → movable if fan-out=1
+//   MatchBoundBinding   (match pattern vars)   → &T reference → never movable
+//   FunctionValueBinding, VariantValueBinding   → not values  → never movable
+//
+// Lambda/foreach bodies are walked in a fresh accumulator; all discovered names
+// are recorded twice in the outer accumulator (fan-out >= 2), preventing name
+// collisions from incorrectly marking outer bindings as movable.
 module v2.compiler.ownership
 import v2.std.core {
   Node,
@@ -41,6 +67,11 @@ type BindingUsage {
 fn semantic_consumer_count(usage: BindingUsage) -> Int {
   usage.consumers |> filter(c => match c.kind { Consumed => true, _ => false }) |> count
 }
+// Fan-out: total reference count across all edge kinds.
+// This is the syntactic fan-out of a binding — how many times it is referenced.
+// The emit rule: fan-out=0 → dead code, fan-out=1 → move, fan-out>1 → Rc + clone.
+// Threaded edges (fold accumulators) are excluded — they are linearity-preserving
+// by construction and should not inflate fan-out.
 fn binding_fan_out(usage: BindingUsage) -> Int {
   usage.consumers |> filter(c => match c.kind { Threaded => false, _ => true }) |> count
 }

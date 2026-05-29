@@ -104,6 +104,11 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
     match lookup_type_for(env: env, node: n) {
       Some { value: decl } =>
         if decl.params |> count > 0 {
+          // Container types (Map, List, Set, etc.) stay unexpanded regardless
+          // of alias (INVARIANTS.md: "container_types controls which types stay
+          // unexpanded during resolve"). Map = PartialFunction<K,V> is an
+          // inhabitation declaration, not an alias to expand. Algebra fields
+          // are added on demand via enrich_kernel_type during method lookup.
           if is_container_type(name: authored_name(env: env, node: n)) { false }
           else if decl.inferred != none { true }
           else { true }
@@ -364,6 +369,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
           let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+          // Arrow nodes (callable types) handled by has_structure above.
           // Dynamic/Error sentinel names dissolved — no .dag source declares them.
           if is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }

@@ -44,6 +44,11 @@ fn type_variable_node(id: String) -> Node {
 // =========================================================================
 // Node constructors
 // =========================================================================
+// Extract the resolved type Node from n.inferred. Fail-closed: returns
+// error_type for any non-Resolved state. Use this at declaration and
+// post-inference sites where Resolved is the expected invariant.
+// Dissolution target: consumers that need variant-specific behavior
+// should match InferredNode? directly instead of calling this.
 fn resolved_type(n: Node) -> Node {
   match n.inferred {
     Some { value: Resolved { node: rt } } => rt
@@ -130,6 +135,10 @@ fn kernel_container_profile_miss_diagnostic(kind_name: String) -> ErrorNode {
     module_name: "v2.compiler.infer_types"
   )
 }
+// Type-position sentinel when `kernel_algebra_profile` has no entry for
+// `kind_name`. Paired with `kernel_container_profile_miss_diagnostic` wherever
+// a diagnostic list is threaded; expr_data uses InternalExprError (compiler
+// invariant), not user-facing SemanticExprError.
 fn missing_kernel_container_profile_type(kind_name: String) -> Node {
   let msg = concat("missing kernel container profile: ", kind_name)
   Node {
@@ -846,6 +855,10 @@ fn extract_optional_inner_node(n: Node) -> Node {
   if is_optional { with_required_cardinality(n: n) }
   else { n }
 }
+// Convert AlgebraFieldKind to the field name string for child lookup on types.
+// Authority: algebra_field_entries in std/syntax.dag — this match must stay
+// in sync. NOTE: child lookup still goes through find_child_named (string).
+// The full structural fix requires typed child identifiers on algebra Nodes.
 fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
   match kind {
     AlgAdd => "add"

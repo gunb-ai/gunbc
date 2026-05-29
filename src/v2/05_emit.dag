@@ -1,5 +1,19 @@
+// v2 emitter core -- target-agnostic dispatch and shared helpers.
+//
 // No I/O -- file writing is handled by the pipeline.
+// This module provides:
+//   - The `emit` entry point that dispatches to per-target renderers
+//   - Scope management helpers (module_emit_scope, empty_emit_scope)
+//   - Item registry lookup (lookup_item, lookup_func_sig_in_scope)
+//   - Service call detection (re-exported from reconcile)
+//   - Name conversion utilities (to_snake, to_screaming_snake, etc.)
+//   - Indentation and string formatting utilities
+//
+// Target-specific rendering lives in 05_emit_rust.dag, 05_emit_python.dag.
+//
 // Invariant 6: "DAG nodes are facts, rendering is separate."
+// This module contains no target-specific syntax. Adding a new target
+// means creating a new renderer module and adding one match arm to `emit`.
 module v2.compiler.emit
 import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -203,6 +217,13 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
           None => concat(emit_simple_expr(expr: b, target: target, source_indices: source_indices), ".", emit_ident(name: f, target: target))
         }
       } else {
+        // Data declarations emit as functions in Rust; field access on a
+        // data reference needs base().field, not base.field.
+        // In transport contexts (the primary consumer of emit_simple_expr),
+        // there are no local let-bindings, so LocalValueBinding is a data
+        // reference. FunctionValueBinding and None (uninferred) are also
+        // module-level references. Only MatchBoundBinding and
+        // VariantValueBinding should NOT get ().
         let base_is_fn = match b.expr_data {
           ExprVar { binding_kind: bk } => match bk {
             Some { value: MatchBoundBinding } => false
@@ -824,6 +845,8 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       _ => language_spec(target: target).void_type
     }
     let spec = language_spec(target: target)
+    // Single authority: callable_type_template overrides CallableRepr entirely.
+    // When null, CallableRepr is the sole authority (including return_separator).
     let result = match spec.callable_type_template {
       Some { value: t } =>
         replace(replace(t, "\{params\}", param_str), "\{return\}", ret_str)
@@ -2348,6 +2371,7 @@ fn emit_unified_variant_pattern(name: String, field_bindings: List<Node>, target
       }
     None =>
       // Type-name-only pattern (Go type switch). Fail closed if bindings
+      // are present — the target cannot faithfully represent them.
       if field_bindings |> count > 0 {
         emit_error_expr(message: concat("variant pattern has bindings but target has no destructuring syntax: ", name), target: target)
       } else {
@@ -2355,6 +2379,10 @@ fn emit_unified_variant_pattern(name: String, field_bindings: List<Node>, target
       }
   }
 }
+// Shared match-arm line rendering — single authority for case keyword, guard, indent.
+// Both emit_typed_match_unified and emit_unified_tco_match_arm delegate here.
+// guard_prefix comes from ExpressionSemantics; fails closed if guard is present
+// but target has no guard form.
 fn emit_match_arm_line(
     arm: Node, target: RenderTarget, case_depth: Int, body_depth: Int,
     body_str: String, guard_str: String,

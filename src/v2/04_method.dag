@@ -79,6 +79,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   m
 }
 // NOTE: builtin_function_registry() constructs the map on each call in .dag
+// source. The stage0 Rust caches it via thread_local! to avoid O(N×M) rebuild.
 fn infer_builtin_call_type(name: String) -> Node? {
   map_get(builtin_function_registry(), name)
 }

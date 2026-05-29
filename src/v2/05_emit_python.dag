@@ -1,5 +1,14 @@
+// v2 Python renderer -- emits Python source files from a typed module graph.
+//
+// This module contains all Python-specific rendering logic: dataclasses,
+// type hints, match/case (PEP 634), f-strings, aiohttp for services,
 // Python-idiomatic naming (snake_case functions, PascalCase classes).
+//
+// Target-agnostic helpers (scope management, item registry, name
+// conversion, indent, service call collection) live in 05_emit.dag.
+//
 // Invariant 6: "DAG nodes are facts, rendering is separate."
+// This file IS the Python rendering. No IR changes needed.
 module v2.compiler.emit_python
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
