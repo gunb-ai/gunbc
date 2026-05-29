@@ -535,7 +535,7 @@ fn l5_rust_emit_output_int(program_dag: &Dag, claim_file: &str) -> Result<i64, S
         .map_err(|e| format!("L5 rust_emit_output: write {}: {e}", src_path.display()))?;
     crate::post_emit_verifier::verify_emitted_source_file(
         program_dag,
-        crate::post_emit_verifier::EmitVerificationTarget::Rust,
+        crate::emit::EmitTarget::Rust,
         &src_path,
     )
     .map_err(|e| format!("L5 rust_emit_output: {e}"))?;

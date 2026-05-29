@@ -21,9 +21,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust_roundtrip_fixtures::{ProgramFixture, PROGRAM_FIXTURES};
+use v3_compiler::emit::EmitTarget;
 use v3_compiler::post_emit_verifier::{
-    fixture_supports_emit_verification_target, verify_program_emitted_source,
-    verify_program_emitted_source_all_targets, EmitVerificationTarget,
+    fixture_supports_post_emit_target, post_emit_target_label, verify_program_emitted_source,
+    verify_program_emitted_source_all_targets, SHAPE_A_POST_EMIT_TARGETS,
 };
 use v3_compiler::CompileError;
 

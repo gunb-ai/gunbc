@@ -3,9 +3,14 @@
 //! Shared by [`crate::post_emit_verifier::run_post_emit_verifier`] and the W1 /
 //! L5 harness in [`crate::test_runner`]. Fail-closed vs unbounded
 //! [`std::process::Command::output`] and unbounded `read_to_end` on verbose children.
+//!
+//! Wall budget covers **child wait and pipe drain**: if the direct child exits while
+//! process-group descendants still hold pipe write ends, drain threads get EOF only
+//! after the group is killed or the overall deadline trips.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 /// Default wall-clock for post-emit verifiers and W1 host children (matches
@@ -13,6 +18,8 @@ use std::time::{Duration, Instant};
 pub const DEFAULT_WALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 const WAIT_POLL: Duration = Duration::from_millis(20);
+
+const DRAIN_JOIN_GRACE_POLLS: u32 = 50;
 
 const DRAIN_CHUNK_BYTES: usize = 8192;
 
@@ -81,35 +88,31 @@ enum ChildWaitFail {
     Io(String),
 }
 
-#[cfg(unix)]
-fn kill_process_group_on_timeout(child: &mut std::process::Child) {
-    use libc::{kill, SIGKILL};
-    let p = child.id() as i32;
-    if p != 0 {
-        if unsafe { kill(-p, SIGKILL) } < 0 {
-            let _ = child.kill();
+fn kill_process_group(pgid: i32) {
+    #[cfg(unix)]
+    {
+        use libc::{kill, SIGKILL};
+        if pgid > 0 && unsafe { kill(-pgid, SIGKILL) } < 0 {
+            // Best-effort: group may already be gone.
         }
-    } else {
-        let _ = child.kill();
     }
 }
 
 #[cfg(not(unix))]
-fn kill_process_group_on_timeout(child: &mut std::process::Child) {
-    let _ = child.kill();
-}
+fn kill_process_group(_pgid: i32) {}
 
-fn child_wait_bounded(
+fn child_wait_until(
     child: &mut std::process::Child,
+    deadline: Instant,
     wall_time: Duration,
 ) -> Result<std::process::ExitStatus, ChildWaitFail> {
-    let deadline = Instant::now() + wall_time;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    kill_process_group_on_timeout(child);
+                    kill_process_group(child.id() as i32);
+                    let _ = child.kill();
                     let _ = child.wait();
                     return Err(ChildWaitFail::WallTimeout { wall_time });
                 }
@@ -120,15 +123,49 @@ fn child_wait_bounded(
     }
 }
 
+fn join_pipe_capture(
+    handle: JoinHandle<std::io::Result<BoundedPipeCapture>>,
+    deadline: Instant,
+    pgid: i32,
+    stream: &str,
+    label: &str,
+) -> Result<BoundedPipeCapture, String> {
+    while !handle.is_finished() {
+        if Instant::now() >= deadline {
+            kill_process_group(pgid);
+            for _ in 0..DRAIN_JOIN_GRACE_POLLS {
+                if handle.is_finished() {
+                    break;
+                }
+                std::thread::sleep(WAIT_POLL);
+            }
+            if !handle.is_finished() {
+                return Err(format!(
+                    "{label}: {stream} drain exceeded wall-clock budget (process group {pgid} killed, fail-closed)"
+                ));
+            }
+        }
+        std::thread::sleep(WAIT_POLL);
+    }
+    handle
+        .join()
+        .map_err(|_| format!("{label}: {stream} capture thread panicked"))?
+        .map_err(|e| format!("{label}: read {stream} failed: {e}"))
+}
+
 /// `spawn` + wall-bounded wait + bounded stdout/stderr capture.
 pub fn host_command_output(
     label: &str,
     wall: Duration,
     mut cmd: Command,
 ) -> Result<std::process::Output, String> {
+    let started = Instant::now();
+    let deadline = started + wall;
+
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("{label}: failed to spawn host child: {e}"))?;
+    let pgid = child.id() as i32;
     let mut stdout = child
         .stdout
         .take()
@@ -143,31 +180,26 @@ pub fn host_command_output(
     let stderr_handle =
         std::thread::spawn(move || drain_reader_bounded(&mut stderr, CAPTURE_MAX_STDERR_BYTES));
 
-    let status = match child_wait_bounded(&mut child, wall) {
+    let status = match child_wait_until(&mut child, deadline, wall) {
         Ok(s) => s,
         Err(ChildWaitFail::WallTimeout { wall_time }) => {
-            let _ = stdout_handle.join();
-            let _ = stderr_handle.join();
+            let _ = join_pipe_capture(stdout_handle, deadline, pgid, "stdout", label);
+            let _ = join_pipe_capture(stderr_handle, deadline, pgid, "stderr", label);
             return Err(format!(
                 "{label}: exceeded {:.2}s wall-clock limit (process group killed, fail-closed)",
                 wall_time.as_secs_f64()
             ));
         }
         Err(ChildWaitFail::Io(err)) => {
-            let _ = stdout_handle.join();
-            let _ = stderr_handle.join();
+            kill_process_group(pgid);
+            let _ = join_pipe_capture(stdout_handle, deadline, pgid, "stdout", label);
+            let _ = join_pipe_capture(stderr_handle, deadline, pgid, "stderr", label);
             return Err(format!("{label}: wait on host child failed: {err}"));
         }
     };
 
-    let stdout_cap = stdout_handle
-        .join()
-        .map_err(|_| format!("{label}: stdout capture thread panicked"))?
-        .map_err(|e| format!("{label}: read stdout failed: {e}"))?;
-    let stderr_cap = stderr_handle
-        .join()
-        .map_err(|_| format!("{label}: stderr capture thread panicked"))?
-        .map_err(|e| format!("{label}: read stderr failed: {e}"))?;
+    let stdout_cap = join_pipe_capture(stdout_handle, deadline, pgid, "stdout", label)?;
+    let stderr_cap = join_pipe_capture(stderr_handle, deadline, pgid, "stderr", label)?;
 
     if stdout_cap.truncated || stderr_cap.truncated {
         return Err(format!(

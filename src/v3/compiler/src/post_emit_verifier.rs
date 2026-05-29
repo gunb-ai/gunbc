@@ -44,48 +44,36 @@ use std::process::{Command, Stdio};
 use crate::bounded_host_command::{self, DEFAULT_WALL_TIMEOUT};
 
 use crate::dag::{DeclarationId, FieldValue, LiteralBits};
-use crate::emit::{emit_go_text, emit_python_text, emit_rust_text};
+use crate::emit::{emit_go_text, emit_python_text, emit_rust_text, EmitTarget};
 use crate::emit_rust_roundtrip_fixtures::{GO_EMIT_EXCLUDE, PYTHON_EMIT_EXCLUDE};
 use crate::Dag;
 
-/// R3 Shape-A emission targets whose `CleanEmissionContract.post_emit_verifier`
-/// is the authority for "emitted source is acceptable to the target toolchain."
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EmitVerificationTarget {
-    Rust,
-    Go,
-    Python,
+/// Shape-A targets whose `CleanEmissionContract.post_emit_verifier` is landed today.
+pub const SHAPE_A_POST_EMIT_TARGETS: &[EmitTarget] =
+    &[EmitTarget::Rust, EmitTarget::Go, EmitTarget::Python];
+
+pub fn post_emit_target_label(target: EmitTarget) -> &'static str {
+    match target {
+        EmitTarget::Rust => "rust",
+        EmitTarget::Go => "go",
+        EmitTarget::Python => "python",
+    }
 }
 
-impl EmitVerificationTarget {
-    pub const ALL: &'static [EmitVerificationTarget] = &[Self::Rust, Self::Go, Self::Python];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Rust => "rust",
-            Self::Go => "go",
-            Self::Python => "python",
-        }
-    }
-
-    fn default_source_filename(self) -> &'static str {
-        match self {
-            Self::Rust => "main.rs",
-            Self::Go => "main.go",
-            Self::Python => "main.py",
-        }
+fn post_emit_default_source_filename(target: EmitTarget) -> &'static str {
+    match target {
+        EmitTarget::Rust => "main.rs",
+        EmitTarget::Go => "main.go",
+        EmitTarget::Python => "main.py",
     }
 }
 
 /// Whether a `PROGRAM_FIXTURES` row participates in post-emit verification for `target`.
-pub fn fixture_supports_emit_verification_target(
-    fixture_name: &str,
-    target: EmitVerificationTarget,
-) -> bool {
+pub fn fixture_supports_post_emit_target(fixture_name: &str, target: EmitTarget) -> bool {
     match target {
-        EmitVerificationTarget::Rust => true,
-        EmitVerificationTarget::Go => !GO_EMIT_EXCLUDE.contains(&fixture_name),
-        EmitVerificationTarget::Python => !PYTHON_EMIT_EXCLUDE.contains(&fixture_name),
+        EmitTarget::Rust => true,
+        EmitTarget::Go => !GO_EMIT_EXCLUDE.contains(&fixture_name),
+        EmitTarget::Python => !PYTHON_EMIT_EXCLUDE.contains(&fixture_name),
     }
 }
 
@@ -314,12 +302,12 @@ impl fmt::Display for VerifierRunError {
 /// Resolve the cached `*_clean_emission` declaration for a Shape-A target.
 pub fn clean_emission_spec(
     dag: &Dag,
-    target: EmitVerificationTarget,
+    target: EmitTarget,
 ) -> Result<DeclarationId, VerifierParseError> {
     let spec = match target {
-        EmitVerificationTarget::Rust => dag.rust_clean_emission_spec(),
-        EmitVerificationTarget::Go => dag.go_clean_emission_spec(),
-        EmitVerificationTarget::Python => dag.python_clean_emission_spec(),
+        EmitTarget::Rust => dag.rust_clean_emission_spec(),
+        EmitTarget::Go => dag.go_clean_emission_spec(),
+        EmitTarget::Python => dag.python_clean_emission_spec(),
     };
     spec.ok_or(VerifierParseError::MissingDeclaration)
 }
@@ -327,7 +315,7 @@ pub fn clean_emission_spec(
 /// Run the target's declared `post_emit_verifier` against an on-disk source file.
 pub fn verify_emitted_source_file(
     dag: &Dag,
-    target: EmitVerificationTarget,
+    target: EmitTarget,
     source_path: &Path,
 ) -> Result<(), VerifierRunError> {
     let spec = clean_emission_spec(dag, target).map_err(verifier_parse_error_to_run_error)?;
@@ -359,14 +347,14 @@ impl fmt::Display for VerifierParseError {
 /// `compile_to_dag` result (bootstrap carries clean-emission specs).
 pub fn verify_program_emitted_source(
     program_dag: &Dag,
-    target: EmitVerificationTarget,
+    target: EmitTarget,
     scratch_dir: &Path,
     file_stem: &str,
 ) -> Result<(), String> {
     let emitted = emit_text_for_target(program_dag, target)?;
     std::fs::create_dir_all(scratch_dir)
         .map_err(|e| format!("create scratch {}: {e}", scratch_dir.display()))?;
-    let filename = format!("{file_stem}_{}", target.default_source_filename());
+    let filename = format!("{file_stem}_{}", post_emit_default_source_filename(target));
     let src_path = scratch_dir.join(filename);
     let mut file = std::fs::File::create(&src_path)
         .map_err(|e| format!("create {}: {e}", src_path.display()))?;
@@ -375,7 +363,7 @@ pub fn verify_program_emitted_source(
     verify_emitted_source_file(program_dag, target, &src_path).map_err(|e| {
         format!(
             "{} post_emit_verifier for `{file_stem}`: {e}",
-            target.label()
+            post_emit_target_label(target)
         )
     })
 }
@@ -390,8 +378,8 @@ pub fn verify_program_emitted_source_all_targets(
     fixture_name: &str,
 ) -> Result<(), String> {
     let mut failures = Vec::new();
-    for &target in EmitVerificationTarget::ALL {
-        if !fixture_supports_emit_verification_target(fixture_name, target) {
+    for &target in SHAPE_A_POST_EMIT_TARGETS {
+        if !fixture_supports_post_emit_target(fixture_name, target) {
             continue;
         }
         if let Err(msg) = verify_program_emitted_source(program_dag, target, scratch_dir, file_stem)
@@ -408,12 +396,12 @@ pub fn verify_program_emitted_source_all_targets(
 
 fn emit_text_for_target(
     program_dag: &Dag,
-    target: EmitVerificationTarget,
+    target: EmitTarget,
 ) -> Result<String, String> {
     match target {
-        EmitVerificationTarget::Rust => emit_rust_text(program_dag).map_err(|e| format!("{e:?}")),
-        EmitVerificationTarget::Go => emit_go_text(program_dag).map_err(|e| format!("{e:?}")),
-        EmitVerificationTarget::Python => {
+        EmitTarget::Rust => emit_rust_text(program_dag).map_err(|e| format!("{e:?}")),
+        EmitTarget::Go => emit_go_text(program_dag).map_err(|e| format!("{e:?}")),
+        EmitTarget::Python => {
             emit_python_text(program_dag).map_err(|e| format!("{e:?}"))
         }
     }
