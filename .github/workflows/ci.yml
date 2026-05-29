@@ -303,8 +303,11 @@ jobs:
         fi
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
+    # workflow_policy PRs (ci.yml / detect script only) do not touch the manual
+    # corpus — skip T-22 here to avoid a 240s full-tree rust emit timeout (exit 143).
+    # MVP-1 + Gate #103 receipts still run under workflow_policy.
     - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: needs.affected.outputs.v4 == 'true'
       run: bash scripts/v4-testclaim-corpus-gate.sh
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
