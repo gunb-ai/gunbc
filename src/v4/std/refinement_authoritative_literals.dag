@@ -6,7 +6,6 @@
 module v4.std.refinement_authoritative_literals
 
 
-import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.refinement {
   AtLeastMinusOneInt,
   AtLeastMinusTwoInt,
@@ -26,318 +25,131 @@ import v4.std.refinement {
 }
 
 
-// Per-catalog `data` rows: Outcome receipt discharged fail-closed; carrier via Accepted match.
-// Rejected arms cycle to *_reattempt sibling (substrate authoring fault if persistent — no
-// named-function same-argument recursion). Witnessed per literal in refinement_formatter_literals_accept.dag.
+// Each row: Outcome receipt from *_authoritative_literal, discharged on Accepted only.
+// Rejected unreachable for catalog values; witnessed per literal in refinement_formatter_literals_accept.dag.
 // 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail
 
-data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = match discharge_at_least_minus_one_int_authoritative_catalog_literal(receipt: at_least_minus_one_int_authoritative_literal(value: -1)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1_reattempt
-}
+data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = discharge_at_least_minus_one_int_authoritative_catalog_literal(
+  receipt: at_least_minus_one_int_authoritative_literal(value: -1)
+)
 
-data authoritative_at_least_minus_one_int_minus_1_reattempt: AtLeastMinusOneInt = match discharge_at_least_minus_one_int_authoritative_catalog_literal(receipt: at_least_minus_one_int_authoritative_literal(value: -1)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1
-}
+data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = discharge_at_least_minus_one_int_authoritative_catalog_literal(
+  receipt: at_least_minus_one_int_authoritative_literal(value: 0)
+)
 
-data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = match discharge_at_least_minus_one_int_authoritative_catalog_literal(receipt: at_least_minus_one_int_authoritative_literal(value: 0)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0_reattempt
-}
+data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = discharge_at_least_minus_two_int_authoritative_catalog_literal(
+  receipt: at_least_minus_two_int_authoritative_literal(value: -2)
+)
 
-data authoritative_at_least_minus_one_int_0_reattempt: AtLeastMinusOneInt = match discharge_at_least_minus_one_int_authoritative_catalog_literal(receipt: at_least_minus_one_int_authoritative_literal(value: 0)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0
-}
+data authoritative_exact_one_int_1: ExactOneInt = discharge_exact_one_int_authoritative_catalog_literal(
+  receipt: exact_one_int_authoritative_literal(value: 1)
+)
 
-data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = match discharge_at_least_minus_two_int_authoritative_catalog_literal(receipt: at_least_minus_two_int_authoritative_literal(value: -2)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_reattempt
-}
+data authoritative_non_negative_int_0: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 0)
+)
 
-data authoritative_at_least_minus_two_int_minus_2_reattempt: AtLeastMinusTwoInt = match discharge_at_least_minus_two_int_authoritative_catalog_literal(receipt: at_least_minus_two_int_authoritative_literal(value: -2)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2
-}
+data authoritative_non_negative_int_1: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 1)
+)
 
-data authoritative_exact_one_int_1: ExactOneInt = match discharge_exact_one_int_authoritative_catalog_literal(receipt: exact_one_int_authoritative_literal(value: 1)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_exact_one_int_1_reattempt
-}
+data authoritative_non_negative_int_2: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 2)
+)
 
-data authoritative_exact_one_int_1_reattempt: ExactOneInt = match discharge_exact_one_int_authoritative_catalog_literal(receipt: exact_one_int_authoritative_literal(value: 1)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_exact_one_int_1
-}
+data authoritative_non_negative_int_4: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 4)
+)
 
-data authoritative_non_negative_int_0: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 0)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_0_reattempt
-}
+data authoritative_non_negative_int_8: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 8)
+)
 
-data authoritative_non_negative_int_0_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 0)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_0
-}
+data authoritative_non_negative_int_10: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 10)
+)
 
-data authoritative_non_negative_int_1: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 1)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1_reattempt
-}
+data authoritative_non_negative_int_18: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 18)
+)
 
-data authoritative_non_negative_int_1_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 1)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1
-}
+data authoritative_non_negative_int_19: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 19)
+)
 
-data authoritative_non_negative_int_2: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 2)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_2_reattempt
-}
+data authoritative_non_negative_int_35: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 35)
+)
 
-data authoritative_non_negative_int_2_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 2)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_2
-}
+data authoritative_non_negative_int_50: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 50)
+)
 
-data authoritative_non_negative_int_4: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 4)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_4_reattempt
-}
+data authoritative_non_negative_int_60: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 60)
+)
 
-data authoritative_non_negative_int_4_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 4)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_4
-}
+data authoritative_non_negative_int_80: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 80)
+)
 
-data authoritative_non_negative_int_8: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 8)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_8_reattempt
-}
+data authoritative_non_negative_int_120: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 120)
+)
 
-data authoritative_non_negative_int_8_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 8)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_8
-}
+data authoritative_non_negative_int_150: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 150)
+)
 
-data authoritative_non_negative_int_10: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 10)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_10_reattempt
-}
+data authoritative_non_negative_int_300: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 300)
+)
 
-data authoritative_non_negative_int_10_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 10)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_10
-}
+data authoritative_non_negative_int_500: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 500)
+)
 
-data authoritative_non_negative_int_18: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 18)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_18_reattempt
-}
+data authoritative_non_negative_int_1000: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 1000)
+)
 
-data authoritative_non_negative_int_18_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 18)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_18
-}
+data authoritative_non_negative_int_1000000: NonNegativeInt = discharge_non_negative_int_authoritative_catalog_literal(
+  receipt: non_negative_int_authoritative_literal(value: 1000000)
+)
 
-data authoritative_non_negative_int_19: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 19)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_19_reattempt
-}
+data authoritative_positive_int_2: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 2)
+)
 
-data authoritative_non_negative_int_19_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 19)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_19
-}
+data authoritative_positive_int_4: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 4)
+)
 
-data authoritative_non_negative_int_35: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 35)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_35_reattempt
-}
+data authoritative_positive_int_8: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 8)
+)
 
-data authoritative_non_negative_int_35_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 35)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_35
-}
+data authoritative_positive_int_10: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 10)
+)
 
-data authoritative_non_negative_int_50: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 50)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_50_reattempt
-}
+data authoritative_positive_int_60: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 60)
+)
 
-data authoritative_non_negative_int_50_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 50)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_50
-}
+data authoritative_positive_int_70: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 70)
+)
 
-data authoritative_non_negative_int_60: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 60)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_60_reattempt
-}
+data authoritative_positive_int_80: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 80)
+)
 
-data authoritative_non_negative_int_60_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 60)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_60
-}
+data authoritative_positive_int_88: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 88)
+)
 
-data authoritative_non_negative_int_80: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 80)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_80_reattempt
-}
-
-data authoritative_non_negative_int_80_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 80)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_80
-}
-
-data authoritative_non_negative_int_120: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 120)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_120_reattempt
-}
-
-data authoritative_non_negative_int_120_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 120)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_120
-}
-
-data authoritative_non_negative_int_150: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 150)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_150_reattempt
-}
-
-data authoritative_non_negative_int_150_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 150)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_150
-}
-
-data authoritative_non_negative_int_300: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 300)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_300_reattempt
-}
-
-data authoritative_non_negative_int_300_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 300)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_300
-}
-
-data authoritative_non_negative_int_500: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 500)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_500_reattempt
-}
-
-data authoritative_non_negative_int_500_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 500)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_500
-}
-
-data authoritative_non_negative_int_1000: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 1000)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000_reattempt
-}
-
-data authoritative_non_negative_int_1000_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 1000)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000
-}
-
-data authoritative_non_negative_int_1000000: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 1000000)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000_reattempt
-}
-
-data authoritative_non_negative_int_1000000_reattempt: NonNegativeInt = match discharge_non_negative_int_authoritative_catalog_literal(receipt: non_negative_int_authoritative_literal(value: 1000000)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000
-}
-
-data authoritative_positive_int_2: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 2)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_2_reattempt
-}
-
-data authoritative_positive_int_2_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 2)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_2
-}
-
-data authoritative_positive_int_4: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 4)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_4_reattempt
-}
-
-data authoritative_positive_int_4_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 4)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_4
-}
-
-data authoritative_positive_int_8: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 8)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_8_reattempt
-}
-
-data authoritative_positive_int_8_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 8)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_8
-}
-
-data authoritative_positive_int_10: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 10)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_10_reattempt
-}
-
-data authoritative_positive_int_10_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 10)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_10
-}
-
-data authoritative_positive_int_60: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 60)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_60_reattempt
-}
-
-data authoritative_positive_int_60_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 60)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_60
-}
-
-data authoritative_positive_int_70: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 70)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_70_reattempt
-}
-
-data authoritative_positive_int_70_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 70)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_70
-}
-
-data authoritative_positive_int_80: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 80)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_80_reattempt
-}
-
-data authoritative_positive_int_80_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 80)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_80
-}
-
-data authoritative_positive_int_88: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 88)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_88_reattempt
-}
-
-data authoritative_positive_int_88_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 88)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_88
-}
-
-data authoritative_positive_int_100: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 100)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_100_reattempt
-}
-
-data authoritative_positive_int_100_reattempt: PositiveInt = match discharge_positive_int_authoritative_catalog_literal(receipt: positive_int_authoritative_literal(value: 100)) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_100
-}
+data authoritative_positive_int_100: PositiveInt = discharge_positive_int_authoritative_catalog_literal(
+  receipt: positive_int_authoritative_literal(value: 100)
+)
 

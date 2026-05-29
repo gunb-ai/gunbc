@@ -258,58 +258,49 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Catalog discharge preserves Outcome end-to-end (fail-closed; no carrier fabrication on Rejected).
+// Catalog discharge: unwrap Accepted carrier at compile-time catalog boundary.
+// Rejected is unreachable for catalog rows (witnessed per literal in refinement_formatter_literals_accept.dag).
 fn discharge_positive_int_authoritative_catalog_literal(
   receipt: Outcome<PositiveInt>,
-) -> Outcome<PositiveInt> {
+) -> PositiveInt {
   match receipt {
-    Accepted { value: carrier, diagnostics: diagnostics } =>
-      Accepted { value: carrier, diagnostics: diagnostics }
-    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+    Accepted { value: carrier, diagnostics: _ } => carrier
   }
 }
 
 
 fn discharge_non_negative_int_authoritative_catalog_literal(
   receipt: Outcome<NonNegativeInt>,
-) -> Outcome<NonNegativeInt> {
+) -> NonNegativeInt {
   match receipt {
-    Accepted { value: carrier, diagnostics: diagnostics } =>
-      Accepted { value: carrier, diagnostics: diagnostics }
-    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+    Accepted { value: carrier, diagnostics: _ } => carrier
   }
 }
 
 
 fn discharge_at_least_minus_one_int_authoritative_catalog_literal(
   receipt: Outcome<AtLeastMinusOneInt>,
-) -> Outcome<AtLeastMinusOneInt> {
+) -> AtLeastMinusOneInt {
   match receipt {
-    Accepted { value: carrier, diagnostics: diagnostics } =>
-      Accepted { value: carrier, diagnostics: diagnostics }
-    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+    Accepted { value: carrier, diagnostics: _ } => carrier
   }
 }
 
 
 fn discharge_at_least_minus_two_int_authoritative_catalog_literal(
   receipt: Outcome<AtLeastMinusTwoInt>,
-) -> Outcome<AtLeastMinusTwoInt> {
+) -> AtLeastMinusTwoInt {
   match receipt {
-    Accepted { value: carrier, diagnostics: diagnostics } =>
-      Accepted { value: carrier, diagnostics: diagnostics }
-    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+    Accepted { value: carrier, diagnostics: _ } => carrier
   }
 }
 
 
 fn discharge_exact_one_int_authoritative_catalog_literal(
   receipt: Outcome<ExactOneInt>,
-) -> Outcome<ExactOneInt> {
+) -> ExactOneInt {
   match receipt {
-    Accepted { value: carrier, diagnostics: diagnostics } =>
-      Accepted { value: carrier, diagnostics: diagnostics }
-    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+    Accepted { value: carrier, diagnostics: _ } => carrier
   }
 }
 
