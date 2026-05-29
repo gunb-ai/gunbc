@@ -236,7 +236,6 @@ data ts_production_wave2a_item: Symbol = ts_production_wave2a_item
 
 data ts_production_pr3_named_type: Symbol = ts_production_pr3_named_type
 data ts_production_pr3_array_type: Symbol = ts_production_pr3_array_type
-data ts_production_pr3_return_type: Symbol = ts_production_pr3_return_type
 data ts_production_pr3_typed_param: Symbol = ts_production_pr3_typed_param
 data ts_production_pr3_typed_params: Symbol = ts_production_pr3_typed_params
 data ts_production_pr3_typed_fn_decl: Symbol = ts_production_pr3_typed_fn_decl
@@ -258,7 +257,6 @@ data ts_surface_item: Symbol = ts_surface_item
 
 data ts_surface_named_type: Symbol = ts_surface_named_type
 data ts_surface_array_type: Symbol = ts_surface_array_type
-data ts_surface_return_type: Symbol = ts_surface_return_type
 data ts_surface_typed_param: Symbol = ts_surface_typed_param
 data ts_surface_typed_params: Symbol = ts_surface_typed_params
 data ts_surface_typed_fn_decl: Symbol = ts_surface_typed_fn_decl
