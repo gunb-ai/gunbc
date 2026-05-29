@@ -33,6 +33,9 @@ import v4.std.grammar {
   grammar_empty_sync_tokens,
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
+  derive_grammar_relation_row_node_faithful,
+  derive_grammar_relation_rhs_token_edges,
+  grammar_formal_terminal_bound,
   grammar_production_to_node,
   grammar_relation_row_to_node
 }
@@ -290,6 +293,11 @@ data ts_surface_typed_fn_decl: Symbol = ts_surface_typed_fn_decl
 data ts_binding_fn_add: Symbol = ts_binding_fn_add
 data ts_binding_param_x: Symbol = ts_binding_param_x
 data ts_binding_param_y: Symbol = ts_binding_param_y
+data ts_binding_task: Symbol = ts_binding_task
+
+data ts_relation_rule_type_alias_task: Symbol = ts_relation_rule_type_alias_task
+
+data ts_task_type_alias_source_text: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
 
 data ts_relation_rule_mvp1_fn_add: Symbol = ts_relation_rule_mvp1_fn_add
 
@@ -681,6 +689,95 @@ fn ts_relation_token_edges(tokens: List<TsConcreteSyntaxToken>) -> List<Edge> {
         item: ts_mvp1_positional_token_edge(token: token)
       )
     }
+  )
+}
+
+fn ts_relation_token_edges_from_nodes(tokens: List<Node>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge { label: Positional, target: token }
+      )
+    }
+  )
+}
+
+// PR-1.5b emitted-shape design (T-11 type_alias_decl): Conj with positional children —
+// surface tag, alias-name binding, RHS type_annotation→record_type emitted subtree.
+// Matches 06_translate.dag conj_positional_targets on grammar_relation_field_emitted.
+fn ts_type_alias_task_type_annotation_emitted() -> Node {
+  ts_grammar_atom(id: ts_surface_record_type)
+}
+
+fn ts_type_alias_task_emitted_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_grammar_atom(id: ts_surface_type_alias_decl) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ts_binding_task) },
+      Edge {
+        label: Positional,
+        target: ts_type_alias_task_type_annotation_emitted()
+      }
+    ]
+  }
+}
+
+// lhs-disambiguated: single FormalProduction for ts_production_wave2a_type_alias_decl.
+fn ts_formal_production_type_alias_task() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ts_production_wave2a_type_alias_decl,
+    rhs: [
+      grammar_formal_terminal(identity: ts_token_kw_type),
+      grammar_formal_terminal_bound(identity: ts_token_ident, binding: ts_binding_task),
+      grammar_formal_terminal(identity: ts_token_eq),
+      grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_annotation),
+      grammar_formal_terminal(identity: ts_token_semicolon)
+    ]
+  )
+}
+
+fn ts_type_alias_task_token_nodes() -> List<Node> {
+  [
+    ts_concrete_token_node(token: TsFixedToken { token_class: ts_token_kw_type }),
+    ts_concrete_token_node(
+      token: TsBoundToken { token_class: ts_token_ident, binding: ts_binding_task }
+    ),
+    ts_concrete_token_node(token: TsFixedToken { token_class: ts_token_eq }),
+    ts_type_alias_task_type_annotation_emitted(),
+    ts_concrete_token_node(token: TsFixedToken { token_class: ts_token_semicolon })
+  ]
+}
+
+fn ts_type_alias_task_grammar_relation_row() -> TsGrammarRelationRow {
+  TsGrammarRelationRow {
+    production: ts_formal_production_type_alias_task(),
+    emitted: ts_type_alias_task_emitted_node(),
+    tokens: []
+  }
+}
+
+fn ts_type_alias_task_grammar_relation_row_node() -> Node {
+  grammar_relation_row_to_node(
+    row: derive_grammar_relation_row(
+      production: ts_type_alias_task_grammar_relation_row().production,
+      emitted: ts_type_alias_task_grammar_relation_row().emitted
+    ),
+    tokens: Node {
+      kind: TypeNode { connective: Conj },
+      children: ts_relation_token_edges_from_nodes(tokens: ts_type_alias_task_token_nodes())
+    }
+  )
+}
+
+fn ts_type_alias_task_grammar_relation_row_node_faithful() -> Node {
+  derive_grammar_relation_row_node_faithful(
+    production: ts_formal_production_type_alias_task(),
+    emitted: ts_type_alias_task_emitted_node(),
+    nonterminal_slots: [ts_type_alias_task_type_annotation_emitted()]
   )
 }
 

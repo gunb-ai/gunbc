@@ -5,7 +5,7 @@
 
 module v4.std.grammar
 
-import v4.std.algebra { Empty, fold_list, list_snoc_item }
+import v4.std.algebra { Cons, Empty, fold_list, list_snoc_item }
 import v4.std.collection { List, Optional, Set, optional_absent, optional_present }
 import v4.std.diagnostic {
   Diagnostic,
@@ -472,6 +472,85 @@ fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) ->
     empty: Empty,
     cons: fn(acc, symbol) {
       derive_grammar_relation_terminal_token_edges_step(acc: acc, symbol: symbol)
+    }
+  )
+}
+
+
+// Accumulator for faithful rhs token derivation (PR-1.5b): one nonterminal slot per rhs NT occurrence.
+type DeriveGrammarRelationRhsTokenAcc {
+  edges: List<Edge>
+  nonterminal_slots: List<Node>
+}
+
+
+fn derive_grammar_relation_rhs_token_edges_step(
+  acc: DeriveGrammarRelationRhsTokenAcc,
+  symbol: FormalGrammarSymbol
+) -> DeriveGrammarRelationRhsTokenAcc {
+  match symbol {
+    FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+      DeriveGrammarRelationRhsTokenAcc {
+        edges: list_snoc_item(
+          xs: acc.edges,
+          item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+        ),
+        nonterminal_slots: acc.nonterminal_slots
+      }
+    FormalNonterminalOccurrence { nonterminal: _ } =>
+      match acc.nonterminal_slots {
+        Empty => acc
+        Cons { head: slot, tail: rest } =>
+          DeriveGrammarRelationRhsTokenAcc {
+            edges: list_snoc_item(
+              xs: acc.edges,
+              item: Edge { label: Positional, target: slot }
+            ),
+            nonterminal_slots: rest
+          }
+      }
+  }
+}
+
+
+// Faithful rhs walk: terminals become concrete-token edges; nonterminals consume caller-supplied
+// emitted subtrees in rhs order (T-11 PR-1.5b — type_alias_decl and nested type_annotation).
+fn derive_grammar_relation_rhs_token_edges(
+  production: FormalProduction,
+  nonterminal_slots: List<Node>
+) -> List<Edge> {
+  match fold_list(
+    xs: production.rhs,
+    empty: DeriveGrammarRelationRhsTokenAcc {
+      edges: Empty,
+      nonterminal_slots: nonterminal_slots
+    },
+    cons: fn(acc, symbol) {
+      derive_grammar_relation_rhs_token_edges_step(acc: acc, symbol: symbol)
+    }
+  ) {
+    DeriveGrammarRelationRhsTokenAcc { edges: result, nonterminal_slots: _ } => result
+  }
+}
+
+
+// 🟢 coproduct dissolution — REPLAN-3 PR-1.5b — bind TASKS.md T-11 — faithful grammar-relation
+// row node: production + emitted + rhs-faithful positional token/nonterminal children.
+fn derive_grammar_relation_row_node_faithful(
+  production: FormalProduction,
+  emitted: Node,
+  nonterminal_slots: List<Node>
+) -> Node {
+  grammar_relation_row_to_node(
+    row: derive_grammar_relation_row(production: production, emitted: emitted),
+    tokens: Node {
+      kind: TypeNode {
+        connective: Conj
+      },
+      children: derive_grammar_relation_rhs_token_edges(
+        production: production,
+        nonterminal_slots: nonterminal_slots
+      )
     }
   )
 }
