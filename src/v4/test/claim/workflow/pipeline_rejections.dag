@@ -51,6 +51,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   outcome_node_eq
 }
+import v4.std.node { Hash }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -109,9 +110,6 @@ type PipelineRejectionCase {
 }
 
 
-data eval_rejected_pipeline_projection_deferred: Symbol = eval_rejected_pipeline_projection_deferred
-
-
 fn run_pipeline_assert(
   claim: TestClaim,
   actual: Outcome<CiPipeline>,
@@ -129,35 +127,11 @@ fn run_pipeline_assert(
             _ => Fail { actual: actual }
           }
         _ =>
-          Deferred {
-            actual: actual,
-            diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
-          }
+          Fail { actual: actual }
       }
     Rejected { diagnostics: _ } =>
-      Deferred {
-        actual: actual,
-        diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
-      }
+      Fail { actual: actual }
   }
-}
-
-
-fn workflow_pipeline_pass_gate(
-  run: TestClaimRun<CiPipeline, CiPipeline>,
-  at: Node
-) -> Verdict<TestClaimRun<CiPipeline, CiPipeline>> {
-  aggregate_verdicts(
-    rs: [
-      match run.verdict {
-        Pass => Pass
-        Fail { actual: _ } => Fail { actual: Accepted { value: run, diagnostics: None } }
-        Deferred { actual: _, diagnostic: d } =>
-          Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
-      }
-    ],
-    at: at
-  )
 }
 
 
@@ -289,12 +263,15 @@ fn workflow_inferred_tree(root: Node) -> InferredTree {
 }
 
 
-fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol) -> TestClaim {
+fn pipeline_rejection_claim(case: PipelineRejectionCase) -> TestClaim {
   DiagnosticClaim {
-    label: label,
+    label: case.label,
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    input: input,
-    expected_rejection: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason)),
+    input: ci_pipeline_evaluator_input_node(
+      pipeline: case.pipeline,
+      evaluator_pin: case.input_symbol
+    ),
+    expected_rejection: diagnostics_singleton(d: ci_diagnostic(reason: case.expected_reason)),
     classification: TestClassification { tier: Tier1, layer: Unit }
   }
 }
