@@ -150,18 +150,12 @@ files_emitted="$(echo "$compiled_receipt" | sed -n 's/^compiled: \([0-9]*\) file
 
 cat <<JSON
 {
-  "schema": "v4.test.claim.workflow.testclaim_corpus_runner.CorpusEvalReport",
+  "schema": "scripts/v4-testclaim-corpus-eval.sh::host_scaffold_receipt_v1",
   "execution_status": "blocked_m1_subset",
   "blocked_reason": "wedge-real runtime invocation of run_manual_testclaim_corpus_eval requires a cargo-clean subset of the v2-compiler emit-Rust output; full-tree cargo check on the emitted crate currently fails (FreeMonoid drop-check cycle + Nat cata Fn-clone in v2_compiler_emit_rust — M1 emitter lane, not T-38 scope). Tracked as T-38-PR2.",
-  "scaffold_receipts": {
-    "rust_emit": { "status": "0-diagnostic", "files_emitted": ${files_emitted} },
-    "emitted_runner_structural_witness": "PASS"
-  },
-  "entries": [],
-  "pass_count": 0,
-  "fail_count": 0,
-  "deferred_count": 0,
-  "total": 0
+  "rust_emit_files_emitted": ${files_emitted},
+  "rust_emit_diagnostics": 0,
+  "emitted_runner_structural_witness": "PASS"
 }
 JSON
 

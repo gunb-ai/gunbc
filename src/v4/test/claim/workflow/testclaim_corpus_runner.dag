@@ -1,34 +1,8 @@
 // src/v4/test/claim/workflow/testclaim_corpus_runner.dag
-// Scope: T-38 — modeled corpus-level TestClaim runner over the manual roster.
-// Status: wedge — folds the TestClaimRun<Node, RuntimeValue> roster into a
-//   CorpusEvalReport. Per-row verdicts are produced at .dag eval time by the
-//   underlying TestClaimRun rows (see v4.compiler.eval.run_test_claim) and
-//   propagate faithfully through the report — Verdict<RuntimeValue> is the
-//   closed entry payload, so Fail/Deferred diagnostics survive to the host
-//   boundary instead of being erased to a Symbol tag.
-//
-// Counts (pass/fail/deferred/total) are derived projections (fns), not
-// fields, so inconsistent (entries, counts) pairs are unrepresentable —
-// entries are the single authority and counts cannot diverge from them.
-//
-// PR1 boundary (current): the host harness scripts/v4-testclaim-corpus-eval.sh
-// compiles src/v4 --target rust (0-diagnostic), runs a structural witness
-// over the emitted runner.rs + roster.rs, and emits a JSON report with
-// `execution_status="blocked_m1_subset"` (empty `entries`) — the modeled
-// runner is emitted but NOT executed under PR1 because full-tree cargo
-// check on the emitted crate currently fails on v2-emitter Rust shape
-// (FreeMonoid drop-check / Nat cata Fn-clone — M1 emitter lane). PR2 lifts
-// `execution_status` to per-row Pass/Fail/Deferred once the M1 subset
-// rustc strategy lands the runtime invocation; selection narrowing
-// (`ci_select_from_affected_set`) runs in v4.workflow.ci before the host
-// harness folds the surviving roster. Non-zero exit if any entry's verdict
-// is Fail.
-//
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 —
-// dissolve-on-arrival: same trigger as the structural bridge
-// (scripts/v4-testclaim-corpus-gate.sh) — when this modeled runner replaces
-// shell-owned artifact inspection in CI and the dissolution PR deletes the
-// bridge script + ci.yml step + ci_github_actions_workflow.dag paired step.
+// Scope: T-38 modeled corpus-level TestClaim runner over manual roster.
+// Status: wedge — fold manual_corpus_node_runtime_value_rows into CorpusEvalReport.
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: this runner replaces scripts/v4-testclaim-corpus-gate.sh + paired ci.yml/ci_github_actions_workflow.dag step under T-38-PR2.
+
 module v4.test.claim.workflow.testclaim_corpus_runner
 
 
@@ -53,19 +27,11 @@ import v4.test.claim.manual.manual_corpus_roster {
 }
 
 
-// One row of the corpus report — preserves the full TestClaimRun (cache
-// receipt + eval subject + verdict) so all upstream facts flow forward to
-// the report boundary (facts-flow-forward). Claim and verdict are reached
-// canonically via the stepped accessors in v4.compiler.eval; no parallel
-// claim/verdict field is constructible beside `run`.
 type CorpusEvalEntry {
   run: TestClaimRun<Node, RuntimeValue>
 }
 
 
-// The corpus report is its entries — counts are derived projections, not
-// independent fields, so an inconsistent (entries, counts) pair cannot be
-// constructed (M4 illegal-states-unrepresentable / P2 single authority).
 type CorpusEvalReport {
   entries: List<CorpusEvalEntry>
 }
@@ -76,13 +42,6 @@ fn corpus_entry_label(e: CorpusEvalEntry) -> String {
 }
 
 
-// Single-authority count surface: derive a `VerdictTally` by folding
-// `verdict_tally_add` over each entry's verdict (canonical std/verdict
-// tally — genuinely distinct per-variant work, no per-variant Bool
-// helpers). The pass / fail / deferred / total projections all read off
-// the tally so counts cannot diverge from entries (M4) and no per-variant
-// match lives outside `verdict_tally_add` (predicate-dissolution clean).
-// Populations are `Nat` (substrate-enforced non-negative) per std/verdict.
 fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
     verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
@@ -124,11 +83,6 @@ fn corpus_entries_from_node_runtime_value_runs(
 }
 
 
-// Modeled corpus-eval entry point. Host harness invokes the emitted Rust
-// mirror of this symbol, then serializes the returned CorpusEvalReport
-// (entries list) — counts are reconstructed host-side via the same
-// corpus_report_*_count projections (or emitted accessor fns) so the
-// authority stays in the model.
 fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
   CorpusEvalReport {
     entries: corpus_entries_from_node_runtime_value_runs(
