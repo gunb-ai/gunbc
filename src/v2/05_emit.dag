@@ -2804,6 +2804,8 @@ fn emit_typed_tco_reassign_shared(args: List<Node>, params: List<Node>,
   shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: target))
 }
 
+// Shared typed seed for template binding maps. Used by all backend emitters
+// to create initial Map<String, String> bindings without BRIDGE fabrication.
 fn seed_bindings(key: String, value: String) -> Map<String, String> {
   map_insert(empty_map(), key, value)
 }

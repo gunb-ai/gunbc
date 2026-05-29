@@ -1133,6 +1133,8 @@ fn infer_all_parser_always_advancing(func_index: Map<String, FuncEntry>, si: Map
   infer_parser_always_advancing_members(members: members, func_index: func_index, si: si)
 }
 
+// Typed empty map helpers — eliminates BRIDGE fabrications for standalone
+// empty_map() calls where the emitter can't infer the value type.
 fn seed_string_map(key: String, value: String) -> Map<String, String> {
   map_insert(empty_map(), key, value)
 }
@@ -2807,6 +2809,9 @@ fn construct_branching_termination_proof(func_name: String, body: Node, params: 
   )
 }
 
+// Bridge: extract a CallPattern from a TerminationProof's primary ranking dimension.
+// The first dimension determines the iteration primitive; remaining dimensions
+// are for lexicographic composition (handled by the proof validator).
 fn proof_to_call_pattern(proof: TerminationProof) -> CallPattern {
   match proof.dimensions |> first {
     Some { value: dim } => match dim {

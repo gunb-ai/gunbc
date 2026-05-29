@@ -268,6 +268,9 @@ fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String,
 }
 
 fn topo_sort_key(name: String) -> String {
+  // Bootstrap bridge: declaration lookup currently needs std.types
+  // available everywhere, so resolution sorts it first until FF-9
+  // becomes fully import-driven.
   if name == "std.types" { "" } else { name }
 }
 
@@ -277,6 +280,9 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
   let explicit_edges = modules |> flat_map(m =>
     module_imports(n: m) |> map(imp => DepEdge { from_module: authored_name_at(source_indices: source_indices, node: imp), to_module: authored_name_at(source_indices: source_indices, node: m) })
   )
+  // Bootstrap bridge: if std.types is present, temporarily inject it as a
+  // parent for modules that did not import it explicitly. This is not the
+  // end-state authority model; the bridge deletes when FF-9 is complete.
   let implicit_std_types_edges = if has_std_types {
     modules |> flat_map(m =>
       let m_name = authored_name_at(source_indices: source_indices, node: m)

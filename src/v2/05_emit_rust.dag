@@ -3649,6 +3649,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
       let bd = lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
+      // BRIDGE: Known unresolved acc type patterns → emit "_" to let Rust infer
       let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
@@ -4033,6 +4034,9 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
       concat(var_name, ".", emit_ident(name: method, target: Rust), "(", args_str, ").await?")
     }
     AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } => {
+      // Read method identity from the definition node.
+      // BRIDGE: reads method_def name until Lane C provides per-method
+      // rendering from language extdeps keyed by the definition node.
       let method_name = authored_name_at(source_indices: scope.type_env.source_indices, node: method_def)
       if method_name == "fold" {
         emit_rust_fold_method_call(method_call_node: method_call_node, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -6446,6 +6450,8 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
   concat(async_attr, "{\n", make_indent(level: depth + 1),body_lines, "\n}")
 }
 
+// A5: Emit the Compile match arm for the bootstrap compile subcommand.
+// FF-9: import-driven source resolution from source roots with transitive imports.
 fn emit_compile_match_arm(crate_name: String) -> String {
   let pipeline_mod = module_to_filename(name: "v2.compiler.compile")
   let artifact_mod = module_to_filename(name: "v2.compiler.artifact")
@@ -6566,8 +6572,10 @@ fn emit_run_match_arm(crate_name: String) -> String {
 
 // =========================================================================
 // Pipeline helper functions emitted at module level in main.rs
+// FF-9: import-driven source resolution + diagnostic rendering
 // =========================================================================
 
+// Emit module-level functions for FF-9 import resolution.
 fn emit_main_pipeline_fns(crate_name: String) -> String {
   let pipeline_mod = module_to_filename(name: "v2.compiler.compile")
   concat(
