@@ -51,6 +51,9 @@ jobs:
       - name: Install cross
         if: matrix.cross
         run: cargo install cross --version 0.2.5 --locked
+      - name: Install aarch64 strip (musl cross artifacts on x86 runner)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq binutils-aarch64-linux-gnu
       - name: Build gunbc
         run: |
           set -eux
@@ -63,7 +66,10 @@ jobs:
           fi
           mkdir -p dist
           cp "$bin" "dist/gunbc-${{ matrix.target }}"
-          strip "dist/gunbc-${{ matrix.target }}" || true
+          case '${{ matrix.target }}' in
+            aarch64-unknown-linux-musl) aarch64-linux-gnu-strip "dist/gunbc-${{ matrix.target }}" ;;
+            *) strip "dist/gunbc-${{ matrix.target }}" ;;
+          esac
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
