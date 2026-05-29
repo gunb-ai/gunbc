@@ -18,6 +18,7 @@ import v4.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   diagnostics_singleton,
+  outcome_rejected,
   port_locus
 }
 import v4.std.node { Symbol }
@@ -258,50 +259,203 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Witnessed catalog discharge: extract carrier on Accepted. Each catalog row is manually
-// witnessed in refinement_formatter_literals_accept.dag (Rejected unreachable at catalog
-// rows — T-25-tail prover bind). Outcome boundary preserved on *_authoritative_literal.
+data refinement_authoritative_catalog_substrate_fault: Symbol =
+  refinement_authoritative_catalog_substrate_fault
+
+
+fn refinement_authoritative_catalog_substrate_fault_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: refinement_authoritative_catalog_substrate_fault,
+    at: port_locus(port: refinement_authoritative_locus_port),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+// Witnessed catalog discharge: preserve Outcome on the literal boundary; unwrap to carrier
+// only at catalog rows (Accepted path). Rejected is substrate authoring fault — witnessed
+// unreachable per row in refinement_formatter_literals_accept.dag (T-25-tail prover bind).
 fn discharge_positive_int_authoritative_catalog_literal(
   receipt: Outcome<PositiveInt>,
-) -> PositiveInt {
+) -> Outcome<PositiveInt> {
   match receipt {
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn unwrap_positive_int_authoritative_catalog_literal(
+  receipt: Outcome<PositiveInt>,
+) -> PositiveInt {
+  match discharge_positive_int_authoritative_catalog_literal(receipt: receipt) {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: diagnostics } =>
+      unwrap_positive_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
+  }
+}
+
+
+fn unwrap_positive_int_authoritative_catalog_literal_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> PositiveInt {
+  match outcome_rejected(d: diagnostics.head) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } =>
+      unwrap_positive_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
   }
 }
 
 
 fn discharge_non_negative_int_authoritative_catalog_literal(
   receipt: Outcome<NonNegativeInt>,
-) -> NonNegativeInt {
+) -> Outcome<NonNegativeInt> {
   match receipt {
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn unwrap_non_negative_int_authoritative_catalog_literal(
+  receipt: Outcome<NonNegativeInt>,
+) -> NonNegativeInt {
+  match discharge_non_negative_int_authoritative_catalog_literal(receipt: receipt) {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: diagnostics } =>
+      unwrap_non_negative_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
+  }
+}
+
+
+fn unwrap_non_negative_int_authoritative_catalog_literal_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> NonNegativeInt {
+  match outcome_rejected(d: diagnostics.head) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } =>
+      unwrap_non_negative_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
   }
 }
 
 
 fn discharge_at_least_minus_one_int_authoritative_catalog_literal(
   receipt: Outcome<AtLeastMinusOneInt>,
-) -> AtLeastMinusOneInt {
+) -> Outcome<AtLeastMinusOneInt> {
   match receipt {
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn unwrap_at_least_minus_one_int_authoritative_catalog_literal(
+  receipt: Outcome<AtLeastMinusOneInt>,
+) -> AtLeastMinusOneInt {
+  match discharge_at_least_minus_one_int_authoritative_catalog_literal(receipt: receipt) {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: diagnostics } =>
+      unwrap_at_least_minus_one_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
+  }
+}
+
+
+fn unwrap_at_least_minus_one_int_authoritative_catalog_literal_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> AtLeastMinusOneInt {
+  match outcome_rejected(d: diagnostics.head) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } =>
+      unwrap_at_least_minus_one_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
   }
 }
 
 
 fn discharge_at_least_minus_two_int_authoritative_catalog_literal(
   receipt: Outcome<AtLeastMinusTwoInt>,
-) -> AtLeastMinusTwoInt {
+) -> Outcome<AtLeastMinusTwoInt> {
   match receipt {
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn unwrap_at_least_minus_two_int_authoritative_catalog_literal(
+  receipt: Outcome<AtLeastMinusTwoInt>,
+) -> AtLeastMinusTwoInt {
+  match discharge_at_least_minus_two_int_authoritative_catalog_literal(receipt: receipt) {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: diagnostics } =>
+      unwrap_at_least_minus_two_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
+  }
+}
+
+
+fn unwrap_at_least_minus_two_int_authoritative_catalog_literal_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> AtLeastMinusTwoInt {
+  match outcome_rejected(d: diagnostics.head) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } =>
+      unwrap_at_least_minus_two_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
   }
 }
 
 
 fn discharge_exact_one_int_authoritative_catalog_literal(
   receipt: Outcome<ExactOneInt>,
-) -> ExactOneInt {
+) -> Outcome<ExactOneInt> {
   match receipt {
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn unwrap_exact_one_int_authoritative_catalog_literal(
+  receipt: Outcome<ExactOneInt>,
+) -> ExactOneInt {
+  match discharge_exact_one_int_authoritative_catalog_literal(receipt: receipt) {
     Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: diagnostics } =>
+      unwrap_exact_one_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
+  }
+}
+
+
+fn unwrap_exact_one_int_authoritative_catalog_literal_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> ExactOneInt {
+  match outcome_rejected(d: diagnostics.head) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } =>
+      unwrap_exact_one_int_authoritative_catalog_literal_substrate_fault(
+        diagnostics: diagnostics
+      )
   }
 }
 
