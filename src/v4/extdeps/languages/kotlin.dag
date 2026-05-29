@@ -161,16 +161,21 @@ type KotlinIntegerPrimitiveFacts {
 
 // Anchor: Kotlin stdlib — Byte/Short arithmetic widens to Int (not closed at Byte/Short);
 // https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-byte/
+// 🟢 coproduct dissolution — ordered-ring widths for Int/Long only (Bits8/Bits16 stay in KotlinIntWidth).
 type KotlinOrderedRingIntWidth
   = Bits32
   | Bits64
 
-type KotlinOrderedRingIntegerFacts {
-  surface_spelling: Symbol
-  width: KotlinOrderedRingIntWidth
-  overflow: KotlinIntegerOverflowUnspecified
-  representation: KotlinRuntimeRepresentation
-}
+// 🟢 coproduct dissolution — Int/Long ordered-ring rows only; spelling/width fixed per variant.
+type KotlinOrderedRingIntegerFacts
+  = KotlinOrderedRingIntFacts {
+      overflow: KotlinIntegerOverflowUnspecified,
+      representation: KotlinRuntimeRepresentation
+    }
+  | KotlinOrderedRingLongFacts {
+      overflow: KotlinIntegerOverflowUnspecified,
+      representation: KotlinRuntimeRepresentation
+    }
 
 type KotlinFloatPrimitiveFacts {
   surface_spelling: Symbol
@@ -354,9 +359,13 @@ data kotlin_integer_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
   kotlin_facts_long
 ]
 
+data kotlin_ordered_ring_facts_int: KotlinOrderedRingIntegerFacts = kotlin_ordered_ring_int_facts()
+
+data kotlin_ordered_ring_facts_long: KotlinOrderedRingIntegerFacts = kotlin_ordered_ring_long_facts()
+
 data kotlin_integer_algebra_inhabitance_facts_catalog: List<KotlinOrderedRingIntegerFacts> = [
-  kotlin_ordered_ring_integer_from_int_primitive_facts(facts: kotlin_facts_int),
-  kotlin_ordered_ring_integer_from_long_primitive_facts(facts: kotlin_facts_long)
+  kotlin_ordered_ring_facts_int,
+  kotlin_ordered_ring_facts_long
 ]
 
 data kotlin_float_facts_catalog: List<KotlinFloatPrimitiveFacts> = [
@@ -891,36 +900,36 @@ fn kotlin_ordered_ring_int_width_to_int_width(width: KotlinOrderedRingIntWidth) 
   }
 }
 
-fn kotlin_ordered_ring_integer_from_int_primitive_facts(
-  facts: KotlinIntegerPrimitiveFacts
-) -> KotlinOrderedRingIntegerFacts {
-  KotlinOrderedRingIntegerFacts {
-    surface_spelling: facts.surface_spelling,
-    width: Bits32,
-    overflow: facts.overflow,
-    representation: facts.representation
+fn kotlin_ordered_ring_int_facts() -> KotlinOrderedRingIntegerFacts {
+  KotlinOrderedRingIntFacts {
+    overflow: kotlin_integer_overflow_unspecified,
+    representation: kotlin_platform_specific_runtime_representation
   }
 }
 
-fn kotlin_ordered_ring_integer_from_long_primitive_facts(
-  facts: KotlinIntegerPrimitiveFacts
-) -> KotlinOrderedRingIntegerFacts {
-  KotlinOrderedRingIntegerFacts {
-    surface_spelling: facts.surface_spelling,
-    width: Bits64,
-    overflow: facts.overflow,
-    representation: facts.representation
+fn kotlin_ordered_ring_long_facts() -> KotlinOrderedRingIntegerFacts {
+  KotlinOrderedRingLongFacts {
+    overflow: kotlin_integer_overflow_unspecified,
+    representation: kotlin_platform_specific_runtime_representation
   }
 }
 
 fn kotlin_ordered_ring_integer_to_primitive_facts(
   facts: KotlinOrderedRingIntegerFacts
 ) -> KotlinIntegerPrimitiveFacts {
-  KotlinIntegerPrimitiveFacts {
-    surface_spelling: facts.surface_spelling,
-    width: kotlin_ordered_ring_int_width_to_int_width(width: facts.width),
-    overflow: facts.overflow,
-    representation: facts.representation
+  match facts {
+    KotlinOrderedRingIntFacts { overflow, representation } => KotlinIntegerPrimitiveFacts {
+      surface_spelling: kotlin_surface_spelling_int,
+      width: Bits32,
+      overflow: overflow,
+      representation: representation
+    }
+    KotlinOrderedRingLongFacts { overflow, representation } => KotlinIntegerPrimitiveFacts {
+      surface_spelling: kotlin_surface_spelling_long,
+      width: Bits64,
+      overflow: overflow,
+      representation: representation
+    }
   }
 }
 
@@ -931,22 +940,25 @@ fn kotlin_ordered_ring_integer_facts_node(facts: KotlinOrderedRingIntegerFacts) 
 }
 
 fn kotlin_integer_algebra_witness_node(facts: KotlinOrderedRingIntegerFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      kotlin_named_edge(
-        name: kotlin_witness_integer_ordered_ring,
-        target: kotlin_atom(id: kotlin_witness_integer_ordered_ring)
-      ),
-      kotlin_named_edge(
-        name: kotlin_facts_field_overflow,
-        target: kotlin_overflow_node(overflow: facts.overflow)
-      ),
-      kotlin_named_edge(
-        name: kotlin_facts_field_representation,
-        target: kotlin_runtime_representation_node(representation: facts.representation)
-      )
-    ]
+  match facts {
+    KotlinOrderedRingIntFacts { overflow, representation }
+    | KotlinOrderedRingLongFacts { overflow, representation } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        kotlin_named_edge(
+          name: kotlin_witness_integer_ordered_ring,
+          target: kotlin_atom(id: kotlin_witness_integer_ordered_ring)
+        ),
+        kotlin_named_edge(
+          name: kotlin_facts_field_overflow,
+          target: kotlin_overflow_node(overflow: overflow)
+        ),
+        kotlin_named_edge(
+          name: kotlin_facts_field_representation,
+          target: kotlin_runtime_representation_node(representation: representation)
+        )
+      ]
+    }
   }
 }
 

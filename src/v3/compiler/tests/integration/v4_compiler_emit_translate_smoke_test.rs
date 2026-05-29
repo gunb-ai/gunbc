@@ -531,8 +531,8 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
         );
     }
     for name in [
-        "kotlin_ordered_ring_integer_from_int_primitive_facts",
-        "kotlin_ordered_ring_integer_from_long_primitive_facts",
+        "kotlin_ordered_ring_int_facts",
+        "kotlin_ordered_ring_long_facts",
         "kotlin_integer_algebra_witness_node",
         "kotlin_float_algebra_witness_node",
         "kotlin_bool_algebra_witness_node",
@@ -555,6 +555,24 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
         surface_declares_type(&module, "KotlinOrderedRingIntWidth"),
         "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare algebra-closed integer width coproduct `KotlinOrderedRingIntWidth`"
     );
+    assert!(
+        surface_declares_type(&module, "KotlinOrderedRingIntFacts"),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare closed Int ordered-ring variant `KotlinOrderedRingIntFacts`"
+    );
+    assert!(
+        surface_declares_type(&module, "KotlinOrderedRingLongFacts"),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare closed Long ordered-ring variant `KotlinOrderedRingLongFacts`"
+    );
+    for name in [
+        "kotlin_ordered_ring_integer_from_int_primitive_facts",
+        "kotlin_ordered_ring_integer_from_long_primitive_facts",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{KOTLIN_LANGUAGE_PATH}: must not expose broad `KotlinIntegerPrimitiveFacts` ordered-ring constructors via `{name}`"
+        );
+    }
     assert_eq!(
         surface_fn_first_param_named_type(&module, "kotlin_integer_algebra_inhabitance"),
         Some("KotlinOrderedRingIntegerFacts".to_string()),
@@ -563,24 +581,24 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
     assert_eq!(
         data_list_element_var_names(&module, KOTLIN_LANGUAGE_DAG, "kotlin_integer_algebra_inhabitance_facts_catalog"),
         vec![
-            "kotlin_ordered_ring_integer_from_int_primitive_facts(facts: kotlin_facts_int)".to_string(),
-            "kotlin_ordered_ring_integer_from_long_primitive_facts(facts: kotlin_facts_long)".to_string(),
+            "kotlin_ordered_ring_facts_int".to_string(),
+            "kotlin_ordered_ring_facts_long".to_string(),
         ],
-        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must derive Int/Long ordered-ring rows from primitive fact bundles"
+        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must name closed Int/Long ordered-ring rows"
     );
     assert!(
         data_body_source_contains(
             &module,
             KOTLIN_LANGUAGE_DAG,
-            "kotlin_integer_algebra_inhabitance_facts_catalog",
-            "kotlin_facts_int"
+            "kotlin_ordered_ring_facts_int",
+            "kotlin_ordered_ring_int_facts()"
         ) && data_body_source_contains(
             &module,
             KOTLIN_LANGUAGE_DAG,
-            "kotlin_integer_algebra_inhabitance_facts_catalog",
-            "kotlin_facts_long"
+            "kotlin_ordered_ring_facts_long",
+            "kotlin_ordered_ring_long_facts()"
         ),
-        "{KOTLIN_LANGUAGE_PATH}: algebra inhabitance catalog must reference authoritative int/long primitive facts"
+        "{KOTLIN_LANGUAGE_PATH}: closed ordered-ring rows must be built only via zero-arg Int/Long constructors"
     );
     assert!(
         !data_body_source_contains(
