@@ -11,15 +11,14 @@ import v4.std.logic { Bool }
 import v4.std.diagnostic {
   Diagnostic,
   Locus,
-  LocusAnchor,
   Outcome,
   Accepted,
   Rejected,
   None,
-  PortLocus,
   Unavailable,
   UserInputBoundary,
-  diagnostics_singleton
+  diagnostics_singleton,
+  port_locus
 }
 import v4.std.node { Symbol }
 
@@ -28,7 +27,7 @@ data refinement_authoritative_locus_port: Symbol = refinement_authoritative_locu
 
 
 fn refinement_authoritative_locus() -> Locus {
-  PortLocus { anchor: LocusAnchor { at: refinement_authoritative_locus_port } }
+  port_locus(port: refinement_authoritative_locus_port)
 }
 
 
@@ -174,36 +173,92 @@ fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
 }
 
 
-// Upstream-documented defaults: discharge Validation at the authoritative boundary.
-// Ill-formed substrate constants fail closed to the minimum valid carrier for that
-// predicate (not the rejected base). User/config input must use make_* with a real Locus.
+// Upstream-documented defaults: structural admits proof + make_* at the authoritative
+// boundary. Ill-formed substrate literals (!admits) discharge through a non-recursive
+// rejection path (no minimum-value substitution). User/config input must use make_*.
 fn positive_int_for_authoritative_constant(base: Int) -> PositiveInt {
-  match refine(base: base, by: positive_int_validation, at: refinement_authoritative_locus()) {
-    Accepted { value: refined, diagnostics: _ } => PositiveInt { refined: refined }
-    Rejected { diagnostics: _ } => positive_int_for_authoritative_constant(base: 1)
+  if positive_int_admits(base) {
+    match make_positive_int(value: base, at: refinement_authoritative_locus()) {
+      Accepted { value: v, diagnostics: _ } => v
+      Rejected { diagnostics: _ } =>
+        positive_int_authoritative_discharge_failure(base: base)
+    }
+  } else {
+    positive_int_authoritative_discharge_failure(base: base)
+  }
+}
+
+
+fn positive_int_authoritative_discharge_failure(base: Int) -> PositiveInt {
+  match make_positive_int(value: base, at: refinement_authoritative_locus()) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } =>
+      PositiveInt { refined: Refined { base: base } }
   }
 }
 
 
 fn non_negative_int_for_authoritative_constant(base: Int) -> NonNegativeInt {
-  match refine(base: base, by: non_negative_int_validation, at: refinement_authoritative_locus()) {
-    Accepted { value: refined, diagnostics: _ } => NonNegativeInt { refined: refined }
-    Rejected { diagnostics: _ } => non_negative_int_for_authoritative_constant(base: 0)
+  if non_negative_int_admits(base) {
+    match make_non_negative_int(value: base, at: refinement_authoritative_locus()) {
+      Accepted { value: v, diagnostics: _ } => v
+      Rejected { diagnostics: _ } =>
+        non_negative_int_authoritative_discharge_failure(base: base)
+    }
+  } else {
+    non_negative_int_authoritative_discharge_failure(base: base)
+  }
+}
+
+
+fn non_negative_int_authoritative_discharge_failure(base: Int) -> NonNegativeInt {
+  match make_non_negative_int(value: base, at: refinement_authoritative_locus()) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } =>
+      NonNegativeInt { refined: Refined { base: base } }
   }
 }
 
 
 fn at_least_minus_one_int_for_authoritative_constant(base: Int) -> AtLeastMinusOneInt {
-  match refine(base: base, by: at_least_minus_one_int_validation, at: refinement_authoritative_locus()) {
-    Accepted { value: refined, diagnostics: _ } => AtLeastMinusOneInt { refined: refined }
-    Rejected { diagnostics: _ } => at_least_minus_one_int_for_authoritative_constant(base: -1)
+  if at_least_minus_one_int_admits(base) {
+    match make_at_least_minus_one_int(value: base, at: refinement_authoritative_locus()) {
+      Accepted { value: v, diagnostics: _ } => v
+      Rejected { diagnostics: _ } =>
+        at_least_minus_one_int_authoritative_discharge_failure(base: base)
+    }
+  } else {
+    at_least_minus_one_int_authoritative_discharge_failure(base: base)
+  }
+}
+
+
+fn at_least_minus_one_int_authoritative_discharge_failure(base: Int) -> AtLeastMinusOneInt {
+  match make_at_least_minus_one_int(value: base, at: refinement_authoritative_locus()) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } =>
+      AtLeastMinusOneInt { refined: Refined { base: base } }
   }
 }
 
 
 fn exact_one_int_for_authoritative_constant(base: Int) -> ExactOneInt {
-  match refine(base: base, by: exact_one_int_validation, at: refinement_authoritative_locus()) {
-    Accepted { value: refined, diagnostics: _ } => ExactOneInt { refined: refined }
-    Rejected { diagnostics: _ } => exact_one_int_for_authoritative_constant(base: 1)
+  if exact_one_int_admits(base) {
+    match make_exact_one_int(value: base, at: refinement_authoritative_locus()) {
+      Accepted { value: v, diagnostics: _ } => v
+      Rejected { diagnostics: _ } =>
+        exact_one_int_authoritative_discharge_failure(base: base)
+    }
+  } else {
+    exact_one_int_authoritative_discharge_failure(base: base)
+  }
+}
+
+
+fn exact_one_int_authoritative_discharge_failure(base: Int) -> ExactOneInt {
+  match make_exact_one_int(value: base, at: refinement_authoritative_locus()) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } =>
+      ExactOneInt { refined: Refined { base: base } }
   }
 }
