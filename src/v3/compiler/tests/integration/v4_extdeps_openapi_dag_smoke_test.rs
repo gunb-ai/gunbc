@@ -2,8 +2,8 @@
 //!
 //! T-4.6 / SL-3229-OPENAPI-WIRECONTRACT-COORDINATION ratchet for
 //! `src/v4/extdeps/formats/openapi.dag`: `OpenApiOperationWireContractFacts`
-//! composes `coordination.dag` `WireContractFacts`; exchange / settlement /
-//! consistency authority routes through `coordination_effect_obligation(Http)`.
+//! carries `OpenApiHttpWireContractFacts` (Http-only witness carrier); coordination
+//! `WireContractFacts` is derived only via `openapi_http_wire_contract_facts_to_coordination`.
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching
 //! `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` + INVARIANTS table
@@ -78,7 +78,17 @@ fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
     let facts = type_record_fields(&module, "OpenApiOperationWireContractFacts");
     assert_eq!(
         record_field_type(facts, "coordination"),
-        "WireContractFacts"
+        "OpenApiHttpWireContractFacts"
+    );
+    let http_facts = type_record_fields(&module, "OpenApiHttpWireContractFacts");
+    assert_eq!(record_field_type(http_facts, "http_exchange"), "OpenApiHttpRequestReplyWitness");
+    assert_eq!(
+        record_field_type(http_facts, "http_settlement"),
+        "OpenApiHttpImmediateSettlementWitness"
+    );
+    assert_eq!(
+        record_field_type(http_facts, "http_consistency"),
+        "OpenApiHttpNoReplicaConvergenceWitness"
     );
     assert_eq!(
         record_field_type(facts, "admitted_method"),
@@ -112,14 +122,16 @@ fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
         "OpenAPI must not carry a parallel RequestReply witness, generic obligation coercion with fabricated bounds, or steps:0 stubs"
     );
     assert!(
-        OPENAPI_DAG.contains("fn openapi_http_wire_contract_facts(")
-            && OPENAPI_DAG.contains("-> Outcome<WireContractFacts>")
+        OPENAPI_DAG.contains("type OpenApiHttpWireContractFacts {")
+            && OPENAPI_DAG.contains("fn openapi_http_wire_contract_facts_to_coordination(")
+            && OPENAPI_DAG.contains("fn openapi_http_wire_contract_facts(")
+            && OPENAPI_DAG.contains("-> Outcome<OpenApiHttpWireContractFacts>")
             && OPENAPI_DAG.contains("fn openapi_operation_wire_contract_facts(")
             && OPENAPI_DAG.contains("-> Outcome<OpenApiOperationWireContractFacts>")
             && OPENAPI_DAG.contains("fn openapi_operation_wire_contract(")
+            && OPENAPI_DAG.contains("facts: openapi_http_wire_contract_facts_to_coordination(facts: facts.coordination)")
             && OPENAPI_DAG.contains("bind: BindRef")
-            && OPENAPI_DAG.contains("bind: openapi_http_coordination_bind(bind: bind)")
-            && OPENAPI_DAG.contains("facts: facts.coordination"),
-        "OpenApi operation WireContract must pair Http-derived facts with Http CoordinationBind only (BindRef in, not open CoordinationBind)"
+            && OPENAPI_DAG.contains("bind: openapi_http_coordination_bind(bind: bind)"),
+        "OpenApi operation WireContract must use Http-only fact carrier and derive coordination WireContractFacts in the constructor path only"
     );
 }

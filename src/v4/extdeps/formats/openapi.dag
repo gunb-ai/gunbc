@@ -562,8 +562,24 @@ fn openapi_http_status_code_value(
 }
 
 
+// Http-only wire-contract carrier: witness fields admit no non-Http exchange/settlement/consistency
+// degrees of freedom at record-literal boundaries (P2 single authority).
+type OpenApiHttpRequestReplyWitness {}
+
+type OpenApiHttpImmediateSettlementWitness {}
+
+type OpenApiHttpNoReplicaConvergenceWitness {}
+
+type OpenApiHttpWireContractFacts {
+  from: EndpointRef,
+  to: EndpointRef,
+  http_exchange: OpenApiHttpRequestReplyWitness,
+  http_settlement: OpenApiHttpImmediateSettlementWitness,
+  http_consistency: OpenApiHttpNoReplicaConvergenceWitness
+}
+
 type OpenApiOperationWireContractFacts {
-  coordination: WireContractFacts,
+  coordination: OpenApiHttpWireContractFacts,
   admitted_method: OpenApiAdmittedHttpMethod,
   path_template: OpenApiPathTemplateKey,
 }
@@ -612,17 +628,33 @@ fn openapi_http_consistency_from_obligation(
   }
 }
 
-fn openapi_http_wire_contract_facts(from: EndpointRef, to: EndpointRef) -> Outcome<WireContractFacts> {
+fn openapi_http_wire_contract_facts_to_coordination(
+  facts: OpenApiHttpWireContractFacts
+) -> WireContractFacts {
+  let obligation = openapi_http_obligation()
+  WireContractFacts {
+    from: facts.from,
+    to: facts.to,
+    exchange: obligation.required_exchange,
+    settlement: ImmediateSettlement,
+    consistency: NoReplicaConvergence
+  }
+}
+
+fn openapi_http_wire_contract_facts(
+  from: EndpointRef,
+  to: EndpointRef
+) -> Outcome<OpenApiHttpWireContractFacts> {
   let obligation = openapi_http_obligation()
   match openapi_http_settlement_from_obligation(settlement: obligation.required_settlement) {
-    Accepted { value: settlement, diagnostics: settle_diags } => match openapi_http_consistency_from_obligation(consistency: obligation.required_consistency) {
-      Accepted { value: consistency, diagnostics: consist_diags } => Accepted {
-        value: WireContractFacts {
+    Accepted { value: _, diagnostics: settle_diags } => match openapi_http_consistency_from_obligation(consistency: obligation.required_consistency) {
+      Accepted { value: _, diagnostics: consist_diags } => Accepted {
+        value: OpenApiHttpWireContractFacts {
           from: from,
           to: to,
-          exchange: obligation.required_exchange,
-          settlement: settlement,
-          consistency: consistency
+          http_exchange: OpenApiHttpRequestReplyWitness {},
+          http_settlement: OpenApiHttpImmediateSettlementWitness {},
+          http_consistency: OpenApiHttpNoReplicaConvergenceWitness {}
         },
         diagnostics: diagnostics_merge(outer: settle_diags, inner: consist_diags)
       }
@@ -656,7 +688,7 @@ fn openapi_operation_wire_contract(
   bind: BindRef
 ) -> WireContract {
   WireContract {
-    facts: facts.coordination,
+    facts: openapi_http_wire_contract_facts_to_coordination(facts: facts.coordination),
     bind: openapi_http_coordination_bind(bind: bind)
   }
 }
@@ -679,4 +711,4 @@ type OpenApiDocumentWireContractFacts {
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 // 🟡 gated — feature: unique-name profile parse enforcement binding (OpenApiUniqueNameProfileFacts consumption at parse boundary) — SL-3229-OPENAPI-UNIQUE-NAME-PARSE.
 // 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_admitted_to_http_method + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
-// 🟢 coproduct dissolution — SL-3229-OPENAPI-WIRECONTRACT-COORDINATION — OpenApiOperationWireContractFacts composes coordination WireContractFacts; exchange/settlement/consistency authority routes through coordination_effect_obligation(Http).
+// 🟢 coproduct dissolution — SL-3229-OPENAPI-WIRECONTRACT-COORDINATION — OpenApiOperationWireContractFacts carries OpenApiHttpWireContractFacts (Http-only witness carrier); coordination WireContractFacts is derived only via openapi_http_wire_contract_facts_to_coordination / Outcome constructors sourcing coordination_effect_obligation(Http).
