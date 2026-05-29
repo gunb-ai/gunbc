@@ -64,7 +64,13 @@ three to spot-check the §1/§5/§A numbers. **Run from repo root:**
 | **A. Distinct gate names** (`feature:NAME` or `feature: NAME`) | how many *gates* exist? | `{ git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sed 's/feature://'; git grep -hoE 'feature: [a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sed 's/feature: //'; } \| sort -u \| wc -l` | **130** |
 | **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -c '🟡 gated' origin/main -- src/v4/ \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **279** |
 | **C. Per-gate annotation rows for gate X (all forms — header + field)** | how many annotation rows carry gate X? | `git grep -cE 'gated[ —:]+(feature: )?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` (substitute X) | e.g. `formatter-cross-field-constraints` = 7; `formatter-int-refinement` = 66 |
-| **C′. Per-gate field annotations only (excludes `feature:` header row)** — used for §1.1's "63 sites" / §1.3's "7 rows" | how many *field* annotations carry gate X (one declaration site per file excluded)? | `git grep -cE 'gated: ?X\|gated consumer: ?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` | e.g. `formatter-int-refinement` = 63; `formatter-cross-field-constraints` = 7 (clang_format's 4 + black/ktfmt/rustfmt 1 each — no header rows under the field-only grep) |
+| **C′. Per-gate FIELD annotations only (excludes `feature:` header rows)** — historical/informational only | how many *field* annotations carry gate X (header declaration rows excluded)? | `git grep -cE 'gated: ?X\|gated consumer: ?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` | e.g. `formatter-int-refinement` = 63; `formatter-cross-field-constraints` = 3 (clang_format only — black/ktfmt/rustfmt carry only the `feature:` header for this gate) |
+
+**§1.x and §A all use Population C** (all-forms, includes both header
+declarations and field annotations) as the canonical per-gate row
+count. C′ is documented for transparency about an earlier inconsistency
+where §1.1 cited the C′ value (63) while §1.3 cited the C value (7);
+**§1.1 now reads "66" under C** for single-authority consistency.
 
 **Last reproduced 2026-05-29 against `origin/main` @ `df91abc2b`:**
 populations A=**130**, B=279.
@@ -86,17 +92,17 @@ This does **not** change the substantive classifications — every
 gate examined for NECESSARY/UNNECESSARY in §1.1–§1.8 was a
 spot-checked gate whose status was verified directly. The undercount
 was in the *long-tail census denominator*, not in the tabulated
-classifications. §A1's 66-site dissolve-now set is unchanged
+classifications. §A1's dissolve-now set (now 69 sites under Population C, was 66 under mixed C/C′) is unchanged in scope
 (derived from population C per-gate counts, which were correct);
 §A6's intra-task slicing list is unchanged.
 
 **Important distinction (P2 single-authority for this audit's own
-surface):** §1.1 ("63 sites · 9 formatter files") and §1.3 ("7 annotation
+surface):** §1.1 ("66 annotation rows across 5 formatter files") and §1.3 ("7 annotation
 rows across 4 formatter files") use **population C** — they count
 per-field shorthand annotations like `🟡 gated: formatter-int-refinement`,
 not just the `feature:` header declarations. §1.9's distribution table
 uses **population A** — distinct `feature:NAME` declarations only, which
-is why formatter-int-refinement contributes 1 to the 130 there but 63 to
+is why formatter-int-refinement contributes 1 to the 130 there but 66 to
 §1.1's site count. Both numbers are correct for their respective
 populations.
 
@@ -119,7 +125,7 @@ gates**, which contain both un-tabulated multi-site gates (at 2–9
 sites each) **and** the bulk of the singleton tail. See §1.9 for the
 full site-count distribution table.
 
-### §1.1 `formatter-int-refinement`  (63 sites · 9 formatter files)
+### §1.1 `formatter-int-refinement`  (66 annotation rows across 5 formatter files; 63 field annotations + 3 `feature:` headers — corrected 2026-05-29 per inline review for consistency with Population C)
 
 **Bind:** T-25-core (refine substrate; `Refined<Int>` carrier with predicate
 ≥ 0 / ≥ 1).
@@ -131,7 +137,7 @@ T-25-core **IS LANDED** (`src/v4/std/refinement.dag` — PR #3354). `Refined<B>`
 `extdeps/formatters/lean4_format.dag:18`.
 `src/v4/TASKS.md:1252` records **`T-25 [SUBSTRATE LANDED]`**.
 
-**Classification — CORRECTED:** **UNNECESSARY.** All 63 sites can replace
+**Classification — CORRECTED:** **UNNECESSARY.** All 66 sites can replace
 their annotated `Int` fields with `Refined<Int>` today against the existing
 substrate. Each per-field "must be ≥0" / "must be ≥1" annotation becomes the
 `Validation<Int>` predicate. This is the largest UNNECESSARY cluster in the
@@ -317,9 +323,9 @@ Both are caught by the same §1.1 / §1.5 substrate-status correction
 (T-25-core IS landed via PR #3354); the original long-tail sample
 missed them because the §B inspection list omitted `refinement.dag`
 (action §A8). They are folded into action **§A1** (rename to "DISSOLVE
-all landed-T-25-core formatter refinement gates"): now 63 +
+all landed-T-25-core formatter refinement gates"): now 66 +
 1 (`rustfmt-ignore-path-refinement`) + 1 (`rustfmt-macro-name-refinement`)
-+ 1 (`rustfmt-version-string-refinement`) = **66 sites** dissolvable
++ 1 (`rustfmt-version-string-refinement`) = **69 sites** dissolvable
 against the landed `std/refinement.dag` substrate.
 
 ---
@@ -432,23 +438,22 @@ under-counted the route by omitting §1.2 and §1.3.
 | Population | Sites | NECESSARY | UNNECESSARY |
 | --- | ---: | ---: | ---: |
 | `🟡 gated — feature:*` distinct gates | 130 | 123 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
-| `🟡 gated` annotation occurrences | 279 | ~204 | **~75** (§1.1 alone is 63 sites; +2 long-tail T-25-core binds; §1.3 corrected to 7 rows across 4 formatter files per 2026-05-29 codex/inline review; total updated to live origin/main count of 279) |
+| `🟡 gated` annotation occurrences | 279 | ~200 | **~79** (§1.1 alone is 66 rows under Population C; +2 long-tail T-25-core binds; §1.3 = 7 rows across 4 formatter files; §1.4 = 2; §1.5 = 1; §1.6 = 1 — see §0 for canonical commands) |
 | `🟡 needs-more-work` | 53 | 36 | 17 (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
 
 **Headline — REVISED:** the v4 deferral ledger has **one large unnecessary
-cluster** — `formatter-int-refinement` (63 sites · 9 formatter files;
-the broader landed-T-25-core dissolve-now set is 66 sites — see §A1)
+cluster** — `formatter-int-refinement` (66 sites across 5 formatter
+files under Population C; the broader landed-T-25-core dissolve-now
+set is 69 sites — see §A1)
 should have dissolved when T-25-core (`std/refinement.dag`) landed in
 PR #3354. Prose deferrals and the long tail of feature gates remain
 honest. Combined with the smaller T-4.16 follow-on gates (§1.3, §1.4, §1.6 —
-§1.5 already folded into §A1's 66-site set), there is a clear T-4.16
-close-out opportunity to dissolve **~76 yellow marks** against
-substrate that already exists: 66 (§A1 landed-T-25-core set) + 7
-(§1.3 cross-field) + 2 (§1.4 deprecated-alias) + 1 (§1.6 unstable-
-option-validity) = **76**. Matches §5's ~75 row (±1 grep tolerance
-for the "~" prefix; see §0 last-reproduced footnote on B-population
-drift).
+§1.5 already folded into §A1's 69-site set), there is a clear T-4.16
+close-out opportunity to dissolve **~79 yellow marks** against
+substrate that already exists: 69 (§A1 landed-T-25-core set under
+Population C) + 7 (§1.3 cross-field) + 2 (§1.4 deprecated-alias) +
+1 (§1.6 unstable-option-validity) = **79**. Matches §5's ~79 row.
 
 The misclassifications cluster in **two places**:
 
@@ -469,8 +474,9 @@ labelling defect: work is open, bind names a closed task.
 ## §A. Action items
 
 * **§A1 — DISSOLVE all landed-T-25-core formatter refinement gates
-  (66 sites total)** against the landed `std/refinement.dag` substrate.
-  Breakdown matches §1.9: 63 × `formatter-int-refinement` field sites +
+  (69 sites total under Population C)** against the landed
+  `std/refinement.dag` substrate. Breakdown: 66 × `formatter-int-refinement`
+  rows (63 field annotations + 3 `feature:` headers) +
   1 × `rustfmt-ignore-path-refinement` + 1 × `rustfmt-macro-name-refinement`
   + 1 × `rustfmt-version-string-refinement`. Replace each annotated
   `Int` / `String` field with `Refined<Int>` / `Refined<String>` plus the
