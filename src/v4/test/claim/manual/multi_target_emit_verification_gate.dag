@@ -15,7 +15,7 @@ import v4.std.verification {
   CompilesClaim,
   EqualsClaim,
   ManualClaimAnchor,
-  ManualNatAddLeftIdentity,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   TestgenLayer,
@@ -25,7 +25,7 @@ import v4.std.verification {
 
 data emit_verification_gate_symbol: Symbol = emit_verification_gate_symbol
 
-data emit_verification_gate_anchor: ManualClaimAnchor = ManualNatAddLeftIdentity
+data emit_verification_gate_anchor: ManualClaimAnchor = ManualAnchorAbsent
 
 data emit_verification_gate_classification: TestClassification = {
   tier: Tier1

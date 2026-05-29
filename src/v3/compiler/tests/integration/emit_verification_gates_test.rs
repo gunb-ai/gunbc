@@ -9,6 +9,13 @@
 //! emitted self-host tree. `Compiles` TestClaims only check substrate lowering.
 //! This gate ties arbitrary `.v3` programs to the E-5 contract verifiers for
 //! Rust (`rustc -D warnings`), Go (`gofmt -l`), and Python (`py_compile`).
+//!
+//! **CI authority:** `r1c_e_emit_gates.template.dag` claim
+//! `program_fixtures_post_emit_clean_all_targets` (`ExecuteCommand` →
+//! `check_program_fixtures_post_emit_clean_all_targets`) via
+//! `t_pb_b_1_dag_runner_test::r1c_e_emit_gates_suite_passes_through_runner`.
+//! The `#[ignore]` tests below are optional local receipts when all toolchains
+//! are on PATH.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

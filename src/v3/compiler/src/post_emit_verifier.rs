@@ -19,10 +19,9 @@
 //!   binding. (`syntax_only` is authored on the spec but not yet
 //!   consumed by any Rust-side consumer — see
 //!   `PostEmitVerifierBinding` doc.)
-//! - `run_post_emit_verifier` invokes `Command::new(binding.command)
-//!   .args(&binding.args).arg(source_path)`, collects stdout/stderr,
-//!   and applies the binding's `expected_exit_code` +
-//!   `output_policy` as the verdict.
+//! - `run_post_emit_verifier` invokes the contract command via
+//!   [`crate::bounded_host_command`] (wall-bounded wait + capped I/O),
+//!   then applies the binding's `expected_exit_code` + `output_policy`.
 //!
 //! Scope caveat — calling convention: the harness assumes the
 //! verifier takes the source file as its final positional argument.
@@ -40,7 +39,9 @@
 use std::fmt;
 use std::io::Write;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+
+use crate::bounded_host_command::{self, DEFAULT_WALL_TIMEOUT};
 
 use crate::dag::{DeclarationId, FieldValue, LiteralBits};
 use crate::emit::{emit_go_text, emit_python_text, emit_rust_text};
@@ -226,11 +227,13 @@ pub fn run_post_emit_verifier(
     {
         command.current_dir(parent);
     }
-    let output = command
-        .output()
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    bounded_host_command::prepare_host_command(&mut command);
+    let label = format!("post_emit_verifier `{}`", binding.command);
+    let output = bounded_host_command::host_command_output(&label, DEFAULT_WALL_TIMEOUT, command)
         .map_err(|err| VerifierRunError::InvocationFailed {
             command: binding.command.clone(),
-            io_error: err.to_string(),
+            io_error: err,
         })?;
 
     let exit_code = output.status.code();
