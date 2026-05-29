@@ -115,11 +115,14 @@ import v4.std.text { String }
 type EcmascriptSingletonKind
   = UndefinedT | NullT
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL. ECMA-262 §6.1 primitive value types
-// included in this slice: Number, BigInt, Boolean, String, plus Undefined/Null singletons.
-// Symbol (§6.1.5) deferred (parallels python.dag deferring Complex laws).
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL. ECMA-262 §6.1 primitive value types,
+// in spec order: Undefined, Null, Boolean, String, Symbol, Number, BigInt. All seven are
+// declared variants of the closed coproduct (Undefined/Null collapse into Singleton). Symbol
+// (§6.1.5) carries a wave-1 fact-bundle alongside the others; wave-2b deepening (algebra
+// inhabitance / unique-identity laws) is deferred, parallel to `python.dag` deferring Complex
+// laws while still declaring `ComplexScalar` in `PythonScalar`.
 type EcmascriptScalar
-  = NumberScalar | BigIntScalar | BooleanScalar | StringScalar | Singleton { kind: EcmascriptSingletonKind }
+  = NumberScalar | BigIntScalar | BooleanScalar | StringScalar | SymbolScalar | Singleton { kind: EcmascriptSingletonKind }
 
 // 🟢 grounded.
 type EcmascriptCost {
@@ -181,6 +184,16 @@ type EcmascriptStringPrimitiveFacts {
   std_projection: Symbol
 }
 
+// 🟢 grounded. ECMA-262 §6.1.5 Symbol type — unique, immutable, non-String property keys.
+// Wave-1 fact-bundle only; wave-2b algebra inhabitance (unique-identity equivalence laws)
+// is deferred, parallel to `python.dag` Complex deferring algebra laws while still landing
+// a primitive-fact bundle.
+type EcmascriptSymbolPrimitiveFacts {
+  surface_spelling: Symbol
+  encoding: Symbol
+  std_projection: Symbol
+}
+
 // 🟢 grounded.
 type EcmascriptSingletonPrimitiveFacts {
   surface_spelling: Symbol
@@ -194,6 +207,7 @@ data ecmascript_surface_spelling_number: Symbol = ecmascript_surface_spelling_nu
 data ecmascript_surface_spelling_bigint: Symbol = ecmascript_surface_spelling_bigint
 data ecmascript_surface_spelling_boolean: Symbol = ecmascript_surface_spelling_boolean
 data ecmascript_surface_spelling_string: Symbol = ecmascript_surface_spelling_string
+data ecmascript_surface_spelling_symbol: Symbol = ecmascript_surface_spelling_symbol
 data ecmascript_surface_spelling_undefined: Symbol = ecmascript_surface_spelling_undefined
 data ecmascript_surface_spelling_null: Symbol = ecmascript_surface_spelling_null
 
@@ -201,6 +215,7 @@ data ecmascript_std_projection_number: Symbol = ecmascript_std_projection_number
 data ecmascript_std_projection_bigint: Symbol = ecmascript_std_projection_bigint
 data ecmascript_std_projection_boolean: Symbol = ecmascript_std_projection_boolean
 data ecmascript_std_projection_string: Symbol = ecmascript_std_projection_string
+data ecmascript_std_projection_symbol: Symbol = ecmascript_std_projection_symbol
 data ecmascript_std_projection_undefined: Symbol = ecmascript_std_projection_undefined
 data ecmascript_std_projection_null: Symbol = ecmascript_std_projection_null
 
@@ -208,6 +223,7 @@ data ecmascript_repr_number_ieee754_binary64: Symbol = ecmascript_repr_number_ie
 data ecmascript_repr_bigint_arbitrary_precision: Symbol = ecmascript_repr_bigint_arbitrary_precision
 data ecmascript_repr_boolean_ecma_boolean: Symbol = ecmascript_repr_boolean_ecma_boolean
 data ecmascript_repr_string_utf16_code_unit_sequence: Symbol = ecmascript_repr_string_utf16_code_unit_sequence
+data ecmascript_repr_symbol_unique_identity: Symbol = ecmascript_repr_symbol_unique_identity
 data ecmascript_repr_singleton_sole_inhabitant: Symbol = ecmascript_repr_singleton_sole_inhabitant
 
 data ecmascript_facts_field_surface_spelling: Symbol = ecmascript_facts_field_surface_spelling
@@ -336,6 +352,12 @@ data ecmascript_facts_string: EcmascriptStringPrimitiveFacts = EcmascriptStringP
   std_projection: ecmascript_std_projection_string
 }
 
+data ecmascript_facts_symbol: EcmascriptSymbolPrimitiveFacts = EcmascriptSymbolPrimitiveFacts {
+  surface_spelling: ecmascript_surface_spelling_symbol,
+  encoding: ecmascript_repr_symbol_unique_identity,
+  std_projection: ecmascript_std_projection_symbol
+}
+
 data ecmascript_facts_undefined: EcmascriptSingletonPrimitiveFacts = EcmascriptSingletonPrimitiveFacts {
   surface_spelling: ecmascript_surface_spelling_undefined,
   kind: UndefinedT,
@@ -362,6 +384,10 @@ data ecmascript_boolean_facts_catalog: List<EcmascriptBooleanPrimitiveFacts> = [
 
 data ecmascript_string_facts_catalog: List<EcmascriptStringPrimitiveFacts> = [
   ecmascript_facts_string
+]
+
+data ecmascript_symbol_facts_catalog: List<EcmascriptSymbolPrimitiveFacts> = [
+  ecmascript_facts_symbol
 ]
 
 data ecmascript_singleton_facts_catalog: List<EcmascriptSingletonPrimitiveFacts> = [
