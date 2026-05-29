@@ -67,7 +67,22 @@ Extends `v4.workflow.ci` on `main`. Does **not** redeclare wise-otter-34 substra
 
 ### 2.3 Discipline policy dissolution (P5)
 
-Same table as prior revision: every `scripts/check-*.sh` (and T-19 py) **deleted** in the same PR as its `ci_discipline_*.dag` TestClaim. No script authority at steady state.
+Today’s `ci` job runs ~9 discipline **shell/Python scripts** (`scripts/check-*.sh`, `scripts/check_t19_testgen_activation.py`). The ratified end state:
+
+| Legacy path | Modeled replacement | Same-PR deletion (required) |
+|-------------|---------------------|----------------------------|
+| `scripts/check-pr-sg0-net-shrink-discipline.sh` | `TestClaim` + `DisciplinePolicyCommand` (SG-0) | script file + `ci.yml` steps |
+| `scripts/check-r4-carve-dissolution-discipline.sh` | TestClaim (R4-carve) | script + steps |
+| `scripts/check-fabrication-sentinels.sh` | TestClaim | script + step |
+| `scripts/check-release-doc-authority.sh` | TestClaim | script + steps |
+| `scripts/check-manager-brief-authority.sh` | TestClaim | script + steps |
+| `scripts/check-rust-toolchain-single-authority.sh` | TestClaim | script + step |
+| `scripts/check-workflow-path-regex-inventory.sh` | TestClaim + Gate #103 `TestCommand` | script + step |
+| `scripts/check_t19_testgen_activation.py` | TestClaim (T-19) | script + step |
+
+**Forbidden steady state:** `DisciplinePolicyCommand` that shells out to retained `scripts/check-*.sh` (content-addressed script execution still leaves a second authority). **Allowed one-time import:** an atom may mechanically port shell logic into `TestClaim` oracle text in the **same PR** that deletes the script — no follow-on PR may depend on the deleted file.
+
+Scheduling: `DisciplinePolicyCommand` is a `CiJob` whose execution arm is **`TestCommand`** (or `TestClaimCorpusEvalCommand` for multi-claim policies) narrowed by `ci_select_from_affected_set` on each claim’s declared `authority_paths` — **not** coarse bucket `if:` gates.
 
 ### 2.4 GHA mapping — end state only
 
@@ -99,9 +114,27 @@ flowchart TB
 
 ---
 
-## 4. Cache-key shape
+## 4. Cache-key shape per Node type
 
-Unchanged IRT-4 rule. Remove `CiComponentAffected` row from steady-state cache table (not a schedule/cache authority). Per-command merkle per §4 prior table (Lint, M1, TestCommand, …).
+**IRT-4 rule (non-negotiable):** verdict cache key = `content_hash(whole TestClaim node)` — input subgraph + oracle + evaluator + resources (`src/v4/TASKS.md` ~L1120). Pipeline-level `ci_command_cache_digest` interim tags are **scaffolding** until each command’s inputs are merkle-backed (audit R10).
+
+| Node / command | Cache key function (target) | Replaces (interim) |
+|----------------|----------------------------|---------------------|
+| `CiGitDiffReadOutcome` | `content_hash(Witness<Diff>)` | n/a |
+| `LintCommand` | `combine_hash(rustfmt_surface_merkle, toolchain_digest)` | `ci_cache_cmd_lint_tag` |
+| `RustToolchainPoolCommand` | `content_hash(union(downstream_ci_job_digests))` | per-job duplicate setup |
+| `BootstrapStageCompile` | `content_hash(src/v2/stage0/**.dag)` + plan pin | `ci_cache_cmd_bootstrap_compile_tag` + produces symbol |
+| `LensCiCommand` | `combine_hash(registry_merkle, entry_root, target)` | lens tag fold |
+| `M1RustEmitProbeCommand` | `combine_hash(content_hash(src/v4/**.dag), v2_stage0_binary_digest, Rust)` | **`ci_cache_cmd_m1_probe_tag` (bug R10)** |
+| `TestClaimCorpusEvalCommand` | `combine_hash(corpus_merkle, selection_fn, roster_digest)` | static tag + fn symbol |
+| `TestCommand` | `content_hash(TestClaim node)` | per-filter cargo invocations |
+| `DisciplinePolicyCommand` | `content_hash(TestClaim node)` per scheduled claim (via `TestCommand`) | `check-*.sh` + unconditional shell steps |
+| `CiGate` | `combine_hash(job_verdict_hash, run_policy_digest)` | GHA `if:` strings |
+| `CiPipeline` (evaluator) | `content_hash(Node projection of CiPipeline)` | hand-rolled `ci_pipeline_cache_digest` fold (T-22) |
+
+**Dissolved (not steady-state):** `CiComponentAffected` bucket tags — legacy shell-era compression; scheduling/cache authority is **frontier-only** (§2.1).
+
+**Verdict reuse:** interpreter / T-38 harness checks IRT-4 receipt before host effects; GHA runs only when eval reports work scheduled (not when all inputs hit cache).
 
 ---
 
@@ -136,9 +169,28 @@ Exact CLI lands in A0/A2 with T-38. **There is no S1, S2, or S3 in this lane.**
 
 **T-21:** replacement for `detect-affected-components.sh`; IRT-1/IRT-4 with T-24.
 
-**T-24:** CI as `.dag`; dissolves hand YAML when **`ci.dag` is sole authority** — satisfied by **interpreter-direct harness**, not YamlStatic emission (Q-R1).
+**T-24:** CI as `.dag`; dissolves hand YAML when **`ci.dag` is sole authority** — satisfied by **interpreter-direct harness** (Q-R1, **Q-R6**). See §6.1.1 for C4 / Shape-B reconciliation.
 
 **T-38:** T-22 eval in CI; delete corpus shell when structured verdicts exist.
+
+### 6.1.1 C4 and T-24 close — reconciling S2′ with TASKS.md / Pure Bootstrap
+
+**Sources that appear to conflict:**
+
+| Source | Text | Apparent tension |
+|--------|------|------------------|
+| `src/v4/TASKS.md` T-24 (~L1181–1186) | `.github/workflows/ci.yml` as **DERIVED Shape-B**; delete hand-authored YAML | Sounds like full YamlStatic emission |
+| `docs/design-pure-bootstrap-zero.md` **C4** | Committed `ci.yml` as **checked projection** from `.dag` | Sounds like generated YAML is mandatory |
+| This canvas **Q-R1 / S2′** | T-24 closes on **interpreter-direct** harness; YamlStatic **out of lane** (§10) | Sounds like no committed YAML |
+
+**Resolution (single authority — no competing close predicates):**
+
+1. **Policy authority = `ci.dag` only.** Every CI computation, schedule decision, and pass/fail verdict is a Node (or `TestClaim`) evaluated via T-22. GHA does not encode policy (`if: v4`, discipline shell, duplicate git-diff).
+2. **Committed `ci.yml` at steady state = minimal harness projection**, not a parallel policy graph. It contains triggers, concurrency, permissions, runner labels, checkout, optional gunbc build, and **interpreter invocation** on `ci_pipeline` (§5). Hand-authored policy steps and coarse bucket jobs are **deleted** in atoms A1–A2 — this is the “hand-authored YAML deleted” clause in TASKS.md.
+3. **C4 satisfied without YamlStatic in this lane:** C4 requires the committed file be a **checked, non-authoritative projection** verifiable against `ci.dag` — satisfied by **binding TestClaims / smoke** (A2 extends `v4_workflow_ci_runner_dag_smoke_test` and existing M1 binding patterns) that fail if harness YAML drifts from modeled entrypoints. The harness is **authored once** in A2 and kept thin; it is not re-derived on every `ci.dag` edit via a Shape-B emitter.
+4. **Shape-B full `ci.yml` emission (TASKS.md bullet) = optional follow-on**, same class as §10 YamlStatic / `WorkflowRuntime` — useful for branch-protection ergonomics or merry-carp-style emission, **not** required for T-24 close under operator Q-R1. Post-ratification TASKS.md tweak (§6.2) narrows the close bullet to S2′ + harness binding; full emitter work stays a separate tracked item if ever scheduled.
+
+**Worker rule:** If a change adds policy to `ci.yml` instead of `ci.dag`, it violates P2 regardless of emission path.
 
 **T-22:** THESIS:225 — `dag run` / eval is the primary execution path.
 
@@ -203,6 +255,7 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 | ID | Decision | Resolution |
 |----|----------|------------|
 | **Q-R1** | T-24 close requires YamlStatic? | **No.** **S2′-only** close. YamlStatic is **out of lane** (§10). |
+| **Q-R6** | C4 vs S2′ / TASKS Shape-B bullet | **Reconciled** (§6.1.1): `ci.dag` sole policy authority; committed harness YAML is thin, checked projection — **not** full Shape-B emission in this lane |
 | **Q-R2** | A0 before canvas ratification? | **Yes.** neat-wren-762 starts **immediately** (substrate/host-effects only). |
 | **Q-R3** | `CiComponentAffected` scheduling | **Drop** as schedule driver (default **a**). Frontier only. |
 | **Q-R4** | Staged S0/S1/S2/S3 | **Reject.** Single end-state **S2′**; S0 = today’s audit baseline only. |
