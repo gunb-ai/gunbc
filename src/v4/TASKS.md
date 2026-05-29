@@ -205,7 +205,7 @@ Interpreter + lens dimensions (each needs T-9):
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
   T-13  lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
-         XL scope, research-tier risk)              [needs T-12 for current-complexity input]
+         XL scope, research-tier risk)              [needs T-12 for current-complexity input] — DONE #3768
   T-18  lens/coverage.dag  (meta-lens: L6/L7/impossible-bug/testgen coverage
          discipline; STRUCTURAL not exhaustive-fixture per TESTING.md)
                                                     [needs T-3, T-4, T-12, T-13]
@@ -987,7 +987,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
-### T-17: lens/synthesis.dag + std/report.dag — cross-algorithm complexity (C7)
+### T-17: lens/synthesis.dag + std/report.dag — cross-algorithm complexity (C7)  [DONE #3768]
 
 **File**: 2 files (operator-ratified 2026-05-15 IN: cross-algorithm complexity synthesis lens)
 **Why bundled**: the synthesis lens is the consumer of the Report advisory carrier; both must land together for the lens to have anything to emit.
@@ -2208,7 +2208,7 @@ Parallel fill — adjacent to T-15 (self-host fixed-point gate) and T-20
 
 ---
 
-### T-36 — Omni ingest demo: round-trip fidelity claim  [SCHEDULED]
+### T-36 — Omni ingest demo: round-trip fidelity claim  [IN PROGRESS — PR open]
 
 **File**: `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag` (new)
 **Why**: `ingest = emit⁻¹` (C5, THESIS §B2-OMNI) is the central bidirectionality property.
@@ -2229,6 +2229,8 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 - Fail-closed: if ingest cannot represent any part of the input — ambiguity, unsupported syntax — the claim must produce a Diagnostic, not silently pass
 
 **Sequencing:** dispatch after T-10 merges (T-8/T-9/T-10 are prerequisites for the executable round-trip; fixture authoring may begin after T-6/T-7 as prep). Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).
+
+**Close-status (2026-05-28):** PR open (session/loyal-ram-545). Fixture landed at `src/v4/test/fixture/dag_round_trip_mvp1.dag` (wave-1 surface: module + import + data + fn). C5 fidelity disposition added to `dag.dag` (`DagTriviaNormalization` coproduct: whitespace, line-comment, block-comment all `DeclaredNormalized`). `RoundTripClaim` wired at `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag` referencing C5 facts from dag.dag only. Eval path for `RoundTripClaim` remains `Deferred` in `05_eval.dag` — execution blocked on T-38.
 
 ---
 
