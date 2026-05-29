@@ -3791,8 +3791,6 @@ fn materialize_algebra_machine_width_width_nat(
 /// `name: FieldPatch<T>` in the patch record (T-4.16 `config-patch-record-projection`).
 fn materialize_config_patch_record_from_config_decl(
     dag: &mut Dag,
-    symbols: &HashMap<String, DeclarationId>,
-    local: &HashMap<String, DeclarationId>,
     config_ty: DeclarationId,
     span: &SourceSpan,
 ) -> Option<TypeConnective> {
@@ -3851,18 +3849,15 @@ fn materialize_config_patch_record_connective(
         return None;
     }
     let config_ty = type_angle_arg_to_declaration_id(&args[0], symbols, local, dag);
-    materialize_config_patch_record_from_config_decl(dag, symbols, local, config_ty, span)
+    materialize_config_patch_record_from_config_decl(dag, config_ty, span)
 }
 
 fn config_patch_record_decl_for_config(
     dag: &mut Dag,
-    symbols: &HashMap<String, DeclarationId>,
-    local: &HashMap<String, DeclarationId>,
     config_decl: DeclarationId,
     span: &SourceSpan,
 ) -> Option<DeclarationId> {
-    let connective =
-        materialize_config_patch_record_from_config_decl(dag, symbols, local, config_decl, span)?;
+    let connective = materialize_config_patch_record_from_config_decl(dag, config_decl, span)?;
     let id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id,
@@ -3879,10 +3874,6 @@ fn config_patch_record_decl_for_config(
         span: span.clone(),
     });
     Some(id)
-}
-
-fn declaration_named(dag: &Dag, decl_id: DeclarationId, expected: &str) -> bool {
-    dag.declaration(decl_id).name.as_deref() == Some(expected)
 }
 
 const V4_STD_PATCH_DAG_SUFFIX: &str = "v4/std/patch.dag";
@@ -3939,7 +3930,7 @@ fn callable_is_v4_std_patch_config_patch_layer(dag: &Dag, decl_id: DeclarationId
 
 fn config_patch_layer_args_diagnostic(span: &SourceSpan) -> Diagnostic {
     Diagnostic::ResolveError {
-        name: "config_patch_layer requires exactly named arguments (base: <config>, patch: <config-patch>)"
+        name: "config_patch_layer requires exactly two named arguments (base: <config>, patch: <config-patch>)"
             .to_string(),
         span: span.clone(),
         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
