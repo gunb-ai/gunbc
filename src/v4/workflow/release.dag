@@ -1,11 +1,11 @@
 // src/v4/workflow/release.dag
-// Scope: GitHub Releases binary distribution AS DATA (RELEASE_TODO.md §5 Phase 1).
-// Status: filled — semantic authority for tag trigger, 4-target matrix, musl cross builds,
-//   gunbc artifact naming, GH Release upload intent. YamlStatic `release_pipeline →
-//   .github/workflows/release.yml` deferred (same posture as `src/v4/workflow/ci.dag` lines 2–4 /
-//   TASKS T-24). `.github/workflows/release.yml` is a hand-synced projection until emission lands.
-//   `install.sh` is an end-user shell script (not modeled runtime); only the bundle artifact name
-//   is referenced for upload contents.
+// Scope: GitHub Releases binary distribution AS DATA (RELEASE_TODO.md §5 Phase 1a).
+// Status: filled — semantic authority for tag trigger, six-target matrix (musl linux x2,
+//   darwin x2, windows msvc x2), published triples + GH Release artifact basenames (`.exe` on
+//   windows rows), musl cross + native darwin/windows builds, GH Release upload intent.
+//   YamlStatic `release_pipeline → .github/workflows/release.yml` deferred (same posture as
+//   `src/v4/workflow/ci.dag` / TASKS T-24). `.github/workflows/release.yml` is a hand-synced
+//   projection until emission lands. End-user install moves to `install.dag` (Phase 1b).
 
 module v4.workflow.release_dist
 
@@ -36,8 +36,9 @@ import v4.std.algebra {
 type ReleaseCommand
   = CrossMuslGunbcBuild { target: String }
   | NativeDarwinGunbcBuild { target: String }
+  | NativeWindowsGunbcBuild { target: String }
   | UploadGunbcMatrixArtifact
-  | PublishGitHubRelease { bundle_install_sh: Bool }
+  | PublishGitHubRelease
 
 type ReleaseJob {
   id: Symbol
@@ -59,6 +60,7 @@ type ReleaseMatrixRow {
   target: String
   runner: String
   cross: Bool
+  artifact_basename: String
 }
 
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100) — feature:release-github-actions-landed — consumer:v4.workflow.release_dist release_live_workflow_signal — bind RELEASE_TODO.md §5 Phase 1 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `release_pipeline` directly and this carrier is deleted; forbidden: adding release transport facts outside `release_pipeline` + this binding.
@@ -71,13 +73,11 @@ type ReleaseLiveWorkflowSignal {
   aarch64_strip_step_name: String
   build_gunbc_step_name: String
   upload_artifact_step_name: String
-  stage_install_sh_step_name: String
   create_release_step_name: String
   gh_release_action: String
   cargo_package: String
   cargo_bin: String
   cross_version: String
-  install_sh_bundle_name: String
 }
 
 data release_build_matrix: List<ReleaseMatrixRow> = [
