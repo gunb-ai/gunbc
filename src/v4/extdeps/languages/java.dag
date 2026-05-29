@@ -102,6 +102,8 @@ import v4.std.algebra {
   BooleanAlgebra,
   boolean_algebra_node,
   boolean_algebra_type_node,
+  commutative_semiring_node,
+  commutative_semiring_type_node,
   fold_list,
   fold_list_right,
   list_append,
@@ -364,29 +366,40 @@ data java_tag_scalar_void: Symbol = java_tag_scalar_void
 // Law-kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
 // 🟡 needs-more-work — feature:java-model-core-law-keys — scaffold:T-4-wave-2b · declared law-kind coproduct for java_model_core_law_node kind edge; dissolve-on: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
 type JavaModelCoreLawKey
-  = JavaLawIntegerAddAssociativeModular
-  | JavaLawIntegerAddCommutativeModular
-  | JavaLawIntegerMulAssociativeModular
-  | JavaLawIntegerMulCommutativeModular
-  | JavaLawIntegerDistributiveModular
-  | JavaLawIntegerTwoComplementWrap
+  = JavaLawSignedIntegerAddAssociativeModular
+  | JavaLawSignedIntegerAddCommutativeModular
+  | JavaLawSignedIntegerMulAssociativeModular
+  | JavaLawSignedIntegerMulCommutativeModular
+  | JavaLawSignedIntegerDistributiveModular
+  | JavaLawSignedIntegerTwoComplementWrap
+  | JavaLawUnsignedIntegerAddAssociativeModular
+  | JavaLawUnsignedIntegerAddCommutativeModular
+  | JavaLawUnsignedIntegerMulAssociativeModular
+  | JavaLawUnsignedIntegerMulCommutativeModular
+  | JavaLawUnsignedIntegerDistributiveModular
   | JavaLawFloatIeee754Rounding
   | JavaLawFloatNanInfCarriedByIeee754
   | JavaLawBoolBoundedLattice
   | JavaLawBoolComplement
 
-data java_law_kind_integer_add_associative_modular: Symbol = java_law_kind_integer_add_associative_modular
-data java_law_kind_integer_add_commutative_modular: Symbol = java_law_kind_integer_add_commutative_modular
-data java_law_kind_integer_mul_associative_modular: Symbol = java_law_kind_integer_mul_associative_modular
-data java_law_kind_integer_mul_commutative_modular: Symbol = java_law_kind_integer_mul_commutative_modular
-data java_law_kind_integer_distributive_modular: Symbol = java_law_kind_integer_distributive_modular
-data java_law_kind_integer_two_complement_wrap: Symbol = java_law_kind_integer_two_complement_wrap
+data java_law_kind_signed_integer_add_associative_modular: Symbol = java_law_kind_signed_integer_add_associative_modular
+data java_law_kind_signed_integer_add_commutative_modular: Symbol = java_law_kind_signed_integer_add_commutative_modular
+data java_law_kind_signed_integer_mul_associative_modular: Symbol = java_law_kind_signed_integer_mul_associative_modular
+data java_law_kind_signed_integer_mul_commutative_modular: Symbol = java_law_kind_signed_integer_mul_commutative_modular
+data java_law_kind_signed_integer_distributive_modular: Symbol = java_law_kind_signed_integer_distributive_modular
+data java_law_kind_signed_integer_two_complement_wrap: Symbol = java_law_kind_signed_integer_two_complement_wrap
+data java_law_kind_unsigned_integer_add_associative_modular: Symbol = java_law_kind_unsigned_integer_add_associative_modular
+data java_law_kind_unsigned_integer_add_commutative_modular: Symbol = java_law_kind_unsigned_integer_add_commutative_modular
+data java_law_kind_unsigned_integer_mul_associative_modular: Symbol = java_law_kind_unsigned_integer_mul_associative_modular
+data java_law_kind_unsigned_integer_mul_commutative_modular: Symbol = java_law_kind_unsigned_integer_mul_commutative_modular
+data java_law_kind_unsigned_integer_distributive_modular: Symbol = java_law_kind_unsigned_integer_distributive_modular
 data java_law_kind_float_ieee754_rounding: Symbol = java_law_kind_float_ieee754_rounding
 data java_law_kind_float_nan_inf_carried_by_ieee754: Symbol = java_law_kind_float_nan_inf_carried_by_ieee754
 data java_law_kind_bool_bounded_lattice: Symbol = java_law_kind_bool_bounded_lattice
 data java_law_kind_bool_complement: Symbol = java_law_kind_bool_complement
 
-data java_witness_wrapping_integer_arithmetic: Symbol = java_witness_wrapping_integer_arithmetic
+data java_witness_signed_wrapping_integer_arithmetic: Symbol = java_witness_signed_wrapping_integer_arithmetic
+data java_witness_unsigned_integer_commutative_semiring: Symbol = java_witness_unsigned_integer_commutative_semiring
 data java_witness_float_approximate_field: Symbol = java_witness_float_approximate_field
 data java_witness_bool_boolean_algebra: Symbol = java_witness_bool_boolean_algebra
 
@@ -2062,13 +2075,41 @@ fn java_symbol_node(id: Symbol) -> Node {
   java_inhabitant_atom(id: id)
 }
 
-fn java_integer_algebra_witness_node(facts: JavaIntegerPrimitiveFacts) -> Node {
+fn java_signed_integer_algebra_witness_node(facts: JavaIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       java_named_edge(
-        name: java_witness_wrapping_integer_arithmetic,
-        target: java_symbol_node(id: java_witness_wrapping_integer_arithmetic)
+        name: java_witness_signed_wrapping_integer_arithmetic,
+        target: java_symbol_node(id: java_witness_signed_wrapping_integer_arithmetic)
+      ),
+      java_named_edge(
+        name: java_facts_field_signedness,
+        target: java_int_kind_node(kind: facts.signedness)
+      ),
+      java_named_edge(
+        name: java_facts_field_std_projection,
+        target: java_symbol_node(id: facts.std_projection)
+      ),
+      java_named_edge(
+        name: java_facts_field_overflow_release,
+        target: java_overflow_node(overflow: facts.overflow_release)
+      )
+    ]
+  }
+}
+
+fn java_unsigned_integer_algebra_witness_node(facts: JavaIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(
+        name: java_witness_unsigned_integer_commutative_semiring,
+        target: java_symbol_node(id: java_witness_unsigned_integer_commutative_semiring)
+      ),
+      java_named_edge(
+        name: java_facts_field_signedness,
+        target: java_int_kind_node(kind: facts.signedness)
       ),
       java_named_edge(
         name: java_facts_field_std_projection,
@@ -2120,10 +2161,17 @@ fn java_bool_algebra_witness_node() -> Node {
 
 fn java_integer_algebra_inhabitance(facts: JavaIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = java_integer_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
-    algebra: ordered_ring_node(inhabitant: inhabitant),
-    inhabitant: inhabitant,
-    witness: java_integer_algebra_witness_node(facts: facts)
+  match facts.signedness {
+    Signed => AlgebraInhabitanceDecl {
+      algebra: ordered_ring_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: java_signed_integer_algebra_witness_node(facts: facts)
+    }
+    Unsigned => AlgebraInhabitanceDecl {
+      algebra: commutative_semiring_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: java_unsigned_integer_algebra_witness_node(facts: facts)
+    }
   }
 }
 
@@ -2183,17 +2231,28 @@ fn java_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 
 fn java_law_kind_symbol(key: JavaModelCoreLawKey) -> Symbol {
   match key {
-    JavaLawIntegerAddAssociativeModular =>
-      java_law_kind_integer_add_associative_modular
-    JavaLawIntegerAddCommutativeModular =>
-      java_law_kind_integer_add_commutative_modular
-    JavaLawIntegerMulAssociativeModular =>
-      java_law_kind_integer_mul_associative_modular
-    JavaLawIntegerMulCommutativeModular =>
-      java_law_kind_integer_mul_commutative_modular
-    JavaLawIntegerDistributiveModular =>
-      java_law_kind_integer_distributive_modular
-    JavaLawIntegerTwoComplementWrap => java_law_kind_integer_two_complement_wrap
+    JavaLawSignedIntegerAddAssociativeModular =>
+      java_law_kind_signed_integer_add_associative_modular
+    JavaLawSignedIntegerAddCommutativeModular =>
+      java_law_kind_signed_integer_add_commutative_modular
+    JavaLawSignedIntegerMulAssociativeModular =>
+      java_law_kind_signed_integer_mul_associative_modular
+    JavaLawSignedIntegerMulCommutativeModular =>
+      java_law_kind_signed_integer_mul_commutative_modular
+    JavaLawSignedIntegerDistributiveModular =>
+      java_law_kind_signed_integer_distributive_modular
+    JavaLawSignedIntegerTwoComplementWrap =>
+      java_law_kind_signed_integer_two_complement_wrap
+    JavaLawUnsignedIntegerAddAssociativeModular =>
+      java_law_kind_unsigned_integer_add_associative_modular
+    JavaLawUnsignedIntegerAddCommutativeModular =>
+      java_law_kind_unsigned_integer_add_commutative_modular
+    JavaLawUnsignedIntegerMulAssociativeModular =>
+      java_law_kind_unsigned_integer_mul_associative_modular
+    JavaLawUnsignedIntegerMulCommutativeModular =>
+      java_law_kind_unsigned_integer_mul_commutative_modular
+    JavaLawUnsignedIntegerDistributiveModular =>
+      java_law_kind_unsigned_integer_distributive_modular
     JavaLawFloatIeee754Rounding => java_law_kind_float_ieee754_rounding
     JavaLawFloatNanInfCarriedByIeee754 => java_law_kind_float_nan_inf_carried_by_ieee754
     JavaLawBoolBoundedLattice => java_law_kind_bool_bounded_lattice
@@ -2222,8 +2281,8 @@ fn java_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligat
   }
 }
 
-fn java_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
-  let witness = java_integer_algebra_witness_node(facts: facts)
+fn java_signed_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = java_signed_integer_algebra_witness_node(facts: facts)
   let inhabitant = java_integer_facts_node(facts: facts)
   let algebra = ordered_ring_type_node(inhabitant: inhabitant)
   [
@@ -2232,7 +2291,7 @@ fn java_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<Algebr
       law: java_model_core_law_node(
         witness: witness,
         algebra: algebra,
-        key: JavaLawIntegerAddAssociativeModular
+        key: JavaLawSignedIntegerAddAssociativeModular
       )
     ),
     java_model_core_law_obligation(
@@ -2240,7 +2299,7 @@ fn java_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<Algebr
       law: java_model_core_law_node(
         witness: witness,
         algebra: algebra,
-        key: JavaLawIntegerAddCommutativeModular
+        key: JavaLawSignedIntegerAddCommutativeModular
       )
     ),
     java_model_core_law_obligation(
@@ -2248,7 +2307,7 @@ fn java_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<Algebr
       law: java_model_core_law_node(
         witness: witness,
         algebra: algebra,
-        key: JavaLawIntegerMulAssociativeModular
+        key: JavaLawSignedIntegerMulAssociativeModular
       )
     ),
     java_model_core_law_obligation(
@@ -2256,7 +2315,7 @@ fn java_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<Algebr
       law: java_model_core_law_node(
         witness: witness,
         algebra: algebra,
-        key: JavaLawIntegerMulCommutativeModular
+        key: JavaLawSignedIntegerMulCommutativeModular
       )
     ),
     java_model_core_law_obligation(
@@ -2264,7 +2323,7 @@ fn java_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<Algebr
       law: java_model_core_law_node(
         witness: witness,
         algebra: algebra,
-        key: JavaLawIntegerDistributiveModular
+        key: JavaLawSignedIntegerDistributiveModular
       )
     ),
     java_model_core_law_obligation(
@@ -2272,10 +2331,65 @@ fn java_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<Algebr
       law: java_model_core_law_node(
         witness: witness,
         algebra: algebra,
-        key: JavaLawIntegerTwoComplementWrap
+        key: JavaLawSignedIntegerTwoComplementWrap
       )
     )
   ]
+}
+
+fn java_unsigned_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = java_unsigned_integer_algebra_witness_node(facts: facts)
+  let inhabitant = java_integer_facts_node(facts: facts)
+  let algebra = commutative_semiring_type_node(inhabitant: inhabitant)
+  [
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawUnsignedIntegerAddAssociativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawUnsignedIntegerAddCommutativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawUnsignedIntegerMulAssociativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawUnsignedIntegerMulCommutativeModular
+      )
+    ),
+    java_model_core_law_obligation(
+      witness: witness,
+      law: java_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: JavaLawUnsignedIntegerDistributiveModular
+      )
+    )
+  ]
+}
+
+fn java_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  match facts.signedness {
+    Signed => java_signed_integer_law_obligations(facts: facts)
+    Unsigned => java_unsigned_integer_law_obligations(facts: facts)
+  }
 }
 
 fn java_float_law_obligations(facts: JavaFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
