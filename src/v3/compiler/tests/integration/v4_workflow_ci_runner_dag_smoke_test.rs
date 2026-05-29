@@ -98,14 +98,22 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
     },
 ];
 
+fn fn_body_end(rest: &str) -> usize {
+    ["\npub fn ", "\nfn ", "\n#[cfg(test)]"]
+        .iter()
+        .filter_map(|prefix| rest.find(prefix))
+        .min()
+        .unwrap_or(rest.len())
+}
+
 fn extract_fn_body<'a>(source: &'a str, fn_name: &str) -> &'a str {
     let marker = format!("fn {fn_name}");
     let start = source
         .find(&marker)
         .unwrap_or_else(|| panic!("missing fn `{fn_name}`"));
-    let rest = &source[start + marker.len()..];
-    let end = rest.find("\nfn ").unwrap_or(rest.len());
-    &source[start..start + marker.len() + end]
+    let after = start + marker.len();
+    let rest = &source[after..];
+    &source[start..after + fn_body_end(rest)]
 }
 
 fn dag_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
@@ -125,7 +133,7 @@ fn rust_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> 
     let mut out = std::collections::BTreeSet::new();
     for line in body.lines() {
         if let Some(idx) = line.find(".starts_with(\"") {
-            let rest = &line[idx + 15..];
+            let rest = &line[idx + 14..];
             if let Some(end) = rest.find('"') {
                 out.insert(rest[..end].to_string());
             }
