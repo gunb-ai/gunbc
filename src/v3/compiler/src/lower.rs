@@ -12727,8 +12727,8 @@ mod tests {
             id
         };
         let _ = field_patch_tpl;
-        let patch_decl =
-            config_patch_record_decl_for_config(&mut dag, empty_cfg, &test_span()).expect("empty Config");
+        let patch_decl = config_patch_record_decl_for_config(&mut dag, empty_cfg, &test_span())
+            .expect("empty Config");
         let TypeConnective::Conj { children } = &dag.declaration(patch_decl).connective else {
             panic!("expected patch record Conj");
         };

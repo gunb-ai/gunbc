@@ -126,7 +126,7 @@ type PrettierFormattingOptions {
 }
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierOverrideOptions projected from PrettierFormattingOptions field set plus parser override field.
+// 🟡 gated — feature:prettier-override-options-hand-mirror — bind T-4.16 follow-on — dissolve-on-arrival: project PrettierOverrideOptions from PrettierFormattingOptions field set plus parser override field (extra `parser` beyond formatting options; not derivable from `ConfigPatchRecord<PrettierFormattingOptions>` alone).
 type PrettierOverrideOptions {
   parser: FieldPatch<PrettierParser>
   print_width: FieldPatch<Int>
