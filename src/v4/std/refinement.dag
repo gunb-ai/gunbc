@@ -258,6 +258,44 @@ fn exact_one_int_authoritative_constant(base: Int) -> Outcome<ExactOneInt> {
 }
 
 
+// Upstream formatter default literals: discharge through make_* at the authoritative locus.
+// Catalog rejection is structurally unreachable (witnessed in refinement_formatter_literals_accept.dag);
+// match is Accepted-only so both arms unify as the nominal carrier (no Outcome-as-carrier ill-typing).
+fn positive_int_authoritative_literal(value: Int) -> PositiveInt {
+  match make_positive_int_at_authoritative(value: value) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
+fn non_negative_int_authoritative_literal(value: Int) -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: value) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
+fn at_least_minus_one_int_authoritative_literal(value: Int) -> AtLeastMinusOneInt {
+  match make_at_least_minus_one_int_at_authoritative(value: value) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
+fn at_least_minus_two_int_authoritative_literal(value: Int) -> AtLeastMinusTwoInt {
+  match make_at_least_minus_two_int_at_authoritative(value: value) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
+fn exact_one_int_authoritative_literal(value: Int) -> ExactOneInt {
+  match make_exact_one_int_at_authoritative(value: value) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
 // Upstream-documented defaults: import discharged literals from
 // v4.std.refinement_authoritative_literals (witnessed in refinement_formatter_literals_accept.dag).
 // Runtime/user input: make_* + Outcome directly.
