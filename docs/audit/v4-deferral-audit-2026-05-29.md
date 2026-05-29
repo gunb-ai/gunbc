@@ -63,7 +63,8 @@ three to spot-check the §1/§5/§A numbers. **Run from repo root:**
 | --- | --- | --- | ---: |
 | **A. Distinct gate names** (`feature:NAME` or `feature: NAME`) | how many *gates* exist? | `{ git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sed 's/feature://'; git grep -hoE 'feature: [a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sed 's/feature: //'; } \| sort -u \| wc -l` | **130** |
 | **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -c '🟡 gated' origin/main -- src/v4/ \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **279** |
-| **C. Per-gate annotation rows for gate X** | how many annotation rows carry gate X? — used for §1.1/§1.3 "sites" counts | `git grep -cE 'gated[:—] ?(feature: )?X' origin/main -- src/v4/ \| awk ...` (substitute X) | varies per gate |
+| **C. Per-gate annotation rows for gate X (all forms — header + field)** | how many annotation rows carry gate X? | `git grep -cE 'gated[ —:]+(feature: )?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` (substitute X) | e.g. `formatter-cross-field-constraints` = 7; `formatter-int-refinement` = 66 |
+| **C′. Per-gate field annotations only (excludes `feature:` header row)** — used for §1.1's "63 sites" / §1.3's "7 rows" | how many *field* annotations carry gate X (one declaration site per file excluded)? | `git grep -cE 'gated: ?X\|gated consumer: ?X' origin/main -- src/v4/ \| awk -F: '{s+=\$NF}END{print s}'` | e.g. `formatter-int-refinement` = 63; `formatter-cross-field-constraints` = 7 (clang_format's 4 + black/ktfmt/rustfmt 1 each — no header rows under the field-only grep) |
 
 **Last reproduced 2026-05-29 against `origin/main` @ `df91abc2b`:**
 populations A=**130**, B=279.
