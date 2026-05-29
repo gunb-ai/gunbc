@@ -45,13 +45,17 @@ pub fn ci_fleet_min_jobserver_token_cap() -> u32 {
 pub fn ci_fleet_max_runner_count() -> u32 {
     CI_SELF_HOSTED_RUNNER_POOLS
         .iter()
-        .fold(CI_SRV1_POOL.runner_count, |acc, pool| acc.max(pool.runner_count))
+        .fold(CI_SRV1_POOL.runner_count, |acc, pool| {
+            acc.max(pool.runner_count)
+        })
 }
 
 pub fn ci_fleet_min_runner_count() -> u32 {
     CI_SELF_HOSTED_RUNNER_POOLS
         .iter()
-        .fold(CI_SRV1_POOL.runner_count, |acc, pool| acc.min(pool.runner_count))
+        .fold(CI_SRV1_POOL.runner_count, |acc, pool| {
+            acc.min(pool.runner_count)
+        })
 }
 
 pub fn ci_runner_pool_total_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
@@ -120,6 +124,8 @@ mod tests {
 
     #[test]
     fn witness_required_for_fleet_m1_derivation() {
-        assert!(ci_runner_pool_m1_probe_witness_holds(&CI_SELF_HOSTED_RUNNER_POOLS));
+        assert!(ci_runner_pool_m1_probe_witness_holds(
+            &CI_SELF_HOSTED_RUNNER_POOLS
+        ));
     }
 }

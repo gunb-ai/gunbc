@@ -295,7 +295,9 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: git diff read must use canonical Outcome<GitDiffNameOnly>, not a parallel coproduct"
     );
     assert!(
-        CI_DAG.contains("ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>)"),
+        CI_DAG.contains(
+            "ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>)"
+        ),
         "{CI_DAG_PATH}: git diff read boundary must project through std.diagnostic Outcome"
     );
     assert!(
