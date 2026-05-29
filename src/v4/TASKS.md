@@ -1186,10 +1186,19 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
   output.
 - **CI overhaul close predicates (operator-ratified 2026-05-29,
   `docs/design-ci-dag-overhaul.md` PR #3886 — two phases, single authority):**
-  - **Phase 1 (atoms A0–A14):** `ci.dag` is sole *policy* authority; GHA invokes
-    T-22 interpreter on `ci_pipeline` (S2′); coarse bucket `if:` scheduling and
-    `scripts/check-*` policy shells are deleted. **T-24 remains open** after
-    Phase 1.
+  - **Phase 1 — split (same PR as `docs/design-ci-bankruptcy-rebuild.md`):**
+    - **Phase 1a / B1 (Tier-0 integrity):** `ci.dag` is sole *policy*
+      authority for integrity-class CI (I0–I8 in bankruptcy doc); GHA invokes
+      T-22 interpreter on `ci_pipeline` (S2′); coarse bucket `if:` scheduling
+      and monolithic policy jobs (`v3`/`v4`/`self_host_ratchet` as schedule
+      drivers) are dissolved. **`scripts/check-*` are not required to be deleted
+      in Phase 1a** — they must not remain on the Tier-0 critical path after
+      B1. Atoms **A0–A2** (+ integrity arms). **T-24 remains open** after Phase
+      1a.
+    - **Phase 1b / B2 (lane completion):** atoms **A3–A14** promoted opt-in
+      (one PR each); **A6–A8** delete `scripts/check-*` in the same PR as
+      `DisciplinePolicyCommand` / `TestClaim` ports. Canvas §9.1 “lane done” =
+      Phase 1a **and** 1b.
   - **Phase 2 (atom A15):** Shape-B checked `.github/workflows/ci.yml` emitted
     from `CiPipeline`; **all** hand-authored workflow YAML deleted (C4 /
     `design-pure-bootstrap-zero.md`). **T-24 [DONE]** only after Phase 2.

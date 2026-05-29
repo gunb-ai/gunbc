@@ -4,7 +4,7 @@
 
 **Thesis:** Treat today’s `.github/workflows/ci.yml` + script graph as **bankrupt**. Do not “tune” or path-gate it into health. Stand up a **minimal harness** that runs only **integrity-class** work modeled in `src/v4/workflow/ci.dag`; add everything else back **one Node at a time** with measured cost and explicit operator opt-in.
 
-**Companion:** [CI anatomy audit](audit/ci-anatomy-and-redundancy-2026-05-29.md) (inventory of what existed pre-bankruptcy).
+**Companion (inventory, pre-bankruptcy):** [PR #3885](https://github.com/gunb-ai/gunbc/pull/3885) — `docs/audit/ci-anatomy-and-redundancy-2026-05-29.md` (not on `main` until that PR merges; do not use a relative path here).
 
 ---
 
@@ -112,6 +112,20 @@ ci_pipeline
 
 ---
 
+## 3.5 Reconciliation with `src/v4/TASKS.md` T-24 (same PR)
+
+`TASKS.md` **Phase 1** is **not** “delete all `scripts/check-*` in one step.” It splits to match this doc:
+
+| Name | Bankruptcy | TASKS / canvas atoms | Discipline `check-*` |
+|------|------------|----------------------|----------------------|
+| **Phase 1a / B1** | Tier-0 green (I0–I8) | **A0–A2** + integrity arms (I3–I8 as landed) | **Off CI critical path**; files may remain until 1b |
+| **Phase 1b / B2** | Opt-in promotions | **A3–A14** one PR each | **Deleted** in same atom as `TestClaim` port (A6–A8) |
+| **Phase 2 / B3** | Shape-B emission | **A15** | N/A (T-24 **[DONE]**) |
+
+**§6.1.1** in [design-ci-dag-overhaul.md](./design-ci-dag-overhaul.md) and **§9.1** “lane done” refer to **Phase 1a + 1b** (B1 then B2), not B1 alone.
+
+---
+
 ## 4. Phased rebuild (replaces incremental A2–A14 “migrate everything” first)
 
 | Phase | Deliverable | CI surface |
@@ -153,7 +167,7 @@ Promote from audit with **measured wall** (warm-cache methodology per #3881):
 **B1 complete when:**
 
 1. Tier-0 commands exist in `ci.dag` with declared `content_hash` inputs and IRT-4 reuse demonstrated (hermetic test: unchanged PR → cache hit).
-2. No standalone `self_host_ratchet`, `v3`, `v4` policy jobs; no `scripts/check-*` on critical path.
+2. No standalone `self_host_ratchet`, `v3`, `v4` policy jobs; **no** `scripts/check-*` on the **Tier-0 critical path** (deletion of script files = Phase 1b / A6–A8, not B1).
 3. v3 fixed-point + v4 T-15 + M1 probe **fail-closed**; no `continue-on-error` on Tier-0.
 4. Warm-cache wall for a docs-only PR: target **&lt; 2 min** total interpreter path (operator-set; measure after B1).
 

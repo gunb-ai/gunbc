@@ -9,7 +9,7 @@
 
 **Operator directive (2026-05-29):** *Less/no bridging → immediate solution.* One **execution** end-state (**S2′ interpreter-direct**). No S1/S2 staged YAML. No coarse bucket gating. **T-24 / C4 projection close** still requires Shape-B checked `ci.yml` emission (atom **A15**; `src/v4/TASKS.md` amended in this PR — §6.1.1).
 
-**Steering (2026-05-29):** [CI bankruptcy & rebuild](./design-ci-bankruptcy-rebuild.md) — integrity-first Tier-0 (v2/v3/v4 fixed-point modeled in `ci.dag`); all other checks opt-in. Supersedes *incremental migration first* until B1 is green.
+**Steering (2026-05-29):** [CI bankruptcy & rebuild](./design-ci-bankruptcy-rebuild.md) — integrity-first Tier-0 (v2/v3/v4 fixed-point modeled in `ci.dag`); discipline/check scripts opt-in at **Phase 1b (B2)**. Supersedes *migration ordering* (do all atoms before green) until **B1** is green; **TASKS.md T-24 Phase 1a/1b** amended in this PR to match (§3.5 bankruptcy, §6.1.1 below).
 
 ---
 
@@ -216,7 +216,8 @@ This canvas **does not** redefine T-24/C4 in prose alone. It **ratifies** a two-
 
 | Phase | Atoms | What closes | `ci.yml` role |
 |-------|-------|-------------|---------------|
-| **1 — execution** | A0–A14 | CI overhaul lane “behavior done” | **Interim:** thin GHA harness (checkout, env, interpreter on `ci_pipeline` per §5). Hand **policy** YAML + `scripts/check-*` **deleted**. Binding smoke in A2 proves harness entrypoints match `ci.dag`. **T-24 stays open.** |
+| **1a — B1 (Tier-0)** | A0–A2 + integrity I0–I8 | Tier-0 integrity green ([bankruptcy](./design-ci-bankruptcy-rebuild.md) B1) | Thin harness + interpreter; bucket `if:` + monolithic jobs gone; **`check-*` off critical path** (file deletion = 1b) |
+| **1b — B2 (opt-in)** | A3–A14 | CI overhaul lane “behavior done” (§9.1) | Each atom deletes its legacy (`check-*` at A6–A8, etc.) |
 | **2 — projection (T-24 / C4)** | **A15** | **T-24 [DONE]** per TASKS + C4 | **Shape-B:** generator emits **checked** `.github/workflows/ci.yml` from `CiPipeline`; **all** hand-authored `ci.yml` removed. Committed YAML is a non-authoritative projection only. |
 
 1. **Policy authority = `ci.dag` only (both phases).** Every schedule decision and pass/fail verdict is a Node / `TestClaim` via T-22. GHA never encodes policy (`if: v4`, discipline shell, duplicate git-diff).
@@ -305,9 +306,11 @@ One PR each = author Node + delete legacy. **No YAML-tuning atoms.**
 
 ## 9. Acceptance criteria
 
-### 9.1 CI overhaul lane done (A0–A14 complete)
+### 9.1 CI overhaul lane done (Phase 1a + 1b — B1 then B2)
 
-1. **`ci.dag` sole policy authority;** GHA invokes interpreter on `ci_pipeline` (S2′); **no** coarse bucket `if:`; **no** policy `scripts/check-*.sh`.
+Requires **Phase 1a (B1)** Tier-0 green **and** **Phase 1b (B2)** atoms A3–A14 promoted per bankruptcy opt-in rules.
+
+1. **`ci.dag` sole policy authority;** GHA invokes interpreter on `ci_pipeline` (S2′); **no** coarse bucket `if:`; **no** policy `scripts/check-*.sh` (**deleted** in A6–A8 / B2, not required for B1 alone).
 2. **IRT-1 + IRT-4** on all CI `TestCommand` / corpus eval paths.
 3. **M1** real `src/v4` merkle; probe shell deleted; fail-closed on timeout.
 4. **Single** `CiGitDiffReadOutcome` per run.
