@@ -1062,9 +1062,11 @@ fn data_named_type(
     name: &str,
 ) -> Option<String> {
     module.items.iter().find_map(|item| match item {
-        SurfaceItem::Data { name: item_name, ty, .. } if item_name == name => {
-            Some(surface_type_name(ty))
-        }
+        SurfaceItem::Data {
+            name: item_name,
+            ty,
+            ..
+        } if item_name == name => Some(surface_type_name(ty)),
         _ => None,
     })
 }
@@ -1153,9 +1155,9 @@ fn fn_external_body_contains(
     needle: &str,
 ) -> bool {
     module.items.iter().any(|item| match item {
-        SurfaceItem::FnExternalBody { name, body_span, .. } if name == fn_name => {
-            source_span_text(source, body_span).contains(needle)
-        }
+        SurfaceItem::FnExternalBody {
+            name, body_span, ..
+        } if name == fn_name => source_span_text(source, body_span).contains(needle),
         SurfaceItem::Fn { name, body, .. } if name == fn_name => match body {
             SurfaceExpr::Record { fields, .. } => fields
                 .iter()
@@ -1204,7 +1206,7 @@ impl SurfaceExprSpan for SurfaceExpr {
             | SurfaceExpr::Match { span, .. }
             | SurfaceExpr::Record { span, .. }
             | SurfaceExpr::List { span, .. }
-            | SurfaceExpr::Map { span, .. } => *span,
+            | SurfaceExpr::Map { span, .. } => span.clone(),
         }
     }
 }
