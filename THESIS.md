@@ -2,7 +2,7 @@
 
 This is the parent document. Everything else — ROADMAP, INVARIANTS, MODELING, architecture, and design docs — serves this thesis.
 
-> **v4 supersession (2026-05-15).** The active program is **v4** in [`src/v4/`](src/v4/) — substrate scaffold + R3+R4 combined ship per [`docs/v4-close-interrogation.md`](docs/v4-close-interrogation.md). Every thesis claim below applies to v4; v3 references in the §Self-hosting four facets section (line ~232+) describe the v2→v3 transition that v4 supersedes (v4 = "v2's residual discipline + v3's modeling depth + recursive-flex from day 1"). v4's substrate is the operational instantiation of every claim in this thesis; v3 is frozen pending v4 ship. See [`src/v4/TASKS.md`](src/v4/TASKS.md) and [`docs/v4-close-interrogation.md`](docs/v4-close-interrogation.md) §"v4 applicability mapping" for v3→v4 path translation (no maintained file-tree manifest; operator-ratified substrate per PR — 2026-05-19).
+> **v4 is the active development phase.** The live compiler and substrate live in [`src/v4/`](src/v4/). Every thesis claim below applies to v4; earlier v3 references in the self-hosting section describe the v2→v3 transition that v4 supersedes. v3 is frozen as a comparison baseline.
 
 ## How this doc is organized
 
@@ -178,7 +178,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - CX gate: every recursive function terminates with a proven bound.
 - Coercion = emission: the compiler reads a target spec and translates. No separate coercion engine.
 - Ownership: the compiler proves no aliased mutation in emitted code.
-- **Grounding completeness**: target-side primitive types are structurally modeled from the target language reference (Rust Reference §Types, Python data model, Go specification), with algebra inhabitance declared structurally — not string-typed shortcuts in a lookup table. Mapping from a `.dag` type to a target primitive is a structural algebra-homomorphism search over declared inhabitance, not a name-keyed table lookup. If a `.dag` type cannot be structurally grounded to a target primitive, the compiler refuses to emit (fail-closed). See `docs/single-emitter-design.md` for architecture; the target-grounding proposal ([PR #695](https://github.com/gunb-ai/gunbc/pull/695), landing at `docs/thesis/target-grounding-proposal.md` on merge) for the concrete work breakdown; ROADMAP §"Post-R1 Program — Grounding Completeness" for the lane structure.
+- **Grounding completeness**: target-side primitive types are structurally modeled from the target language reference (Rust Reference §Types, Python data model, Go specification), with algebra inhabitance declared structurally — not string-typed shortcuts in a lookup table. Mapping from a `.dag` type to a target primitive is a structural algebra-homomorphism search over declared inhabitance, not a name-keyed table lookup. If a `.dag` type cannot be structurally grounded to a target primitive, the compiler refuses to emit (fail-closed). See `docs/single-emitter-design.md` for architecture; the target-grounding proposal ([PR #695](https://github.com/gunb-ai/gunbc/pull/695), landing at `docs/thesis/target-grounding-proposal.md` on merge) for the concrete work breakdown; ROADMAP for the lane structure.
 
 **Tier 2 — Runtime safety (proven safe or total):**
 - Division by zero, integer overflow, out-of-bounds, force-unwrap, partial functions — either proven safe at compile time or made total. No partial functions in the runtime.
@@ -229,7 +229,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
-- Bootstrap, CI, and build orchestration modeled as .dag workflows (`workflow/bootstrap.dag`, `workflow/ci.dag`). (The "dev/work-direction process modeled as .dag" claim was retracted 2026-05-15, operator-ratified — see facet 4 below; the project does not model its own work-direction.)
+- Bootstrap, CI, and build orchestration modeled as .dag workflows (`workflow/bootstrap.dag`, `workflow/ci.dag`). The project does not model its own work-direction process as `.dag` data (see facet 4 below).
 - `dag run` is the primary execution path.
 - Adding a CI gate, a Node field, or a target language requires editing one .dag file.
 
@@ -263,8 +263,7 @@ Self-hosting is not one capability; it's four. All four are targets.
    declarations. Everything ports to `.dag`. **Pure Bootstrap's secondary
    deliverable, couples to testgen.**
 
-4. **Recursive-flex / self-application** (NEW 2026-05-04; **narrowed
-   2026-05-15, operator-ratified**). gunbc applies its own correctness/
+4. **Recursive-flex / self-application.** gunbc applies its own correctness/
    cost/parallelism lenses to its own **build/CI pipeline**, which
    is modeled as `.dag` data (`workflow/bootstrap.dag`,
    `workflow/ci.dag`). The same lens framework users get for their own
@@ -276,17 +275,10 @@ Self-hosting is not one capability; it's four. All four are targets.
    distinguishes gunbc from compilers that don't validate their own
    production pipeline.
 
-   **Retracted (2026-05-15, operator-ratified):** the original
-   "T-Workflow-As-Data substrate" sub-claim — modeling gunbc's *own
-   work-direction* (briefs / worker-outputs / cycles / retirement /
-   doc-anchors) as `.dag` data. The project does not model its own
-   work-direction; the compiler model self-justifies (rationale
-   emergent from composition), so there is no meta-layer to narrate it.
-   Honest framing per this thesis's own no-fabrication discipline: this
-   facet now claims only lens self-application to the build/CI pipeline
-   (which survives via `bootstrap.dag`/`ci.dag`), not process-self-
-   modeling. The `workflow/` substrate is correspondingly `{ bootstrap,
-   ci }` only (zero-deferrals / no parallel engine — per THESIS self-hosting facets).
+   **Scope (narrowed):** gunbc does not model its own work-direction
+   (briefs, cycles, retirement) as `.dag` data. This facet claims only
+   lens self-application to the build/CI pipeline (`bootstrap.dag`,
+   `ci.dag`). The `workflow/` substrate is `{ bootstrap, ci }` only.
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
 target-language detail, or pipeline/contract test assertion — stays at
@@ -305,26 +297,23 @@ per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
 `docs/design-pure-bootstrap.md`).
 The live *count* of currently hand-authored files is tracked per-generation:
 v2 authority: `src/v2/compiler/` stage0 census (~97%; 2 hand-maintained of 62 stage0 files).
-v3 authority (historical — v3 is frozen): `src/v3/compiler/tests/integration/sg0_census_test.rs`
-— file-level **`EXPECTED_HAND_AUTHORED_NON_TEST`** + **`EXPECTED_HAND_AUTHORED_FRAGMENTS`**
-(T-PB-A) + **`EXPECTED_HAND_AUTHORED_TEST`** (T-PB-B); both subsets were shrinking toward 0 under
-0-floor cascade but the campaign is frozen pending v4 ship.
-v4 authority (active): `src/v4/compiler/self_host.dag` (T-15) — hand-authored-file ratchet
-pending; v4 substrate is already at 0 `.rs` (193 `.dag` files, no hand-Rust).
-Generated escape hatch is acceptable for additional files; hand-authored
-files are not.
+v3 authority (historical — v3 is frozen): SG-0 census in
+`src/v3/compiler/tests/integration/sg0_census_test.rs` tracked hand-authored
+non-test and test subsets shrinking toward 0; that campaign is frozen
+pending v4 ship.
+v4 authority (active): `src/v4/compiler/self_host.dag` — hand-authored-file
+ratchet pending; v4 substrate is already at 0 hand-maintained `.rs` in the
+compiler tree (`.dag` source only). Generated escape hatch is acceptable
+for additional files; hand-authored files are not.
 v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
-v3 is frozen as a comparison baseline pending v4 ship (see v4 supersession banner above).
-**v4's trajectory is the Pure Bootstrap to Zero program (0 hand-maintained)** — per operator
-2026-05-22 ("we don't need to migrate v3 → 0 — i only care about rust → 0 in v4").
+v3 is frozen as a comparison baseline.
 
-Fixed-point acceptance: v4 binary compiles `compiler.dag` → produces
-bit-identical stage0 Rust + bit-identical emitted artifacts.
+Fixed-point acceptance: the v4 binary compiles `compiler.dag` and produces
+bit-identical stage0 Rust plus bit-identical emitted artifacts.
 `compiler.dag`'s `hand_maintained_src` list monotonically shrinks to the
-empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
-(LIVE 2026-04-25; supersedes the ≤5 irreducible-shim framing in
-`docs/design-pure-bootstrap.md`). Active implementation: `src/v4/compiler/self_host.dag`
-(T-15); runner pending substrate completion.
+empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md).
+Active implementation: `src/v4/compiler/self_host.dag`; runner work
+continues as substrate stages complete.
 
 **Audience duality — opt-in depth (meta-feature):**
 - Core language stays approachable — types, functions, match, effects,
@@ -336,11 +325,9 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
 - gunbc does not pick a tribe. Normal programmers get glue generation;
   principal engineers get structural proofs. The same compiler serves both
   because depth is a surface the user opts into.
-- **Tracks via ROADMAP:** T-Demo's two fixtures exercise both audiences
-  (`fixture_compiler_nerd_canonical` for structural-proof audience;
-  `fixture_integration_canonical` for glue-generation audience), and
-  T-LensAPI provides the opt-in-depth mechanism (user-authored lenses
-  extend the proof surface without changing the base language).
+- Two canonical demo fixtures exercise both audiences (structural-proof
+  vs glue-generation), and user-authored lenses extend the proof surface
+  without changing the base language.
 
 **Adoption model — economics, not enforcement:**
 - The thesis claims every program gets complexity, effects, termination,
@@ -380,11 +367,8 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
   the program the user wrote.
 - Rust-authored tests are a language smell. Every hand-authored `.rs` test
   flags a predicate, effect-model, or mock surface the language doesn't yet
-  express. The operational release gate is ROADMAP T-PB-B's
-  `pb_rust_tests_outside_residual_zero`: zero Rust-authored tests exist
-  (predicate name retains "outside residual" for predicate-rename housekeeping;
-  semantically the residual is empty under cascade promotion, so "outside
-  residual" means "all"). The acceptance claim lives in ROADMAP.
+  express.   The operational release gate is zero Rust-authored tests outside the
+  pure-bootstrap residual (empty under cascade promotion).
 - Consequence of the pure-function posture: effects are explicit parameters,
   mocking is dependency-injection-by-construction, no hidden state means no
   flaky tests.
@@ -392,21 +376,18 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
 **Enumerable impossible-bug classes:**
 - The thesis obligates naming the bug classes that become impossible by
   construction. Not "bugs in general" — enumerable, teachable classes.
-- Initial committed list (R1 demo readiness tagged — see ROADMAP §"Release R1 Program"):
-  - **[R1]** Suboptimal-complexity contract violation: a function annotated
+- Initial committed list (release demo readiness):
+  - **[release]** Suboptimal-complexity contract violation: a function annotated
     `complexity ≤ O(n log n)` whose actual complexity exceeds it errors at
-    compile time, not review time. Demo via T-LaneE output on the
-    compiler-nerd fixture.
-  - **[R1]** Idempotency-contract violation: a function marked `@idempotent`
-    whose structure admits non-idempotent composition errors. Lens is
-    already COMPLETE per the lens capability register.
-  - **[R1]** Transport/type drift: client and server cannot hold different
-    types for the same field — both derive from the same declaration. Demo
-    via T-Emit multi-target output on the integration fixture.
-  - **[R2+]** Nested-optional flatten: `Option<Option<T>>` accessor patterns
+    compile time, not review time.
+  - **[release]** Idempotency-contract violation: a function marked `@idempotent`
+    whose structure admits non-idempotent composition errors.
+  - **[release]** Transport/type drift: client and server cannot hold different
+    types for the same field — both derive from the same declaration.
+  - **[post-release]** Nested-optional flatten: `Option<Option<T>>` accessor patterns
     that normal languages require hand-unwrapping. Gated on cardinality
     refinement substrate work.
-  - **[R2+]** Unenumerated effects: operations are intrinsically read-shaped
+  - **[post-release]** Unenumerated effects: operations are intrinsically read-shaped
     or write-shaped via their type-signature shape (returned-modified-resource
     indicates write; returns-derived-value-only indicates read). Consumers
     walk the signatures directly; there is no parallel taxonomy or annotation
@@ -426,13 +407,13 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
     §Q5.5 for the OperationEffect-taxonomy retirement rationale + audit-as-
     existence-check; §Q1-Q3 for the 5-behavior compositional-fold mechanism +
     worked examples.
-  - **[R2+]** Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
+  - **[post-release]** Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
     division-by-zero, OOB, and force-unwrap either proven safe or made
     total — never partial. Gated on Tier 2 substrate (post-R1).
 - Adding a bug class to this list is a thesis commitment; removing one
   requires a named dissolution (the structural proof became trivial).
-- [R1] classes must demo at release; [R2+] classes are thesis-committed but
-  not demo-scope for R1 (see ROADMAP T-Demo scoping note).
+- Release-scoped classes must demo at first public release; post-release
+  classes are thesis-committed but not in the initial demo scope.
 
 **Modeling discipline:**
 - Every declared type has at least one structural consumer.

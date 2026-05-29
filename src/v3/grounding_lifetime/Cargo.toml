@@ -3,6 +3,7 @@ name = "v3-grounding-lifetime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 # T-Ground-Lifetime-Analyzer — structural R2 lifetime / ownership / growability
 # fold over program use sites (no annotation surface). Sibling crate to
