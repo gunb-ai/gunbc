@@ -243,20 +243,22 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 
 ## 6. Dependency-modeled fix (Table B)
 
-| Redundancy | Modeled step (`ci.dag` / T-24) | Declared inputs | Schedule (IRT-1) | Verdict cache key (IRT-4) | Wall when hashes match green |
-|------------|-------------------------------|-----------------|----------------|---------------------------|------------------------------|
-| R01 | `LintCommand` / fmt | rustfmt surface merkle + toolchain | skip when surface ∩ diff = ∅ | `combine_hash(surface, toolchain)` | **0s** (not scheduled) |
-| R02 | Shared rust pool node | Union of downstream digests | skip when no downstream rust command scheduled | pool `content_hash` | **0s** |
-| R03 | Per-gate `TestClaim` / shell Node | Path sets per script | `ci_select_from_affected_set` (frontier ∩ diff) | `content_hash(whole TestClaim node)` per claim | **0s** |
-| R04 | `CiGitDiffReadOutcome` (#3853) | single `Witness<Diff>` | one witness read / workflow | `content_hash(Witness<Diff>)` | **~1s** |
-| R05 | `TestCommand` | binary digest; per-claim input subgraph | IRT-1 frontier skip (claim not selected → no run) | `content_hash(whole TestClaim node)` (oracle + evaluator + resources) | **seconds** |
-| R06 | Cache emission | registry + target graph merkle | restore when command scheduled | remote/sccache keyed by input merkle | **0s** restore |
-| R07 | `M1RustEmitProbeCommand` | `content_hash(src/v4/**.dag)` + v2 binary + Rust toolchain pin (`rust-toolchain.toml`, `RUSTUP_TOOLCHAIN`, cargo-check job env) | skip when probe not on frontier | `combine_hash(src/v4 merkle, v2 binary digest, toolchain_digest)` (replaces static tag; P2 — all command resource facts in boundary) | **0s** reuse |
-| R08 | Bootstrap → M1 `needs` edge | dag emit digest → rust emit | M1 scheduled only when bootstrap edge fires | shared compile artifact `content_hash` | one compile / unique input |
-| R09 | `BootstrapStageCompile` + `LensCiCommand` | stage0 + entry closure | skip when lens surface off frontier | gunbc/emit cache merkle | **seconds** warm |
-| R10 | All `ci_command_cache_digest` | real input merkle per command | interpreter frontier (`ci_select_from_affected_set`; **no** GHA bucket `if:`) | per-command input merkle (dissolve static symbol tags) | exact-once |
+**IRT-4 rule (all CI steps):** Verdict reuse keys **`content_hash(whole node)`** — for `TestClaim` rows and for every **`CiCommand`** arm (`LintCommand`, `M1RustEmitProbeCommand`, `BootstrapStageCompile`, …): input subgraph **plus** evaluator, resources (toolchain, env), and execution facts. **Schedule (IRT-1)** column holds frontier/selection only; do not put input merkle alone in the verdict column (P2 / `TASKS.md` ~L1120).
+
+| Redundancy | Modeled step (`ci.dag` / T-24) | Declared inputs (frontier / schedule) | Schedule (IRT-1) | Verdict cache key (IRT-4) | Wall when hashes match green |
+|------------|-------------------------------|--------------------------------------|----------------|---------------------------|------------------------------|
+| R01 | `LintCommand` / fmt | rustfmt surface ∩ diff | skip when surface ∩ diff = ∅ | `content_hash(whole LintCommand node)` | **0s** (not scheduled) |
+| R02 | `RustToolchainPoolCommand` | union of scheduled downstream commands | skip when no downstream rust command scheduled | `content_hash(whole RustToolchainPoolCommand node)` | **0s** |
+| R03 | Per-gate `TestClaim` / shell Node | path sets per script | `ci_select_from_affected_set` (frontier ∩ diff) | `content_hash(whole TestClaim node)` per claim | **0s** |
+| R04 | `CiGitDiffReadOutcome` (#3853) | diff witness surface | one witness read / workflow | `content_hash(whole CiGitDiffReadOutcome / Witness<Diff> node)` | **~1s** |
+| R05 | `TestCommand` | per-claim input subgraph | IRT-1 frontier skip (claim not selected → no run) | `content_hash(whole TestClaim node)` | **seconds** |
+| R06 | Cache emission | registry + target graph merkle | restore when command scheduled | `content_hash(whole cache-emission command node)` + remote store key | **0s** restore |
+| R07 | `M1RustEmitProbeCommand` | `src/v4` emit surface ∩ diff | skip when probe not on frontier | `content_hash(whole M1RustEmitProbeCommand node)` (v2 binary + toolchain + cargo-check resources in node) | **0s** reuse |
+| R08 | Bootstrap → M1 `needs` edge | bootstrap stage ∩ M1 surface | M1 scheduled only when bootstrap edge fires | `combine_hash(whole BootstrapStageCompile node, whole M1RustEmitProbeCommand node)` | one compile / unique input |
+| R09 | `BootstrapStageCompile` + `LensCiCommand` | stage0 + lens registry ∩ diff | skip when lens surface off frontier | `content_hash(whole BootstrapStageCompile node)`; `content_hash(whole LensCiCommand node)` | **seconds** warm |
+| R10 | All `ci_command_cache_digest` | per-command schedule surface | interpreter frontier (`ci_select_from_affected_set`; **no** GHA bucket `if:`) | `content_hash(whole CiCommand node)` per arm (dissolve static symbol tags) | exact-once |
 | R11 | v3 `TestCommand` + freeze | v3 subgraph merkle | T-21 claim selection on v3 roster | `content_hash(whole TestClaim node)` per claim | **0s** when untouched |
-| R12 | Receipt `CiGate` | prior verdict hash | run when upstream jobs scheduled | `combine_hash(job_verdict_hash, run_policy_digest)` | **0s** |
+| R12 | Receipt `CiGate` | upstream job verdicts | run when upstream jobs scheduled | `content_hash(whole CiGate node)` | **0s** |
 
 ### Summary (wasted compute)
 
@@ -386,10 +388,11 @@ Two mechanisms — do not conflate selection with cache keys (`src/v4/TASKS.md` 
 ci_select_from_affected_set(roster, affected) → subset whose declared input subgraph
   intersects the rerun frontier (unaffected → not scheduled)
 
-# IRT-4 (T-21 + T-24): verdict reuse for claims that do run
+# IRT-4 (T-21 + T-24): verdict reuse for work that does run
 test_run(claim) = cached_verdict(content_hash(whole TestClaim node))
+ci_run(command) = cached_verdict(content_hash(whole CiCommand node))  # Lint, M1, Bootstrap, …
   # whole node = input + oracle/predicate + evaluator + resources + extdeps
-  # NOT content_hash(input_subgraph) alone — stale reuse if oracle changes (P2)
+  # NOT content_hash(input_subgraph) alone — stale reuse if oracle/resources change (P2)
 ```
 
 When the PR diff does not touch a claim’s **input frontier**, **IRT-1** excludes it (no run). When a claim is eligible to run but its **whole TestClaim node** hash matches a prior green verdict, **IRT-4** reuses that verdict. A Rust smoke and a TestClaim twin may share an input frontier for IRT-1; each still needs its own whole-node cache key (or a single authoritative TestClaim row). No human dedup list required.
