@@ -1,4 +1,4 @@
-// No I/O -- file reading is handled by the pipeline.
+// v2 tokenizer -- pure function from source string to token list.
 module v2.compiler.tokenize
 import std.types { SourceSpan }
 import v2.std.core {

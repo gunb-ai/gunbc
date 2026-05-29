@@ -1,4 +1,4 @@
-// "Types" in the DAG language are named compositions (namespaces), not
+// v2 namespace reconciler -- verifies that named structural compositions
 module v2.compiler.infer
 import std.types { SourceSpan, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }

@@ -209,6 +209,16 @@ def process_file_lines(lines: list[str]) -> list[str]:
             out.append(emit_line(line.rstrip("\n")))
             return
 
+        if not past_header:
+            if not first_header_line_kept and COMMENT_LINE_RE.match(line):
+                out.append(emit_line(line.rstrip("\n")))
+                first_header_line_kept = True
+                return
+            if why_keep(line):
+                out.append(emit_line(line.rstrip("\n")))
+                return
+            return
+
         if is_orphan_comment_fragment(line, inline=False):
             return
 
@@ -236,16 +246,6 @@ def process_file_lines(lines: list[str]) -> list[str]:
                 in_section = True
                 section_title_kept = False
                 seen_divider_in_section = True
-            return
-
-        if not past_header:
-            if not first_header_line_kept and COMMENT_LINE_RE.match(line):
-                out.append(emit_line(line.rstrip("\n")))
-                first_header_line_kept = True
-                return
-            if why_keep(line):
-                out.append(emit_line(line.rstrip("\n")))
-                return
             return
 
         if in_section:

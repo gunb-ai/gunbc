@@ -1,4 +1,4 @@
-// The compiler has no interpreter or executor. This module defines the
+// v2 trace model -- normalized execution traces, repro cases, source mapping.
 module v2.compiler.trace
 import v2.std.core { SourceSpan }
 // =========================================================================

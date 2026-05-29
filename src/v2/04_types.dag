@@ -1,4 +1,4 @@
-// Dependency: only v2.std.core (Node, Connective, etc.)
+// v2 type predicates, constructors, and comparisons.
 module v2.compiler.infer_types
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name }
 import std.algebra {

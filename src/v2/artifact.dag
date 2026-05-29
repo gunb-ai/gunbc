@@ -1,4 +1,4 @@
-// The compiler currently assumes a single monolithic artifact. This module
+// v2 artifact model -- explicit representation of buildable/deployable units.
 module v2.compiler.artifact
 import v2.std.core { TextFile, SourceSpan }
 // =========================================================================

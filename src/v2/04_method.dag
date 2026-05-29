@@ -1,4 +1,4 @@
-// Intrinsic/bridge method classification was deleted 2026-03-28 (48 string
+// v2 method helpers -- builtin call type inference and type constructors.
 module v2.compiler.infer_method
 import std.types { SourceSpan }
 import v2.std.core {

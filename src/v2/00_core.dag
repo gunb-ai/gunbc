@@ -1,4 +1,4 @@
-// Imports shared types from std.types (the same types used by all DSL
+// v2 core types -- the compiler's domain model.
 module v2.std.core
 import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity }
 import std.syntax {

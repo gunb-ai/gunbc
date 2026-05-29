@@ -1,4 +1,4 @@
-// Consumes a flat List<Token> (from the tokenizer) and produces a
+// v2 parser -- recursive descent, first-error-halt.
 module v2.compiler.parse
 import v2.std.core {
   module_node, import_node,

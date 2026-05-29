@@ -1,6 +1,4 @@
 // =========================================================================
-// Cycle detection: precompute which types participate in dependency cycles.
-// =========================================================================
 module v2.compiler.infer_cycle
 import v2.compiler.infer_env { TypeBinding }
 fn compute_in_graph_deps(

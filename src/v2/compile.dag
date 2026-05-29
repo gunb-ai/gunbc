@@ -1,4 +1,4 @@
-// The compiler reads .dag source files and emits target-language source
+// v2 compiler pipeline -- the full .dag-to-files transform.
 module v2.compiler.compile
 import v2.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at,
