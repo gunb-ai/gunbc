@@ -17,6 +17,8 @@ import v4.compiler.resolve {
 }
 import v4.extdeps.languages.dag {
   DagLanguageModel,
+  dag_surface_module_header,
+  dag_surface_module_header_qualified_name,
   qualified_name_from_module_node
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid }
@@ -320,12 +322,31 @@ fn module_root_for_name_fold(
 }
 
 
+fn is_module_header_metadata_edge(name: Symbol) -> Bool {
+  (name == dag_surface_module_header)
+    || (name == dag_surface_module_header_qualified_name)
+}
+
+
+fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
+  match try_edge_declared_binding(e: e) {
+    Some { value: b } =>
+      if is_module_header_metadata_edge(name: b.name) {
+        None
+      } else {
+        Some { value: b }
+      }
+    None => None
+  }
+}
+
+
 fn admit_named_export_edge(
   edge: Edge,
   origin: QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
-  match try_edge_declared_binding(e: edge) {
+  match try_admitted_export_binding(e: edge) {
     Some { value: b } =>
       admit_export_symbol(sym: b.name, origin: origin, state: state)
     None => state

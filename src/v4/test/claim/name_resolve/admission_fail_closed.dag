@@ -48,7 +48,12 @@ import v4.std.verification {
 data fc_dup_seg: Symbol = fc_dup_seg
 data fc_found_seg: Symbol = fc_found_seg
 data fc_missing_seg: Symbol = fc_missing_seg
+data fc_import_a_seg: Symbol = fc_import_a_seg
+data fc_import_b_seg: Symbol = fc_import_b_seg
+data fc_subject_seg: Symbol = fc_subject_seg
 data fc_export_sym: Symbol = fc_export_sym
+data fc_export_a_sym: Symbol = fc_export_a_sym
+data fc_export_b_sym: Symbol = fc_export_b_sym
 data fc_malformed_seg: Symbol = fc_malformed_seg
 data fc_malformed_child_sym: Symbol = fc_malformed_child_sym
 data fc_pass_sym: Symbol = fc_pass_sym
@@ -76,7 +81,7 @@ fn fc_qn_node(seg: Symbol) -> Node {
 }
 
 
-fn fc_module_root(seg: Symbol) -> Node {
+fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -89,7 +94,7 @@ fn fc_module_root(seg: Symbol) -> Node {
         target: fc_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: fc_export_sym },
+        label: Named { name: export_sym },
         target: Node {
           kind: TypeNode {
             connective: Atom { identity: dag_c3_surface_sugar_service }
@@ -99,6 +104,11 @@ fn fc_module_root(seg: Symbol) -> Node {
       }
     ]
   }
+}
+
+
+fn fc_module_root(seg: Symbol) -> Node {
+  fc_module_root_export(seg: seg, export_sym: fc_export_sym)
 }
 
 
@@ -258,6 +268,44 @@ fn resolve_malformed_subject_root_is_rejected() -> Bool {
 }
 
 
+fn fc_dual_import_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: fc_module_root_export(seg: fc_subject_seg, export_sym: fc_export_sym),
+    tail: Cons {
+      head: fc_module_root_export(seg: fc_import_a_seg, export_sym: fc_export_a_sym),
+      tail: Cons {
+        head: fc_module_root_export(seg: fc_import_b_seg, export_sym: fc_export_b_sym),
+        tail: Empty
+      }
+    }
+  }
+}
+
+
+fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: fc_dual_import_roots(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: fc_subject_seg),
+        tree: fc_subject_tree()
+      },
+      imports: Cons {
+        head: Import { target: fc_qn(seg: fc_import_a_seg), visibility: ImportVisible },
+        tail: Cons {
+          head: Import { target: fc_qn(seg: fc_import_b_seg), visibility: ImportVisible },
+          tail: Empty
+        }
+      }
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
 data claim_admit_import_missing_module_is_rejected: TestClaim = CompilesClaim {
   label: "name_resolve/admit_import_entry: missing import target is rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -316,6 +364,15 @@ data claim_resolve_malformed_subject_root_is_rejected: TestClaim = CompilesClaim
   label: "name_resolve/resolve_with_admission: malformed subject module root is rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fc_claim_input(ok: resolve_malformed_subject_root_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_resolve_dual_imports_do_not_collide_on_header_metadata: TestClaim = CompilesClaim {
+  label: "name_resolve/resolve_with_admission: dual imports do not export module-header metadata",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_dual_imports_do_not_collide_on_header_metadata()),
   expected_value: fc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
