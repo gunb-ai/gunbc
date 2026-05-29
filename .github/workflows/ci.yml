@@ -181,7 +181,7 @@ jobs:
     - name: v3 bootstrap snapshot freshness gate (--verify)
       if: needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
-    # Tier-0 bankruptcy (docs/design-ci-bankruptcy-rebuild.md I2–I4): folded from deleted v2/v3/self_host_ratchet jobs.
+    # Tier-0 bankruptcy (docs/design-ci-bankruptcy-rebuild.md I2–I4 v3 arms): folded from deleted v2/v3/self_host_ratchet jobs.
     - name: Cache Cargo (v2 stage0)
       if: needs.affected.outputs.v2 == 'true'
       uses: actions/cache@v4

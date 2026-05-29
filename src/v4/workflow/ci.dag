@@ -96,6 +96,7 @@ type CiCommand
   | V2BootstrapCompileCommand
   | V3DeterminismCommand { profile: CiBuildProfile }
   | V3SelfHostFixedPointCommand { profile: CiBuildProfile, schedule: CiSchedulePolicy }
+  | V4T15SelfHostFixedPointCommand
   | M1RustEmitProbeCommand
   // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: delete scripts/v4-testclaim-corpus-gate.sh and the paired CI step when the modeled runner evaluates src/v4/test/claim/manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set) — forbidden: setting selection_fn to any other symbol or bypassing narrowing to run full corpus unconditionally.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol }
@@ -168,6 +169,7 @@ data v2_bootstrap_smoke_execution: Symbol = v2_bootstrap_smoke_execution
 data v2_compile_src_v4: Symbol = v2_compile_src_v4
 data v3_determinism_execution: Symbol = v3_determinism_execution
 data v3_self_host_fixed_point_execution: Symbol = v3_self_host_fixed_point_execution
+data v4_t15_self_host_fixed_point_execution: Symbol = v4_t15_self_host_fixed_point_execution
 data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
 data m1_rust_emit_probe_execution: Symbol = m1_rust_emit_probe_execution
 data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set
@@ -255,6 +257,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     CiJob {
       id: lens_ci_registry_execution,
       command: LensCiCommand { required_lenses: lens_ci_required_lenses },
+      needs: [v2_compile_src_v4]
+    },
+    CiJob {
+      id: v4_t15_self_host_fixed_point_execution,
+      command: V4T15SelfHostFixedPointCommand,
       needs: [v2_compile_src_v4]
     },
     CiJob {
@@ -414,6 +421,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     V2BootstrapCompileCommand => true
     V3DeterminismCommand { profile: _ } => true
     V3SelfHostFixedPointCommand { profile: _, schedule: _ } => true
+    V4T15SelfHostFixedPointCommand => true
     M1RustEmitProbeCommand => true
     TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
       fn_name == ci_testclaim_corpus_selection_fn
@@ -434,6 +442,7 @@ data ci_cache_cmd_bootstrap_compile_tag: Symbol = ci_cache_cmd_bootstrap_compile
 data ci_cache_cmd_v2_bootstrap_tag: Symbol = ci_cache_cmd_v2_bootstrap_tag
 data ci_cache_cmd_v3_determinism_tag: Symbol = ci_cache_cmd_v3_determinism_tag
 data ci_cache_cmd_v3_self_host_tag: Symbol = ci_cache_cmd_v3_self_host_tag
+data ci_cache_cmd_v4_t15_self_host_tag: Symbol = ci_cache_cmd_v4_t15_self_host_tag
 data ci_cache_build_profile_smoke_tag: Symbol = ci_cache_build_profile_smoke_tag
 data ci_cache_build_profile_release_tag: Symbol = ci_cache_build_profile_release_tag
 data ci_cache_build_profile_fixed_point_tag: Symbol = ci_cache_build_profile_fixed_point_tag
@@ -657,6 +666,7 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
         ),
         b: ci_schedule_policy_cache_digest(policy: schedule)
       )
+    V4T15SelfHostFixedPointCommand => ci_symbol_digest(sym: ci_cache_cmd_v4_t15_self_host_tag)
     M1RustEmitProbeCommand => ci_symbol_digest(sym: ci_cache_cmd_m1_probe_tag)
     TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
       combine_hash(
@@ -942,6 +952,13 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: false
       }
     LensCiCommand { required_lenses: _ } =>
+      CiComponentAffected {
+        v2: false
+        v3: true
+        v4: true
+        workflow_policy: true
+      }
+    V4T15SelfHostFixedPointCommand =>
       CiComponentAffected {
         v2: false
         v3: true
