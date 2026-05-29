@@ -27,6 +27,18 @@ const M1_BINDING_TEST_FILTER: &str =
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
+const V4_CI_COMPONENT_AFFECTED_RS: &str = include_str!("../../src/v4_ci_component_affected.rs");
+
+/// Single-authority workflow_policy path buckets (`ci.dag` predicates ↔ Rust host mirror).
+const CI_WORKFLOW_POLICY_PREFIXES: &[&str] = &[
+    ".github/workflows/",
+    "src/v4/workflow/ci",
+    "src/v3/compiler/src/v4_ci_component_affected",
+    "src/v3/compiler/src/v4_ci_runner_pool",
+    "src/v3/compiler/src/bin/detect_ci_affected_components",
+    "scripts/check-workflow-path-regex-inventory",
+    "scripts/workflow-path-regex-forbidden-substrings",
+];
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -231,6 +243,20 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         CI_DAG.contains("test_claim_ci_selection_fail_closed(c: claim)"),
         "{CI_DAG_PATH}: DiagnosticClaim rows must bypass narrow filter via fail-closed guard"
     );
+}
+
+#[test]
+fn v4_workflow_ci_workflow_policy_prefixes_align_rust_mirror() {
+    for prefix in CI_WORKFLOW_POLICY_PREFIXES {
+        assert!(
+            CI_DAG.contains(&format!("prefix: \"{prefix}\"")),
+            "{CI_DAG_PATH}: workflow_policy authority must declare prefix `{prefix}`"
+        );
+        assert!(
+            V4_CI_COMPONENT_AFFECTED_RS.contains(&format!("\"{prefix}\"")),
+            "v4_ci_component_affected.rs mirror must declare prefix `{prefix}`"
+        );
+    }
 }
 
 #[test]
