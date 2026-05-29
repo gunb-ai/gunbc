@@ -9,6 +9,8 @@
 
 **Operator directive (2026-05-29):** *Less/no bridging → immediate solution.* One **execution** end-state (**S2′ interpreter-direct**). No S1/S2 staged YAML. No coarse bucket gating. **T-24 / C4 projection close** still requires Shape-B checked `ci.yml` emission (atom **A15**; `src/v4/TASKS.md` amended in this PR — §6.1.1).
 
+**Steering (2026-05-29):** [CI bankruptcy & rebuild](./design-ci-bankruptcy-rebuild.md) — integrity-first Tier-0 (v2/v3/v4 fixed-point modeled in `ci.dag`); all other checks opt-in. Supersedes *incremental migration first* until B1 is green.
+
 ---
 
 ## 1. Architectural target
