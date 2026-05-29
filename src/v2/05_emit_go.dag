@@ -133,15 +133,9 @@ import v2.compiler.emit {
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)
-//
-// These data declarations mirror dsl/std/languages.dag exactly.
 // =========================================================================
 
-// Go reserved words imported from extdeps.languages.go.emit
 
-// Go type_map, keywords, container_templates, go_keyword, and
-// go_container now live in go_lang_facts() and shared functions
-// in v2.compiler.emit
 
 // =========================================================================
 // Entry point -- Go target
@@ -162,7 +156,6 @@ fn emit_go(typed: ResolvedGraph) -> EmitResult {
 }
 
 // =========================================================================
-// go.mod generation
 // =========================================================================
 
 fn emit_go_mod(module_name: String) -> TextFile {
@@ -269,8 +262,6 @@ fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
   TextFile { path: concat(filename, scaffold_for_target(target: Go).source_file_extension), content: content }
 }
 
-// Derive the Go package name from a module path.
-// "v2.std.core" -> last segment "core" lowercased.
 fn go_package_name(module_name: String) -> String {
   let parts = module_name |> split(delimiter: ".")
   match parts |> last {
@@ -281,9 +272,6 @@ fn go_package_name(module_name: String) -> String {
 
 // =========================================================================
 // Import emission
-//
-// Go imports are grouped in a single import block.
-// Standard library imports and generated module imports.
 // =========================================================================
 
 fn emit_go_imports(items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -321,7 +309,6 @@ fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bo
 fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_go_type_def_from_connective(item: item, env: env)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
@@ -359,9 +346,7 @@ fn emit_go_type_def_from_connective(item: Node, env: TypeEnv) -> String {
   }
 }
 
-// is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
-// Go struct from Conj children
 fn emit_go_struct_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
   if children |> count == 0 {
     concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, "{}")
@@ -379,21 +364,14 @@ fn emit_go_struct_field_from_child(child: Node, env: TypeEnv) -> String {
   concat("\t", go_export_ident(name: child_text), " ", ty, json_tag)
 }
 
-// Go sum types -- interface + concrete types + type switch
-// Go has no native sum types. We model them as:
-//   - An interface with a marker method
-//   - One struct per variant
-//   - Type switch for pattern matching
 fn emit_go_sum_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
   let has_data = children |> any(child => child.children |> count > 0)
   if has_data {
-    // Tagged union: interface + struct per variant
     let iface = concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " interface {\n\tis", name, "()\n}")
     let variant_structs = children |> map(child => emit_go_variant_struct(parent_name: name, child: child, env: env))
     let structs_str = variant_structs |> join(separator: "\n\n")
     concat(iface, "\n\n", structs_str)
   } else {
-    // Simple enum: iota constants
     let type_decl = concat(language_spec(target: Go).items.enum_keyword, " ", name, " int")
     let variant_consts = children |> enumerate |> map(pair =>
       let child = pair.second
@@ -427,18 +405,11 @@ fn emit_go_type_alias(name: String, base: Node, source_indices: Map<String, Newl
 
 // =========================================================================
 // Node-based type emission
-//
-// These functions dispatch on Node structure (connective + name + children)
-// to render Go type syntax.
 // =========================================================================
 
-// Type rendering now uses shared emit_node_type (05_emit.dag).
 
 // =========================================================================
 // Pure function (fn) emission
-//
-// Go functions: func Name(params) returnType { body }
-// Go naming: exported functions are PascalCase.
 // =========================================================================
 
 fn emit_go_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -462,9 +433,6 @@ fn emit_go_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, 
 
 // =========================================================================
 // Workflow function (func) emission
-//
-// Go has no async/await. Func bodies that do I/O return (value, error).
-// Multi-return: func Name(params) (ReturnType, error) { ... }
 // =========================================================================
 
 fn emit_go_func_def(
@@ -504,8 +472,6 @@ fn emit_go_func_params(params: List<Node>, uses: List<Node>, service_names: List
   all_params |> join(separator: ", ")
 }
 
-// Expression entry point — delegates to shared emit_unified_typed_expr.
-// Pattern rendering is now fully unified in 05_emit.dag (emit_unified_pattern).
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {
   emit_unified_typed_expr(texpr: texpr, target: Go, registry: registry, scope: scope, depth: depth, fuel: fuel,
     render_pattern: pat => emit_unified_pattern(pattern: pat, target: Go, source_indices: scope.type_env.source_indices))
@@ -513,9 +479,6 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
 
 // =========================================================================
 // Service definition — Go
-//
-// Orchestration is in emit_unified_service_def (05_emit.dag).
-// This file provides: struct rendering + transport implementations.
 // =========================================================================
 
 fn emit_go_transport_body(transport: Node, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
@@ -615,9 +578,6 @@ fn emit_go_local_call(op_name: String, depth: Int) -> String {
 
 // =========================================================================
 // Resource definition emission
-//
-// Resources become Go interfaces (structural typing -- no explicit
-// "implements" needed).
 // =========================================================================
 
 fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
@@ -642,8 +602,6 @@ fn emit_go_capability_method(cap_node: Node, depth: Int, env: TypeEnv) -> String
 
 // =========================================================================
 // Data definition emission
-//
-// data name: Type = value  ->  Go package-level var
 // =========================================================================
 
 fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -654,12 +612,6 @@ fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<St
 
 // =========================================================================
 // Identifier conversion -- Go target
-//
-// Go visibility is controlled by case: uppercase = exported, lowercase = unexported.
-// Ref: Go Spec "Exported identifiers"
-//
-// go_export_ident: for types, exported functions, struct fields -> PascalCase
-// go_local_ident: for local variables, params -> camelCase
 // =========================================================================
 
 fn go_export_ident(name: String) -> String {
@@ -682,10 +634,8 @@ fn go_export_ident(name: String) -> String {
   }
 }
 
-// Identifier rendering now uses shared emit_ident (05_emit.dag).
 
 // =========================================================================
 // Utility: check if a TypedGraph has service items
 // =========================================================================
 
-// is_service_item is now shared -- imported from v2.compiler.emit

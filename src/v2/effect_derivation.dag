@@ -1,7 +1,4 @@
 // v2 effect derivation bridge.
-//
-// Imports std.effects derivation types into the compiler tree so they
-// are compiled into stage0 and accessible from Rust tests.
 
 module v2.compiler.effect_derivation
 

@@ -1,10 +1,4 @@
 // Pattern matching and variant lookup -- read-only type checks for
-// match exhaustiveness and variant/field resolution.
-//
-// Dependency chain:
-//   v2.std.core, v2.compiler.infer_types, v2.compiler.infer_env
-//     -> v2.compiler.infer_patterns (this file)
-//       -> v2.compiler.infer (expression inference)
 
 module v2.compiler.infer_patterns
 
@@ -137,7 +131,6 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
     PatternResolved { node: scrut_node } =>
       let scrut_opt = scrut_node.return_cardinality == CardOptional
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
-        // Non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
         node_lookup_failed(diagnostics: [])
       } else {
         let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
@@ -191,9 +184,6 @@ fn check_match_exhaustiveness(
   span: SourceSpan,
   module_name: String
 ) -> List<ErrorNode> {
-  // Resolve the scrutinee type -- if it's a leaf name, look up its definition.
-  // Preserve Optional cardinality: lookup returns the type definition which
-  // has Required cardinality, but the scrutinee may be T? (CardOptional).
   let scrut_is_optional = scrutinee_type.return_cardinality == CardOptional
   let has_structure = scrutinee_type.connective != NoConnective
   let resolved_raw = if has_structure {
@@ -205,19 +195,14 @@ fn check_match_exhaustiveness(
     }
   }
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
-  // Only check coproducts (Disj connective).
   let is_coproduct = resolved.connective == Disj
   let resolved_is_optional = resolved.return_cardinality == CardOptional
   if is_coproduct || resolved_is_optional {
-    // Optional is represented as [inner_type, None] — the first child
-    // is the inner type, not a "Some" variant. Normalize to ["Some", "None"]
-    // so patterns `Some { value: x } => ... None => ...` are recognized.
     let variant_names = if resolved_is_optional {
       ["Some", "None"]
     } else {
       resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c))
     }
-    // Check if any arm is a wildcard or bind (covers all remaining).
     let has_catch_all = any(arms, arm =>
       match arm_pattern(n: arm) {
         Wildcard => true
@@ -228,7 +213,6 @@ fn check_match_exhaustiveness(
     if has_catch_all {
       []
     } else {
-      // Collect covered variant names from VariantPattern arms.
       let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
         match arm_pattern(n: arm) {
           VariantPattern { name: n, parent_enum: _, field_bindings: _ } => map_insert(acc, n, true)
