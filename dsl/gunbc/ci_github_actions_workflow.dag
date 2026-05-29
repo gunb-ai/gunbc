@@ -101,6 +101,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       name: none,
       runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [RunStep {
+          name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
+          id: none,
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
           name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
           id: none,
           run: "git config --global --unset-all http.https://github.com/.extraheader || true",
@@ -116,6 +126,25 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           uses: { owner: "actions", repo: "checkout", ref: "v4" },
           with: { "fetch-depth": "0" },
           env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Rust" },
+          id: none,
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          with: { "cache": "false", "rustflags": "" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
