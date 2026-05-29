@@ -3,6 +3,7 @@ name = "v3-grounding-tests"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 # T-Ground-Tests — L4 routing-stability Stratum A (name-keyed parity) against
 # LanguageSpec Phase 1 `MethodTemplateContract` row authorities. Sibling to

@@ -13,8 +13,20 @@ See [THESIS.md](THESIS.md) for the full thesis.
 
 ```bash
 git clone <repo> && cd gunbc
+cargo build --release -p v2-compiler --bin gunbc
 cargo test -p v2-compiler-tests    # compiler tests
 cargo clippy --all-targets -- -D warnings  # lint
+```
+
+The release binary is `target/release/gunbc` (crate `v2-compiler`, bin `gunbc` in
+`src/v2/stage0/Cargo.toml`). Use it to compile v4 trees, for example:
+
+```bash
+mkdir -p /tmp/gunbc-out
+./target/release/gunbc compile \
+  --source-root src/v4 \
+  --output-dir /tmp/gunbc-out \
+  --target dag
 ```
 
 ## How it works
@@ -36,6 +48,16 @@ A single `.dag` program can describe an entire system. Different
 subgraphs emit to different targets. The compiler owns the glue
 between artifacts (shared types, serialization, API contracts).
 
+## v2 and v4
+
+| | v2 (`src/v2/`) | v4 (`src/v4/`) |
+|---|----------------|----------------|
+| Role | Production self-hosted compiler | Next substrate + pipeline |
+| Maturity | Emit to Rust/Python/Go; large test suite | Model depth in `std/` and `extdeps/`; compiler stages compile `.dag` |
+| Source | `.dag` + small Rust `stage0` bootstrap | `.dag` only in the compiler tree (bootstrap shrinking) |
+
+**v4 status (honest):** the v4 compiler pipeline compiles and type-checks `.dag` over `src/v4` in CI. Multi-target emission and execute-verified `TestClaim` runners are in progress. See [ROADMAP.md](ROADMAP.md) for milestone shape.
+
 ## What the compiler proves
 
 | Property | How |
@@ -54,30 +76,34 @@ exist? is the database up?) — it generates tests for.
 
 ```
 THESIS.md           Why this project exists — start here
-ROADMAP.md          Current state and work plan
-INVARIANTS.md       Rules that protect the thesis
+ROADMAP.md          Current state and direction
+INVARIANTS.md       Five principles that protect the thesis
 MODELING.md         How to extend the language safely
 
 docs/               Project-wide design
   architecture.md     Substrate: Node + Edge
   coercion-design.md  Type coercion algebra
 
-dsl/                Domain: .dag source files
-  std/                Shared vocabulary (types, algebra, iteration)
+dsl/                Portable domain vocabulary
+  std/                Shared types, algebra, iteration
   extdeps/            External system models (cloud, git, shell)
 
-src/v2/             Self-hosted compiler (.dag source)
+src/v2/             Self-hosted compiler (.dag source, shipping)
   00_core.dag         Core types
   02_parse.dag        Tokenizer + parser
   04_infer.dag        Type inference + provenance
   05_emit.dag         Emission (shared + per-target)
   complexity.dag      Termination proofs
   ownership.dag       Ownership analysis
-  cx-design.md        Complexity analysis design
-  ownership-design.md Ownership pipeline design
-  compiler-laws.md    Compiler structural laws
 
-src/v2/tests/       Compiler test suite
+src/v4/             Next compiler generation (in progress)
+  std/                Substrate vocabulary
+  extdeps/            Language and transport models
+  compiler/           Pipeline stages (tokenize … emit … translate)
+  lens/               Correctness lenses
+  test/claim/         Structural TestClaim corpus
+
+src/v2/tests/       v2 compiler test suite
   testing-strategy.md Testing philosophy
 ```
 

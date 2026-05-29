@@ -7,8 +7,8 @@ If this PR adds, modifies, or expands a hand-Rust file under `src/v3/`
 — including Rust tests under `src/v3/compiler/tests/` and any other
 hand-authored `.rs` in the v3 tree, since they are part of the SG-0
 census (T-PB-A non-test subset OR T-PB-B test subset) — fill in the
-"Per-PR dissolution gate" section below per INVARIANTS.md#p5-progress-is-dissolution
-"Dispatch-Discipline Mechanisms" (b).
+"Per-PR dissolution gate" section below per
+[`_internal/INVARIANTS_OPS.md`](_internal/INVARIANTS_OPS.md) Dispatch-Discipline Mechanisms **(b)**.
 PRs that touch only `.dag` source, generated Rust, docs, non-Rust
 test fixtures, or hand-Rust outside `src/v3/` may delete the gate
 section.
@@ -28,7 +28,7 @@ requires a **named dissolution hook** the reviewer can open in **one hop**. Cite
 2. **`docs/briefs/r3-pb-runtime-test-predicate-dissolution-hook.md` — §PB-runtime dissolution hook qualification**
    (`#pb-runtime-dissolution-hook-qualification`): PB-runtime **allowed hook destination** — Q1–Q4 qualification
    and disqualifiers in that brief section; name in the PR body how this PR satisfies them when using option **(2)**; or
-3. **`ROADMAP.md`**: the concrete bullet **`test_runner.rs` becoming a parallel test-predicate authority**
+3. **[`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md)**: the concrete bullet **`test_runner.rs` becoming a parallel test-predicate authority**
    (tracked-debts / Pattern B row — search in-tree) as the freeze exception / deferral anchor.
 
 **Frozen without hook:** new or expanded bespoke predicate arms, producer identities, oracle paths, or
@@ -45,7 +45,7 @@ Evaluator brief **(1)** as appropriate; do not duplicate PB-owned implementation
 ## Per-PR dissolution gate (required for new/expanded hand-Rust under `v3/`)
 
 <!--
-Per INVARIANTS.md#p5-progress-is-dissolution "Dispatch-Discipline Mechanisms" (b): no new or
+Per [`_internal/INVARIANTS_OPS.md`](_internal/INVARIANTS_OPS.md) Dispatch-Discipline Mechanisms **(b)**: no new or
 expanded hand-Rust under `src/v3/` without a single, checkable receipt.
 Fill the single bullet under the gate using **exactly one** of the
 three dispositions below — not a mix, not a vague umbrella phrase.
@@ -60,12 +60,12 @@ three dispositions below — not a mix, not a vague umbrella phrase.
     "`EXPECTED_HAND_AUTHORED_TEST`: 71 → 70 paths").
 
 (3) Explicit deferral: name the **lane or workstream ID** (e.g. T-PB-B,
-    SG-2c) **and** cite a **concrete ROADMAP row** — path in-tree plus
+    SG-2c) **and** cite a **concrete row in [`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md)** — path in-tree plus
     stable heading or table row, or a permalink (GitHub line link,
-    `#fragment` that resolves in `ROADMAP.md`). A reviewer must open the
+    `#fragment` that resolves in that file). A reviewer must open the
     cited row in one hop.
 
-**Insufficient (do not use as the sole gate answer):** "see ROADMAP",
+**Insufficient (do not use as the sole gate answer):** "see ROADMAP" (without `_internal/ROADMAP_OPS.md`),
 "TBD", "tracked elsewhere", "follow-up PR", lane name alone, or any
 uncited narrative deferral without the row/link above.
 
@@ -75,7 +75,7 @@ it MUST be authored against the §0 identity-carrier pass program (see
 PR #810 §0); not as a one-off. Cite the program brief.
 -->
 
-- **Exactly one disposition** (delete path **or** census shrink with N→M **or** lane + cited ROADMAP row/link): ___
+- **Exactly one disposition** (delete path **or** census shrink with N→M **or** lane + cited `_internal/ROADMAP_OPS.md` row/link): ___
 
 ## SG-0 net-shrink discipline (required when `sg0_census_test.rs` changes)
 
@@ -96,7 +96,7 @@ dispatch.
 
 **Delete this entire section** if `sg0_census_test.rs` is untouched.
 
-Authority: ROADMAP.md bullet *SG-0 PR-window net-shrink discipline*.
+Authority: [`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md) § *SG-0 PR-window net-shrink discipline*.
 -->
 
 **CI reads raw PR description text.** The lines the gate matches must start at column 0 with `SG-0 hand-path delta:` and (when required) `SG-0 pairing:` — a leading markdown list marker (`- …`) or bold wrapper on the same line will **not** satisfy the checker. Paste the two lines below the checklist into the description body as plain text (you can keep the bullets as a personal reminder).
@@ -109,21 +109,20 @@ Authority: ROADMAP.md bullet *SG-0 PR-window net-shrink discipline*.
 
 <!--
 Per docs/briefs/r3-debt-paydown-program-coordination.md (#1518) and
-INVARIANTS.md#p5-progress-is-dissolution (Dispatch-Discipline Mechanisms — velocity tripwire).
+[`_internal/INVARIANTS_OPS.md`](_internal/INVARIANTS_OPS.md) Dispatch-Discipline Mechanisms **(c)** (velocity tripwire).
 
-Fill this section with a single-checkable receipt for tracked ROADMAP debt
-rows touched by this PR. This is separate from the hand-Rust dissolution
+Fill this section with a single-checkable receipt for tracked debt rows in
+[`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md) touched by this PR. This is separate from the hand-Rust dissolution
 gate above: the gate covers SG-0 hand-Rust scaffold discipline; this section
-covers ROADMAP debt-row retirement discipline for the R3 Debt-Paydown
-standing program.
+covers debt-row retirement discipline for the R3 Debt-Paydown standing program.
 
 Use one bullet per touched debt row. Each bullet must use exactly one of
 the three dispositions below:
 
-(1) Debt paid: cite the ROADMAP row by path + heading/anchor or permalink,
+(1) Debt paid: cite the row in [`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md) by path + heading/anchor or permalink,
     and name the retirement mechanism in this PR.
 
-(2) Debt found, routed: cite the ROADMAP row by path + heading/anchor or
+(2) Debt found, routed: cite the row in [`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md) by path + heading/anchor or
     permalink, and name the owning lane plus the filed retirement issue/PR.
     Routing is interim only; the row remains open until the retirement PR
     merges.
@@ -131,7 +130,7 @@ the three dispositions below:
 (3) No debt touched: use only when the PR neither introduces, modifies, nor
     retires a tracked-debt row.
 
-Insufficient: "see ROADMAP", "TBD", "tracked elsewhere", "follow-up PR",
+Insufficient: "see ROADMAP" (without `_internal/ROADMAP_OPS.md`), "TBD", "tracked elsewhere", "follow-up PR",
 a lane name without a cited row, or any routed debt without a filed
 retirement issue/PR.
 -->
