@@ -12538,7 +12538,8 @@ mod tests {
     }
 
     fn list_instantiation_element(dag: &Dag, list_inst: DeclarationId) -> DeclarationId {
-        let TypeConnective::Instantiation { arguments, .. } = &dag.declaration(list_inst).connective
+        let TypeConnective::Instantiation { arguments, .. } =
+            &dag.declaration(list_inst).connective
         else {
             panic!("expected List instantiation");
         };
@@ -12547,17 +12548,14 @@ mod tests {
 
     /// Nested `List<T>` config fields must materialize as `FieldPatch<List<Int>>`, not
     /// `FieldPatch<List<T>>`, when `ConfigPatchRecord<Config>` is applied to `Config<Int>`.
- 12550|    #[test]
+    #[test]
     fn materialize_config_patch_record_substitutes_nested_list_type_param() {
         let mut dag = Dag::new();
         let int_id = dag.int_shape().expect("bootstrap Int").declaration;
-        let list_tpl = dag
-            .declaration_by_name("List")
-            .expect("bootstrap List")
-            .id;
+        let list_tpl = dag.declaration_by_name("List").expect("bootstrap List").id;
         let list_tpl_param = template_param_id(&dag, list_tpl, 0).expect("List type param");
 
- 12560|        let t_param = push_anonymous_test_declaration(
+        let t_param = push_anonymous_test_declaration(
             &mut dag,
             TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
         );
@@ -12567,7 +12565,7 @@ mod tests {
             TypeConnective::Instantiation {
                 template: list_tpl,
                 arguments: vec![TemplateArgument {
- 12570|                    parameter: list_tpl_param,
+                    parameter: list_tpl_param,
                     value: t_param,
                 }],
             },
@@ -12577,7 +12575,7 @@ mod tests {
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
- 12580|                name: Some("Cfg".to_string()),
+                name: Some("Cfg".to_string()),
                 connective: TypeConnective::Conj {
                     children: vec![Field {
                         label: "magics".to_string(),
@@ -12587,7 +12585,7 @@ mod tests {
                 type_params: vec![t_param],
                 phantom_params: Vec::new(),
                 meta_tag: None,
- 12590|                specialization_parent: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -12597,7 +12595,7 @@ mod tests {
             id
         };
 
- 12600|        let field_patch_t_param = push_anonymous_test_declaration(
+        let field_patch_t_param = push_anonymous_test_declaration(
             &mut dag,
             TypeConnective::Atom(AtomPayload::TypeParam("PatchT".to_string())),
         );
@@ -12606,12 +12604,14 @@ mod tests {
             dag.push_declaration(Declaration {
                 id,
                 name: Some("FieldPatch".to_string()),
-                connective: TypeConnective::Conj { children: Vec::new() },
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
                 type_params: vec![field_patch_t_param],
                 phantom_params: Vec::new(),
                 meta_tag: None,
                 specialization_parent: None,
- 12610|                inhabits: None,
+                inhabits: None,
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
@@ -12621,7 +12621,7 @@ mod tests {
         };
 
         let mut symbols = HashMap::new();
- 12620|        symbols.insert("Cfg".to_string(), config_tpl);
+        symbols.insert("Cfg".to_string(), config_tpl);
         symbols.insert("Int".to_string(), int_id);
         symbols.insert("FieldPatch".to_string(), field_patch_tpl);
 
@@ -12631,7 +12631,7 @@ mod tests {
                 name: "Cfg".to_string(),
                 args: vec![TypeAngleArg::TypeExpr {
                     ty: SurfaceType::Named {
- 12630|                        name: "Int".to_string(),
+                        name: "Int".to_string(),
                         span: span.clone(),
                     },
                 }],
@@ -12641,7 +12641,7 @@ mod tests {
 
         let patch_conj = materialize_config_patch_record_connective(
             &mut dag,
- 12640|            &symbols,
+            &symbols,
             &HashMap::new(),
             &args,
             &span,
@@ -12651,7 +12651,7 @@ mod tests {
         let TypeConnective::Conj { children } = patch_conj else {
             panic!("expected patch Conj");
         };
- 12650|        assert_eq!(children.len(), 1);
+        assert_eq!(children.len(), 1);
         let patch_magics = children[0].ty;
         let inner = {
             let TypeConnective::Instantiation { arguments, .. } =
@@ -12661,7 +12661,7 @@ mod tests {
             };
             arguments[0].value
         };
- 12660|        let list_inner = list_instantiation_element(&dag, inner);
+        let list_inner = list_instantiation_element(&dag, inner);
         assert_eq!(
             list_inner, int_id,
             "patch field must be FieldPatch<List<Int>>, not FieldPatch<List<T>>"
@@ -12671,4 +12671,4 @@ mod tests {
             "must not fall back to unspecialized List<T> type param"
         );
     }
- 12670|}
+}
