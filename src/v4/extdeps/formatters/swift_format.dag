@@ -7,7 +7,7 @@ module v4.extdeps.formatters.swift_format
 
 import v4.std.collection { List }
 import v4.std.diagnostic { Outcome }
-import v4.std.patch { FieldPatch, apply_field_patch }
+import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 import v4.std.refinement {
   ExactOneInt,
   NonNegativeInt,
@@ -16,7 +16,6 @@ import v4.std.refinement {
   non_negative_int_authoritative_literal,
   positive_int_authoritative_literal,
 }
-
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -123,6 +122,7 @@ data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
 }
 
 
+<<<<<<< HEAD
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: SwiftFormatConfigPatch projected from SwiftFormatConfig field set.
 type SwiftFormatConfigPatch {
   version: FieldPatch<Outcome<ExactOneInt>>
@@ -149,32 +149,11 @@ type SwiftFormatConfigPatch {
   indent_blank_lines: FieldPatch<Bool>
   ordered_imports: FieldPatch<SwiftFormatOrderedImports>
 }
+=======
+type SwiftFormatConfigPatch = ConfigPatchRecord<SwiftFormatConfig>
+>>>>>>> origin/main
 
 
 fn swift_format_layer(base: SwiftFormatConfig, patch: SwiftFormatConfigPatch) -> SwiftFormatConfig {
-  SwiftFormatConfig {
-    version: apply_field_patch(base: base.version, patch: patch.version),
-    line_length: apply_field_patch(base: base.line_length, patch: patch.line_length),
-    indentation: apply_field_patch(base: base.indentation, patch: patch.indentation),
-    tab_width: apply_field_patch(base: base.tab_width, patch: patch.tab_width),
-    maximum_blank_lines: apply_field_patch(base: base.maximum_blank_lines, patch: patch.maximum_blank_lines),
-    spaces_before_end_of_line_comments: apply_field_patch(base: base.spaces_before_end_of_line_comments, patch: patch.spaces_before_end_of_line_comments),
-    respects_existing_line_breaks: apply_field_patch(base: base.respects_existing_line_breaks, patch: patch.respects_existing_line_breaks),
-    line_break_before_control_flow_keywords: apply_field_patch(base: base.line_break_before_control_flow_keywords, patch: patch.line_break_before_control_flow_keywords),
-    line_break_before_each_argument: apply_field_patch(base: base.line_break_before_each_argument, patch: patch.line_break_before_each_argument),
-    line_break_before_each_generic_requirement: apply_field_patch(base: base.line_break_before_each_generic_requirement, patch: patch.line_break_before_each_generic_requirement),
-    line_break_between_declaration_attributes: apply_field_patch(base: base.line_break_between_declaration_attributes, patch: patch.line_break_between_declaration_attributes),
-    prioritize_keeping_function_output_together: apply_field_patch(base: base.prioritize_keeping_function_output_together, patch: patch.prioritize_keeping_function_output_together),
-    indent_conditional_compilation_blocks: apply_field_patch(base: base.indent_conditional_compilation_blocks, patch: patch.indent_conditional_compilation_blocks),
-    line_break_around_multiline_expression_chain_components: apply_field_patch(base: base.line_break_around_multiline_expression_chain_components, patch: patch.line_break_around_multiline_expression_chain_components),
-    file_scoped_declaration_privacy: apply_field_patch(base: base.file_scoped_declaration_privacy, patch: patch.file_scoped_declaration_privacy),
-    indent_switch_case_labels: apply_field_patch(base: base.indent_switch_case_labels, patch: patch.indent_switch_case_labels),
-    spaces_around_range_formation_operators: apply_field_patch(base: base.spaces_around_range_formation_operators, patch: patch.spaces_around_range_formation_operators),
-    no_assignment_in_expressions: apply_field_patch(base: base.no_assignment_in_expressions, patch: patch.no_assignment_in_expressions),
-    multiline_trailing_comma_behavior: apply_field_patch(base: base.multiline_trailing_comma_behavior, patch: patch.multiline_trailing_comma_behavior),
-    multi_element_collection_trailing_commas: apply_field_patch(base: base.multi_element_collection_trailing_commas, patch: patch.multi_element_collection_trailing_commas),
-    reflow_multiline_string_literals: apply_field_patch(base: base.reflow_multiline_string_literals, patch: patch.reflow_multiline_string_literals),
-    indent_blank_lines: apply_field_patch(base: base.indent_blank_lines, patch: patch.indent_blank_lines),
-    ordered_imports: apply_field_patch(base: base.ordered_imports, patch: patch.ordered_imports),
-  }
+  config_patch_layer(base: base, patch: patch)
 }

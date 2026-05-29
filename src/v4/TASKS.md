@@ -1184,6 +1184,27 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
   generator emits checked YAML from `ci.dag`, the hand-authored YAML is
   deleted, and the v3 string ratchets become `TestClaim`s over the generated
   output.
+- **CI overhaul close predicates (operator-ratified 2026-05-29,
+  `docs/design-ci-dag-overhaul.md` PR #3886 — two phases, single authority):**
+  - **Phase 1 — split (same PR as `docs/design-ci-bankruptcy-rebuild.md`):**
+    - **Phase 1a / B1 (Tier-0 integrity):** `ci.dag` is sole *policy*
+      authority for integrity-class CI (I0–I8 in bankruptcy doc); GHA invokes
+      T-22 interpreter on `ci_pipeline` (S2′); coarse bucket `if:` scheduling
+      and monolithic policy jobs (`v3`/`v4`/`self_host_ratchet` as schedule
+      drivers) are dissolved. **`scripts/check-*` are not required to be deleted
+      in Phase 1a** — they must not remain on the Tier-0 critical path after
+      B1. Atoms **A0–A2** (+ integrity arms). **T-24 remains open** after Phase
+      1a.
+    - **Phase 1b / B2 (lane completion):** atoms **A3–A14** promoted opt-in
+      (one PR each); **A6–A8** delete `scripts/check-*` in the same PR as
+      `DisciplinePolicyCommand` / `TestClaim` ports. Canvas §9.1 “lane done” =
+      Phase 1a **and** 1b.
+  - **Phase 2 (atom A15):** Shape-B checked `.github/workflows/ci.yml` emitted
+    from `CiPipeline`; **all** hand-authored workflow YAML deleted (C4 /
+    `design-pure-bootstrap-zero.md`). **T-24 [DONE]** only after Phase 2.
+  - **Forbidden:** treating a hand-maintained harness `ci.yml` as steady-state
+    authority; silently narrowing this bullet to “interpreter-only” without a
+    TASKS amendment.
 - Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
 - **Lens verdict gate (operator-ratified 2026-05-25) — single-authority split:** CI pass/fail for lens enforcement is **`run_required_lens_gates`** in `compiler/00_compile.dag` (`Outcome<List<LensGateWitness>>`) — **owned by T-10**, not build exit code alone. **T-24** owns **`LensCiCommand { required_lenses: … }`** scheduling in `workflow/ci.dag` (which lens set runs in CI). **T-23** owns the Enforce application substrate consumed by T-10's `apply_compile_lens`. Semantic verdict = lens-gate rejection diagnostics, structurally separate from "compile succeeded."
 - Structural cache keys: a cacheable job's `actions/cache` key is `content_hash` (B1) of its input subgraph, not a hand-authored `hashFiles(...)` glob. The interim `hashFiles(...)` keys in the committed `ci.yml` (e.g. the v2-compiler-binary cache) are manual approximations, replaced by emitted content-hashes when `ci.yml` is emitted from this file.
@@ -1290,33 +1311,38 @@ a semver / ordering lattice. Tombstoned here so the T-2# numbering stays
 stable; the original gap text is intentionally removed — it described a
 task that will not exist.
 
-### T-28 — std/ module-graph substrate  [MODELED]
+### T-28 — std/ module-graph substrate  [DISSOLVED]
 **Gap:** `03_resolve` cross-file binding needs a declared module catalog;
 no substrate existed before this lane. (This is the substrate side of the
 Theme-B "module-loading" dependency.)
-**Disposition — MODELED (operator ruling 2026-05-17, narrowed by Change 3).**
-`std/catalog.dag` now owns the `Catalog` / `Entry` carrier, entry lookup,
-and validated catalog constructor, bundled into T-8. `AncestorRelation` and
-the ancestor-prefix witness were cut as speculative in Change 3; they are not
-part of the live catalog surface.
+**Disposition — DISSOLVED (T-QN-1 Change 2 follow-on).**
+`std/catalog.dag` and its `Catalog` / `Entry` bridge are deleted. Cross-file
+admission now consumes enumerable module roots directly (`FreeMonoid<Node>`) and
+projects each root's `QualifiedName` through `qualified_name_from_module_node`
+(in `extdeps/languages/dag.dag`; compiler/ admission layer — not the std/
+`qualified_name_from_node` fold_list_node primitive).
+`AncestorRelation` and the ancestor-prefix witness were cut as speculative in
+Change 3; they are not part of the live module-root surface.
 **Residual:** `rust.dag`'s `PubInPath` visibility still needs a visibility
 authority if/when that slice is made executable. That authority is **not**
-`std/catalog.dag` today; schedule it as a Rust visibility / module-tree
+the deleted module graph carrier; schedule it as a Rust visibility / module-tree
 fact model before dispatching `PubInPath` consumers. Do not reintroduce an
 ancestor witness through the catalog carrier without a fresh modeling decision.
 
-### T-28-B — Extract module catalog admission from `03_resolve.dag`  [MODELED]
-**Landed boundary:** `compiler/03_name_resolve.dag` owns catalog admission.
-The stage receives the fully loaded `Catalog` plus an `Admission { subject,
-imports }`, enforces import visibility and ambiguity rules, and produces the
-exact `Namespace` admitted for that subject module via `namespace_for_subject`.
-`resolve_with_admission(lm, catalog, admission)` then delegates to
+### T-28-B — Extract module-root admission from `03_resolve.dag`  [MODELED]
+**Landed boundary:** `compiler/03_name_resolve.dag` owns module-root admission.
+The stage receives enumerable module roots (`FreeMonoid<Node>`) plus an
+`Admission { subject, imports }`, projects names through
+`qualified_name_from_module_node` (extdeps/languages/dag.dag; post-normalize
+module Nodes), enforces import visibility and ambiguity rules, and
+produces the exact `Namespace` admitted for that subject module via
+`namespace_for_subject`. `resolve_with_admission(lm, roots, admission)` then delegates to
 `compiler/03_resolve.resolve_with_namespace`; `03_resolve.dag` remains
 single-tree K-1 resolution only: `resolve(tree, lm)` and
 `resolve_with_namespace(tree, namespace)`.
 
-It must not flat-fold `catalog.entries`; module names remain authoritative
-until admission is complete. As a follow-on, dissolve `AdmissionState` in
+It must not accept caller-supplied name/root pairs; module names remain
+authoritative only when projected from the Node. As a follow-on, dissolve `AdmissionState` in
 `03_name_resolve.dag` — its accepted/rejected coproduct can collapse into the
 `Outcome` accumulator of the admission stage once generic `Outcome`
 fold/traverse can carry the accumulator directly.
@@ -1750,54 +1776,36 @@ to define a new agent output surface.
   root until a later task models import extraction from the normalized Node;
   T-35 workers must not synthesize imports from filenames, batch order, or an
   undeclared parse traversal.
-  **Current execution gate:** `qualified_name_from_node` (T-QN-1) is now the
-  real structural walker; the T-8 segment-identity gate moved to
-  `qualified_name_from_module_node` in `extdeps/languages/dag.dag`. However,
-  `compile_with_batch` itself is currently the stub: it returns
+  **Current execution gate:** `qualified_name_from_module_node` (T-QN-1) is the
+  real structural walker for post-normalize module Nodes; the T-8 segment-identity
+  gate lives in `extdeps/languages/dag.dag`. However, `compile_with_batch` itself
+  is currently the stub: it returns
   `compile_with_batch_projection_gated_diagnostic()` unconditionally
-  (`src/v4/compiler/00_compile.dag:439`). The admission fold below is modeled
-  in the same file but is not the reachable public path until T-8 lands
-  per-identifier symbol mapping. This is not a successful virtual-loader
+  (`src/v4/compiler/00_compile.dag`). This is not a successful virtual-loader
   execution receipt; it is the fail-closed boundary receipt preserving T-35's
   locked surface without fabricating accepted batches.
-  `compile_with_batch` runs admission first: it folds `batch.entries` applying
-  `qualified_name_from_module_node` (extdeps/languages/dag.dag; compiler/ can
-  import extdeps/). For `Accepted { value: name, ... }`, the fold
-  appends `Entry { name: name, root: node }` to the candidate
-  `FreeMonoid<Entry>`; for `Rejected { diagnostics }`, the fold records the
-  diagnostics and the overall admission returns `Rejected` before catalog
-  construction. Only if every projection is accepted does it call
-  `catalog_from_entries` → `Holds { value: catalog }` (fail-closed:
-  `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
-  retrieved via `catalog_entry_for_name(catalog: catalog, name: root)` →
-  `Holds { value: entry }` (fail-closed: `Violates` if absent, using
-  `catalog_entry_not_found` as the diagnostic reason). Any `Violates` or
-  projection `Rejected` becomes the `Rejected` branch of
-  `Outcome<Validated<CompileOutput>>`; workers must not drop or fabricate past
-  projection diagnostics. `entry.root` is
-  the **post-normalize Node** admitted from the batch — it is then resolved:
-  `resolve_with_admission(lm: dag_language_model_wave1(), catalog: catalog,
-  admission: Admission { subject: ResolutionSubject { name: root, tree:
-  entry.root }, imports: imports })` produces the `CoreNode`
+  When the stub lifts, `compile_with_batch` passes `batch.entries` directly to
+  `resolve_with_admission`. That stage validates all module roots once via
+  `qualified_name_from_module_node`, rejects on projection diagnostics, rejects
+  missing or duplicate names, and never constructs a caller-supplied name/root
+  pair. The selected root is the **post-normalize Node** admitted from the batch — it
+  is then resolved:
+  `resolve_with_admission(lm: dag_language_model_wave1(), roots: batch.entries,
+  admission: Admission { subject: ResolutionSubject { name: root }, imports: imports })` produces the `CoreNode`
   (post-resolve) that enters `validate_then_compile`. Workers must not skip
   `resolve_with_admission`, not
   substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry
   convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
   boundary discipline: the `CoreNode` reaching `validate_then_compile` is
-  produced by the future complete normalize → catalog-admission → resolve
+  produced by the future complete normalize → module-root admission → resolve
   chain. This is the T-35 replacement for the current `compile_ingest_staging`
-  resolve gate, not a claim that catalog admission is already wired there.
-  `🟡 gate: dissolve-on Change 2 (std/catalog.dag dissolution) — the
-  FreeMonoid<Entry> bridge and catalog_from_entries call are
-  temporary scaffolding; once Change 2 lands, admission folds over
-  FreeMonoid<Node> via qualified_name_from_node without the Entry bridge while
-  still preserving the projection `Rejected` branch.`
+  resolve gate, not a claim that module-root admission is already wired there.
 
-  **Scope of T-35's change:** `compile_with_batch` folds `batch.entries`
-  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step that
-  either builds the `FreeMonoid<Entry>` that `catalog_from_entries` expects or
-  returns `Rejected` with the projection diagnostics. The live
-  `compile_ingest_staging` path does not call `catalog_from_entries` today; it
+  **Scope of T-35's change:** `compile_with_batch` passes `batch.entries`
+  (a `FreeMonoid<Node>`) to `resolve_with_admission`, which validates every root
+  via `qualified_name_from_module_node` and returns `Rejected` with projection
+  diagnostics on failure. The live
+  `compile_ingest_staging` path does not run module-root admission today; it
   remains the tokenize → parse → normalize → single-tree resolve path until the
   batch entry point lands. No infer/emit behavior changes. `compile_with_batch` routes
   through `validate_then_compile` — the sole public compile terminal in
@@ -1956,7 +1964,7 @@ are already landed on main — see PRs #3650, #3651, #3652.)
   `fold(layers, init: *_defaults, f: *_layer)` with one patch per layer.
   The prior full-config `*_layer(base, outer) { outer }` scaffold and
   `feature:formatter-config-patch` gate are dissolved in the T-4.16 follow-on.
-- **ConfigPatch record projection (interim mirrors):** `feature:config-patch-record-projection` in `v4.std.patch` — formatter `*ConfigPatch` records and `*_layer` bodies are hand mirrors until record-field projection derives them from `*Config`; owner **T-4.16 follow-on** (same lane as formatter-config-patch dissolution); consumers carry `consumer:config-patch-record-projection` tags until projection lands.
+- **ConfigPatch record projection:** `ConfigPatchRecord<Config>` + `config_patch_layer` in `v4.std.patch` — record-field map derives per-field `FieldPatch<T>` patch types and `*_layer` bodies from `*Config` at lower time (`materialize_config_patch_record_connective` / `try_lower_config_patch_layer_invocation` in `src/v3/compiler/src/lower.rs`; expansion resolves `apply_field_patch` via `Dag::declaration_by_name`, not caller imports). Consumers: `type *ConfigPatch = ConfigPatchRecord<*Config>` and `config_patch_layer(base, patch)`. **v3 lower-hook dissolution:** delete those `lower.rs` interceptors when the compiler projects `ConfigPatchRecord` / `config_patch_layer` without name-keyed Rust special cases (generic record-field-map / derive substrate — T-4.16 compiler-owned expansion). **Interim authority bridge:** `declaration_authority_is_v4_std_patch` (`span.file` ends with `v4/std/patch.dag`) pins canonical `v4.std.patch` symbols until the §0 identity-carrier pass replaces this path-suffix gate; retire it with the name-keyed interceptors above. **Residual hand mirrors:** `PrettierOverrideOptions` (`feature:prettier-override-options-hand-mirror` — extra `parser` field beyond `PrettierFormattingOptions`; not `ConfigPatchRecord` projection); `PrettierConfigPatch` (`feature:prettier-nested-config-patch` — `options` nested patch, not `FieldPatch<PrettierFormattingOptions>`).
 - **Real options, not abstract axes**: each file models the actual
   formatter's documented option space (e.g., `rustfmt.toml` flags, not
   a synthetic `IndentWidth` abstraction shared across languages). A

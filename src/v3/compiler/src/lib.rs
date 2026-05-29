@@ -5829,6 +5829,38 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     }
 }
 
+/// Lower `sources` in order into one bootstrap [`Dag`], then infer.
+///
+/// Hermetic integration harness when the primary module imports `v4.std.*` peers
+/// that M1(2.7) single-file [`compile_to_dag`] cannot load (e.g. `v4.std.patch` for
+/// `ConfigPatchRecord` / `config_patch_layer`). Earlier entries are dependency modules;
+/// the last entry is the primary module under test.
+#[allow(clippy::result_large_err)]
+pub fn compile_to_dag_modules_in_order(sources: &[(&str, &str)]) -> Result<Dag, CompileError> {
+    let (primary_source, primary_file) = sources
+        .last()
+        .expect("compile_to_dag_modules_in_order requires at least one module");
+    let mut dag = Dag::new();
+    let user_start = dag.declarations().len();
+    for (source, file) in sources {
+        let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
+        let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
+        lower::lower_into(&mut dag, &surface);
+    }
+    lower::finalize_strict_user_lower_range(&mut dag, user_start);
+    infer::infer(&mut dag);
+    r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(
+        &mut dag,
+        primary_source,
+        primary_file,
+    );
+    if dag.diagnostics().is_empty() {
+        Ok(dag)
+    } else {
+        Err(CompileError::Semantic(dag))
+    }
+}
+
 /// Structural witness for integer literal range narrowing: the
 /// `IntegerAlgebra` and `TargetCarrier` variant payload [`dag::DeclarationId`]s
 /// used to match rows in `rust_pilot_primitives`, derived from std
