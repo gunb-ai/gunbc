@@ -24,6 +24,7 @@ pub fn ci_component_affected_fail_closed() -> CiComponentAffected {
         v3: true,
         v4: true,
         workflow_policy: true,
+        release_distribution: true,
     }
 }
 
@@ -37,6 +38,7 @@ where
         v3: false,
         v4: false,
         workflow_policy: false,
+        release_distribution: false,
     };
     for path in changed {
         if ci_changed_path_affects_v2(path) {
@@ -50,6 +52,9 @@ where
         }
         if ci_changed_path_affects_workflow_policy(path) {
             out.workflow_policy = true;
+        }
+        if ci_changed_path_affects_release_distribution(path) {
+            out.release_distribution = true;
         }
     }
     out

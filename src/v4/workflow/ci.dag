@@ -786,6 +786,14 @@ fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/workflow-path-regex-forbidden-substrings")
 }
 
+// RELEASE_TODO §5 — installer / target-authority / release workflow surfaces (orthogonal to v4 bucket).
+fn ci_changed_path_affects_release_distribution(changed: RepoPath) -> Bool {
+  changed == "install.sh"
+    || changed == "scripts/release-target-triples.sh"
+    || changed == "src/v4/workflow/release.dag"
+    || changed == ".github/workflows/release.yml"
+}
+
 
 fn ci_component_affected_fail_closed() -> CiComponentAffected {
   CiComponentAffected {
@@ -793,6 +801,7 @@ fn ci_component_affected_fail_closed() -> CiComponentAffected {
     v3: true
     v4: true
     workflow_policy: true
+    release_distribution: true
   }
 }
 
@@ -805,6 +814,10 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
     workflow_policy: any(
       xs: git_diff.changed_paths,
       predicate: ci_changed_path_affects_workflow_policy
+    ),
+    release_distribution: any(
+      xs: git_diff.changed_paths,
+      predicate: ci_changed_path_affects_release_distribution
     )
   }
 }
