@@ -245,7 +245,6 @@ data ts_production_wave2a_record_type: Symbol = ts_production_wave2a_record_type
 data ts_production_wave2a_type_alias_decl: Symbol = ts_production_wave2a_type_alias_decl
 data ts_production_wave2a_item: Symbol = ts_production_wave2a_item
 
-data ts_production_pr3_named_type: Symbol = ts_production_pr3_named_type
 data ts_production_pr3_array_type: Symbol = ts_production_pr3_array_type
 data ts_production_pr3_typed_param: Symbol = ts_production_pr3_typed_param
 data ts_production_pr3_typed_params: Symbol = ts_production_pr3_typed_params
@@ -271,7 +270,6 @@ data ts_surface_record_type: Symbol = ts_surface_record_type
 data ts_surface_type_alias_decl: Symbol = ts_surface_type_alias_decl
 data ts_surface_item: Symbol = ts_surface_item
 
-data ts_surface_named_type: Symbol = ts_surface_named_type
 data ts_surface_array_type: Symbol = ts_surface_array_type
 data ts_surface_typed_param: Symbol = ts_surface_typed_param
 data ts_surface_typed_params: Symbol = ts_surface_typed_params
@@ -1303,10 +1301,6 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_const_decl)]
     ),
     grammar_formal_production(
-      lhs: ts_production_pr3_named_type,
-      rhs: [grammar_formal_terminal(identity: ts_token_ident)]
-    ),
-    grammar_formal_production(
       lhs: ts_production_pr3_array_type,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_number),
@@ -1341,14 +1335,10 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ts_production_pr3_array_type,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_named_type),
+        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_name),
         grammar_formal_terminal(identity: ts_token_lbracket),
         grammar_formal_terminal(identity: ts_token_rbracket)
       ]
-    ),
-    grammar_formal_production(
-      lhs: ts_production_wave2a_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_named_type)]
     ),
     grammar_formal_production(
       lhs: ts_production_wave2a_type_annotation,
@@ -1581,14 +1571,6 @@ fn ts_grammar_production_wave2a_const_decl() -> GrammarProduction {
   }
 }
 
-fn ts_grammar_production_pr3_named_type() -> GrammarProduction {
-  GrammarProduction {
-    name: ts_production_pr3_named_type,
-    expression: Terminal { token_class: ts_token_ident },
-    emitted: ts_grammar_atom(id: ts_surface_named_type)
-  }
-}
-
 fn ts_pr3_array_suffix(element: Symbol) -> GrammarExpr {
   Sequence {
     left: Nonterminal { production: element },
@@ -1610,7 +1592,7 @@ fn ts_grammar_production_pr3_array_type() -> GrammarProduction {
           left: ts_pr3_array_suffix(element: ts_production_wave2a_type_boolean),
           right: Choice {
             left: ts_pr3_array_suffix(element: ts_production_wave2a_type_void),
-            right: ts_pr3_array_suffix(element: ts_production_pr3_named_type)
+            right: ts_pr3_array_suffix(element: ts_production_wave2a_type_name)
           }
         }
       }
@@ -1724,8 +1706,7 @@ fn ts_wave2a_grammar_root() -> GrammarRoot {
   let type_annot = ts_grammar_production_wave2a_type_annotation()
   let let_decl = ts_grammar_production_wave2a_let_decl()
   let const_decl = ts_grammar_production_wave2a_const_decl()
-<<<<<<< HEAD
-  let pr3_named_type = ts_grammar_production_pr3_named_type()
+  let type_alias_decl = ts_grammar_production_wave2a_type_alias_decl()
   let pr3_array_type = ts_grammar_production_pr3_array_type()
   let pr3_typed_param = ts_grammar_production_pr3_typed_param()
   let pr3_typed_params = ts_grammar_production_pr3_typed_params()
@@ -1733,14 +1714,7 @@ fn ts_wave2a_grammar_root() -> GrammarRoot {
   let item = ts_grammar_production_wave2a_item()
   GrammarRoot {
     start: ts_production_wave2a_item,
-    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, type_annot, let_decl, const_decl, pr3_named_type, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_fn_decl, item],
-=======
-  let type_alias_decl = ts_grammar_production_wave2a_type_alias_decl()
-  let item = ts_grammar_production_wave2a_item()
-  GrammarRoot {
-    start: ts_production_wave2a_item,
-    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, type_annot, let_decl, const_decl, type_alias_decl, item],
->>>>>>> origin/main
+    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_fn_decl, item],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
