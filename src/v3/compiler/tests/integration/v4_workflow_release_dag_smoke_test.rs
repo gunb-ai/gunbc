@@ -114,7 +114,7 @@ fn v4_workflow_release_semantics_modeled() {
     let module = parse_module(RELEASE_DAG, RELEASE_DAG_PATH);
     assert_eq!(
         module_paths(&module),
-        vec![vec!["v4", "workflow", "release"]],
+        vec![vec!["v4", "workflow", "release_dist"]],
         "{RELEASE_DAG_PATH}: module authority path"
     );
     assert!(

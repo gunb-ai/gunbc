@@ -7,7 +7,7 @@
 //   `install.sh` is an end-user shell script (not modeled runtime); only the bundle artifact name
 //   is referenced for upload contents.
 
-module v4.workflow.release
+module v4.workflow.release_dist
 
 import v4.std.collection { List }
 import v4.std.text { String }
@@ -61,7 +61,7 @@ type ReleaseMatrixRow {
   cross: Bool
 }
 
-// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100) — feature:release-github-actions-landed — consumer:v4.workflow.release release_live_workflow_signal — bind RELEASE_TODO.md §5 Phase 1 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `release_pipeline` directly and this carrier is deleted; forbidden: adding release transport facts outside `release_pipeline` + this binding.
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100) — feature:release-github-actions-landed — consumer:v4.workflow.release_dist release_live_workflow_signal — bind RELEASE_TODO.md §5 Phase 1 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `release_pipeline` directly and this carrier is deleted; forbidden: adding release transport facts outside `release_pipeline` + this binding.
 type ReleaseLiveWorkflowSignal {
   workflow_name: String
   tag_pattern: String
