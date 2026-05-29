@@ -26,33 +26,11 @@ data ts_wave2a_file: Symbol = ts_wave2a_file
 data ts_wave2a_bool_true: Symbol = ts_wave2a_bool_true
 data ts_wave2a_bool_false: Symbol = ts_wave2a_bool_false
 
-// Round-trip target from task_manager_demo.dag Task — exercises type_alias_decl
-// (kw_type, ident, eq, type_annotation→record_type, semicolon), record_fields
-// comma-list (3 fields), type_name (TaskId, TaskStatus), and built-in type_string.
-//
-// 🟡 lex-encoding-convention scaffold — feature:ts-wave2a-whitespace-trivia —
-// the double space between `=` and `{` is required by the current ts_wave2a_lex
-// encoding (ts_token_eq is `" = "` AND ts_token_lbrace is `" { "` — both carry
-// leading/trailing spaces baked into the literal). The TypeScript spec allows
-// single space; bridging the gap requires moving punctuation lex rules to a
-// trivia-consuming model (per codex BLOCKING #3900 root cause: "introduce or
-// consume whitespace trivia, or otherwise make the token model compose").
-// Dissolve-on-arrival: when the substrate lex model gains whitespace-trivia
-// handling, this fixture's double-space artifact collapses to single-space.
-// Until then, every TS wave2a parse-claim fixture must follow the lex-rule
-// concatenation convention used here.
+// 🟡 feature:ts-wave2a-whitespace-trivia owner:cool-moth-495 lane:node://adhoc-ece453af-47e tracker:#3900 dissolve-on: substrate lex moves punctuation literals to a whitespace-trivia model.
 data ts_wave2a_type_alias_task_source: String = "type Task =  { id: TaskId, title: string, status: TaskStatus };"
 
-// Minimal single-field alias — positive form (spec-correct surface, lex-encoded
-// double space between `=` and `{` per the disposition above).
 data ts_wave2a_type_alias_minimal_source: String = "type Box =  { value: number };"
 
-// Negative regression — the previously-shipped invalid `type Foo { ... }` form
-// (omitting the required `=`) MUST be rejected. Lex tokenizes this without
-// issue (lbrace's leading space matches the source space after the ident),
-// but the parser rejects against type_alias_decl's required EQ position.
-// Without this, a future grammar edit could silently re-accept the bad form
-// and the positive test alone would stay green.
 data ts_wave2a_type_alias_missing_eq_source: String = "type Box { value: number };"
 
 fn ts_wave2a_bool_atom(b: Bool) -> Node {
