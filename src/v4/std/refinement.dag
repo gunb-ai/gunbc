@@ -30,13 +30,91 @@ data refinement_authoritative_locus_port: Symbol = refinement_authoritative_locu
 fn refinement_authoritative_locus() -> Locus {
   PortLocus { anchor: LocusAnchor { at: refinement_authoritative_locus_port } }
 }
+
+
 type Validation<B> {
   reason: Symbol
   admits: fn(B) -> Bool
 }
+
+
 type Refined<B> {
   base: B
 }
+
+
+fn positive_int_admits(value: Int) -> Bool {
+  value >= 1
+}
+
+
+fn non_negative_int_admits(value: Int) -> Bool {
+  value >= 0
+}
+
+
+fn at_least_minus_one_int_admits(value: Int) -> Bool {
+  value >= -1
+}
+
+
+fn exact_one_int_admits(value: Int) -> Bool {
+  value == 1
+}
+
+
+data positive_int_out_of_range: Symbol = positive_int_out_of_range
+data non_negative_int_out_of_range: Symbol = non_negative_int_out_of_range
+data at_least_minus_one_int_out_of_range: Symbol = at_least_minus_one_int_out_of_range
+data exact_one_int_out_of_range: Symbol = exact_one_int_out_of_range
+
+
+data positive_int_validation: Validation<Int> = Validation {
+  reason: positive_int_out_of_range,
+  admits: positive_int_admits
+}
+
+
+data non_negative_int_validation: Validation<Int> = Validation {
+  reason: non_negative_int_out_of_range,
+  admits: non_negative_int_admits
+}
+
+
+data at_least_minus_one_int_validation: Validation<Int> = Validation {
+  reason: at_least_minus_one_int_out_of_range,
+  admits: at_least_minus_one_int_admits
+}
+
+
+data exact_one_int_validation: Validation<Int> = Validation {
+  reason: exact_one_int_out_of_range,
+  admits: exact_one_int_admits
+}
+
+
+// Nominal external-spec carriers — distinct record types so ≥1 / ≥0 / ≥-1 / ==1
+// obligations are not interchangeable Refined<Int> aliases (posix.dag pattern).
+type PositiveInt {
+  refined: Refined<Int>
+}
+
+
+type NonNegativeInt {
+  refined: Refined<Int>
+}
+
+
+type AtLeastMinusOneInt {
+  refined: Refined<Int>
+}
+
+
+type ExactOneInt {
+  refined: Refined<Int>
+}
+
+
 fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
   let admits = by.admits
   if admits(base) {
@@ -53,18 +131,79 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
     }
   }
 }
+
+
 fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
 
 
-// Upstream-documented defaults and other author-known-valid substrate constants:
-// discharge Validation at the authoritative boundary (not user/config input).
-// User/config input must use refine/make_* with a real Locus.
-// 🟡 gated — feature: refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival: Rejected arm becomes structurally unreachable when Refined is opaque and only refine exports carriers; forbidden: retaining direct Refined { base } construction for invalid bases.
-fn refined_for_authoritative_constant<B>(base: B, by: Validation<B>) -> Refined<B> {
-  match refine(base: base, by: by, at: refinement_authoritative_locus()) {
-    Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => Refined { base: base }
+fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
+  match refine(base: value, by: positive_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: PositiveInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
+  match refine(base: value, by: non_negative_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: NonNegativeInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOneInt> {
+  match refine(base: value, by: at_least_minus_one_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: AtLeastMinusOneInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
+  match refine(base: value, by: exact_one_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: ExactOneInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+// Upstream-documented defaults: discharge Validation at the authoritative boundary.
+// Ill-formed substrate constants fail closed to the minimum valid carrier for that
+// predicate (not the rejected base). User/config input must use make_* with a real Locus.
+fn positive_int_for_authoritative_constant(base: Int) -> PositiveInt {
+  match refine(base: base, by: positive_int_validation, at: refinement_authoritative_locus()) {
+    Accepted { value: refined, diagnostics: _ } => PositiveInt { refined: refined }
+    Rejected { diagnostics: _ } => positive_int_for_authoritative_constant(base: 1)
+  }
+}
+
+
+fn non_negative_int_for_authoritative_constant(base: Int) -> NonNegativeInt {
+  match refine(base: base, by: non_negative_int_validation, at: refinement_authoritative_locus()) {
+    Accepted { value: refined, diagnostics: _ } => NonNegativeInt { refined: refined }
+    Rejected { diagnostics: _ } => non_negative_int_for_authoritative_constant(base: 0)
+  }
+}
+
+
+fn at_least_minus_one_int_for_authoritative_constant(base: Int) -> AtLeastMinusOneInt {
+  match refine(base: base, by: at_least_minus_one_int_validation, at: refinement_authoritative_locus()) {
+    Accepted { value: refined, diagnostics: _ } => AtLeastMinusOneInt { refined: refined }
+    Rejected { diagnostics: _ } => at_least_minus_one_int_for_authoritative_constant(base: -1)
+  }
+}
+
+
+fn exact_one_int_for_authoritative_constant(base: Int) -> ExactOneInt {
+  match refine(base: base, by: exact_one_int_validation, at: refinement_authoritative_locus()) {
+    Accepted { value: refined, diagnostics: _ } => ExactOneInt { refined: refined }
+    Rejected { diagnostics: _ } => exact_one_int_for_authoritative_constant(base: 1)
   }
 }

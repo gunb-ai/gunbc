@@ -6,46 +6,13 @@
 module v4.extdeps.formatters.clang_format
 
 import v4.std.patch { FieldPatch, apply_field_patch }
-import v4.std.diagnostic { Locus, Outcome }
-import v4.std.node { Symbol }
-import v4.std.refinement { Refined, Validation, refine, refined_for_authoritative_constant }
-
-
-type ClangFormatNonNegativeInt = Refined<Int>
-type ClangFormatAtLeastMinusOneInt = Refined<Int>
-
-
-data clang_format_non_negative_int_out_of_range: Symbol = clang_format_non_negative_int_out_of_range
-data clang_format_at_least_minus_one_int_out_of_range: Symbol = clang_format_at_least_minus_one_int_out_of_range
-
-
-fn clang_format_non_negative_int_admits(value: Int) -> Bool {
-  value >= 0
+import v4.std.refinement {
+  NonNegativeInt,
+  AtLeastMinusOneInt,
+  non_negative_int_for_authoritative_constant,
+  at_least_minus_one_int_for_authoritative_constant,
 }
 
-fn clang_format_at_least_minus_one_int_admits(value: Int) -> Bool {
-  value >= -1
-}
-
-
-data clang_format_non_negative_int_validation: Validation<Int> = Validation {
-  reason: clang_format_non_negative_int_out_of_range,
-  admits: clang_format_non_negative_int_admits
-}
-
-data clang_format_at_least_minus_one_int_validation: Validation<Int> = Validation {
-  reason: clang_format_at_least_minus_one_int_out_of_range,
-  admits: clang_format_at_least_minus_one_int_admits
-}
-
-
-fn make_clang_format_non_negative_int(value: Int, at: Locus) -> Outcome<ClangFormatNonNegativeInt> {
-  refine(base: value, by: clang_format_non_negative_int_validation, at: at)
-}
-
-fn make_clang_format_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<ClangFormatAtLeastMinusOneInt> {
-  refine(base: value, by: clang_format_at_least_minus_one_int_validation, at: at)
-}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -113,7 +80,7 @@ type ClangFormatTrailingCommentsAlignmentKind
 
 type ClangFormatTrailingCommentsAlignmentStyle {
   kind: ClangFormatTrailingCommentsAlignmentKind,
-  over_empty_lines: ClangFormatNonNegativeInt, // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_empty_lines_to_keep
+  over_empty_lines: NonNegativeInt, // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_empty_lines_to_keep
   align_pp_and_not_pp: Bool,
 }
 
@@ -286,7 +253,7 @@ type ClangFormatBreakBinaryOperationsStyle
 type ClangFormatBinaryOperationBreakRule {
   operators: List<String>,
   style: ClangFormatBreakBinaryOperationsStyle,
-  min_chain_length: ClangFormatNonNegativeInt,
+  min_chain_length: NonNegativeInt,
 }
 
 
@@ -384,15 +351,15 @@ type ClangFormatTrailingCommaStyle
 
 
 type ClangFormatIntegerLiteralSeparatorStyle {
-  binary: ClangFormatAtLeastMinusOneInt,
-  binary_min_digits_insert: ClangFormatNonNegativeInt,
-  binary_max_digits_remove: ClangFormatNonNegativeInt,
-  decimal: ClangFormatAtLeastMinusOneInt,
-  decimal_min_digits_insert: ClangFormatNonNegativeInt,
-  decimal_max_digits_remove: ClangFormatNonNegativeInt,
-  hex: ClangFormatAtLeastMinusOneInt,
-  hex_min_digits_insert: ClangFormatNonNegativeInt,
-  hex_max_digits_remove: ClangFormatNonNegativeInt,
+  binary: AtLeastMinusOneInt,
+  binary_min_digits_insert: NonNegativeInt,
+  binary_max_digits_remove: NonNegativeInt,
+  decimal: AtLeastMinusOneInt,
+  decimal_min_digits_insert: NonNegativeInt,
+  decimal_max_digits_remove: NonNegativeInt,
+  hex: AtLeastMinusOneInt,
+  hex_min_digits_insert: NonNegativeInt,
+  hex_max_digits_remove: NonNegativeInt,
 }
 
 
@@ -617,8 +584,8 @@ type ClangFormatSpacesInAnglesStyle
 
 
 type ClangFormatSpacesInLineComment {
-  minimum: ClangFormatNonNegativeInt,
-  maximum: ClangFormatAtLeastMinusOneInt, // 🟡 gated: formatter-cross-field-constraints — must be ≥ minimum unless -1
+  minimum: NonNegativeInt,
+  maximum: AtLeastMinusOneInt, // 🟡 gated: formatter-cross-field-constraints — must be ≥ minimum unless -1
 }
 
 
@@ -714,7 +681,7 @@ type ClangFormatConfig {
   bin_pack_long_braced_list: Bool
   bin_pack_parameters: ClangFormatBinPackParametersStyle
   bit_field_colon_spacing: ClangFormatBitFieldColonSpacingStyle
-  braced_initializer_indent_width: ClangFormatNonNegativeInt
+  braced_initializer_indent_width: NonNegativeInt
   brace_wrapping: ClangFormatBraceWrappingFlags
   break_adjacent_string_literals: Bool
   break_after_attributes: ClangFormatAttributeBreakingStyle
@@ -745,12 +712,12 @@ type ClangFormatConfig {
   break_inheritance_list: ClangFormatBreakInheritanceListStyle
   break_string_literals: Bool
   break_template_declarations: ClangFormatBreakTemplateDeclarationsStyle
-  column_limit: ClangFormatNonNegativeInt
+  column_limit: NonNegativeInt
   comment_pragmas: String
   compact_namespaces: Bool
   constructor_initializer_all_on_one_line_or_one_per_line: Bool
-  constructor_initializer_indent_width: ClangFormatNonNegativeInt
-  continuation_indent_width: ClangFormatNonNegativeInt
+  constructor_initializer_indent_width: NonNegativeInt
+  continuation_indent_width: NonNegativeInt
   cpp11_braced_list_style: ClangFormatBracedListStyle
   derive_line_ending: Bool
   derive_pointer_alignment: Bool
@@ -771,7 +738,7 @@ type ClangFormatConfig {
   indent_goto_labels: ClangFormatIndentGotoLabelStyle
   indent_pp_directives: ClangFormatPPDirectiveIndentStyle
   indent_requires_clause: Bool
-  indent_width: ClangFormatNonNegativeInt
+  indent_width: NonNegativeInt
   indent_wrapped_function_names: Bool
   insert_braces: Bool
   insert_newline_at_eof: Bool
@@ -789,11 +756,11 @@ type ClangFormatConfig {
   macro_block_begin: String
   macro_block_end: String
   main_include_char: ClangFormatMainIncludeCharDiscriminator
-  max_empty_lines_to_keep: ClangFormatNonNegativeInt
+  max_empty_lines_to_keep: NonNegativeInt
   namespace_indentation: ClangFormatNamespaceIndentationKind
   numeric_literal_case: ClangFormatNumericLiteralCaseStyle
   obj_c_bin_pack_protocol_list: ClangFormatBinPackStyle
-  obj_c_block_indent_width: ClangFormatNonNegativeInt
+  obj_c_block_indent_width: NonNegativeInt
   obj_c_break_before_nested_block_param: Bool
   obj_c_space_after_method_declaration_prefix: Bool
   obj_c_space_after_property: Bool
@@ -802,20 +769,20 @@ type ClangFormatConfig {
   pack_arguments: ClangFormatPackArgumentsStyle
   pack_constructor_initializers: ClangFormatPackConstructorInitializersStyle
   pack_parameters: ClangFormatBinPackParametersStyle
-  penalty_break_assignment: ClangFormatNonNegativeInt
-  penalty_break_before_first_call_parameter: ClangFormatNonNegativeInt
-  penalty_break_before_member_access: ClangFormatNonNegativeInt
-  penalty_break_comment: ClangFormatNonNegativeInt
-  penalty_break_first_less_less: ClangFormatNonNegativeInt
-  penalty_break_open_parenthesis: ClangFormatNonNegativeInt
-  penalty_break_scope_resolution: ClangFormatNonNegativeInt
-  penalty_break_string: ClangFormatNonNegativeInt
-  penalty_break_template_declaration: ClangFormatNonNegativeInt
-  penalty_excess_character: ClangFormatNonNegativeInt
-  penalty_indented_whitespace: ClangFormatNonNegativeInt
-  penalty_return_type_on_its_own_line: ClangFormatNonNegativeInt
+  penalty_break_assignment: NonNegativeInt
+  penalty_break_before_first_call_parameter: NonNegativeInt
+  penalty_break_before_member_access: NonNegativeInt
+  penalty_break_comment: NonNegativeInt
+  penalty_break_first_less_less: NonNegativeInt
+  penalty_break_open_parenthesis: NonNegativeInt
+  penalty_break_scope_resolution: NonNegativeInt
+  penalty_break_string: NonNegativeInt
+  penalty_break_template_declaration: NonNegativeInt
+  penalty_excess_character: NonNegativeInt
+  penalty_indented_whitespace: NonNegativeInt
+  penalty_return_type_on_its_own_line: NonNegativeInt
   pointer_alignment: ClangFormatPointerAlignmentStyle
-  pp_indent_width: ClangFormatAtLeastMinusOneInt
+  pp_indent_width: AtLeastMinusOneInt
   qualifier_alignment: ClangFormatQualifierAlignmentStyle
   qualifier_order: List<String> // 🟡 gated: formatter-cross-field-constraints — operative only when qualifier_alignment = ClangFormatQualifierCustom
   reference_alignment: ClangFormatReferenceAlignmentStyle
@@ -827,7 +794,7 @@ type ClangFormatConfig {
   requires_clause_position: ClangFormatRequiresClausePositionStyle
   requires_expression_indentation: ClangFormatRequiresExpressionIndentationKind
   separate_definition_blocks: ClangFormatSeparateDefinitionStyle
-  short_namespace_lines: ClangFormatNonNegativeInt
+  short_namespace_lines: NonNegativeInt
   skip_macro_definition_body: Bool
   sort_includes: ClangFormatSortIncludesOptions
   sort_java_static_import: ClangFormatSortJavaStaticImportOptions
@@ -851,7 +818,7 @@ type ClangFormatConfig {
   space_in_empty_block: Bool
   space_in_empty_braces: ClangFormatSpaceInEmptyBracesStyle
   space_in_empty_parentheses: Bool
-  spaces_before_trailing_comments: ClangFormatNonNegativeInt
+  spaces_before_trailing_comments: NonNegativeInt
   spaces_in_angles: ClangFormatSpacesInAnglesStyle
   spaces_in_conditional_statement: Bool
   spaces_in_container_literals: Bool
@@ -863,7 +830,7 @@ type ClangFormatConfig {
   spaces_in_square_brackets: Bool
   standard: ClangFormatLanguageStandard
   table_gen_break_inside_dag_arg: ClangFormatDAGArgStyle
-  tab_width: ClangFormatNonNegativeInt
+  tab_width: NonNegativeInt
   use_crlf: Bool
   use_tab: ClangFormatUseTabStyle
   verilog_break_between_instance_ports: Bool
@@ -885,7 +852,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   align_consecutive_table_gen_definition_colons: ClangFormatAlignConsecutiveStyle { enabled: false, across_empty_lines: false, across_comments: false, align_compound: false, align_function_declarations: false, align_function_pointers: false, enum_assignments: false, pad_operators: false },
   align_escaped_newlines: ClangFormatEscapedNewlineRight,
   align_operands: ClangFormatOperandAlign,
-  align_trailing_comments: ClangFormatTrailingCommentsAlignmentStyle { kind: ClangFormatTrailingCommentsAlways, over_empty_lines: refined_for_authoritative_constant(base: 0, by: clang_format_non_negative_int_validation), align_pp_and_not_pp: false },
+  align_trailing_comments: ClangFormatTrailingCommentsAlignmentStyle { kind: ClangFormatTrailingCommentsAlways, over_empty_lines: non_negative_int_for_authoritative_constant(base: 0), align_pp_and_not_pp: false },
   allow_all_arguments_on_next_line: true,
   allow_all_constructor_initializers_on_next_line: true,
   allow_all_parameters_of_declaration_on_next_line: true,
@@ -911,7 +878,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   bin_pack_long_braced_list: true,
   bin_pack_parameters: ClangFormatBinPackParametersBinPack,
   bit_field_colon_spacing: ClangFormatBitFieldColonBoth,
-  braced_initializer_indent_width: refined_for_authoritative_constant(base: 2, by: clang_format_non_negative_int_validation),
+  braced_initializer_indent_width: non_negative_int_for_authoritative_constant(base: 2),
   brace_wrapping: ClangFormatBraceWrappingFlags { after_case_label: false, after_class: false, after_control_statement: ClangFormatBraceWrapAfterControlNever, after_enum: false, after_extern_block: false, after_function: false, after_namespace: false, after_obj_c_declaration: false, after_struct: false, after_union: false, before_catch: false, before_else: false, before_lambda_body: false, before_while: false, indent_braces: false, split_empty_function: true, split_empty_record: true, split_empty_namespace: true },
   break_adjacent_string_literals: true,
   break_after_attributes: ClangFormatAttributeBreakNever,
@@ -942,12 +909,12 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   break_inheritance_list: ClangFormatInheritanceBeforeColon,
   break_string_literals: true,
   break_template_declarations: ClangFormatTemplateDeclarationsMultiLine,
-  column_limit: refined_for_authoritative_constant(base: 80, by: clang_format_non_negative_int_validation),
+  column_limit: non_negative_int_for_authoritative_constant(base: 80),
   comment_pragmas: "^ IWYU pragma:",
   compact_namespaces: false,
   constructor_initializer_all_on_one_line_or_one_per_line: false,
-  constructor_initializer_indent_width: refined_for_authoritative_constant(base: 4, by: clang_format_non_negative_int_validation),
-  continuation_indent_width: refined_for_authoritative_constant(base: 4, by: clang_format_non_negative_int_validation),
+  constructor_initializer_indent_width: non_negative_int_for_authoritative_constant(base: 4),
+  continuation_indent_width: non_negative_int_for_authoritative_constant(base: 4),
   cpp11_braced_list_style: ClangFormatBracedListFunctionCall,
   derive_line_ending: true,
   derive_pointer_alignment: false,
@@ -968,12 +935,12 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   indent_goto_labels: ClangFormatIndentGotoNoIndent,
   indent_pp_directives: ClangFormatPPDirectiveIndentNone,
   indent_requires_clause: true,
-  indent_width: refined_for_authoritative_constant(base: 2, by: clang_format_non_negative_int_validation),
+  indent_width: non_negative_int_for_authoritative_constant(base: 2),
   indent_wrapped_function_names: false,
   insert_braces: false,
   insert_newline_at_eof: false,
   insert_trailing_commas: ClangFormatTrailingCommaNone,
-  integer_literal_separator: ClangFormatIntegerLiteralSeparatorStyle { binary: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation), binary_min_digits_insert: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation), binary_max_digits_remove: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation), decimal: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation), decimal_min_digits_insert: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation), decimal_max_digits_remove: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation), hex: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation), hex_min_digits_insert: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation), hex_max_digits_remove: refined_for_authoritative_constant(base: 0, by: clang_format_at_least_minus_one_int_validation) },
+  integer_literal_separator: ClangFormatIntegerLiteralSeparatorStyle { binary: at_least_minus_one_int_for_authoritative_constant(base: 0), binary_min_digits_insert: non_negative_int_for_authoritative_constant(base: 0), binary_max_digits_remove: non_negative_int_for_authoritative_constant(base: 0), decimal: at_least_minus_one_int_for_authoritative_constant(base: 0), decimal_min_digits_insert: non_negative_int_for_authoritative_constant(base: 0), decimal_max_digits_remove: non_negative_int_for_authoritative_constant(base: 0), hex: at_least_minus_one_int_for_authoritative_constant(base: 0), hex_min_digits_insert: non_negative_int_for_authoritative_constant(base: 0), hex_max_digits_remove: non_negative_int_for_authoritative_constant(base: 0) },
   java_script_quotes: ClangFormatJavaScriptQuoteLeave,
   java_script_wrap_imports: true,
   keep_empty_lines: ClangFormatKeepEmptyLinesStyle { at_end_of_file: false, at_start_of_block: true, at_start_of_file: true },
@@ -986,11 +953,11 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   macro_block_begin: "",
   macro_block_end: "",
   main_include_char: ClangFormatMainIncludeAny,
-  max_empty_lines_to_keep: refined_for_authoritative_constant(base: 1, by: clang_format_non_negative_int_validation),
+  max_empty_lines_to_keep: non_negative_int_for_authoritative_constant(base: 1),
   namespace_indentation: ClangFormatNamespaceIndentNone,
   numeric_literal_case: ClangFormatNumericLiteralCaseStyle { exponent_letter: ClangFormatNumericLiteralLeave, hex_digit: ClangFormatNumericLiteralLeave, prefix: ClangFormatNumericLiteralLeave, suffix: ClangFormatNumericLiteralLeave },
   obj_c_bin_pack_protocol_list: ClangFormatBinPackAuto,
-  obj_c_block_indent_width: refined_for_authoritative_constant(base: 2, by: clang_format_non_negative_int_validation),
+  obj_c_block_indent_width: non_negative_int_for_authoritative_constant(base: 2),
   obj_c_break_before_nested_block_param: true,
   obj_c_space_after_method_declaration_prefix: false,
   obj_c_space_after_property: false,
@@ -999,20 +966,20 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   pack_arguments: ClangFormatPackArgumentsBinPack,
   pack_constructor_initializers: ClangFormatPackConstructorBinPack,
   pack_parameters: ClangFormatBinPackParametersBinPack,
-  penalty_break_assignment: refined_for_authoritative_constant(base: 2, by: clang_format_non_negative_int_validation),
-  penalty_break_before_first_call_parameter: refined_for_authoritative_constant(base: 19, by: clang_format_non_negative_int_validation),
-  penalty_break_before_member_access: refined_for_authoritative_constant(base: 150, by: clang_format_non_negative_int_validation),
-  penalty_break_comment: refined_for_authoritative_constant(base: 300, by: clang_format_non_negative_int_validation),
-  penalty_break_first_less_less: refined_for_authoritative_constant(base: 120, by: clang_format_non_negative_int_validation),
-  penalty_break_open_parenthesis: refined_for_authoritative_constant(base: 0, by: clang_format_non_negative_int_validation),
-  penalty_break_scope_resolution: refined_for_authoritative_constant(base: 500, by: clang_format_non_negative_int_validation),
-  penalty_break_string: refined_for_authoritative_constant(base: 1000, by: clang_format_non_negative_int_validation),
-  penalty_break_template_declaration: refined_for_authoritative_constant(base: 10, by: clang_format_non_negative_int_validation),
-  penalty_excess_character: refined_for_authoritative_constant(base: 1000000, by: clang_format_non_negative_int_validation),
-  penalty_indented_whitespace: refined_for_authoritative_constant(base: 0, by: clang_format_non_negative_int_validation),
-  penalty_return_type_on_its_own_line: refined_for_authoritative_constant(base: 60, by: clang_format_non_negative_int_validation),
+  penalty_break_assignment: non_negative_int_for_authoritative_constant(base: 2),
+  penalty_break_before_first_call_parameter: non_negative_int_for_authoritative_constant(base: 19),
+  penalty_break_before_member_access: non_negative_int_for_authoritative_constant(base: 150),
+  penalty_break_comment: non_negative_int_for_authoritative_constant(base: 300),
+  penalty_break_first_less_less: non_negative_int_for_authoritative_constant(base: 120),
+  penalty_break_open_parenthesis: non_negative_int_for_authoritative_constant(base: 0),
+  penalty_break_scope_resolution: non_negative_int_for_authoritative_constant(base: 500),
+  penalty_break_string: non_negative_int_for_authoritative_constant(base: 1000),
+  penalty_break_template_declaration: non_negative_int_for_authoritative_constant(base: 10),
+  penalty_excess_character: non_negative_int_for_authoritative_constant(base: 1000000),
+  penalty_indented_whitespace: non_negative_int_for_authoritative_constant(base: 0),
+  penalty_return_type_on_its_own_line: non_negative_int_for_authoritative_constant(base: 60),
   pointer_alignment: ClangFormatPointerRight,
-  pp_indent_width: refined_for_authoritative_constant(base: -1, by: clang_format_at_least_minus_one_int_validation),
+  pp_indent_width: at_least_minus_one_int_for_authoritative_constant(base: -1),
   qualifier_alignment: ClangFormatQualifierLeave,
   qualifier_order: [],
   reference_alignment: ClangFormatReferencePointer,
@@ -1024,7 +991,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   requires_clause_position: ClangFormatRequiresClauseOwnLine,
   requires_expression_indentation: ClangFormatRequiresExpressionOuterScope,
   separate_definition_blocks: ClangFormatSeparateDefinitionLeave,
-  short_namespace_lines: refined_for_authoritative_constant(base: 1, by: clang_format_non_negative_int_validation),
+  short_namespace_lines: non_negative_int_for_authoritative_constant(base: 1),
   skip_macro_definition_body: false,
   sort_includes: ClangFormatSortIncludesOptions { enabled: true, ignore_case: false, ignore_extension: false },
   sort_java_static_import: ClangFormatSortJavaStaticBefore,
@@ -1048,19 +1015,19 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   space_in_empty_block: false,
   space_in_empty_braces: ClangFormatSpaceInEmptyBracesNever,
   space_in_empty_parentheses: false,
-  spaces_before_trailing_comments: refined_for_authoritative_constant(base: 1, by: clang_format_non_negative_int_validation),
+  spaces_before_trailing_comments: non_negative_int_for_authoritative_constant(base: 1),
   spaces_in_angles: ClangFormatSpacesInAnglesNever,
   spaces_in_conditional_statement: false,
   spaces_in_container_literals: true,
   spaces_in_c_style_cast_parentheses: false,
-  spaces_in_line_comment_prefix: ClangFormatSpacesInLineComment { minimum: refined_for_authoritative_constant(base: 1, by: clang_format_at_least_minus_one_int_validation), maximum: refined_for_authoritative_constant(base: -1, by: clang_format_at_least_minus_one_int_validation) },
+  spaces_in_line_comment_prefix: ClangFormatSpacesInLineComment { minimum: non_negative_int_for_authoritative_constant(base: 1), maximum: at_least_minus_one_int_for_authoritative_constant(base: -1) },
   spaces_in_parens: ClangFormatSpacesInParensNever,
   spaces_in_parens_options: ClangFormatSpacesInParensCustom { except_double_parentheses: false, in_conditional_statements: false, in_c_style_casts: false, in_empty_parentheses: false, other: false },
   spaces_in_parentheses: false,
   spaces_in_square_brackets: false,
   standard: ClangFormatStandardLatest,
   table_gen_break_inside_dag_arg: ClangFormatDAGArgDontBreak,
-  tab_width: refined_for_authoritative_constant(base: 8, by: clang_format_non_negative_int_validation),
+  tab_width: non_negative_int_for_authoritative_constant(base: 8),
   use_crlf: false,
   use_tab: ClangFormatUseTabNever,
   verilog_break_between_instance_ports: false,
@@ -1109,7 +1076,7 @@ type ClangFormatConfigPatch {
   bin_pack_long_braced_list: FieldPatch<Bool>
   bin_pack_parameters: FieldPatch<ClangFormatBinPackParametersStyle>
   bit_field_colon_spacing: FieldPatch<ClangFormatBitFieldColonSpacingStyle>
-  braced_initializer_indent_width: FieldPatch<ClangFormatNonNegativeInt>
+  braced_initializer_indent_width: FieldPatch<NonNegativeInt>
   brace_wrapping: FieldPatch<ClangFormatBraceWrappingFlags>
   break_adjacent_string_literals: FieldPatch<Bool>
   break_after_attributes: FieldPatch<ClangFormatAttributeBreakingStyle>
@@ -1140,12 +1107,12 @@ type ClangFormatConfigPatch {
   break_inheritance_list: FieldPatch<ClangFormatBreakInheritanceListStyle>
   break_string_literals: FieldPatch<Bool>
   break_template_declarations: FieldPatch<ClangFormatBreakTemplateDeclarationsStyle>
-  column_limit: FieldPatch<ClangFormatNonNegativeInt>
+  column_limit: FieldPatch<NonNegativeInt>
   comment_pragmas: FieldPatch<String>
   compact_namespaces: FieldPatch<Bool>
   constructor_initializer_all_on_one_line_or_one_per_line: FieldPatch<Bool>
-  constructor_initializer_indent_width: FieldPatch<ClangFormatNonNegativeInt>
-  continuation_indent_width: FieldPatch<ClangFormatNonNegativeInt>
+  constructor_initializer_indent_width: FieldPatch<NonNegativeInt>
+  continuation_indent_width: FieldPatch<NonNegativeInt>
   cpp11_braced_list_style: FieldPatch<ClangFormatBracedListStyle>
   derive_line_ending: FieldPatch<Bool>
   derive_pointer_alignment: FieldPatch<Bool>
@@ -1166,7 +1133,7 @@ type ClangFormatConfigPatch {
   indent_goto_labels: FieldPatch<ClangFormatIndentGotoLabelStyle>
   indent_pp_directives: FieldPatch<ClangFormatPPDirectiveIndentStyle>
   indent_requires_clause: FieldPatch<Bool>
-  indent_width: FieldPatch<ClangFormatNonNegativeInt>
+  indent_width: FieldPatch<NonNegativeInt>
   indent_wrapped_function_names: FieldPatch<Bool>
   insert_braces: FieldPatch<Bool>
   insert_newline_at_eof: FieldPatch<Bool>
@@ -1184,11 +1151,11 @@ type ClangFormatConfigPatch {
   macro_block_begin: FieldPatch<String>
   macro_block_end: FieldPatch<String>
   main_include_char: FieldPatch<ClangFormatMainIncludeCharDiscriminator>
-  max_empty_lines_to_keep: FieldPatch<ClangFormatNonNegativeInt>
+  max_empty_lines_to_keep: FieldPatch<NonNegativeInt>
   namespace_indentation: FieldPatch<ClangFormatNamespaceIndentationKind>
   numeric_literal_case: FieldPatch<ClangFormatNumericLiteralCaseStyle>
   obj_c_bin_pack_protocol_list: FieldPatch<ClangFormatBinPackStyle>
-  obj_c_block_indent_width: FieldPatch<ClangFormatNonNegativeInt>
+  obj_c_block_indent_width: FieldPatch<NonNegativeInt>
   obj_c_break_before_nested_block_param: FieldPatch<Bool>
   obj_c_space_after_method_declaration_prefix: FieldPatch<Bool>
   obj_c_space_after_property: FieldPatch<Bool>
@@ -1197,20 +1164,20 @@ type ClangFormatConfigPatch {
   pack_arguments: FieldPatch<ClangFormatPackArgumentsStyle>
   pack_constructor_initializers: FieldPatch<ClangFormatPackConstructorInitializersStyle>
   pack_parameters: FieldPatch<ClangFormatBinPackParametersStyle>
-  penalty_break_assignment: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_break_before_first_call_parameter: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_break_before_member_access: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_break_comment: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_break_first_less_less: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_break_open_parenthesis: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_break_scope_resolution: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_break_string: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_break_template_declaration: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_excess_character: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_indented_whitespace: FieldPatch<ClangFormatNonNegativeInt>
-  penalty_return_type_on_its_own_line: FieldPatch<ClangFormatNonNegativeInt>
+  penalty_break_assignment: FieldPatch<NonNegativeInt>
+  penalty_break_before_first_call_parameter: FieldPatch<NonNegativeInt>
+  penalty_break_before_member_access: FieldPatch<NonNegativeInt>
+  penalty_break_comment: FieldPatch<NonNegativeInt>
+  penalty_break_first_less_less: FieldPatch<NonNegativeInt>
+  penalty_break_open_parenthesis: FieldPatch<NonNegativeInt>
+  penalty_break_scope_resolution: FieldPatch<NonNegativeInt>
+  penalty_break_string: FieldPatch<NonNegativeInt>
+  penalty_break_template_declaration: FieldPatch<NonNegativeInt>
+  penalty_excess_character: FieldPatch<NonNegativeInt>
+  penalty_indented_whitespace: FieldPatch<NonNegativeInt>
+  penalty_return_type_on_its_own_line: FieldPatch<NonNegativeInt>
   pointer_alignment: FieldPatch<ClangFormatPointerAlignmentStyle>
-  pp_indent_width: FieldPatch<ClangFormatAtLeastMinusOneInt>
+  pp_indent_width: FieldPatch<AtLeastMinusOneInt>
   qualifier_alignment: FieldPatch<ClangFormatQualifierAlignmentStyle>
   qualifier_order: FieldPatch<List<String>>
   reference_alignment: FieldPatch<ClangFormatReferenceAlignmentStyle>
@@ -1222,7 +1189,7 @@ type ClangFormatConfigPatch {
   requires_clause_position: FieldPatch<ClangFormatRequiresClausePositionStyle>
   requires_expression_indentation: FieldPatch<ClangFormatRequiresExpressionIndentationKind>
   separate_definition_blocks: FieldPatch<ClangFormatSeparateDefinitionStyle>
-  short_namespace_lines: FieldPatch<ClangFormatNonNegativeInt>
+  short_namespace_lines: FieldPatch<NonNegativeInt>
   skip_macro_definition_body: FieldPatch<Bool>
   sort_includes: FieldPatch<ClangFormatSortIncludesOptions>
   sort_java_static_import: FieldPatch<ClangFormatSortJavaStaticImportOptions>
@@ -1246,7 +1213,7 @@ type ClangFormatConfigPatch {
   space_in_empty_block: FieldPatch<Bool>
   space_in_empty_braces: FieldPatch<ClangFormatSpaceInEmptyBracesStyle>
   space_in_empty_parentheses: FieldPatch<Bool>
-  spaces_before_trailing_comments: FieldPatch<ClangFormatNonNegativeInt>
+  spaces_before_trailing_comments: FieldPatch<NonNegativeInt>
   spaces_in_angles: FieldPatch<ClangFormatSpacesInAnglesStyle>
   spaces_in_conditional_statement: FieldPatch<Bool>
   spaces_in_container_literals: FieldPatch<Bool>
@@ -1258,7 +1225,7 @@ type ClangFormatConfigPatch {
   spaces_in_square_brackets: FieldPatch<Bool>
   standard: FieldPatch<ClangFormatLanguageStandard>
   table_gen_break_inside_dag_arg: FieldPatch<ClangFormatDAGArgStyle>
-  tab_width: FieldPatch<ClangFormatNonNegativeInt>
+  tab_width: FieldPatch<NonNegativeInt>
   use_crlf: FieldPatch<Bool>
   use_tab: FieldPatch<ClangFormatUseTabStyle>
   verilog_break_between_instance_ports: FieldPatch<Bool>

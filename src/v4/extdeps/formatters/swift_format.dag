@@ -6,68 +6,22 @@
 module v4.extdeps.formatters.swift_format
 
 import v4.std.collection { List }
-import v4.std.diagnostic { Locus, Outcome }
-import v4.std.node { Symbol }
 import v4.std.patch { FieldPatch, apply_field_patch }
-import v4.std.refinement { Refined, Validation, refine, refined_for_authoritative_constant }
-
-
-type SwiftFormatPositiveInt = Refined<Int>
-type SwiftFormatNonNegativeInt = Refined<Int>
-type SwiftFormatConfigVersion = Refined<Int>
-
-
-data swift_format_positive_int_out_of_range: Symbol = swift_format_positive_int_out_of_range
-data swift_format_non_negative_int_out_of_range: Symbol = swift_format_non_negative_int_out_of_range
-data swift_format_config_version_out_of_range: Symbol = swift_format_config_version_out_of_range
-
-
-fn swift_format_positive_int_admits(value: Int) -> Bool {
-  value >= 1
+import v4.std.refinement {
+  PositiveInt,
+  NonNegativeInt,
+  ExactOneInt,
+  positive_int_for_authoritative_constant,
+  non_negative_int_for_authoritative_constant,
+  exact_one_int_for_authoritative_constant,
 }
 
-fn swift_format_non_negative_int_admits(value: Int) -> Bool {
-  value >= 0
-}
-
-fn swift_format_config_version_admits(value: Int) -> Bool {
-  value == 1
-}
-
-
-data swift_format_positive_int_validation: Validation<Int> = Validation {
-  reason: swift_format_positive_int_out_of_range,
-  admits: swift_format_positive_int_admits
-}
-
-data swift_format_non_negative_int_validation: Validation<Int> = Validation {
-  reason: swift_format_non_negative_int_out_of_range,
-  admits: swift_format_non_negative_int_admits
-}
-
-data swift_format_config_version_validation: Validation<Int> = Validation {
-  reason: swift_format_config_version_out_of_range,
-  admits: swift_format_config_version_admits
-}
-
-
-fn make_swift_format_positive_int(value: Int, at: Locus) -> Outcome<SwiftFormatPositiveInt> {
-  refine(base: value, by: swift_format_positive_int_validation, at: at)
-}
-
-fn make_swift_format_non_negative_int(value: Int, at: Locus) -> Outcome<SwiftFormatNonNegativeInt> {
-  refine(base: value, by: swift_format_non_negative_int_validation, at: at)
-}
-
-fn make_swift_format_config_version(value: Int, at: Locus) -> Outcome<SwiftFormatConfigVersion> {
-  refine(base: value, by: swift_format_config_version_validation, at: at)
-}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SwiftFormatIndentation
-  = SwiftFormatSpaces { count: SwiftFormatPositiveInt }
-  | SwiftFormatTabs { count: SwiftFormatPositiveInt }
+  = SwiftFormatSpaces { count: PositiveInt }
+  | SwiftFormatTabs { count: PositiveInt }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -108,12 +62,12 @@ type SwiftFormatOrderedImports {
 
 // 🟡 gated — feature: swift-format-rules-carrier — bind T-4.16 follow-on — dissolve-on-arrival: add rules: Map<String, Bool> field to SwiftFormatConfig once Map is available as a language-level primitive without requiring a std import; forbidden: List<SwiftFormatRuleOverride> workarounds that lose the Bool-keyed semantics of the rules dictionary.
 type SwiftFormatConfig {
-  version: SwiftFormatConfigVersion
-  line_length: SwiftFormatPositiveInt
+  version: ExactOneInt
+  line_length: PositiveInt
   indentation: SwiftFormatIndentation,
-  tab_width: SwiftFormatPositiveInt
-  maximum_blank_lines: SwiftFormatNonNegativeInt
-  spaces_before_end_of_line_comments: SwiftFormatNonNegativeInt
+  tab_width: PositiveInt
+  maximum_blank_lines: NonNegativeInt
+  spaces_before_end_of_line_comments: NonNegativeInt
   respects_existing_line_breaks: Bool,
   line_break_before_control_flow_keywords: Bool,
   line_break_before_each_argument: Bool,
@@ -135,12 +89,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: refined_for_authoritative_constant(base: 1, by: swift_format_config_version_validation),
-  line_length: refined_for_authoritative_constant(base: 100, by: swift_format_positive_int_validation),
-  indentation: SwiftFormatSpaces { count: refined_for_authoritative_constant(base: 2, by: swift_format_positive_int_validation) },
-  tab_width: refined_for_authoritative_constant(base: 8, by: swift_format_positive_int_validation),
-  maximum_blank_lines: refined_for_authoritative_constant(base: 1, by: swift_format_non_negative_int_validation),
-  spaces_before_end_of_line_comments: refined_for_authoritative_constant(base: 2, by: swift_format_non_negative_int_validation),
+  version: exact_one_int_for_authoritative_constant(base: 1),
+  line_length: positive_int_for_authoritative_constant(base: 100),
+  indentation: SwiftFormatSpaces { count: positive_int_for_authoritative_constant(base: 2) },
+  tab_width: positive_int_for_authoritative_constant(base: 8),
+  maximum_blank_lines: non_negative_int_for_authoritative_constant(base: 1),
+  spaces_before_end_of_line_comments: non_negative_int_for_authoritative_constant(base: 2),
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,
@@ -170,12 +124,12 @@ data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
 
 // 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: SwiftFormatConfigPatch projected from SwiftFormatConfig field set.
 type SwiftFormatConfigPatch {
-  version: FieldPatch<SwiftFormatConfigVersion>
-  line_length: FieldPatch<SwiftFormatPositiveInt>
+  version: FieldPatch<ExactOneInt>
+  line_length: FieldPatch<PositiveInt>
   indentation: FieldPatch<SwiftFormatIndentation>
-  tab_width: FieldPatch<SwiftFormatPositiveInt>
-  maximum_blank_lines: FieldPatch<SwiftFormatNonNegativeInt>
-  spaces_before_end_of_line_comments: FieldPatch<SwiftFormatNonNegativeInt>
+  tab_width: FieldPatch<PositiveInt>
+  maximum_blank_lines: FieldPatch<NonNegativeInt>
+  spaces_before_end_of_line_comments: FieldPatch<NonNegativeInt>
   respects_existing_line_breaks: FieldPatch<Bool>
   line_break_before_control_flow_keywords: FieldPatch<Bool>
   line_break_before_each_argument: FieldPatch<Bool>
