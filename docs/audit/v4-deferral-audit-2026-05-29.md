@@ -59,8 +59,6 @@ The audit uses **three distinct populations**, each measured by its own
 grep. Each population answers a different question; the reader needs all
 three to spot-check the §1/§5/§A numbers. **Run from repo root:**
 
-| Population | Question it answers | Canonical grep | Result on `origin/main` |
-| --- | --- | --- | ---: |
 **Audit pathspec (corrected 2026-05-29 per inline review to match
 declared corpus scope):** all commands below use the pathspec
 `-- src/v4/ docs/v4-*.md docs/design-v4-*.md` so the census matches
@@ -94,7 +92,7 @@ distinct = 130**. Headline gates including `formatter-int-refinement`,
 `formatter-cross-field-constraints`, `lean4-option-closed-set` use
 the spaced form for their headers and were excluded from the original
 97 census. **The 97/89/75 figures in §1, §1.9, and downstream tables
-were all undercounts** and have been corrected to 130/122/95
+were all undercounts** and have been corrected to 140/132/95
 respectively (see §1.9 for the regenerated distribution).
 
 This does **not** change the substantive classifications — every
@@ -280,21 +278,30 @@ the no-space `feature:[a-z]` form; that undercounted by 33 because
 headline `formatter-int-refinement`). True unified distribution
 across all **130** distinct gate names (from §0 population A):
 
-| Site count | # of gates | Status |
+**Distribution at pinned `origin/main` @ `df91abc2b`** (regenerated
+2026-05-29 from unified Population A grep — see §0; per-name counts
+include both `feature:`/`consumer:` declarations and inline mentions
+that the regex catches, which is why `config-patch-record-projection`
+shows 25 names vs §1.2's 12 annotation rows: the gate name appears
+multiple times per file in `consumer:NAME — bind v4.std.patch
+feature:NAME` patterns, so name-count ≠ annotation-row count):
+
+| Name appearances | # of gates | Status |
 | ---: | ---: | --- |
-| 13 sites | 1 | tabulated as §1.2 (`config-patch-record-projection`) |
-| 9 sites  | 1 | long tail |
-| 7 sites  | 1 | long tail (`canonical-b-grounding-consumer`) |
-| 6 sites  | 1 | long tail (`free-monoid-entry-generic-inference`) |
-| 5 sites  | 3 | long tail |
-| 4 sites  | 4 | long tail |
-| 3 sites  | 4 | long tail |
-| 2 sites  | 20 | long tail (17 NECESSARY long-tail; 3 already tabulated in §1.3/§1.4) |
-| 1 site   | 95 | long tail singletons (§1.5–§1.8 are four of these) |
-| **Total** | **130** | — |
+| 25 names | 1 | tabulated as §1.2 (`config-patch-record-projection`) |
+| 9 names  | 1 | long tail |
+| 8 names  | 1 | long tail |
+| 7 names  | 1 | long tail (`canonical-b-grounding-consumer`) |
+| 6 names  | 1 | long tail (`free-monoid-entry-generic-inference`) |
+| 5 names  | 3 | long tail |
+| 4 names  | 4 | long tail |
+| 3 names  | 4 | long tail |
+| 2 names  | 22 | long tail (incl. 3 already tabulated in §1.3/§1.4) |
+| 1 name   | 102 | long tail singletons (§1.5–§1.8 are four of these) |
+| **Total** | **140** | — |
 
 Tabulated by name in §1.1–§1.8: **8 gates** (5 multi-site, 3 singletons).
-**Remaining 122 long-tail gates** are summarized below; representative
+**Remaining 132 long-tail gates** are summarized below; representative
 examples (multi-site first, then singleton patterns):
 
 * `feature:canonical-b-grounding-consumer` (7 sites) — bind T-9 algebra-ref
@@ -535,11 +542,13 @@ labelling defect: work is open, bind names a closed task.
   tagged as task-completion, not substrate-wait).
 
 * **§A7 — `config-patch-record-projection` is the highest-leverage
-  remaining substrate dissolution** (12 consumer sites + 1 substrate
-  site). Although correctly classified NECESSARY today, landing the
-  projection in `std/patch.dag` immediately dissolves all 12 formatter
-  consumer hand-mirrors. Recommend prioritising the projection inside
-  T-4.16.
+  remaining substrate dissolution** (12 annotation rows under
+  Population C: 1 `feature:` header in `std/patch.dag` + 11
+  `consumer:` tags across 9 formatter files including 3 in
+  prettier.dag — matches §1.2 single authority). Although correctly
+  classified NECESSARY today, landing the projection in
+  `std/patch.dag` immediately dissolves all 11 formatter consumer
+  hand-mirrors. Recommend prioritising the projection inside T-4.16.
 
 * **§A8 — audit methodology fix:** the §B inspection list omitted
   `src/v4/std/refinement.dag`, which caused the §1.1 / §1.5 NECESSARY
