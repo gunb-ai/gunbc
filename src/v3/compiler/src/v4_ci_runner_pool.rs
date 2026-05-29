@@ -1,16 +1,10 @@
 //! Structural mirror of `SelfHostedRunnerPool` / `m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
-
-/// Closed fleet fact: operator srv1/srv2 are Arm64 only (single-variant `RunnerArch` in `ci.dag`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunnerArch {
-    RunnerArchArm64,
-}
+//! Operator fleet is Ampere Altra (Arm64) only — arch is a comment-level closed fact in `ci.dag`, not a field.
 
 /// Structural mirror of `SelfHostedRunnerPool` in `src/v4/workflow/ci.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelfHostedRunnerPool {
     pub host: &'static str,
-    pub arch: RunnerArch,
     pub core_count: u32,
     pub runner_count: u32,
     pub jobserver_token_cap: u32,
@@ -18,7 +12,6 @@ pub struct SelfHostedRunnerPool {
 
 pub const CI_SRV1_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     host: "srv1",
-    arch: RunnerArch::RunnerArchArm64,
     core_count: 128,
     runner_count: 20,
     jobserver_token_cap: 25,
@@ -26,7 +19,6 @@ pub const CI_SRV1_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
 
 pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     host: "srv2",
-    arch: RunnerArch::RunnerArchArm64,
     core_count: 128,
     runner_count: 30,
     jobserver_token_cap: 36,

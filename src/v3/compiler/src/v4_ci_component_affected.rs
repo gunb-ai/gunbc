@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_policy_paths_match_ci_dag_authority() {
+    fn workflow_policy_sample_paths_are_in_workflow_policy_bucket() {
         assert!(ci_changed_path_affects_workflow_policy(
             "src/v4/workflow/ci.dag"
         ));
