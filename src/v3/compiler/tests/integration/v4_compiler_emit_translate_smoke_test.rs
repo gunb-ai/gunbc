@@ -13,13 +13,15 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
-//! land in the same PR. **This PR (+0 census paths):** expands the existing harness (no new
-//! census path) to ratchet T-11 grammar-inverse compile-inferred TestClaim parse/import receipts
-//! for python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`) via
-//! `v4_mvp1_python_add_claim_tokenizes_and_parses`, `v4_mvp1_go_add_claim_tokenizes_and_parses`,
-//! `v4_mvp1_cpp_add_claim_tokenizes_and_parses`, `v4_mvp1_typescript_add_claim_tokenizes_and_parses`,
-//! and `v4_mvp1_shape_a_add_claims_import_compile_inferred`; dissolves
-//! `feature:T-11-grammar-inverse-serializer-remaining-targets` status mark in `06_translate.dag`.
+//! land in the same PR. **This PR (+0 census paths):** structural serialize-measure ratchet
+//! on `06_translate.dag` via parsed-surface `fn`/`import`/`data` inventory in
+//! `v4_translate_dag_dispatches_token_sequence_items`; fail-closed semantics exercised by
+//! `run_mvp1_serialize_rejects_missing_translation_rules` in `mvp1_rust_add_translate.dag`
+//! (not host `str::contains` probes). **PR #3798 (+0 census paths):** extends
+//! `v4_python_language_model_declares_t11_translation_rules` for T-4.17 python wave-2a
+//! LanguageModel / lex/grammar surface on `python.dag`. **PR #3840 (+0 census paths):**
+//! adds T-11 grammar-inverse compile-inferred TestClaim parse/import receipts for
+//! python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`).
 //! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
 //! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
 //!
@@ -416,10 +418,19 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         ),
         "{PYTHON_LANGUAGE_PATH}: Python grammar rows must consume the shared FormalProduction Node projection"
     );
-    for name in ["GrammarExpr", "Sequence", "Terminal"] {
+    // Bounded FormalProduction → GrammarExpr operational parse shim (CP-1b interim):
+    // grammar rows import projection carriers only for python_formal_productions_to_grammar_expr.
+    for name in [
+        "GrammarExpr",
+        "Sequence",
+        "Terminal",
+        "Choice",
+        "Nonterminal",
+        "Optional",
+    ] {
         assert!(
-            !import_includes_name(&module, &["v4", "std", "grammar"], name),
-            "{PYTHON_LANGUAGE_PATH}: Python grammar rows must not import legacy nested GrammarExpr helper `{name}`"
+            import_includes_name(&module, &["v4", "std", "grammar"], name),
+            "{PYTHON_LANGUAGE_PATH}: operational parse shim must import `{name}` from v4.std.grammar"
         );
     }
     assert!(
@@ -440,7 +451,15 @@ fn v4_python_language_model_declares_t11_translation_rules() {
     );
     assert!(
         surface_declares_fn(&module, "python_formal_rhs_from_token_classes"),
-        "{PYTHON_LANGUAGE_PATH}: must build grammar production RHS as a flat formal-symbol list"
+        "{PYTHON_LANGUAGE_PATH}: must build MVP-1 grammar production RHS as a flat formal-symbol list"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_formal_productions_to_grammar_expr"),
+        "{PYTHON_LANGUAGE_PATH}: must derive GrammarExpr from FormalProduction authority (operational parse shim)"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_formal_production_mvp1_fn_add"),
+        "{PYTHON_LANGUAGE_PATH}: must expose FormalProduction authority for MVP-1 relation rows"
     );
     for name in [
         "python_formal_nonterminal_node",
@@ -455,6 +474,18 @@ fn v4_python_language_model_declares_t11_translation_rules() {
             "{PYTHON_LANGUAGE_PATH}: Python must not mirror std FormalProduction projection helper `{name}`"
         );
     }
+    assert!(
+        surface_declares_type(&module, "PythonLanguageModel"),
+        "{PYTHON_LANGUAGE_PATH}: must declare the LanguageModel carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_language_model_wave1"),
+        "{PYTHON_LANGUAGE_PATH}: must expose wave-1 LanguageModel with lex/grammar data"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_wave1_grammar"),
+        "{PYTHON_LANGUAGE_PATH}: must expose ModeledGrammar for bidirectional ingest"
+    );
 }
 
 #[test]
