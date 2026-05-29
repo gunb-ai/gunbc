@@ -12537,7 +12537,7 @@ mod tests {
         ));
     }
 
-  12540|    fn list_instantiation_element(dag: &Dag, list_inst: DeclarationId) -> DeclarationId {
+    fn list_instantiation_element(dag: &Dag, list_inst: DeclarationId) -> DeclarationId {
         let TypeConnective::Instantiation { arguments, .. } = &dag.declaration(list_inst).connective
         else {
             panic!("expected List instantiation");
