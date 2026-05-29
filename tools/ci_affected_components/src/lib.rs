@@ -14,6 +14,7 @@ pub struct CiComponentAffected {
     pub v3: bool,
     pub v4: bool,
     pub workflow_policy: bool,
+    pub release_distribution: bool,
 }
 
 /// Mirror of `ci_component_affected_fail_closed` — all components affected (INVARIANTS P3).
@@ -23,6 +24,7 @@ pub fn ci_component_affected_fail_closed() -> CiComponentAffected {
         v3: true,
         v4: true,
         workflow_policy: true,
+        release_distribution: true,
     }
 }
 
@@ -36,6 +38,7 @@ where
         v3: false,
         v4: false,
         workflow_policy: false,
+        release_distribution: false,
     };
     for path in changed {
         if ci_changed_path_affects_v2(path) {
@@ -49,6 +52,9 @@ where
         }
         if ci_changed_path_affects_workflow_policy(path) {
             out.workflow_policy = true;
+        }
+        if ci_changed_path_affects_release_distribution(path) {
+            out.release_distribution = true;
         }
     }
     out
@@ -82,6 +88,10 @@ pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
         || path.starts_with("tools/ci_affected_components")
         || path.starts_with("scripts/check-workflow-path-regex-inventory")
         || path.starts_with("scripts/workflow-path-regex-forbidden-substrings")
+}
+
+pub fn ci_changed_path_affects_release_distribution(path: &str) -> bool {
+    path == "src/v4/workflow/release.dag" || path == ".github/workflows/release.yml"
 }
 
 #[cfg(test)]
@@ -131,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_fixture_matches_shell_script_buckets() {
+    fn aggregate_fixture_matches_modeled_buckets() {
         let flags = ci_component_affected_from_changed_paths([
             "src/v4/workflow/ci.dag",
             "docs/unrelated.md",
@@ -140,5 +150,17 @@ mod tests {
         assert!(!flags.v3);
         assert!(flags.v4);
         assert!(flags.workflow_policy);
+        assert!(!flags.release_distribution);
+    }
+
+    #[test]
+    fn release_distribution_includes_release_authority_paths() {
+        assert!(ci_changed_path_affects_release_distribution(
+            "src/v4/workflow/release.dag"
+        ));
+        assert!(!ci_changed_path_affects_release_distribution("install.sh"));
+        assert!(!ci_changed_path_affects_release_distribution(
+            "src/v4/workflow/ci.dag"
+        ));
     }
 }
