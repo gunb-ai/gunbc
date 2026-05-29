@@ -35,7 +35,8 @@ env:
 # or job-level `env:` blocks, so a shell step is the canonical mechanism.)
 jobs:
   fmt:
-    if: github.event.pull_request.draft != true
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.ci_fmt == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    needs: [affected]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     steps:
@@ -71,6 +72,15 @@ jobs:
       v3: ${{ steps.detect.outputs.v3 }}
       v4: ${{ steps.detect.outputs.v4 }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
+      ci_sg0: ${{ steps.detect.outputs.ci_sg0 }}
+      ci_r4_carve: ${{ steps.detect.outputs.ci_r4_carve }}
+      ci_fabrication: ${{ steps.detect.outputs.ci_fabrication }}
+      ci_release_doc: ${{ steps.detect.outputs.ci_release_doc }}
+      ci_manager_brief: ${{ steps.detect.outputs.ci_manager_brief }}
+      ci_test_timeout: ${{ steps.detect.outputs.ci_test_timeout }}
+      ci_rust_toolchain: ${{ steps.detect.outputs.ci_rust_toolchain }}
+      ci_t19: ${{ steps.detect.outputs.ci_t19 }}
+      ci_fmt: ${{ steps.detect.outputs.ci_fmt }}
     steps:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -104,9 +114,10 @@ jobs:
       if: github.event_name == 'pull_request'
       run: git fetch origin main:refs/remotes/origin/main
     - name: SG-0 net-shrink PR-body discipline (self-test)
+      if: needs.affected.outputs.ci_sg0 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/check-pr-sg0-net-shrink-discipline.sh --self-test
     - name: SG-0 net-shrink PR-body discipline
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' && (needs.affected.outputs.ci_sg0 == 'true' || needs.affected.outputs.workflow_policy == 'true')
       env:
         PR_BODY: ${{ github.event.pull_request.body }}
       run: |
@@ -122,39 +133,52 @@ jobs:
         fi
         PR_BODY="${body}" bash scripts/check-pr-sg0-net-shrink-discipline.sh
     - name: R4-carve dissolution discipline (self-test)
+      if: needs.affected.outputs.ci_r4_carve == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/check-r4-carve-dissolution-discipline.sh --self-test
     - name: R4-carve dissolution discipline
+      if: needs.affected.outputs.ci_r4_carve == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/check-r4-carve-dissolution-discipline.sh
     - name: Fabrication sentinel ratchet (P0-C)
+      if: needs.affected.outputs.ci_fabrication == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/check-fabrication-sentinels.sh
     - name: T-19 testgen activation self-test (Python)
+      if: needs.affected.outputs.ci_t19 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: python3 scripts/test_check_t19_testgen_activation.py
     - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: python3 scripts/check_t19_testgen_activation.py
     - name: Release-doc authority check (P2 single-authority discipline)
+      if: needs.affected.outputs.ci_release_doc == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/check-release-doc-authority.sh
     - name: Release-doc authority self-test (consumer not ceremonial)
+      if: needs.affected.outputs.ci_release_doc == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/test-check-release-doc-authority.sh
     - name: Manager-brief authority check (P2 single-authority discipline)
+      if: needs.affected.outputs.ci_manager_brief == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/check-manager-brief-authority.sh
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Manager-brief authority self-test (consumer not ceremonial)
+      if: needs.affected.outputs.ci_manager_brief == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/test-check-manager-brief-authority.sh
     - name: Test-timeout ratchet self-test (consumer not ceremonial)
+      if: needs.affected.outputs.ci_test_timeout == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/test-check-test-timeout.sh
     - name: Rust toolchain single-authority check (P2)
+      if: needs.affected.outputs.ci_rust_toolchain == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/check-rust-toolchain-single-authority.sh
     - name: Setup Rust
+      if: needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
         components: rustfmt
         cache: false
         rustflags: ''
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      if: needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (ci bootstrap gate)
+      if: needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       uses: actions/cache@v4
       with:
         path: |
