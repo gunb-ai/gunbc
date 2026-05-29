@@ -119,7 +119,8 @@ data release_published_target_triples: List<String> = release_matrix_row_targets
 // `release_pipeline` jobs are hand-expanded (M1 interim; mirror `ci.dag` `ci_pipeline`) until
 // YamlStatic derives them from `release_build_matrix`. Target-bearing authority is the matrix:
 // `release_pipeline_jobs_cover_matrix` + `release_matrix_upload_jobs_present` +
-// `release_build_commands_use_matrix_targets_only` fail-closed against drift.
+// `release_publish_job_drains_matrix_uploads` + `release_build_commands_use_matrix_targets_only`
+// fail-closed against drift.
 data release_build_musl_x86: Symbol = release_build_musl_x86
 data release_build_musl_aarch64: Symbol = release_build_musl_aarch64
 data release_build_darwin_x86: Symbol = release_build_darwin_x86
