@@ -234,6 +234,7 @@ data release_matrix_invalid: Symbol = release_matrix_invalid
 data release_matrix_build_coverage_gap: Symbol = release_matrix_build_coverage_gap
 data release_matrix_build_target_drift_gap: Symbol = release_matrix_build_target_drift_gap
 data release_matrix_upload_drain_gap: Symbol = release_matrix_upload_drain_gap
+data release_publish_drain_gap: Symbol = release_publish_drain_gap
 data release_bootstrap_authority_violation: Symbol = release_bootstrap_authority_violation
 data release_workflow_file: Symbol = release_workflow_file
 
@@ -451,6 +452,42 @@ fn release_matrix_upload_jobs_present(jobs: List<ReleaseJob>, rows: List<Release
   })
 }
 
+// 🟡 coproduct predicate dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: with `release_pipeline` YamlStatic emission.
+fn release_command_is_publish(c: ReleaseCommand) -> Bool {
+  match c {
+    PublishGitHubRelease { bundle_install_sh: _ } => true
+    CrossMuslGunbcBuild { target: _ } => false
+    NativeDarwinGunbcBuild { target: _ } => false
+    UploadGunbcMatrixArtifact => false
+  }
+}
+
+fn release_pipeline_has_exactly_one_publish_job(jobs: List<ReleaseJob>) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    release_command_is_publish(c: j.command)
+  }) == 1
+}
+
+fn release_publish_needs_upload_for_row(publish: ReleaseJob, jobs: List<ReleaseJob>, row: ReleaseMatrixRow) -> Bool {
+  count_where(xs: jobs, predicate: fn(u) {
+    release_upload_needs_build_for_target(j: u, jobs: jobs, target: row.target)
+      && release_member(s: u.id, ids: publish.needs)
+  }) != 0
+}
+
+fn release_publish_job_drains_matrix_uploads(jobs: List<ReleaseJob>, rows: List<ReleaseMatrixRow>) -> Bool {
+  release_pipeline_has_exactly_one_publish_job(jobs: jobs)
+    && fold(jobs, init: false, f: fn(acc, j) {
+      if release_command_is_publish(c: j.command) {
+        for_all(xs: rows, predicate: fn(row) {
+          release_publish_needs_upload_for_row(publish: j, jobs: jobs, row: row)
+        })
+      } else {
+        acc
+      }
+    })
+}
+
 fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> {
   if release_all_job_ids_unique(jobs: p.jobs) {
     if release_all_gate_ids_unique(gates: p.gates) {
@@ -462,7 +499,11 @@ fn release_pipeline_well_formed(p: ReleasePipeline) -> Outcome<ReleasePipeline> 
                 if release_pipeline_jobs_cover_matrix(jobs: p.jobs, rows: release_build_matrix) {
                   if release_build_commands_use_matrix_targets_only(jobs: p.jobs, rows: release_build_matrix) {
                     if release_matrix_upload_jobs_present(jobs: p.jobs, rows: release_build_matrix) {
-                      Accepted { value: p, diagnostics: None }
+                      if release_publish_job_drains_matrix_uploads(jobs: p.jobs, rows: release_build_matrix) {
+                        Accepted { value: p, diagnostics: None }
+                      } else {
+                        Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_publish_drain_gap)) }
+                      }
                     } else {
                       Rejected { diagnostics: diagnostics_singleton(d: release_diagnostic(reason: release_matrix_upload_drain_gap)) }
                     }

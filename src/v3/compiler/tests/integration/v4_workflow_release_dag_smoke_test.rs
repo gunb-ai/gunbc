@@ -165,8 +165,14 @@ fn v4_workflow_release_semantics_modeled() {
     assert!(
         RELEASE_DAG.contains("command: UploadGunbcMatrixArtifact")
             && RELEASE_DAG.contains("release_matrix_upload_jobs_present")
-            && RELEASE_DAG.contains("release_upload_needs_build_for_target"),
+            && RELEASE_DAG.contains("release_upload_needs_build_for_target")
+            && RELEASE_DAG.contains("release_publish_job_drains_matrix_uploads"),
         "{RELEASE_DAG_PATH}: pipeline must model matrix artifact upload drain before publish"
+    );
+    assert!(
+        RELEASE_DAG.contains("PublishGitHubRelease")
+            && RELEASE_DAG.contains("release_publish_drain_gap"),
+        "{RELEASE_DAG_PATH}: well-formedness must fail-closed when publish drain is missing"
     );
     assert!(
         !RELEASE_DAG.contains("!row.cross"),
