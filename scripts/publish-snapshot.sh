@@ -155,6 +155,10 @@ else
   echo "  Publish with:   PUBLISH_CONFIRM=yes $0 --publish"
 fi
 
-if [[ "$KEEP_EXPORT" -eq 0 ]]; then
+# Auto-remove the export only after a real publish. On dry-run we leave it
+# in place so the operator can actually inspect it via the command printed
+# above — otherwise the "DRY RUN: inspect with…" instructions would race a
+# silent teardown. Pass --keep-export to preserve it past a publish as well.
+if [[ "$PUBLISH" -eq 1 && "$KEEP_EXPORT" -eq 0 ]]; then
   git worktree remove --force "$EXPORT_DIR"
 fi
