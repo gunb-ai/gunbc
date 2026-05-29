@@ -493,12 +493,15 @@ fn namespace_for_subject(
 ) -> Outcome<Namespace> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: validated_roots, diagnostics: _ } =>
+    Accepted { value: validated_roots, diagnostics: validate_diag } =>
       match subject_module_root_for_name(
         roots: validated_roots,
         name: admission.subject.name
       ) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: validate_diag, rejected: r)
+          }
         Accepted { value: subject_module_root, diagnostics: _ } =>
           if well_formed(n: subject_module_root) {
             let base = admission_namespace_base(lm: lm)
@@ -517,14 +520,19 @@ fn namespace_for_subject(
                     bindings: b,
                     canonical_symbols: base.canonical_symbols
                   },
-                  diagnostics: None
+                  diagnostics: validate_diag
                 }
               AdmissionRejected { diagnostics: d } =>
-                Rejected { diagnostics: d }
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+                }
             }
           } else {
             Rejected {
-              diagnostics: resolve_diagnostics(reason: resolve_reason_malformed_imported_root)
+              diagnostics: rejected_with_pending(
+                pending: validate_diag,
+                rejected: resolve_diagnostics(reason: resolve_reason_malformed_imported_root)
+              )
             }
           }
       }
@@ -542,8 +550,18 @@ fn resolve_with_admission(
     roots: roots,
     admission: admission
   ) {
-    Accepted { value: namespace, diagnostics: _ } =>
-      resolve_with_namespace(tree: admission.subject.tree, namespace: namespace)
+    Accepted { value: namespace, diagnostics: namespace_diag } =>
+      match resolve_with_namespace(tree: admission.subject.tree, namespace: namespace) {
+        Accepted { value: resolved, diagnostics: resolve_diag } =>
+          Accepted {
+            value: resolved,
+            diagnostics: diagnostics_merge(outer: namespace_diag, inner: resolve_diag)
+          }
+        Rejected { diagnostics: r } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: namespace_diag, rejected: r)
+          }
+      }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }

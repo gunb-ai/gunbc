@@ -307,6 +307,35 @@ fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
 }
 
 
+fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
+  match validate_module_roots(roots: fc_dual_import_roots()) {
+    Accepted { value: _, diagnostics: validate_diag } =>
+      match resolve_with_admission(
+        lm: dag_language_model_surface_empty_prelude(),
+        roots: fc_dual_import_roots(),
+        admission: Admission {
+          subject: ResolutionSubject {
+            name: fc_qn(seg: fc_subject_seg),
+            tree: fc_subject_tree()
+          },
+          imports: Cons {
+            head: Import { target: fc_qn(seg: fc_import_a_seg), visibility: ImportVisible },
+            tail: Cons {
+              head: Import { target: fc_qn(seg: fc_import_b_seg), visibility: ImportVisible },
+              tail: Empty
+            }
+          }
+        }
+      ) {
+        Accepted { value: _, diagnostics: resolve_diag } =>
+          diagnostics_eq(a: resolve_diag, b: validate_diag)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
 fn fc_mismatched_subject_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -413,6 +442,15 @@ data claim_resolve_dual_imports_do_not_collide_on_header_metadata: TestClaim = C
   label: "name_resolve/resolve_with_admission: dual imports do not export module-header metadata",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fc_claim_input(ok: resolve_dual_imports_do_not_collide_on_header_metadata()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_resolve_with_admission_threads_validate_diagnostics_on_accept: TestClaim = CompilesClaim {
+  label: "name_resolve/resolve_with_admission: accepted validate_module_roots diagnostics thread through Outcome",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_with_admission_threads_validate_diagnostics_on_accept()),
   expected_value: fc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
