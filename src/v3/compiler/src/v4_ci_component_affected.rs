@@ -65,6 +65,8 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
         || path.starts_with("fixtures/v4-mvp1/")
         || path == "scripts/v4-mvp1-e2e-gate.sh"
         || path == "scripts/v4-m1-rust-emit-probe.sh"
+        || path.starts_with("scripts/v4-mvp1")
+        || path.starts_with("scripts/v4-m1")
         || path.starts_with("scripts/v4-testclaim-")
         || path.starts_with("dsl/std/")
         || path == "Cargo.toml"
@@ -96,7 +98,20 @@ mod tests {
     fn v3_freeze_ignores_cargo_toml_for_v3_only() {
         assert!(!ci_changed_path_affects_v3("Cargo.toml"));
         assert!(ci_changed_path_affects_v3("src/v3/compiler/src/lib.rs"));
+        assert!(ci_changed_path_affects_v3("dsl/gunbc/ci.dag"));
         assert!(ci_changed_path_affects_v3("dsl/std/node.dag"));
+    }
+
+    #[test]
+    fn v4_m1_probe_script_triggers_v4_bucket() {
+        assert!(ci_changed_path_affects_v4("scripts/v4-m1-rust-emit-probe.sh"));
+        assert!(ci_changed_path_affects_v4("scripts/v4-mvp1-e2e-gate.sh"));
+    }
+
+    #[test]
+    fn dsl_std_triggers_v3_and_v4() {
+        assert!(ci_changed_path_affects_v3("dsl/std/node.dag"));
+        assert!(ci_changed_path_affects_v4("dsl/std/node.dag"));
     }
 
     #[test]

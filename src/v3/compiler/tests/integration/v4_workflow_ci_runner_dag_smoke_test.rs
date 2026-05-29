@@ -46,12 +46,17 @@ const CI_V3_PREFIXES: &[&str] = &["src/v3/", "dsl/"];
 const CI_V4_PREFIXES: &[&str] = &[
     "src/v4/",
     "fixtures/v4-mvp1/",
-    "scripts/v4-mvp1/",
-    "scripts/v4-m1/",
+    "scripts/v4-mvp1",
+    "scripts/v4-m1",
     "scripts/v4-testclaim-",
     "dsl/std/",
 ];
-const CI_V4_EXACT_PATHS: &[&str] = &["Cargo.toml", "Cargo.lock"];
+const CI_V4_EXACT_PATHS: &[&str] = &[
+    "Cargo.toml",
+    "Cargo.lock",
+    "scripts/v4-mvp1-e2e-gate.sh",
+    "scripts/v4-m1-rust-emit-probe.sh",
+];
 
 fn assert_ci_dag_rust_prefix_parity(prefixes: &[&str]) {
     for prefix in prefixes {
