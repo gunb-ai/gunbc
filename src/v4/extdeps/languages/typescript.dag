@@ -1318,6 +1318,58 @@ fn ts_grammar_production_wave2a_type_void() -> GrammarProduction {
   }
 }
 
+fn ts_grammar_production_wave2a_type_name() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_name,
+    expression: Terminal { token_class: ts_token_ident },
+    emitted: ts_grammar_atom(id: ts_surface_type_name)
+  }
+}
+
+fn ts_grammar_production_wave2a_record_field() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_record_field,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_ident },
+      right: Sequence {
+        left: Terminal { token_class: ts_token_colon },
+        right: Nonterminal { production: ts_production_wave2a_type_annotation }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_record_field)
+  }
+}
+
+fn ts_grammar_production_wave2a_record_fields() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_record_fields,
+    expression: Sequence {
+      left: Nonterminal { production: ts_production_wave2a_record_field },
+      right: Repeat {
+        element: Sequence {
+          left: Terminal { token_class: ts_token_comma },
+          right: Nonterminal { production: ts_production_wave2a_record_field }
+        }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_record_fields)
+  }
+}
+
+fn ts_grammar_production_wave2a_record_type() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_record_type,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_lbrace },
+      right: Sequence {
+        left: Nonterminal { production: ts_production_wave2a_record_fields },
+        right: Terminal { token_class: ts_token_rbrace }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_record_type)
+  }
+}
+
 fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
   GrammarProduction {
     name: ts_production_wave2a_type_annotation,
@@ -1327,11 +1379,37 @@ fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
         left: Nonterminal { production: ts_production_wave2a_type_string },
         right: Choice {
           left: Nonterminal { production: ts_production_wave2a_type_boolean },
-          right: Nonterminal { production: ts_production_wave2a_type_void }
+          right: Choice {
+            left: Nonterminal { production: ts_production_wave2a_type_void },
+            right: Choice {
+              left: Nonterminal { production: ts_production_wave2a_type_name },
+              right: Nonterminal { production: ts_production_wave2a_record_type }
+            }
+          }
         }
       }
     },
     emitted: ts_grammar_atom(id: ts_surface_type_annotation)
+  }
+}
+
+fn ts_grammar_production_wave2a_type_alias_decl() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_alias_decl,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_kw_type },
+      right: Sequence {
+        left: Terminal { token_class: ts_token_ident },
+        right: Sequence {
+          left: Terminal { token_class: ts_token_eq },
+          right: Sequence {
+            left: Nonterminal { production: ts_production_wave2a_type_annotation },
+            right: Terminal { token_class: ts_token_semicolon }
+          }
+        }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_type_alias_decl)
   }
 }
 
