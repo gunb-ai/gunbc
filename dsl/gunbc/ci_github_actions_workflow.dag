@@ -142,7 +142,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }],
       needs: [],
       env: none,
-      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}" },
+      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}", "ci_rust": "${{ steps.detect.outputs.ci_rust }}" },
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 15 },
@@ -327,7 +327,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "components": "rustfmt", "cache": "false", "rustflags": "" },
           env: none,
-          if_condition: none,
+          if_condition: Some { value: "needs.affected.outputs.ci_rust == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -337,7 +337,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: none,
+          if_condition: Some { value: "needs.affected.outputs.ci_rust == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
         }, UsesStep {
@@ -346,7 +346,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           uses: { owner: "actions", repo: "cache", ref: "v4" },
           with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-ci-${{ runner.os }}-${{ runner.arch }}-\n" },
           env: none,
-          if_condition: none,
+          if_condition: Some { value: "needs.affected.outputs.ci_rust == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
