@@ -662,6 +662,17 @@ fn byte_offset_cache_digest_authority_hash(auth: ByteOffsetCacheDigestAuthority)
               b: tail_digest
             )
           )
+        ByteOffsetOverCeiling {
+          within_ceiling_digest: tail_within_ceiling_digest,
+          quotient: _
+        } =>
+          byte_offset_cache_digest_ineligible_hash(
+            within_ceiling_digest: combine_hash(
+              a: within_ceiling_digest,
+              b: tail_within_ceiling_digest
+            ),
+            boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable
+          )
       }
   }
 }
