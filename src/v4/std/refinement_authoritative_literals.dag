@@ -23,6 +23,7 @@ import v4.std.refinement {
   at_least_minus_two_int_authoritative_constant,
   exact_one_int_authoritative_constant,
 }
+import v4.std.diagnostic { Accepted, Rejected }
 
 
 // Each row discharges through make_*_at_authoritative. Rejected arms are ill-typed (Outcome as
