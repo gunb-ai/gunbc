@@ -12,7 +12,6 @@ import v4.std.refinement_authoritative_literals {
 }
 import v4.std.refinement {
   PositiveInt,
-  positive_int_from_authoritative_catalog,
 }
 
 
@@ -80,7 +79,7 @@ type BlackConfig {
 
 
 data black_defaults: BlackConfig = BlackConfig {
-  line_length: positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_88),
+  line_length: authoritative_positive_int_88,
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
   pyi: false,

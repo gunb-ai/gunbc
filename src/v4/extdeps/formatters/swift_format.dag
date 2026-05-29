@@ -19,9 +19,6 @@ import v4.std.refinement {
   PositiveInt,
   NonNegativeInt,
   ExactOneInt,
-  exact_one_int_from_authoritative_catalog,
-  non_negative_int_from_authoritative_catalog,
-  positive_int_from_authoritative_catalog,
 }
 
 
@@ -97,12 +94,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: exact_one_int_from_authoritative_catalog(receipt: authoritative_exact_one_int_1),
-  line_length: positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_100),
-  indentation: SwiftFormatSpaces { count: positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_2) },
-  tab_width: positive_int_from_authoritative_catalog(receipt: authoritative_positive_int_8),
-  maximum_blank_lines: non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_1),
-  spaces_before_end_of_line_comments: non_negative_int_from_authoritative_catalog(receipt: authoritative_non_negative_int_2),
+  version: authoritative_exact_one_int_1,
+  line_length: authoritative_positive_int_100,
+  indentation: SwiftFormatSpaces { count: authoritative_positive_int_2 },
+  tab_width: authoritative_positive_int_8,
+  maximum_blank_lines: authoritative_non_negative_int_1,
+  spaces_before_end_of_line_comments: authoritative_non_negative_int_2,
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,
