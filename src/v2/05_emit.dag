@@ -65,7 +65,6 @@ import v2.std.core {
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import std.induction { InductiveField, SubValueUnknown }
-// NamingCase, PascalCase, SnakeCase imported via v2.compiler.languages (bootstrap-local mirror)
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like }
 import std.types { is_container_type, container_template_algebra }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
@@ -141,7 +140,6 @@ type TcoReassignInput {
 
 // =========================================================================
 // Backend capability contract -- what each backend declares it can handle.
-// Used by the artifact planner and equivalence validator.
 // =========================================================================
 
 type BackendCapability
@@ -158,7 +156,6 @@ type BackendInfo {
 
 // =========================================================================
 // Test projection -- target-agnostic test case extraction from typed graph.
-// Each backend translates these into its own test syntax.
 // =========================================================================
 
 type TestProjection {
@@ -226,7 +223,6 @@ fn collect_type_names_from_node(n: Node, source_indices: Map<String, NewlineInde
   self_name |> concat(child_names)
 }
 
-// Intermediate type for string interpolation segments
 type InterpPart {
   format_segment: String
   arg_expr: String
@@ -277,8 +273,6 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
       })
       emit_simple_string_interp(parts: ps, target: target, source_indices: source_indices)
     ExprListLit =>
-      // Target-aware: JSON array syntax is valid inside Rust serde_json::json!
-      // and as Python list literals. Go needs separate handling.
       match target {
         Go => emit_error_expr(message: "list literal in simple expr not yet supported for Go", target: target)
         _ =>
@@ -369,7 +363,6 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
     ExprLet =>
-      // children = [value, body?]. Bodyless let extends scope.
       let ch = texpr.children
       let has_body = (ch |> count) > 1
       if has_body == false {
@@ -407,9 +400,6 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
     match lookup_func_sig_in_scope(scope: scope, name: func) {
       None => args
       Some { value: sig } => {
-        // Boundary: sig.params come from the declaring module's source file,
-        // but scope.type_env.source_indices is the caller's file. Cross-module
-        // ident_span recovery fails the file check — _at falls back to node.name.
         let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
           let n = arg_name_at(n: arg, source_indices: scope.type_env.source_indices)
           if n != none { map_insert(acc, n.value, arg) } else { acc }
@@ -447,20 +437,12 @@ fn unique_strings(items: List<String>) -> List<String> {
 
 // =========================================================================
 // Nested record detection -- for data definition edge cases
-//
-// Detects anonymous inline records in type expressions.
-// List<{ path: String, content: String }> has no named Rust type.
 // =========================================================================
 
-// Nested record detection -- for data definition edge cases.
-// Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let is_product = n.connective == Conj
   let is_coproduct = n.connective == Disj
   if is_product {
-    // Any record type in data value position needs serde: both anonymous
-    // records (name == "") and named records (name != "") whose literals
-    // may not carry the struct name.
     true
   } else if is_coproduct {
     let is_optional = n.return_cardinality == CardOptional
@@ -515,7 +497,6 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) 
 }
 
 
-// Escape a string for JSON output: backslashes, quotes, newlines, tabs.
 fn escape_json_string(s: String) -> String {
   s |> split(delimiter: "\\") |> join(separator: "\\\\")
     |> split(delimiter: "\"") |> join(separator: "\\\"")
@@ -527,7 +508,6 @@ fn escape_json_string(s: String) -> String {
 // Module path conversion
 // =========================================================================
 
-// Convert a module path like "v2.std.core" to a filename like "v2_std_core".
 fn module_to_filename(name: String) -> String {
   name |> split(delimiter: ".") |> join(separator: "_")
 }
@@ -536,7 +516,6 @@ fn module_to_filename(name: String) -> String {
 // Indentation utility
 // =========================================================================
 
-// Build an indent string of level * 4 spaces.
 fn make_indent(level: Int) -> String {
   if level <= 0 {
     ""
@@ -579,7 +558,6 @@ fn to_string_helper(value: Int, acc: List<String>) -> List<String> {
 // Identifier conversion utilities
 // =========================================================================
 
-// Convert a PascalCase or camelCase name to snake_case.
 fn to_snake(name: String) -> String {
   let chars_list = name |> chars
   let result = chars_list |> enumerate |> map(pair =>
@@ -598,13 +576,11 @@ fn to_snake(name: String) -> String {
   result |> join(separator: "")
 }
 
-// Convert a name to SCREAMING_SNAKE_CASE for constants.
 fn to_screaming_snake(name: String) -> String {
   let snake = to_snake(name: name)
   snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
 }
 
-// Convert a snake_case name to camelCase.
 fn to_camel(name: String) -> String {
   let parts = name |> split(delimiter: "_")
   if parts |> count == 0 { name }
@@ -620,15 +596,12 @@ fn to_camel(name: String) -> String {
   }
 }
 
-// Check if a character is uppercase.
 fn is_upper(ch: Int) -> Bool {
   ch >= 65 && ch <= 90
 }
 
-// Convert an uppercase character to lowercase.
 fn to_lower_char(ch: Int) -> String {
   let cp = ch
-  // A=65, a=97, difference is 32
   if cp >= 65 && cp <= 90 {
     let lower_cp = cp + 32
     from_code_point(cp: lower_cp)
@@ -637,10 +610,8 @@ fn to_lower_char(ch: Int) -> String {
   }
 }
 
-// Convert a lowercase character to uppercase.
 fn to_upper_char(ch: Int) -> String {
   let cp = ch
-  // a=97, A=65, difference is 32
   if cp >= 97 && cp <= 122 {
     let upper_cp = cp - 32
     from_code_point(cp: upper_cp)
@@ -651,8 +622,6 @@ fn to_upper_char(ch: Int) -> String {
 
 // =========================================================================
 // Service name sanitization
-//
-// Dotted service names like "git.Core" -> "GitCore" for valid identifiers.
 // =========================================================================
 
 fn sanitize_service_name(name: String) -> String {
@@ -683,8 +652,6 @@ fn to_pascal(name: String) -> String {
   pascal_parts |> join(separator: "")
 }
 
-// Apply a naming case transformation to an identifier.
-// Used by CaseVisibility to convert identifiers for export.
 fn apply_naming_case(name: String, case_style: NamingCase) -> String {
   match case_style {
     PascalCase => {
@@ -698,7 +665,6 @@ fn apply_naming_case(name: String, case_style: NamingCase) -> String {
   }
 }
 
-// Derive the variable name for a service: "git.Core" -> "git_core"
 fn service_var_name(service_name: String) -> String {
   to_snake(name: sanitize_service_name(name: service_name))
 }
@@ -731,30 +697,18 @@ fn test_function_name(projection: TestProjection, target: RenderTarget) -> Strin
 
 // =========================================================================
 // Template application helpers -- for language spec template strings.
-//
-// Templates from std.languages use {0}, {1} as positional placeholders.
-// These helpers apply arguments to templates via string replacement.
 // =========================================================================
 
-// Apply a single-argument template: replaces {0} with the argument.
 fn apply_type_template1(template: String, arg0: String) -> String {
   template |> split(delimiter: "{0}") |> join(separator: arg0)
 }
 
-// Apply a two-argument template: replaces {0} and {1}.
-// Split-then-join: split on {0} first, replace {1} inside each segment
-// (which is only original template text), then join with arg0.
-// This prevents arg0 containing "{1}" from being corrupted by the second pass.
 fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
   let parts = template |> split(delimiter: "{0}")
   let replaced = parts |> map(p => p |> split(delimiter: "{1}") |> join(separator: arg1))
   replaced |> join(separator: arg0)
 }
 
-// Apply a three-argument template: replaces {0}, {1}, and {2}.
-// Nested split-then-join: split on {0}, then within each segment split on {1},
-// then within each sub-segment replace {2}. Joins inside-out so no inserted
-// argument is ever re-scanned for a higher-numbered placeholder.
 fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
   let parts0 = template |> split(delimiter: "{0}")
   let replaced = parts0 |> map(p0 =>
@@ -765,11 +719,6 @@ fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: Stri
   replaced |> join(separator: arg0)
 }
 
-// Apply a named-placeholder template: replaces {key} with value for each binding.
-// Nested split-then-join (same pattern as apply_type_template2/3): splits on
-// the first key's placeholder, recursively processes each segment for remaining
-// keys, then joins with the first key's value. Substituted values are never
-// re-scanned for later placeholders.
 fn apply_named_template(template: String, bindings: Map<String, String>) -> String {
   apply_named_template_nested(template: template, bindings: bindings, keys: map_keys(bindings))
 }
@@ -812,29 +761,8 @@ fn reserved_suffix(target: RenderTarget) -> String {
 
 // =========================================================================
 // Language data -- inline copies of per-language facts.
-//
-// Canonical source: dsl/extdeps/languages/{rust,python,go}/types.dag
-// (emit_type_map, emit_keywords, emit_container_templates)
-//
-// These inline data declarations duplicate the extdep definitions.
-// Replacing them with imports requires v1 bootstrap changes:
-//   1. Name collision: all three extdeps define emit_type_map /
-//      emit_keywords / emit_container_templates. build_data_values
-//      removes ambiguous unqualified names, and the evaluator's
-//      eval_ident cannot resolve dotted qualified paths.
-//   2. No import renaming: the import syntax lacks `as` aliases,
-//      so emit_type_map cannot be imported as rust_type_map.
-//   3. Test harness: compile_all_modules in v2-compiler-tests has
-//      a hardcoded file list that does not follow extdep imports.
-//   4. Data declarations are not import-bindable: import { name }
-//      binds types and functions, not data declarations.
-//
-// When the v1 bootstrap gains qualified data references or import
-// renaming, these should be replaced with imports from the extdeps.
 // =========================================================================
 
-// Language data (type maps, keywords, container templates) imported from
-// extdeps.languages.{rust,python,go}.emit -- single source of truth.
 
 // =========================================================================
 // Shared leaf functions -- parameterized by language data
@@ -872,18 +800,14 @@ fn escape_python_interp_text(s: String) -> String {
     |> split(delimiter: "}") |> join(separator: "}}")
 }
 
-// Generic escape-pair application: folds over pairs, applying split/join for each.
-// Replaces per-language escape_*_interp_text functions for new data-driven callers.
 fn apply_escape_pairs(s: String, pairs: List<EscapePair>) -> String {
   pairs |> fold(init: s, f: (acc, pair) => acc |> split(delimiter: pair.from) |> join(separator: pair.to))
 }
 
-// Emit a string literal with language-specific suffix (e.g. ".to_string()" for Rust).
 fn emit_string_literal(s: String, suffix: String) -> String {
   concat("\"", escape_string_literal_body(s: s), "\"", suffix)
 }
 
-// Check if a binary op is null coalesce (shared across all backends).
 fn is_null_coalesce(op: BinOp) -> Bool {
   match op {
     NullCoalesce => true
@@ -893,14 +817,8 @@ fn is_null_coalesce(op: BinOp) -> Bool {
 
 // =========================================================================
 // Per-language functions -- centralized data, inline lookup.
-//
-// Data declarations above are the single source of truth. Each function
-// uses lookup() on the local data. The v1 bootstrap cannot pass data-
-// declared Maps as function parameters, so these use direct lookup.
 // =========================================================================
 
-// Literal emission for Rust pattern context -- string literals omit
-// `.to_string()` because Rust patterns use `&str`, not owned `String`.
 fn rust_literal_for_pattern(value: LiteralValue) -> String {
   match value {
     LitStr { value: s } => emit_string_literal(s: s, suffix: "")
@@ -941,8 +859,6 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   }
 }
 
-// Operator symbol lookup — reads from per-language OperatorSpec in
-// extdeps/languages/*/syntax.dag. Type-aware: matches algebra_field when present.
 fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: AlgebraFieldKind?) -> String {
   match binop_symbol(target: target, op: op, algebra_field: algebra_field) {
     Some { value: sym } => sym
@@ -972,7 +888,6 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 
 // =========================================================================
 // Type rendering: all targets. Routes through build_type_rendering + render_type.
-// Go/Python callers pass no shared_types; Rust uses render_rust_type in 05_emit_rust.dag.
 // =========================================================================
 
 fn emit_node_type(n: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
@@ -1009,11 +924,7 @@ fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<Str
 }
 
 // =========================================================================
-// render_node_type -- fused Node -> String type rendering
-//
 // Classifies Node structure and renders directly to a target-language
-// string using coercion data. Replaces the two-pass TypeRendering
-// pipeline (build_type_rendering -> render_type).
 // =========================================================================
 
 fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -1021,7 +932,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
 
-  // Error / unresolved type variable
   if (n_is_type_var || n_is_error) && n.children |> count == 0 {
     let is_named_type_var = match n.inferred {
       Some { value: TypeVariable { id: var_id } } => tn != "" && tn == var_id
@@ -1036,7 +946,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     return err_str
   }
 
-  // Callable: Arrow connective (set at parse time and during inference).
   let is_arrow = n.connective == Arrow
   if is_arrow {
     let repr = target_callable(target: target)
@@ -1054,7 +963,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
         replace(replace(t, "\{params\}", param_str), "\{return\}", ret_str)
       None =>
         if ret_str == "" {
-          // Void return: strip return_separator + {return} from CallableRepr template.
           let void_template = replace(repr.template, concat(repr.return_separator, "\{return\}"), "")
           replace(void_template, "\{params\}", param_str)
         } else {
@@ -1064,7 +972,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     return result
   }
 
-  // Optional wrapping
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     let inner_str = render_node_type(n: with_required_cardinality(n: n), target: target, shared_types: shared_types, source_indices: source_indices)
@@ -1072,7 +979,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     return opt_str
   }
 
-  // Dispatch on connective
   let is_conj = n.connective == Conj
   let is_disj = n.connective == Disj
   let shared = set_contains(shared_types, tn)
@@ -1089,7 +995,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
   }
 
   if is_conj {
-    // Refined: unwrap to base type
     if n.type_annotation != none {
       let refined_str = match n.children |> first {
         Some { value: base } => render_node_type(n: base, target: target, shared_types: shared_types, source_indices: source_indices)
@@ -1097,8 +1002,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       }
       return refined_str
     }
-    // Structural tuple detection: unnamed 2-child Conj (ident_span == none).
-    // The tuple constructor is the sole producer of this shape.
     let is_pair = n.connective == Conj && n.ident_span == none && n.children |> count == 2
     if is_pair {
       let first_child = match n.children |> first {
@@ -1112,7 +1015,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       let tuple_str = render_tuple_parts(parts: [first_child, second_child], target: target)
       return tuple_str
     }
-    // Named conjunction with container template
     if n.ident_span != none {
       let snake = to_snake(name: tn)
       let has_template = match container_template_algebra(name: snake) { Some { value: _ } => true  None => false }
@@ -1129,7 +1031,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       let conj_named_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
       return conj_named_str
     }
-    // Anonymous product
     let parts = n.children |> map(child =>
       render_node_type(n: resolved_type(n: child), target: target, shared_types: shared_types, source_indices: source_indices)
     )
@@ -1137,7 +1038,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     return anon_str
   }
 
-  // Leaf (no connective)
   if n.children |> count == 0 {
     let bare_is_map = is_container_type(name: tn) && to_snake(name: tn) == "map"
     let bare_is_collection = is_container_type(name: tn) && !bare_is_map
@@ -1166,8 +1066,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     return bare_str
   }
 
-  // Leaf with children: extract type from field-style wrappers (inferred set)
-  // or use child directly (bare encoding from parser)
   let is_map = node_is_keyed_collection(n: n, source_indices: source_indices)
   if is_map {
     let k = match n.children |> first {
@@ -1198,7 +1096,6 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     let single_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return single_str
   }
-  // Multi-child leaf: Tuple or generic type
   let child_strs = n.children |> map(c => render_node_type(n: child_type_node(ch: c), target: target, shared_types: shared_types, source_indices: source_indices))
   if tn == tuple_type_name {
     let multi_tuple_str = render_tuple_parts(parts: child_strs, target: target)
@@ -1235,19 +1132,14 @@ fn render_tuple_parts(parts: List<String>, target: RenderTarget) -> String {
 // Shared item-level helpers -- identical across all backends
 // =========================================================================
 
-// Check if a return type indicates a type alias (not Unit).
-// Unit is the only return type that signals "this is not an alias" —
-// bare items like `type Unit` have rt_type name "Unit".
 fn is_type_alias_return_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: n) != "Unit"
 }
 
-// Check if a typed node is a service item.
 fn is_service_item(item: Node) -> Bool {
   item.transport != none && item.children |> count > 0
 }
 
-// Check if a resolved graph has any service definitions.
 fn has_service_items(typed: ResolvedGraph) -> Bool {
   typed.modules |> any(tm =>
     tm.items |> any(item => is_service_item(item: item))
@@ -1256,22 +1148,12 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 
 // =========================================================================
 // Shared service/transport graph queries -- target-agnostic facts about
-// service definitions that all backends need.
-//
-// These are graph queries, not rendering decisions. They inspect the
-// service node structure to determine which transports and features are
-// used, so backends can make informed rendering decisions without
-// reimplementing the same graph walks.
 // =========================================================================
 
-// Resolve the fallback transport for a service item. If the service
-// declares no transport, default to a local transport node.
 fn service_fallback_transport(item: Node) -> Node {
   if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
 }
 
-// Resolve the effective transport for an operation: use the per-operation
-// override if present, otherwise fall back to the service-level transport.
 fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
   match op_node.transport {
     Some { value: op_transport } => op_transport
@@ -1279,8 +1161,6 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
   }
 }
 
-// Structural transport queries: check if any operation in the service
-// uses a transport with specific structural properties.
 fn service_has_rest(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
   let from_fallback = is_rest_transport(t: fallback_transport, source_indices: source_indices)
   let from_ops = op_children |> any(op =>
@@ -1305,7 +1185,6 @@ fn service_has_file(fallback_transport: Node, op_children: List<Node>, source_in
   from_fallback || from_ops
 }
 
-// Check if any REST operation (or the service-level fallback) has auth.
 fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
   let fallback_is_rest = is_rest_transport(t: fallback_transport, source_indices: source_indices)
   let from_fallback = if fallback_is_rest {
@@ -1320,7 +1199,6 @@ fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>, sour
   from_fallback || from_ops
 }
 
-// Extract operation modifier names from a list of property field inits.
 fn extract_modifier_names(properties: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   properties |> flat_map(p =>
     match field_init_operation_modifier(field_init: p, source_indices: source_indices) {
@@ -1330,9 +1208,6 @@ fn extract_modifier_names(properties: List<Node>, source_indices: Map<String, Ne
   )
 }
 
-// Consolidated service field detection: returns which transport-driven
-// config fields a service struct needs. Single call replaces 4 separate
-// predicate calls that all three backends were duplicating.
 type ServiceFieldSet {
   has_rest: Bool
   has_shell: Bool
@@ -1349,8 +1224,6 @@ fn compute_service_fields(fallback_transport: Node, op_children: List<Node>, sou
   }
 }
 
-// Shared renderers: apply ServiceFieldTemplates against a ServiceFieldSet.
-// Returns lists so each backend can join with its own separator.
 
 fn service_field_decls(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<String> {
   let result = []
@@ -1407,7 +1280,6 @@ fn emit_unified_operation_method(
   let si = env.source_indices
   let op_text = authored_name(env: env, node: op_node)
   let params_str = emit_params_shared(params: op_node.params, target: target, source_indices: si)
-  // Read service method facts via accessor functions (languages.dag).
   let sp = service_self_param(spec: spec)
   let all_params = if sp == "" { params_str }
     else if params_str == "" { sp }
@@ -1463,8 +1335,6 @@ fn emit_unified_service_def(
 
 // =========================================================================
 // Item structural predicates — shared boolean queries on Node fields.
-// No taxonomy enum (CM: consumers compose the predicates they need).
-// Each predicate reads one structural fact from the Node.
 // =========================================================================
 
 fn is_type_def_item(item: Node) -> Bool {
@@ -1505,14 +1375,6 @@ fn is_resource_def_item(item: Node) -> Bool {
 
 // =========================================================================
 // Shared ExprData fold spine -- target-agnostic expression classification
-// and traversal helpers. Each backend dispatches on these categories to
-// select its own rendering, eliminating duplicate arm structure.
-//
-// The fold spine provides:
-//   - ExprCategory: coarse classification of expressions
-//   - FuncBodyShape: how the top-level function body is structured
-//   - TcoExprShape: which expressions participate in TCO
-//   - block_stmts: shared block statement sequencing
 // =========================================================================
 
 type ExprCategory
@@ -1610,10 +1472,6 @@ fn block_stmts_init(stmts: List<Node>) -> List<Node> {
 
 // =========================================================================
 // Shared TCO eligibility check -- identical across all backends.
-//
-// A function is TCO-eligible when it is self-recursive AND every
-// self-call is in tail position. This was duplicated in emit_fn_def,
-// emit_go_fn_def, and emit_py_fn_def.
 // =========================================================================
 
 fn is_tco_eligible(name: String, body: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1626,7 +1484,6 @@ fn is_tco_eligible(name: String, body: Node, registry: Map<String, ItemInfo>, so
   }
 }
 
-// is_self_recursive check -- used by Rust stacker wrapping.
 fn is_self_recursive(name: String, body: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
   match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.is_self_recursive
@@ -1636,19 +1493,6 @@ fn is_self_recursive(name: String, body: Node, registry: Map<String, ItemInfo>, 
 
 // =========================================================================
 // Shared TCO reassignment core -- build temp-then-assign lines.
-//
-// The reassignment pattern is identical across all backends:
-//   1. Evaluate each arg (done by caller, passed as ordered_args)
-//   2. Assign each arg to a temp variable: temp_prefix + idx + assign_op + arg
-//   3. Assign each temp back to its parameter: param_name + " = " + temp_prefix + idx
-//   4. Append a continue line
-//
-// Target-specific tokens:
-//   - temp_prefix: "__tco_" (Rust, Python) or "tco" (Go)
-//   - temp_assign_op: " = " (Rust, Python) or " := " (Go)
-//   - stmt_terminator: ";" (Rust) or "" (Python, Go)
-//   - continue_str: "continue;" (Rust) or "continue" (Python, Go)
-//   - line_prefix: "" (Rust, Python) or indentation (Go)
 // =========================================================================
 
 fn tco_reassign_core(
@@ -1688,7 +1532,6 @@ fn emit_shared_tco_expr(
         emit_non_self_call(frame)
       }
     ExprReturn =>
-      // Unwrap return and process inner expression as TCO candidate.
       let inner = return_value(texpr: frame.expr)
       emit_shared_tco_expr(
         frame: TcoFrame { expr: inner, scope: frame.scope, depth: frame.depth },
@@ -1715,8 +1558,6 @@ fn emit_shared_tco_expr(
 
 // =========================================================================
 // Shared TCO handlers — consume BlockSyntax + TcoSyntax + callbacks.
-// Go and Python wire these via emit_shared_tco_expr callbacks.
-// Rust TCO stays backend-specific (ownership analysis complexity).
 // =========================================================================
 
 fn shared_tco_body(inner: String, depth: Int, spec: LanguageSpec) -> String {
@@ -1770,9 +1611,6 @@ fn shared_tco_if(
       let e = if_else_branch(texpr: frame.expr)
       let cond_str = recurse_expr(c, frame.scope, frame.depth)
       let then_str = recurse_tco(t, frame.scope, frame.depth + 1)
-      // else_clause rendering needs depth authority: Python's "else:\n"
-      // must be indented to match the "if" keyword at frame.depth.
-      // Brace languages emit "} else {\n" which closes the previous block.
       let else_prefix = if syntax.significant_whitespace { make_indent(level: frame.depth) } else { "" }
       match e {
         Some { value: eb } =>
@@ -1855,10 +1693,6 @@ fn shared_tco_block(
   }
 }
 
-// line_prefix is "" for all backends: shared TCO handlers return un-indented
-// content, and the dispatch layer (shared_tco_body / emit_shared_tco_expr)
-// handles first-line indentation. This is a property of the shared dispatch
-// contract, not a per-language rendering decision.
 fn shared_tco_reassign(
   ordered_args: List<String>,
   param_names: List<String>,
@@ -1874,8 +1708,6 @@ fn shared_tco_reassign(
 
 // =========================================================================
 // Unified TCO entry points — Python and Go call these directly.
-// Language-specific logic is injected via render_match + render_init_stmts
-// callbacks. Rust TCO stays backend-specific (ownership analysis).
 // =========================================================================
 
 fn unified_tco_recurse(expr: Node, scope: InferScope, depth: Int,
@@ -1962,7 +1794,6 @@ fn emit_unified_tco_body(
 // Only callback remaining: render_pattern (per-language pattern rendering).
 // =========================================================================
 
-// Unified init-block-stmts — replaces emit_py_init_block_stmts / emit_go_init_block_stmts.
 fn emit_unified_init_block_stmts(
     remaining: List<Node>, text: List<String>,
     scope: InferScope, depth: Int,
@@ -1974,8 +1805,6 @@ fn emit_unified_init_block_stmts(
     emit_expr: (stmt, sc, d) => emit_unified_typed_expr(texpr: stmt, target: target, registry: registry, scope: sc, depth: d, fuel: 1024, render_pattern: render_pattern))
 }
 
-// Unified TCO match — replaces emit_py_tco_match / emit_go_tco_match.
-// Mirrors emit_typed_match_unified but calls emit_unified_tco_expr for arm bodies.
 fn emit_unified_tco_match(
     frame: TcoFrame, fn_name: String, params: List<Node>,
     target: RenderTarget, registry: Map<String, ItemInfo>,
@@ -2001,8 +1830,6 @@ fn emit_unified_tco_match(
   }
 }
 
-// Unified TCO match arm — delegates arm syntax to emit_match_arm_line (shared with
-// emit_typed_match_unified). Only the body emission differs (TCO recursion).
 fn emit_unified_tco_match_arm(
     arm: Node, fn_name: String, params: List<Node>,
     target: RenderTarget, registry: Map<String, ItemInfo>,
@@ -2024,9 +1851,6 @@ fn emit_unified_tco_match_arm(
     body_str: body_str, guard_str: guard_str, render_pattern: render_pattern)
 }
 
-// Fully unified TCO body — replaces emit_py_typed_tco_body / emit_go_typed_tco_body.
-// Wires all callbacks (init-block-stmts, match, expr) via unified functions.
-// Per-language files only supply render_pattern.
 fn emit_tco_unified(
     texpr: Node, fn_name: String, params: List<Node>,
     target: RenderTarget, registry: Map<String, ItemInfo>,
@@ -2040,9 +1864,6 @@ fn emit_tco_unified(
     render_init_stmts: (stmts, scope, depth) => emit_unified_init_block_stmts(remaining: stmts, text: [], scope: scope, depth: depth, target: target, registry: registry, render_pattern: render_pattern))
 }
 
-// Unified func body — reads return model from ExpressionSemantics.
-// Replaces emit_py_typed_func_body / emit_go_typed_func_body.
-// Differences: indent prefix (significant_whitespace), empty_return_value, return_suffix.
 fn emit_unified_typed_func_body(body: Node, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let es = language_spec(target: target).expression_semantics
   let bs = language_spec(target: target).block_syntax
@@ -2093,7 +1914,6 @@ fn is_tco_candidate(texpr: Node, func_name: String, source_indices: Map<String, 
     ExprReturn =>
       is_tco_candidate(texpr: return_value(texpr: texpr), func_name: func_name, source_indices: source_indices)
     ExprIf =>
-      // children = [condition, then, else?]. Check branches.
       let then_cand = is_tco_candidate(texpr: if_then_branch(texpr: texpr), func_name: func_name, source_indices: source_indices)
       let else_cand = match if_else_branch(texpr: texpr) { Some { value: e } => is_tco_candidate(texpr: e, func_name: func_name, source_indices: source_indices)  None => false }
       then_cand || else_cand
@@ -2102,10 +1922,8 @@ fn is_tco_candidate(texpr: Node, func_name: String, source_indices: Map<String, 
     ExprLet =>
       match let_body(texpr: texpr) { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name, source_indices: source_indices)  None => false }
     ExprBlock =>
-      // children = [stmt0, stmt1, ...].
       texpr.children |> any(s => is_tco_candidate(texpr: s, func_name: func_name, source_indices: source_indices))
     NoExprData =>
-      // Wrapper nodes -- recurse through children.
       texpr.children |> any(child => is_tco_candidate(texpr: child, func_name: func_name, source_indices: source_indices))
     _ => false
   }
@@ -2115,7 +1933,6 @@ fn is_tco_candidate(texpr: Node, func_name: String, source_indices: Map<String, 
 // P4.1: Shared identifier and statement rendering
 // =========================================================================
 
-// Data-driven identifier rendering: reads naming_case and reserved_words from LanguageSpec.
 fn suffix_escape_collides_with_reserved_chain(name: String, suffix: String, keywords: List<String>) -> Bool {
   let suffix_len = string_length(s: suffix)
   let name_len = string_length(s: name)
@@ -2165,8 +1982,6 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
   }
 }
 
-// Export-context identifier rendering: for function names, type names, struct fields.
-// CaseVisibility languages (Go): PascalCase. KeywordVisibility languages: same as emit_ident.
 fn emit_export_ident(name: String, target: RenderTarget) -> String {
   let spec = language_spec(target: target)
   match spec.visibility {
@@ -2190,7 +2005,6 @@ fn emit_export_ident(name: String, target: RenderTarget) -> String {
   }
 }
 
-// Apply bridge method overrides — resolves method name conflicts (e.g. Python "with" → "with_update").
 fn apply_bridge_method_overrides(name: String, overrides: Map<String, String>) -> String {
   match lookup(overrides, key: name) {
     Some { value: replacement } => replacement
@@ -2263,14 +2077,8 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
 
 // =========================================================================
 // Shared expression handler helpers (CG-3: 3→1 homomorphism)
-//
-// These replace duplicated per-backend wrapper functions. Since
-// emit_shared_expr already dispatches on ExprData, wrapper functions
-// that re-match are redundant. Backends inline child extraction into
-// closures; these helpers share non-trivial logic.
 // =========================================================================
 
-// Shared ExprVar emission — target-parameterized, no backend-specific logic.
 fn emit_expr_var_shared(expr: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
   if n == "none" { emit_keyword(key: "null", target: target) }
@@ -2278,8 +2086,6 @@ fn emit_expr_var_shared(expr: Node, target: RenderTarget, source_indices: Map<St
   else { emit_ident(name: n, target: target) }
 }
 
-// Shared ExprFieldAccess service-receiver check. Delegates to emit_field
-// for the backend-specific field access rendering.
 fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
   if is_typed_service_call_receiver(receiver: expr, source_indices: source_indices) {
     match extract_typed_service_name(receiver: expr, source_indices: source_indices) {
@@ -2291,7 +2097,6 @@ fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: f
   }
 }
 
-// Extract StringPart list from ExprStringInterp children.
 fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
   expr.children |> map(child => match child.expr_data {
     ExprLiteral { value: LitStr { value: text } } => Text { value: text }
@@ -2310,7 +2115,6 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_indices: source_indices)
-  // Identity cast: if source and target render to the same type, pass through.
   let src_ty = match expr.inferred {
     Some { value: Resolved { node: n } } => emit_node_type(n: n, target: target, source_indices: source_indices)
     _ => ""
@@ -2324,9 +2128,6 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   }
 }
 
-// Shared ExprForEach — reads ForEachSyntax + BlockSyntax, no target branching.
-// ForEachSyntax.prefix/separator declare the loop header; BlockSyntax declares
-// block delimiters. Emit translates, does not decide.
 fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, target: RenderTarget, depth: Int, source_indices: Map<String, NewlineIndex>, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope) -> String {
   let coll_str = recurse(collection, scope, depth)
   let elem_type = for_each_element_type_node(n: resolved_type(n: collection), source_indices: source_indices)
@@ -2345,7 +2146,6 @@ fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, ta
   }
 }
 
-// Shared ExprIndex — dispatches on string/map/list via LanguageSpec.indexing.
 fn emit_typed_index_shared(base: Node, index: Node, target: RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
   let spec = language_spec(target: target)
   let base_str = recurse(base)
@@ -2361,7 +2161,6 @@ fn emit_typed_index_shared(base: Node, index: Node, target: RenderTarget, recurs
   }
 }
 
-// Shared ExprSlice — dispatches on string/list via LanguageSpec.indexing.
 fn emit_typed_slice_shared(base: Node, start: Node, end: Node, target: RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
   let spec = language_spec(target: target)
   let base_str = recurse(base)
@@ -2462,8 +2261,6 @@ fn emit_shared_expr(
   }
 }
 
-// Default BinOp handler for languages without special BinOp rendering (Go, Python).
-// Type-aware: resolves algebra field from left operand to select correct operator symbol.
 fn emit_default_bin_op(texpr: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>, recurse: fn(Node) -> String, wrap_result: fn(String) -> String) -> String {
   match texpr.expr_data {
     ExprBinOp { op: op, algebra_field: algebra } =>
@@ -2483,15 +2280,8 @@ fn emit_default_bin_op(texpr: Node, target: RenderTarget, source_indices: Map<St
 
 // =========================================================================
 // P1: Shared typed handlers — target-parameterized, callback-driven.
-//
-// These replace per-language implementations that differ only by target
-// token or recursion callback. Each language file calls these with its
-// own `target` and recursion function, eliminating duplicated structure.
 // =========================================================================
 
-// Shared block statement emitter.
-// emit_expr: renders one statement given (Node, InferScope, Int depth).
-// prepend_indent: Go prepends make_indent(depth) to each line; Py/Rust don't.
 fn emit_block_stmts_shared(
     remaining: List<Node>, text: List<String>,
     scope: InferScope, depth: Int,
@@ -2510,7 +2300,6 @@ fn emit_block_stmts_shared(
   }
 }
 
-// Shared init-block statement emitter (all-but-last).
 fn emit_init_block_stmts_shared(
     remaining: List<Node>, text: List<String>,
     scope: InferScope, depth: Int,
@@ -2534,7 +2323,6 @@ fn emit_init_block_stmts_shared(
   }
 }
 
-// Shared typed let — identical structure across all three backends.
 fn emit_typed_let_shared(name: String, value_str: String, body: Node?, target: RenderTarget,
     recurse: fn(Node, InferScope) -> String, scope: InferScope, value_node: Node) -> String {
   let let_line = emit_let_binding(name: name, value: value_str, target: target)
@@ -2546,11 +2334,6 @@ fn emit_typed_let_shared(name: String, value_str: String, body: Node?, target: R
   }
 }
 
-// Shared typed if — data-driven expression vs statement dispatch.
-// IfExpression (Rust): if/else natively produces value, branches at depth+1.
-// ConditionalTernary (Python): (then) if (cond) else (else), branches at depth.
-// IfStatement (Go): IIFE wrapper for value position, branches at depth.
-// Without else: statement form for all — significant_whitespace controls body depth.
 fn emit_typed_if_shared(
     cond_str: String,
     then_branch: Node,
@@ -2582,7 +2365,6 @@ fn emit_typed_if_shared(
           concat("(", then_str, ") if (", cond_str, ") else (", else_str, ")")
         }
         IfStatement => {
-          // Compute result type before recursing — then_branch is consumed by recurse.
           let result_type = match if_result_type {
             Some { value: rt } => emit_node_type(n: rt, target: target, source_indices: source_indices)
             None => emit_node_type(n: resolved_type(n: then_branch), target: target, source_indices: source_indices)
@@ -2610,21 +2392,16 @@ fn emit_typed_if_shared(
   }
 }
 
-// Shared param rendering — for languages that use emit_node_type (Go, Python).
 fn emit_param_shared(param: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let ty = emit_node_type(n: param_node_type_expr(n: param), target: target, source_indices: source_indices)
   concat(emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: target), language_spec(target: target).items.param_type_sep, ty)
 }
 
-// Shared params rendering — maps emit_param_shared over param list.
 fn emit_params_shared(params: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let strs = params |> map(p => emit_param_shared(param: p, target: target, source_indices: source_indices))
   strs |> join(separator: language_spec(target: target).items.param_separator)
 }
 
-// Shared inferred (return type) rendering.
-// Reads suppress_unit_return from ExpressionSemantics: Go suppresses void
-// (Unit → "struct{}") return annotations; Python/Rust include them.
 fn emit_inferred_shared(inferred: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   if language_spec(target: target).expression_semantics.suppress_unit_return {
     if is_unit_like(n: inferred) { "" }
@@ -2634,7 +2411,6 @@ fn emit_inferred_shared(inferred: Node, target: RenderTarget, source_indices: Ma
   }
 }
 
-// Shared typed block — delegates to emit_block_stmts callback, joins with newline.
 fn emit_typed_block_join(
     stmts: List<Node>, scope: InferScope, depth: Int,
     emit_block_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
@@ -2642,8 +2418,6 @@ fn emit_typed_block_join(
   state.text |> join(separator: "\n")
 }
 
-// Shared algebra method template dispatch.
-// Returns Some if a method_template matches, None if not (caller provides fallback).
 fn method_template_emit_for_target(target: RenderTarget) -> Map<String, String>? {
   match target {
     Rust => Some { value: rust_method_template_emit }
@@ -2683,8 +2457,6 @@ fn emit_typed_first_arg_shared(args: List<Node>, target: RenderTarget, recurse: 
 // during transition; emit_unified_typed_expr once fully unified).
 // =========================================================================
 
-// Unified typed string interpolation — reads StringInterpSyntax from LanguageSpec.
-// Same model as emit_simple_string_interp but uses `recurse` for expression rendering.
 fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let interp = spec.string_interp
@@ -2719,7 +2491,6 @@ fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarge
   }
 }
 
-// Unified typed record literal — reads RecordLitSyntax from LanguageSpec.
 fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>, recurse: fn(Node) -> String) -> String {
   let rls = language_spec(target: target).record_lit
   match type_name {
@@ -2747,7 +2518,6 @@ fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target:
   }
 }
 
-// Unified typed call — reads async_call_prefix from LanguageSpec, uses emit_export_ident.
 fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
@@ -2774,14 +2544,12 @@ fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget,
   }
 }
 
-// Unified bridge method name: applies case conversion + overrides from LanguageSpec.
 fn bridge_method_name_unified(method_name: String, target: RenderTarget) -> String {
   let spec = language_spec(target: target)
   let overridden = apply_bridge_method_overrides(name: method_name, overrides: spec.bridge_method_overrides)
   apply_naming_case(name: overridden, case_style: spec.bridge_method_case)
 }
 
-// Unified algebra method call — tries template, falls back to bridge function.
 fn emit_algebra_method_call_unified(method_name: String, receiver: Node, args: List<Node>, target: RenderTarget, first_arg_str: String, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let recv_str = recurse(receiver)
@@ -2795,7 +2563,6 @@ fn emit_algebra_method_call_unified(method_name: String, receiver: Node, args: L
   }
 }
 
-// Unified plain method call.
 fn emit_plain_method_call_unified(receiver: Node, method: String, args: List<Node>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
   let recv_str = recurse(receiver)
   let arg_strs = args |> map(a => recurse(arg_value(n: a)))
@@ -2803,7 +2570,6 @@ fn emit_plain_method_call_unified(receiver: Node, method: String, args: List<Nod
   concat(recv_str, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
 }
 
-// Unified typed method call — dispatches on MethodSemantics, reads LanguageSpec.
 fn emit_typed_method_call_unified(receiver: Node, method: String, args: List<Node>, method_semantics: MethodSemantics?, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let source_indices = scope.type_env.source_indices
@@ -2915,9 +2681,6 @@ fn emit_arm_guard(arm: Node, target: RenderTarget, render_guard_expr: fn(Node) -
   }
 }
 
-// Unified typed match — reads BlockSyntax, takes pattern renderer as callback.
-// Indent model: significant_whitespace languages indent case arms (depth+1/depth+2),
-// brace languages keep arms at depth level (depth/depth+1).
 fn emit_typed_match_unified(scrutinee_str: String, arms: List<Node>, target: RenderTarget, depth: Int, recurse: fn(Node, Int) -> String, render_pattern: fn(MatchPattern) -> String, source_indices: Map<String, NewlineIndex>) -> String {
   let bs = language_spec(target: target).block_syntax
   let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
@@ -2936,7 +2699,6 @@ fn emit_typed_match_unified(scrutinee_str: String, arms: List<Node>, target: Ren
   }
 }
 
-// Unified field access — reads TupleSyntax accessors + emit_export_ident from LanguageSpec.
 fn emit_field_access_unified(base_str: String, field: String, summary: FieldSummary?, target: RenderTarget) -> String {
   let ts = language_spec(target: target).tuple_syntax
   match summary {
@@ -3052,10 +2814,6 @@ fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<Stri
         wrap_result: result => result))
 }
 
-// Check if a TCO self-call argument is an identity pass-through: `f(param: param)`.
-// When the arg is ExprVar with the same name as the corresponding param, the
-// reassignment `let __tco = param; param = __tco;` is a no-op and can be skipped.
-// Shared across all backends — target-agnostic semantic fact.
 fn is_tco_identity_passthrough(arg_val: Node, param_name: String, si: Map<String, NewlineIndex>) -> Bool {
   match arg_val.expr_data {
     ExprVar { binding_kind: _ } => expr_var_name_at(texpr: arg_val, source_indices: si) == param_name
@@ -3063,12 +2821,9 @@ fn is_tco_identity_passthrough(arg_val: Node, param_name: String, si: Map<String
   }
 }
 
-// Shared TCO reassign — filters identity pass-throughs, renders arg values,
-// and delegates to shared_tco_reassign.
 fn emit_typed_tco_reassign_shared(args: List<Node>, params: List<Node>,
     target: RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
   let arg_values = args |> map(a => arg_value(n: a))
-  // Filter out identity pass-throughs: `f(param: param)` → no-op reassignment.
   let pairs = params |> enumerate
     |> filter(pair =>
       let pname = param_node_name_at(n: pair.second, source_indices: source_indices)

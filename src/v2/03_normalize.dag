@@ -59,7 +59,6 @@ fn check_bare_containers(n: Node, module_name: String, source_indices: Map<Strin
     None => []
   }
   let inferred_diags = if (n.params |> count) > 0 {
-    // Type definitions with params are self-referential in inferred; skip.
     []
   } else {
     match n.inferred {
