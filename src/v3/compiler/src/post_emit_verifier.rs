@@ -394,16 +394,11 @@ pub fn verify_program_emitted_source_all_targets(
     }
 }
 
-fn emit_text_for_target(
-    program_dag: &Dag,
-    target: EmitTarget,
-) -> Result<String, String> {
+fn emit_text_for_target(program_dag: &Dag, target: EmitTarget) -> Result<String, String> {
     match target {
         EmitTarget::Rust => emit_rust_text(program_dag).map_err(|e| format!("{e:?}")),
         EmitTarget::Go => emit_go_text(program_dag).map_err(|e| format!("{e:?}")),
-        EmitTarget::Python => {
-            emit_python_text(program_dag).map_err(|e| format!("{e:?}"))
-        }
+        EmitTarget::Python => emit_python_text(program_dag).map_err(|e| format!("{e:?}")),
     }
 }
 
