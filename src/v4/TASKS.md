@@ -1617,7 +1617,7 @@ to `QualifiedName`, add the projection.
    simplify to `FreeMonoid<Node>` only when they thread the `Rejected` branch to
    their admission boundary.
 
-**Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
+**Naming invariant (landed in `INVARIANTS.md` §P1):**
 Model names must reflect what they are. A type named `FooBar` must be a
 structural composition or projection of `Foo` and `Bar` — not a convenient
 label for something else. Nicknaming is a modeling violation. `ModulePath` →
@@ -1640,7 +1640,7 @@ Enforcement via lens (forthcoming).
 the structural authority `qualified_name_from_module_node` reads from. This
 surface already exists in the codebase — no prerequisite task is needed.
 
-**Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
+**Change 2 (follow-on):** With T-QN-1 `[DONE]` and callers migrated to
 `FreeMonoid<Node>` + `qualified_name_from_node`, `Entry`, `Catalog`,
 and `std/catalog.dag` dissolve. Change 2 may be bundled with T-35 or land
 immediately after.
