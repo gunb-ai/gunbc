@@ -106,7 +106,6 @@ runner_required = [
     "pub fn run_manual_testclaim_corpus_eval",
     "pub struct CorpusEvalReport",
     "pub struct CorpusEvalEntry",
-    "pub fn test_claim_label_of",
     "pub fn corpus_entry_label",
     "pub fn corpus_report_tally",
     "pub fn corpus_report_pass_count",
