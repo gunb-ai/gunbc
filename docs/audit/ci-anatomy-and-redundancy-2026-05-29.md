@@ -5,7 +5,7 @@ Work item: `node://adhoc-0972e492-c72` (CI EFFICIENCY MANAGER)
 Authority audited: `.github/workflows/ci.yml` on `main` at `2d2a8fc75` (2026-05-29)  
 Canonical anchor for the CI-efficiency lane. Code-fix PRs reference this doc; do not bundle fixes here.
 
-**North star (operator 2026-05-29):** Every CI step — including every test — is a pure function over content-addressed inputs. If inputs are unchanged, the step does not run (verdict reuse), not “runs faster.” Overlapping tests with the same input subgraph become **free at runtime** once declared: IRT-1 / affected-set skips both; only cold-cache cost remains, and that fires once per unique input merkle. Deduplication is substrate-enforced via input declaration + affected-set caching, not human “delete the duplicate” curation.
+**North star (operator 2026-05-29):** Every CI step — including every test — is a pure function over content-addressed inputs. If inputs are unchanged, the step does not run (verdict reuse), not “runs faster.” Overlapping tests with the same declared input subgraph become **free at runtime** once wired: **IRT-1** (T-21) skips re-execution when the diff does not touch that input frontier; **IRT-4** reuses a cached verdict keyed on `content_hash(whole TestClaim node)` (input + oracle + evaluator + resources — `src/v4/TASKS.md` IRT-4), not on input alone. Deduplication is substrate-enforced via input declaration + affected-set + verdict cache, not human “delete the duplicate” curation.
 
 **Related work (coordinate, do not duplicate):**
 
@@ -236,7 +236,7 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 | R02 | Shared rust pool node | Union of downstream digests | pool `content_hash` | **0s** |
 | R03 | Per-gate `TestClaim` / shell Node | Path sets per script | T-21 frontier ∩ diff | **0s** |
 | R04 | `CiGitDiffReadOutcome` (#3853) | single `Witness<Diff>` | one read / workflow | **~1s** |
-| R05 | `TestCommand` + IRT-4 | binary digest + claim hashes | verdict cache | **seconds** |
+| R05 | `TestCommand` + IRT-1/IRT-4 | binary digest; per-claim `content_hash(TestClaim node)` | IRT-1 frontier skip + IRT-4 verdict reuse | **seconds** |
 | R06 | Cache emission | registry + target graph merkle | remote/sccache | **0s** restore |
 | R07 | `M1RustEmitProbeCommand` | `content_hash(src/v4/**.dag)` + v2 binary | replace `ci_cache_cmd_m1_probe_tag` | **0s** reuse |
 | R08 | Bootstrap → M1 `needs` edge | dag emit digest → rust emit | shared artifact | one compile / unique input |
@@ -324,15 +324,15 @@ find src/v4/test/claim -name '*.dag' | sort
 
 Pairs below share behavior on the **same `.dag` / module closure**. Not deletion candidates — **input-declaration** candidates (Table B).
 
-| Host-Rust test (integration) | TestClaim / modeled twin | Declared inputs (target) | Cache key (target) | Wall when merkle matches green |
-|------------------------------|--------------------------|--------------------------|--------------------|--------------------------------|
-| `v4_lens_affected_set_dag_smoke_test` | `src/v4/test/claim/lens_affected_set/*.dag` | `content_hash(affected_set.dag)` + claim nodes | IRT-4 TestClaim node hash | **0s** (skipped) |
-| `v4_workflow_ci_runner_dag_smoke_test` | `claim/workflow/affected_set_ci_runner.dag` | `content_hash(ci.dag)` + runner claims | same | **0s** |
-| `v4_lens_edit_locus_dag_smoke_test` | `edit_locus_resolver.dag` | `content_hash(edit_locus.dag)` + deps | same | **0s** |
-| `v4_lens_registry_dag_smoke_test` | registry claims + Lens-CI compile | registry closure merkle | Lens-CI + claim verdict | **seconds** warm |
-| `v4_bin_main_dag_smoke_test` | bin/main.dag claims | `content_hash(main.dag)` | same | **0s** |
-| `ci` job: Gate #103 + T-15 + Lens-CI + M1 binding (four `cargo test` filters) | `ci.dag` `TestCommand` roster | integration binary digest + per-test input merkle | compile once; skip off frontier | **−5–15 min** → **seconds** |
-| `v3` `determinism_test` + `self_host_ratchet` (main) | determinism claims (when modeled) | determinism input merkle | single Node; flags as input | **−2–10 min** → reuse |
+| Host-Rust test (integration) | TestClaim / modeled twin | IRT-1 frontier input (target) | IRT-4 verdict cache key (target) | Wall when stable |
+|------------------------------|--------------------------|-------------------------------|----------------------------------|------------------|
+| `v4_lens_affected_set_dag_smoke_test` | `src/v4/test/claim/lens_affected_set/*.dag` | declared `input` subgraph merkle | `content_hash(whole TestClaim node)` per claim | **0s** skip + reuse |
+| `v4_workflow_ci_runner_dag_smoke_test` | `claim/workflow/affected_set_ci_runner.dag` | `content_hash(ci.dag)` + touched claim inputs | whole TestClaim node each | **0s** |
+| `v4_lens_edit_locus_dag_smoke_test` | `edit_locus_resolver.dag` | `content_hash(edit_locus.dag)` + deps | whole TestClaim node | **0s** |
+| `v4_lens_registry_dag_smoke_test` | registry claims + Lens-CI compile | registry closure (IRT-1) | whole TestClaim node (IRT-4); compile artifact separate | **seconds** warm |
+| `v4_bin_main_dag_smoke_test` | bin/main.dag claims | `content_hash(main.dag)` | whole TestClaim node | **0s** |
+| `ci` job: Gate #103 + T-15 + Lens-CI + M1 binding (four `cargo test` filters) | `ci.dag` `TestCommand` roster | per-test `input` frontier (IRT-1) | `content_hash(TestClaim)` per roster row (IRT-4); one binary compile | **−5–15 min** → **seconds** |
+| `v3` `determinism_test` + `self_host_ratchet` (main) | determinism claims (when modeled) | IRT-1 frontier on eval subject | whole TestClaim / command node hash | **−2–10 min** → reuse |
 
 **Cold-cache note:** Undeclared tests still pay link/compile when CI fires separate `cargo test` filters (R05). Input declaration removes **execution**; one integration compile per workflow removes duplicate **cold link** (CI wiring, not test deletion).
 
@@ -366,12 +366,20 @@ Pairs below share behavior on the **same `.dag` / module closure**. Not deletion
 
 ### 8.6 Substrate enforcement (how overlap becomes free)
 
+Two mechanisms — do not conflate selection with cache keys (`src/v4/TASKS.md` IRT-1 vs IRT-4):
+
 ```text
-test_run(claim) = f(content_hash(input_subgraph(claim)))
-ci_select_from_affected_set(roster, affected) → subset where input merkle ∈ rerun frontier
+# IRT-1 (T-21): which claims re-run given this diff
+ci_select_from_affected_set(roster, affected) → subset whose declared input subgraph
+  intersects the rerun frontier (unaffected → not scheduled)
+
+# IRT-4 (T-21 + T-24): verdict reuse for claims that do run
+test_run(claim) = cached_verdict(content_hash(whole TestClaim node))
+  # whole node = input + oracle/predicate + evaluator + resources + extdeps
+  # NOT content_hash(input_subgraph) alone — stale reuse if oracle changes (P2)
 ```
 
-When PR diff does not touch a test’s declared input subgraph, **IRT-1** excludes it; **IRT-4** reuses cached verdict. A Rust smoke and its TestClaim twin with the same input merkle both skip — no human dedup list required.
+When the PR diff does not touch a claim’s **input frontier**, **IRT-1** excludes it (no run). When a claim is eligible to run but its **whole TestClaim node** hash matches a prior green verdict, **IRT-4** reuses that verdict. A Rust smoke and a TestClaim twin may share an input frontier for IRT-1; each still needs its own whole-node cache key (or a single authoritative TestClaim row). No human dedup list required.
 
 ### 8.7 Still delete / still fix (non-overlap classes)
 
