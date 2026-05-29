@@ -192,6 +192,10 @@ jobs:
     - name: M1 v4 workflow CI model/YAML binding smoke
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
+    # RELEASE_TODO §5 Phase 1 — v3 integration harness uses gunbc#846 zero-test-filter; run here.
+    - name: RELEASE §5 v4 workflow release model/YAML binding smoke
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: cargo test -p v3-compiler --test integration v4_workflow_release_dag_smoke_test -- --quiet
     # v4 bootstrap viability — standalone `v4` jobs hit a ~5m Ubicloud shutdown mid-emit;
     # folding into `ci` (40m job budget) keeps one runner lifecycle. The `v4` job is a
     # receipt-only stub so required check names stay stable (see main ci.yml commentary).
