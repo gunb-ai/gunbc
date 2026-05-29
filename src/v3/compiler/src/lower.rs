@@ -12363,4 +12363,67 @@ mod tests {
             fold_repeat_string_semantics("x", super::REPEAT_STRING_FOLD_MAX_COUNT + 1).is_none()
         );
     }
+
+    #[test]
+    fn extract_config_patch_layer_operands_accepts_base_and_patch() {
+        let span = test_span();
+        let args = vec![SurfaceExpr::Record {
+            fields: vec![
+                SurfaceRecordField {
+                    name: "base".to_string(),
+                    value: SurfaceExpr::Var {
+                        name: "defaults".to_string(),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                },
+                SurfaceRecordField {
+                    name: "patch".to_string(),
+                    value: SurfaceExpr::Var {
+                        name: "layer0".to_string(),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                },
+            ],
+            span: span.clone(),
+        }];
+        let (base, patch) = extract_config_patch_layer_operands(&args).expect("named operands");
+        assert!(matches!(base, SurfaceExpr::Var { name, .. } if name == "defaults"));
+        assert!(matches!(patch, SurfaceExpr::Var { name, .. } if name == "layer0"));
+    }
+
+    #[test]
+    fn extract_config_patch_layer_operands_rejects_wrong_labels() {
+        let span = test_span();
+        let args = vec![SurfaceExpr::Record {
+            fields: vec![SurfaceRecordField {
+                name: "outer".to_string(),
+                value: SurfaceExpr::Var {
+                    name: "x".to_string(),
+                    span: span.clone(),
+                },
+                span: span.clone(),
+            }],
+            span: span.clone(),
+        }];
+        assert!(extract_config_patch_layer_operands(&args).is_none());
+    }
+
+    #[test]
+    fn surface_field_access_expr_projects_call_site_carrier() {
+        let span = test_span();
+        let carrier = SurfaceExpr::Var {
+            name: "defaults".to_string(),
+            span: span.clone(),
+        };
+        let access = surface_field_access_expr(&carrier, "line_length", &span).expect("path");
+        assert!(
+            matches!(
+                access,
+                SurfaceExpr::Path { segments, .. }
+                if segments == ["defaults", "line_length"]
+            )
+        );
+    }
 }
