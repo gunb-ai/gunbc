@@ -80,7 +80,7 @@ type BlackConfig {
 
 
 data black_defaults: BlackConfig = BlackConfig {
-  line_length: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 88)),
+  line_length: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 88), catalog_value: 88),
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
   pyi: false,

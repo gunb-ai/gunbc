@@ -94,12 +94,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: discharge_exact_one_int_catalog_row(receipt: exact_one_int_authoritative_literal(value: 1)),
-  line_length: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 100)),
-  indentation: SwiftFormatSpaces { count: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2)) },
-  tab_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 8)),
-  maximum_blank_lines: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 1)),
-  spaces_before_end_of_line_comments: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 2)),
+  version: discharge_exact_one_int_catalog_row(receipt: exact_one_int_authoritative_literal(value: 1), catalog_value: 1),
+  line_length: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 100), catalog_value: 100),
+  indentation: SwiftFormatSpaces { count: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2), catalog_value: 2) },
+  tab_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 8), catalog_value: 8),
+  maximum_blank_lines: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 1), catalog_value: 1),
+  spaces_before_end_of_line_comments: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 2), catalog_value: 2),
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,

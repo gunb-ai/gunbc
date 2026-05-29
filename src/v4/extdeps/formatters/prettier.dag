@@ -177,8 +177,8 @@ type PrettierConfig {
 
 
 data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
-  print_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 80)),
-  tab_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2)),
+  print_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 80), catalog_value: 80),
+  tab_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2), catalog_value: 2),
   use_tabs: false,
   semi: true,
   single_quote: false,
