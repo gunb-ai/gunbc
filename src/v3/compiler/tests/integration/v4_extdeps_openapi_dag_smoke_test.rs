@@ -81,7 +81,10 @@ fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
         "OpenApiHttpWireContractFacts"
     );
     let http_facts = type_record_fields(&module, "OpenApiHttpWireContractFacts");
-    assert_eq!(record_field_type(http_facts, "http_exchange"), "OpenApiHttpRequestReplyWitness");
+    assert_eq!(
+        record_field_type(http_facts, "http_exchange"),
+        "OpenApiHttpRequestReplyWitness"
+    );
     assert_eq!(
         record_field_type(http_facts, "http_settlement"),
         "OpenApiHttpImmediateSettlementWitness"
