@@ -4163,7 +4163,11 @@ fn type_to_declaration_id(
                 return id;
             }
             if surface_parameterized_name_resolves_to_template(
-                dag, symbols, local, name, "ConfigPatchRecord",
+                dag,
+                symbols,
+                local,
+                name,
+                "ConfigPatchRecord",
             ) {
                 if let Some(connective) =
                     materialize_config_patch_record_connective(dag, symbols, local, args, span)
@@ -4292,7 +4296,11 @@ fn type_to_connective(
                 return conn;
             }
             if surface_parameterized_name_resolves_to_template(
-                dag, symbols, local, name, "ConfigPatchRecord",
+                dag,
+                symbols,
+                local,
+                name,
+                "ConfigPatchRecord",
             ) {
                 if let Some(conn) =
                     materialize_config_patch_record_connective(dag, symbols, local, args, span)
