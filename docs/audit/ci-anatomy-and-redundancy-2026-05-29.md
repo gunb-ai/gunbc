@@ -251,7 +251,7 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 | R04 | `CiGitDiffReadOutcome` (#3853) | single `Witness<Diff>` | one witness read / workflow | `content_hash(Witness<Diff>)` | **~1s** |
 | R05 | `TestCommand` | binary digest; per-claim input subgraph | IRT-1 frontier skip (claim not selected → no run) | `content_hash(whole TestClaim node)` (oracle + evaluator + resources) | **seconds** |
 | R06 | Cache emission | registry + target graph merkle | restore when command scheduled | remote/sccache keyed by input merkle | **0s** restore |
-| R07 | `M1RustEmitProbeCommand` | `content_hash(src/v4/**.dag)` + v2 binary | skip when probe not on frontier | `combine_hash(src/v4 merkle, v2 binary)` (replaces static tag) | **0s** reuse |
+| R07 | `M1RustEmitProbeCommand` | `content_hash(src/v4/**.dag)` + v2 binary + Rust toolchain pin (`rust-toolchain.toml`, `RUSTUP_TOOLCHAIN`, cargo-check job env) | skip when probe not on frontier | `combine_hash(src/v4 merkle, v2 binary digest, toolchain_digest)` (replaces static tag; P2 — all command resource facts in boundary) | **0s** reuse |
 | R08 | Bootstrap → M1 `needs` edge | dag emit digest → rust emit | M1 scheduled only when bootstrap edge fires | shared compile artifact `content_hash` | one compile / unique input |
 | R09 | `BootstrapStageCompile` + `LensCiCommand` | stage0 + entry closure | skip when lens surface off frontier | gunbc/emit cache merkle | **seconds** warm |
 | R10 | All `ci_command_cache_digest` | real input merkle per command | interpreter frontier (`ci_select_from_affected_set`; **no** GHA bucket `if:`) | per-command input merkle (dissolve static symbol tags) | exact-once |
