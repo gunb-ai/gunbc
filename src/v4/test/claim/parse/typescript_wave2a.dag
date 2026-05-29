@@ -31,9 +31,14 @@ data ts_wave2a_bool_false: Symbol = ts_wave2a_bool_false
 // comma-list (3 fields), type_name (TaskId, TaskStatus), and built-in type_string.
 data ts_wave2a_type_alias_task_source: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
 
-// Minimal single-field alias — guards against the previously-shipped `type Foo { ... }`
-// form (without `=`) silently re-appearing.
+// Minimal single-field alias — positive form (spec-correct with `=`).
 data ts_wave2a_type_alias_minimal_source: String = "type Box = { value: number };"
+
+// Negative regression — the previously-shipped invalid `type Foo { ... }` form
+// (omitting the required `=`) MUST be rejected. Without this, a future grammar
+// edit could silently re-accept the bad form and the positive test alone would
+// stay green.
+data ts_wave2a_type_alias_missing_eq_source: String = "type Box { value: number };"
 
 fn ts_wave2a_bool_atom(b: Bool) -> Node {
   match b {
@@ -42,6 +47,13 @@ fn ts_wave2a_bool_atom(b: Bool) -> Node {
   }
 }
 
+// 🟡 predicate-dissolution scaffold — feature:std-outcome-accepted-predicate —
+// matches the same shape already present in rust/kotlin/python/swift/lean wave2a
+// parse-claim files; promote-and-replace once std/diagnostic.dag exports a
+// canonical `outcome_accepted_predicate` (or equivalent). Dissolve-on-arrival:
+// when std grows the helper, every wave2a parse-claim file replaces its local
+// copy with the canonical import in one pass; until then this file follows the
+// established sibling shape rather than authoring a new local-authority idiom.
 fn ts_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
@@ -82,5 +94,17 @@ data claim_ts_wave2a_type_alias_minimal_parses: TestClaim = EqualsClaim {
     )
   ),
   rhs: ts_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_ts_wave2a_type_alias_missing_eq_rejected: TestClaim = EqualsClaim {
+  label: "TS Wave 2a REJECTS the no-`=` form `type Box { value: number };` — negative regression against the prior bug",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_type_alias_missing_eq_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: false),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
