@@ -404,11 +404,11 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         CI_DAG.contains("type SelfHostedRunnerPool"),
         "{CI_DAG_PATH}: must model self-hosted runner pools (T-24 addendum)"
     );
-        assert!(
-            CI_DAG.contains("arch: ci_runner_arch_arm64"),
-            "{CI_DAG_PATH}: fleet arch must be a typed Symbol field on SelfHostedRunnerPool"
-        );
-        assert!(
+    assert!(
+        CI_DAG.contains("arch: ci_runner_arch_arm64"),
+        "{CI_DAG_PATH}: fleet arch must be a typed Symbol field on SelfHostedRunnerPool"
+    );
+    assert!(
             !CI_DAG.contains("RunnerArch"),
             "{CI_DAG_PATH}: fleet arch uses Symbol field — no RunnerArch coproduct in Lens-CI entry compile"
         );
