@@ -1123,8 +1123,9 @@ fn ts_wave2a_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ts_token_plus, text: " + "),
       ts_lex_rule(token_class: ts_token_minus, text: " - "),
       ts_lex_rule(token_class: ts_token_star, text: " * "),
-      ts_lex_rule(token_class: ts_token_eq, text: " = "),
-      ts_lex_rule(token_class: ts_token_lbrace, text: " { "),
+      // `=` keeps leading space only so `= {` tokenizes (= consumes ` =`, `{` matches `{ `).
+      ts_lex_rule(token_class: ts_token_eq, text: " ="),
+      ts_lex_rule(token_class: ts_token_lbrace, text: "{ "),
       ts_lex_rule(token_class: ts_token_rbrace, text: " }"),
       ts_lex_rule(token_class: ts_token_lparen, text: "("),
       ts_lex_rule(token_class: ts_token_rparen, text: ")"),
