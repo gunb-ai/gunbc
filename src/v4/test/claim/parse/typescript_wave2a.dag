@@ -31,15 +31,20 @@ data ts_wave2a_file: Symbol = ts_wave2a_file
 data ts_wave2a_bool_true: Symbol = ts_wave2a_bool_true
 data ts_wave2a_bool_false: Symbol = ts_wave2a_bool_false
 
-// TaskStatus from src/v4/test/fixture/task_manager_demo.dag transcribed to TS
-// surface per TS handbook §Literal Types (single-quoted string-literal union).
-// Exercises the union_type production added in PR-2: string_lit, pipe,
-// string_lit (≥2 variants via base + left-recursive form).
-data ts_wave2a_union_task_status_source: String = "type TaskStatus = 'Open' | 'InProgress' | 'Done';"
+// TS string-literal discriminated unions exercised via the existing wave2a
+// `const_decl` item form (`const IDENT : type_annotation = IDENT ;`). On this
+// branch, `type_annotation` accepts `union_type` (added by this PR), but the
+// top-level `type IDENT = …;` alias wrapper ships in PR-1 (#3900); claims here
+// therefore exercise the union production from a start-reachable item form.
+// PR-1's TestClaim file independently asserts the alias-wrapper path; merge
+// folds the two batches.
+// TaskStatus surface from src/v4/test/fixture/task_manager_demo.dag transcribed
+// to a TS const annotation: 3-variant string-literal union (Open/InProgress/Done).
+data ts_wave2a_union_task_status_source: String = "const status: 'Open' | 'InProgress' | 'Done' = status;"
 
 // Minimal two-variant union — guards against the left-recursive form silently
 // regressing to require ≥3 variants.
-data ts_wave2a_union_minimal_source: String = "type Bit = 'On' | 'Off';"
+data ts_wave2a_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
 
 fn ts_wave2a_bool_atom(b: Bool) -> Node {
   match b {
@@ -71,7 +76,7 @@ fn ts_wave2a_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
 }
 
 data claim_ts_wave2a_union_task_status_parses: TestClaim = EqualsClaim {
-  label: "TS Wave 2a accepts the TaskStatus string-literal discriminated union: type TaskStatus = 'Open' | 'InProgress' | 'Done';",
+  label: "TS Wave 2a accepts a 3-variant string-literal discriminated union in a const annotation (TaskStatus surface): const status: 'Open' | 'InProgress' | 'Done' = status;",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_wave2a_bool_atom(
     b: ts_wave2a_parse_accepted(
