@@ -815,7 +815,7 @@ type ClangFormatConfig {
   penalty_indented_whitespace: ClangFormatNonNegativeInt
   penalty_return_type_on_its_own_line: ClangFormatNonNegativeInt
   pointer_alignment: ClangFormatPointerAlignmentStyle
-  pp_indent_width: Int
+  pp_indent_width: ClangFormatAtLeastMinusOneInt
   qualifier_alignment: ClangFormatQualifierAlignmentStyle
   qualifier_order: List<String> // 🟡 gated: formatter-cross-field-constraints — operative only when qualifier_alignment = ClangFormatQualifierCustom
   reference_alignment: ClangFormatReferenceAlignmentStyle
@@ -1012,7 +1012,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   penalty_indented_whitespace: Refined { base: 0 },
   penalty_return_type_on_its_own_line: Refined { base: 60 },
   pointer_alignment: ClangFormatPointerRight,
-  pp_indent_width: -1,
+  pp_indent_width: Refined { base: -1 },
   qualifier_alignment: ClangFormatQualifierLeave,
   qualifier_order: [],
   reference_alignment: ClangFormatReferencePointer,
@@ -1210,7 +1210,7 @@ type ClangFormatConfigPatch {
   penalty_indented_whitespace: FieldPatch<ClangFormatNonNegativeInt>
   penalty_return_type_on_its_own_line: FieldPatch<ClangFormatNonNegativeInt>
   pointer_alignment: FieldPatch<ClangFormatPointerAlignmentStyle>
-  pp_indent_width: FieldPatch<ClangFormatNonNegativeInt>
+  pp_indent_width: FieldPatch<ClangFormatAtLeastMinusOneInt>
   qualifier_alignment: FieldPatch<ClangFormatQualifierAlignmentStyle>
   qualifier_order: FieldPatch<List<String>>
   reference_alignment: FieldPatch<ClangFormatReferenceAlignmentStyle>

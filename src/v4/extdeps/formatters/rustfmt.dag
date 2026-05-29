@@ -378,8 +378,8 @@ type RustfmtConfigPatch {
   max_width: FieldPatch<RustfmtPositiveInt>
   comment_width: FieldPatch<RustfmtNonNegativeInt>
   chain_width: FieldPatch<RustfmtPositiveInt>
-  single_line_if_else_max_width: FieldPatch<RustfmtPositiveInt>
-  single_line_let_else_max_width: FieldPatch<RustfmtPositiveInt>
+  single_line_if_else_max_width: FieldPatch<RustfmtNonNegativeInt>
+  single_line_let_else_max_width: FieldPatch<RustfmtNonNegativeInt>
   fn_call_width: FieldPatch<RustfmtPositiveInt>
   attr_fn_like_width: FieldPatch<RustfmtPositiveInt>
   struct_lit_width: FieldPatch<RustfmtNonNegativeInt>
