@@ -11,6 +11,7 @@ import v4.std.logic { Bool }
 import v4.std.diagnostic {
   Diagnostic,
   Locus,
+  NonEmptyDiagnostics,
   Outcome,
   Accepted,
   Rejected,
