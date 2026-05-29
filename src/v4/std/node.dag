@@ -446,6 +446,8 @@ data canonical_tag_byte_offset_overflow_residual_discarded_high_truncated: Symbo
 data canonical_tag_byte_offset_residual_quotient_limb_pair: Symbol = canonical_tag_byte_offset_residual_quotient_limb_pair
 data canonical_tag_byte_offset_residual_quotient_magnitude: Symbol = canonical_tag_byte_offset_residual_quotient_magnitude
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
+// Post-ceiling residual quotients for offsets up to ~256^29 need shift 20 (29 - 9 limb ceiling).
+data byte_offset_residual_quotient_magnitude_max_shift: Int = 20
 data canonical_tag_byte_offset_cache_digest_ineligible: Symbol = canonical_tag_byte_offset_cache_digest_ineligible
 data byte_offset_cache_digest_max_limbs: Int = 9
 // Bounded overflow tail after the 9-limb ceiling — P4-safe remainder encoding for over-ceiling offsets (also caps overflow_quotient_peel).
@@ -507,12 +509,20 @@ fn byte_offset_byte_digest(b: Int) -> Hash {
 }
 
 
+// P4: terminal when steps <= 0 (non-Nat budget — fail-closed, no negative-step recursion).
 fn byte_offset_quotient_divide_by_256_steps(quotient: Int, steps: Int) -> Int {
-  if steps == 0 {
+  if steps <= 0 {
     quotient
   } else {
     byte_offset_quotient_divide_by_256_steps(quotient: quotient / 256, steps: steps - 1)
   }
+}
+
+
+fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_steps: Int) -> Hash {
+  byte_offset_residual_quotient_limb_pair_digest(
+    quotient: byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: shift_steps)
+  )
 }
 
 
@@ -537,27 +547,28 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
 }
 
 
-// P4: fixed windows over residual quotient (0, 4, 8, 12 limb shifts) — distinguishes 256^21 vs 2·256^21 bands.
+// P4: fixed windows over residual quotient (0..20 by 4) — distinguishes 256^21 vs 2·256^21 and 256^29 vs 2·256^29 bands.
 fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
   combine_hash(
     a: atom_identity_hash(s: canonical_tag_byte_offset_residual_quotient_magnitude),
     b: combine_hash(
-      a: byte_offset_residual_quotient_limb_pair_digest(
-        quotient: byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: 0)
-      ),
+      a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 0),
       b: combine_hash(
-        a: byte_offset_residual_quotient_limb_pair_digest(
-          quotient: byte_offset_quotient_divide_by_256_steps(
-            quotient: quotient,
-            steps: byte_offset_residual_quotient_magnitude_shift_limbs
-          )
+        a: byte_offset_residual_quotient_magnitude_window_digest(
+          quotient: quotient,
+          shift_steps: byte_offset_residual_quotient_magnitude_shift_limbs
         ),
         b: combine_hash(
-          a: byte_offset_residual_quotient_limb_pair_digest(
-            quotient: byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: 8)
-          ),
-          b: byte_offset_residual_quotient_limb_pair_digest(
-            quotient: byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: 12)
+          a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 8),
+          b: combine_hash(
+            a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 12),
+            b: combine_hash(
+              a: byte_offset_residual_quotient_magnitude_window_digest(quotient: quotient, shift_steps: 16),
+              b: byte_offset_residual_quotient_magnitude_window_digest(
+                quotient: quotient,
+                shift_steps: byte_offset_residual_quotient_magnitude_max_shift
+              )
+            )
           )
         )
       )

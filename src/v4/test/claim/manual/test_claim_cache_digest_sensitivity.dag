@@ -318,6 +318,20 @@ fn tcc_cache_byte_offset_pow_22() -> Int {
   int_mul(a: tcc_cache_byte_offset_pow_21(), b: tcc_cache_byte_limb_base)
 }
 
+fn tcc_cache_byte_offset_pow_28() -> Int {
+  int_mul(
+    a: tcc_cache_byte_offset_pow_22(),
+    b: int_mul(
+      a: tcc_cache_byte_limb_base,
+      b: int_mul(a: tcc_cache_byte_limb_base, b: int_mul(a: tcc_cache_byte_limb_base, b: tcc_cache_byte_limb_base))
+    )
+  )
+}
+
+fn tcc_cache_byte_offset_pow_29() -> Int {
+  int_mul(a: tcc_cache_byte_offset_pow_28(), b: tcc_cache_byte_limb_base)
+}
+
 // 256^9 - 1 — largest within-ceiling offset (9 base-256 limbs).
 fn tcc_cache_byte_offset_exact_ceiling() -> Int {
   int_add(a: tcc_cache_byte_offset_pow_9(), b: int_negate(a: tcc_cache_int_one))
@@ -377,6 +391,12 @@ fn tcc_cache_byte_offset_exhausted_residual_adjacent_power_21_22_digest_differs(
 fn tcc_cache_byte_offset_exhausted_residual_21_double_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_21())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_21())))
+}
+
+// Magnitude windows must cover post-ceiling residual ~256^20 band (256^29 vs 2·256^29).
+fn tcc_cache_byte_offset_exhausted_residual_29_double_digest_differs() -> Bool {
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_29())) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_29())))
 }
 
 fn tcc_cache_runtime_unit() -> RuntimeValue {
