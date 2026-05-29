@@ -15,8 +15,12 @@
 #   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
 #   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when compile or rustc fails
 #   V4_M1_RUSTC_TIMEOUT_SECS  — optional timeout for cargo check (CI: 600)
+<<<<<<< HEAD
 #   V4_M1_CARGO_CHECK_JOBS    — parallelism cap for cargo check (default: modeled
 #                               m1_probe_cargo_check_jobs in src/v4/workflow/ci.dag)
+=======
+#   V4_M1_CARGO_CHECK_JOBS    — parallelism cap for cargo check (default: 4)
+>>>>>>> origin/main
 
 set -euo pipefail
 
@@ -116,8 +120,12 @@ if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
   fi
   # Cap parallelism: many concurrent CI runs each fan out rustc workers through
   # ctrl-build wrappers; without a cap the aggregate process count can reach swap
+<<<<<<< HEAD
   # on shared self-hosted runners (incident 2026-05-28). Default comes from
   # v4.workflow.ci `m1_probe_cargo_check_jobs` (srv1/srv2 pool model).
+=======
+  # on shared self-hosted runners (incident 2026-05-28).
+>>>>>>> origin/main
   cargo_check_jobs="${V4_M1_CARGO_CHECK_JOBS:-4}"
   set +e
   if [[ -n "$rustc_timeout" ]]; then
