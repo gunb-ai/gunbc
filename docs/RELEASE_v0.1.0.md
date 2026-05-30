@@ -26,22 +26,24 @@ verified surface either stays private or is documented as unsupported with a
 fail-closed runtime behavior. The previously broad "ship daglang + gunbc"
 scope from earlier drafts is narrowed by the D-REL decisions below.
 
-**Working framing (project maintainer, 2026-05-30):**
+**Working framing (project maintainer, 2026-05-30, updated post-audit):**
 
 > A small public daglang/gunbc release with a verified subset, verified
-> docs, verified install path, and exactly **two advertised target
-> surfaces: Rust and TypeScript**. Everything else is private,
-> unsupported, or post-v0.1.0.
+> docs, verified install path, and **three advertised target surfaces
+> matching the three v2 emit paths: Rust, Go, and Python**. TypeScript
+> moves to v4 early-support; it is not v0.1.0. Everything else is
+> private, unsupported, or post-v0.1.0.
 
-Rust and TypeScript are framed as two **verified target/artifact surfaces**,
-not as "the compiler supports two languages". `SUPPORTED.md` says exactly
-what each surface means (full compile-and-check vs artifact/interface
-emission); see D-REL-3b below.
+Rust, Go, and Python are framed as three **verified target/artifact
+surfaces** corresponding to `src/v2/05_emit_rust.dag`,
+`05_emit_go.dag`, and `05_emit_python.dag`. `SUPPORTED.md` says exactly
+what each surface means (the supported `.dag` subset projected through
+each emitter); see D-REL-3b below.
 
 The release sentence the tag must make true:
 
 > A fresh public user can install/build `gunbc`, run the documented
-> examples, get verified Rust and TypeScript outputs for the supported
+> examples, get verified Rust, Go, and Python outputs for the supported
 > subset, and every unsupported path either is absent from the docs or
 > fails closed.
 
@@ -52,8 +54,9 @@ The release sentence the tag must make true:
 1. First public tag of **daglang** on `gunb-ai/daglang`, scoped to the
    verified `.dag` subset and example surface (see D-REL-3a).
 2. **gunbc** v2 self-hosted compiler binary, distributed only on
-   per-target-verified build targets (D-REL-2), with **Rust + TypeScript
-   as the two advertised target/artifact surfaces** (D-REL-3b).
+   per-target-verified build targets (D-REL-2), with **Rust, Go, and
+   Python as the three advertised target/artifact surfaces** (D-REL-3b)
+   — one per v2 emit lens that already exists.
 3. User-facing public docs only — `README`, `LICENSE`, `CHANGELOG`,
    `GETTING_STARTED`, `LANGUAGE`/`SYNTAX`, `CLI`, `EXAMPLES`, `SUPPORTED`,
    and (optionally) `CONTRIBUTING` — per D-REL-4.
@@ -87,9 +90,10 @@ The release sentence the tag must make true:
    `install.dag` as v0.2.0+ emission intent, and the realistic default for
    v0.1.0 is "not shipped" because the Formula / deb-control / apt-repo
    content is not yet emitted. See "Distribution ruling" below.
-9. Any source language, target, or artifact surface beyond Rust +
-   TypeScript. Python/Go/C++/LLVM/etc. are **not** v0.1.0 public support
-   (D-REL-3b).
+9. Any target/artifact surface beyond the three v2 emit paths
+   (Rust, Go, Python). **TypeScript is explicitly v4 early-support, not
+   v0.1.0** (maintainer ruling 2026-05-30, post-audit). C++ / LLVM / etc.
+   are not v0.1.0 public support (D-REL-3b).
 10. **v4-done predicates** (the six in `src/v4/TASKS.md:805–817`) are
     out of scope for the v0.1.0 tag. The maintainer-facing burn-down is
     tracked privately in
@@ -108,7 +112,7 @@ recommendation as the default until the project maintainer rules otherwise.
 | D-REL-1 | v4 in public v0.1.0 | **Strip `src/v4` from public snapshot.** | **CONFIRMED 2026-05-30.** v4 stays private for v0.1.0; correctness ladder is not at public confidence (diagnosis lane still ~7,951 rustc errors for full-tree v4 Rust emit). **Supersedes** the older `RELEASE_TODO.md` §6 "Keep" list for `src/v4/std`, `compiler/`, etc. — that list pre-dates the scope revision and `RELEASE_TODO.md` is itself stripped from the public export. `scripts/publish-snapshot.sh` `STRIP_PATHS` now strips `src/v4` wholesale. |
 | D-REL-2 | Binary distribution scope | **Advertised target = passed dry-run. No dry-run = not advertised. Source build is acceptable if binaries are flaky.** | **CONFIRMED 2026-05-30** (project maintainer). |
 | D-REL-3a | Day-one daglang subset (source) | Small example-backed `.dag` subset anchored to `weather.dag` + `interp_test.dag` and the `dsl/std` vocabulary those examples exercise. Anything outside this subset is unsupported and must fail closed. | **CONFIRMED 2026-05-30.** Exact list enumerated in `docs/SUPPORTED.md` (downstream). |
-| D-REL-3b | Day-one target/artifact matrix | **Rust + TypeScript only.** Rust must pass `rustc`/`cargo` checks for shipped examples; TypeScript must pass `tsc --noEmit` for shipped TS artifacts. Python/Go/C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED 2026-05-30 (intent); ⚠ NEEDS RECONCILIATION (substrate).** v2 ships `05_emit_rust.dag`, `05_emit_go.dag`, `05_emit_python.dag` — **no `05_emit_typescript.dag` exists**. TypeScript appears only in `dsl/std/languages.dag` catalog entries and v4 test claims, not as a v2 emit path. Either an `emit_typescript.dag` lens lands before tag (owner + ETA needed) or D-REL-3b drops to Rust-only. See "Pre-tag verification gaps" below. |
+| D-REL-3b | Day-one target/artifact matrix | **Rust, Go, and Python only** (one per v2 emit lens). Rust must pass `rustc`/`cargo check` on shipped examples; Go must pass `go build` / `go vet`; Python must compile (`python -m py_compile`) and the documented example must run. **TypeScript moves to v4 early-support**, not v0.1.0. C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED + RECONCILED 2026-05-30** (maintainer post-audit ruling). Reflects the existing v2 substrate (`05_emit_rust.dag`, `05_emit_go.dag`, `05_emit_python.dag`); resolves verification gap V1. Per-surface support level (full compile vs example-run vs artifact-only) declared explicitly in `SUPPORTED.md`. |
 | D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | **DECIDED 2026-05-30; enforcement PENDING.** The user-facing docs above do not all exist yet (downstream authoring work). `scripts/publish-snapshot.sh` `STRIP_PATHS` currently strips only the agent/process subtrees (`docs/briefs`, `docs/debt`, etc.) and v3/v4 — root `THESIS`/`INVARIANTS`/`MODELING`/`CODING`/`TESTING` and the large `docs/thesis/`, `docs/invariants/`, `docs/planning/`, `docs/design-*` trees are **not yet stripped**. A follow-up pass before tag must (a) land the user docs and (b) extend `STRIP_PATHS` to remove everything outside the D-REL-4 keep list. Gate B and Gate D catch the gap if this slips. |
 | D-REL-5 | Release before v4 confidence | **YES**, because D-REL-1 strips v4 and v0.1.0 is scoped to the verified v2 / product slice. | **CONFIRMED 2026-05-30.** |
 
@@ -121,7 +125,7 @@ resolved.
 
 | # | Gap | Resolution path | Owner / ETA |
 |---|-----|-----------------|-------------|
-| V1 | **TypeScript surface unsubstantiated.** D-REL-3b names Rust + TypeScript as the two advertised surfaces, but no v2 `05_emit_typescript.dag` exists; TS appears only in the language catalog and v4 test claims. | Land `emit_typescript.dag` lens in v2 with `tsc --noEmit` round-trip on at least one shipped example, **or** amend D-REL-3b to Rust-only and update Goals/Non-goals + Gates A/E accordingly. | **PENDING maintainer decision.** |
+| V1 | ~~TypeScript surface unsubstantiated.~~ | **RESOLVED 2026-05-30:** maintainer ruled v0.1.0 = Rust + Go + Python (the three existing v2 emit paths); TypeScript moves to v4 early-support. D-REL-3b, Goals, Non-goals, framing, and Gates A/E updated accordingly. | RESOLVED. |
 | V2 | **`docs/SUPPORTED.md` does not exist.** Item D names it as the single normative authority; README, website, and release notes all derive from it. No file, no owner, no ETA. | Author `docs/SUPPORTED.md` enumerating the D-REL-3a `.dag` subset, the D-REL-3b verified surfaces with per-surface support level, the verified install/target matrix, CLI commands, OS matrix, and fail-closed guarantee. | **PENDING owner.** Likely lane: `nimble-crane-490` (the v4-done/release-sign-off worker who already cross-checked this doc). |
 | V3 | **`install.sh` PR #3992 STALLED.** Open, mergeable=MERGEABLE, 0 reviews, 0 CI checks completed; no shepherd. The doc says `curl install.sh` ships only if #3992 lands and verifies before tag. | Route a shepherd to #3992, OR drop `curl install.sh` from the v0.1.0 install path and rely solely on build-from-source. Decision needed before Gate C can pass. | **PENDING owner.** |
 | V4 | **Weather demo end-to-end UNVERIFIED.** Gate A requires every example to run end-to-end; the hero `dsl/examples/weather/` path against `--target rust` has not been exercised against a `target/release/gunbc` built from a clean checkout. The README hero invocation uses `--target dag` rather than the verified emit path. | Build `gunbc` from clean checkout; run the weather example with `--target rust`; verify generated Rust passes `cargo check`; record commit SHA + run timestamp in the Evidence column on Gate A. | **PENDING.** Can be done by any worker with a green build slot. |
@@ -158,8 +162,10 @@ Gate D and Gate E are unaffected by this audit.
   ready; the visibility/Pages flip is a launch-day maintainer action.
   The website **must obey the support matrix in `SUPPORTED.md`**: no
   claim of broad language/compiler support; CTA points to supported
-  examples and the verified install path only; if Rust + TypeScript are
-  the v0.1.0 advertised surfaces, the website says exactly that.
+  examples and the verified install path only; the website states that
+  v0.1.0's verified target surfaces are **Rust, Go, and Python** (the
+  three v2 emit paths) and that TypeScript is **v4 early-support, not
+  v0.1.0**.
 - **Private ↔ public sync model:** public `gunb-ai/daglang` is the source
   of truth post-launch; private `gunb-ai/gunbc` is a scratchpad whose sole
   purpose is to keep internal session traffic off the public repo. The
@@ -195,18 +201,20 @@ When written, it will enumerate:
   the examples that ship (`weather.dag`, `interp_test.dag`) and the
   `dsl/std` vocabulary those examples exercise. Anything not on this list
   is unsupported.
-- **Target/artifact matrix (D-REL-3b)** — **Rust and TypeScript only.**
-  For each surface, `SUPPORTED.md` declares the support level explicitly:
-  - *Full compile target* — `.dag` → emitted source → `rustc`/`cargo`
-    or `tsc` checks pass for the documented examples.
-  - *Artifact / interface target* — declarations, API types, client
-    stubs, or schema only (no runtime equivalence claim).
-  - The doc states which level applies to Rust and which to TypeScript;
-    "v0.1.0 supports X" is never used without saying what "supports"
+- **Target/artifact matrix (D-REL-3b)** — **Rust, Go, and Python only**,
+  one per existing v2 emit lens. For each surface, `SUPPORTED.md`
+  declares the support level explicitly:
+  - *Full compile target* — `.dag` → emitted source → external toolchain
+    check passes for the documented examples (`rustc`/`cargo check`,
+    `go build`/`go vet`, `python -m py_compile`).
+  - *Runnable example target* — at least one example runs end-to-end
+    under the emitted target (default: Rust; Go and Python where
+    declared in `SUPPORTED.md`).
+  - "v0.1.0 supports X" is never used without saying what "supports"
     means.
-  - **Out of scope (call out explicitly):** Python, Go, C++, LLVM,
-    arbitrary corpus emit, v4 full-tree Rust emit, React app generation,
-    TypeScript runtime equivalence unless tested, self-host fixed point.
+  - **Out of scope (call out explicitly):** TypeScript (v4
+    early-support, not v0.1.0), C++, LLVM, arbitrary corpus emit, v4
+    full-tree Rust emit, React app generation, self-host fixed point.
 - **Verified install targets** — every OS/arch combination that passed the
   release dry-run (per D-REL-2). Targets that did not pass are absent;
   they are not listed as "experimental".
@@ -240,11 +248,15 @@ yet. See "Pre-tag verification gaps" above (V5) for the open work.
 - No public command is documented as supported without an end-to-end test
   backing it.
 - **Rust surface (D-REL-3b):** every documented example emits Rust and
-  the generated Rust passes `rustc` / `cargo check` (or `cargo run` where
-  the example is runnable).
-- **TypeScript surface (D-REL-3b):** every documented TypeScript
-  artifact / example passes `tsc --noEmit`. If an example is not supposed
-  to support TypeScript, that absence is listed in `SUPPORTED.md`.
+  the generated Rust passes `rustc` / `cargo check` (or `cargo run`
+  where the example is runnable).
+- **Go surface (D-REL-3b):** every documented example emits Go and the
+  generated Go passes `go build` / `go vet`. If an example is not
+  supposed to support Go, that absence is listed in `SUPPORTED.md`.
+- **Python surface (D-REL-3b):** every documented example emits Python,
+  passes `python -m py_compile`, and the documented runnable example
+  executes successfully. If an example is not supposed to support
+  Python, that absence is listed in `SUPPORTED.md`.
 - **Negative tests:** unsupported-feature examples fail closed with
   named diagnostics.
 
@@ -293,8 +305,9 @@ yet. See "Pre-tag verification gaps" above (V5) for the open work.
 - The release notes (in `docs/release/v0.1.0-release-notes.md`) match the
   support matrix in `SUPPORTED.md` — no claim ships that's not in
   `SUPPORTED.md`.
-- Release notes claim **only Rust + TypeScript** support. Any mention of
-  Python / Go / C++ / LLVM / etc. is either clearly labeled "not
+- Release notes claim **only Rust + Go + Python** support (the three
+  v2 emit paths). Any mention of TypeScript is labeled "v4
+  early-support, not v0.1.0"; C++ / LLVM / etc. are labeled "not
   supported in v0.1.0" or omitted entirely.
 
 ## Item F — Rollback plan
