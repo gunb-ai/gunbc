@@ -8,6 +8,10 @@
 # Exercises rustc on happy + falsification fixtures; emits JSON receipt.
 # Falsification probe expects E0308 (type mismatch) per
 # docs/planning/v4-leaf-model-verification-2026-05-30.md §7.
+#
+# Dissolve-on-arrival: delete when T-22 modeled `run_target_verification` owns rustc
+# invocation and structured TestClaimRun verdicts replace this host bridge (same
+# trigger as src/v3/compiler/tests/boundary/v4_leaf_model_rust_r1_rustc_test.rs).
 
 set -euo pipefail
 

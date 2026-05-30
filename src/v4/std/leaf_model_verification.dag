@@ -22,6 +22,7 @@ data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_typ
 
 
 // Stable claim identity — references fact IDs declared in leaf models (not runner concerns).
+// 🟢 coproduct dissolution — CP-LMV-CLAIM-ID-PHASE1 (R1 only; widen per additional language-model claims).
 type LeafModelClaimId
   = RustR1I32SurfaceSpelling
 
@@ -29,6 +30,7 @@ type LeafModelClaimId
 data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId = RustR1I32SurfaceSpelling
 
 
+// 🟢 coproduct dissolution — CP-LMV-RUST-CRATE-TYPE-PHASE1 (lib fixtures only; widen for bin/exe).
 type LeafModelRustCrateType
   = RustCrateTypeLib
 
