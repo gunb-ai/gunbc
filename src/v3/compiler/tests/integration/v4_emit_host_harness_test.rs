@@ -63,6 +63,7 @@ fn v4_host_run_logical_run_carrier_present() {
     for needle in [
         "type HostRunStdout",
         "type HostLogicalRun",
+        "stdout: HostRunStdout",
         "logical_run: Outcome<HostLogicalRun>",
         "fn host_logical_run_from_exit",
     ] {

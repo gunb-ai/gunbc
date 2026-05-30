@@ -39,9 +39,10 @@ type HostRunStdout {
   bytes: ByteString
 }
 
-// Named carrier (not a type alias): v2 compile rejects `type X = Witness<…>` (see HostExit).
+// Success-only logical-run carrier: `Outcome<HostLogicalRun>` carries reject/diagnostic arms;
+// the accepted payload is only `HostRunStdout` (no nested `Witness` — illegal Violates unrepresentable).
 type HostLogicalRun {
-  proof: Witness<HostRunStdout>
+  stdout: HostRunStdout
 }
 
 type EmitHostRunReceipt {
@@ -58,7 +59,7 @@ fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: ByteString) -> Outco
     Accepted { value: Holds { value: _ }, diagnostics: None } =>
       Accepted {
         value: HostLogicalRun {
-          proof: Holds { value: HostRunStdout { bytes: stdout_bytes } }
+          stdout: HostRunStdout { bytes: stdout_bytes }
         },
         diagnostics: None
       }

@@ -261,7 +261,7 @@ fn run_test_claim_emit_vs_eval_for_claim(
         Accepted { value: host_receipt, diagnostics: _ } =>
           match host_receipt.logical_run {
             Accepted {
-              value: HostLogicalRun { proof: Holds { value: stdout } },
+              value: HostLogicalRun { stdout: stdout },
               diagnostics: None
             } =>
               match runtime_value_parse(target: target, stdout: stdout) {
