@@ -10,9 +10,9 @@ import v4.extdeps.languages.rust {
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_language_model_wave2,
   rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32,
+  rust_atom_realization_symbol_node,
   rust_leaf_model_fact_id_node_atom_realization_symbol,
-  rust_leaf_model_fact_id_node_rust_facts_i32,
-  rust_symbol_connective_atom_node
+  rust_leaf_model_fact_id_node_rust_facts_i32
 }
 import v4.std.collection { List }
 import v4.std.leaf_model_verification {
@@ -30,6 +30,7 @@ import v4.std.rust_leaf_model_claim {
   E0599,
   Rustc_ErrorCode_Phase1,
   RustAlgebraInhabitanceSubject,
+  RustAtomRealizationProjectionMismatchSubject,
   RustAtomRealizationSubject,
   RustClaimExpectation,
   RustClaimSubject,
@@ -44,6 +45,9 @@ import v4.std.rust_leaf_model_claim {
 data rust_leaf_rustc_toolchain: Symbol = rust_leaf_rustc_toolchain
 data rust_leaf_rustc_edition_2024: Symbol = rust_leaf_rustc_edition_2024
 data rust_leaf_arithmetic_overflow_panic: Symbol = rust_leaf_arithmetic_overflow_panic
+// R3-external falsification: type_form vs value_form mismatch (planning §7).
+data rust_leaf_falsify_atom_type_string_alias: Symbol = rust_leaf_falsify_atom_type_string_alias
+data rust_leaf_falsify_atom_value_constructor_on_atom: Symbol = rust_leaf_falsify_atom_value_constructor_on_atom
 
 type RustLeafModelClaim = LeafModelClaim<RustLanguageModel, RustClaimSubject, RustClaimExpectation>
 
@@ -119,10 +123,14 @@ data claim_rust_leaf_r2b_i32_overflow_semantics: RustLeafModelClaim = LeafModelC
 data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
-  subject: RustAtomRealizationSubject { atom: rust_symbol_connective_atom_node },
+  subject: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
   expectation: rust_leaf_rustc_accepts(),
   falsification_case: FalsificationCase {
-    subject_variant: RustAtomRealizationSubject { atom: rust_symbol_connective_atom_node },
+    subject_variant: RustAtomRealizationProjectionMismatchSubject {
+      atom: rust_atom_realization_symbol_node,
+      declared_type_form: rust_leaf_falsify_atom_type_string_alias,
+      exercised_value_form: rust_leaf_falsify_atom_value_constructor_on_atom
+    },
     expected_failure_mode: rust_leaf_rustc_rejects(code: E0423)
   }
 }
@@ -131,16 +139,16 @@ data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafMod
 data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
-  subject: RustAtomRealizationSubject { atom: rust_symbol_connective_atom_node },
+  subject: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
   expectation: RustEmitProjectionEqualityExpectation {
-    atom_realization_row: rust_symbol_connective_atom_node,
+    atom_realization_row: rust_atom_realization_symbol_node,
     type_emit_must_change: true,
     value_emit_must_change: true
   },
   falsification_case: FalsificationCase {
-    subject_variant: RustAtomRealizationSubject { atom: rust_symbol_connective_atom_node },
+    subject_variant: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
     expected_failure_mode: RustEmitProjectionEqualityExpectation {
-      atom_realization_row: rust_symbol_connective_atom_node,
+      atom_realization_row: rust_atom_realization_symbol_node,
       type_emit_must_change: false,
       value_emit_must_change: false
     }

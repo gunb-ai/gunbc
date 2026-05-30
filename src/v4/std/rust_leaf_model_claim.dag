@@ -9,7 +9,7 @@ import v4.std.leaf_model_verification { TargetInvocation }
 import v4.std.lexing { LexRule }
 import v4.std.logic { Bool }
 import v4.std.model_core { AlgebraInhabitanceDecl }
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeOutcome }
 
 // Phase-1 primitive subject axis (extension via modeling escalation only).
@@ -28,6 +28,12 @@ type RustClaimSubject
       inhabitance_decl: AlgebraInhabitanceDecl
     }
   | RustAtomRealizationSubject { atom: Node }
+  // Modeling escalation (planning §7 R3-external): type_form vs value_form mismatch probe.
+  | RustAtomRealizationProjectionMismatchSubject {
+      atom: Node
+      declared_type_form: Symbol
+      exercised_value_form: Symbol
+    }
   | RustCollectionRealizationSubject { collection: Node }
   | RustGrammarProductionSubject { production: GrammarProduction }
   | RustLexRuleSubject { rule: LexRule }
