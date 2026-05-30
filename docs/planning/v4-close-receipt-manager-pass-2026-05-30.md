@@ -154,9 +154,9 @@ This lane formally adopts the §9 framing:
 - **Questionnaire** (`docs/v4-close-interrogation.md`, 346 probes) is the **granular probe surface**. Each probe receives a `(ship_disposition, engineering_state)` row.
 - **Ladder** (§6 of PR #3938, 9 rungs) is the **gate-sequencing surface**. Each rung is a single predicate that fires on PRs against a defined fixture or corpus.
 
-**Complementarity rule:** every ladder rung names the questionnaire sections it activates verification for (§9.2 cross-map is canonical). A rung that has fired `GATE_CLOSED` against a fixture moves the corresponding questionnaire probes to `PARTIAL_GATE_PRESENT` engineering state; only corpus-widening moves them to `PROVEN`.
+**Complementarity rule:** every ladder rung names the questionnaire sections it activates verification for (§9.2 cross-map is canonical). A rung that has fired `GATE_CLOSED` against a fixture moves the corresponding questionnaire probes to `PARTIAL_GATE_PRESENT` engineering state; their `ship_disposition` stays `GAP` until the §1 closure invariant is satisfied (executable receipt that answers the probe, plus a falsification receipt where the probe is explicitly adversarial). Corpus-widening from fixture to full corpus is **necessary but not sufficient** for `ship_disposition: PROVEN`; the §1 receipts (and the §5 rung gate where applicable) are also required.
 
-**Closure direction is one-way:** an audit may find that a ladder rung is *not actually firing* against the receipts it claims; in that case, the questionnaire probes are downgraded and the rung's `GATE_CLOSED` is reopened. The questionnaire never grants close on its own — a `PROVEN` probe still requires the relevant rung's gate to be firing.
+**Closure direction is one-way:** an audit may find that a ladder rung is *not actually firing* against the receipts it claims; in that case, the questionnaire probes are downgraded and the rung's `GATE_CLOSED` is reopened. The questionnaire never grants close on its own — a `PROVEN` probe still requires the relevant rung's gate to be firing AND the §1 receipts to exist.
 
 ---
 
