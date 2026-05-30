@@ -1,6 +1,6 @@
 # v4 progress snapshot — 2026-05-30T22Z
 
-PM-authored visibility doc per operator ask 22:30Z. Complements `docs/planning/v4-done-six-predicate-burn-down-2026-05-30.md` (merry-badger-222's predicate-level tracker) with a wave-level + immediate-momentum lens.
+PM-authored visibility doc per operator ask 22:30Z. Complements `docs/planning/v4-done-predicate-burn-down-2026-05-30.md` (merry-badger-222's predicate-level tracker) with a wave-level + immediate-momentum lens.
 
 For deeper per-predicate analysis with fresh rustc error count, see merry-badger-222's incoming amendment to the burn-down (dispatched via msg_bc66155b, ETA ~1h from 21:54Z).
 
@@ -8,7 +8,7 @@ For deeper per-predicate analysis with fresh rustc error count, see merry-badger
 
 - **0 / 6 v4-done predicates PROVEN** (per #4021 / #4030 burn-down). 5 YELLOW (P1–P5 advancing), 1 GRAY (P6 gated on P4 + P3).
 - **~7,951 rustc errors** baseline on full-tree v4 emit (per `docs/audit/v4-rustc-error-catalog-2026-05-29.md`). Today's Wave 2 substrate landings (SG-2 #3962, SG-7 #4014, Upsert<T> #3981, CiUpsertStep #3989, SG-5 #3957) unblock the dominant closers; SG-1 #3956 is the largest unlanded Pareto closer (~2,978 E0423 errors expected closed when it lands).
-- Wave 1 MW-D8 exit conditions: **4 / 5 MET** (only `ci_selection_receipt_shadow` W1.5 remaining; smart-stag-871's queue).
+- Wave 1 MW-D8 exit conditions: **3 / 5 PROVEN per sharp-otter-407's authoritative #4017 ledger** (C1, C3 via OR-arm, C5 via mixed-arm). C2 (SG-7 dissolution) stays `GAP / SCAFFOLD_PRESENT` pending falsification receipt (impl #4014 merged but per ledger framework requires "executable receipt that the recursive shape is structurally impossible by construction" before ship_disposition flips). C4 (`ci_selection_receipt_shadow`) still `GAP / NO_ARTIFACT_FOUND`, gated on C2. **PM defers MW-D8 disposition to ledger.**
 - Wave 2 closure: **W2.1 SG-1 in flight (draft) • W2.2 SG-5 ✓ MERGED 22:23Z • W2.3 worksheet authoring (proud-pike) • W2.4 gated on W2.3 • W2.5 ✓ COMPLETE (3 phase4 fixtures × rungs 0-2/3/4) • W2.6 ✓ MERGED (python.dag verification)**.
 - Release posture: **flavor (iv) — alpha / WIP labeled, no Wave-2 gating**. v4 ships public AS-IS in v0.1.0 with honest disclaimers per `docs/RELEASE_v0.1.0.md` (#3991 merged), `docs/SUPPORTED.md` (#4025 merged), and README swap-line disclaimer (#4031 merged).
 
@@ -28,17 +28,19 @@ Wave 2 is ~85% closed. Remaining: SG-1 #3956 to land, SG-6 to dispatch (after SG
 
 ## MW-D8 Wave 1 exit conditions
 
-| # | Condition | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | R1 produces leaf-model verdict (rust.dag R1 → rustc → Verdict<R1>) | ✓ MET | #3972 |
-| 2 | SG-7 ci.dag recursion dissolved | ✓ MET | #4014 (implementation; #3977 worksheet earlier) |
-| 3 | Upsert<T> landed as substrate primitive | ✓ MET | #3981 + #3989 (Phase 1.4 + 1.5) |
-| 4 | `ci_selection_receipt_shadow` generatable for ≥1 PR fixture | ✗ NOT STARTED | smart-stag-871 queue (W1.5) |
-| 5 | R2a/R2b/R3-external/R3-internal authoring ready-to-run or named-blocked | ✓ MET | #4000 (R2a/R2b/R3-external landed; R3-internal explicitly-blocked-and-named on SG-1) |
+PM defers to sharp-otter-407's #4017 ledger (`docs/planning/v4-mw-d8-wave1-exit-ledger-2026-05-30.md`) as the single authoritative source for MW-D8 disposition. The summary below is the ledger's headline, NOT a parallel ledger:
 
-Wave 1 exits to MW-D8-CLOSED when W1.5 ci_selection_receipt_shadow ships (the only remaining condition).
+| # | Condition (MW-D8 verbatim) | ship_disposition (per #4017) | engineering_state (per #4017) | Evidence |
+|---|---|---|---|---|
+| C1 | R1 produces leaf-model verdict | `PROVEN` | (closed) | #3972 |
+| C2 | SG-7 `ci.dag` recursion dissolved OR replaced by `ByteOffsetCacheDigestAuthority` + `byte_offset_cache_key` consumed | `GAP` | `SCAFFOLD_PRESENT` (impl #4014 merged but no falsification receipt of recursion-impossible) | #3977 worksheet; #4014 impl merged; pending Close/Receipt re-adjudication for ship_disposition flip |
+| C3 | Upsert<T> landed OR explicitly blocked with worksheet | `PROVEN` (via OR-arm: explicit block with worksheet) | `SUBSTRATE_PRESENT` | #3981 + #3989 + `v4-upsert-t-substrate-worksheet-2026-05-30.md` |
+| C4 | `ci_selection_receipt_shadow` generatable | `GAP` | `NO_ARTIFACT_FOUND` | none; smart-stag-871 queued post-C2 |
+| C5 | R2a/R2b/R3-external/R3-internal ready-to-run OR explicitly-blocked | `PROVEN` (mixed-arm: 3 ready + 1 explicitly-blocked) | (closed) | #4000 |
 
-## v4-done six-predicate burn-down (per `docs/planning/v4-done-six-predicate-burn-down-2026-05-30.md`)
+Wave 1 exits to MW-D8-CLOSED when (a) C2 flips PROVEN via falsification receipt of recursion-impossible-by-construction AND (b) C4 ships ci_selection_receipt_shadow.
+
+## v4-done six-predicate burn-down (per `docs/planning/v4-done-predicate-burn-down-2026-05-30.md`)
 
 All status as of #4030 + landings since:
 
@@ -69,7 +71,7 @@ That is roughly 40 v4-relevant PRs landed on 2026-05-30, of which the Wave 1 + W
 - PR #4040 Python emit fix (`session/emit-python-tco-fix` — match-as-expression + TCO temp-decl) — DRAFT, 10 CI passing. Workers gate on weather.dag + nat_semiring per smart-stag's brief. ETA 2-3 working days. Operator picked option (X) — README disclaimer in place now; fix lands in v0.1.1.
 - PR #4041 Go emit fix (`session/emit-go-layout-fix` — multi-file layout + := scope) — DRAFT, 10 CI passing. Same gates. ETA 1-2 working days.
 - PR #3956 SG-1 TargetAtomRealization (`session/zesty-carp-242-sg1-target-atom-realization`) — DRAFT, 10 CI passing, 0 approvals. Dominant Pareto error-closer when it lands.
-- Wave 2 worksheets: W2.3 Phase 1.5 CiUpsertStep migration (proud-pike) + W2.6 python.dag leaf-model spec (proud-pike). Worksheets gate worker dispatch.
+- Wave 2 worksheets: W2.3 Phase 1.5 CiUpsertStep migration (proud-pike-680). Worksheet gates worker dispatch on Phase 1.5 step migration. (W2.6 python.dag verification path already LANDED via #4022; worksheet predecessor work is closed.)
 - W1.5 `ci_selection_receipt_shadow` (smart-stag) — last MW-D8 condition unmet. Drafts pending.
 
 Nothing else is dispatch-ready until either (a) W2.3 worksheet lands → worker dispatch on Phase 1.5 step migration (W2.3 / W2.4) OR (b) SG-1 #3956 lands → SG-6 dispatch (W2.2 closure) OR (c) Wave 3 framing ratified.
@@ -128,7 +130,7 @@ Cron job `c3a6bc78` (PM 30-min check-in) firing at :13 + :43 each hour, session-
 
 ## Cross-refs
 
-- `docs/planning/v4-done-six-predicate-burn-down-2026-05-30.md` — per-predicate burn-down (merry-badger-222's amendments incoming)
+- `docs/planning/v4-done-predicate-burn-down-2026-05-30.md` — per-predicate burn-down (merry-badger-222's amendments incoming)
 - `docs/planning/v4-mw-d8-wave1-exit-ledger-2026-05-30.md` — MW-D8 exit-condition ledger (sharp-otter-407)
 - `docs/planning/v4-merge-wave-and-next-waves-2026-05-30.md` — merge-wave plan + Wave 1-3 framing
 - `docs/RELEASE_v0.1.0.md` — v0.1.0 release scope (flavor (iv))
