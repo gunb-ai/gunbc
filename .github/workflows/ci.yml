@@ -313,25 +313,7 @@ jobs:
     - name: Detect phase1/nat_semiring fixture scope (PR diff)
       id: phase1_nat_semiring_fixture_scope
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
-      run: |
-        set -euo pipefail
-        range="origin/main...HEAD"
-        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == 'refs/heads/main' ]]; then
-          range="HEAD~1..HEAD"
-        fi
-        should_run=false
-        if git diff --name-only "$range" | grep -qE '^(src/v4/test/claim/(algebra_laws/nat_semiring|nat_semiring/)|scripts/v4-phase1-nat-semiring)'; then
-          should_run=true
-        fi
-        if [[ "$should_run" != true ]] && git diff --name-only "$range" | grep -qE '^(\.github/workflows/ci\.yml|src/v4/workflow/ci\.dag|dsl/gunbc/ci_github_actions_workflow\.dag)'; then
-          # Gate execution/env edits only — not comment-only or fixture-scope detector additions.
-          if git diff "$range" -- .github/workflows/ci.yml src/v4/workflow/ci.dag dsl/gunbc/ci_github_actions_workflow.dag 2>/dev/null \
-            | grep '^[-+]' | grep -v '^[-+][[:space:]]*#' | grep -v 'phase1_nat_semiring_fixture_scope' | grep -v 'Detect phase1/nat_semiring fixture scope' \
-            | grep -qE 'phase1/nat_semiring rungs 0-2 gate|v4-phase1-nat-semiring-rung-gate\.sh|V4_PHASE1_NAT_SEMIRING_STRICT|phase1_nat_semiring_rung_gate'; then
-            should_run=true
-          fi
-        fi
-        echo "should_run=${should_run}" >> "$GITHUB_OUTPUT"
+      run: bash scripts/detect-phase1-nat-semiring-gate-scope.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
     # Phase 1 rung gate setup: provision Go on the self-hosted runner. The gate
     # invokes `go build` for R0-go-parse / R2-go-compile; without this step the
     # script's host-toolchain guard would fail-closed with
