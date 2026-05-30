@@ -763,6 +763,23 @@ mod compiler_tests {
     }
 
     #[test]
+    fn coercion_rust_atom_realization_resolves_type_form() {
+        use crate::v2_compiler_coercion::*;
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Symbol".into()),
+            "Symbol"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Bool".into()),
+            "bool"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Char".into()),
+            "char"
+        );
+    }
+
+    #[test]
     fn coercion_rust_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(

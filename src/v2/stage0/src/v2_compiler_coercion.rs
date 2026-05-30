@@ -154,10 +154,6 @@ pub fn lookup_atom_realization(
     .cloned()
 }
 
-pub fn apply_atom_value_ctor_template(template: String, ident: String) -> String {
-    v2_rt::replace(template, "{ident}".to_string(), ident)
-}
-
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
     match lookup_atom_realization(target.clone(), dag_name.clone()) {
         Some(row) => row.type_form.clone(),
