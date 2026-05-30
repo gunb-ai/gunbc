@@ -5,7 +5,7 @@
 
 module v4.std.grammar
 
-import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Cons, Empty, fold, fold_list, list_append, list_snoc_item }
 import v4.std.collection {
   List,
   Optional,
@@ -493,10 +493,10 @@ fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) ->
 fn conj_positional_children(parent: Node) -> List<Node> {
   match parent.kind {
     TypeNode { connective: Conj } =>
-      fold_list(
-        xs: parent.children,
-        empty: Empty,
-        cons: fn(acc, edge) {
+      fold(
+        parent.children,
+        init: Empty,
+        f: fn(acc, edge) {
           match edge.label {
             Positional => list_snoc_item(xs: acc, item: edge.target)
             Named { name: _ } => acc
@@ -549,7 +549,7 @@ fn formal_production_rhs_singleton_terminal_identity(production: FormalProductio
           match symbol {
             FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
               match binding {
-                Absent => Present { value: terminal.identity }
+                Absent => Some { value: terminal.identity }
                 Present { value: _ } => None
               }
             FormalNonterminalOccurrence { nonterminal: _ } => None
@@ -569,7 +569,7 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
           match symbol {
             FormalTerminalOccurrence { terminal: _, binding: binding } =>
               match binding {
-                Present { value: b } => Present { value: b }
+                Present { value: b } => Some { value: b }
                 Absent => None
               }
             FormalNonterminalOccurrence { nonterminal: _ } => None
@@ -583,7 +583,7 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
 
 fn node_atom_identity_optional(node: Node) -> Symbol? {
   match node.kind {
-    TypeNode { connective: Atom { identity: id } } => Present { value: id }
+    TypeNode { connective: Atom { identity: id } } => Some { value: id }
     _ => None
   }
 }
@@ -594,12 +594,12 @@ fn formal_production_matches_emitted_child(
   child: Node
 ) -> Bool {
   match node_atom_identity_optional(node: child) {
-    Present { value: atom_id } =>
+    Some { value: atom_id } =>
       match formal_production_rhs_singleton_terminal_identity(production: production) {
-        Present { value: terminal_id } => atom_id == terminal_id
+        Some { value: terminal_id } => atom_id == terminal_id
         None =>
           match formal_production_rhs_singleton_binding(production: production) {
-            Present { value: binding } => atom_id == binding
+            Some { value: binding } => atom_id == binding
             None => false
           }
       }
