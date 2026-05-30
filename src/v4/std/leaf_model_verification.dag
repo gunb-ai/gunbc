@@ -35,7 +35,8 @@ type TargetArtifact {
   source_text: String
 }
 
-// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up.
+// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
+// dissolve-on: TargetToolchain/TargetEditionProfile coproducts replace toolchain/edition_or_profile Symbol fields; forbidden: parallel invocation vocab outside this carrier.
 type TargetInvocation {
   toolchain: Symbol
   edition_or_profile: Symbol
