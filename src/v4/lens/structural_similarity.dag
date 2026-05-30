@@ -8,7 +8,7 @@
 
 module v4.lens.structural_similarity
 
-import v4.std.collection { List, Map, empty_map }
+import v4.std.collection { List, Map }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 
