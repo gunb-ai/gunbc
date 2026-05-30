@@ -339,6 +339,17 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
         );
     }
     assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::Data { name, .. } if name == "nat_semiring_rung34_runtime_value_rows"
+        )),
+        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: runtime roster carrier"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG34_EVAL_DAG.contains("run_phase1_nat_semiring_rung3_module_roundtrip"),
+        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: W3 roster imports rung-3 row"
+    );
+    assert!(
         NAT_SEMIRING_RUNG34_EVAL_DAG.contains("run_phase1_nat_semiring_rung4_rust_emit_equals_eval"),
         "{NAT_SEMIRING_RUNG34_EVAL_PATH}: W3 roster imports rung-4 row"
     );

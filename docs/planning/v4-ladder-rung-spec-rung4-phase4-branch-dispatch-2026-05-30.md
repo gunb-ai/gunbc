@@ -18,7 +18,7 @@
 | **Eval subject** | `branch_dispatch_subject` (`Branch` + two `Transform` arms) |
 | **Phase** | 4 widening |
 | **W2 target set** | `rust` only — python/go pre-allocated `SKIP` (rung-4 companion §2.1) |
-| **Closure carrier (modeled)** | **Not authored** — no `branch_dispatch_rung34_eval.dag` on `main` post-#4018 (W3 wedge; mirror `nat_semiring_rung34_eval.dag` pattern) |
+| **Closure carrier (modeled)** | **Not authored** — no `branch_dispatch_rung34_eval.dag` on `main` post-#4018 (fixture activation gap: modeled closure + runtime-value row roster; mirror `nat_semiring_rung34_eval.dag` pattern) |
 | **Closure carrier (host)** | Pending — extend phase4 host gate or add `scripts/v4-phase4-*-rung-gate.sh` follow-up |
 
 **Out-of-scope:** Rung 3 ( #4034 ). R5–R9. Leaf-model lane (orthogonal).
@@ -39,15 +39,23 @@
 | Blocking receipt prefix | `phase4/branch_dispatch/rung4/…` |
 | Phase 3 unallocated SKIP | `phase4/branch_dispatch/rung4/python_emit_host_unallocated_phase3` (and `go_…`) |
 
-**Prerequisite SKIP receipts (companion §2.3 — two states, one headline):**
+**Prerequisite SKIP receipts (companion §2.3):**
 
-| Prerequisite not met | Per-cell `SKIP` receipt | When it applies |
-| -------------------- | ----------------------- | --------------- |
-| `run_emit_host_rust` transport not landed | `upstream_blocked:emit_host_transport_not_wired` | **Current main** — lowest unresolved upstream; **headline** blocking receipt for §3 matrix |
-| `branch_dispatch_rung34_runtime_value_rows` empty (W3 roster wedge) | `upstream_blocked:branch_dispatch_rung34_runtime_value_rows_empty` | After transport lands but emit-vs-eval row not yet populated |
-| `R2-rust-compile` not `PASS` | `upstream_blocked:R2-rust-compile` | Rung 2 rust cell not `PASS` |
+| Prerequisite not met | Per-cell `SKIP` receipt |
+| -------------------- | ----------------------- |
+| `run_emit_host_rust` transport not landed | `upstream_blocked:emit_host_transport_not_wired` |
+| `R2-rust-compile` not `PASS` | `upstream_blocked:R2-rust-compile` |
+| `branch_dispatch_rung34_runtime_value_rows` empty | `upstream_blocked:branch_dispatch_rung34_runtime_value_rows_empty` |
 
-**Headline rule (companion §2.4):** use the **lowest** unmet prerequisite in the table above. On post-#4018 `main`, that is always `upstream_blocked:emit_host_transport_not_wired` — not `…_rows_empty`, until transport is dissolved.
+**Headline ordering (companion §2.4 — rung-4 execution infrastructure before fixture row population):**
+
+1. If the rung-4 host transport entrypoint cannot run at all, headline: `upstream_blocked:emit_host_transport_not_wired`.
+2. Once transport exists, if `R2-rust-compile` is not `PASS`, headline: `upstream_blocked:R2-rust-compile`.
+3. Once transport exists and `R2-rust-compile` is `PASS`, if runtime-value rows are empty, headline: `upstream_blocked:branch_dispatch_rung34_runtime_value_rows_empty`.
+
+On post-#4018 `main`, step 1 is the first blocker (transport not landed). Rung 0–2 substrate roster rows are authored predicates, not executed host verdicts for this headline chain.
+
+**Phase 4 scope note:** This spec binds the fixture to rung 4 only. It does **not** claim Phase 4 widening is complete — Phase 4 still requires rungs 0–6 across the fixture set; rungs 7–9 remain open by design.
 
 ---
 
@@ -59,18 +67,23 @@ fixture=phase4/branch_dispatch
 blocking_receipt: upstream_blocked:emit_host_transport_not_wired
 ```
 
-Independent of rung 3 row on this fixture (rung-4 companion §2.4).
+**Blocked aggregate:** aggregate `FAIL` means the fixture rung is not yet proven; all per-target cells are `SKIP` because prerequisites are blocked — not because emit/eval was attempted and failed.
+
+Independent of the rung 3 row on this fixture (rung-4 companion §2.4).
 
 ---
 
-## 4. Worker brief triple
+## 4. Worker brief
 
 ```text
 fixture=phase4/branch_dispatch
 rung=4
-modeling_gap=none (W3 roster + transport) | SG-class only with Modeling DFS worksheet
+modeling_gap=none for Branch fixture shape
+execution_gap=emit_host_transport + branch_dispatch runtime-value row roster
 predicate=R4-rust-emit-equals-eval expected to flip SKIP → PASS|FAIL
 ```
+
+Do not dispatch an SG/modeling worker from this doc. Dispatch runner/roster work when upstream transport exists. SG-class work only with Modeling DFS worksheet.
 
 ---
 
@@ -78,8 +91,8 @@ predicate=R4-rust-emit-equals-eval expected to flip SKIP → PASS|FAIL
 
 | Field | Value |
 | ----- | ----- |
-| `branch_dispatch_rung34_eval` module | **Absent** — W3 follow-up |
-| Expected rung 4 | `FAIL` (all cells `SKIP`); headline `upstream_blocked:emit_host_transport_not_wired` |
+| `branch_dispatch_rung34_eval` module | **Absent** — fixture activation follow-up |
+| Expected rung 4 | `FAIL` blocked aggregate (all cells `SKIP`); headline `upstream_blocked:emit_host_transport_not_wired` |
 
 ---
 
