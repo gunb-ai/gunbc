@@ -252,6 +252,17 @@ jobs:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_CARGO_CHECK_JOBS: "4"
       run: bash scripts/v4-m1-rust-emit-probe.sh
+    # Phase 1 rung gate setup: provision Go on the self-hosted runner. The gate
+    # invokes `go build` for R0-go-parse / R2-go-compile; without this step the
+    # script's host-toolchain guard would fail-closed with
+    # phase1/nat_semiring/setup/host_toolchain_missing (setup gap, not fixture
+    # gap). Python3 is pre-installed on srv1/srv2. setup-go@v5 is cached.
+    - name: Setup Go (phase1/nat_semiring rung gate prerequisite)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      uses: actions/setup-go@v5
+      with:
+        go-version: 'stable'
+        cache: false
     # Phase 1 rung gate: fixture-scoped emit + rustc/py_compile/go build over
     # src/v4/test/claim/algebra_laws/nat_semiring.dag. Modeled authority:
     # src/v4/workflow/ci.dag `phase1_nat_semiring_rung_gate_signal` +
