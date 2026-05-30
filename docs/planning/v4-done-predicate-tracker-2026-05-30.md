@@ -95,7 +95,7 @@
 
 - `src/v4/workflow/bootstrap.dag:3` — `bootstrap-content-hash-pins` still `🟡`; placeholder `Hash` aliases until T-15 B1 operands land.
 - `src/v4/compiler/self_host.dag:3-4` — runner `scaffold-against-contract`; `self_host_runner_not_realized` at `:67-77`, `:148`.
-- Open emit-error program: PR #3938 §10.1 SG-1 (~2978 E0423 class) — **Target Realization** worker surface after DFS worksheet approval.
+- Open emit-error program: PR #3938 §10.1 SG-1 (~2978 E0423 class) — **Target Realization** worker surface; DFS worksheets approved (`v4-modeling-dfs-manager-pass-2026-05-30.md`); dispatch SG-2 before SG-1.
 
 ---
 
@@ -217,7 +217,7 @@ Predicate 6 ──► Self-host/Release + Close/Receipt
 | ------- | ---- | ---------------- |
 | `sharp-otter-407` | Close/Receipt | 1, 6; adjudicates this tracker |
 | `keen-crab-361` | Ladder/Fixture | 4–5 (rung 7–8 receipts) |
-| `proud-pike-680` | Modeling DFS | 2–3 (SG worksheets before Target Realization dispatch) |
+| `cool-ibex-692` | Modeling DFS | 2–3 (SG-1/2/5/6 worksheets approved 2026-05-30; see `v4-modeling-dfs-manager-pass-2026-05-30.md`) |
 | `smart-stag-871` | Compiler Spine | 2–4 |
 | `keen-heron-687` | Target Realization | 2–3 |
 | *(pending)* | Runtime/TestClaim | 5; T-36 eval |
@@ -250,5 +250,5 @@ Claims checked against tree at `e332fc27b`:
 ## What this doc is NOT
 
 - Not a TASKS.md amendment and not a predicate narrowing.
-- Not a worker brief — dispatch waits on DFS worksheet approval per PR #3938 §11.4.
+- Not a worker brief — SG-1/2/5/6 worksheets approved per `docs/planning/v4-modeling-dfs-manager-pass-2026-05-30.md`; Target Realization dispatches per dispatch order there.
 - Not a substitute for `docs/audit/v4-close-interrogation-validation-2026-05-30.md` (346-probe ledger stays with Close/Receipt).
