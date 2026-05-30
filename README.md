@@ -61,15 +61,34 @@ cargo test -p v2-compiler-tests             # compiler tests
 cargo clippy --all-targets -- -D warnings   # lint
 ```
 
-## gunbc: v2 and v4
+## Compiler status (v2, v3, v4)
 
-| | v2 (`src/v2/`) | v4 (`src/v4/`) |
-|---|----------------|----------------|
-| Role | Production self-hosted compiler | Next substrate + pipeline |
-| Maturity | Emit to Rust/Python/Go; large test suite | Model depth in `std/` and `extdeps/`; compiler stages compile `.dag` |
-| Source | `.dag` + small Rust `stage0` bootstrap | `.dag` only in the compiler tree (bootstrap shrinking) |
+The tree holds three compiler generations. **Quick Start above runs v2 today.** Active
+work is in v4. v3 is frozen reference material, not a supported path.
 
-**v4 status (honest):** the v4 compiler pipeline compiles and type-checks `.dag` over `src/v4` in CI. Multi-target emission and execute-verified `TestClaim` runners are in progress. See [ROADMAP.md](ROADMAP.md) for milestone shape.
+| | **v2** | **v3** | **v4** |
+|---|--------|--------|--------|
+| Path | [`src/v2/`](src/v2/) | [`src/v3/`](src/v3/) | [`src/v4/`](src/v4/) |
+| Role | Production compiler (`gunbc` CLI) | Frozen predecessor | Next substrate + pipeline |
+| Source | `.dag` pipelines + shrinking Rust `stage0` | Large `.dag` + Rust tree (prior generation) | `.dag` in the compiler tree; bootstrap seed shrinking |
+| What works today | Parse, infer, emit to Rust/Python/Go; large test suite | Reference only — not extended or shipped | `std/` / `extdeps/` model depth; pipeline `.dag` structurally compiles in CI |
+
+**v2 — shipping.** Self-hosted from `.dag` (tokenize through emit, plus complexity and
+ownership). Use `gunbc` with `dsl/std/` and `dsl/extdeps/` for your programs. The weather
+demo is v2 end-to-end.
+
+**v3 — frozen.** v3 explored behaviors, lenses, and substrate reflection; the tree
+remains under `src/v3/` for study and regression context. New modeling and compiler work
+live in v4 only. The language surface in [`docs/v3-spec.md`](docs/v3-spec.md) still
+informs v4.
+
+**v4 — in progress (honest).** v4 combines a typed Node + Behavior substrate with a
+full pipeline (tokenize → parse → resolve → infer → emit → translate). In CI, v2
+`gunbc` compiles and type-checks all of `src/v4` with zero diagnostics. Runnable v4
+stage0, full multi-target emission, execute-verified structural tests, and the self-host
+fixed point are still landing — **v2 remains the reference for end-to-end emit until v4
+closes that loop.** See [ROADMAP.md](ROADMAP.md) and
+[docs/v4-compilation-milestones.md](docs/v4-compilation-milestones.md).
 
 ## What gunbc proves
 
@@ -108,6 +127,8 @@ src/v2/             gunbc compiler (.dag source, shipping)
   05_emit.dag         Emission (shared + per-target)
   complexity.dag      Termination proofs
   ownership.dag       Ownership analysis
+
+src/v3/             Frozen predecessor (reference; not shipped)
 
 src/v4/             Next compiler generation (in progress)
   std/                Substrate vocabulary
