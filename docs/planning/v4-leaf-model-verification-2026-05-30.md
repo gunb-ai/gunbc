@@ -142,11 +142,21 @@ Operator framing: *"I suspect they are the highest value / hard value targets."*
 - **Expected verdict**: PROVEN if rustc compiles clean.
 - **Falsification probe**: emit `pub fn r1_test() -> i32 { "string" }`; verify rustc rejects with E0308 type mismatch. If rustc accepts, model is wrong about i32's value space.
 
-**Claim R2**: rust.dag declares `i32 inhabits OrderedRing<Int32>` (per algebra inhabitance).
-- **Fixture**: emit Rust source that uses i32 with comparison + addition: `pub fn r2_test(a: i32, b: i32) -> bool { (a + b) < a }`.
-- **Target exercise**: rustc compile + run with `r2_test(-1, -1)` expected to return `true`.
-- **Expected verdict**: PROVEN if compile + runtime behavior matches OrderedRing<Int32> semantics.
-- **Falsification probe**: emit code that depends on i32 inhabiting some other algebra (e.g., a Boolean lattice); verify rustc rejects OR the runtime behavior diverges.
+**Claim R2** (split per operator review 2026-05-30 — algebra-inhabitance vs operation-support are distinct facts):
+
+**R2a**: rust.dag declares Rust `i32` supports the operations required by the claimed algebra (add, mul, negate, compare).
+- **Fixture**: emit Rust source exercising the operations: `pub fn r2a_test(a: i32, b: i32) -> (i32, bool) { (a + b, a < b) }`.
+- **Target exercise**: rustc compiles clean.
+- **Expected verdict**: PROVEN if compile + the operations exist on i32.
+- **Falsification probe**: claim a non-existent operation (e.g., `i32::log2_exact`); verify rustc rejects with method-not-found.
+
+**R2b**: rust.dag models Rust `i32`'s bounded/overflow semantics correctly. Critical: fixed-width `i32` is NOT a mathematical ring under all runtime modes — overflow behavior differs between debug (panic) and release (wrapping). So if the model claims `i32 inhabits OrderedRing<Int32>`, that's only true under a specific overflow story.
+- **Fixture A** (debug): exercise overflow `i32::MAX + 1`; expect runtime panic in debug builds.
+- **Fixture B** (release): same; expect wrapping behavior in release builds.
+- **Expected verdict**: PROVEN if the model declares which overflow mode it assumes AND the actual behavior matches. If the model says "Rust i32 inhabits OrderedRing" without qualifying overflow, R2b should FALSIFY — surfacing that the model needs to choose between `WrappingRing<Int32>` / `CheckedRing<Int32>` / `OrderedRing<Int32>` (the last only under explicit overflow-rejected modeling).
+- **Falsification probe**: claim `i32` is unbounded `OrderedRing<Int>` (no width refinement); verify the model's prediction diverges from rustc's actual `i32::MAX` behavior.
+
+This R2 split exists specifically because subtle modeling questions like "what algebra does a fixed-width integer actually inhabit?" should surface in leaf-model verification — not after emit goes through and silently produces wrong code in some overflow regime.
 
 **Claim R3**: rust.dag declares Symbol projects to `String` in Rust (per the SG-1 worksheet's tentative target realization).
 - **Fixture**: emit `pub fn r3_test() -> /* Symbol */ String { "loop_bound_edge".to_string() }`.
@@ -205,7 +215,9 @@ Then:
 
 **Does NOT need a new manager lane** — fits within existing §11 architecture from PR #3938.
 
-**Critical DFS gate (Modeling DFS):** the claim authoring discipline needs a worksheet — what makes a claim "verifiable", what's the canonical claim shape (probably `LanguageModelClaim<Subject, ExpectedShape>` parameterized over the subject type and the target expectation), what's the falsification probe form. Worker briefs cannot dispatch until this worksheet is approved (same §10.0 rule from PR #3938).
+**Critical DFS gate (Modeling DFS):** the canonical claim carrier shape is defined in §5 (`LeafModelClaim<M, Subject, Expectation>` + `FalsificationCase<Subject, Expectation>` + `LeafModelFixture<C>` + `LeafModelVerificationReport<M>`). DFS worksheet must approve the carrier shape (no parallel vocabulary; consume existing `TestClaim` substrate) before workers touch Layer B fixture generators.
+
+**Verification-failure routing (operator-ratified 2026-05-30):** when a leaf-model verification fixture FALSIFIES (model claims X, target says ¬X), the failure routes to **Modeling DFS Manager first** — NOT directly to Target Realization or emit. The failure is a modeling-fact disagreement; the DFS worksheet decides whether (a) the model claim is wrong (revise leaf model), (b) the target-realization fact is wrong (revise target realization), or (c) the claim's expectation needs refinement (split per R2 pattern above). Routing to Target Realization or emit first would be the spot-fix trap at finer granularity.
 
 ---
 
