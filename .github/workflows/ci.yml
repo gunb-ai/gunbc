@@ -159,18 +159,30 @@ jobs:
       id: detect
       run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
   ci:
-    if: github.event.pull_request.draft != true
-    # `needs: discipline` is load-bearing: branch protection requires `ci` (per
-    # docs/admin/branch-protection-recommendation-2026-05-09.md), and the rust-free
-    # discipline gates moved out of this job's step list into the parallel
-    # `discipline` job. Without this dep, a failing discipline gate would leave
-    # `ci` green and merge would succeed — INVARIANTS P3 (fail-closed) violation,
-    # same shape as the PR #2441 gap. Adds ~15s to ci's start time (discipline
-    # finishes ~40s vs affected's ~25s); acceptable cost for preserving the gate.
+    # `always()` is load-bearing alongside `needs: [affected, discipline]`:
+    # plain `needs:` skips this job when a dep fails, and a skipped required
+    # check does not reliably block merge (GitHub required-checks doc). Branch
+    # protection requires `ci` (per docs/admin/branch-protection-recommendation-
+    # 2026-05-09.md), so this job is the fail-closed aggregator for both deps.
+    # The first step explicitly fails when either dep is non-success, mirroring
+    # the `self_host_ratchet` job's existing pattern. INVARIANTS P3 (fail-closed).
+    if: ${{ always() && github.event.pull_request.draft != true }}
     needs: [affected, discipline]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 40
     steps:
+    - name: Validate prerequisites (fail-closed under skipped/failed deps)
+      run: |
+        set -euo pipefail
+        if [[ "${{ needs.discipline.result }}" != "success" ]]; then
+          echo "::error::discipline job did not succeed (result=${{ needs.discipline.result }}); ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.affected.result }}" != "success" ]]; then
+          echo "::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed."
+          exit 1
+        fi
+        echo "deps OK: affected=success, discipline=success"
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
