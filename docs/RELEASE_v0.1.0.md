@@ -78,10 +78,17 @@ recommendation as the default until the project maintainer rules otherwise.
 
 - **GitHub plan migration:** DONE 2026-05-30, Enterprise → Teams (org).
   Post-migration CI smoke still to confirm.
-- **Distribution channels in scope:** Homebrew tap, `.deb`, and APT are
-  IN scope for v0.1.0 (the project maintainer reversed the earlier defer on
-  2026-05-30; `src/v4/install/install.dag` carries 🟡 markers for these as
-  active emission targets).
+- **Install paths at v0.1.0:** `curl install.sh` (if B1's PR #3992 lands
+  the `install.sh` resurrection) and/or build-from-source (always works).
+  **Homebrew, `.deb`, and APT do NOT ship at v0.1.0** — see "Long-term
+  distribution scope" below.
+- **Long-term distribution scope (v0.2.0+):** Homebrew Formula,
+  `deb-control`, and APT repo are modeled in `src/v4/install/install.dag`
+  with 🟡 markers (the project maintainer reversed the earlier defer on
+  2026-05-30, marking these as active emission intent). The actual
+  artifact content is **not yet emitted** — it ships in v0.2.0+ as the
+  `ShellStatic` / `Formula-Static` / `deb-control` / `apt-repo` lenses
+  actually land. Modeled ≠ shipped.
 - **Public website:** GitHub Pages from `gunb-ai/daglang`, served at
   <https://gunb.ai>. The `daglang` PR #1 (session `fierce-dove-549`) is
   ready; the visibility/Pages flip is a launch-day maintainer action.
