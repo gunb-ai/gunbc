@@ -118,9 +118,24 @@ Both lanes converge on `VerdictTally` (`pass`, `fail`, `deferred` counts). Close
 
 ## 3.1 Migration note (PR #3958 transitional shape)
 
-W2 worker PR [#3958](https://github.com/gunb-ai/gunbc/pull/3958) (`keen-raven-290`) shipped against the prior Draft B shape: `Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<S, T>> }`. That implementation was at full review criteria when codex flagged the dual-`actual` authority on this PR's `086d6a91`. Per operator manual-merge policy, the worker's branch may merge as-is — but the collapse to receipt-as-payload (this contract's §2.2) is the **target shape** and lands in a follow-up tightening PR. The follow-up touches `std/verdict.dag` + the `EXPECTED_HAND_AUTHORED_TEST` census row + any `Fail.actual` / `Fail.falsification` reads that need to walk through `receipt.actual` / `receipt` instead. Estimated diff: small (mechanical field rename plus removal of the `Option` wrap).
+W2 worker PR [#3958](https://github.com/gunb-ai/gunbc/pull/3958) (`keen-raven-290`) shipped against the prior Draft B shape: `Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<S, T>> }`. That implementation was at full review criteria when codex flagged the dual-`actual` authority on this PR's `086d6a91`. Per operator manual-merge policy, the worker's branch may merge as-is — but the collapse to receipt-as-payload (this contract's §2.2) is the **target shape** and lands in a follow-up tightening PR.
 
-There is **no live consumer** of `Fail.actual` or `Fail.falsification` outside the W2 substrate + tests, so the follow-up is bounded.
+**Live-consumer census (verified `main` HEAD, cursor 2026-05-30):** an earlier revision of this note understated the blast radius as "W2 substrate + tests only". That was wrong. `Fail { actual: … }` is pattern-matched in **8 files** across `src/v4/` — `grep -l 'Fail {' src/v4/ --include='*.dag'` returns:
+
+| File | Site count | Lane |
+| ---- | ---------- | ---- |
+| `src/v4/std/verdict.dag` | 3 | substrate (carrier + `verdict_combine` + `verdict_tally_add`) |
+| `src/v4/compiler/05_eval.dag` | 8+ | spine (eval pattern-matches, lines 1721–1817) |
+| `src/v4/workflow/ci.dag` | 3 | Phase 1a CI workflow (lines 1094, 1111, 1138) |
+| `src/v4/test/claim/workflow/pipeline_rejections.dag` | varies | tests |
+| `src/v4/test/claim/manual/diagnostic_assert_eval.dag` | varies | tests |
+| `src/v4/test/claim/manual/infer_ground_add_mvp.dag` | varies | tests |
+| `src/v4/test/claim/manual/dissolution_subsumption_reverification.dag` | varies | tests |
+| `src/v4/test/claim/generated/language_behavior_equivalence.dag` | varies | tests |
+
+**~36 total `Fail {` match sites.** The follow-up touches three substrate authors (`std/verdict.dag` for the carrier change, `05_eval.dag` for spine pattern-match updates, `workflow/ci.dag` for Phase 1a CI pattern-match updates) plus 5 test files plus the `EXPECTED_HAND_AUTHORED_TEST` census row. Bounded, but **not** "W2-only": the spine lane (`05_eval.dag`) and the Phase 1a CI lane (`ci.dag`) both consume the carrier and need synchronized edits. Coordination with Compiler Spine manager (`smart-stag-871`) before the follow-up PR opens is required.
+
+The change is still **mechanical** per site (rename `actual: actual` → `actual: receipt.actual` reads, replace `Fail { actual: x }` constructions with `Fail { receipt: build_receipt(x, …) }` helpers, drop the `Option`), but the count of touched files is wider than the earlier wording claimed. Treat the follow-up as a small multi-file PR, not a single-file change.
 
 ---
 
