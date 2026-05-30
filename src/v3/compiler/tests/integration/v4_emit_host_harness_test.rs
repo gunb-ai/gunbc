@@ -1,13 +1,14 @@
 //! **Layer:** integration
 //!
 //! Structural ratchet for W2 emit-host harness substrate (`emit_host.dag`, `host_run.dag`,
-//! `nat_semiring_rung34_eval.dag`, `tools/emit_host_runner`). Execution of full nat_semiring
-//! emit-vs-eval remains blocked on W1 round-trip + W3 claims; this test proves symbols and
-//! host-transport alignment only.
+//! `test_claim_falsification.dag`, `nat_semiring_rung34_eval.dag`, `tools/emit_host_runner`).
+//! Execution of full nat_semiring emit-vs-eval remains blocked on W1 round-trip + W3 claims.
 
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/extdeps/runtimes/emit_host.dag");
 const HOST_RUN_DAG: &str = include_str!("../../../../v4/std/host_run.dag");
+const FALSIFICATION_DAG: &str = include_str!("../../../../v4/std/test_claim_falsification.dag");
 const VERDICT_DAG: &str = include_str!("../../../../v4/std/verdict.dag");
+const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const NAT_RUNG34_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung34_eval.dag");
 
@@ -17,7 +18,6 @@ fn v4_host_run_carriers_present() {
         "type EmitHostRunReceipt",
         "type HostExit",
         "type ByteString",
-        "type FalsificationReceipt",
         "type ValueDiff",
     ] {
         assert!(
@@ -28,11 +28,36 @@ fn v4_host_run_carriers_present() {
 }
 
 #[test]
-fn v4_verdict_fail_carries_optional_falsification() {
+fn v4_falsification_contract_present() {
+    for needle in [
+        "type FalsificationReceipt",
+        "type ExecutionEvidence",
+        "type InterpreterTrace",
+        "subject: TestClaimEvalSubject",
+        "evidence: ExecutionEvidence",
+        "Host { receipt: EmitHostRunReceipt }",
+        "Interpreter { trace: InterpreterTrace }",
+        "EvidenceNone",
+    ] {
+        assert!(
+            FALSIFICATION_DAG.contains(needle),
+            "test_claim_falsification.dag missing {needle}"
+        );
+    }
+}
+
+#[test]
+fn v4_verdict_s_t_parameter_and_fail_falsification() {
     assert!(
-        VERDICT_DAG.contains("falsification: Optional<FalsificationReceipt<T>>")
+        VERDICT_DAG.contains("type Verdict<S, T>")
+            && VERDICT_DAG.contains("falsification: Optional<FalsificationReceipt<S, T>>")
+            && VERDICT_DAG.contains("fn verdict_combine<S, T>")
             && VERDICT_DAG.contains("fn verdict_fail"),
-        "verdict.dag must extend Fail with optional FalsificationReceipt"
+        "verdict.dag must use Verdict<S, T> with parameterized falsification"
+    );
+    assert!(
+        EVAL_DAG.contains("verdict: Verdict<S, A>"),
+        "TestClaimRun.verdict must widen to Verdict<S, A>"
     );
 }
 
@@ -44,7 +69,7 @@ fn v4_emit_host_harness_surface_present() {
         "fn run_emit_host",
         "fn run_emit_host_rust",
         "fn run_test_claim_emit_vs_eval",
-        "import v4.std.host_run",
+        "evidence: Host { receipt: host_receipt }",
         "stdout_bytes: ByteString",
     ] {
         assert!(
