@@ -1718,35 +1718,46 @@ fn eval_round_trip_claim_input_for_verdict(input: Node) -> Outcome<Node> {
 // Wave-1 readiness receipt: Pass requires admitted input plus dag_round_trip_wave1_authorities_ready
 // re-derived from dag.dag (P2); does not compare actual to embedded ready atoms in input.
 // Emit→ingest fidelity is W1b / T-36 follow-up, not this verdict.
-fn run_test_claim_round_trip_verdict(actual: Outcome<Node>, at: Node) -> Verdict<Node> {
+fn run_test_claim_round_trip_verdict(
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   match actual {
-    Rejected { diagnostics: _ } => Fail { actual: actual }
+    Rejected { diagnostics: _ } => verdict_fail(actual: actual)
     Accepted { value: _, diagnostics: _ } =>
       if dag_round_trip_wave1_authorities_ready() {
         Pass
       } else {
-        Fail {
+        verdict_fail(
           actual: outcome_rejected(
             d: eval_diagnostic(reason: eval_rejected_roundtrip_precondition, node: at)
           )
-        }
+        )
       }
   }
 }
 
 
-fn run_test_claim_round_trip_verdict_runtime(actual: Outcome<Node>, at: Node) -> Verdict<RuntimeValue> {
+fn run_test_claim_round_trip_verdict_runtime(
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match actual {
-    Rejected { diagnostics: d } => Fail { actual: Rejected { diagnostics: d } }
+    Rejected { diagnostics: _ } =>
+      verdict_fail(
+        actual: outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_invalid_node, node: at)
+        )
+      )
     Accepted { value: _, diagnostics: _ } =>
       if dag_round_trip_wave1_authorities_ready() {
         Pass
       } else {
-        Fail {
+        verdict_fail(
           actual: outcome_rejected(
             d: eval_diagnostic(reason: eval_rejected_roundtrip_precondition, node: at)
           )
-        }
+        )
       }
   }
 }
