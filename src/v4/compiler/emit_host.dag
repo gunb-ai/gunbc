@@ -20,7 +20,7 @@ import v4.compiler.eval {
   test_claim_cache_receipt_node
 }
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.collection { List, Optional, Absent, Present }
+import v4.std.collection { List, optional_present }
 import v4.std.diagnostic {
   Diagnostic,
   Outcome,
@@ -37,6 +37,7 @@ import v4.std.host_run {
   ByteString,
   EmitHostRunReceipt,
   HostExit,
+  HostLogicalRun,
   HostRunStdout,
   ValueDiff,
   host_logical_run_from_exit
@@ -219,7 +220,7 @@ fn run_test_claim_emit_vs_eval_verdict(
       } else {
         Fail {
           actual: Accepted { value: host_actual, diagnostics: None },
-          falsification: Present {
+          falsification: optional_present(
             value: FalsificationReceipt {
               subject: subject,
               expected: exp_val,
@@ -227,7 +228,7 @@ fn run_test_claim_emit_vs_eval_verdict(
               divergence: ValueDiff { expected: exp_val, actual: host_actual },
               evidence: Host { receipt: host_receipt }
             }
-          }
+          )
         }
       }
     _ =>
@@ -259,7 +260,10 @@ fn run_test_claim_emit_vs_eval_for_claim(
       ) {
         Accepted { value: host_receipt, diagnostics: _ } =>
           match host_receipt.logical_run {
-            Accepted { value: Holds { value: stdout }, diagnostics: None } =>
+            Accepted {
+              value: HostLogicalRun { proof: Holds { value: stdout } },
+              diagnostics: None
+            } =>
               match runtime_value_parse(target: target, stdout: stdout) {
                 Accepted { value: host_actual, diagnostics: _ } =>
                   run_test_claim_emit_vs_eval_verdict(

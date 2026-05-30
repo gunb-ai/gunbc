@@ -39,7 +39,10 @@ type HostRunStdout {
   bytes: ByteString
 }
 
-type HostLogicalRun = Witness<HostRunStdout>
+// Named carrier (not a type alias): v2 compile rejects `type X = Witness<…>` (see HostExit).
+type HostLogicalRun {
+  proof: Witness<HostRunStdout>
+}
 
 type EmitHostRunReceipt {
   target: TargetModel
@@ -54,7 +57,9 @@ fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: ByteString) -> Outco
   match exit.outcome {
     Accepted { value: Holds { value: _ }, diagnostics: None } =>
       Accepted {
-        value: Holds { value: HostRunStdout { bytes: stdout_bytes } },
+        value: HostLogicalRun {
+          proof: Holds { value: HostRunStdout { bytes: stdout_bytes } }
+        },
         diagnostics: None
       }
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
