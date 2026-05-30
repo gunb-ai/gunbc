@@ -1481,10 +1481,10 @@ fn ci_job_step_ids_shadow(jobs: List<CiJob>) -> List<CiStepId> {
   fold_list(
     xs: jobs,
     empty: Empty,
-    cons: fn(acc, job) {
+    cons: fn(acc, j) {
       list_snoc_item(
         xs: acc,
-        item: JobStep { job: job.id, step: job.id }
+        item: JobStep { job: j.id, step: j.id }
       )
     }
   )
@@ -1495,10 +1495,10 @@ fn ci_pipeline_step_ids_shadow(p: CiPipeline) -> List<CiStepId> {
   fold(
     p.gates,
     init: ci_job_step_ids_shadow(jobs: p.jobs),
-    f: fn(acc, gate) {
+    f: fn(acc, g) {
       list_snoc_item(
         xs: acc,
-        item: GateStep { job: gate.job, gate: gate.id }
+        item: GateStep { job: g.job, gate: g.id }
       )
     }
   )
@@ -1532,12 +1532,12 @@ fn ci_step_selection_shadow_rows(step_ids: List<CiStepId>) -> List<CiStepSelecti
 fn ci_selection_receipt_shadow_heartbeat(
   pr: ChangeSet,
   affected: AffectedSet,
-  pipeline: CiPipeline
+  pipe: CiPipeline
 ) -> CiSelectionReceipt {
   CiSelectionReceipt {
     pr: pr,
     affected: affected,
-    decisions: ci_step_selection_shadow_rows(step_ids: ci_pipeline_step_ids_shadow(p: pipeline))
+    decisions: ci_step_selection_shadow_rows(step_ids: ci_pipeline_step_ids_shadow(p: pipe))
   }
 }
 
@@ -1564,8 +1564,8 @@ fn ci_step_selections_step_ids(decisions: List<CiStepSelection>) -> List<CiStepI
   fold_list(
     xs: decisions,
     empty: Empty,
-    cons: fn(acc, row) {
-      list_snoc_item(xs: acc, item: row.step_id)
+    cons: fn(acc, decision) {
+      list_snoc_item(xs: acc, item: decision.step_id)
     }
   )
 }
@@ -1609,11 +1609,11 @@ data ci_selection_receipt_shadow_fail_closed_affected: AffectedSet = AffectedSet
 
 // Shadow heartbeat data — NOT evidence that affected-set dependency selection works.
 data ci_selection_receipt_shadow_heartbeat_mode: CiSelectionReceipt = match ci_pipeline {
-  Accepted { value: pipeline, diagnostics: _ } =>
+  Accepted { value: pl, diagnostics: _ } =>
     ci_selection_receipt_shadow_heartbeat(
       pr: ci_selection_receipt_shadow_empty_pr,
       affected: ci_selection_receipt_shadow_fail_closed_affected,
-      pipeline: pipeline
+      pipeline: pl
     )
   Rejected { diagnostics: _ } =>
     ci_selection_receipt_shadow_heartbeat(
