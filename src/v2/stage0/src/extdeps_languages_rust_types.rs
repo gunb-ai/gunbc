@@ -3,7 +3,11 @@
 
 use self::OwnershipKind::*;
 use self::SmartPointerKind::*;
-pub use crate::std_coercion::{CallableRepr, CastRule, CastSyntax, InhabitantDecl, TypeCheckpoint};
+use crate::std_coercion::TargetAtomTypeDeclKind::*;
+pub use crate::std_coercion::{
+    CallableRepr, CastRule, CastSyntax, InhabitantDecl, TargetAtomRealization,
+    TargetAtomTypeDeclKind, TypeCheckpoint,
+};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -11,10 +15,46 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn rust_atom_realizations() -> Rc<Vec<Rc<TargetAtomRealization>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<TargetAtomRealization>>> = {
+                Rc::new(vec![Rc::new(TargetAtomRealization {
+        dag_name: "Symbol".to_string(),
+        type_form: "Symbol".to_string(),
+        storage_type: "String".to_string(),
+        type_decl_kind: TargetAtomTypeDeclKind::NominalNewtype,
+        value_ctor_template: "Symbol(\"{ident}\".to_string())".to_string(),
+        default_expr: "Symbol(String::new())".to_string(),
+        is_copy: false,
+        literal_suffix: ".to_string()".to_string(),
+    }), Rc::new(TargetAtomRealization {
+        dag_name: "Bool".to_string(),
+        type_form: "bool".to_string(),
+        storage_type: "bool".to_string(),
+        type_decl_kind: TargetAtomTypeDeclKind::TransparentAlias,
+        value_ctor_template: None,
+        default_expr: "false".to_string(),
+        is_copy: true,
+        literal_suffix: None,
+    }), Rc::new(TargetAtomRealization {
+        dag_name: "Char".to_string(),
+        type_form: "char".to_string(),
+        storage_type: "char".to_string(),
+        type_decl_kind: TargetAtomTypeDeclKind::TransparentAlias,
+        value_ctor_template: None,
+        default_expr: "'\\0'".to_string(),
+        is_copy: true,
+        literal_suffix: None,
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<TargetAtomRealization>>>| c.clone())
+}
+
 pub fn rust_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "i64", "default_expr": "0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Float", "target_type": "f64", "default_expr": "0.0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": true, "literal_suffix": null}, {"dag_name": "Symbol", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Unit", "target_type": "()", "default_expr": "()", "is_copy": true, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Bytes", "target_type": "Vec<u8>", "default_expr": "Vec::new()", "is_copy": false, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Json", "target_type": "serde_json::Value", "default_expr": "serde_json::Value::Null", "is_copy": false, "literal_suffix": null}, {"dag_name": "Hash", "target_type": "v2_rt::Hash", "default_expr": null, "is_copy": false, "literal_suffix": ".to_string()"}]))
+            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "i64", "default_expr": "0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Float", "target_type": "f64", "default_expr": "0.0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "()", "default_expr": "()", "is_copy": true, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Bytes", "target_type": "Vec<u8>", "default_expr": "Vec::new()", "is_copy": false, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Json", "target_type": "serde_json::Value", "default_expr": "serde_json::Value::Null", "is_copy": false, "literal_suffix": null}, {"dag_name": "Hash", "target_type": "v2_rt::Hash", "default_expr": null, "is_copy": false, "literal_suffix": ".to_string()"}]))
                 .expect("valid data definition")
         };
     }

@@ -43,7 +43,10 @@ type TypeCheckpoint {
   literal_suffix: String?   // Rust String: ".to_string()" (&str → String ownership)
 }
 
+// PRACTICE 4 CHECKPOINT: 🟡 STAGED (docs/modeling-discipline.md §4 coproduct dissolution)
 // TargetAtomTypeDeclKind: how a kernel-ambient atom is declared in the target language.
+// Dissolution: nominal vs transparent lowering moves to declared type properties once
+// kernel-ambient atoms carry structural decl metadata (SG-1 bridge; owner: coercion lane).
 type TargetAtomTypeDeclKind
   = TransparentAlias
   | NominalNewtype
