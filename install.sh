@@ -15,6 +15,8 @@
 #   GUNBC_VERSION        tag (e.g. v0.1.0) or empty for latest release
 #   GUNBC_RELEASE_TARGETS_URL  override URL for release-target-triples.sh (default: same GH
 #                              Release tag/latest channel as the gunbc-{triple} binary)
+#   GUNBC_INSTALL_USE_LOCAL_TARGETS  if 1, allow ./scripts/ cwd fallback when piped via sh
+#                              (dev-only; default off so curl | sh uses release assets only)
 
 set -eu
 
@@ -27,29 +29,39 @@ load_release_target_authority() {
     return 0
   fi
   case "$(basename "${0:-}")" in
-    '' | sh | bash | dash | -sh) ;;
+    '' | sh | bash | dash | -sh)
+      # Piped install (`curl … | sh`): do not source cwd-local ./scripts — keeps target
+      # authority on the same GH Release channel as the binary (INVARIANTS P2/P3).
+      if [ "${GUNBC_INSTALL_USE_LOCAL_TARGETS:-}" = "1" ] \
+        && [ -f "./scripts/release-target-triples.sh" ]; then
+        # shellcheck source=scripts/release-target-triples.sh
+        . "./scripts/release-target-triples.sh"
+        GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+        return 0
+      fi
+      ;;
     *)
-    _install_dir=$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd || true)
-    if [ -n "$_install_dir" ] && [ -f "$_install_dir/scripts/release-target-triples.sh" ]; then
-      # shellcheck source=scripts/release-target-triples.sh
-      . "$_install_dir/scripts/release-target-triples.sh"
-      GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
-      return 0
-    fi
-    if [ -n "$_install_dir" ] && [ -f "$_install_dir/release-target-triples.sh" ]; then
-      # shellcheck source=release-target-triples.sh
-      . "$_install_dir/release-target-triples.sh"
-      GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
-      return 0
-    fi
-    ;;
+      _install_dir=$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd || true)
+      if [ -n "$_install_dir" ] && [ -f "$_install_dir/scripts/release-target-triples.sh" ]; then
+        # shellcheck source=scripts/release-target-triples.sh
+        . "$_install_dir/scripts/release-target-triples.sh"
+        GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+        return 0
+      fi
+      if [ -n "$_install_dir" ] && [ -f "$_install_dir/release-target-triples.sh" ]; then
+        # shellcheck source=release-target-triples.sh
+        . "$_install_dir/release-target-triples.sh"
+        GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+        return 0
+      fi
+      if [ -f "./scripts/release-target-triples.sh" ]; then
+        # shellcheck source=scripts/release-target-triples.sh
+        . "./scripts/release-target-triples.sh"
+        GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+        return 0
+      fi
+      ;;
   esac
-  if [ -f "./scripts/release-target-triples.sh" ]; then
-    # shellcheck source=scripts/release-target-triples.sh
-    . "./scripts/release-target-triples.sh"
-    GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
-    return 0
-  fi
   _authority=$(mktemp "${TMPDIR:-/tmp}/gunbc-release-targets.XXXXXX")
   trap 'rm -f "$_authority"' EXIT INT HUP TERM
   _targets_asset="release-target-triples.sh"

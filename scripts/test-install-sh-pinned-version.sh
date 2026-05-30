@@ -89,14 +89,18 @@ assert_log_lacks() {
 
 # Documented pin: variable on the shell side of the pipe (README). Use `cat` instead of
 # network curl so the smoke stays hermetic; env scoping matches `… | GUNBC_VERSION=… sh`.
+# From repo root: must download target authority from the tag channel, not cwd ./scripts/.
 run_install env -u GUNBC_VERSION sh -c 'cat ./install.sh | GUNBC_VERSION=v0.1.0 sh'
+assert_log_contains 'releases/download/v0.1.0/release-target-triples.sh'
 assert_log_contains 'releases/download/v0.1.0/gunbc-'
 assert_log_lacks 'releases/latest/download/gunbc-'
+assert_log_lacks 'releases/latest/download/release-target-triples.sh'
 
-# Direct invocation (install.sh header Usage).
+# Direct invocation (install.sh header Usage) may use checkout-local scripts (no targets curl).
 run_install env GUNBC_VERSION=v0.1.0 sh ./install.sh
 assert_log_contains 'releases/download/v0.1.0/gunbc-'
 assert_log_lacks 'releases/latest/download/gunbc-'
+assert_log_lacks 'release-target-triples.sh'
 
 # Latest when unset.
 run_install env -u GUNBC_VERSION sh ./install.sh
