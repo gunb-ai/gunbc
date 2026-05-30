@@ -43,6 +43,31 @@ import std.resources { Filesystem }
 import std.types { FilePath, Milliseconds }
 import std.filesystem { partition_entries, is_text_readable }
 
+// ── Upsert<T> type substrate skeleton (Phase 1.4a — v4-upsert-t-substrate-worksheet §1.1) ─
+// Generic Upsert owns verify/create/resolve phase shape. Domain-specific dependency
+// inputs belong on specializations such as CiUpsertStep<T> (Phase 1.5 — v4-ci-schema
+// worksheet §1.2), not on generic Upsert<T>.
+//
+// 🟡 gated — feature:upsert-phase-substrate — staged: T is a payload brand until
+// ResolveExpr<T> makes T load-bearing (E-P dedicated carriers).
+// Phase bodies are typed nodes/expressions, not Symbol strings (P2).
+// Dissolution: replace VerifyCheck/CreateAction/ResolveExpr Node aliases with dedicated
+// phase carriers; P1.4-PARSER (A1) uncomments generic pattern bodies below.
+//
+// Phase 1.5 may reference Upsert<T> after this lands; active CI step migration must
+// not rely on phase-body semantics until dedicated carriers or phase-class witnesses land.
+
+// 🟡 gated — feature:upsert-phase-substrate — dissolve-on-arrival: dedicated carriers.
+type VerifyCheck = Node
+type CreateAction = Node
+type ResolveExpr<T> = Node
+
+type Upsert<T> {
+  verify: VerifyCheck
+  create: CreateAction
+  resolve: ResolveExpr<T>
+}
+
 fn eq(a: String, b: String) -> Bool {
   a == b
 }
@@ -124,9 +149,9 @@ fn eq(a: String, b: String) -> Bool {
 // (with a resolve step) and content_upsert specializes (with
 // file_content_matches as the check and fs.write as the action).
 
-// ensure, upsert, content_upsert: commented out pending parser support
-// for generics on pattern declarations (pattern ensure<Check, Action>).
-// See ROADMAP.md "Desired Parser Features" for tracking.
+// ensure, upsert, content_upsert pattern bodies: commented pending P1.4-PARSER (A1)
+// — generic pattern declarations (pattern ensure<Check, Action>).
+// See ROADMAP.md "Desired Parser Features" and § Upsert<T> type substrate above.
 //
 // pattern ensure<Check, Action>(
 //   should_act: fn(Check.Output) -> Bool = c => !c.exists
@@ -156,13 +181,17 @@ fn eq(a: String, b: String) -> Bool {
 //   return { written: result.acted }
 // }
 
-// STRAY (2026-05-29 audit): does not implement verify-first — stub keeps
-// imports typechecking until pattern generics + resource `uses` land.
-// `written` is not authoritative; tools.bootstrap/readme must not rely on
-// real filesystem idempotency until this dissolves to pattern content_upsert.
-fn content_upsert(content: String, path: String) -> { written: Bool } {
-  let matches = content == ""
-  { written: !matches }
+// Named stub result — handwritten parser rejects anonymous `{ written: Bool }` in fn sig.
+type ContentUpsertStubResult { written: Bool }
+
+// 🟡 gated — feature:upsert-phase-substrate consumer:content_upsert — dissolve-on-arrival
+// (audit S1 docs/audit/upsert-pattern-compiler-stray-2026-05-29.md): replace fn with
+// commented `pattern content_upsert` when P1.4-PARSER (A1) + P1.4-RESOURCES (`uses fs:`)
+// land. Non-authoritative stub — tools.bootstrap/readme must not treat `written` as
+// real filesystem idempotency until the pattern body lands.
+fn content_upsert(content: String, path: String) -> ContentUpsertStubResult {
+  // Fail-closed stub: never report a real write (tools must not treat as idempotent I/O).
+  return { written: false }
 }
 
 // --- Transaction (begin -> body -> commit/rollback) --------------------

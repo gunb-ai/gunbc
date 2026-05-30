@@ -1117,6 +1117,14 @@ mod parse_stage4_prep {
     }
 
     #[test]
+    fn handwritten_parser_accepts_patterns_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/patterns.dag"),
+            "dsl/std/patterns.dag",
+        );
+    }
+
+    #[test]
     fn handwritten_parser_accepts_integer_dag() {
         parse_file(
             include_str!("../../../../dsl/std/integer.dag"),
