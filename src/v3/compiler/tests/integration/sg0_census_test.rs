@@ -403,6 +403,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolution: delete when modeled runner exercises
     // `src/v4/test/claim/language_model/rust_r1.dag` without this hand-Rust bridge.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r1_rustc_test.rs",
+    // Phase 1 leaf-model R2a/R2b(1–2)/R3-external (W1.7): boundary rustc for algebra inhabitance,
+    // overflow runtime behavior, Symbol projection; host runners v4-leaf-model-rust-r2{,a,b}-verify.sh
+    // and v4-leaf-model-rust-r3-external-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r2_r3_external_rustc_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
