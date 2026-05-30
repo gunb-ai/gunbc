@@ -34,7 +34,10 @@ fn run_nat_semiring_rung34_eval() -> CorpusEvalReport {
 
 // W2: empty roster must not read as closed (fail-closed until W3 populates rows).
 fn nat_semiring_rung34_report_has_evidence(report: CorpusEvalReport) -> Bool {
-  !is_empty(xs: report.entries)
+  match is_empty(xs: report.entries) {
+    true => false
+    false => true
+  }
 }
 
 // W3 backlog (§4.4): bodies are intentionally identical while the roster is empty.

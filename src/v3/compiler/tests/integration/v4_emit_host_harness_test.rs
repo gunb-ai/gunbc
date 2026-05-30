@@ -22,7 +22,7 @@
 //! W3/CI wiring); this test exercises the Rust transport the `.dag` row models, not substrate eval.
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceVariant, VariantPayload};
+use v3_compiler::parse_surface::{SurfaceItem, SurfaceVariant};
 use v3_compiler::tokenize_for_test;
 
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/compiler/emit_host.dag");
