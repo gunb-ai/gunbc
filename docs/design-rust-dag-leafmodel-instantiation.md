@@ -12,15 +12,28 @@
 
 ```dag
 type RustClaimSubject =
-  | RustPrimitiveTypeSubject       { primitive: RustPrimitive }
-  | RustAlgebraInhabitanceSubject  { algebra: AlgebraCarrier, on: RustPrimitive }
-  | RustAtomRealizationSubject     { atom: Node }              // Node-keyed, NOT spelling-keyed
-  | RustCollectionRealizationSubject { collection: Node }       // post-SG-5
-  | RustGrammarProductionSubject   { production: GrammarProduction }
-  | RustLexRuleSubject             { rule: LexRule }
+  | RustPrimitiveTypeSubject       { primitive: RustPrimitive }              // 🟢 firm
+  | RustAlgebraInhabitanceSubject  { algebra: AlgebraCarrier, on: RustPrimitive }  // 🟢 firm
+  | RustAtomRealizationSubject     { atom: Node }                             // 🟡 gated — see §1.1
+  | RustCollectionRealizationSubject { collection: Node }                     // 🟡 gated — see §1.1
+  | RustGrammarProductionSubject   { production: GrammarProduction }          // 🟡 gated — see §1.1
+  | RustLexRuleSubject             { rule: LexRule }                          // 🟡 gated — see §1.1
 ```
 
 **Closure rationale.** Open-extension coproducts in claim space are the heuristic-enum pattern operator rejected (memory `feedback_heuristics_recoverable_to_substrate`). New subject arms must enter via modeling escalation (Modeling DFS Mgr authority), not worker initiative — keeps the verification surface modelable end-to-end.
+
+### §1.1 Per-arm dispositions (modeling-discipline Practice 4)
+
+| Arm | Disposition | Rationale + dissolve-on-arrival trigger |
+| --- | ----------- | --------------------------------------- |
+| `RustPrimitiveTypeSubject` | 🟢 firm | Rust primitive type space is fixed by the Rust Reference (i8..i128, u8..u128, isize, usize, bool, char, str, unit, never, f32, f64). The set is enumerable, model-owned (rust.dag `rust_facts_*` records), and not expected to dissolve. No trigger. |
+| `RustAlgebraInhabitanceSubject` | 🟢 firm | Mirrors std/algebra carrier (OrderedRing, ApproximateField, BooleanAlgebra, ...) paired with a RustPrimitive. Both sides are firm; no trigger. |
+| `RustAtomRealizationSubject` | 🟡 gated | Dissolve-on-arrival: SG-1 (TargetAtomRealization) + SG-5 (TargetCollectionRealization) land per PR #3938 §10.1 / §10.3. Once those rows exist for the full atom/collection set (Symbol/Bool/Char + Set/Map/List/...), this arm transitions 🟢 firm. Currently 🟡 because the underlying realization carrier is partly PLANNED. |
+| `RustCollectionRealizationSubject` | 🟡 gated | Same as above — dissolves to 🟢 firm when SG-5 row set lands. |
+| `RustGrammarProductionSubject` | 🟡 gated | Dissolve-on-arrival: T-4.17 wave 2 grammar productions complete on main. Currently grammar block is wave-1+wave-2-partial. Transitions 🟢 firm when grammar is closed. |
+| `RustLexRuleSubject` | 🟡 gated | Dissolve-on-arrival: lex-rule block on main reaches Rust-Reference parity. Currently partial; transitions 🟢 firm when complete. |
+
+**No 🔴 arms.** A 🔴 (provisional / candidate-for-removal) arm would be one where the modeling decision to include is itself uncertain. All six arms above are structurally justified by existing rust.dag fact families; none are speculative.
 
 **Node-keyed atom/collection identity (TR-authority constraint).** `RustAtomRealizationSubject.atom` and `RustCollectionRealizationSubject.collection` are typed as `Node` (canonical source-node identity), NOT `Symbol` (raw spelling). If R3-internal becomes spelling-keyed, the falsification probe can spuriously succeed by string-matching what is not actually a single-authority change. This constraint is enforced by Modeling DFS in the generic `LeafModelClaim` shape and reflected here as the Subject-arm field type.
 
@@ -28,12 +41,14 @@ type RustClaimSubject =
 
 ```dag
 type RustClaimExpectation =
-  | RustcAcceptsExpectation              { invocation_form: TargetInvocation }
-  | RustcRejectsExpectation              { invocation_form: TargetInvocation, expected_error_code: Rustc_ErrorCode_Phase1 }
-  | RustRuntimeBehaviorExpectation       { invocation_form: TargetInvocation, expected_outcome: RuntimeOutcome }
-  | RustEmitProjectionEqualityExpectation { atom_realization_row: Node, type_emit_must_change: Bool, value_emit_must_change: Bool }
-  | RustGrammarRoundTripExpectation      { production: GrammarProduction }
+  | RustcAcceptsExpectation              { invocation_form: TargetInvocation }                                                       // 🟢 firm
+  | RustcRejectsExpectation              { invocation_form: TargetInvocation, expected_error_code: Rustc_ErrorCode_Phase1 }          // 🟡 gated — Phase-1 subset (see §2.1)
+  | RustRuntimeBehaviorExpectation       { invocation_form: TargetInvocation, expected_outcome: RuntimeOutcome }                     // 🟢 firm
+  | RustEmitProjectionEqualityExpectation { atom_realization_row: Node, type_emit_must_change: Bool, value_emit_must_change: Bool }  // 🟡 gated — exercisable post-SG-1 only
+  | RustGrammarRoundTripExpectation      { production: GrammarProduction }                                                           // 🟡 gated — T-36 round-trip on grammar production complete
 ```
+
+**Per-arm dispositions:** `RustcAcceptsExpectation` and `RustRuntimeBehaviorExpectation` are 🟢 firm (rustc invocation surface is stable; runtime outcomes use std/runtime.dag carrier). `RustcRejectsExpectation` is 🟡 because its `expected_error_code` field is the Phase-1 subset; dissolves 🟢 when full `RustcErrorCode` coproduct lands per §2.1. `RustEmitProjectionEqualityExpectation` is 🟡 — exercisable only after SG-1 lands the `TargetAtomRealization` row to mutate; dissolves 🟢 when SG-1 lands. `RustGrammarRoundTripExpectation` is 🟡 — dissolves 🟢 when T-36 round-trip on rust.dag grammar productions is complete.
 
 ### §2.1 Phase-1 closed rustc error-code subset
 
