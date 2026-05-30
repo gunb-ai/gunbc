@@ -719,19 +719,6 @@ fn ci_byte_limb_projection_node(limb: Int) -> Node {
 }
 
 
-<<<<<<< HEAD
-fn ci_int_offset_authority_projection_node(i: Int) -> Node {
-  if i < 0 {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(name: ci_projection_char_offset_neg_edge, target: ci_atom(sym: canonical_tag_scalar_int_neg)),
-        ci_named_edge(
-          name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_nonneg(i: 0 - i)
-        )
-      ]
-=======
 // P4 bounded peel — mirrors std/node `byte_offset_cache_digest_nonneg_bounded_authority` limb budget;
 // dissolves same-argument recursion on `i` alone (SG-7 / T-22 zero-diagnostic gate).
 fn ci_int_offset_authority_projection_bounded(i: Int, limbs_remaining: Int) -> Node {
@@ -756,17 +743,7 @@ fn ci_int_offset_authority_projection_bounded(i: Int, limbs_remaining: Int) -> N
           )
         ]
       }
->>>>>>> origin/main
     }
-  } else {
-    ci_int_offset_authority_projection_nonneg(i: i)
-  }
-}
-
-
-fn ci_int_offset_authority_projection_nonneg(i: Int) -> Node {
-  if i < 0 {
-    ci_int_offset_authority_projection_node(i: i)
   } else if i == 0 {
     ci_atom(sym: canonical_tag_scalar_int_zero)
   } else if i <= 255 {
@@ -781,14 +758,10 @@ fn ci_int_offset_authority_projection_nonneg(i: Int) -> Node {
         ),
         ci_named_edge(
           name: ci_projection_char_offset_authority_edge,
-<<<<<<< HEAD
-          target: ci_int_offset_authority_projection_nonneg(i: i / 256)
-=======
           target: ci_int_offset_authority_projection_bounded(
             i: i / 256,
             limbs_remaining: limbs_remaining - 1
           )
->>>>>>> origin/main
         ),
         ci_named_edge(
           name: ci_projection_char_offset_byte_edge,
