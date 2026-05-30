@@ -85,10 +85,10 @@ For M = rust.dag, the fact_id space at main HEAD comprises **all** Symbol-named 
 | `rust_coercion_field_*` | ~10 | rust.dag:354-364 | none in Phase 1 |
 | Grammar productions (T-4.17 wave 1+2) | ~varies | rust.dag grammar block | none in Phase 1 |
 | Lex rules | ~varies | rust.dag lex block | none in Phase 1 |
-| TargetAtomRealization rows (Symbol/Bool/Char) | 3 | rust.dag — **post SG-1** | R3-external + R3-internal (Symbol only) |
+| TargetAtomRealization rows (Symbol/Bool/Char) | 3 | rust.dag — **post SG-1** | R3 (Symbol only — fact_id `rust_atom_realization_symbol` covered by TWO LeafModelClaim rows: R3-external + R3-internal verification angles) |
 | TargetCollectionRealization rows (Set/…) | varies | rust.dag — **post SG-5** | none in Phase 1 |
 
-**Every fact_id above MUST be present in C(rust.dag) as a LeafModelClaim** — Phase 1 dispatches 5 fixtures across 4 claim IDs (R1, R2a, R2b, R3-external + R3-internal); the remaining ~85+ fact_ids enter C(rust.dag) as `LeafModelClaim` rows with `not_checked` verdict state until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
+**Every fact_id above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 4 fact_ids (`rust_primitive_i32`, `rust_algebra_ops_int32`, `rust_algebra_overflow_int32`, `rust_atom_realization_symbol`) with 5 LeafModelClaim rows total: R1 (1 row on `rust_primitive_i32`), R2a (1 row on `rust_algebra_ops_int32`), R2b (1 row on `rust_algebra_overflow_int32`), and TWO rows on `rust_atom_realization_symbol` — R3-external (rustc-accepts angle) and R3-internal (mutation-receipt angle). Per the 0d7a413c9 contract, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every fact_id has at least one claim," not "every fact_id has exactly one claim." The remaining ~85+ fact_ids enter C(rust.dag) with one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
 
 The 94 catalog sentinels (per the canonical-home spec §3) all land here. None are dropped; none are "implicit." This is the operator's framing made operational: every model fact has a verification obligation in C(M).
 
@@ -142,7 +142,7 @@ falsification:
 
 ### R3-external — Symbol projection to Rust shape accepted by rustc
 ```text
-fact_id:    rust_atom_realization_symbol_external
+fact_id:    rust_atom_realization_symbol    // shared with R3-internal — two verification angles on one fact
 subject:    RustAtomRealizationSubject { atom: <Symbol carrier Node> }
 expectation: RustcAcceptsExpectation { invocation_form: rustc(emitted-from-TargetAtomRealization-row) }
 falsification:
@@ -152,7 +152,7 @@ falsification:
 
 ### R3-internal — TargetAtomRealization row mutation receipt
 ```text
-fact_id:    rust_atom_realization_symbol_internal
+fact_id:    rust_atom_realization_symbol    // shared with R3-external — two verification angles on one fact
 subject:    RustAtomRealizationSubject { atom: <Symbol carrier Node> }
 expectation: RustEmitProjectionEqualityExpectation {
               atom_realization_row: <Symbol carrier Node>,
