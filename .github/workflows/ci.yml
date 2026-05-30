@@ -286,7 +286,7 @@ jobs:
         fi
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
-    - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
+    - name: T-22 TestClaim corpus structural bridge — manual .dag corpus
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: bash scripts/v4-testclaim-corpus-gate.sh
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as

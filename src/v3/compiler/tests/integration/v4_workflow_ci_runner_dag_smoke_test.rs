@@ -240,6 +240,11 @@ fn assert_ci_dag_rust_mirror_behavioral_parity() {
         assert_eq!(flags.v3, fixture.v3, "path `{}`: v3 flag", fixture.path);
         assert_eq!(flags.v4, fixture.v4, "path `{}`: v4 flag", fixture.path);
         assert_eq!(
+            flags.testclaim_corpus, fixture.testclaim_corpus,
+            "path `{}`: testclaim_corpus flag",
+            fixture.path
+        );
+        assert_eq!(
             flags.workflow_policy, fixture.workflow_policy,
             "path `{}`: workflow_policy flag",
             fixture.path
@@ -501,6 +506,7 @@ fn v4_workflow_ci_component_bucket_prefixes_align_rust_mirror() {
         "ci_changed_path_affects_v2",
         "ci_changed_path_affects_v3",
         "ci_changed_path_affects_v4",
+        "ci_changed_path_affects_testclaim_corpus",
     ] {
         assert_ci_dag_rust_bucket_parity(fn_name);
     }
@@ -618,6 +624,18 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),
         "{CI_YML_PATH}: M1 step must project modeled cargo-check job cap"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_testclaim_corpus_bridge_runs_for_claim_changes() {
+    let step_name = "T-22 TestClaim corpus structural bridge — manual .dag corpus";
+    let step = workflow_step_block(CI_YML, step_name);
+    assert!(
+        step.contains("needs.affected.outputs.v4 == 'true'")
+            && step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
+            && step.contains("needs.affected.outputs.workflow_policy == 'true'"),
+        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, and workflow-policy changes"
     );
 }
 

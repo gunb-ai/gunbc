@@ -127,11 +127,7 @@ fn main() -> ExitCode {
     );
     eprintln!(
         "testclaim_corpus (T-22 corpus bridge): {}",
-        if flags.testclaim_corpus {
-            "yes"
-        } else {
-            "no"
-        }
+        if flags.testclaim_corpus { "yes" } else { "no" }
     );
     eprintln!(
         "workflow_policy (Gate #103 surface): {}",
