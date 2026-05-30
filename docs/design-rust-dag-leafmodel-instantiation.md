@@ -270,7 +270,12 @@ For Phase-1 fixture economy: implement the two distinct-value sub-claims as live
 fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)
 subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
 expectation: RustRuntimeBehaviorExpectation {
-              invocation_form: rustc-then-run("[debug build] i32::MAX + 1"),
+              invocation_form: rustc-then-run(
+                source: "pub fn r2b_test(a: i32, b: i32) -> i32 { a + b }
+                         pub fn main() { let _ = r2b_test(i32::MAX, 1); }",
+                build_profile: debug,  // -C overflow-checks=on by default
+                runtime_inputs: [i32::MAX, 1]
+              ),
               expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic }
             }
 falsification (locus: expectation — pending §4.1 ExpectationVariant substrate):
@@ -283,18 +288,27 @@ falsification (locus: expectation — pending §4.1 ExpectationVariant substrate
 fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)
 subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
 expectation: RustRuntimeBehaviorExpectation {
-              invocation_form: rustc-then-run("[release build] i32::MAX + 1"),
+              invocation_form: rustc-then-run(
+                source: "pub fn r2b_test(a: i32, b: i32) -> i32 { a + b }
+                         pub fn main() { let _ = r2b_test(i32::MAX, 1); }",
+                build_profile: release,  // -C overflow-checks=off by default
+                runtime_inputs: [i32::MAX, 1]
+              ),
               expected_outcome: Wrap
             }
 falsification (locus: expectation):
   expectation_variant: RustRuntimeBehaviorExpectation { ..., expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic } }
   expected_failure_mode: observed actual outcome is Wrap (not Panic) under release
 
-// R2b sub-claim 3 of 4 — overflow_checks_enabled  (Phase 1: not_checked stub; same expected_outcome as debug-default)
-// R2b sub-claim 4 of 4 — overflow_checks_disabled (Phase 1: not_checked stub; same expected_outcome as release-default)
+// R2b sub-claim 3 of 4 — overflow_checks_enabled  (Phase 1: not_checked stub; see dissolution trigger below)
+// R2b sub-claim 4 of 4 — overflow_checks_disabled (Phase 1: not_checked stub; see dissolution trigger below)
 ```
 
-The 4-row R2b structure makes the OverflowDisposition coverage gap explicit: a wrong release-default fact in rust.dag now requires its dedicated row to be `PROVEN`, not just R2b-debug. The two `not_checked` stubs surface the overflow-checks-enabled/disabled fields as known verification debt even though their values are model-derived-from debug/release.
+**Runtime overflow (not compile-time literal) — per openai-pro finding 4.** The fixture source takes `a: i32, b: i32` as runtime parameters and computes `a + b` at runtime. The overflow is exercised by passing `(i32::MAX, 1)` as runtime inputs, NOT by a literal `i32::MAX + 1` expression — the latter triggers rustc's deny-by-default `arithmetic_overflow` lint at compile time, never reaching runtime to exercise the OverflowAction the claim is supposed to prove. The runtime-parameter form forces the addition into the value path where debug/release `-C overflow-checks` behavior actually applies.
+
+**Dissolution trigger for the two `not_checked` stubs — per openai-pro finding 6.** R2b sub-claims 3+4 stay `not_checked` until the **fixture runner supports explicit `-C overflow-checks=on` and `-C overflow-checks=off` build invocations independent of the debug/release profile** (today the Step 4 runner is planned to use debug/release profile defaults only; the explicit-flag invocation is a Step 4.x runner enhancement). Owner: Runtime/TestClaim Mgr (`quick-tern-735`). Lane: Step 4.x fixture-runner extension. Until that lands, sub-claims 3+4 are honest debt visible in `LeafModelVerificationReport<rust.dag>.totals.not_checked`. If the runner enhancement is descoped, sub-claims 3+4 are removed (NOT left at `not_checked` forever) — name the descope decision in the report, do not silently retain unfalsifiable stubs.
+
+The 4-row R2b structure makes the OverflowDisposition coverage gap explicit: a wrong release-default fact in rust.dag now requires its dedicated row to be `PROVEN`, not just R2b-debug. The two `not_checked` stubs surface the overflow-checks-enabled/disabled fields as known verification debt with named dissolution trigger and owner.
 
 ### R3-external — Symbol projection to Rust shape accepted by rustc
 ```text
