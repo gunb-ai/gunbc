@@ -1351,12 +1351,29 @@ fn target_collection_witness_from_node(node: Node) -> Outcome<RequiredTraitWitne
               bind_outcome(
                 o: node_atom_identity(node: param_node),
                 f: fn(type_param) {
-                  Accepted {
-                    value: RequiredTraitWitness {
-                      trait_name: trait_name,
-                      type_param: type_param
-                    },
-                    diagnostics: None
+                  if trait_name == target_collection_trait_ord {
+                    Accepted {
+                      value: TargetCollectionWitnessOrd { type_param: type_param },
+                      diagnostics: None
+                    }
+                  } else {
+                    if trait_name == target_collection_trait_hash {
+                      Accepted {
+                        value: TargetCollectionWitnessHash { type_param: type_param },
+                        diagnostics: None
+                      }
+                    } else {
+                      if trait_name == target_collection_trait_eq {
+                        Accepted {
+                          value: TargetCollectionWitnessEq { type_param: type_param },
+                          diagnostics: None
+                        }
+                      } else {
+                        outcome_rejected(
+                          translate_type_expression_shape_missing_diagnostic(node: node)
+                        )
+                      }
+                    }
                   }
                 }
               )
