@@ -234,7 +234,7 @@ pub fn run_post_emit_verifier(
         DEFAULT_WALL_TIMEOUT,
         bounded_host_command::prepare_host_command(command),
     )
-        .map_err(|err| VerifierRunError::InvocationFailed {
+    .map_err(|err| VerifierRunError::InvocationFailed {
         command: binding.command.clone(),
         io_error: err,
     })?;
