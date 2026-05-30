@@ -14,7 +14,7 @@ import v4.extdeps.languages.typescript {
   ts_relation_token_edges,
   ts_wave2a_task_formal_productions,
   ts_wave2a_task_type_alias_emitted,
-  ts_wave2a_task_type_alias_relation_row_node
+  ts_wave2a_task_type_alias_relation_row_witness
 }
 import v4.std.grammar {
   derive_grammar_relation_row,
@@ -24,6 +24,7 @@ import v4.std.grammar {
 }
 import v4.extdeps.languages.typescript { ts_production_wave2a_type_alias_decl }
 import v4.std.logic { Bool }
+import v4.std.witness { Holds, Violates, Witness }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, content_hash }
 import v4.std.verification {
   CompilesClaim,
@@ -73,25 +74,34 @@ fn ts_mvp1_grammar_relation_row_std_node() -> Node {
 
 // Receipt that derive_grammar_relation_row_node is declared and callable on MVP-1 formal row
 // (terminal-only rhs — no multi-LHS production list).
-data ts_mvp1_derive_row_node_receipt: Node = derive_grammar_relation_row_node(
+data ts_mvp1_derive_row_node_receipt: Witness<Node> = derive_grammar_relation_row_node(
   production: ts_formal_production_mvp1_fn_add(),
   productions: [ts_formal_production_mvp1_fn_add()],
   emitted: ts_mvp1_emitted_add_fn_node()
 )
 
 fn ts_wave2a_task_derive_row_round_trip_holds() -> Bool {
-  content_hash(n: ts_wave2a_task_type_alias_relation_row_node()) ==
-    content_hash(
-      n: derive_grammar_relation_row_node(
-        production: formal_production_for_lhs_exact(
-          productions: ts_wave2a_task_formal_productions(),
-          lhs: ts_production_wave2a_type_alias_decl,
-          child: ts_wave2a_task_type_alias_emitted()
-        ),
+  match (
+    ts_wave2a_task_type_alias_relation_row_witness(),
+    formal_production_for_lhs_exact(
+      productions: ts_wave2a_task_formal_productions(),
+      lhs: ts_production_wave2a_type_alias_decl,
+      child: ts_wave2a_task_type_alias_emitted()
+    )
+  ) {
+    (Holds { value: fixture_row }, Holds { value: production }) =>
+      match derive_grammar_relation_row_node(
+        production: production,
         productions: ts_wave2a_task_formal_productions(),
         emitted: ts_wave2a_task_type_alias_emitted()
-      )
-    )
+      ) {
+        Holds { value: derived_row } =>
+          content_hash(n: fixture_row) == content_hash(n: derived_row)
+        Violates { diagnostic: _ } => false
+      }
+    (_, Violates { diagnostic: _ }) => false
+    (Violates { diagnostic: _ }, _) => false
+  }
 }
 
 fn ts_derive_grammar_relation_row_round_trip_holds() -> Bool {
