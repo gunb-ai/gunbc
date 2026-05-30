@@ -154,6 +154,20 @@ pub fn lookup_atom_realization(
     .cloned()
 }
 
+pub fn atom_type_decl_is_nominal_newtype(kind: TargetAtomTypeDeclKind) -> bool {
+    match kind {
+        TargetAtomTypeDeclKind::NominalNewtype => true,
+        TargetAtomTypeDeclKind::TransparentAlias => false,
+    }
+}
+
+pub fn atom_realization_is_nominal_newtype(target: RenderTarget, dag_name: String) -> bool {
+    match lookup_atom_realization(target, dag_name) {
+        Some(row) => atom_type_decl_is_nominal_newtype(row.type_decl_kind.clone()),
+        None => false,
+    }
+}
+
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
     match lookup_atom_realization(target.clone(), dag_name.clone()) {
         Some(row) => row.type_form.clone(),

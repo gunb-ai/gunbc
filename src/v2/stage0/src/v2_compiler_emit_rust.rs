@@ -15,7 +15,8 @@ pub use crate::std_types::is_container_type;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
 pub use crate::v2_compiler_coercion::{
-    coerce_primitive_type, default_expr, is_copy, lookup_atom_realization,
+    atom_realization_is_nominal_newtype, coerce_primitive_type, default_expr, is_copy,
+    lookup_atom_realization,
 };
 pub use crate::v2_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v2_compiler_emit::{
@@ -418,36 +419,62 @@ pub fn rust_ord_derives_copy_text() -> String {
 }
 
 pub fn rust_nominal_identity_carrier_def(name: String) -> String {
-    v2_rt::concat(
-        v2_rt::concat(
+    match lookup_atom_realization(RenderTarget::Rust, name.clone()) {
+        Some(row) => v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
-                        v2_rt::concat(rust_ord_derives_text(), "\n".to_string()),
-                        rust_visibility_prefix(),
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(rust_ord_derives_text(), "\n".to_string()),
+                                    rust_visibility_prefix(),
+                                ),
+                                rust_items().struct_keyword.clone(),
+                            ),
+                            " ".to_string(),
+                        ),
+                        row.type_form.clone(),
                     ),
-                    rust_items().struct_keyword.clone(),
+                    "(pub ".to_string(),
                 ),
-                " ".to_string(),
+                row.storage_type.clone(),
             ),
-            name,
+            ");".to_string(),
         ),
-        "(pub String);".to_string(),
-    )
+        None => v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(rust_ord_derives_text(), "\n".to_string()),
+                            rust_visibility_prefix(),
+                        ),
+                        rust_items().struct_keyword.clone(),
+                    ),
+                    " ".to_string(),
+                ),
+                name.clone(),
+            ),
+            "(pub String);".to_string(),
+        ),
+    }
 }
 
 pub fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> bool {
-    (type_name.as_str() == "Symbol".to_string().as_str())
+    atom_realization_is_nominal_newtype(RenderTarget::Rust, type_name)
 }
 
 pub fn rust_nominal_identity_carrier_shape_eligible(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((authored_name_at(source_indices, n.clone()).as_str() == "Symbol".to_string().as_str())
-        && ((n.children.clone().len() as i64) == 0))
-        && ((n.params.clone().len() as i64) == 0))
+    (((((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0))
         && (n.connective.clone() == Connective::NoConnective))
+        && atom_realization_is_nominal_newtype(
+            RenderTarget::Rust,
+            authored_name_at(source_indices, n.clone()),
+        ))
 }
 
 pub fn rust_diff_id_ord_carrier_shape_eligible(
@@ -16370,20 +16397,23 @@ pub fn rust_nominal_identity_data_expr(
             && ((type_node.children.clone().len() as i64) == 0))
             && ((type_node.params.clone().len() as i64) == 0));
         if is_identity_type {
-            match (*value.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    let symbol_name = expr_var_name_at(value.clone(), source_indices.clone());
-                    Some(v2_rt::concat(
+            match lookup_atom_realization(RenderTarget::Rust, type_name.clone()) {
+                Some(row) => match (*value.expr_data.clone()).clone() {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => Some(v2_rt::concat(
                         v2_rt::concat(
-                            v2_rt::concat(type_name.clone(), "(\"".to_string()),
-                            escape_string_literal_body(symbol_name),
+                            v2_rt::concat(row.type_form.clone(), "(\"".to_string()),
+                            escape_string_literal_body(expr_var_name_at(
+                                value.clone(),
+                                source_indices.clone(),
+                            )),
                         ),
                         "\".to_string())".to_string(),
-                    ))
-                }
-                _ => None,
+                    )),
+                    _ => None,
+                },
+                None => None,
             }
         } else {
             None
