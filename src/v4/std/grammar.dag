@@ -493,17 +493,13 @@ fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) ->
 fn conj_positional_children(parent: Node) -> List<Node> {
   match parent.kind {
     TypeNode { connective: Conj } =>
-      fold_node(
-        n: parent,
-        algebra: NodeFold {
-          init: fn(_) {
-            Empty
-          },
-          step: fn(acc, edge, _) {
-            match edge.label {
-              Positional => list_snoc_item(xs: acc, item: edge.target)
-              Named { name: _ } => acc
-            }
+      fold(
+        parent.children,
+        init: Empty,
+        f: fn(acc, edge) {
+          match edge.label {
+            Positional => list_snoc_item(xs: acc, item: edge.target)
+            Named { name: _ } => acc
           }
         }
       )
