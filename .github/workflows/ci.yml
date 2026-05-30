@@ -262,6 +262,7 @@ jobs:
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       timeout-minutes: 20
       env:
+        V2_COMPILER: target/release/gunbc
         V4_PHASE1_NAT_SEMIRING_OUT: ${{ runner.temp }}/v4-phase1-nat-semiring
         V4_PHASE1_NAT_SEMIRING_STRICT: "1"
       run: bash scripts/v4-phase1-nat-semiring-rung-gate.sh

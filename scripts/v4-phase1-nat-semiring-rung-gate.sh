@@ -176,17 +176,24 @@ fi
 
 if [[ "$py_emit_status" -eq 0 ]]; then
   py_check_log="$out/logs/python_check.log"
-  set +e
-  # py_compile over the emitted tree's .py files; aggregate exit is OR of per-file results.
-  py_check_status=0
-  find "$out/python" -name '*.py' -print0 2>/dev/null \
-    | xargs -0 -r "$python_bin" -m py_compile 2>&1 | tee "$py_check_log"
-  py_check_status=${PIPESTATUS[1]}
-  set -e
-  if [[ "$py_check_status" -eq 0 ]]; then
-    verdict[R2-python-compile]=PASS
-  else
+  # Fail-closed: an empty .py tree must not be reported as PASS. xargs -r exits 0
+  # when find supplies no inputs, which would let R2-python-compile flip to PASS
+  # without actually compiling any emitted artifact — INVARIANTS P3.
+  py_file_count="$(find "$out/python" -name '*.py' 2>/dev/null | wc -l | tr -d ' ')"
+  if [[ "${py_file_count:-0}" -lt 1 ]]; then
+    echo "no .py files emitted under $out/python — R2-python-compile fails closed" | tee "$py_check_log"
     note_blocking "phase1/nat_semiring/rung2/python_compile_failed"
+  else
+    set +e
+    find "$out/python" -name '*.py' -print0 2>/dev/null \
+      | xargs -0 "$python_bin" -m py_compile 2>&1 | tee "$py_check_log"
+    py_check_status=${PIPESTATUS[1]}
+    set -e
+    if [[ "$py_check_status" -eq 0 ]]; then
+      verdict[R2-python-compile]=PASS
+    else
+      note_blocking "phase1/nat_semiring/rung2/python_compile_failed"
+    fi
   fi
 fi
 
