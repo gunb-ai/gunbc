@@ -86,13 +86,12 @@ type CiUpsertStep<T> = Upsert<T> {
   verify: VerifyCheck                    // is desired state already satisfied?
   create: CreateAction                   // action to take if verify says action needed
   resolve: ResolveExpr                   // stable handle / value to return
-  cache_key: ContentHash                 // content_hash of the COMPLETE CiUpsertStep
-                                          // subgraph (per T-24 / B1 discipline:
-                                          // "cacheable job's actions/cache key is
-                                          // content_hash (B1) of its input subgraph,
-                                          // not a hand-authored hashFiles(...) glob"
-                                          // TASKS.md:1215). NOT just over inputs —
-                                          // the whole step's structural identity.
+  // NOTE: no `cache_key` field. The cache key is DERIVED — `content_hash(CiUpsertStep<T>)`
+  // computed by the framework (Merkle catamorphism per modeling-discipline.md
+  // Practice 10), not authored on the row. Authoring `cache_key` as a payload field
+  // would admit stale `cache_key != content_hash(subgraph)` states (P2 single-authority
+  // violation + Practice 11 parallel-payload). Consumers project `content_hash` from
+  // the complete subgraph at emission / cache-lookup time.
 }
 
 type UpsertInputRef
@@ -132,7 +131,7 @@ Per the ratified T-24 phase plan, with ONE addition (Phase 1.5):
 |-------|-------|-------------------|
 | **1a** (already in scope) | ci.dag sole policy authority for I0–I8 integrity; T-22 interpreter on ci_pipeline; coarse bucket `if:` dissolved | OPEN |
 | **1.4** (**NEW** prerequisite — substrate-extension scope) | **Land Upsert<T> as usable substrate primitive in `dsl/std/patterns.dag`** (currently header + commented stubs per upsert-pattern audit; blocked on parser-declaration generics per ROADMAP). Modeling DFS worksheet must cover the parser/substrate prerequisites. | n/a (substrate landing) |
-| **1.5** (**NEW** — needed for affected-set-driven minimal-CI; **Upsert<T>-shaped per operator directive 2026-05-29**, DEPENDS on Phase 1.4) | Every CI step becomes an Upsert<T> Node (`CiUpsertStep<T>`) with `inputs`/`verify`/`create`/`resolve`/`cache_key` fields; `cache_key = content_hash` of COMPLETE step subgraph (per T-24 / B1 discipline); CI generation rejects any step not Upsert<T>-shaped. Existing-shell retirement under clever-cat-115 per `project_no_new_shell` directive. | OPEN |
+| **1.5** (**NEW** — needed for affected-set-driven minimal-CI; **Upsert<T>-shaped per operator directive 2026-05-29**, DEPENDS on Phase 1.4) | Every CI step becomes an Upsert<T> Node (`CiUpsertStep<T>`) with `inputs` / `verify` / `create` / `resolve` fields. Cache key is **derived** as `content_hash(CiUpsertStep<T>)` per T-24 / B1 discipline (Merkle catamorphism, not a payload field). `inputs: List<UpsertInputRef>` is the typed carrier (FileGlob / SubstrateNodeSet / LensOutputRef / TestClaimRef / UpstreamUpsert / Always). CI generation rejects any step not Upsert<T>-shaped. Existing-shell retirement under clever-cat-115 per `project_no_new_shell` directive. | OPEN |
 | **1b** | Atoms A3–A14 promoted opt-in; A6–A8 delete `scripts/check-*` | OPEN |
 | **2** (A15) | Shape-B `ci.yml` emitted from CiPipeline; all hand-authored YAML deleted (C4) | **[DONE]** |
 | **2.5** (NEW — minimal-CI activation) | Each step's gate consumes Layer C's intersection predicate; minimal CI fires per PR | **[DONE+]** |
@@ -155,7 +154,7 @@ Per the ratified T-24 phase plan, with ONE addition (Phase 1.5):
 | Concern | Primary owner | Secondary |
 |---------|--------------|-----------|
 | Phase 1a (T-22 interpreter on ci_pipeline; integrity-class) | **Compiler Spine** (smart-stag-871) | Close/Receipt (verdicts) |
-| Phase 1.5 (per-CiCommand dependency_set declaration) | **Modeling DFS** (proud-pike-680) — substrate decision needs DFS worksheet | Compiler Spine (consumer) |
+| Phase 1.5 (`CiUpsertStep<T>` + `UpsertInputRef` substrate; each CI step becomes an Upsert<T> Node) | **Modeling DFS** (proud-pike-680) — substrate decision needs DFS worksheet | Compiler Spine (consumer) |
 | Phase 1b (atom-by-atom migration) | **Compiler Spine** | Close/Receipt (atom dispositions) |
 | Phase 2 (Shape-B YAML emission) | **Compiler Spine** | Self-host/Release (T-24 [DONE] is a v4-done predicate) |
 | Phase 2.5 (affected-set intersection gate) | **Compiler Spine** + **Ladder/Fixture** | — |
