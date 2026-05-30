@@ -115,6 +115,18 @@ fn list_tail<T>(xs: FreeMonoid<T>) -> ListTailResult<T> {
     Cons { head: _, tail: t } => TailFound { tail: t }
   }
 }
+fn node_positional_child_targets(node: Node) -> FreeMonoid<Node> {
+  fold_list(
+    xs: node.children,
+    empty: Empty,
+    cons: fn(acc, e) {
+      match e.label {
+        Positional => list_snoc_item(xs: acc, item: e.target)
+        Named { name: _ } => acc
+      }
+    }
+  )
+}
 fn fold_list_node<T>(
   xs: FreeMonoid<T>,
   item_node: fn(T) -> Node

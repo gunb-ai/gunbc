@@ -103,13 +103,11 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
   target_type_expr_generic_apply_emitted,
-  target_type_expr_positional_child_at,
-  target_type_expr_positional_children,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted
 }
-import v4.std.collection { List, Map, Optional, empty_map, optional_absent, optional_present }
-import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, is_empty, length, list_append, list_snoc_item, list_tail, zip_eq }
+import v4.std.collection { List, Map, Optional, empty_map, list_at_optional, optional_absent, optional_present }
+import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, is_empty, length, list_append, list_snoc_item, list_tail, node_positional_child_targets, zip_eq }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 type TargetNodeTree = Node
@@ -1284,18 +1282,6 @@ fn type_expression_projection_from_target(target: TargetModel) -> Outcome<Target
     f: fn(bundle) { type_expression_projection_from_bundle(bundle: bundle) }
   )
 }
-fn node_positional_children(node: Node) -> List<Node> {
-  fold_list(
-    xs: node.children,
-    empty: Empty,
-    cons: fn(acc, e) {
-      match e.label {
-        Positional => list_snoc_item(xs: acc, item: e.target)
-        Named { name: _ } => acc
-      }
-    }
-  )
-}
 type TypeExprHeadTail {
   head: Node
   tail: List<Node>
@@ -1352,7 +1338,7 @@ fn project_type_expression_node(
     TypeNode { connective: Instantiation } =>
       bind_outcome(
         o: project_type_expression_children(
-          children: node_positional_children(node: node),
+          children: node_positional_child_targets(node: node),
           projection: projection
         ),
         f: fn(projected) {
@@ -1374,7 +1360,7 @@ fn project_type_expression_node(
     TypeNode { connective: Cardinality } =>
       bind_outcome(
         o: project_type_expression_children(
-          children: node_positional_children(node: node),
+          children: node_positional_child_targets(node: node),
           projection: projection
         ),
         f: fn(projected) {
@@ -1396,7 +1382,7 @@ fn project_type_expression_node(
     TypeNode { connective: Conj } =>
       bind_outcome(
         o: project_type_expression_children(
-          children: node_positional_children(node: node),
+          children: node_positional_child_targets(node: node),
           projection: projection
         ),
         f: fn(projected) {
@@ -1409,7 +1395,7 @@ fn project_type_expression_node(
     TypeNode { connective: Disj } =>
       bind_outcome(
         o: project_type_expression_children(
-          children: node_positional_children(node: node),
+          children: node_positional_child_targets(node: node),
           projection: projection
         ),
         f: fn(projected) {
@@ -1422,7 +1408,7 @@ fn project_type_expression_node(
     TypeNode { connective: Arrow } =>
       bind_outcome(
         o: project_type_expression_children(
-          children: node_positional_children(node: node),
+          children: node_positional_child_targets(node: node),
           projection: projection
         ),
         f: fn(projected) {
@@ -1512,7 +1498,7 @@ fn serialize_type_expr_generic_apply_bounded(
     )
   } else {
     bind_outcome(
-      o: list_head_and_tail(xs: target_type_expr_positional_children(node: node)),
+      o: list_head_and_tail(xs: node_positional_child_targets(node: node)),
       f: fn(split) {
         bind_outcome(
           o: serialize_type_expr_emitted_bounded(remaining - 1, target, projection, split.head),
@@ -1648,7 +1634,7 @@ fn serialize_type_expr_record_bounded(
           target,
           projection,
           form.separator,
-          target_type_expr_positional_children(node: node)
+          node_positional_child_targets(node: node)
         ),
         f: fn(fields_source) {
           bind_outcome(
@@ -1680,7 +1666,7 @@ fn serialize_type_expr_sum_bounded(
     target,
     projection,
     form.variant_separator,
-    target_type_expr_positional_children(node: node)
+    node_positional_child_targets(node: node)
   )
 }
 fn serialize_type_expr_arrow_bounded(
