@@ -1,6 +1,6 @@
 # v4 Phase 1.4 Worksheet — `Upsert<T>` substrate landing (`dsl/std/patterns.dag`)
 
-> **Status:** WORKSHEET DRAFT — Modeling DFS Manager §8 pending (proud-pike-680; `adhoc-4155bd37-f57`).
+> **Status:** WORKSHEET APPROVED — Modeling DFS Manager §8 sign-off 2026-05-30 (proud-pike-680; `adhoc-4155bd37-f57`). Phase 1.5 workers remain **BLOCKED** until 1.4 substrate lands in `patterns.dag`.
 > **Date:** 2026-05-30
 > **Dispatch anchor:** PR #3959 §6 Phase **1.4**; blocks approved Phase 1.5 `CiUpsertStep<T>` (`docs/planning/v4-ci-schema-worksheet-2026-05-30.md`).
 > **Authority:** Operator canon 2026-05-29 — `dsl/std/patterns.dag` UPSERT\<T\> header (L15–38); `docs/audit/upsert-pattern-compiler-stray-2026-05-29.md`.
@@ -190,13 +190,13 @@ Escalate to Modeling DFS:
 
 ---
 
-## §8 Manager approval checklist (proud-pike-680)
+## §8 Manager approval checklist (proud-pike-680) — CLOSED 2026-05-30
 
-- [ ] §1.1 `Upsert<T>` + phase types approved as sole generic canon
-- [ ] P1.4-TYPE vs P1.4-PARSER split accepted
-- [ ] `content_upsert` stub disposition approved
-- [ ] Falsification probes accepted
-- [ ] Phase 1.5 worker dispatch authorized (after 1.4 merge + probe 4)
+- [x] §1.1 `Upsert<T>` + phase types approved as sole generic canon
+- [x] P1.4-TYPE vs P1.4-PARSER split accepted
+- [x] `content_upsert` stub disposition approved
+- [x] Falsification probes accepted
+- [ ] Phase 1.5 worker dispatch — **blocked** until 1.4 substrate merge + probe 4
 
 ---
 
