@@ -1555,7 +1555,7 @@ fn serialize_type_expr_args_bounded(
           bind_outcome(
             o: serialize_type_expr_emitted_bounded(remaining - 1, target, projection, arg),
             f: fn(arg_source) {
-              if partial == Empty {
+              if is_empty(xs: partial) {
                 Accepted { value: arg_source, diagnostics: ad }
               } else {
                 bind_outcome(
@@ -1594,7 +1594,7 @@ fn serialize_type_expr_separated_bounded(
           bind_outcome(
             o: serialize_type_expr_emitted_bounded(remaining - 1, target, projection, item),
             f: fn(item_source) {
-              if partial == Empty {
+              if is_empty(xs: partial) {
                 Accepted { value: item_source, diagnostics: ad }
               } else {
                 bind_outcome(
