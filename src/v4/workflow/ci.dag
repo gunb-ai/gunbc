@@ -116,6 +116,8 @@ type CiCommand
   | M1RustEmitProbeCommand
   // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: delete scripts/v4-testclaim-corpus-gate.sh and the paired CI step when the modeled runner evaluates src/v4/test/claim/manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set) — forbidden: setting selection_fn to any other symbol or bypassing narrowing to run full corpus unconditionally.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol }
+  // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.5 — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
+  | Phase1NatSemiringRungGateCommand
 
 type CiJob {
   id: Symbol
@@ -187,10 +189,12 @@ data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
 data m1_rust_emit_probe_execution: Symbol = m1_rust_emit_probe_execution
 data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set
 data testclaim_corpus_eval_execution: Symbol = testclaim_corpus_eval_execution
+data phase1_nat_semiring_rung_gate_execution: Symbol = phase1_nat_semiring_rung_gate_execution
 data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
 data m1_rust_emit_probe_signal: Symbol = m1_rust_emit_probe_signal
 data testclaim_corpus_eval_signal: Symbol = testclaim_corpus_eval_signal
+data phase1_nat_semiring_rung_gate_signal: Symbol = phase1_nat_semiring_rung_gate_signal
 data ci_srv1_host: Symbol = ci_srv1_host
 data ci_srv2_host: Symbol = ci_srv2_host
 data ci_runner_arch_arm64: Symbol = ci_runner_arch_arm64
@@ -239,6 +243,15 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   timeout_minutes: 20
 }
 
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.5 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding. Strict mode (V4_PHASE1_NAT_SEMIRING_STRICT=1) is operator-required per manager directive — non_blocking: false.
+data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
+  binding_smoke_step_name: "phase1/nat_semiring rung gate model/YAML binding smoke"
+  step_name: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)"
+  script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
+  non_blocking: false
+  timeout_minutes: 20
+}
+
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
   jobs: [
     CiJob {
@@ -259,6 +272,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     CiJob {
       id: testclaim_corpus_eval_execution,
       command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn },
+      needs: [v2_compile_src_v4]
+    },
+    CiJob {
+      id: phase1_nat_semiring_rung_gate_execution,
+      command: Phase1NatSemiringRungGateCommand,
       needs: [v2_compile_src_v4]
     }
   ],
