@@ -67,6 +67,20 @@ fi
 rm -rf "$out"
 mkdir -p "$out/rust" "$out/python" "$out/go" "$out/logs"
 
+# Fixture-scoped entry isolation: v2-compiler treats the FIRST --source-root as the entry pool
+# (every .dag in it becomes an entry); subsequent --source-root values are dep pools resolved
+# via imports. Mirror the Lens-CI step pattern: copy ONLY the fixture module into entry_root
+# at its canonical module path, then layer the rest of src/v4 as deps with the fixture file
+# removed from the dep pool to avoid module-path collisions. This scopes the compile to the
+# fixture module's transitive closure — the §2.5 "fixture-scoped emit + toolchain" contract.
+entry_root="$out/entry"
+deps_root="$out/deps"
+fixture_relpath="${fixture_module_path#src/v4/}"   # test/claim/algebra_laws/nat_semiring.dag
+mkdir -p "$entry_root/$(dirname "$fixture_relpath")"
+cp "$fixture_module_path" "$entry_root/$fixture_relpath"
+cp -R src/v4/. "$deps_root/"
+rm -f "$deps_root/$fixture_relpath"
+
 # Per-predicate verdict slots. PASS|FAIL; default FAIL until proven.
 declare -A verdict=(
   [R0-dag-parse]=FAIL
@@ -102,10 +116,10 @@ run_step() {
 parse_log="$out/logs/dag_parse.log"
 set +e
 run_step "$parse_log" "$bin" compile \
-  --source-root src/v4 \
+  --source-root "$entry_root" \
+  --source-root "$deps_root" \
   --output-dir "$out/dag-parse" \
-  --target dag \
-  --entry "$fixture_module_path"
+  --target dag
 parse_status=$?
 set -e
 if [[ "$parse_status" -eq 0 ]]; then
@@ -118,10 +132,10 @@ fi
 rust_emit_log="$out/logs/rust_emit.log"
 set +e
 run_step "$rust_emit_log" "$bin" compile \
-  --source-root src/v4 \
+  --source-root "$entry_root" \
+  --source-root "$deps_root" \
   --output-dir "$out/rust" \
-  --target rust \
-  --entry "$fixture_module_path"
+  --target rust
 rust_emit_status=$?
 set -e
 if [[ "$rust_emit_status" -eq 0 ]]; then
@@ -148,10 +162,10 @@ fi
 py_emit_log="$out/logs/python_emit.log"
 set +e
 run_step "$py_emit_log" "$bin" compile \
-  --source-root src/v4 \
+  --source-root "$entry_root" \
+  --source-root "$deps_root" \
   --output-dir "$out/python" \
-  --target python \
-  --entry "$fixture_module_path"
+  --target python
 py_emit_status=$?
 set -e
 if [[ "$py_emit_status" -eq 0 ]]; then
@@ -180,10 +194,10 @@ fi
 go_emit_log="$out/logs/go_emit.log"
 set +e
 run_step "$go_emit_log" "$bin" compile \
-  --source-root src/v4 \
+  --source-root "$entry_root" \
+  --source-root "$deps_root" \
   --output-dir "$out/go" \
-  --target go \
-  --entry "$fixture_module_path"
+  --target go
 go_emit_status=$?
 set -e
 if [[ "$go_emit_status" -eq 0 ]]; then
