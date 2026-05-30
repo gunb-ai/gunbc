@@ -3,7 +3,7 @@
 **Authors:** Target Realization Mgr (keen-heron-687) + Modeling DFS Mgr (proud-pike-680).
 **Status:** Step 3 co-author deliverable per PR #3959 §11.4 operator dispatch sequence. Modeling DFS approval msg_badac9f3 (2026-05-30); covers shapes, fact_id discipline, scope-by-phase.
 **Scope:** The Subject / Expectation / fact_id space when the generic `LeafModelClaim<M, Subject, Expectation>` carrier (PR #3959 `docs/planning/v4-leaf-model-verification-2026-05-30.md` §5) is instantiated with M = `rust.dag`.
-**Anchors:** v4-leaf-model-verification-2026-05-30.md §5 (canonical claim carriers), §7 (rust.dag worked examples R1/R2a/R2b/R3-external/R3-internal), §6 (0d7a413c9 claim-corpus C(M) rule).
+**Anchors:** `docs/planning/v4-leaf-model-verification-2026-05-30.md` §5 Layer A (claim corpus C(M) rule — model owns facts; sibling claim files at `test/claim/language_model/<model>.dag` own verification obligations), §5 carrier-shape block (canonical `LeafModelClaim<M, Subject, Expectation>` + `FalsificationCase` + `LeafModelFixture` + `LeafModelVerificationReport`), §7 (rust.dag worked examples R1/R2a/R2b/R3-external/R3-internal) including §7 Phase-1 scope ("ONLY R1 + R2a + R2b + R3-external + R3-internal").
 **Out of scope:** Step 4 (Runtime/TestClaim) implementation of fixture runner; Step 5 (TR) SG-1 dispatch.
 
 ---
@@ -65,11 +65,14 @@ type RuntimeOutcome =
   // …extension via modeling escalation only
 ```
 
-## §3. fact_id discipline — C(rust.dag) corpus per 0d7a413c9
+## §3. fact_id discipline — C(rust.dag) corpus per §5 Layer A
 
-The 0d7a413c9 acceptance contract:
+The acceptance contract from `docs/planning/v4-leaf-model-verification-2026-05-30.md` §5 Layer A (paraphrased — full text at the cited section):
 
-> for every `fact_id` declared by M, the claim corpus C(M) contains a `LeafModelClaim` referencing `fact_id`.
+> The leaf model owns FACTS (stable, claimable fact IDs declared in the model itself).
+> The claim corpus owns VERIFICATION OBLIGATIONS (LeafModelClaim rows in sibling files referencing those fact IDs).
+>
+> Operationalized: for every `fact_id` declared by M, the claim corpus C(M) contains one-or-more `LeafModelClaim` rows referencing `fact_id`.
 
 For M = rust.dag, the fact_id space at main HEAD comprises **all** Symbol-named declarations the model already carries. Inventory (approximate counts, current main):
 
@@ -88,7 +91,7 @@ For M = rust.dag, the fact_id space at main HEAD comprises **all** Symbol-named 
 | TargetAtomRealization rows (Symbol/Bool/Char) | 3 | rust.dag — **post SG-1** | R3 (Symbol only — fact_id `rust_atom_realization_symbol` covered by TWO LeafModelClaim rows: R3-external + R3-internal verification angles) |
 | TargetCollectionRealization rows (Set/…) | varies | rust.dag — **post SG-5** | none in Phase 1 |
 
-**Every fact_id above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 4 fact_ids (`rust_primitive_i32`, `rust_algebra_ops_int32`, `rust_algebra_overflow_int32`, `rust_atom_realization_symbol`) with 5 LeafModelClaim rows total: R1 (1 row on `rust_primitive_i32`), R2a (1 row on `rust_algebra_ops_int32`), R2b (1 row on `rust_algebra_overflow_int32`), and TWO rows on `rust_atom_realization_symbol` — R3-external (rustc-accepts angle) and R3-internal (mutation-receipt angle). Per the 0d7a413c9 contract, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every fact_id has at least one claim," not "every fact_id has exactly one claim." The remaining ~85+ fact_ids enter C(rust.dag) with one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
+**Every fact_id above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 4 fact_ids (`rust_primitive_i32`, `rust_algebra_ops_int32`, `rust_algebra_overflow_int32`, `rust_atom_realization_symbol`) with 5 LeafModelClaim rows total: R1 (1 row on `rust_primitive_i32`), R2a (1 row on `rust_algebra_ops_int32`), R2b (1 row on `rust_algebra_overflow_int32`), and TWO rows on `rust_atom_realization_symbol` — R3-external (rustc-accepts angle) and R3-internal (mutation-receipt angle). Per the §5 Layer A contract above, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every fact_id has at least one claim," not "every fact_id has exactly one claim." The remaining ~85+ fact_ids enter C(rust.dag) with one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
 
 The 94 catalog sentinels (per the canonical-home spec §3) all land here. None are dropped; none are "implicit." This is the operator's framing made operational: every model fact has a verification obligation in C(M).
 
