@@ -3128,6 +3128,7 @@ fn dag_round_trip_bool_node(pass: Bool) -> Node {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-lex-readiness — bind TASKS.md T-36 — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces conjunctive dag_wave1_lex_token_symbol Bool; forbidden: parallel wave-1 lex readiness classifier outside this authority cluster.
 fn dag_round_trip_lex_ready() -> Bool {
   dag_wave1_lex_token_symbol(sym: dag_token_kw_module) &&
   dag_wave1_lex_token_symbol(sym: dag_token_kw_import) &&
@@ -3145,6 +3146,7 @@ fn dag_round_trip_lex_ready() -> Bool {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-grammar-readiness — bind TASKS.md T-36 — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces conjunctive grammar_carries_symbol Bool; forbidden: parallel wave-1 grammar readiness classifier outside this authority cluster.
 fn dag_round_trip_grammar_ready(lm: DagLanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: dag_production_module) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: dag_production_module_header) &&
@@ -3162,8 +3164,7 @@ fn dag_round_trip_normalization_declared() -> Bool {
 }
 
 
-// Eval authority for T-36 wave-1 RoundTripClaim rows: re-derive readiness from dag.dag
-// lex/grammar/C5 authorities (P2) — never trust ready atoms embedded in claim input.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-wave1-authorities-ready — bind TASKS.md T-36 / 05_eval.dag RoundTripClaim — dissolve-on-arrival: typed DagRoundTripWave1Readiness substrate receipt replaces Bool conjunctive eval gate; eval re-derives lex/grammar/C5 from dag.dag only (P2); forbidden: eval reading embedded ready atoms in claim input.
 fn dag_round_trip_wave1_authorities_ready() -> Bool {
   let lm = dag_language_model_wave1_modeled()
   dag_round_trip_lex_ready() &&
