@@ -796,7 +796,7 @@ data target_collection_kernel_int: Symbol = target_collection_kernel_int
 data target_collection_kernel_bool: Symbol = target_collection_kernel_bool
 data target_collection_kernel_unit: Symbol = target_collection_kernel_unit
 
-// 🟢 coproduct dissolution — SG-5 element Ord-eligibility predicate on inferred type-expression atoms.
+// 🟡 gated — feature:SG-5-element-trait-eligibility — bind docs/planning/v4-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: witness eligibility reads declared_inhabitants algebra witnesses instead of kernel atom tags.
 fn target_collection_element_ord_eligible(elem: Node) -> Bool {
   match elem.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -808,12 +808,12 @@ fn target_collection_element_ord_eligible(elem: Node) -> Bool {
   }
 }
 
-// 🟢 coproduct dissolution — SG-5 element Hash-eligibility predicate (MVP-1: same kernel set as Ord).
+// 🟡 gated — feature:SG-5-element-trait-eligibility — MVP-1: same kernel set as Ord until declared_inhabitants witness wiring.
 fn target_collection_element_hash_eligible(elem: Node) -> Bool {
   target_collection_element_ord_eligible(elem: elem)
 }
 
-// 🟢 coproduct dissolution — SG-5 element Eq-eligibility predicate (MVP-1: same kernel set as Hash).
+// 🟡 gated — feature:SG-5-element-trait-eligibility — MVP-1: same kernel set as Hash until declared_inhabitants witness wiring.
 fn target_collection_element_eq_eligible(elem: Node) -> Bool {
   target_collection_element_hash_eligible(elem: elem)
 }
