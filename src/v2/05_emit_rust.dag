@@ -80,7 +80,7 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
-import std.coercion { TargetAtomRealization, TargetAtomTypeDeclKind }
+import std.coercion { TargetAtomRealization }
 import v2.compiler.coercion {
   coerce_primitive_type, is_copy, default_expr,
   lookup_atom_realization, apply_atom_value_ctor_template
@@ -5886,43 +5886,49 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
-  let kw = rust_items().func_keyword
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
+    emit_data_def_inline_fn(name: name, ty_str: ty_str, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   } else {
     match lookup_atom_realization(target: Rust, dag_name: type_name) {
       Some { value: row } =>
         match row.type_decl_kind {
-          NominalNewtype =>
-            let val_str = match rust_atom_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
-              Some { value: identity_expr } => identity_expr
-              None => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            }
-            concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
-          TransparentAlias =>
-            let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
-            concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " {\n",
-              "    thread_local! {\n",
-              "        static CACHED: ", ty_str, " = {\n",
-              body, "\n",
-              "        };\n",
-              "    }\n",
-              "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
-              "}")
+          NominalNewtype => emit_data_def_nominal_atom_fn(name: name, ty_str: ty_str, type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          TransparentAlias => emit_data_def_cached_fn(name: name, ty_str: ty_str, type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
         }
-      None =>
-        let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
-        concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " {\n",
-          "    thread_local! {\n",
-          "        static CACHED: ", ty_str, " = {\n",
-          body, "\n",
-          "        };\n",
-          "    }\n",
-          "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
-          "}")
+      None => emit_data_def_cached_fn(name: name, ty_str: ty_str, type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
     }
   }
+}
+
+fn emit_data_def_inline_fn(name: String, ty_str: String, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let kw = rust_items().func_keyword
+  let fn_name = to_snake(name: name)
+  concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
+}
+
+fn emit_data_def_nominal_atom_fn(name: String, ty_str: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let val_str = match rust_atom_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
+    Some { value: identity_expr } => identity_expr
+    None => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  }
+  let kw = rust_items().func_keyword
+  let fn_name = to_snake(name: name)
+  concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
+}
+
+fn emit_data_def_cached_fn(name: String, ty_str: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
+  let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
+  let kw = rust_items().func_keyword
+  let fn_name = to_snake(name: name)
+  concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " {\n",
+    "    thread_local! {\n",
+    "        static CACHED: ", ty_str, " = {\n",
+    body, "\n",
+    "        };\n",
+    "    }\n",
+    "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
+    "}")
 }
 
 fn rust_atom_identity_data_expr(type_node: Node, value: Node, source_indices: Map<String, NewlineIndex>) -> String? {
