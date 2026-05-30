@@ -146,9 +146,9 @@ jobs:
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: python3 scripts/check_t19_testgen_activation.py
     - name: Release-doc authority check (P2 single-authority discipline)
-      run: bash scripts/check-release-doc-authority.sh
+      run: python3 scripts/check_release_doc_authority.py
     - name: Release-doc authority self-test (consumer not ceremonial)
-      run: bash scripts/test-check-release-doc-authority.sh
+      run: python3 scripts/test_check_release_doc_authority.py
     - name: Manager-brief authority check (P2 single-authority discipline)
       run: bash scripts/check-manager-brief-authority.sh
       env:
@@ -158,7 +158,7 @@ jobs:
     - name: Test-timeout ratchet self-test (consumer not ceremonial)
       run: bash scripts/test-check-test-timeout.sh
     - name: Rust toolchain single-authority check (P2)
-      run: bash scripts/check-rust-toolchain-single-authority.sh
+      run: python3 scripts/check_rust_toolchain_single_authority.py
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
