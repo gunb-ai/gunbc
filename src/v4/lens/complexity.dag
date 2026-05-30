@@ -63,7 +63,13 @@ import v4.std.diagnostic {
   Unavailable
 }
 import v4.std.node { Node, Symbol }
-import v4.std.refinement { Refined, Validation, refine, refined_base }
+import v4.std.refinement {
+  Refined,
+  Validation,
+  refine,
+  refined_base,
+  refined_vacuous_oracle_terminal
+}
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -102,10 +108,7 @@ fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<Complexit
 fn complexity_variables_from_witness(witness: Witness<ComplexityVariables>) -> ComplexityVariables {
   match witness {
     Holds { value: variables } => variables
-    Violates { diagnostic: _ } =>
-      complexity_variables_from_witness(
-        witness: complexity_variables_from_refine(xs: Empty)
-      )
+    Violates { diagnostic: _ } => empty_complexity_variables()
   }
 }
 
@@ -143,9 +146,15 @@ fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
 }
 
 fn empty_complexity_variables() -> ComplexityVariables {
-  complexity_variables_from_witness(
-    witness: complexity_variables_from_refine(xs: Empty)
-  )
+  match complexity_variables_from_refine(xs: Empty) {
+    Holds { value: variables } => variables
+    Violates { diagnostic: _ } =>
+      refined_vacuous_oracle_terminal(
+        base: Empty,
+        by: complexity_variables_validation,
+        at: complexity_projection_locus()
+      )
+  }
 }
 
 fn composite_complexity_variables(

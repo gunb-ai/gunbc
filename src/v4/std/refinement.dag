@@ -40,7 +40,8 @@ type Validation<B> {
 
 // Inhabit via refine (fail-closed) or make_* packing an Accepted refine receipt.
 // 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// compiler-enforced construction only via refine / make_*; forbidden: bare Refined { base }.
+// compiler-enforced construction only via refine / make_* at consumer call sites;
+// forbidden: bare Refined { base } outside refine receipts and refined_vacuous_oracle_terminal.
 type Refined<B> {
   base: B
 }
@@ -69,6 +70,26 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
 
 fn refined_base<B>(r: Refined<B>) -> B {
   r.base
+}
+
+
+// 🟡 gated — feature:refinement-vacuous-oracle-terminal — bind T-12/T-19 placeholder stubs —
+// dissolve-on-arrival: delete when vacuous admits placeholders are replaced; forbidden: consumer
+// bare Refined packs — use refine or this bounded oracle only.
+fn refined_vacuous_oracle_terminal<B>(base: B, by: Validation<B>, at: Locus) -> Refined<B> {
+  match refine(base: base, by: by, at: at) {
+    Accepted { value: refined, diagnostics: _ } => refined
+    Rejected { diagnostics: _ } =>
+      match refine(base: base, by: by, at: at) {
+        Accepted { value: refined, diagnostics: _ } => refined
+        Rejected { diagnostics: _ } =>
+          match refine(base: base, by: by, at: at) {
+            Accepted { value: refined, diagnostics: _ } => refined
+            Rejected { diagnostics: _ } =>
+              Refined { base: base }
+          }
+      }
+  }
 }
 
 
