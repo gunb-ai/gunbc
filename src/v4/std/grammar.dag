@@ -189,6 +189,7 @@ data grammar_production_expression_node_projection: Symbol = grammar_production_
 data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
 data grammar_relation_production_not_found: Symbol = grammar_relation_production_not_found
 data grammar_relation_emitted_conj_slot_missing: Symbol = grammar_relation_emitted_conj_slot_missing
+data grammar_relation_emitted_conj_slot_surplus: Symbol = grammar_relation_emitted_conj_slot_surplus
 data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
 data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
@@ -484,6 +485,17 @@ fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) ->
     empty: Empty,
     cons: fn(acc, symbol) {
       derive_grammar_relation_terminal_token_edges_step(acc: acc, symbol: symbol)
+    }
+  )
+}
+
+
+fn conj_positional_child_count(children: List<Node>) -> Int {
+  fold_list(
+    xs: children,
+    empty: 0,
+    cons: fn(count, _) {
+      count + 1
     }
   )
 }
@@ -925,8 +937,23 @@ fn derive_grammar_relation_token_edges_recursive(
       )
     }
   ) {
-    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: _, conj_children: _ } } =>
-      Holds { value: result }
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: conj_children } } =>
+      if conj_index == conj_positional_child_count(children: conj_children) {
+        Holds { value: result }
+      } else {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: grammar_relation_emitted_conj_slot_surplus,
+            at: node_locus(
+              node: Node {
+                kind: TypeNode { connective: Conj },
+                children: []
+              }
+            ),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
