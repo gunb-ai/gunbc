@@ -69,7 +69,16 @@ pub fn ci_changed_path_affects_v3(path: &str) -> bool {
 }
 
 pub fn ci_changed_path_affects_v4(path: &str) -> bool {
-    path.starts_with("src/v4/")
+    path == "src/v4/bin/main.dag"
+        || path == "src/v4/workflow/bootstrap.dag"
+        || path == "src/v4/workflow/ci.dag"
+        || path.starts_with("src/v4/compiler/")
+        || path.starts_with("src/v4/std/")
+        || path.starts_with("src/v4/extdeps/")
+        || path.starts_with("src/v4/lens/")
+        || path.starts_with("src/v4/test/claim/manual/")
+        || path.starts_with("src/v4/test/claim/generated/")
+        || path.starts_with("src/v4/test/fixture/")
         || path.starts_with("fixtures/v4-mvp1/")
         || path == "scripts/v4-mvp1-e2e-gate.sh"
         || path == "scripts/v4-m1-rust-emit-probe.sh"
@@ -119,6 +128,21 @@ mod tests {
             "scripts/v4-m1-rust-emit-probe.sh"
         ));
         assert!(ci_changed_path_affects_v4("scripts/v4-mvp1-e2e-gate.sh"));
+    }
+
+    #[test]
+    fn v4_bucket_uses_gate_frontier_not_all_src_v4() {
+        assert!(ci_changed_path_affects_v4("src/v4/std/node.dag"));
+        assert!(ci_changed_path_affects_v4("src/v4/compiler/05_eval.dag"));
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/test/claim/manual/mvp1_rust_add_translate.dag"
+        ));
+        assert!(!ci_changed_path_affects_v4(
+            "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"
+        ));
+        assert!(!ci_changed_path_affects_v4(
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
+        ));
     }
 
     #[test]
