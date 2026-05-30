@@ -115,22 +115,6 @@ fn list_tail<T>(xs: FreeMonoid<T>) -> ListTailResult<T> {
     Cons { head: _, tail: t } => TailFound { tail: t }
   }
 }
-fn node_positional_child_targets(node: Node) -> FreeMonoid<Node> {
-  fold(node.children, init: Empty, f: fn(acc, e) {
-    match e.label {
-      Positional => list_snoc_item(xs: acc, item: e.target)
-      Named { name: _ } => acc
-    }
-  })
-}
-fn node_labeled_child_edges(node: Node) -> FreeMonoid<Edge> {
-  fold(node.children, init: Empty, f: fn(acc, e) {
-    match e.label {
-      Named { name: _ } => list_snoc_item(xs: acc, item: e)
-      Positional => acc
-    }
-  })
-}
 fn fold_list_node<T>(
   xs: FreeMonoid<T>,
   item_node: fn(T) -> Node

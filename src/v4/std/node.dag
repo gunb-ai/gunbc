@@ -127,6 +127,34 @@ fn is_positional(e: Edge) -> Bool {
     Positional => true
   }
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; forbidden: parallel edge-label filters outside std/node (e.g. translate-local conj_positional_targets folds).
+fn node_positional_child_targets(node: Node) -> List<Node> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Positional => node_list_snoc_node(xs: acc, item: e.target)
+      Named { name: _ } => acc
+    }
+  })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-labeled-child-edges — bind node://adhoc-sg2-labeled-child-edges — dissolve-on-arrival: substrate canonical labeled-child edge projection on Node.children; forbidden: parallel edge-label filters outside std/node.
+fn node_labeled_child_edges(node: Node) -> List<Edge> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => node_list_snoc_edge(xs: acc, item: e)
+      Positional => acc
+    }
+  })
+}
+fn node_list_snoc_node(xs: List<Node>, item: Node) -> List<Node> {
+  fold(xs, init: Cons { head: item, tail: Empty }, f: fn(rev_prefix, x) {
+    Cons { head: x, tail: rev_prefix }
+  })
+}
+fn node_list_snoc_edge(xs: List<Edge>, item: Edge) -> List<Edge> {
+  fold(xs, init: Cons { head: item, tail: Empty }, f: fn(rev_prefix, x) {
+    Cons { head: x, tail: rev_prefix }
+  })
+}
 
 fn all_edges_named(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
