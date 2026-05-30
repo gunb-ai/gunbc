@@ -1,24 +1,24 @@
 # v4-done — six-predicate tracker
 
 > **Status:** PLANNING — first artifact for Self-host/Release Manager (`nimble-crane-490`).  
-> **Authority:** `src/v4/TASKS.md:801-815` (definition); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map).  
+> **Authority:** `src/v4/TASKS.md:805-817` (v4-done definition + six bullets); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map). Line anchors are to current `main` (post-#3938).  
 > **Session:** `nimble-crane-490` · **Parent:** `nimble-dove-733` (PM May 29)  
 > **Tree HEAD spot-check:** `55ad5f3d3` (2026-05-30, post-#3938 `b129ce3f2` on main) — rebased `session/nimble-crane-490-predicate-tracker`.
 
 ## Non-negotiables
 
-- **Cannot narrow v4-done.** Per PR #3938 §8.D4: any predicate relaxation requires an explicit `src/v4/TASKS.md:801-815` amendment with named operator rationale — not a PM or manager call.
+- **Cannot narrow v4-done.** Per PR #3938 §8.D4: any predicate relaxation requires an explicit `src/v4/TASKS.md:805-817` amendment with named operator rationale — not a PM or manager call.
 - **Closure vocabulary (§10.0):** `ship_disposition: PROVEN` only with an executable receipt (+ falsification when the probe asks). Substrate alone → `GAP` + `engineering_state: SUBSTRATE_PRESENT` (or finer states below).
 - **§8 ratified:** PR #3938 merged (`b129ce3f2` on main); ladder + disposition vocabulary authoritative via `docs/planning/v4-correctness-ladder-2026-05-30.md`. Worker dispatch still follows per-class DFS worksheet approval (PR #3938 §11.4) — this tracker does not self-dispatch.
 
 ## Summary matrix
 
-| # | Predicate (`TASKS.md:801-815`) | `ship_disposition` | `engineering_state` | Primary TASKS anchors | Blocking receipt (close) | Resolving manager lane |
+| # | Predicate (`TASKS.md:806-817`) | `ship_disposition` | `engineering_state` | Primary TASKS anchors | Blocking receipt (close) | Resolving manager lane |
 | - | ------------------------------ | ------------------ | --------------------- | --------------------- | ------------------------ | ---------------------- |
 | 1 | Every other scheduled task complete (whole plan minus T-15) | `GAP` | `CENSUS_NOT_RUN` (drift-proof; no mechanical census) | Plan graph `src/v4/TASKS.md:7-265`; Summary `src/v4/TASKS.md:1233-1239` | Per-task `DONE` / dissolution receipts against live plan at close time — not a frozen list | **Close/Receipt** (ledger) + **all lanes** (implementation) |
 | 2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | `GAP` | `PARTIAL_GATE_PRESENT` | `T-6`…`T-10`, `T-37` `src/v4/TASKS.md:474-686`, `:2246-2271` | v4 compiler-of-record executes full `src/v4/compiler/*.dag` pipeline without v2 OOM/SIGTERM mask; P5 resolve-posture bridge deleted | **Compiler Spine** |
 | 3 | v4 emits Rust that compiles to a binary | `GAP` | `PARTIAL_GATE_PRESENT` | `T-10`, `T-11`, `T-20`, `T-32` `src/v4/TASKS.md:612-686`, `:1057-1078`, `:2155-2216` | Emitted Rust is `cargo`-clean for release binary; bootstrap `compiled:` under v4 emit (not v2-only structural compile) | **Compiler Spine** + **Target Realization** |
-| 4 | Binary on `src/v4/compiler/*.dag` → bit-identical output (stage1==stage2) | `GAP` | `SCAFFOLD_PRESENT` | `T-15` `src/v4/TASKS.md:768-815`; `T-20`, `T-32`, `T-36` | B1 merkle `content_hash` pins replace digest placeholders; `self_host.dag` runner realized; `claim_t15` + `t_15_self_host_fixed_point` execute real fixpt (not structural-only) | **Self-host/Release** (this lane) + **Compiler Spine** |
+| 4 | Binary on `src/v4/compiler/*.dag` → bit-identical output (stage1==stage2) | `GAP` | `SCAFFOLD_PRESENT` | `T-15` `src/v4/TASKS.md:768-819`; `T-20`, `T-32`, `T-36` | B1 merkle `content_hash` pins replace digest placeholders; `self_host.dag` runner realized; `claim_t15` + `t_15_self_host_fixed_point` execute real fixpt (not structural-only) | **Self-host/Release** (this lane) + **Compiler Spine** |
 | 5 | TestClaim suite passes | `GAP` | `PARTIAL_GATE_PRESENT` | `T-14`, `T-22`, `T-38` `src/v4/TASKS.md:734-766`, `:1130-1151`, `:2277-2309` | Modeled T-22 eval over manual corpus + structured `TestClaimRun` verdicts in CI; delete `scripts/v4-testclaim-corpus-gate.sh` | **Runtime/TestClaim** (pending spawn) + **Compiler Spine** |
 | 6 | Hand-authored Rust not editable authority (reproduction-proven) | `GAP` | `PARTIAL_GATE_PRESENT` | `T-15`, `T-32`, INVARIANTS A3 / P5 | Rebuild-from-(.dag + frozen seed) reproduces pinned artifact hash; SG-0 hand-test census trends to dissolution; P5 bridges removed | **Self-host/Release** + **Close/Receipt** (census ratchet) |
 
@@ -28,7 +28,7 @@
 
 ## Predicate 1 — Whole plan minus T-15
 
-**Authority text:** `src/v4/TASKS.md:802-808` — drift-proof close gate; never a hardcoded task count.
+**Authority text:** `src/v4/TASKS.md:806-812` — drift-proof close gate; never a hardcoded task count.
 
 | Field | Value |
 | ----- | ----- |
@@ -52,13 +52,13 @@
 
 **Landed (examples):** `T-19`, `T-29`, `T-33`, `T-34`, `T-37` marked `[DONE]` in task bodies; `T-25-core` / `T-26` `[SUBSTRATE LANDED]`.
 
-**Note:** `TASKS.md:815` Close-status snapshot (`main@678bb8bbd`) predates current HEAD; treat this tracker + live `TASKS.md` as operational — refresh Close-status when operator ratifies the P1–P6 numbering fix (forwarded via PM).
+**Note:** `TASKS.md:819` Close-status snapshot (`main@678bb8bbd`) predates current HEAD; treat this tracker + live `TASKS.md` as operational — refresh Close-status when operator ratifies the P1–P6 numbering fix (forwarded via PM).
 
 ---
 
 ## Predicate 2 — Corpus compiles end-to-end
 
-**Authority text:** `src/v4/TASKS.md:809`.
+**Authority text:** `src/v4/TASKS.md:813`.
 
 | Field | Value |
 | ----- | ----- |
@@ -81,7 +81,7 @@
 
 ## Predicate 3 — Emitted Rust compiles to a binary
 
-**Authority text:** `src/v4/TASKS.md:810`.
+**Authority text:** `src/v4/TASKS.md:814`.
 
 | Field | Value |
 | ----- | ----- |
@@ -101,7 +101,7 @@
 
 ## Predicate 4 — Bit-identical self-output (stage1 == stage2)
 
-**Authority text:** `src/v4/TASKS.md:811`; falsification probe `src/v4/TASKS.md:780-799`.
+**Authority text:** `src/v4/TASKS.md:815`; falsification probe `src/v4/TASKS.md:784-801`.
 
 | Field | Value |
 | ----- | ----- |
@@ -130,7 +130,7 @@
 
 ## Predicate 5 — TestClaim suite passes
 
-**Authority text:** `src/v4/TASKS.md:812`.
+**Authority text:** `src/v4/TASKS.md:816`.
 
 | Field | Value |
 | ----- | ----- |
@@ -151,7 +151,7 @@
 
 ## Predicate 6 — Hand-Rust not editable authority (reproduction)
 
-**Authority text:** `src/v4/TASKS.md:813` (A3 reproduction, not count).
+**Authority text:** `src/v4/TASKS.md:817` (A3 reproduction, not count).
 
 | Field | Value |
 | ----- | ----- |
@@ -181,7 +181,7 @@ T-15 **program close** ≠ bin/main.dag lane structural receipt (#3897 / #3929).
 | T-38 claim eval execution | `src/v4/TASKS.md:194`, `:2277-2309` | **OPEN** | Runtime/TestClaim |
 | B1 content_hash pins in bootstrap | `src/v4/workflow/bootstrap.dag:3`, `src/v4/TASKS.md:291-293` | **OPEN** | Self-host/Release + Compiler Spine |
 | T-32 footprint constructs walk | `src/v4/TASKS.md:294-295` | **OPEN** (PR #3907 in flight) | Self-host/Release |
-| Predicate 1 (whole plan minus T-15) | `src/v4/TASKS.md:802-808` | **OPEN** | All lanes |
+| Predicate 1 (whole plan minus T-15) | `src/v4/TASKS.md:806-812` | **OPEN** | All lanes |
 
 ---
 
@@ -230,21 +230,21 @@ Claims checked against tree at `e332fc27b`:
 
 | PR #3938 claim | Verdict | Evidence |
 | -------------- | ------- | -------- |
-| §8.D4 — six predicates are release gate | **Confirmed** | Matches `src/v4/TASKS.md:801-813` |
+| §8.D4 — six predicates are release gate | **Confirmed** | Matches `src/v4/TASKS.md:806-817` |
 | §10.0 — 0/346 PROVEN on main | **Confirmed** | `docs/audit/v4-close-interrogation-validation-2026-05-30.md:10-14` |
 | §10.1 SG-1 blocks emit correctness | **Confirmed** | Open PR #3934 WIP; planning §10.1 |
 | T-15 harness is structural not executable fixpt | **Confirmed** | `claim_t15_self_host_fixed_point.dag:4`, closeout brief `:31-37` |
 | `RoundTripClaim` deferred | **Confirmed** | `05_eval.dag:1732-1736` |
 | P5 bridge still present | **Confirmed** | `ci.yml:273`, `v4-bootstrap-resolve-posture-gate.sh:1-12` |
 
-**Issue surfaced to PM:** `TASKS.md:815` Close-status paragraph uses predicate numbering (1–5) that does not label the six bullets at `:802-813` inline — risks mis-read during lane dispatch. Recommend a follow-on docs PR mapping P1–P6 ↔ bullets after §8 ratification (Close/Receipt lane).
+**Issue surfaced to PM:** `TASKS.md:819` Close-status paragraph uses predicate numbering (1–5) that does not label the six v4-done bullets at `:806-817` inline — risks mis-read during lane dispatch. Recommend a follow-on docs PR mapping P1–P6 ↔ `:806-817` (Close/Receipt lane). *(This tracker’s initial `:809-:813` authority cites were corrected in #3948 after review #21394.)*
 
 ---
 
 ## Next actions (this manager — post-§8)
 
 1. **#3948** — rebased onto main post-#3938; awaiting operator merge (2 dashboard APPROVE, CI green).
-2. **TASKS.md:815** — numbering fix forwarded to operator via PM; land separately when assigned (Close/Receipt or operator pick).
+2. **TASKS.md:819** Close-status numbering fix — forwarded to operator via PM; land separately when assigned (Close/Receipt or operator pick).
 3. **Post-merge:** refresh predicate rows from live `main`; coordinate Runtime/TestClaim spawn for predicate 5; standing `t_15_self_host_fixed_point` on T-15-affecting merges.
 
 ## What this doc is NOT
