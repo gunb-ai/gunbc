@@ -42,23 +42,27 @@ type Verdict<T>
   | Fail     { actual: Outcome<T> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
-// W2 extension — bind falsification *inside* Fail so the receipt is structurally
-// reachable only from Fail (INVARIANTS P2: illegal states unrepresentable).
-// Verdict gains an S parameter solely to thread the subject type into the receipt;
-// S is phantom on Pass / Deferred.
+// W2 extension — Fail's payload is the FalsificationReceipt itself, not a
+// product of (actual, optional receipt). Single authority for the observed
+// outcome (INVARIANTS P2): the receipt is THE Fail payload, and the receipt
+// is the only place observed values, divergence locus, and execution evidence
+// live. Verdict gains an S parameter solely to thread the subject type into
+// the receipt; S is phantom on Pass / Deferred.
 type Verdict<S, T>
   = Pass
-  | Fail     { actual: Outcome<T>, falsification: Option<FalsificationReceipt<S, T>> }
+  | Fail     { receipt: FalsificationReceipt<S, T> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 ```
 
-**Why inside `Fail`, not beside `Verdict`.** An earlier draft attached `falsification: Option<...>` next to `verdict` on `TestClaimRun`. That product made `Pass + Some` representable — falsifying a passing run is nonsense, but the type permitted it. Lifting the slot into the `Fail` variant deletes the `Pass + Some` state at the type level: `Pass` has no falsification slot, so it cannot carry one.
+**Why receipt-as-payload (not Option-beside-actual).** Two earlier drafts ran aground:
+- Draft A attached `falsification: Option<...>` next to `verdict` on `TestClaimRun`. The product made `Pass + Some` representable — a P2 violation flagged on #3961.
+- Draft B lifted the slot into `Fail` as `Fail { actual: Outcome<T>, falsification: Option<FalsificationReceipt<S, T>> }`. That deleted `Pass + Some` but kept *two* authorities for the observed outcome — `Fail.actual: Outcome<T>` and the now-absent `FalsificationReceipt.actual: A` (or, with receipt-as-Some, the receipt's own observed values) — and admitted `Fail + None` as a silent un-instrumented state. Codex flagged this on #3961 acc5789d.
 
-`Fail + None` is **legal** but is **not** the canonical encoding for structural rejects. Structural `DiagnosticClaim`-style failures — including the Phase 1a `ci_pipeline` rejection rows — produce a `Some(FalsificationReceipt { …, evidence: EvidenceNone })`: the receipt still carries `expected` / `actual` / `divergence`, only the execution-evidence arm is `EvidenceNone`. That is the **one** authoritative encoding for "structural fail with no execution trace" (resolves the §2.2-vs-§2.3 ambiguity the cursor reviewer flagged on #3961: both sections previously implied this case lived in two different `None`s; canonical answer is `Some(receipt with evidence=EvidenceNone)`).
+The receipt-as-payload shape collapses both axes: `Fail` has exactly one field (the receipt); the receipt has exactly one observed-outcome slot (`actual: A`, see §2.3); structural rejects construct a receipt with `evidence: EvidenceNone`; there is no un-instrumented `Fail` state because there is nowhere to *not* construct a receipt. `Deferred` keeps `actual: Outcome<T>` because Deferred is the "could not evaluate" state — its outcome is the wrapped reason, not a falsification, and there is only one authority for it within `Deferred`.
 
-`Fail.falsification = None` is reserved for **un-instrumented** Fail sites: legacy paths or in-flight migrations that have not yet been wired to produce a receipt at all. Treat any new `None` at the verdict layer as a tightening candidate, not a legitimate steady-state encoding. Lenses (Phase 3+) may require `Some` on specific rosters (e.g. rung-4 host roster), but at the carrier layer the constraint stays single-axis: `Pass + Some` is unrepresentable; `Fail + None` is admissible only as a transitional state.
+The §2.2-vs-§2.3 `None`-meaning ambiguity (cursor 2026-05-30) is moot under this shape: there is no `None` at the verdict layer. The only "no execution evidence" encoding is `FalsificationReceipt { …, evidence: EvidenceNone }`.
 
-**Monoid impact.** `verdict_combine` / `verdict_monoid` generalize from `<T>` to `<S, T>` with shape unchanged: `Pass` identity, `Fail` absorbs, `Deferred` sticky. When two `Fail`s combine, the winner's `falsification` is the join result's `falsification` (matches the existing "Fail's `actual` wins" semantics; receipt is carried along its sibling field).
+**Monoid impact.** `verdict_combine` / `verdict_monoid` generalize from `<T>` to `<S, T>` with shape unchanged: `Pass` identity, `Fail` absorbs, `Deferred` sticky. When two `Fail`s combine, the winner's `receipt` is the join result's `receipt` (matches the existing "Fail's `actual` wins" semantics — receipt is the single field that now carries everything Fail used to put in `actual`).
 
 ```dag
 // src/v4/compiler/05_eval.dag — TestClaimRun verdict parameter widens to <S, A>
@@ -76,6 +80,7 @@ No new slot on `TestClaimRun` itself; the carrier change lives entirely in `std/
 data FalsificationReceipt<S, A> = FalsificationReceipt {
   subject:    TestClaimEvalSubject<S>,
   expected:   A,
+  actual:     A,
   divergence: ValueDiff<A>,
   evidence:   ExecutionEvidence,
 }
@@ -115,7 +120,7 @@ Both lanes converge on `VerdictTally` (`pass`, `fail`, `deferred` counts). Close
 
 | Symbol / change | Spine | Runtime/TestClaim | Notes |
 | --------------- | ----- | ----------------- | ----- |
-| `Verdict<S, T>` parameter widening + `Fail.falsification` slot in `std/verdict.dag` | ✓ | consult | receipt is reachable only via `Fail` — illegal states unrepresentable (INVARIANTS P2) |
+| `Verdict<S, T>` parameter widening + `Fail { receipt: FalsificationReceipt<S, T> }` (receipt-as-payload) in `std/verdict.dag` | ✓ | consult | single observed-outcome authority lives in the receipt; no `Fail.actual`, no `Option` (INVARIANTS P2 / single authority) |
 | `verdict_combine` / `verdict_monoid` generalization to `<S, T>` | ✓ | — | shape unchanged; Fail-absorbs carries the winning falsification |
 | `TestClaimRun<S, A>.verdict` widens from `Verdict<A>` to `Verdict<S, A>` in `05_eval.dag` | ✓ | consult | mechanical follow-on to the verdict.dag change |
 | `FalsificationReceipt<S, A>` type declaration | — | ✓ | std-domain home TBD at W2 (`std/test_claim.dag` candidate) |
