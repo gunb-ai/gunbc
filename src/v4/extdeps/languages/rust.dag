@@ -729,6 +729,10 @@ fn rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32() -> Node {
   rust_integer_algebra_inhabitance(facts: rust_facts_i32).algebra
 }
 
+fn rust_leaf_model_fact_id_node_atom_realization_symbol() -> Node {
+  rust_inhabitant_atom(id: rust_atom_realization_symbol)
+}
+
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 

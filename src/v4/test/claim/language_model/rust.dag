@@ -10,6 +10,7 @@ import v4.extdeps.languages.rust {
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_language_model_wave2,
   rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32,
+  rust_leaf_model_fact_id_node_atom_realization_symbol,
   rust_leaf_model_fact_id_node_rust_facts_i32,
   rust_symbol_connective_atom_node
 }
@@ -117,7 +118,7 @@ data claim_rust_leaf_r2b_i32_overflow_semantics: RustLeafModelClaim = LeafModelC
 // R3-external — PLANNED until SG-1 lands TargetAtomRealization row (§4).
 data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
-  fact_id: rust_symbol_connective_atom_node,
+  fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
   subject: RustAtomRealizationSubject { atom: rust_symbol_connective_atom_node },
   expectation: rust_leaf_rustc_accepts(),
   falsification_case: FalsificationCase {
@@ -129,7 +130,7 @@ data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafMod
 // R3-internal — emit coupling receipt; exercisable post-SG-1 (§4).
 data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
-  fact_id: rust_symbol_connective_atom_node,
+  fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
   subject: RustAtomRealizationSubject { atom: rust_symbol_connective_atom_node },
   expectation: RustEmitProjectionEqualityExpectation {
     atom_realization_row: rust_symbol_connective_atom_node,
