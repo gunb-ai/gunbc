@@ -38,7 +38,7 @@ Re-expresses legacy `src/v4/TASKS.md:819` prose (`main@678bb8bbd`, 2026-05-28) i
 | P5 (TestClaim suite passes) | **PARTIAL** | #3803 structural corpus bridge; T-38 runner bar open |
 | P6 (hand-Rust reproduction authority) | **Not reported** | Absent from `:819`; tracker holds `GAP` |
 
-**INVARIANTS A3/P5 resolve-posture bridge** (separate from predicate P5): **OPEN** — `scripts/v4-bootstrap-resolve-posture-gate.sh` + `.github/workflows/ci.yml:266-273` (`v2 → v4 bootstrap resolve-posture gate` step) until script + paired CI step deleted per header. *(Legacy `TASKS.md:819` still cites `ci.yml:249` — that line is the unrelated M1 rust-emit probe; tracker uses live wiring.)*
+**INVARIANTS A3/P5 resolve-posture bridge** (separate from predicate P5): **OPEN** — `scripts/v4-bootstrap-resolve-posture-gate.sh` + `.github/workflows/ci.yml:293-300` (`v2 → v4 bootstrap resolve-posture gate` step; script invoke `:300`) until script + paired CI step deleted per header. *(Legacy `TASKS.md:819` still cites `ci.yml:249` — unrelated M1 rust-emit probe; post-#3983 `:273` is `phase1/nat_semiring` gate.)*
 
 ---
 
@@ -87,7 +87,7 @@ Re-expresses legacy `src/v4/TASKS.md:819` prose (`main@678bb8bbd`, 2026-05-28) i
 **Evidence (file:line):**
 
 - **T-37 landed:** `src/v4/TASKS.md:2246-2271` — #3791; dissolution trigger (b) met on probe.
-- **Resolve-posture bridge still live** (INVARIANTS A3/P5 scaffolding — not predicate P5): `scripts/v4-bootstrap-resolve-posture-gate.sh:1-12` (dissolve when (a) or (b) + 14-day soak); CI `.github/workflows/ci.yml:273` invokes it.
+- **Resolve-posture bridge still live** (INVARIANTS A3/P5 scaffolding — not predicate P5): `scripts/v4-bootstrap-resolve-posture-gate.sh:1-12` (dissolve when (a) or (b) + 14-day soak); CI `.github/workflows/ci.yml:293-300` invokes it.
 - **Structural compile today:** `scripts/v4-testclaim-corpus-gate.sh:3-18` compiles `src/v4` via **v2** `gunbc` (`:33-37`) — not the v4 self-host binary chain.
 - **Emit scaffold gates:** widespread `🟡` on compiler stages; SG-1 emit class still open per PR #3938 §10.1.
 
@@ -158,7 +158,7 @@ Re-expresses legacy `src/v4/TASKS.md:819` prose (`main@678bb8bbd`, 2026-05-28) i
 
 **Evidence:**
 
-- Structural bridge: `scripts/v4-testclaim-corpus-gate.sh` + `.github/workflows/ci.yml:290`.
+- Structural bridge: `scripts/v4-testclaim-corpus-gate.sh` + `.github/workflows/ci.yml:315-319` (`T-22 TestClaim corpus structural bridge` step).
 - Modeled runner scaffold: `src/v4/test/claim/workflow/testclaim_corpus_runner.dag:2-4` — `🟡 gated — feature:t38-testclaim-corpus-eval`.
 - `src/v4/workflow/ci.dag:117` — `TestClaimCorpusEvalCommand` dissolution step declared; not yet replacing shell gate.
 - `src/v4/TASKS.md:2277-2301` — T-38 close conditions 1–3 still open.
@@ -251,7 +251,7 @@ Claims checked against tree at `e332fc27b`:
 | §10.1 SG-1 blocks emit correctness | **Confirmed** | Open PR #3934 WIP; planning §10.1 |
 | T-15 harness is structural not executable fixpt | **Confirmed** | `claim_t15_self_host_fixed_point.dag:4`, closeout brief `:31-37` |
 | `RoundTripClaim` deferred | **Confirmed** | `05_eval.dag:1732-1736` |
-| Resolve-posture bridge still present | **Confirmed** | `ci.yml:273`, `v4-bootstrap-resolve-posture-gate.sh:1-12` |
+| Resolve-posture bridge still present | **Confirmed** | `ci.yml:293-300`, `v4-bootstrap-resolve-posture-gate.sh:1-12` |
 
 **`:819` numbering:** Close/Receipt mapping on `main` via [#3973](https://github.com/gunb-ai/gunbc/pull/3973) (`v4-done-predicate-tasks-mapping-2026-05-30.md`). Tracker snapshot adopts §2.3 six-row shape; TASKS.md `:819` prose refresh awaits operator when status is re-reconnoitered.
 
