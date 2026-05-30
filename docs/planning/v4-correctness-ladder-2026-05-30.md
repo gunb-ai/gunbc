@@ -266,10 +266,17 @@ The following questions need answers before §7 Phase 1 dispatches. Proposed ans
 **Proposed:** Rung 5 on a minimal fixture set (3 fixtures) is **release-gate**; widening to full corpus is post-release. Rationale: THESIS L5 is a thesis claim, not labeled release-scoped explicitly — but shipping v4 without ONE proven cross-target equivalence claim ships a thesis claim that has never been demonstrated.
 **Operator decides:** release-gate on 3 fixtures, OR defer entirely to post-release.
 
-### D4. Is rung 7 (self-emit fixpoint) the release gate, or is rung 4 (emit-matches-eval) enough?
+### D4. Rung 7 (self-emit fixpoint) and the TASKS.md v4-done definition
 
-**Proposed:** Rung 4 on 3+ fixtures is **release-minimum**. Rung 7 (full fixpoint) is post-release self-hosting maturity. THESIS §"Fixed-point acceptance" names rung 7 as the eventual target but does not require it for v4 ship.
-**Operator decides:** confirm release-minimum bar = rung 4, OR raise it to rung 7.
+**Authority check.** `src/v4/TASKS.md:801-815` defines v4-done as: *"v4 compiles `src/v4/compiler/*.dag` end-to-end; v4 emits Rust source that compiles to a binary; That binary, run on `src/v4/compiler/*.dag`, produces bit-identical output; TestClaim suite passes; Hand-authored Rust is not the editable authority (proven by reproduction)."* And `TASKS.md:1239`: *"The release is when v4-done. Not before, not after."*
+
+**That definition IS rung 7 + rung 8** (self-emit fixpoint + TestClaim corpus actually executes). So the release gate per the operational authority is rung 7, not rung 4. An earlier draft of this section proposed rung 4 as release-minimum on the basis of THESIS framing — that contradicted TASKS.md and has been retracted.
+
+**Operator decides:**
+- **Option A**: confirm rung 7+8 as release gate per TASKS.md. Implication: §7 sequencing must be extended with phases 5+ that achieve rungs 7-8 before release. Currently §7 stops at Phase 4 (rungs 0-6).
+- **Option B**: amend TASKS.md:805-808 to lower the v4-done definition. This is a substantive operator change to the operational authority and requires its own documented decision, not just a checkbox here.
+
+**PM-recommendation (without lobbying)**: Option A. Lowering the v4-done bar to ship sooner would close on a definition that doesn't match the thesis's strongest correctness commitment. If sequencing pressure makes rung 7 infeasible by some deadline, the right surface is a TASKS.md amendment with named rationale — not a tacit narrowing via this doc.
 
 ### D5. What is the policy on standards-with-substrate-but-no-activation?
 
@@ -317,7 +324,9 @@ Each ladder rung activates verification for one or more questionnaire sections:
 | 8    | §3.3 tests-as-data |
 | 9    | §1.1-§1.5 dimension lenses; §4.1 lens self-application; §2.5 impossible-bugs by construction (META-PROMISE, 36 probes) |
 
-This means **closing rungs 4–9 with the §7 sequencing closes ~90% of the questionnaire's load-bearing receipt probes**.
+**Coverage by §7 phases.** §7 Phases 1-4 sequence rungs 0-6 only. That covers questionnaire sections §3.1 (rungs 0-2), §3.5 / §3.6 / §3.7 (rungs 4-6) and partials of others — a substantial fraction of the emit/eval probes. Phases 5+ are NOT currently in §7; they would have to add coverage for rungs 7-9 (§4.2 self-host fixpoint ~4 probes; §3.3 tests-as-data ~4 probes; §1.1-§1.5 dimensions + §4.1 lens self-application + §2.5 impossible bugs — collectively the largest single block, ~88 probes by section counts in silent-raven-384's first-pass tally).
+
+A prior draft claimed "~90% of probes" close via §7 — that overstated the §7 commitment, since §7 explicitly stops at rung 6 and rungs 7-9 are the largest unaddressed block. The honest read: §7 as currently sequenced closes the bulk of emit/eval probes; closing the questionnaire fully requires §7 Phase 5+ (or a separate program) and is coupled to D4.
 
 ### §9.3 Sample probe evaluation (2026-05-30 spot-checks)
 
