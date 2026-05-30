@@ -45,7 +45,7 @@ SG-class work still requires a separate **§10.0 DFS worksheet** (`docs/planning
 
 | Class | Example | Disposition |
 |-------|---------|-------------|
-| **Blocking** | M6 identical-payload coproduct arms (#3962) | Must collapse or dissolve before downstream carriers copy the pattern (SG-1, SG-5). |
+| **Blocking** | M6 identical-payload coproduct arms (#3962) | Must collapse or dissolve before downstream carriers copy the pattern — **SG-2** (`TargetTypeExpressionProjection`, PR #3962); **SG-1** is downstream consumer of `type_form` (dispatch SG-2 before SG-1 per `v4-sg2-type-expression-projection-worksheet`). SG-5/SG-6 are unrelated collection/`Ord` lanes. |
 | **Blocking** | New parallel authority for a fact already in std/ | Rehome or consume existing carrier. |
 | **Advisory** | Missing 🟡 gate on staged mirror (v4 compile-root vs dsl/) | Add gate + dissolution target before merge if mirror is intentional. |
 | **Advisory** | Histogram shows near-isomorphic arms | Open follow-on or cite why arms genuinely differ. |
