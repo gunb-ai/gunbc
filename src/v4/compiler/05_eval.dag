@@ -1721,6 +1721,38 @@ fn run_test_claim_round_trip_verdict(actual: Outcome<Node>, at: Node) -> Verdict
 }
 
 
+fn run_test_claim_round_trip_runtime_verdict(actual: Outcome<RuntimeValue>, at: Node) -> Verdict<RuntimeValue> {
+  match actual {
+    Rejected { diagnostics: _ } => Fail { actual: actual }
+    Accepted { value: v, diagnostics: d } =>
+      match runtime_value_node_projection(value: v) {
+        RuntimeValueNodeProjected { node: n } =>
+          match run_test_claim_round_trip_verdict(
+            actual: Accepted { value: n, diagnostics: d },
+            at: at
+          ) {
+            Pass => Pass
+            Fail { actual: _ } =>
+              Fail {
+                actual: outcome_rejected(
+                  d: eval_diagnostic(reason: eval_rejected_roundtrip_precondition, node: at)
+                )
+              }
+          }
+        RuntimeValueNodeUnrepresentable =>
+          Fail {
+            actual: outcome_rejected(
+              d: eval_diagnostic(
+                reason: eval_rejected_runtime_value_node_unrepresentable,
+                node: at
+              )
+            )
+          }
+      }
+  }
+}
+
+
 fn run_test_claim_assert(
   claim: TestClaim,
   actual: Outcome<Node>,
@@ -1810,15 +1842,7 @@ fn run_test_claim_runtime_assert(
       }
     }
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
-      match actual {
-        Rejected { diagnostics: _ } => Fail { actual: actual }
-        Accepted { value: _, diagnostics: _ } =>
-          if dag_round_trip_wave1_authorities_ready() {
-            Pass
-          } else {
-            Fail { actual: actual }
-          }
-      }
+      run_test_claim_round_trip_runtime_verdict(actual: actual, at: at)
     DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
