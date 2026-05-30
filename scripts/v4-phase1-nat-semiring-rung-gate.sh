@@ -12,9 +12,10 @@
 #   blocking_receipt: <predicate id> | none
 #
 # Authority: docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.1–§2.5 (rung gate shape +
-# CI matrix wiring). Modeled CiCommand arm in src/v4/workflow/ci.dag is a follow-up PR per
-# §11.4; this host transport runs ahead of the substrate dissolution because §2.5 explicitly
-# requires CI to invoke rustc/py_compile/go directly until TestClaimRun verdicts are PROVEN.
+# CI matrix wiring). Modeled CiCommand arm Phase1NatSemiringRungGateCommand lands in
+# src/v4/workflow/ci.dag in the same PR as this transport (PR #3955); the script's role
+# is the §2.5 "interim host script" layer until TestClaimRun verdicts evaluate
+# phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets).
 # Pattern: scripts/v4-m1-rust-emit-probe.sh (single-module scope, not full src/v4).
 #
 # Env:
@@ -128,7 +129,12 @@ else
   note_blocking "phase1/nat_semiring/rung0/dag_parse_rejected"
 fi
 
-# --- Rung 0 rust-emit-parse + Rung 1 rust-typecheck + Rung 2 rust-compile ---
+# --- Rust target: R0-rust-parse, R1-rust-typecheck, R2-rust-compile ---
+# Per spec §2.1 R0-rust-parse: "Emitted Rust ... parses under rustc frontend (parse-only or
+# full compile)." Per spec §2.3 R2-rust-compile: "Same as R1-rust-typecheck (rung 2 Rust ⊇
+# rung 1)." So cargo check is the load-bearing receipt — it parses AND typechecks — and
+# R0-rust-parse only flips on cargo-check exit-0 with artifact-presence proof, not on emit
+# exit alone (INVARIANTS P3 fail-closed).
 rust_emit_log="$out/logs/rust_emit.log"
 set +e
 run_step "$rust_emit_log" "$bin" compile \
@@ -138,22 +144,34 @@ run_step "$rust_emit_log" "$bin" compile \
   --target rust
 rust_emit_status=$?
 set -e
-if [[ "$rust_emit_status" -eq 0 ]]; then
-  verdict[R0-rust-parse]=PASS
-else
-  note_blocking "phase1/nat_semiring/rung0/rust_emit_parse_rejected"
+rust_rs_count=0
+if [[ -d "$out/rust" ]]; then
+  rust_rs_count="$(find "$out/rust" -name '*.rs' 2>/dev/null | wc -l | tr -d ' ')"
 fi
-
-if [[ "$rust_emit_status" -eq 0 && -f "$out/rust/Cargo.toml" ]]; then
+if [[ "$rust_emit_status" -ne 0 ]]; then
+  note_blocking "phase1/nat_semiring/rung0/rust_emit_parse_rejected"
+elif [[ ! -f "$out/rust/Cargo.toml" ]]; then
+  echo "no Cargo.toml emitted under $out/rust — Rust rung predicates fail closed" >&2
+  note_blocking "phase1/nat_semiring/rung0/rust_emit_parse_rejected"
+elif [[ "${rust_rs_count:-0}" -lt 1 ]]; then
+  echo "no .rs files emitted under $out/rust — Rust rung predicates fail closed" >&2
+  note_blocking "phase1/nat_semiring/rung0/rust_emit_parse_rejected"
+else
   rust_check_log="$out/logs/rust_check.log"
   set +e
   run_step "$rust_check_log" "$cargo_bin" check --jobs 4 --manifest-path "$out/rust/Cargo.toml"
   rust_check_status=$?
   set -e
   if [[ "$rust_check_status" -eq 0 ]]; then
+    # cargo check completed: parse phase succeeded (= R0-rust-parse) and typecheck phase
+    # succeeded (= R1-rust-typecheck). R2-rust-compile is defined as R1 per spec §2.3.
+    verdict[R0-rust-parse]=PASS
     verdict[R1-rust-typecheck]=PASS
     verdict[R2-rust-compile]=PASS
   else
+    # Treat any cargo-check failure as the R0 parse rejection unless a later predicate
+    # (rung1/rung2) is the more specific blocker. Single-receipt model collapses parse
+    # and typecheck reporting; structured rustc diagnostic categorization is future work.
     note_blocking "phase1/nat_semiring/rung1/rust_typecheck_failed"
   fi
 fi
@@ -168,32 +186,31 @@ run_step "$py_emit_log" "$bin" compile \
   --target python
 py_emit_status=$?
 set -e
-if [[ "$py_emit_status" -eq 0 ]]; then
-  verdict[R0-python-parse]=PASS
-else
-  note_blocking "phase1/nat_semiring/rung0/python_emit_parse_rejected"
-fi
-
-if [[ "$py_emit_status" -eq 0 ]]; then
-  py_check_log="$out/logs/python_check.log"
-  # Fail-closed: an empty .py tree must not be reported as PASS. xargs -r exits 0
-  # when find supplies no inputs, which would let R2-python-compile flip to PASS
-  # without actually compiling any emitted artifact — INVARIANTS P3.
+# R0-python-parse and R2-python-compile both flip on the same py_compile receipt: py_compile
+# IS the Python parse check (spec §2.1 "python3 -m py_compile or equivalent") and the spec
+# §2.3 R2-python-compile pass condition is the same toolchain invocation. Both predicates
+# require fail-closed artifact presence: zero .py files cannot pass either.
+py_file_count=0
+if [[ -d "$out/python" ]]; then
   py_file_count="$(find "$out/python" -name '*.py' 2>/dev/null | wc -l | tr -d ' ')"
-  if [[ "${py_file_count:-0}" -lt 1 ]]; then
-    echo "no .py files emitted under $out/python — R2-python-compile fails closed" | tee "$py_check_log"
-    note_blocking "phase1/nat_semiring/rung2/python_compile_failed"
+fi
+if [[ "$py_emit_status" -ne 0 ]]; then
+  note_blocking "phase1/nat_semiring/rung0/python_emit_parse_rejected"
+elif [[ "${py_file_count:-0}" -lt 1 ]]; then
+  echo "no .py files emitted under $out/python — Python rung predicates fail closed" >&2
+  note_blocking "phase1/nat_semiring/rung0/python_emit_parse_rejected"
+else
+  py_check_log="$out/logs/python_check.log"
+  set +e
+  find "$out/python" -name '*.py' -print0 2>/dev/null \
+    | xargs -0 "$python_bin" -m py_compile 2>&1 | tee "$py_check_log"
+  py_check_status=${PIPESTATUS[1]}
+  set -e
+  if [[ "$py_check_status" -eq 0 ]]; then
+    verdict[R0-python-parse]=PASS
+    verdict[R2-python-compile]=PASS
   else
-    set +e
-    find "$out/python" -name '*.py' -print0 2>/dev/null \
-      | xargs -0 "$python_bin" -m py_compile 2>&1 | tee "$py_check_log"
-    py_check_status=${PIPESTATUS[1]}
-    set -e
-    if [[ "$py_check_status" -eq 0 ]]; then
-      verdict[R2-python-compile]=PASS
-    else
-      note_blocking "phase1/nat_semiring/rung2/python_compile_failed"
-    fi
+    note_blocking "phase1/nat_semiring/rung2/python_compile_failed"
   fi
 fi
 
@@ -207,19 +224,27 @@ run_step "$go_emit_log" "$bin" compile \
   --target go
 go_emit_status=$?
 set -e
-if [[ "$go_emit_status" -eq 0 ]]; then
-  verdict[R0-go-parse]=PASS
-else
-  note_blocking "phase1/nat_semiring/rung0/go_emit_parse_rejected"
+# R0-go-parse and R2-go-compile both flip on the same go-build receipt: `go build` parses
+# AND compiles, satisfying both spec §2.1 R0-go-parse ("parse phase") and spec §2.3
+# R2-go-compile ("builds without compile errors") in one invocation. Artifact-presence
+# guarded — empty .go tree cannot pass either predicate (INVARIANTS P3).
+go_file_count=0
+if [[ -d "$out/go" ]]; then
+  go_file_count="$(find "$out/go" -name '*.go' 2>/dev/null | wc -l | tr -d ' ')"
 fi
-
-if [[ "$go_emit_status" -eq 0 ]]; then
+if [[ "$go_emit_status" -ne 0 ]]; then
+  note_blocking "phase1/nat_semiring/rung0/go_emit_parse_rejected"
+elif [[ "${go_file_count:-0}" -lt 1 ]]; then
+  echo "no .go files emitted under $out/go — Go rung predicates fail closed" >&2
+  note_blocking "phase1/nat_semiring/rung0/go_emit_parse_rejected"
+else
   go_check_log="$out/logs/go_check.log"
   set +e
   ( cd "$out/go" && run_step "$go_check_log" "$go_bin" build ./... )
   go_check_status=$?
   set -e
   if [[ "$go_check_status" -eq 0 ]]; then
+    verdict[R0-go-parse]=PASS
     verdict[R2-go-compile]=PASS
   else
     note_blocking "phase1/nat_semiring/rung2/go_compile_failed"
