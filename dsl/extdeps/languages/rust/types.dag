@@ -43,7 +43,7 @@ data rust_atom_realizations: List<TargetAtomRealization> = [
     storage_type: "String",
     type_decl_kind: NominalNewtype,
     value_ctor_template: "Symbol(\"\{ident\}\".to_string())",
-    default_expr: "String::new()",
+    default_expr: "Symbol(String::new())",
     is_copy: false,
     literal_suffix: ".to_string()"
   },

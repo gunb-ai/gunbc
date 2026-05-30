@@ -175,6 +175,17 @@ fn literal_suffix(target: RenderTarget, dag_name: String) -> String? {
   }
 }
 
+fn default_expr(target: RenderTarget, dag_name: String) -> String? {
+  match lookup_atom_realization(target: target, dag_name: dag_name) {
+    Some { value: row } => row.default_expr
+    None =>
+      match lookup_checkpoint(target: target, dag_name: dag_name) {
+        Some { value: cp } => cp.default_expr
+        None => none
+      }
+  }
+}
+
 // =========================================================================
 // Level 2: Algebra inhabitant lookup (container coercion)
 // =========================================================================
