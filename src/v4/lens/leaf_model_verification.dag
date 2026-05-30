@@ -1,0 +1,71 @@
+// src/v4/lens/leaf_model_verification.dag
+// Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1).
+// Status: R1 happy + falsification rustc source fixtures for rust.dag i32 surface spelling.
+
+module v4.lens.leaf_model_verification
+
+
+import v4.extdeps.languages.rust {
+  rust_coercion_field_i32_spelling,
+  rust_surface_spelling_i32
+}
+import v4.std.leaf_model_verification {
+  LeafModelFixturePair,
+  LeafModelFalsificationCase,
+  LeafModelRustFixture,
+  RustCrateTypeLib,
+  RustR1I32SurfaceSpelling,
+  TargetCompileAccepted,
+  TargetCompileRejected,
+  target_diagnostic_e0308_type_mismatch
+}
+import v4.std.text { String }
+
+
+// Fact anchor: rust.dag declares `rust_surface_spelling_i32` / coercion edge
+// `rust_coercion_field_i32_spelling` (primitive_fact_axis_surface_spelling).
+// Fixture embeds the spelled type + literal suffix so rustc is the external authority.
+
+data rust_r1_happy_fixture_source: String = "pub fn r1_test() -> i32 { 0i32 }\n"
+
+data rust_r1_falsification_fixture_source: String = "pub fn r1_test() -> i32 { \"string\" }\n"
+
+
+fn rust_r1_happy_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    claim_id: RustR1I32SurfaceSpelling,
+    source: rust_r1_happy_fixture_source,
+    crate_type: RustCrateTypeLib
+  }
+}
+
+
+fn rust_r1_falsification_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    claim_id: RustR1I32SurfaceSpelling,
+    source: rust_r1_falsification_fixture_source,
+    crate_type: RustCrateTypeLib
+  }
+}
+
+
+fn rust_r1_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: RustR1I32SurfaceSpelling,
+    happy: rust_r1_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      claim_id: RustR1I32SurfaceSpelling,
+      fixture: rust_r1_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_e0308_type_mismatch
+      }
+    }
+  }
+}
+
+
+// Testgen port: `rust_r1_fixture` (docs/planning/v4-leaf-model-verification-2026-05-30.md §8).
+fn rust_r1_fixture() -> LeafModelFixturePair {
+  rust_r1_fixture_pair()
+}
