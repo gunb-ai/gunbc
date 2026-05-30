@@ -353,7 +353,7 @@ Phase 0 was dispatched 2026-05-30 01:07Z (work item `adhoc-7020540d-622`, worker
 - Scope: all 346 probes in `docs/v4-close-interrogation.md` against current main.
 - Disposition vocabulary: §0 of the questionnaire (PROVEN / WEAK-EVIDENCE / GAP / NOT-CHECKED / OPERATOR-DECISION-REQUIRED / NOT-IN-V4 / NOT-PROMISED).
 - Result feeds back into THIS doc's §3 as a more complete gating audit.
-- **Quality caveat**: first pass produced uniform-GAP boilerplate via a single structural argument (T-38 runner blocked → 346 GAP) rather than per-probe codebase search. Redo brief sent 2026-05-30 01:18Z asking for per-probe disposition with realistic WEAK-EVIDENCE distribution for substrate-rich-but-not-end-to-end-gated probes. Operator should read the PR #3941 "346 GAP" headline with that caveat until the redo lands.
+- **Redo update (2026-05-30 ~01:27Z)**: silent-raven-384 completed the per-probe redo on commit `68b9bd7ed`. Final distribution: **0 PROVEN / 267 WEAK-EVIDENCE / 42 GAP / 37 NOT-CHECKED**. This matches the predicted realistic distribution and confirms the substrate-rich/activation-poor diagnosis at probe granularity. PR #3941 is mergeable=clean per dashboard (operator merges manually per current policy). The historical "uniform-GAP first pass" is preserved here as worker-management context — the first pass produced uniform-GAP boilerplate via a single structural argument (T-38 runner blocked → 346 GAP) rather than per-probe codebase search; redo brief sent 2026-05-30 01:18Z asking for per-probe disposition with realistic distribution for substrate-rich-but-not-end-to-end-gated probes; redo landed within 10 minutes.
 
 ### §9.5 Effect on §8 operator decisions
 
