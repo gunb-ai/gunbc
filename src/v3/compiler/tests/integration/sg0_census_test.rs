@@ -838,8 +838,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
     "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
-    // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
-    "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // Wave-5-A / P3 commitment 6: validate_then_compile public terminal on 00_compile.dag.
     "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
@@ -857,15 +855,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt (+1 census path). Dissolves when W3 wires transport
     // into `run_emit_host_rust` and rung-3/4 TestClaim rows replace hand-Rust probes.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
+    // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
+    // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
+    "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
     // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
     "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
     // T-4.16: `ConfigPatchRecord` / `config_patch_layer` consumer smoke on `black.dag`
     // (zero diagnostics; `BlackConfigPatch` materializes `FieldPatch<T>` fields).
     // SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_extdeps_formatters_black_dag_smoke_test.rs",
-    // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
-    // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
-    "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
@@ -893,6 +891,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-33: parse ratchet on `src/v4/std/model_core.dag` — Ratified Q1 ModelCore carrier.
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
+    // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
+    "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage.

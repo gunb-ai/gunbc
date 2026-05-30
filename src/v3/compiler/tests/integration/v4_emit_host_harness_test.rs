@@ -29,7 +29,10 @@ const EMIT_HOST_FIXTURE_SOURCE: &str =
 
 #[test]
 fn emit_host_runner_rust_row_builds_runs_and_parses_stdout() {
-    let work_dir = emit_host_runner::default_work_dir("gunbc_v4_emit_host_harness");
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_v4_emit_host_harness_{}",
+        std::process::id()
+    ));
     let receipt = emit_host_runner::run_emit_host_rust(EMIT_HOST_FIXTURE_SOURCE, &work_dir)
         .expect("run_emit_host_rust");
     assert!(
