@@ -58,13 +58,12 @@ import v4.std.lexing {
   TokenRule
 }
 import v4.std.collection {
+  Absent,
   List,
   Map,
-  None,
   Optional,
   Present,
   Set,
-  Some,
   empty_map,
   map_insert
 }
@@ -924,29 +923,29 @@ fn ts_grammar_relation_row_token_edges(row: Node) -> List<Edge> {
     TypeNode { connective: Conj } =>
       match fold(
         row.children,
-        init: None,
+        init: Absent,
         f: fn(found, edge) {
           match found {
-            Some { value: edges } => found
-            None =>
+            Present { value: edges } => found
+            Absent =>
               match edge.label {
                 Named { name: n } =>
                   if n == grammar_relation_field_tokens {
                     match edge.target.kind {
                       TypeNode { connective: Conj } =>
-                        Some { value: edge.target.children }
-                      _ => None
+                        Present { value: edge.target.children }
+                      _ => Absent
                     }
                   } else {
-                    None
+                    Absent
                   }
-                Positional => None
+                Positional => Absent
               }
           }
         }
       ) {
-        Some { value: edges } => edges
-        None => Empty
+        Present { value: edges } => edges
+        Absent => Empty
       }
     _ => Empty
   }

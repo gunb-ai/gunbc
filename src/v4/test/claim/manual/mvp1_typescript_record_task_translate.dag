@@ -165,8 +165,7 @@ fn anchor_mvp1_ts_task_compile_inferred_accepts() -> Outcome<CompileOutput> {
 
 data mvp1_ts_task_emit_receipt: Outcome<TargetSource> = anchor_mvp1_ts_task_emit_accepts()
 
-data mvp1_ts_task_compile_inferred_receipt: Outcome<CompileOutput> =
-  anchor_mvp1_ts_task_compile_inferred_accepts()
+data mvp1_ts_task_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_ts_task_compile_inferred_accepts()
 
 fn mvp1_ts_task_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_ts_task_emit_receipt {
