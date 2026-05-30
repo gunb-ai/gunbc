@@ -1386,9 +1386,13 @@ fn target_collection_witness_from_node(node: Node) -> Outcome<RequiredTraitWitne
 }
 
 fn target_collection_fold_list_from_node<T>(
+  remaining: Int,
   node: Node,
   decode_item: fn(Node) -> Outcome<T>
 ) -> Outcome<List<T>> {
+  if remaining <= 0 {
+    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  } else {
   match node.kind {
     TypeNode { connective: Conj } =>
       if is_empty(xs: node.children) {
@@ -1405,6 +1409,7 @@ fn target_collection_fold_list_from_node<T>(
                   f: fn(tail_node) {
                     bind_outcome(
                       o: target_collection_fold_list_from_node(
+                        remaining: remaining - 1,
                         node: tail_node,
                         decode_item: decode_item
                       ),
@@ -1424,6 +1429,7 @@ fn target_collection_fold_list_from_node<T>(
       }
     _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
   }
+  }
 }
 
 fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
@@ -1438,6 +1444,7 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
             f: fn(constraints_node) {
               bind_outcome(
                 o: target_collection_fold_list_from_node(
+                  remaining: node_subtree_count(n: constraints_node),
                   node: constraints_node,
                   decode_item: target_collection_witness_from_node
                 ),
@@ -1493,6 +1500,7 @@ fn target_collection_realization_from_bundle(
                 f: fn(alternatives_node) {
                   bind_outcome(
                     o: target_collection_fold_list_from_node(
+                      remaining: node_subtree_count(n: alternatives_node),
                       node: alternatives_node,
                       decode_item: target_collection_choice_from_node
                     ),
