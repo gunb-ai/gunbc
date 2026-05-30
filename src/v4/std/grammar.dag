@@ -554,6 +554,8 @@ fn formal_production_matches_lhs_and_slot_count(
 }
 
 
+// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for atom-child lhs-exact match: production RHS
+// is exactly one unbound terminal (e.g. type_annotation → ty_string); not for bound slots.
 type RhsSingletonTerminalLookup
   = RhsSingletonTerminalNotSeen
   | RhsSingletonTerminalFound { identity: Symbol }
@@ -591,6 +593,8 @@ fn formal_production_rhs_singleton_terminal_identity(production: FormalProductio
 }
 
 
+// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for atom-child lhs-exact match: production RHS
+// is exactly one bound terminal (emitted Conj slot = bound-terminal atom per DESIGN-1).
 type RhsSingletonBindingLookup
   = RhsSingletonBindingNotSeen
   | RhsSingletonBindingFound { binding: Symbol }
@@ -636,6 +640,8 @@ fn node_atom_identity_optional(node: Node) -> Symbol? {
 }
 
 
+// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state walking production RHS against Conj positional
+// children (bound terminals + nonterminals); dissolves when parser-derived selection lands.
 type EmittedRhsMatchState
   = EmittedRhsMatchOk { children: List<Node>, index: Int }
   | EmittedRhsMatchFail
@@ -730,6 +736,8 @@ fn formal_production_rhs_matches_emitted_conj(
 }
 
 
+// Atom child: try unbound-singleton-terminal then bound-singleton-binding (DESIGN-1 slots only).
+// Conj child: structural RHS/emitted Conj walk via formal_production_rhs_matches_emitted_conj.
 fn formal_production_matches_emitted_child(
   production: FormalProduction,
   productions: List<FormalProduction>,
@@ -802,6 +810,7 @@ fn formal_production_for_lhs_exact(
 }
 
 
+// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for recursive token-edge derive over Conj slots.
 type DeriveGrammarRelationTokensProgress {
   edges: List<Edge>
   conj_index: Int
