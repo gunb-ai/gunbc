@@ -644,6 +644,7 @@ type EmittedRhsMatchState
 fn formal_production_rhs_matches_emitted_conj_step(
   state: EmittedRhsMatchState,
   productions: List<FormalProduction>,
+  emitted: Node,
   symbol: FormalGrammarSymbol
 ) -> EmittedRhsMatchState {
   match state {
@@ -658,12 +659,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
                 wanted: index,
                 absent: Diagnostic {
                   reason: grammar_relation_emitted_conj_slot_missing,
-                  at: node_locus(
-                    node: Node {
-                      kind: TypeNode { connective: Conj },
-                      children: []
-                    }
-                  ),
+                  at: node_locus(node: emitted),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }
               ) {
@@ -688,12 +684,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
             wanted: index,
             absent: Diagnostic {
               reason: grammar_relation_emitted_conj_slot_missing,
-              at: node_locus(
-                node: Node {
-                  kind: TypeNode { connective: Conj },
-                  children: []
-                }
-              ),
+              at: node_locus(node: emitted),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
           ) {
@@ -720,13 +711,7 @@ fn formal_production_rhs_matches_emitted_conj(
   emitted: Node
 ) -> Bool {
   let children = conj_positional_children(parent: emitted)
-  let child_count = fold_list(
-    xs: children,
-    empty: 0,
-    cons: fn(count, _) {
-      count + 1
-    }
-  )
+  let child_count = conj_positional_child_count(children: children)
   match fold_list(
     xs: production.rhs,
     empty: EmittedRhsMatchOk { children: children, index: 0 },
@@ -734,6 +719,7 @@ fn formal_production_rhs_matches_emitted_conj(
       formal_production_rhs_matches_emitted_conj_step(
         state: state,
         productions: productions,
+        emitted: emitted,
         symbol: symbol
       )
     }
@@ -824,19 +810,14 @@ type DeriveGrammarRelationTokensProgress {
 
 
 fn emitted_node_slot_count(emitted: Node) -> Int {
-  fold_list(
-    xs: conj_positional_children(parent: emitted),
-    empty: 0,
-    cons: fn(count, _) {
-      count + 1
-    }
-  )
+  conj_positional_child_count(children: conj_positional_children(parent: emitted))
 }
 
 
 fn derive_grammar_relation_token_edges_recursive_step(
   progress: Witness<DeriveGrammarRelationTokensProgress>,
   productions: List<FormalProduction>,
+  emitted: Node,
   symbol: FormalGrammarSymbol
 ) -> Witness<DeriveGrammarRelationTokensProgress> {
   match progress {
@@ -874,12 +855,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
             wanted: conj_index,
             absent: Diagnostic {
               reason: grammar_relation_emitted_conj_slot_missing,
-              at: node_locus(
-                node: Node {
-                  kind: TypeNode { connective: Conj },
-                  children: []
-                }
-              ),
+              at: node_locus(node: emitted),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
           ) {
@@ -933,6 +909,7 @@ fn derive_grammar_relation_token_edges_recursive(
       derive_grammar_relation_token_edges_recursive_step(
         progress: progress,
         productions: productions,
+        emitted: emitted,
         symbol: symbol
       )
     }
@@ -944,12 +921,7 @@ fn derive_grammar_relation_token_edges_recursive(
         Violates {
           diagnostic: Diagnostic {
             reason: grammar_relation_emitted_conj_slot_surplus,
-            at: node_locus(
-              node: Node {
-                kind: TypeNode { connective: Conj },
-                children: []
-              }
-            ),
+            at: node_locus(node: emitted),
             correction: Unavailable { reason: ExternalContractUnknown }
           }
         }

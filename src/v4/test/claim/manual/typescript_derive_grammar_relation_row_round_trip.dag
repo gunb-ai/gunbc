@@ -17,7 +17,6 @@ import v4.extdeps.languages.typescript {
   ts_wave2a_task_formal_productions,
   ts_wave2a_task_type_alias_emitted,
   ts_wave2a_task_type_alias_relation_row_witness,
-  ts_wave2a_type_alias_decl_formal_production,
   ts_wave2a_type_annotation_task_record_emitted
 }
 import v4.std.grammar {
@@ -97,13 +96,21 @@ fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
 }
 
 fn ts_wave2a_task_derive_row_surplus_conj_slot_rejects() -> Bool {
-  match derive_grammar_relation_row_node(
-    production: ts_wave2a_type_alias_decl_formal_production(),
+  match formal_production_for_lhs_exact(
     productions: ts_wave2a_task_formal_productions(),
-    emitted: ts_wave2a_task_type_alias_emitted_surplus_conj_slot()
+    lhs: ts_production_wave2a_type_alias_decl,
+    child: ts_wave2a_task_type_alias_emitted()
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    Holds { value: production } =>
+      match derive_grammar_relation_row_node(
+        production: production,
+        productions: ts_wave2a_task_formal_productions(),
+        emitted: ts_wave2a_task_type_alias_emitted_surplus_conj_slot()
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+    Violates { diagnostic: _ } => false
   }
 }
 
