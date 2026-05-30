@@ -15,7 +15,9 @@
 //!
 //! **W3 landed:** `run_emit_host_rust` substrate row + `nat_semiring_rung34_runtime_value_rows`
 //! populated (`rung_4_emit_eval.dag`); executable host via `emit_host_bridge` / `emit_host_runner`.
-//! Dissolution: delete when T-22 generated harness replaces hand-Rust probes.
+//! Behavior receipts: real cargo compile+run transport, MVP-2 emit-vs-eval `Pass`/`Fail` verdicts
+//! (host `FalsificationReceipt` path on value mismatch / parse reject). Dissolution: delete when
+//! T-22 generated harness replaces hand-Rust probes.
 //!
 //! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
 //! `tools/emit_host_runner` / `emit_host_bridge` (real cargo + run).
@@ -113,6 +115,56 @@ fn type_sum_variant<'a>(
             _ => None,
         })
         .unwrap_or_else(|| panic!("missing `{type_name}.{variant_name}` variant"))
+}
+
+/// Nat-semiring / branch_dispatch rung-4 row uses the same MVP-2 eval pins; one transport proof
+/// covers both fixtures until per-fixture emit lands.
+#[test]
+fn nat_semiring_rung4_emit_vs_eval_wired_transport_passes() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_nat_semiring_rung4_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "phase1_nat_semiring_claim_input".to_string(),
+        expected_eval_root: "phase1_nat_semiring_expected_eval".to_string(),
+    };
+    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_transport(
+        EMIT_HOST_FIXTURE_SOURCE,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("run_emit_vs_eval_mvp2_transport");
+    assert_eq!(verdict, emit_host_bridge::EmitHostEmitVsEvalVerdict::Pass);
+}
+
+#[test]
+fn nat_semiring_rung4_emit_vs_eval_falsification_on_host_value_mismatch() {
+    const MISMATCH_SOURCE: &str =
+        "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[1,2,3,4,5]); }";
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_nat_semiring_rung4_fail_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "phase1_nat_semiring_claim_input".to_string(),
+        expected_eval_root: "phase1_nat_semiring_expected_eval".to_string(),
+    };
+    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_transport(
+        MISMATCH_SOURCE,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("run_emit_vs_eval_mvp2_transport");
+    assert!(
+        matches!(
+            verdict,
+            emit_host_bridge::EmitHostEmitVsEvalVerdict::FailValueMismatch { .. }
+        ),
+        "expected structured Fail with Host receipt evidence, got {verdict:?}"
+    );
 }
 
 #[test]
