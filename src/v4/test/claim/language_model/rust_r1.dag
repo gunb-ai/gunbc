@@ -19,6 +19,7 @@ import v4.std.leaf_model_verification {
   LeafModelVerificationRunReceipt,
   leaf_model_claim_rust_r1_i32_surface_spelling,
   TargetCompileRejected,
+  TargetCompileVerdict,
   target_diagnostic_e0308_type_mismatch
 }
 import v4.std.logic { Bool }
@@ -95,6 +96,6 @@ data claim_rust_r1_surface_spelling_fact_ids_stable: TestClaim = EqualsClaim {
 
 
 // Modeled expectation for falsification probe (rustc E0308).
-data rust_r1_modeled_falsification_expectation: TargetCompileRejected = TargetCompileRejected {
+data rust_r1_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
   diagnostic_code: target_diagnostic_e0308_type_mismatch
 }
