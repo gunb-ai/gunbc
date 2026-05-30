@@ -3324,6 +3324,14 @@ pub enum ProducerLookup<'a> {
 }
 
 /// Verify-first upsert for native `lane2_workflow` storage on `Value`/`Bind`.
+///
+/// **P5 receipt (work-item `adhoc-342cfea2-653`, PR #3923):** explicit deferral —
+/// fail-closed remediation of audit stray **S-register** (`try_register_lane2_workflow_effect`
+/// blind overwrite). Not net hand-Rust scaffold growth: hardens the existing register API
+/// only (verify-first upsert per `dsl/std/patterns.dag` canon). Checkable receipt: unit test
+/// `try_register_lane2_workflow_effect_upserts_without_silent_overwrite` below. **SG-0:** no new
+/// `EXPECTED_HAND_AUTHORED_*` census rows (test lives in existing `dag.rs` `#[cfg(test)]` module,
+/// not `sg0_census_test.rs`). Canon/audit on `main` via #3920; this lane closes compiler stray only.
 fn upsert_lane2_workflow_on_node(
     slot: &mut Option<Box<WorkflowEffect>>,
     workflow: WorkflowEffect,
@@ -5166,6 +5174,7 @@ fn duplicate_target_clean_emission_binding(
 mod tests {
     use super::*;
 
+    /// P5 checkable receipt for `upsert_lane2_workflow_on_node` (see helper doc above).
     #[test]
     fn try_register_lane2_workflow_effect_upserts_without_silent_overwrite() {
         let mut dag =

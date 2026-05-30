@@ -72,6 +72,10 @@ for declaration graphs and bootstrap regen is **largely aligned**. Stray is
 concentrated in the **DSL workflow layer**: stub `content_upsert`, missing
 `dag_util` helper, and tools that import the stub as if authoritative.
 
+| ID | Location | Violation | Severity | Receipt |
+| --- | --- | --- | --- | --- |
+| **S-register** | `dag.rs` `try_register_lane2_workflow_effect` | Blind overwrite of existing `lane2_workflow` | **Remediated** PR #3923 | `upsert_lane2_workflow_on_node` + unit test; P5 comment at helper |
+
 ---
 
 ## §3. Effect / workflow layer (aligned)
