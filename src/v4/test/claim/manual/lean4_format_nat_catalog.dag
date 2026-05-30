@@ -10,6 +10,7 @@ import v4.extdeps.formatters.lean4_format {
   lean4_format_authoritative_locus,
   lean4_nat_authoritative_literal,
   lean4_nat_exceeds_ceiling,
+  lean4_nat_out_of_range,
   make_lean4_nat_value
 }
 import v4.std.diagnostic { Accepted, Rejected }
