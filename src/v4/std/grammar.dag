@@ -199,8 +199,6 @@ data formal_symbol_terminal_node_projection: Symbol = formal_symbol_terminal_nod
 data formal_symbol_nonterminal_node_projection: Symbol = formal_symbol_nonterminal_node_projection
 data formal_production_lhs_node_projection: Symbol = formal_production_lhs_node_projection
 data formal_production_rhs_node_projection: Symbol = formal_production_rhs_node_projection
-data grammar_relation_production_not_found: Symbol = grammar_relation_production_not_found
-data grammar_relation_emitted_conj_slot_missing: Symbol = grammar_relation_emitted_conj_slot_missing
 
 
 fn grammar_atom(identity: Symbol) -> Node {
@@ -759,7 +757,10 @@ fn formal_production_matches_emitted_child(
 }
 
 
-// Exact lhs + emitted-child shape (PR-1.5b DESIGN-2): arity first, then structural emitted-child match.
+// 🟢 PR-1.5b DESIGN-2 — lhs-exact production selection for grammar-inverse derive: filter by
+// emitted-slot arity, then walk RHS symbols against positional emitted children (binding atoms
+// and nested lhs-exact recursion). Canonical for multi-production lhs disambiguation until
+// parser-derived selection lands; not an arity-only scaffold.
 fn formal_production_for_lhs_exact(
   productions: List<FormalProduction>,
   lhs: Symbol,

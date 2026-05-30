@@ -34,7 +34,6 @@ import v4.std.grammar {
   grammar_empty_sync_tokens,
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
-  grammar_formal_terminal_bound,
   grammar_production_to_node,
   grammar_relation_row_to_node
 }
