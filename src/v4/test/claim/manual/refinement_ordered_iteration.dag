@@ -14,6 +14,7 @@ import v4.std.refinement {
   naming_the_leak,
   refine_ordered_iteration,
 }
+import v4.std.algebra { Empty }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -60,7 +61,7 @@ fn test_locus() -> Locus {
 
 fn witness_ordered_classifier_accepts() -> Bool {
   match refine_ordered_iteration(
-    base: [],
+    base: Empty,
     by: ordered_classifier_for_list_int(),
     at: test_locus()
   ) {
@@ -86,7 +87,7 @@ data claim_refine_ordered_iteration_accepts_on_ordered_classifier: TestClaim = E
 
 fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
   match refine_ordered_iteration(
-    base: [],
+    base: Empty,
     by: unordered_classifier_for_list_int(),
     at: test_locus()
   ) {

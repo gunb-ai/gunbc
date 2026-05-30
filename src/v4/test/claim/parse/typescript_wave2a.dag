@@ -29,11 +29,12 @@ data ts_wave2a_bool_false: Symbol = ts_wave2a_bool_false
 // Round-trip target from task_manager_demo.dag Task — exercises type_alias_decl
 // (kw_type, ident, eq, type_annotation→record_type, semicolon), record_fields
 // comma-list (3 fields), type_name (TaskId, TaskStatus), and built-in type_string.
-data ts_wave2a_type_alias_task_source: String = "type Task =  { id: TaskId, title: string, status: TaskStatus };"
+// DESIGN-6 / #3900 ratified surface (bit-identical).
+data ts_wave2a_type_alias_task_source: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
 
 // Minimal single-field alias — guards against the previously-shipped `type Foo { ... }`
 // form (without `=`) silently re-appearing.
-data ts_wave2a_type_alias_minimal_source: String = "type Box =  { value: number };"
+data ts_wave2a_type_alias_minimal_source: String = "type Box = { value: number };"
 
 // Negative regression source — the no-`=` form `type Box { ... };` must REJECT.
 data ts_wave2a_type_alias_missing_eq_source: String = "type Box { value: number };"
