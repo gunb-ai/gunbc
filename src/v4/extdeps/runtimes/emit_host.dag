@@ -65,6 +65,8 @@ data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
 data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
 data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
 data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
+// W2 Rust-row gate (joint spec §4.2 A3): authority pin until Target Realization lands
+// language-target dispatch; dissolve-on: structural runtime_row on TargetModel replaces pin match.
 data emit_host_rust_authority_pin: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
@@ -169,6 +171,7 @@ fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<Ru
   }
 }
 
+// Dissolution trigger (W3): invoke tools/emit_host_runner here; remove transport_not_wired on Rust row.
 fn run_emit_host_rust(
   target: TargetModel,
   source: TargetSource,
