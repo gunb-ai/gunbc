@@ -76,7 +76,7 @@ The questionnaire's own vocabulary says `GAP` means promise exists and delivery 
 - `src/v4/compiler/05_eval.dag:1732-1736` and `src/v4/compiler/05_eval.dag:1793-1797` return `Deferred` for `RoundTripClaim`.
 - `src/v4/test/claim/workflow/testclaim_corpus_runner.dag:2-4` marks the corpus runner as a wedge gated on `t38-testclaim-corpus-eval`.
 - `docs/audit/v4-deferral-audit-2026-05-29.md:69-73` records 141 distinct gate names and 280 total gated annotation rows at its snapshot.
-- No v4 close predicate artifact exists under `docs/audit/`; only `docs/audit/r3-close-predicate-execution-2026-05-13.md` exists for the older R3 pass.
+- No v4 close predicate-execution artifact exists under `docs/audit/`; this validation file is an inventory/disposition artifact, not a predicate execution log. The only predicate-execution log present is `docs/audit/r3-close-predicate-execution-2026-05-13.md` for the older R3 pass.
 - `docs/v4-close-interrogation.md:1096-1103` still has R3-shaped close ceremony rows, including the R3 close artifact path, rather than a completed v4 close audit artifact.
 
 ## Inventory Checks
@@ -84,7 +84,7 @@ The questionnaire's own vocabulary says `GAP` means promise exists and delivery 
 - `grep -c '^- \[ \]' docs/v4-close-interrogation.md` -> 346
 - `grep -c '^- \[x\]' docs/v4-close-interrogation.md` -> 0
 - `find src/v4/test/claim -type f -name '*.dag' | wc -l` -> 172
-- `find docs/audit -maxdepth 1 -type f \( -name 'v4-close*' -o -name '*v4*predicate*' -o -name '*close-predicate*' \) -print | sort` -> only the R3 predicate artifact is present
+- `find docs/audit -maxdepth 1 -type f \( -name '*v4*predicate*' -o -name '*close-predicate*' \) -print | sort` -> no v4 predicate-execution artifact; only the R3 predicate artifact is present
 
 ## Probe Ledger
 
