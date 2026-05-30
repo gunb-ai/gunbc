@@ -139,7 +139,7 @@ jobs:
     - name: R4-carve dissolution discipline
       run: bash scripts/check-r4-carve-dissolution-discipline.sh
     - name: Fabrication sentinel ratchet (P0-C)
-      run: bash scripts/check-fabrication-sentinels.sh
+      run: python3 scripts/check_fabrication_sentinels.py
     - name: T-19 testgen activation self-test (Python)
       run: python3 scripts/test_check_t19_testgen_activation.py
     - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
@@ -184,7 +184,7 @@ jobs:
       run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
     - name: 'Gate #103 — path-regex inventory ratchet (canvas §5)'
       if: needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      run: bash scripts/check-workflow-path-regex-inventory.sh
+      run: python3 scripts/check_workflow_path_regex_inventory.py
     - name: 'Gate #103 — Layer 1 selection + workflow YAML policy (integration)'
       if: needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: |
@@ -520,7 +520,7 @@ jobs:
     - name: Compiler-std consolidation ratchet
       run: scripts/check-compiler-std-ratchet.sh
     - name: Banked-dissolutions ratchet
-      run: scripts/check-banked-dissolutions.sh
+      run: python3 scripts/check_banked_dissolutions.py
   self_host_ratchet:
     if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     runs-on: [self-hosted, linux, arm64]
