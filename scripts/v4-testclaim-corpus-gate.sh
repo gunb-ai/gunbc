@@ -64,6 +64,7 @@ mkdir -p "$out" "$rust_out" "$(dirname "$log")" "$(dirname "$rust_log")"
 
 compile_timeout="${V4_TESTCLAIM_TIMEOUT_SECS:-}"
 if [[ -n "${GITHUB_ACTIONS:-}" && -z "$compile_timeout" ]]; then
+  # 480s: full src/v4 --target rust on loaded self-hosted runners (exit 143 at lower caps).
   compile_timeout=480
 fi
 

@@ -232,6 +232,12 @@ jobs:
     - name: RELEASE §5 v4 workflow release model/YAML binding smoke
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_workflow_release_dag_smoke_test -- --quiet
+    # Phase 1 leaf-model R1 — gunbc#846 bypass: v3 job skips integration execution; run boundary
+    # rustc receipt here (docs/planning/v4-leaf-model-verification-2026-05-30.md §7; pairs with
+    # scripts/v4-leaf-model-rust-r1-verify.sh). Dissolution: modeled run_target_verification.
+    - name: Phase 1 leaf-model R1 rustc boundary (gunbc#846 bypass)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: cargo test -p v3-compiler --test integration v4_leaf_model_rust_r1_rustc_test -- --quiet
   # v4 compile gates — parallel with ci_integration. Standalone `v4` jobs hit a ~5m Ubicloud
   # shutdown mid-emit; per-job budgets keep one runner lifecycle per concern. The `v4` job is a
   # receipt-only stub so required check names stay stable. MVP-1 + v4 bootstrap share the
@@ -307,13 +313,26 @@ jobs:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_CARGO_CHECK_JOBS: "4"
       run: bash scripts/v4-m1-rust-emit-probe.sh
+    # Fixture-scoped gate: full rung gate only for fixture/transport or gate *execution*
+    # edits; scope-detector / if-routing narrowing uses policy_check (Gate #103 ratchet).
+    - name: Detect phase1/nat_semiring fixture scope (PR diff)
+      id: phase1_nat_semiring_fixture_scope
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: bash scripts/detect-phase1-nat-semiring-gate-scope.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
+    - name: phase1/nat_semiring gate policy ratchet (workflow-policy edits)
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.policy_check == 'true'
+      run: |
+        set -euo pipefail
+        bash scripts/check-workflow-path-regex-inventory.sh
+        bash scripts/detect-phase1-nat-semiring-gate-scope.sh "${{ github.event_name }}" "${RUNNER_TEMP}/phase1-gate-scope-smoke.out"
+        grep -q '^should_run=' "${RUNNER_TEMP}/phase1-gate-scope-smoke.out"
     # Phase 1 rung gate setup: provision Go on the self-hosted runner. The gate
     # invokes `go build` for R0-go-parse / R2-go-compile; without this step the
     # script's host-toolchain guard would fail-closed with
     # phase1/nat_semiring/setup/host_toolchain_missing (setup gap, not fixture
     # gap). Python3 is pre-installed on srv1/srv2. setup-go@v5 is cached.
     - name: Setup Go (phase1/nat_semiring rung gate prerequisite)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true'
       uses: actions/setup-go@v5
       with:
         go-version: 'stable'
@@ -325,7 +344,7 @@ jobs:
     # V4_PHASE1_NAT_SEMIRING_STRICT=1 still logs fail-closed rung receipts (#3955 §6); rust rung
     # not rustc-clean on main until emit substrate lands — workflow continue-on-error interim.
     - name: phase1/nat_semiring rungs 0-2 gate (dag rust python go)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true'
       timeout-minutes: 20
       continue-on-error: true
       env:
@@ -339,7 +358,7 @@ jobs:
       timeout-minutes: 35
       continue-on-error: true
       env:
-        V4_BOOTSTRAP_TIMEOUT_SECS: 480
+        V4_BOOTSTRAP_TIMEOUT_SECS: '480'
       run: |
         set +euo pipefail
         bash scripts/v4-bootstrap-viability.sh
@@ -370,8 +389,9 @@ jobs:
         exit 1
     - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      timeout-minutes: 15
       env:
-        V4_TESTCLAIM_TIMEOUT_SECS: 480
+        V4_TESTCLAIM_TIMEOUT_SECS: '480'
       run: bash scripts/v4-testclaim-corpus-gate.sh
   # Branch protection requires the `ci` check name (docs/admin/branch-protection-recommendation-
   # 2026-05-09.md). This job is the fail-closed aggregator over discipline + parallel lanes;
