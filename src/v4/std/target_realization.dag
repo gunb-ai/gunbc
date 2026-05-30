@@ -8,9 +8,9 @@ module v4.std.target_realization
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.collection { List, Optional, optional_absent }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, content_hash }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash }
 import v4.std.target_model { TargetModel }
-import v4.std.text { Char }
+import v4.std.text { Char, String }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -70,6 +70,15 @@ type TargetAtomRealization {
 
 data target_atom_realization_lookup_miss: Symbol = target_atom_realization_lookup_miss
 data target_atom_realization_lookup_ambiguous: Symbol = target_atom_realization_lookup_ambiguous
+data target_atom_realization_field_source_carrier: Symbol = target_atom_realization_field_source_carrier
+data target_atom_realization_field_type_form: Symbol = target_atom_realization_field_type_form
+data target_atom_realization_field_value_form: Symbol = target_atom_realization_field_value_form
+data target_atom_realization_field_display_name: Symbol = target_atom_realization_field_display_name
+data target_type_alias_field_spelling: Symbol = target_type_alias_field_spelling
+data target_value_template_symbol_identity_passthrough: Symbol = target_value_template_symbol_identity_passthrough
+data target_value_template_symbol_to_owned_string: Symbol = target_value_template_symbol_to_owned_string
+data target_value_template_bool_literal: Symbol = target_value_template_bool_literal
+data target_value_template_char_unicode_scalar: Symbol = target_value_template_char_unicode_scalar
 
 // Kernel-ambient type carriers (Node-keyed authority; not spelling-keyed tables).
 data symbol_kernel_type_atom: Symbol = symbol_kernel_type_atom
@@ -200,6 +209,69 @@ fn target_atom_value_expression(
   target_value_template_apply(template: row.value_form, value: value)
 }
 
+fn target_type_expression_node(form: TargetTypeExpression) -> Node {
+  match form {
+    TargetTypeAlias { spelling: s } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          target_realization_named_edge(
+            name: target_type_alias_field_spelling,
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: s } },
+              children: []
+            }
+          )
+        ]
+      }
+  }
+}
+
+fn target_value_template_tag(template: TargetValueTemplate) -> Symbol {
+  match template {
+    ValueSymbolIdentityPassthrough => target_value_template_symbol_identity_passthrough
+    ValueSymbolToOwnedString => target_value_template_symbol_to_owned_string
+    ValueBoolLiteral => target_value_template_bool_literal
+    ValueCharUnicodeScalar => target_value_template_char_unicode_scalar
+  }
+}
+
+fn target_value_template_node(template: TargetValueTemplate) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: target_value_template_tag(template: template) }
+    },
+    children: []
+  }
+}
+
+fn target_atom_realization_to_node(row: TargetAtomRealization) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_realization_named_edge(
+        name: target_atom_realization_field_source_carrier,
+        target: row.source_carrier
+      ),
+      target_realization_named_edge(
+        name: target_atom_realization_field_type_form,
+        target: target_type_expression_node(form: row.type_form)
+      ),
+      target_realization_named_edge(
+        name: target_atom_realization_field_value_form,
+        target: target_value_template_node(template: row.value_form)
+      ),
+      target_realization_named_edge(
+        name: target_atom_realization_field_display_name,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: row.display_name } },
+          children: []
+        }
+      )
+    ]
+  }
+}
+
 fn target_atom_realization_catalog_node(rows: List<TargetAtomRealization>) -> Node {
   fold_list(
     xs: rows,
@@ -211,7 +283,7 @@ fn target_atom_realization_catalog_node(rows: List<TargetAtomRealization>) -> No
           xs: acc.children,
           item: target_realization_named_edge(
             name: row.display_name,
-            target: target_atom_realization_row_shell(row: row)
+            target: target_atom_realization_to_node(row: row)
           )
         )
       }
@@ -223,11 +295,137 @@ fn target_realization_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-fn target_atom_realization_row_shell(row: TargetAtomRealization) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      target_realization_named_edge(name: row.display_name, target: row.source_carrier)
-    ]
+type TargetAtomRealizationCatalogLookup
+  = TargetAtomRealizationCatalogMissing
+  | TargetAtomRealizationCatalogUnique { row: TargetAtomRealization }
+  | TargetAtomRealizationCatalogAmbiguous
+
+fn target_atom_realization_catalog_lookup_step(
+  acc: TargetAtomRealizationCatalogLookup,
+  row_node: Node,
+  source_carrier: Node
+) -> TargetAtomRealizationCatalogLookup {
+  let row = target_atom_realization_from_row_node(row_node: row_node)
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+    match acc {
+      TargetAtomRealizationCatalogMissing =>
+        TargetAtomRealizationCatalogUnique { row: row }
+      TargetAtomRealizationCatalogUnique { row: _ } =>
+        TargetAtomRealizationCatalogAmbiguous
+      TargetAtomRealizationCatalogAmbiguous => TargetAtomRealizationCatalogAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+fn target_atom_realization_from_row_node(row_node: Node) -> TargetAtomRealization {
+  TargetAtomRealization {
+    source_carrier: target_atom_realization_conj_child(
+      row_node: row_node,
+      edge_name: target_atom_realization_field_source_carrier
+    ),
+    target_model: row_node,
+    type_form: target_type_expression_from_node(
+      n: target_atom_realization_conj_child(
+        row_node: row_node,
+        edge_name: target_atom_realization_field_type_form
+      )
+    ),
+    value_form: target_value_template_from_node(
+      n: target_atom_realization_conj_child(
+        row_node: row_node,
+        edge_name: target_atom_realization_field_value_form
+      )
+    ),
+    constructor_form: optional_absent(),
+    display_name: target_atom_realization_display_name_from_row(row_node: row_node)
+  }
+}
+
+fn target_atom_realization_conj_child(row_node: Node, edge_name: Symbol) -> Node {
+  match row_node.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        row_node.children,
+        init: row_node,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: n } =>
+              if n == edge_name {
+                e.target
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+        }
+      )
+    _ => row_node
+  }
+}
+
+fn target_type_expression_from_node(n: Node) -> TargetTypeExpression {
+  match target_atom_realization_conj_child(
+    row_node: n,
+    edge_name: target_type_alias_field_spelling
+  ).kind {
+    TypeNode { connective: Atom { identity: spelling } } =>
+      TargetTypeAlias { spelling: spelling }
+    _ => TargetTypeAlias { spelling: "" }
+  }
+}
+
+fn target_value_template_from_node(n: Node) -> TargetValueTemplate {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match id {
+        target_value_template_symbol_identity_passthrough =>
+          ValueSymbolIdentityPassthrough
+        target_value_template_symbol_to_owned_string => ValueSymbolToOwnedString
+        target_value_template_bool_literal => ValueBoolLiteral
+        target_value_template_char_unicode_scalar => ValueCharUnicodeScalar
+        _ => ValueSymbolToOwnedString
+      }
+    _ => ValueSymbolToOwnedString
+  }
+}
+
+fn target_atom_realization_display_name_from_row(row_node: Node) -> Symbol {
+  match target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_atom_realization_field_display_name
+  ).kind {
+    TypeNode { connective: Atom { identity: id } } => id
+    _ => target_atom_realization_lookup_miss
+  }
+}
+
+fn target_atom_realization_lookup_in_catalog_node(
+  catalog: Node,
+  source_carrier: Node
+) -> Outcome<TargetAtomRealization> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: TargetAtomRealizationCatalogMissing,
+        f: fn(acc, e) {
+          target_atom_realization_catalog_lookup_step(
+            acc: acc,
+            row_node: e.target,
+            source_carrier: source_carrier
+          )
+        }
+      ) {
+        TargetAtomRealizationCatalogMissing =>
+          outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+        TargetAtomRealizationCatalogUnique { row: row } =>
+          Accepted { value: row, diagnostics: None }
+        TargetAtomRealizationCatalogAmbiguous =>
+          outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+      }
+    _ =>
+      outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
   }
 }

@@ -72,10 +72,19 @@ import v4.std.target_model {
   concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_tokens,
+  target_model_edge_atom_realizations,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_serialize_source,
   target_model_edge_translation_rules
+}
+import v4.std.target_realization {
+  TargetAtomRealization,
+  SourceAtomValue,
+  SourceSymbol,
+  target_atom_realization_lookup_in_catalog_node,
+  target_atom_type_spelling,
+  target_atom_value_expression
 }
 import v4.std.collection { List, Map, empty_map }
 import v4.std.algebra { Empty, fold_list, length, list_append, list_snoc_item, zip_eq }
@@ -99,6 +108,7 @@ data translate_binding_spelling_not_found: Symbol = translate_binding_spelling_n
 data translate_concrete_token_class_missing: Symbol = translate_concrete_token_class_missing
 data translate_concrete_token_kind_invalid: Symbol = translate_concrete_token_kind_invalid
 data translate_serialize_recursion_limit_exhausted: Symbol = translate_serialize_recursion_limit_exhausted
+data translate_target_atom_realization_not_found: Symbol = translate_target_atom_realization_not_found
 // node_subtree_count + translation_rules subtree — initial measure for grammar-inverse serialize.
 fn node_subtree_count(n: Node) -> Int {
   fold_node(
@@ -978,6 +988,65 @@ fn coerce_grounded_node(
           )
         }
       )
+    }
+  )
+}
+fn translate_coerced_shell(coerced: Node) -> Node {
+  Node {
+    kind: coerced.kind,
+    children: []
+  }
+}
+fn target_atom_realizations_catalog_from_model(target: TargetModel) -> Outcome<Node> {
+  target_bundle_child(target: target, edge_name: target_model_edge_atom_realizations)
+}
+fn translate_target_atom_realization_for_carrier(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<TargetAtomRealization> {
+  bind_outcome(
+    o: target_atom_realizations_catalog_from_model(target: target),
+    f: fn(catalog) {
+      target_atom_realization_lookup_in_catalog_node(
+        catalog: catalog,
+        source_carrier: source_carrier
+      )
+    }
+  )
+}
+fn translate_symbol_atom_realization_type_spelling(
+  target: TargetModel
+) -> Outcome<String> {
+  bind_outcome(
+    o: translate_target_atom_realization_for_carrier(
+      target: target,
+      source_carrier: symbol_kernel_type_node()
+    ),
+    f: fn(row) {
+      Accepted {
+        value: target_atom_type_spelling(row: row),
+        diagnostics: None
+      }
+    }
+  )
+}
+fn translate_symbol_atom_value_expression(
+  target: TargetModel,
+  identity: Symbol
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+    o: translate_target_atom_realization_for_carrier(
+      target: target,
+      source_carrier: symbol_kernel_type_node()
+    ),
+    f: fn(row) {
+      Accepted {
+        value: target_atom_value_expression(
+          row: row,
+          value: SourceSymbol { identity: identity }
+        ),
+        diagnostics: None
+      }
     }
   )
 }

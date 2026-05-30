@@ -48,7 +48,7 @@ import v4.std.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.collection { List, Map, Set, empty_map, map_insert }
+import v4.std.collection { List, Map, Set, empty_map, map_insert, optional_absent }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -84,10 +84,23 @@ import v4.std.target_model {
   grammar_relation_field_tokens,
   serialize_source_field_source_grammar,
   serialize_source_field_source_text,
+  target_model_edge_atom_realizations,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
   target_model_edge_serialize_source
+}
+import v4.std.target_realization {
+  TargetAtomRealization,
+  TargetTypeAlias,
+  ValueBoolLiteral,
+  ValueCharUnicodeScalar,
+  ValueSymbolToOwnedString,
+  char_kernel_type_atom,
+  char_kernel_type_node,
+  symbol_kernel_type_atom,
+  symbol_kernel_type_node,
+  target_atom_realization_catalog_node
 }
 import v4.std.node {
   Arrow,
@@ -100,7 +113,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v4.std.algebra {
   BooleanAlgebra,
   approximate_field_node,
@@ -276,8 +289,6 @@ data rust_std_projection_int_platform: Symbol = rust_std_projection_int_platform
 data rust_std_projection_uint_platform: Symbol = rust_std_projection_uint_platform
 data rust_std_projection_float32: Symbol = rust_std_projection_float32
 data rust_std_projection_float64: Symbol = rust_std_projection_float64
-data rust_std_projection_bool: Symbol = rust_std_projection_bool
-data rust_std_projection_char: Symbol = rust_std_projection_char
 data rust_std_projection_str: Symbol = rust_std_projection_str
 data rust_std_projection_unit: Symbol = rust_std_projection_unit
 data rust_std_projection_never: Symbol = rust_std_projection_never
@@ -648,14 +659,14 @@ data rust_facts_f64: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
 data rust_facts_bool: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_bool,
   scalar: BoolScalar,
-  std_projection: rust_std_projection_bool,
+  std_projection: rust_surface_spelling_bool,
   representation: rust_repr_bool
 }
 
 data rust_facts_char: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_char,
   scalar: CharScalar,
-  std_projection: rust_std_projection_char,
+  std_projection: rust_surface_spelling_char,
   representation: rust_char_unicode_scalar
 }
 
@@ -1380,7 +1391,7 @@ fn rust_mvp1_translation_rules_node() -> Node {
   }
 }
 
-fn rust_mvp1_target_model_node() -> Node {
+fn rust_mvp1_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -1414,6 +1425,78 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
     rust_binding_param_y,
     "y"
   )
+}
+
+fn rust_mvp1_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_mvp1_target_model_bundle_core(),
+    lex: rust_wave1_lex(),
+    binding_spellings: rust_mvp1_binding_spellings(),
+    authority_source_text: rust_mvp1_source_text_authority()
+  }
+}
+
+data rust_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_mvp1_target_model_staging(),
+  type_form: TargetTypeAlias { spelling: "String" },
+  value_form: ValueSymbolToOwnedString,
+  constructor_form: optional_absent(),
+  display_name: symbol_kernel_type_atom
+}
+
+data rust_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: bool_node(),
+  target_model: rust_mvp1_target_model_staging(),
+  type_form: TargetTypeAlias { spelling: "bool" },
+  value_form: ValueBoolLiteral,
+  constructor_form: optional_absent(),
+  display_name: bool_node_symbol
+}
+
+data rust_target_atom_realization_char: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: char_kernel_type_node(),
+  target_model: rust_mvp1_target_model_staging(),
+  type_form: TargetTypeAlias { spelling: "char" },
+  value_form: ValueCharUnicodeScalar,
+  constructor_form: optional_absent(),
+  display_name: char_kernel_type_atom
+}
+
+data rust_target_atom_realization_catalog: List<TargetAtomRealization> = [
+  rust_target_atom_realization_symbol,
+  rust_target_atom_realization_bool,
+  rust_target_atom_realization_char
+]
+
+fn rust_mvp1_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_model_edge_selection_policy,
+        target: rust_mvp1_selection_policy_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: rust_mvp1_declared_inhabitants_root()
+      ),
+      rust_named_edge(
+        name: target_model_edge_translation_rules,
+        target: rust_mvp1_translation_rules_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_serialize_source,
+        target: rust_mvp1_serialize_source_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_atom_realizations,
+        target: target_atom_realization_catalog_node(
+          rows: rust_target_atom_realization_catalog
+        )
+      )
+    ]
+  }
 }
 
 fn rust_mvp1_target_model() -> TargetModel {
