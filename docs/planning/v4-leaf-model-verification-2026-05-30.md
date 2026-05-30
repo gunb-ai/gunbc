@@ -130,9 +130,14 @@ Each leaf model carries stable fact IDs / claimable facts as substrate declarati
 
 **Acceptance contract per leaf model:**
 ```
-verified(model M) ⟺ every claim C in M has a fixture F(C) with target verdict PROVEN
-                    AND a falsification probe attempted (target verdict FALSIFIED for a deliberately-wrong claim)
+verified(model M) ⟺ for every fact_id declared by M,
+                    the claim corpus C(M) (sibling test/claim/language_model/<M>.dag)
+                    contains a LeafModelClaim referencing fact_id with:
+                      - a fixture F(claim) with target verdict matching expectation (PROVEN), AND
+                      - a falsification_case attempted (deliberately-wrong variant correctly rejected)
 ```
+
+(Wording aligns with Layer A boundary per cursor review 2026-05-30: claims live in the claim corpus C(M), keyed by M's fact IDs — NOT inside M itself. M owns facts; C(M) owns verification obligations.)
 
 ---
 
