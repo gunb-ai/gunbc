@@ -4230,6 +4230,17 @@ fn is_optional_struct_field(emit_info: EmitGraphInfo, struct_name: String, field
   }
 }
 
+fn record_field_needs_some_wrap(emit_info: EmitGraphInfo, scope: InferScope, struct_name: String, field_name: String) -> Bool {
+  if is_optional_struct_field(emit_info: emit_info, struct_name: struct_name, field_name: field_name) {
+    true
+  } else {
+    match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
+      Some { value: field_type } => field_type.return_cardinality == CardOptional
+      None => false
+    }
+  }
+}
+
 fn rust_struct_field_type_node(scope: InferScope, struct_name: String, field_name: String) -> Node? {
   match lookup_type_by_name(env: scope.type_env, name: struct_name) {
     Some { value: struct_node } =>
@@ -4459,8 +4470,12 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             Some { value: resolved_sn } =>
               let field_strs = fields |> map(f =>
                 let fname = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
-                let fval = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-                concat("    ", emit_ident(name: fname, target: Rust), ": ", fval, ",")
+                let f_value = field_init_node_value(n: f)
+                let fval = emit_typed_expr(texpr: f_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+                let needs_wrap = record_field_needs_some_wrap(emit_info: emit_info, scope: scope, struct_name: resolved_sn, field_name: fname)
+                  && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
+                let field_val = if needs_wrap { concat("Some(", fval, ")") } else { fval }
+                concat("    ", emit_ident(name: fname, target: Rust), ": ", field_val, ",")
               )
               let body = field_strs |> join(separator: "\n")
               let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
