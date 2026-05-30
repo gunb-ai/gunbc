@@ -274,7 +274,7 @@ fn lbe_run_test_claim_assert_from_emit(
   anchor: ManualAnchorKey,
   label: String,
   mock: LanguageBehaviorIoMock
-) -> Verdict<Node, Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
     Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
@@ -312,7 +312,7 @@ fn lbe_mock_actual(mock: LanguageBehaviorIoMock) -> Outcome<Node> {
 fn lbe_run_test_claim_assert_from_mock(
   claim: TestClaim,
   mock: LanguageBehaviorIoMock
-) -> Verdict<Node, Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   run_test_claim_assert(
     claim: claim,
     actual: lbe_mock_actual(mock: mock),

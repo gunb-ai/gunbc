@@ -1062,7 +1062,7 @@ fn workflow_pipeline_receipt_failure_diagnostics(
 fn workflow_pipeline_pass_gate(
   run: TestClaimRun<CiPipeline, CiPipeline>,
   at: Node
-) -> Verdict<CiPipeline, TestClaimRun<CiPipeline, CiPipeline>> {
+) -> Verdict<TestClaimEvalSubject<CiPipeline>, TestClaimRun<CiPipeline, CiPipeline>> {
   aggregate_verdicts(
     rs: [
       match run.verdict {

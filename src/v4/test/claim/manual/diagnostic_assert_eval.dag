@@ -7,6 +7,7 @@ module v4.test.claim.manual.diagnostic_assert_eval
 
 
 import v4.compiler.eval {
+  TestClaimEvalSubject,
   aggregate_verdicts,
   eval_diagnostic,
   run_test_claim_assert
@@ -135,7 +136,7 @@ data witness_diagnostic_assert_mismatch_fail: Bool = match run_test_claim_assert
 }
 
 
-fn empty_node_verdicts() -> List<Verdict<Node, Node>> {
+fn empty_node_verdicts() -> List<Verdict<TestClaimEvalSubject<Node>, Node>> {
   []
 }
 
@@ -158,7 +159,7 @@ data witness_aggregate_empty_fail: Bool = match aggregate_verdicts(rs: empty_nod
 }
 
 
-fn deferred_verdict() -> Verdict<Node, Node> {
+fn deferred_verdict() -> Verdict<TestClaimEvalSubject<Node>, Node> {
   Deferred {
     actual: rejected_same,
     diagnostic: eval_diagnostic(reason: diag_assert_reason, node: diag_assert_node())
