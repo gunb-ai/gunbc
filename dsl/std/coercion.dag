@@ -43,7 +43,7 @@ type TypeCheckpoint {
   literal_suffix: String?   // Rust String: ".to_string()" (&str → String ownership)
 }
 
-// 🟡 coproduct dissolution — feature:sg-1-target-atom-realization — consumer:v2.coercion emit/read atom realization rows — owner:coercion lane PR #3964 — dissolve-on-arrival: fold type_decl_kind into TypeCheckpoint and delete TargetAtomTypeDeclKind
+// 🟡 coproduct dissolution — feature:sg-1-target-atom-realization — consumer:v2.coercion emit/read atom realization rows — owner:coercion lane PR #3964 — dissolve-on-arrival: fold type_decl_kind into TypeCheckpoint and delete TargetAtomTypeDeclKind before the next kernel-atom row or SG-2 checkpoint merge lands
 type TargetAtomTypeDeclKind
   = TransparentAlias
   | NominalNewtype
