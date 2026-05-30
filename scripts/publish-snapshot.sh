@@ -113,7 +113,6 @@ STRIP_PATHS=(
 
   # Work-in-progress and internal tooling.
   "wip"
-  "RELEASE_TODO.md"
   "scripts/session-dashboard"
   "scripts/_internal"
   "tools/gen_gunbc_ci_workflow_dag"
@@ -183,8 +182,8 @@ git add -A
 # Commit message must not embed the internal SHA — that would leak the
 # private repo's identity into the public history (Boundary Discipline).
 # A UTC date stamp is enough to identify the snapshot externally; the
-# internal correspondence is recorded only in the publisher's own records,
-# never in the published commit.
+# internal correspondence is recorded only in the publishing operator's
+# own records, never in the published commit.
 SNAPSHOT_LABEL="$(date -u +%Y-%m-%d)"
 git -c user.name="gunbc-release" -c user.email="release@gunb.ai" \
     commit -m "snapshot ${SNAPSHOT_LABEL}"
@@ -203,8 +202,8 @@ else
 fi
 
 # Auto-remove the export only after a real publish. On dry-run we leave it
-# in place so the export can be inspected via the command printed above —
-# otherwise the "DRY RUN: inspect with…" instructions would race a
+# in place so the operator can actually inspect it via the command printed
+# above — otherwise the "DRY RUN: inspect with…" instructions would race a
 # silent teardown. Pass --keep-export to preserve it past a publish as well.
 if [[ "$PUBLISH" -eq 1 && "$KEEP_EXPORT" -eq 0 ]]; then
   git worktree remove --force "$EXPORT_DIR"
