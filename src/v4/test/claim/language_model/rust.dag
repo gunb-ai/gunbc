@@ -1,0 +1,165 @@
+// src/v4/test/claim/language_model/rust.dag
+// Scope: C(rust.dag) — verification OBLIGA for Phase 1 leaf-model claims (R1, R2a, R2b, R3-*).
+// Status: pre-stage corpus — references fact_id inventory in extdeps/languages/rust.dag; runner deferred.
+// Anchor: docs/planning/v4-leaf-model-verification-2026-05-30.md §5 Layer A, §7.
+
+module v4.test.claim.language_model.rust
+
+import v4.extdeps.languages.rust {
+  RustLanguageModel,
+  rust_inhabitant_i32,
+  rust_language_model_wave2,
+  rust_leaf_fact_r1_i32_type,
+  rust_leaf_fact_r2a_i32_algebra_operations,
+  rust_leaf_fact_r2b_i32_overflow_semantics,
+  rust_leaf_fact_r3_external_symbol_target_projection,
+  rust_leaf_fact_r3_internal_symbol_projection_coupling,
+  rust_op_integer_add,
+  rust_op_integer_compare,
+  rust_op_integer_mul,
+  rust_op_integer_neg,
+  rust_std_projection_int32
+}
+import v4.std.collection { List }
+import v4.std.diagnostic {
+  Diagnostic,
+  Rejected,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
+}
+import v4.std.leaf_model_verification {
+  FalsificationCase,
+  LeafModelClaim
+}
+import v4.std.node { Symbol }
+import v4.std.text { String }
+import v4.std.verdict { Deferred, Verdict }
+
+data rust_leaf_claim_corpus_file: Symbol = rust_leaf_claim_corpus_file
+data rust_leaf_claim_runner_not_wired: Symbol = rust_leaf_claim_runner_not_wired
+data rust_leaf_r3_source_atom_symbol: Symbol = rust_leaf_r3_source_atom_symbol
+data rust_leaf_falsify_nonexistent_method: Symbol = rust_leaf_falsify_nonexistent_method
+
+// Subject / expectation vocabulary for rust.dag Phase-1 claims (fixture generator binds these per claim_id).
+type RustLeafClaimSubject
+  = RustLeafSubjectInhabitant { inhabitant_id: Symbol }
+  | RustLeafSubjectWrongValue { inhabitant_id: Symbol }
+  | RustLeafSubjectNonexistentMethod { inhabitant_id: Symbol, method: Symbol }
+  | RustLeafSubjectUnboundedInt { inhabitant_id: Symbol }
+  | RustLeafSubjectAtom { atom_id: Symbol }
+  | RustLeafSubjectMutatedAtomRow { atom_id: Symbol }
+
+type RustLeafClaimExpectation
+  = RustLeafExpectRustcAcceptsInhabitant { inhabitant_id: Symbol }
+  | RustLeafExpectIntegerOps { inhabitant_id: Symbol, operations: List<Symbol> }
+  | RustLeafExpectOverflowSemantics { facts_projection: Symbol }
+  | RustLeafExpectAtomTargetProjection { atom_id: Symbol }
+  | RustLeafExpectProjectionEmitCoupling { atom_id: Symbol }
+
+type RustLeafModelClaim = LeafModelClaim<RustLanguageModel, RustLeafClaimSubject, RustLeafClaimExpectation>
+
+fn rust_leaf_claim_deferred_verdict() -> Verdict<RustLeafClaimSubject> {
+  Deferred {
+    actual: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: rust_leaf_claim_runner_not_wired,
+          at: Textual { file: rust_leaf_claim_corpus_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    },
+    diagnostic: Diagnostic {
+      reason: rust_leaf_claim_runner_not_wired,
+      at: Textual { file: rust_leaf_claim_corpus_file, extent: WholeFile },
+      correction: Unavailable { reason: UserInputBoundary }
+    }
+  }
+}
+
+fn rust_leaf_i32_ops() -> List<Symbol> {
+  [
+    rust_op_integer_add,
+    rust_op_integer_mul,
+    rust_op_integer_neg,
+    rust_op_integer_compare
+  ]
+}
+
+// R1 — rust.dag declares Rust i32 primitive (surface + inhabitant facts).
+data claim_rust_leaf_r1_i32_type: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave2(),
+  fact_id: rust_leaf_fact_r1_i32_type,
+  subject: RustLeafSubjectInhabitant { inhabitant_id: rust_inhabitant_i32 },
+  expectation: RustLeafExpectRustcAcceptsInhabitant { inhabitant_id: rust_inhabitant_i32 },
+  falsification_case: FalsificationCase {
+    subject_variant: RustLeafSubjectWrongValue { inhabitant_id: rust_inhabitant_i32 },
+    expected_failure_mode: rust_leaf_claim_deferred_verdict()
+  }
+}
+
+// R2a — i32 supports operations required by claimed algebra (distinct from inhabitance).
+data claim_rust_leaf_r2a_i32_algebra_operations: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave2(),
+  fact_id: rust_leaf_fact_r2a_i32_algebra_operations,
+  subject: RustLeafSubjectInhabitant { inhabitant_id: rust_inhabitant_i32 },
+  expectation: RustLeafExpectIntegerOps {
+    inhabitant_id: rust_inhabitant_i32,
+    operations: rust_leaf_i32_ops()
+  },
+  falsification_case: FalsificationCase {
+    subject_variant: RustLeafSubjectNonexistentMethod {
+      inhabitant_id: rust_inhabitant_i32,
+      method: rust_leaf_falsify_nonexistent_method
+    },
+    expected_failure_mode: rust_leaf_claim_deferred_verdict()
+  }
+}
+
+// R2b — overflow story matches declared OverflowDisposition (debug panic / release wrap).
+data claim_rust_leaf_r2b_i32_overflow_semantics: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave2(),
+  fact_id: rust_leaf_fact_r2b_i32_overflow_semantics,
+  subject: RustLeafSubjectInhabitant { inhabitant_id: rust_inhabitant_i32 },
+  expectation: RustLeafExpectOverflowSemantics { facts_projection: rust_std_projection_int32 },
+  falsification_case: FalsificationCase {
+    subject_variant: RustLeafSubjectUnboundedInt { inhabitant_id: rust_inhabitant_i32 },
+    expected_failure_mode: rust_leaf_claim_deferred_verdict()
+  }
+}
+
+// R3-external — TargetAtomRealization row for Symbol projects to rustc-acceptable shape (SG-1 hold).
+data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave2(),
+  fact_id: rust_leaf_fact_r3_external_symbol_target_projection,
+  subject: RustLeafSubjectAtom { atom_id: rust_leaf_r3_source_atom_symbol },
+  expectation: RustLeafExpectAtomTargetProjection { atom_id: rust_leaf_r3_source_atom_symbol },
+  falsification_case: FalsificationCase {
+    subject_variant: RustLeafSubjectWrongValue { inhabitant_id: rust_leaf_r3_source_atom_symbol },
+    expected_failure_mode: rust_leaf_claim_deferred_verdict()
+  }
+}
+
+// R3-internal — row mutation must move type-emit and value-emit together (compiler receipt, not rustc).
+data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave2(),
+  fact_id: rust_leaf_fact_r3_internal_symbol_projection_coupling,
+  subject: RustLeafSubjectAtom { atom_id: rust_leaf_r3_source_atom_symbol },
+  expectation: RustLeafExpectProjectionEmitCoupling { atom_id: rust_leaf_r3_source_atom_symbol },
+  falsification_case: FalsificationCase {
+    subject_variant: RustLeafSubjectMutatedAtomRow { atom_id: rust_leaf_r3_source_atom_symbol },
+    expected_failure_mode: rust_leaf_claim_deferred_verdict()
+  }
+}
+
+// Corpus manifest — one OBLIGA row per Phase-1 fact_id (must match rust_leaf_model_phase1_fact_ids).
+data rust_leaf_model_claim_corpus_phase1: List<RustLeafModelClaim> = [
+  claim_rust_leaf_r1_i32_type,
+  claim_rust_leaf_r2a_i32_algebra_operations,
+  claim_rust_leaf_r2b_i32_overflow_semantics,
+  claim_rust_leaf_r3_external_symbol_projection,
+  claim_rust_leaf_r3_internal_symbol_coupling
+]
