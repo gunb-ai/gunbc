@@ -15,12 +15,11 @@ permissions:
   contents: read
   pull-requests: read
 concurrency:
-  # One in-flight `ci` workflow per pull request (keyed by PR number). Omitting
-  # `head.sha` from the group lets a newer `synchronize` supersede (cancel) an
-  # older run instead of stacking multiple v2→v4 bootstrap compiles on the same
-  # runner pool. Push-to-main still keys off `run_id`.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
+  # Interim CI relief (operator 2026-05-30): key on `github.ref` so a newer
+  # commit on the same PR branch supersedes any still-running prior CI; push-to-
+  # main is exempt from cancellation. Dissolves when ci.dag Phase 2 lands.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
@@ -35,7 +34,21 @@ env:
 # or job-level `env:` blocks, so a shell step is the canonical mechanism.)
 jobs:
   fmt:
-    if: github.event.pull_request.draft != true
+    # Interim CI relief (operator 2026-05-30): skip on docs-only PRs. The
+    # affected detector already routes leaf-model verification paths
+    # (src/v4/std/leaf_model_verification.dag, src/v4/test/claim/**) to
+    # v4=true, so true docs-only PRs (docs/**, *.md) are the only thing
+    # filtered out here. Dissolves when ci.dag Phase 2 lands.
+    if: |
+      github.event.pull_request.draft != true && (
+        needs.affected.outputs.v2 == 'true' ||
+        needs.affected.outputs.v3 == 'true' ||
+        needs.affected.outputs.v4 == 'true' ||
+        needs.affected.outputs.workflow_policy == 'true' ||
+        needs.affected.outputs.release_distribution == 'true' ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      )
+    needs: [affected]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     steps:
@@ -244,8 +257,13 @@ jobs:
     # M1: full-tree --target rust + rustc gap surface (TASKS.md T-24; r3 gates #98/#100 bridge).
     # Modeled authority: src/v4/workflow/ci.dag `m1_rust_emit_probe_signal` +
     # `m1_ci_live_workflow_signal` (feature:project-github-actions-landed; non-blocking).
+    # Interim CI relief (operator 2026-05-30): runs only on push-to-main, not on
+    # PRs — the 7951-error rustc gap surface is already catalogued in
+    # docs/audit/v4-rustc-error-catalog-2026-05-29.md, and the SG-1/SG-2/SG-5-6
+    # substrate fixes that would shrink the surface land separately. Restored
+    # to per-PR when ci.dag Phase 2 lands or those substrate fixes ship.
     - name: M1 v4 full-tree rust emit probe (v2 emit + cargo check)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       continue-on-error: true
       timeout-minutes: 20
       env:
