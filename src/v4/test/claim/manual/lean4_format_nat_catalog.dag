@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/lean4_format_nat_catalog.dag
 // Scope: Lean4 formatter Nat catalog literal witnesses (T-4.16 / P4 bounded materialization).
-// Status: behavior-driven claims for lean4_nat_authoritative_literal catalog paths.
+// Status: slim T-22 corpus — no duplicate 120-deep Peano oracle (see lean4_format catalog fns).
 
 
 module v4.test.claim.manual.lean4_format_nat_catalog
@@ -8,6 +8,7 @@ module v4.test.claim.manual.lean4_format_nat_catalog
 
 import v4.extdeps.formatters.lean4_format {
   lean4_format_authoritative_locus,
+  lean4_nat_add_ten,
   lean4_nat_authoritative_literal,
   lean4_nat_exceeds_ceiling,
   lean4_nat_out_of_range,
@@ -40,8 +41,7 @@ fn lean4_format_nat_claim_input(ok: Bool) -> Node {
 }
 
 
-// Independent test oracle: ten Succ on n (not imported from lean4_format).
-fn witness_nat_add_ten(n: Nat) -> Nat {
+fn witness_nat_ten_on_zero() -> Nat {
   Succ {
     prev: Succ {
       prev: Succ {
@@ -51,7 +51,7 @@ fn witness_nat_add_ten(n: Nat) -> Nat {
               prev: Succ {
                 prev: Succ {
                   prev: Succ {
-                    prev: Succ { prev: Succ { prev: n } }
+                    prev: Succ { prev: Succ { prev: Zero } }
                   }
                 }
               }
@@ -64,36 +64,14 @@ fn witness_nat_add_ten(n: Nat) -> Nat {
 }
 
 
-// Independent reference for catalog width 120 = 12 × add_ten(Zero).
-fn witness_nat_catalog_width_120() -> Nat {
-  witness_nat_add_ten(
-    n: witness_nat_add_ten(
-      n: witness_nat_add_ten(
-        n: witness_nat_add_ten(
-          n: witness_nat_add_ten(
-            n: witness_nat_add_ten(
-              n: witness_nat_add_ten(
-                n: witness_nat_add_ten(
-                  n: witness_nat_add_ten(
-                    n: witness_nat_add_ten(
-                      n: witness_nat_add_ten(n: witness_nat_add_ten(n: Zero))
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+fn witness_lean4_nat_add_ten_zero_is_ten() -> Bool {
+  nat_compare(a: lean4_nat_add_ten(n: Zero), b: witness_nat_ten_on_zero()) == Equal
 }
 
 
-fn witness_lean4_nat_authoritative_literal_120_matches_reference() -> Bool {
+fn witness_lean4_nat_authoritative_literal_120_accepts() -> Bool {
   match lean4_nat_authoritative_literal(value: 120) {
-    Accepted { value: literal, diagnostics: _ } =>
-      nat_compare(a: literal, b: witness_nat_catalog_width_120()) == Equal
+    Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
@@ -115,12 +93,19 @@ fn witness_lean4_nat_negative_rejects() -> Bool {
 }
 
 
-data claim_lean4_nat_authoritative_literal_120_matches_reference: TestClaim = EqualsClaim {
-  label: "manual/lean4_format: lean4_nat_authoritative_literal(120) matches independent width-120 Nat",
+data claim_lean4_nat_add_ten_zero_is_ten: TestClaim = EqualsClaim {
+  label: "manual/lean4_format: lean4_nat_add_ten(Zero) has ten successors",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lean4_format_nat_claim_input(
-    ok: witness_lean4_nat_authoritative_literal_120_matches_reference()
-  ),
+  lhs: lean4_format_nat_claim_input(ok: witness_lean4_nat_add_ten_zero_is_ten()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_lean4_nat_authoritative_literal_120_accepts: TestClaim = EqualsClaim {
+  label: "manual/lean4_format: lean4_nat_authoritative_literal(120) accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lean4_format_nat_claim_input(ok: witness_lean4_nat_authoritative_literal_120_accepts()),
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

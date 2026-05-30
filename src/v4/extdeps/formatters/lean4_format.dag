@@ -49,6 +49,7 @@ fn lean4_nat_succ(n: Nat) -> Nat {
 }
 
 
+// Exported for lean4_format_nat_catalog witness (add_ten arity check only).
 fn lean4_nat_add_ten(n: Nat) -> Nat {
   lean4_nat_succ(
     n: lean4_nat_succ(
