@@ -190,6 +190,8 @@ data grammar_production_emitted_node_projection: Symbol = grammar_production_emi
 data grammar_relation_production_not_found: Symbol = grammar_relation_production_not_found
 data grammar_relation_emitted_conj_slot_missing: Symbol = grammar_relation_emitted_conj_slot_missing
 data grammar_relation_emitted_conj_slot_surplus: Symbol = grammar_relation_emitted_conj_slot_surplus
+data grammar_relation_emitted_not_conj: Symbol = grammar_relation_emitted_not_conj
+data grammar_relation_row_tokens_not_conj: Symbol = grammar_relation_row_tokens_not_conj
 data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
 data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
@@ -942,7 +944,8 @@ fn derive_grammar_relation_token_edges_recursive(
 
 // 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind TASKS.md T-11 — derive production+emitted+bindings
 // into the grammar_relation_row Node shape consumed by 06_translate.dag (via target_model fields).
-// 🟢 PR-1.5b — Conj-positional emitted + lhs-exact production recursion (terminal-only fallback for legacy Arrow emitted).
+// 🟢 PR-1.5b — Conj-positional emitted + lhs-exact production recursion only; non-Conj emitted
+// rejects (no fail-soft terminal-only fallback — PR-1.5 prohibition restored).
 fn derive_grammar_relation_row_node(
   production: FormalProduction,
   productions: List<FormalProduction>,
@@ -970,16 +973,12 @@ fn derive_grammar_relation_row_node(
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     _ =>
-      Holds {
-        value: grammar_relation_row_to_node(
-          row: derive_grammar_relation_row(production: production, emitted: emitted),
-          tokens: Node {
-            kind: TypeNode {
-              connective: Conj
-            },
-            children: derive_grammar_relation_terminal_token_edges(production: production)
-          }
-        )
+      Violates {
+        diagnostic: Diagnostic {
+          reason: grammar_relation_emitted_not_conj,
+          at: node_locus(node: emitted),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
       }
   }
 }
