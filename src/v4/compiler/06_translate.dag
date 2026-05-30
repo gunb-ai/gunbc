@@ -2022,6 +2022,7 @@ fn project_type_expression_node_bounded(
           remaining: remaining - 1,
           anchor: node,
           children: node_positional_child_targets(node: node),
+          target: target,
           projection: projection
         ),
         f: fn(projected) {
