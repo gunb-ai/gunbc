@@ -73,7 +73,14 @@ domain types, a coproduct (`Condition = Sunny | Cloudy | Rainy | Snowy`), patter
 matching, and list pipelines. gunbc emits a self-contained Rust crate; `cargo
 check` succeeding is proof the emitted code is well-typed with zero hand glue.
 
-Swap `--target rust` for `python`, `go`, or `dag` to retarget the same source.
+Swap `--target rust` for `python`, `go`, or `dag` to retarget the same source (the
+CLI accepts all three). **Honest scope for v0.1.0:** only Rust is verified
+end-to-end on this weather example (`cargo check` above). Python and Go are
+small-smoke verified on minimal hand-curated fixtures only — compiling
+`weather.dag` with `--target python` currently emits syntactically invalid
+Python; with `--target go`, emitted code fails `go build`. Non-trivial programs
+like this demo are not on the Python/Go support contract until those emit paths
+are fixed.
 The release binary is `target/release/gunbc` (crate `v2-compiler`, bin defined
 in `src/v2/stage0/Cargo.toml`).
 
