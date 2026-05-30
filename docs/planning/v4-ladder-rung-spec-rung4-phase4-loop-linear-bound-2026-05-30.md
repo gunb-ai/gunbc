@@ -24,7 +24,13 @@
 
 **Apply rung-4 companion §2 verbatim.** Substitute `phase4/loop_linear_bound`, `loop_linear_bound_rung34_runtime_value_rows`, `loop_linear_bound_rung4_gate`, receipt prefix `phase4/loop_linear_bound/rung4/…`.
 
-**Wedge:** `upstream_blocked:loop_linear_bound_rung34_runtime_value_rows_empty` until W3 populates emit-vs-eval row for `loop_linear_bound_subject`.
+**Prerequisite SKIP receipts (companion §2.3 — two states, one headline):**
+
+| Prerequisite not met | Per-cell `SKIP` receipt | When it applies |
+| -------------------- | ----------------------- | --------------- |
+| `run_emit_host_rust` transport not landed | `upstream_blocked:emit_host_transport_not_wired` | **Current main** — headline for §3 matrix |
+| `loop_linear_bound_rung34_runtime_value_rows` empty | `upstream_blocked:loop_linear_bound_rung34_runtime_value_rows_empty` | After transport lands, roster still empty |
+| `R2-rust-compile` not `PASS` | `upstream_blocked:R2-rust-compile` | Rung 2 rust not `PASS` |
 
 ---
 
@@ -50,7 +56,7 @@ predicate=R4-rust-emit-equals-eval expected to flip SKIP → PASS|FAIL
 
 ## 5. Baseline (post-#4018 main)
 
-No `loop_linear_bound_rung34_eval` module — rung 4 **`SKIP`** wedge per rung-4 companion §6.
+No `loop_linear_bound_rung34_eval` module — rung 4 **`FAIL`** (all `SKIP`); headline `upstream_blocked:emit_host_transport_not_wired`.
 
 ---
 
