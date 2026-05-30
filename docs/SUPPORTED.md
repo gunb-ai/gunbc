@@ -6,8 +6,9 @@ compiler. README, release notes, and the project website must not claim
 capabilities beyond what is listed here.
 
 **Posture (operator):** note bugs honestly; **zero overclaim** — no capability ships
-without evidence. Disclaimers below describe worst-case at tag time; they may relax
-in a small revision if emit fixes land before release.
+without evidence. Disclaimers below describe worst-case at tag time (committed for **v0.1.0**).
+Relaxation is expected in **v0.1.1** — Compiler Spine fixes gate on
+`weather.dag` specifically (Python ~2–3 working days, Go ~1–2; in flight).
 
 | Tier | Section |
 | ---- | ------- |
@@ -41,14 +42,14 @@ small-`dsl` examples only** — not for arbitrary `src/v4/` programs.
 | Target | Confidence | §1 contract summary |
 | ------ | ------------ | ------------------- |
 | **rust** | **HIGH** | Full compile target for documented examples; see verification bar below. |
-| **python** | **LIMITED** | small-smoke verified; weather and v4-substrate emit produces invalid Python; not on v0.1.0 support contract for non-trivial inputs |
-| **go** | **LIMITED** | small-smoke verified; weather and v4-substrate emit fails go build; not on v0.1.0 support contract for non-trivial inputs |
+| **python** | **LIMITED** | small-smoke verified; non-trivial inputs (incl. weather hero) fail py_compile due to match-as-expression and TCO temp-decl surface bugs; fixes in flight |
+| **go** | **LIMITED** | small-smoke verified; non-trivial inputs (incl. weather hero) fail go build due to package/module layout and := scope issues; fixes in flight |
 
 **Rust = HIGH confidence for v0.1.0 supported.** Verified via scripts/v4-mvp1-e2e-gate.sh on main CI + cargo test -p v2-compiler-tests pipeline/bootstrap emit tests. Works for fixtures/v4-mvp1/add.dag + small in-tree modules. **Limit:** full src/v4 emit produces ~7951 rustc errors (SG-1 Symbol/E0423 + SG-2 generic arity/E0107 dominate) — this is v4 substrate, NOT v0.1.0 supported.
 
-**Python = LIMITED confidence (small-smoke only).** small-smoke verified; weather and v4-substrate emit produces invalid Python; not on v0.1.0 support contract for non-trivial inputs. Evidence: v2-compiler-tests (`same_source_emits_to_rust_and_python`, `scrambled_name_emit_python`) on trivial fixtures only — **not** weather.dag swap, **not** v4-substrate programs. `gunbc compile` may still write `.py` files that fail `py_compile` or run; that is **not** §1 support (no “silently plausible output”).
+**Python = LIMITED confidence (small-smoke only).** small-smoke verified; non-trivial inputs (incl. weather hero) fail py_compile due to match-as-expression and TCO temp-decl surface bugs; fixes in flight. **Failure classes (distinct):** weather-hero issues are primarily **match-as-expression** / nested-if-in-expression position (Python needs ternary + `match` case suites); **TCO temp-decl surface** bugs are a separate class (v4-heavy graphs). Evidence: v2-compiler-tests (`same_source_emits_to_rust_and_python`, `scrambled_name_emit_python`) on trivial fixtures only. `gunbc compile` may still write `.py` that fails `py_compile` — not §1 support (no “silently plausible output”).
 
-**Go = LIMITED confidence (small-smoke only).** small-smoke verified; weather and v4-substrate emit fails go build; not on v0.1.0 support contract for non-trivial inputs. Evidence: v2-compiler-tests on trivial smoke only. **Stays listed in §1** per operator decision (alongside Rust) so users see honest limits; Compiler Spine emit fixes may lift disclaimers before tag via a small revision.
+**Go = LIMITED confidence (small-smoke only).** small-smoke verified; non-trivial inputs (incl. weather hero) fail go build due to package/module layout and := scope issues; fixes in flight. **Stays listed in §1** per operator decision (alongside Rust). Compiler Spine ETA: Go fix ~1–2 working days, Python ~2–3; both gate on `weather.dag`. Disclaimers stay for **v0.1.0**; expect **v0.1.1** if fixes miss the tag.
 
 **What “supports” means.** For **rust**, on the [supported daglang subset](#supported-daglang-subset) and [shipped examples](#shipped-examples), `gunbc compile --target rust` succeeds and `cargo check` passes. For **python** and **go**, §1 means only what the verbatim disclaimers above allow — **not** that every compile invocation produces valid target code. It does **not** mean every `.dag` file in the repository compiles to any target.
 
@@ -66,8 +67,8 @@ explicit error (fail-closed).
 | Target | Open issue | Impact on §1 |
 | ------ | ---------- | ------------- |
 | **rust** | Full-tree `src/v4` emit → ~7,951 `rustc` errors (SG-1 `E0423`, SG-2 `E0107` dominate) | Does **not** reduce §1 confidence for small `dsl/` examples; **do not** treat full v4-tree Rust emit as supported. |
-| **python** | Invalid emit on weather + v4-substrate; `emit_tco_unified` TCO on complex modules | Per disclaimer: **not on contract for non-trivial inputs** |
-| **go** | `go build` fails on weather + v4-substrate; phase1/nat_semiring substrate-red | Per disclaimer: **not on contract for non-trivial inputs** |
+| **python** | **match-as-expression** on weather hero; separate **TCO temp-decl** class on v4-heavy graphs | Non-trivial inputs (incl. weather) fail `py_compile`; fixes in flight |
+| **go** | **package/module layout** + **`:=` scope** on non-trivial emit (incl. weather hero) | Non-trivial inputs fail `go build`; fixes in flight |
 
 #### Verification bar (§1 examples)
 
@@ -85,7 +86,8 @@ worth trying after `cargo build --release -p v2-compiler --bin gunbc`:
 1. **[`dsl/examples/weather/weather.dag`](../dsl/examples/weather/weather.dag)** —
    Multi-target **emit** hero: types, enums, match, list pipelines.
    **Rust compile-verified; Python and Go swap currently produces invalid code**
-   (see [Weather hero demo](#weather-hero-demo) for the Rust-only public receipt).
+   (Python: match-as-expression / TCO temp-decl; Go: module layout / `:=` scope —
+   see [Weather hero demo](#weather-hero-demo) for the Rust-only public receipt).
    Do not treat README “swap `--target`” as true for weather.
 
 2. **[`src/v2/complexity.dag`](../src/v2/complexity.dag)** — Termination and
