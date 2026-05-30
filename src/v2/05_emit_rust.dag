@@ -80,10 +80,10 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
-import std.coercion { TargetAtomRealization }
+import std.coercion { TargetAtomRealization, TargetAtomTypeDeclKind }
 import v2.compiler.coercion {
   coerce_primitive_type, is_copy, default_expr,
-  lookup_atom_realization, atom_realization_is_nominal_newtype, apply_atom_value_ctor_template
+  lookup_atom_realization, apply_atom_value_ctor_template
 }
 
 import std.types { is_container_type }
@@ -299,9 +299,18 @@ fn rust_atom_nominal_newtype_def(row: TargetAtomRealization) -> String {
 }
 
 fn rust_atom_nominal_newtype_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let name = authored_name_at(source_indices: source_indices, node: n)
-  atom_realization_is_nominal_newtype(target: Rust, dag_name: name)
-    && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
+  if (n.children |> count) != 0 || (n.params |> count) != 0 || n.connective != NoConnective {
+    false
+  } else {
+    let name = authored_name_at(source_indices: source_indices, node: n)
+    match lookup_atom_realization(target: Rust, dag_name: name) {
+      Some { value: row } => match row.type_decl_kind {
+        NominalNewtype => true
+        TransparentAlias => false
+      }
+      None => false
+    }
+  }
 }
 
 fn rust_diff_id_ord_carrier_shape_eligible(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1411,19 +1420,27 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-    // Kernel-ambient atoms with NominalNewtype realization emit an Ord carrier struct.
-    if (item.params |> count) == 0 && atom_realization_is_nominal_newtype(target: Rust, dag_name: item_text) {
+    let alias_decl = concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+    if (item.params |> count) == 0 {
       match lookup_atom_realization(target: Rust, dag_name: item_text) {
-        Some { value: row } => rust_atom_nominal_newtype_def(row: row)
-        None => concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+        Some { value: row } =>
+          match row.type_decl_kind {
+            NominalNewtype => rust_atom_nominal_newtype_def(row: row)
+            TransparentAlias => alias_decl
+          }
+        None => alias_decl
       }
     } else {
-      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+      alias_decl
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    if (item.params |> count) == 0 && atom_realization_is_nominal_newtype(target: Rust, dag_name: item_text) {
+    if (item.params |> count) == 0 {
       match lookup_atom_realization(target: Rust, dag_name: item_text) {
-        Some { value: row } => rust_atom_nominal_newtype_def(row: row)
+        Some { value: row } =>
+          match row.type_decl_kind {
+            NominalNewtype => rust_atom_nominal_newtype_def(row: row)
+            TransparentAlias => ""
+          }
         None => ""
       }
     } else {
@@ -5869,24 +5886,42 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
-  if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || atom_realization_is_nominal_newtype(target: Rust, dag_name: type_name) {
-    let val_str = match rust_atom_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
-      Some { value: identity_expr } => identity_expr
-      None => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    }
-    let kw = rust_items().func_keyword
+  let kw = rust_items().func_keyword
+  if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {
+    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
   } else {
-    let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
-    let kw = rust_items().func_keyword
-    concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " {\n",
-      "    thread_local! {\n",
-      "        static CACHED: ", ty_str, " = {\n",
-      body, "\n",
-      "        };\n",
-      "    }\n",
-      "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
-      "}")
+    match lookup_atom_realization(target: Rust, dag_name: type_name) {
+      Some { value: row } =>
+        match row.type_decl_kind {
+          NominalNewtype =>
+            let val_str = match rust_atom_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
+              Some { value: identity_expr } => identity_expr
+              None => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+            }
+            concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
+          TransparentAlias =>
+            let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
+            concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " {\n",
+              "    thread_local! {\n",
+              "        static CACHED: ", ty_str, " = {\n",
+              body, "\n",
+              "        };\n",
+              "    }\n",
+              "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
+              "}")
+        }
+      None =>
+        let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
+        concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " {\n",
+          "    thread_local! {\n",
+          "        static CACHED: ", ty_str, " = {\n",
+          body, "\n",
+          "        };\n",
+          "    }\n",
+          "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
+          "}")
+    }
   }
 }
 

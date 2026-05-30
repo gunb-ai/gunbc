@@ -120,16 +120,6 @@ fn lookup_atom_realization(target: RenderTarget, dag_name: String) -> TargetAtom
   target_atom_realizations(target: target) |> filter(row => row.dag_name == dag_name) |> first
 }
 
-fn atom_realization_is_nominal_newtype(target: RenderTarget, dag_name: String) -> Bool {
-  match lookup_atom_realization(target: target, dag_name: dag_name) {
-    Some { value: row } => match row.type_decl_kind {
-      NominalNewtype => true
-      TransparentAlias => false
-    }
-    None => false
-  }
-}
-
 fn apply_atom_value_ctor_template(template: String, ident: String) -> String {
   replace(template, "\{ident\}", ident)
 }
