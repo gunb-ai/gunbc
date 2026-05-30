@@ -80,8 +80,9 @@ import v4.std.target_model {
 }
 import v4.std.target_realization {
   TargetAtomRealization,
-  SourceAtomValue,
+  TargetValueExpression,
   SourceSymbol,
+  symbol_kernel_type_node,
   target_atom_realization_lookup_in_catalog_node,
   target_atom_type_spelling,
   target_atom_value_expression
@@ -1049,12 +1050,6 @@ fn translate_symbol_atom_value_expression(
       }
     }
   )
-}
-fn translate_coerced_shell(coerced: Node) -> Node {
-  Node {
-    kind: coerced.kind,
-    children: []
-  }
 }
 fn translate_fold_init(
   node: Node,
