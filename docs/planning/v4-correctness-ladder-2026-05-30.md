@@ -262,8 +262,8 @@ The following questions need answers before §7 Phase 1 dispatches. Proposed ans
 - **Option B**: extend rung 9 to include #6 once Tier 2 substrate matures.
 - **Option C**: ratify the gap explicitly as "out of v4 ladder scope, separately tracked under T-25 refinement substrate."
 
-**Also confirm** (per §9.5) that the ladder is the correct *complement* to `docs/v4-close-interrogation.md` (questionnaire stays as granular probe surface; ladder stays as gate-sequencing surface; both adopt §0 disposition vocabulary).
-**Operator decides:** confirm ontology + pick a #6 option, OR name additional standards missing from the ladder.
+**Also confirm** (per §9.5) that the ladder is the correct *complement* to `docs/v4-close-interrogation.md` (questionnaire stays as granular probe surface; ladder stays as gate-sequencing surface). **Vocabulary alignment**: both artifacts adopt the **§10.0 two-axis vocabulary going forward** — `ship_disposition` (PROVEN / GAP / NOT_IN_V4 / NOT_PROMISED / OPERATOR_DECISION_REQUIRED) × `engineering_state` (SUBSTRATE_PRESENT / SCAFFOLD_PRESENT / PARTIAL_GATE_PRESENT / CENSUS_NOT_RUN / EXECUTION_NOT_WIRED / NO_ARTIFACT_FOUND). The single-axis `WEAK-EVIDENCE / GAP / NOT-CHECKED` form from the questionnaire's §0 is **superseded** for close-related artifacts; questionnaire §0 is updated retroactively by ratifying §10.0. PR #3941 already adopts the two-axis form.
+**Operator decides:** confirm ontology + pick a #6 option + ratify the two-axis vocabulary supersedes §0 single-axis, OR name additional standards missing from the ladder.
 
 ### D2. Is "small fixture first, widen later" (§7) the right strategy vs "broad rustc-fix first, ladder second"?
 
@@ -615,12 +615,18 @@ DFS path:
     - std/node.dag:84-85 — Symbol-as-edge-tag dissolution gated under T-12
       (loop_bound_edge specifically named "forbidden" for new consumers).
 Deepest unsound boundary:
-  Missing TargetAtomRealization fact-bundle in extdeps/languages/<lang>.dag.
-  Both emit stages derive independently because no single authority exists.
+  Missing TargetAtomRealization fact-bundle. CARRIER TYPE definition lives
+  ONCE in the target-realization substrate (canonical home, sibling to SG-2's
+  TargetTypeExpressionProjection — NOT inside any per-language file); per-language
+  ROWS live in extdeps/languages/<lang>.dag. Both emit stages derive
+  independently today because no single authority exists.
 Systemic fix:
-  TargetAtomRealization { source_atom, target_model, type_form, value_form,
-  constructor_form }. Rust rows for Symbol + Bool + Char. Both type-emit and
-  value-emit consume the row.
+  TargetAtomRealization { source_carrier: Node, target_model, type_form,
+  value_form, constructor_form, display_name } — carrier type defined ONCE
+  in canonical home; per-language ROWS for Symbol + Bool + Char in
+  extdeps/languages/rust.dag. Both type-emit and value-emit consume the
+  same row. type_form is an instance of SG-2's TargetTypeExpressionProjection
+  (do NOT coin a parallel target-type-expression vocabulary).
 Non-goals:
   - Patching value-emit template (layer 1 spot fix).
   - Rust-only carrier name (would calcify pattern as language-specific).
@@ -993,7 +999,7 @@ T-numbers are implementation units; SG classes are evidence; ladder rungs are ga
 ### §11.4 Recommended immediate dispatch (post operator sign-off)
 
 Manager passes before any worker code:
-1. **Close/Receipt manager pass**: ratify D1/D2/D4/D5/D7, formally adopt the two-axis disposition vocabulary in §10.0, remove residual "30-day" framing.
+1. **Close/Receipt manager pass**: ratify D1/D2/D4/D5/D7, formally adopt the two-axis disposition vocabulary in §10.0, remove residual **plan-duration "30-day" framing in §7** (D5's substantive ≤30-day anti-shelfware deadline policy is a separate parameter — keep or revise as parametric per-lens-family, but do NOT remove the policy itself).
 2. **Modeling DFS manager pass**: finalize SG-1, SG-2, SG-5/SG-6 worksheets (current draft form is in §10.1.1, §10.2, §10.3); approve dispatch shape per worksheet.
 3. **Ladder/Fixture manager pass**: ratify `nat_semiring` as Phase 1 fixture; define exact rung gate shape (acceptance predicates per rung).
 4. **Compiler Spine + Runtime/TestClaim manager pair**: define minimum executable runner needed for rungs 3–4 on the fixture (T-22 eval + T-38 verdicts).
