@@ -4095,6 +4095,7 @@ pub mod lens_unused_parameters {
     }
 }
 
+pub mod emit_host_bridge;
 mod bounded_host_command;
 /// DB-8 / m1_3 / R1C-E: shared `PROGRAM_FIXTURES` + reflected harness table.
 pub mod emit_rust_roundtrip_fixtures;

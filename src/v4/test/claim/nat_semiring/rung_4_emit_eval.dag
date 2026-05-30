@@ -1,0 +1,53 @@
+// src/v4/test/claim/nat_semiring/rung_4_emit_eval.dag
+// Scope: Phase 1 nat_semiring rung-4 emit-vs-eval row (joint spec §4.2 / §4.4).
+// Status: W3 — `run_test_claim_emit_vs_eval` + wired `run_emit_host_rust` transport.
+// Fixture: phase1/nat_semiring (eval subject uses proven MVP-2 runtime interpretation).
+
+module v4.test.claim.nat_semiring.rung_4_emit_eval
+
+
+import v4.compiler.emit_host { run_test_claim_emit_vs_eval }
+import v4.compiler.eval {
+  TestClaimRun,
+  eval_test_claim_subject
+}
+import v4.extdeps.languages.rust { rust_mvp1_target_model }
+import v4.std.node { Node }
+import v4.std.runtime { RuntimeValue }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  manual_claim_anchor
+}
+import v4.test.claim.manual.eval_runtime_mvp {
+  eval_mvp2_add_subgraph,
+  eval_mvp2_context,
+  eval_mvp2_evaluator_pin,
+  eval_mvp2_five_literal_node,
+  eval_mvp2_inferred_tree
+}
+
+
+data claim_phase1_nat_semiring_rung4_rust_emit_equals_eval: TestClaim = EqualsClaim {
+  label: "fixture=phase1/nat_semiring rung=4 target=rust predicate=R4-rust-emit-equals-eval",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: eval_mvp2_add_subgraph(),
+  rhs: eval_mvp2_five_literal_node(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+
+data run_phase1_nat_semiring_rung4_rust_emit_equals_eval: TestClaimRun<Node, RuntimeValue> =
+  run_test_claim_emit_vs_eval(
+    subject: eval_test_claim_subject(
+      claim: claim_phase1_nat_semiring_rung4_rust_emit_equals_eval,
+      context: eval_mvp2_context(),
+      tree: eval_mvp2_inferred_tree(),
+      evaluator_pin: eval_mvp2_evaluator_pin
+    ),
+    target: rust_mvp1_target_model()
+  )
