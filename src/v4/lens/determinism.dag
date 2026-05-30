@@ -63,6 +63,7 @@ data forbidden_symbol_std_env: Symbol = forbidden_symbol_std_env
 data forbidden_symbol_getenv: Symbol = forbidden_symbol_getenv
 data forbidden_symbol_var_os: Symbol = forbidden_symbol_var_os
 
+// 🟢 coproduct dissolution — CP-DETERMINISM-LENS-VIOLATION.
 type DeterminismViolation
   = ForbiddenSource { source: NonDetSource, at: Node }
   | EffectLeak { callee: Symbol, at: Node }
