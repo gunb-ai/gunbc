@@ -1624,7 +1624,7 @@ data ci_selection_receipt_shadow_heartbeat_mode: CiSelectionReceipt = match ci_p
     ci_selection_receipt_shadow_heartbeat(
       pr: ci_selection_receipt_shadow_empty_pr,
       affected: ci_selection_receipt_shadow_fail_closed_affected,
-      pipeline: CiPipeline { jobs: [], gates: [] }
+      pipe: CiPipeline { jobs: [], gates: [] }
     )
 }
 
