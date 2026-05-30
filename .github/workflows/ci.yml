@@ -287,6 +287,8 @@ jobs:
         exit 1
     - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      env:
+        V4_TESTCLAIM_TIMEOUT_SECS: 360
       run: bash scripts/v4-testclaim-corpus-gate.sh
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
