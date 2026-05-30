@@ -846,6 +846,8 @@ For each of SG-1, SG-2, SG-5/SG-6: dispatch is a **modeling fact to add** (or a 
 
 Total new work items if all three are dispatched: **4** (SG-1: 1; SG-2: 1; SG-5/SG-6: 2). Compare to "fix all 7951 errors" framing: the dispatch is bounded, the modeling deliverables are reviewable, and the spot-fix trap is structurally prevented by the brief-required worksheets.
 
+**Dispatch order constraint** (proud-pike-680 2026-05-30 addendum, cross-section invariant): SG-2 (`TargetTypeExpressionProjection`) must land **before or with** SG-1 (`TargetAtomRealization`). Reason: SG-1's `type_form` is an instance of SG-2's substrate; landing SG-1 first would either coin a parallel type-expression vocabulary (P2 violation) or be incomplete pending SG-2. Recommended sequencing when worker dispatches go: SG-2 first (canonical home for TargetTypeExpressionProjection) → SG-1 (canonical home for TargetAtomRealization, type_form references SG-2 substrate) → SG-5/SG-6 (independent of SG-1/SG-2 cross-section after each lands its canonical home).
+
 ### §10.5 SG-CANDIDATE-1 — Frontend sugar for the `data X: Symbol = X` pattern
 
 **This is a candidate, not an SG class.** Same DFS discipline applied to a frontend-convenience proposal (not an error-class).
