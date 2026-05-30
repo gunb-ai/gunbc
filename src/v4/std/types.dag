@@ -1,0 +1,15 @@
+// src/v4/std/types.dag
+// Scope: v4 compile-root mirror of path/glob types used by v4 workflow CI schema.
+// Canonical authority: `dsl/std/types.dag`. Staged until v4 compile loads dsl std directly.
+
+module v4.std.types
+
+import v4.std.collection { List }
+import v4.std.text { String }
+
+// 🟡 staged — dissolve-on: `dsl/std/types.dag` `GlobSegment` / `GlobPattern` brand substrate.
+type GlobSegment = String
+
+type GlobPattern {
+  segments: List<GlobSegment>
+}

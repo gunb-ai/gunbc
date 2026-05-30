@@ -34,10 +34,10 @@ import v4.std.change {
   AffectedSetReason,
   ChangeSet
 }
-// Cross-root consume: Phase 1.4 authority is `dsl/std/patterns.dag` (#3981); no `v4.std.patterns` mirror.
-// `std.patterns` / `std.types` imports are intentional v4→dsl substrate edges (not a namespace bridge).
-import std.patterns { CreateAction, ResolveExpr, Upsert, VerifyCheck }
-import std.types { GlobPattern }
+// Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
+// `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
+import v4.std.patterns { CreateAction, ResolveExpr, Upsert, VerifyCheck }
+import v4.std.types { GlobPattern }
 import v4.compiler.eval {
   EvalContext,
   TestClaimCacheKey,

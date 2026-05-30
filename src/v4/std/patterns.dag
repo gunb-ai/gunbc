@@ -1,0 +1,20 @@
+// src/v4/std/patterns.dag
+// Scope: v4 compile-root mirror of Phase 1.4 `Upsert<T>` substrate.
+// Canonical authority: `dsl/std/patterns.dag` (#3981). v4 `gunbc compile` source roots exclude `dsl/`;
+// shapes here MUST stay aligned with the dsl module (P2 — not a parallel Upsert semantics).
+
+module v4.std.patterns
+
+import v4.std.node { Node }
+
+// 🟡 gated — feature:upsert-phase-substrate — dissolve-on-arrival: delete this mirror when v4 compile
+// loads `dsl/std/patterns.dag` directly; forbidden: divergent field sets vs dsl authority.
+type VerifyCheck = Node
+type CreateAction = Node
+type ResolveExpr<T> = Node
+
+type Upsert<T> {
+  verify: VerifyCheck
+  create: CreateAction
+  resolve: ResolveExpr<T>
+}
