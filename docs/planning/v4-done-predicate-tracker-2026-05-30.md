@@ -3,13 +3,13 @@
 > **Status:** PLANNING — first artifact for Self-host/Release Manager (`nimble-crane-490`).  
 > **Authority:** `src/v4/TASKS.md:801-815` (definition); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map).  
 > **Session:** `nimble-crane-490` · **Parent:** `nimble-dove-733` (PM May 29)  
-> **Tree HEAD spot-check:** `e332fc27b` (2026-05-30) — `session/nimble-crane-490` tracking `origin/main`.
+> **Tree HEAD spot-check:** `55ad5f3d3` (2026-05-30, post-#3938 `b129ce3f2` on main) — rebased `session/nimble-crane-490-predicate-tracker`.
 
 ## Non-negotiables
 
 - **Cannot narrow v4-done.** Per PR #3938 §8.D4: any predicate relaxation requires an explicit `src/v4/TASKS.md:801-815` amendment with named operator rationale — not a PM or manager call.
 - **Closure vocabulary (§10.0):** `ship_disposition: PROVEN` only with an executable receipt (+ falsification when the probe asks). Substrate alone → `GAP` + `engineering_state: SUBSTRATE_PRESENT` (or finer states below).
-- **§8 operator gate:** No worker briefs from this tracker until §8 D1–D7 are operator-ratified on PR #3938 and (where applicable) Modeling DFS worksheets are approved.
+- **§8 ratified:** PR #3938 merged (`b129ce3f2` on main); ladder + disposition vocabulary authoritative via `docs/planning/v4-correctness-ladder-2026-05-30.md`. Worker dispatch still follows per-class DFS worksheet approval (PR #3938 §11.4) — this tracker does not self-dispatch.
 
 ## Summary matrix
 
