@@ -1081,9 +1081,6 @@ fn content_hash(n: Node) -> Hash {
 }
 
 
-// 🟡 staged — feature:repository-root-brand — bind std.types brand / singleton substrate — dissolve-on-arrival: branded `RepoRoot` or data authority; ingress `RepoPath` normalizes here; forbidden: arbitrary String at authority boundary.
-type RepoRoot = String
-
 // RULING-1: 🟢 structural substrate node-set selector (v4-ci-schema-worksheet §2; concept home v4.std.node).
 // `Connective` is sole authority for ByConnective (`Atom { identity }` carries symbol identity).
 type NodeQuery

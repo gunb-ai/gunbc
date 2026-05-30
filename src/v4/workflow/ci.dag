@@ -37,7 +37,7 @@ import v4.std.change {
 // Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
 // `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
 import v4.std.patterns { CreateAction, ResolveExpr, VerifyCheck }
-import v4.std.types { GlobPattern }
+import v4.std.types { GlobPattern, RepoRoot, RepositoryRoot }
 import v4.compiler.eval {
   EvalContext,
   TestClaimCacheKey,
@@ -63,7 +63,6 @@ import v4.std.node {
   Node,
   NodeQuery,
   Positional,
-  RepoRoot,
   Symbol,
   TypeNode,
   Arrow,
@@ -168,13 +167,14 @@ type CiPipeline {
 // Parser does not yet accept generic base-type extension (`= Upsert<T> { … }`); consume via
 // v4.std.patterns `Upsert<T>` field alignment until ROADMAP generic record extension lands (Phase 1.4 probe 4).
 // `ResolveExpr<T>` matches Phase 1.4 `dsl/std/patterns.dag` (`type ResolveExpr<T> = Node`).
-// `payload_brand` brands `T` in cache projection until `ResolveExpr<T>` is load-bearing (P1.5-PARSER).
+// `payload_type` mirrors `T` in cache projection until `ResolveExpr<T>` is load-bearing (P1.5-PARSER).
+// Forbidden: parallel `Symbol` brand that can drift from the type parameter; must be canonical Node carrier.
 type CiUpsertStep<T> {
   inputs: List<UpsertInputRef>
   verify: VerifyCheck
   create: CreateAction
   resolve: ResolveExpr<T>
-  payload_brand: Symbol
+  payload_type: Node
 }
 
 // Structural consumer of `v4.std.patterns.Upsert<T>`: field-compatible with generic Upsert (verify/create/resolve).

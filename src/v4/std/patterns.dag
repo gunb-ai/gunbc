@@ -1,7 +1,7 @@
 // src/v4/std/patterns.dag
-// Scope: v4 compile-root mirror of Phase 1.4 `Upsert<T>` substrate.
-// Canonical authority: `dsl/std/patterns.dag` (#3981). v4 `gunbc compile` source roots exclude `dsl/`;
-// shapes here MUST stay aligned with the dsl module (P2 — not a parallel Upsert semantics).
+// Scope: v4 compile-root MIRROR of Phase 1.4 `Upsert<T>` substrate (NOT landed authority).
+// Canonical authority: `dsl/std/patterns.dag` (#3981). Delete when v4 compile loads `dsl/std` directly.
+// Ratchet: `Upsert<T>` / phase carrier field sets MUST match dsl/std/patterns.dag (P2).
 
 module v4.std.patterns
 
