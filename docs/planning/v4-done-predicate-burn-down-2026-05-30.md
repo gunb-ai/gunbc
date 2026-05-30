@@ -59,6 +59,8 @@
 
 ---
 
+## Wave 2 dispatch — named PR per predicate
+
 Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §5. **Dispatch gate:** MW-D8 Wave 1 exit (all five conditions `PROVEN`). PM owns formal Wave 2 fan-out; table maps **named in-flight / held PRs** to predicate touch.
 
 | Wave 2 item | Owner lane | Named PR(s) | Primary predicate touch | Jun 1 touch? |
