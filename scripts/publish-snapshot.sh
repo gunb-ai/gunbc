@@ -88,6 +88,15 @@ STRIP_PATHS=(
   "docs/perf"
   "docs/decisions"
 
+  # Internal process docs at docs/ root (design DBs, planning, rung specs, modeling).
+  "docs/design-*.md"
+  "docs/planning/"
+  "docs/r3-*.md"
+  "docs/r4-*.md"
+  "docs/regroup-*.md"
+  "docs/v4-*.md"
+  "docs/modeling/"
+
   # v3 is frozen and not part of the public story.
   "src/v3"
 
@@ -137,13 +146,15 @@ git worktree add --detach "$EXPORT_DIR" "$SNAPSHOT_REF"
 
 pushd "$EXPORT_DIR" >/dev/null
 
-# Apply strip-list. Missing paths are tolerated — the list is forward-looking.
-for path in "${STRIP_PATHS[@]}"; do
-  if [[ -e "$path" ]]; then
+# Apply strip-list. Entries may be literal paths or globs; missing paths are ok.
+shopt -s nullglob
+for pattern in "${STRIP_PATHS[@]}"; do
+  for path in $pattern; do
     rm -rf "$path"
     echo "stripped: $path"
-  fi
+  done
 done
+shopt -u nullglob
 
 # Workspace members must match the stripped tree — otherwise `cargo fmt` and
 # other metadata commands fail on missing manifests (public snapshot CI).
