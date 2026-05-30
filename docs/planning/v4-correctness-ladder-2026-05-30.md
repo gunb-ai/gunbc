@@ -754,9 +754,189 @@ For each of SG-1, SG-2, SG-5/SG-6: dispatch is a **modeling fact to add** (or a 
 
 Total new work items if all three are dispatched: **4** (SG-1: 1; SG-2: 1; SG-5/SG-6: 2). Compare to "fix all 7951 errors" framing: the dispatch is bounded, the modeling deliverables are reviewable, and the spot-fix trap is structurally prevented by the brief-required worksheets.
 
+### §10.5 SG-CANDIDATE-1 — Frontend sugar for the `data X: Symbol = X` pattern
+
+**This is a candidate, not an SG class.** Same DFS discipline applied to a frontend-convenience proposal (not an error-class).
+
+**Symptom (visual real-estate, operator observation 2026-05-30).** The pattern
+```dag
+data refinement_preservation_stub_locus_port: Symbol = refinement_preservation_stub_locus_port
+```
+repeats the identifier three times. Pervasive across `std/` — `std/node.dag:279-291` alone declares 13 `canonical_tag_*` Symbols; `std/algebra.dag:167-168` declares `lattice_field_meet`/`join`. The name *is* the data (Symbol values are self-referential interned identifiers — analogous to Lisp `'foo` or Ruby `:foo`, *not* to pointer-address references). The verbosity carries no extra semantic.
+
+**Worksheet form:**
+
+```text
+Candidate: SG-CANDIDATE-1 (frontend sugar, not error class)
+Representative current verbosity:
+  data canonical_tag_atom: Symbol = canonical_tag_atom    // identifier × 3
+  // ...repeated 13 times for canonical_tag_* in std/node.dag:279-291
+Tempting half-measure (rejected for the canonical case):
+  Implicit-value form: `data X: Symbol`
+  // when type is Symbol, implicitly value = name
+Why that half-measure is rejected:
+  - Overloads `data X: T` semantics based on T (Symbol special-cased; readers
+    must know the special case to read correct).
+  - Same shape can't extend to Bool/Char because their values are not
+    self-referential (`bool X = True` vs `bool X = False` carry distinct
+    information; the RHS is load-bearing).
+  - Calcifies a Symbol-only ambiguity into the surface grammar.
+DFS path:
+  std/ authority:
+    - type Symbol at std/node.dag:10 (kernel-ambient atom; identity-by-declaration)
+    - the pattern `data X: Symbol = X` is the canonical form; substrate Node
+      shape is Atom { identity: Symbol("X") }
+  extdeps/language authority:
+    - surface grammar productions live in the language-self-describing model
+      (proposed: std/grammar.dag + std/lexing.dag per INVARIANTS canonical-CS
+      naming; currently still in compiler/parse.dag pending the std/ migration
+      documented in INVARIANTS §"Internal vocabulary for a canonical concept")
+  compiler stage consuming it:
+    - parser desugars sugar form to canonical `data X: Symbol = X` before any
+      downstream stage sees it; substrate Node graph is identical
+  existing scaffold/dissolution notes:
+    - none for sugar specifically; this is additive frontend convenience
+Deepest unsound boundary:
+  None — substrate is sound. This is purely a visual/ergonomic gap in the
+  surface grammar. Adding sugar does NOT change INVARIANTS / MODELING /
+  THESIS commitments because the canonical substrate form is preserved.
+Systemic fix:
+  Two grammar productions, parser-level desugar only:
+    `symbol X`            ⇒ `data X: Symbol = X`
+    `symbols { X, Y, Z }` ⇒ three `data` declarations
+  No new Node shapes. Both sugared and desugared forms parse to identical
+  Node graphs.
+Non-goals:
+  - Extending sugar to Bool/Char without separate modeling discussion.
+  - Overloading `data X: T` for implicit value (rejected above).
+  - Auto-generating Symbol value names from any other source.
+Falsification probe:
+  Round-trip — for each Symbol declaration in std/, sugared form and
+  desugared form must produce structurally identical Node graphs
+  (compare via the existing exact_structural_equality_zip_fold_predicate).
+Metric allowed only as secondary:
+  Line-count reduction across std/ is evidence, not goal. The goal is
+  parser-uniform desugaring with falsification-probe-clean equivalence.
+```
+
+**Dispatch shape:** one work item — *"author `symbol X` and `symbols { X, Y, Z }` grammar productions in the v4 surface grammar (`std/grammar.dag` if the lexing/grammar migration has landed, else `v4/compiler/parse.dag`); add parse-stage desugar to canonical `data X: Symbol = X`; verify falsification probe (round-trip structural equality across all existing Symbol declarations in `std/`)."*
+
+**Cost:** small. Bounded to the parser. No substrate change. No invariant impact.
+
+### §10.6 Omni-ingestion — the bidirectional substrate
+
+**Operator question 2026-05-30:** *"How does this translate to other frontends, i.e., omni ingestion? I don't think we've discussed that stuff very much."*
+
+**The substantive answer.** The `TargetAtomRealization` fact-bundle proposed in §10.1 IS the bidirectional substrate that omni-ingestion needs. The same fact-bundle drives both directions of the translation:
+
+```text
+Emission:  Node graph  →  target syntax    (consumes type_form, value_form)
+Ingestion: target syntax  →  Node graph    (consumes the same fields, read in reverse)
+```
+
+No separate "ingestion-realization" fact is needed. The bidirectionality is the v4 commitment that closes `docs/v4-close-interrogation.md` §13 ("Arbitrary ingestion — bidirectional substrate").
+
+**Worked through SG-1 (atom realization):**
+- Emission: Node with `Atom { identity: Symbol("X") }` → consume `TargetAtomRealization.value_form` → emit Rust value expression
+- Ingestion: Rust source `X` (matched against any `TargetAtomRealization.value_form` pattern) → produce Node with `Atom { identity: Symbol("X") }`
+
+**Worked through SG-2 (generic carrier projection):**
+- Emission: Node with `Instantiation { children: [F, A, B] }` → consume `TargetTypeExpressionProjection.instantiation_form` → emit Rust `F<A, B>`
+- Ingestion: Rust source `F<A, B>` → recognize via reverse pattern of `instantiation_form` → produce Node with `Instantiation { children: [F, A, B] }`
+
+**What this means for the §10 worked-examples and the dispatch shape.** When SG-1/SG-2/SG-5-6 work items get dispatched, the brief MUST require the fact-bundle to be bidirectional-readable from the start. A Rust-emission-only fact-bundle (e.g., one that encodes patterns only suitable for output) would calcify a unidirectional design that omni-ingestion would have to retrofit. The bidirectional form is structurally what omni-ingestion needs; locking it in at SG-1 time is cheap, retrofitting later is expensive.
+
+**What this DOESN'T mean.**
+- Per-source-frontend parser work is still needed (Python ingestion needs a Python parser; Rust ingestion needs a Rust parser). The shared substrate is the realization facts, not the parsers.
+- The sugar §10.5 (`symbol X`) is .dag-frontend-specific because it's syntactic shorthand for the canonical form. Other source languages don't have this verbosity problem (their atom patterns are already concise — `'foo`, `:foo`, etc.). Sugar discussion is .dag-frontend-only.
+
+**Relation to §13 of the questionnaire.** The current §13 marks arbitrary ingestion as "NEW for v4, was R4" and the validation PR #3941 dispositions §13 probes as `WEAK-EVIDENCE` / `GAP`. The bidirectional-realization commitment is the structural answer; the §13 probes will move to `PROVEN` only when realization facts are landed AND an executable ingestion receipt exists (parse foreign source → Node graph → re-emit → byte-identical-or-declared-normalized).
+
+**Falsification probe for bidirectionality (operator-level acceptance criterion):**
+- Take a small fixture in foreign syntax (e.g., a Rust file).
+- Ingest via the bidirectional realization facts → Node graph.
+- Emit via the same realization facts → Rust source.
+- Verify byte-identity (or declared-normalized equivalence per existing T-36 round-trip discipline).
+- This single fixture proves the bidirectional substrate works for the included Node shapes; widening proceeds per the §7 fixture-first sequencing discipline.
+
 ---
 
-## §11. What this doc is NOT
+## §11. Manager-lane architecture (operator-ratified 2026-05-30)
+
+The diff scale has grown to where the planning artifact IS a program-management dependency graph. Making that explicit. **Authority boundaries (not T-numbers, not SG classes, not ladder rungs) are the unit managers own.**
+
+T-numbers are implementation units; SG classes are evidence; ladder rungs are gate outcomes. Managers own the interfaces between those things — and forbid worker dispatch that doesn't go through the right authority gate.
+
+### §11.1 The seven manager lanes
+
+| # | Manager | Owns | Does NOT own |
+| - | ------- | ---- | ------------ |
+| 1 | **Close / Receipt** | close predicates, disposition vocabulary, ladder ↔ questionnaire relationship, ratifying `DONE`-vs-substrate-only distinction | implementation fixes |
+| 2 | **Ladder / Fixture** | 9-rung ladder, fixture set, rung gate shape, "no headline rustc-clean" enforcement | target realization internals |
+| 3 | **Modeling DFS** | the §10.0 worksheet, SG-class root-cause analyses, single-authority-fact approval, spot-fix prevention | code implementation |
+| 4 | **Compiler Spine** | T-8 resolve, T-9 infer/ground, T-10 emit, T-22 eval, T-38 TestClaim runner, `InferredTree` / `GroundedProgramGraph` shape stability | language-specific realization facts |
+| 5 | **Target Realization** | `TargetAtomRealization`, `TargetTypeExpressionProjection`, `TargetCollectionRealization`, per-language realization rows | release criteria |
+| 6 | **Runtime / TestClaim** | T-22 eval execution, T-38 structured `TestClaimRun` verdicts, emitted-code run harness, falsification verdict receipts | emit projection facts |
+| 7 | **Self-host / Release** | T-15, the six v4-done predicates, T-36 round-trip, reproduction proof, close ceremony artifact | lowering close bar silently |
+
+**Manager-only dispatch rule:** workers are dispatched by managers, not by the planning doc. The doc surfaces *what authorities exist*; the manager translates a planning question into a worker brief (with the §10 DFS worksheet when applicable). Dispatching workers directly from probe rows or error classes bypasses the authority boundary the manager protects.
+
+### §11.2 Inter-lane dependencies
+
+```text
+1. Close / Receipt Manager       ← maintains ledger; ratifies disposition; no implementation
+                ↓
+2. Ladder / Fixture Manager      ← chooses first fixture; defines rungs
+                ↓
+3. Modeling DFS Manager          ← worksheets approved before workers touch code
+                ↓
+4. Compiler Spine Manager        ← T-8/T-9/T-10/T-22/T-38 interface stability
+                ├─ 5. Target Realization Manager   ← language realization rows (per-target)
+                └─ 6. Runtime/TestClaim Manager    ← eval + structured verdicts
+                ↓ (rungs 4-6 close)
+7. Self-host / Release Manager   ← T-36, T-15, reproduction, close ceremony
+```
+
+**Critical-path observation:** Target Realization (5) and Runtime/TestClaim (6) run in *parallel* under Compiler Spine (4), but the Ladder/Fixture Manager (2) decides when each is "good enough" by **fixture × ladder rung**, not by global error count.
+
+### §11.3 Lane-to-section ownership (initial map)
+
+| Planning doc section | Primary owner | Secondary owner |
+| -------------------- | ------------- | --------------- |
+| §3, §3.1 (gating audit + TASKS.md ambiguity) | Close/Receipt | Self-host/Release |
+| §6 (ladder) | Ladder/Fixture | Close/Receipt |
+| §7 (fixture-first sequencing) | Ladder/Fixture | Compiler Spine |
+| §8 (operator decisions) | Close/Receipt | (operator) |
+| §9 (questionnaire integration) | Close/Receipt | — |
+| §10.0 (worksheet, dispatch gate) | Modeling DFS | Close/Receipt |
+| §10.1 SG-1 → `TargetAtomRealization` | Modeling DFS → Target Realization | Runtime/TestClaim (falsification) |
+| §10.2 SG-2 → `TargetTypeExpressionProjection` | Modeling DFS → Target Realization | Compiler Spine (Instantiation consumer) |
+| §10.3 SG-5/SG-6 → `TargetCollectionRealization` + BoundedLattice gate | Modeling DFS → Target Realization + Compiler Spine | — |
+| §10.5 SG-CANDIDATE-1 (sugar) | Compiler Spine (parser) | — |
+| §10.6 Omni-ingestion (bidirectional facts) | Target Realization | Compiler Spine |
+
+### §11.4 Recommended immediate dispatch (post operator sign-off)
+
+Manager passes before any worker code:
+1. **Close/Receipt manager pass**: ratify D1/D2/D4/D5/D7, formally adopt the two-axis disposition vocabulary in §10.0, remove residual "30-day" framing.
+2. **Modeling DFS manager pass**: finalize SG-1, SG-2, SG-5/SG-6 worksheets (current draft form is in §10.1.1, §10.2, §10.3); approve dispatch shape per worksheet.
+3. **Ladder/Fixture manager pass**: ratify `nat_semiring` as Phase 1 fixture; define exact rung gate shape (acceptance predicates per rung).
+4. **Compiler Spine + Runtime/TestClaim manager pair**: define minimum executable runner needed for rungs 3–4 on the fixture (T-22 eval + T-38 verdicts).
+
+Worker briefs that follow manager approval:
+5. **Target Realization worker**: implement `TargetAtomRealization` (Rust + Python + Go rows for Symbol/Bool/Char) after DFS manager approval of SG-1 worksheet.
+6. **Target Realization worker**: implement `TargetTypeExpressionProjection` (Rust row) after DFS manager approval of SG-2 worksheet.
+7. **Ladder/Fixture worker**: wire Phase 1 fixture gate (`nat_semiring` × rungs 0–2) — SG fixes accepted only when they move the fixture rung, not when the histogram drops.
+8. **Compiler Spine worker** (optional, per §10.5): implement `symbol X` + `symbols { ... }` parser sugar (frontend-only, no substrate change).
+
+**What NOT to dispatch:**
+- "Fix SG-1 worker" / "Fix SG-2 worker" / "M1-class-fix" — these conflate evidence with implementation units and bypass the DFS authority.
+- Any worker not tied to a fixture × ladder rung × modeling gap triple.
+- Implementation work before its manager has approved the relevant authority interface.
+
+---
+
+## §12. What this doc is NOT
 
 - **Not a redefinition of correctness.** The 17 standards are pre-existing in `THESIS.md`. This doc maps them to gating reality and proposes operationalization, nothing more.
 - **Not a complete pre-committed plan.** Operator sign-off on §6 ladder + §7 Phase 1 unblocks the first dispatch. Phases 2/3/4 are dispatched after their predecessor closes — sequenced, not pre-committed. No timelines per TASKS.md discipline.
@@ -765,7 +945,7 @@ Total new work items if all three are dispatched: **4** (SG-1: 1; SG-2: 1; SG-5/
 
 ---
 
-## §12. Related artifacts
+## §13. Related artifacts
 
 - `docs/v4-close-interrogation.md` — the existing adversarial ship interrogation (346 probes, 17 sections); §9 of this doc integrates with it.
 - `docs/audit/r3-close-interrogation-validation-2026-05-13.md` — the prior validation that found 0/152 probes answered.
