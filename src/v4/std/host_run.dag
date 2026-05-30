@@ -1,6 +1,6 @@
 // src/v4/std/host_run.dag
-// Scope: spine carriers for emit-host run receipts and rung-4 falsification (W2).
-// Status: shared by std/verdict Fail.falsification and extdeps/runtimes/emit_host.
+// Scope: emit-host run receipts (W2 / joint runner spec §4.2).
+// Status: Host arm of ExecutionEvidence; falsification lives in test_claim_falsification.dag.
 
 module v4.std.host_run
 
@@ -37,12 +37,4 @@ type EmitHostRunReceipt {
 type ValueDiff<A> {
   expected: A
   actual: A
-}
-
-type FalsificationReceipt<A> {
-  subject_label: String
-  expected: A
-  actual: A
-  host_receipt: EmitHostRunReceipt
-  divergence: ValueDiff<A>
 }

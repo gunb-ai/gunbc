@@ -1,0 +1,31 @@
+// src/v4/std/test_claim_falsification.dag
+// Scope: falsification receipts + execution evidence (PR #3961 verdict-surface-contract).
+// Authority: docs/planning/verdict-surface-contract-2026-05-30.md
+
+module v4.std.test_claim_falsification
+
+
+import v4.compiler.eval { TestClaimEvalSubject }
+import v4.std.collection { List }
+import v4.std.diagnostic { Diagnostic }
+import v4.std.host_run { EmitHostRunReceipt, ValueDiff }
+import v4.std.node { Symbol }
+
+
+type InterpreterTrace {
+  pinned_eval_call: Symbol
+  diagnostics: List<Diagnostic>
+}
+
+type ExecutionEvidence
+  = Host { receipt: EmitHostRunReceipt }
+  | Interpreter { trace: InterpreterTrace }
+  | EvidenceNone
+
+type FalsificationReceipt<S, A> {
+  subject: TestClaimEvalSubject<S>
+  expected: A
+  actual: A
+  divergence: ValueDiff<A>
+  evidence: ExecutionEvidence
+}

@@ -451,7 +451,7 @@ type TestClaimCacheReceipt<T> {
 // RULING-1: needs-more-work — executable corpus runner will replace Wave-0 run rows.
 type TestClaimRun<S, A> {
   cache: TestClaimCacheReceipt<S>
-  verdict: Verdict<A>
+  verdict: Verdict<S, A>
 }
 
 
