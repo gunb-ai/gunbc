@@ -42,24 +42,29 @@ type Verdict<T>
   | Fail     { actual: Outcome<T> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
-// W2 extension — Verdict<T> stays monomorphic (preserves verdict_combine/monoid).
-// The falsification receipt is two-parameter (S, A) — see §2.3 — so it cannot
-// live inside Verdict<T> without existentializing S. Attach at TestClaimRun<S,A>
-// level instead (next subsection).
+// W2 extension — bind falsification *inside* Fail so the receipt is structurally
+// reachable only from Fail (INVARIANTS P2: illegal states unrepresentable).
+// Verdict gains an S parameter solely to thread the subject type into the receipt;
+// S is phantom on Pass / Deferred.
+type Verdict<S, T>
+  = Pass
+  | Fail     { actual: Outcome<T>, falsification: Option<FalsificationReceipt<S, T>> }
+  | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 ```
 
-`verdict_combine` / `verdict_monoid` semantics unchanged; no carrier edit to `Verdict<T>`.
+**Why inside `Fail`, not beside `Verdict`.** An earlier draft attached `falsification: Option<...>` next to `verdict` on `TestClaimRun`. That product made `Pass + Some` and `Fail + None` representable — a P2 violation flagged in #3961 review. Lifting the slot into the `Fail` variant rules out both illegal pairings at the type level. `Option<…>` is retained so structural CI rejections (no host, no interpreter trace) can carry `None` without fabricating evidence; `None` here means "this Fail did not produce a falsification receipt", which is meaningful and distinct from "this run is not a Fail".
+
+**Monoid impact.** `verdict_combine` / `verdict_monoid` generalize from `<T>` to `<S, T>` with shape unchanged: `Pass` identity, `Fail` absorbs, `Deferred` sticky. When two `Fail`s combine, the winner's `falsification` is the join result's `falsification` (matches the existing "Fail's `actual` wins" semantics; receipt is carried along its sibling field).
 
 ```dag
-// src/v4/compiler/05_eval.dag — TestClaimRun gains falsification slot
+// src/v4/compiler/05_eval.dag — TestClaimRun verdict parameter widens to <S, A>
 data TestClaimRun<S, A> = TestClaimRun {
-  cache:         TestClaimCacheReceipt<S>,
-  verdict:       Verdict<A>,
-  falsification: Option<FalsificationReceipt<S, A>>,  // populated iff verdict == Fail
+  cache:   TestClaimCacheReceipt<S>,
+  verdict: Verdict<S, A>,
 }
 ```
 
-Invariant: `falsification.is_some()` ⇔ `verdict` is `Fail`. Lens enforcement candidate (Phase 3+); v1 is a structural convention.
+No new slot on `TestClaimRun` itself; the carrier change lives entirely in `std/verdict.dag`.
 
 ### 2.3 Falsification receipt (Runtime/TestClaim authority)
 
@@ -107,7 +112,9 @@ Both lanes converge on `VerdictTally` (`pass`, `fail`, `deferred` counts). Close
 
 | Symbol / change | Spine | Runtime/TestClaim | Notes |
 | --------------- | ----- | ----------------- | ----- |
-| `TestClaimRun.falsification` carrier extension in `05_eval.dag` | ✓ | consult | `Verdict<T>` stays monomorphic; receipt attaches at run level (S generic) |
+| `Verdict<S, T>` parameter widening + `Fail.falsification` slot in `std/verdict.dag` | ✓ | consult | receipt is reachable only via `Fail` — illegal states unrepresentable (INVARIANTS P2) |
+| `verdict_combine` / `verdict_monoid` generalization to `<S, T>` | ✓ | — | shape unchanged; Fail-absorbs carries the winning falsification |
+| `TestClaimRun<S, A>.verdict` widens from `Verdict<A>` to `Verdict<S, A>` in `05_eval.dag` | ✓ | consult | mechanical follow-on to the verdict.dag change |
 | `FalsificationReceipt<S, A>` type declaration | — | ✓ | std-domain home TBD at W2 (`std/test_claim.dag` candidate) |
 | `ExecutionEvidence` sum | — | ✓ | |
 | `InterpreterTrace` substrate type | ✓ | consult | spine owns interpreter; Runtime co-signs shape |
