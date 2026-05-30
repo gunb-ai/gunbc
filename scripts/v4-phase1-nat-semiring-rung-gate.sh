@@ -57,9 +57,14 @@ if [[ ! -f "$fixture_module_path" ]]; then
 fi
 
 if [[ ! -x "$bin" ]]; then
+  # v2-compiler missing: setup gap, not fixture gap. Symmetric with the host-toolchain
+  # guard below — distinct setup receipt phase1/nat_semiring/setup/v2_compiler_missing,
+  # exit 2 under STRICT=1 to fail-closed at the boundary contract named by the gate's
+  # V2_COMPILER env (operator-required per ladder rung specs §2). INVARIANTS P3.
   echo "error: v2-compiler not found at $bin (build v2-compiler --release first)" >&2
   if [[ "$strict" == "1" ]]; then
-    exit 1
+    echo "::error title=phase1/nat_semiring rung gate setup::v2-compiler missing at $bin (phase1/nat_semiring/setup/v2_compiler_missing)"
+    exit 2
   fi
   echo "::notice title=phase1/nat_semiring rung gate::skipped — v2-compiler missing"
   exit 0
