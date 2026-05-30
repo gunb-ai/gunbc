@@ -429,10 +429,10 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "CompilesClaim must compare actual against declared accepted Node (P2/P3 fail-closed)"
     );
     assert!(
-        EVAL_DAG.contains("RoundTripClaim { label: _")
-            && EVAL_DAG.contains("run_test_claim_round_trip_verdict(at: at)")
-            && EVAL_DAG.contains("dag_round_trip_wave1_authorities_ready()"),
-        "RoundTripClaim eval authority must re-derive wave-1 readiness from dag.dag authorities (not Deferred; verification must not synthesize expected Outcome<Node>)"
+        EVAL_DAG.contains("run_test_claim_round_trip_verdict(actual: actual, at: at)")
+            && EVAL_DAG.contains("dag_round_trip_wave1_authorities_ready()")
+            && EVAL_DAG.contains("inputs: Inputs { root: subject.input.evaluator_input }"),
+        "RoundTripClaim must eval claim input (IRT-3) and re-derive wave-1 readiness from dag.dag authorities (P2; not Deferred)"
     );
     assert!(
         !EVAL_DAG.contains("eval_rejected_roundtrip_deferred"),
