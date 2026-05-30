@@ -74,11 +74,11 @@ Upsert<T> is what unifies ergonomics + mechanical efficiency in one shape: the d
 
 **Layer B — Each CI step is an Upsert<T> Node.** `CiCommand` becomes an Upsert<T> specialization (per the `ensure<Check, Action>` / `upsert<Check, Create, Resolve>` / `content_upsert` specializations in the patterns canon).
 
-**Substrate-landing note (codex review 2026-05-30):** Upsert<T> today is the operator-ratified pattern canon in `dsl/std/patterns.dag:15` (UPSERT<T> section header) with **commented-out pattern bodies** at ~lines 127–156 — blocked on pattern-declaration generics per ROADMAP desired parser features. **The Upsert<T> type is NOT yet a usable substrate primitive.** Phase 1.5 must therefore include landing Upsert<T> as a proper substrate type (with whatever parser/substrate prerequisites it needs) BEFORE CiUpsertStep<T> can specialize it. This is a substrate-extension scope; Modeling DFS Manager's worksheet must explicitly cover the parser/substrate prerequisites.
+**Substrate-landing note (codex review 2026-05-30):** Upsert<T> today is the operator-ratified pattern canon in `dsl/std/patterns.dag:15` (UPSERT<T> section header) with **commented-out pattern bodies** at ~lines 127–156 — blocked on pattern-declaration generics per ROADMAP desired parser features. **The Upsert<T> type is NOT yet a usable substrate primitive.** **Phase 1.4** (separate phase per §6 sequencing) lands Upsert<T> as a proper substrate type with whatever parser/substrate prerequisites it needs. **Phase 1.5** specializes Upsert<T> into `CiUpsertStep<T>` and DEPENDS on Phase 1.4 completing. Modeling DFS Manager owns BOTH Phase 1.4 (substrate-extension worksheet) and the Phase 1.5 DFS worksheet.
 
 Once landed, the step shape:
 ```dag
-// Phase 1.5 substrate landing (prerequisite): Upsert<T> usable as type
+// Phase 1.4 substrate landing (prerequisite): Upsert<T> usable as type
 //   per dsl/std/patterns.dag UPSERT<T> canon + parser support
 // Then CiUpsertStep<T> specializes it:
 type CiUpsertStep<T> = Upsert<T> {
@@ -125,7 +125,7 @@ The 30-minute CI dissolves: every step that doesn't need to run, doesn't run, an
 
 ## §6. Sequencing
 
-Per the ratified T-24 phase plan, with ONE addition (Phase 1.5):
+Per the ratified T-24 phase plan, with THREE additions (Phase 1.4 prerequisite, Phase 1.5 main, Phase 2.5 minimal-CI activation):
 
 | Phase | Scope | T-24 status after |
 |-------|-------|-------------------|
@@ -154,7 +154,8 @@ Per the ratified T-24 phase plan, with ONE addition (Phase 1.5):
 | Concern | Primary owner | Secondary |
 |---------|--------------|-----------|
 | Phase 1a (T-22 interpreter on ci_pipeline; integrity-class) | **Compiler Spine** (smart-stag-871) | Close/Receipt (verdicts) |
-| Phase 1.5 (`CiUpsertStep<T>` + `UpsertInputRef` substrate; each CI step becomes an Upsert<T> Node) | **Modeling DFS** (proud-pike-680) — substrate decision needs DFS worksheet | Compiler Spine (consumer) |
+| **Phase 1.4** (land Upsert<T> as usable substrate primitive in `dsl/std/patterns.dag`) | **Modeling DFS** (proud-pike-680) — substrate-extension worksheet covers parser/substrate prerequisites | (none yet — substrate landing) |
+| Phase 1.5 (`CiUpsertStep<T>` + `UpsertInputRef` substrate; each CI step becomes an Upsert<T> Node; **DEPENDS on Phase 1.4**) | **Modeling DFS** (proud-pike-680) — substrate decision needs DFS worksheet | Compiler Spine (consumer) |
 | Phase 1b (atom-by-atom migration) | **Compiler Spine** | Close/Receipt (atom dispositions) |
 | Phase 2 (Shape-B YAML emission) | **Compiler Spine** | Self-host/Release (T-24 [DONE] is a v4-done predicate) |
 | Phase 2.5 (affected-set intersection gate) | **Compiler Spine** + **Ladder/Fixture** | — |
@@ -171,7 +172,7 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 
 *Proposed: accept.* Aligns with THESIS §"Two shapes of omni-emission" (ci.yml is Shape-B emit), INVARIANTS P2 single-authority, T-24 ratified phases.
 
-**D-CI-2.** Accept the **Phase 1.5 addition** (**every CI step becomes an Upsert<T> Node** per operator directive 2026-05-29 + dsl/std/patterns.dag UPSERT<T> canon) to the ratified T-24 plan?
+**D-CI-2.** Accept the **Phase 1.5 addition** (**every CI step becomes an Upsert<T> Node** per operator directive 2026-05-29 + dsl/std/patterns.dag UPSERT<T> canon) to the ratified T-24 plan? **And accept D-CI-7 (below) since Phase 1.5 depends on Phase 1.4.**
 
 *Proposed: accept.* Without per-step Upsert<T>, affected-set lens can't project minimal CI. The ratified plan implicitly assumes some step-shape but doesn't name Upsert<T> as the unit. Adopting Upsert<T> aligns with the existing canon (no new vocabulary) and coordinates with clever-cat-115's existing-shell retirement (each shell script ports to a `content_upsert` or `ensure<Check, Action>` row).
 
@@ -181,7 +182,10 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 
 **D-CI-4.** Dispatch priority — start with **Phase 1a** (T-22 interpreter on ci_pipeline) OR **Phase 1.5** (dependency declaration) first?
 
-*Proposed: Phase 1a first* (already in scope per T-24). Phase 1.5 dispatch can start in parallel once the DFS worksheet is approved by Modeling DFS Manager, since the substrate work is independent of Phase 1a's interpreter wiring.
+*Proposed:*
+- **Phase 1a** first (already in scope per T-24).
+- **Phase 1.4** (Upsert<T> substrate landing) dispatches in parallel with Phase 1a once Modeling DFS Manager's substrate-extension worksheet is approved (D-CI-7 ratifies this scope).
+- **Phase 1.5** dispatch is BLOCKED on Phase 1.4 completion (per §6 sequencing); cannot start until Upsert<T> is a usable substrate primitive. Phase 1.5 DFS worksheet can be authored in parallel with Phase 1.4 implementation, but worker briefs cannot dispatch.
 
 **D-CI-5.** Scope of "minimal for highest confidence":
 - (a) Strictly affected-set-intersect (every step runs iff its deps are touched; integrity-class is `Always`)
@@ -189,6 +193,10 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 - (c) Affected-set-intersect with operator-tunable confidence-floor (some lanes can override "minimal" to always-run during sensitive periods)
 
 *Proposed: (a) by default, with explicit `Always` variant in `UpsertInputRef` for integrity-class steps.* (c) can be layered later by adding a `RunPolicy` field if needed; doesn't change the core architecture.
+
+**D-CI-7.** Accept the **Phase 1.4 prerequisite** (land Upsert<T> as a usable substrate primitive — parser/substrate prerequisites in `dsl/std/patterns.dag`)?
+
+*Proposed: accept.* Phase 1.5 (every CI step becomes an Upsert<T> Node) is structurally impossible without Phase 1.4. Modeling DFS Manager's substrate-extension worksheet covers the parser/substrate work needed to move Upsert<T> from "operator canon + commented stubs" to "usable substrate type." Scope this as substrate-extension scope (operator-bar decision) rather than worker-level scope.
 
 **D-CI-6.** Should Phase 2.5 (affected-set intersection gate firing) be **part of T-24 [DONE]** or **post-T-24** (separate close gate)?
 
