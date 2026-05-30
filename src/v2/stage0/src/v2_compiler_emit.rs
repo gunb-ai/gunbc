@@ -3872,7 +3872,7 @@ pub fn emit_unified_tco_match_arm(
             target.clone(),
             case_depth.clone(),
             body_depth.clone(),
-            body_str,
+            emit_match_arm_body_stmt(body_str),
             guard_str,
             render_pattern.clone(),
         )

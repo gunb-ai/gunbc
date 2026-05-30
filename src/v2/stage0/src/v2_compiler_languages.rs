@@ -719,7 +719,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             match_keyword: "match ".to_string(),
             case_keyword: "case ".to_string(),
             arm_separator: "\n".to_string(),
-            stmt_terminator: "".to_string(),
+            stmt_terminator: "\n".to_string(),
             significant_whitespace: true,
         }),
         for_each_syntax: Rc::new(ForEachSyntax {
@@ -729,7 +729,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         tco: Rc::new(TcoSyntax {
             loop_keyword: "while True".to_string(),
             break_return: "return".to_string(),
-            continue_str: "continue".to_string(),
+            continue_str: "continue\n".to_string(),
             temp_var_prefix: "__tco_".to_string(),
             temp_decl_prefix: "".to_string(),
             temp_assign_op: " = ".to_string(),
