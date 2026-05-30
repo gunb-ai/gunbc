@@ -76,6 +76,10 @@ run_test_claim(subject: TestClaimEvalSubject<Node>) -> TestClaimRun<Node, Runtim
 
 ### 4.2 Runtime-owned (T-38 / host harness) — AMENDED
 
+**Scope of this section.** Every symbol in the table below is a **proposed W2 addition**, not current substrate. The frozen carriers in §2 are live today; §4.2 describes what the W2 worker brief will add. Reviewers reading "Fail verdict carries a FalsificationReceipt" should read it as "Fail verdict *will carry* a FalsificationReceipt after the W2 + PR #3961 verdict-surface contract land", not as a claim that the current `Verdict<T>.Fail` already has that slot.
+
+**Verdict.Fail shape authority.** The exact carrier-extension shape (`Verdict<S, T>` with `Fail.falsification: Optional<FalsificationReceipt<S, T>>`, plus `ExecutionEvidence = Host | Interpreter | EvidenceNone` and `FalsificationReceipt<S, A>` with `subject: TestClaimEvalSubject<S>`) is ratified in **PR #3961 (`docs/planning/verdict-surface-contract-2026-05-30.md`)** — that doc supersedes the in-row sketches below (which list an earlier `<A>`-only shape). W2 workers should implement against #3961's contract; this section's table remains the responsibility-allocation source of truth.
+
 Minimum additions **outside** emit projection tables. Amendments A1–A4 are the Runtime/TestClaim manager's edits to the Spine draft; rationale follows the table.
 
 | Symbol | Responsibility |
