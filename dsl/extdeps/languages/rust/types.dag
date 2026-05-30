@@ -35,11 +35,43 @@ import std.coercion {
 // the emitter uses this (via ValueContext) to decide Rc wrapping.
 // =========================================================================
 
+// Kernel-ambient atoms: type_form + value_ctor_template are authoritative for emit (SG-1).
+data rust_atom_realizations: List<TargetAtomRealization> = [
+  {
+    dag_name: "Symbol",
+    type_form: "Symbol",
+    storage_type: "String",
+    type_decl_kind: NominalNewtype,
+    value_ctor_template: "Symbol(\"{ident}\".to_string())",
+    default_expr: "String::new()",
+    is_copy: false,
+    literal_suffix: ".to_string()"
+  },
+  {
+    dag_name: "Bool",
+    type_form: "bool",
+    storage_type: "bool",
+    type_decl_kind: TransparentAlias,
+    value_ctor_template: none,
+    default_expr: "false",
+    is_copy: true,
+    literal_suffix: none
+  },
+  {
+    dag_name: "Char",
+    type_form: "char",
+    storage_type: "char",
+    type_decl_kind: TransparentAlias,
+    value_ctor_template: none,
+    default_expr: "'\\0'",
+    is_copy: true,
+    literal_suffix: none
+  },
+]
+
 data rust_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "i64",    default_expr: "0",              is_copy: true,  literal_suffix: none },
   { dag_name: "Float",  target_type: "f64",    default_expr: "0.0",            is_copy: true,  literal_suffix: none },
-  { dag_name: "Bool",   target_type: "bool",   default_expr: "false",          is_copy: true,  literal_suffix: none },
-  { dag_name: "Symbol", target_type: "String", default_expr: "String::new()",  is_copy: false, literal_suffix: ".to_string()" },
   { dag_name: "Unit",   target_type: "()",     default_expr: "()",             is_copy: true,  literal_suffix: none },
   { dag_name: "String", target_type: "String", default_expr: "String::new()",  is_copy: false, literal_suffix: ".to_string()" },
   { dag_name: "Bytes",  target_type: "Vec<u8>",           default_expr: "Vec::new()",           is_copy: false, literal_suffix: none },
