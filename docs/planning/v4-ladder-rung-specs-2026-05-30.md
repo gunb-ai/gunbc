@@ -3,6 +3,7 @@
 > **Status:** MANAGER RATIFIED — Ladder/Fixture Manager (`keen-crab-361`), 2026-05-30. Operator sign-off: PR #3938 merged (`b129ce3f2`); §7 Phase 1 dispatch ratified per PM 2026-05-30.
 > **Authority:** PR #3938 §11.1 lane 2. **9-rung ontology:** PR #3938 §6 (`docs/planning/v4-correctness-ladder-2026-05-30.md` on `session/nimble-dove-733`).
 > **PR:** https://github.com/gunb-ai/gunbc/pull/3946 (`session/keen-crab-361`).
+> **Line-number authority:** `origin/main` at `9cc2392cc` (2026-05-30). Re-verify with `git show origin/main:<path>` before dispatch if `main` advances.
 > **Scope:** Ratify Phase 1 fixture; acceptance predicates for rungs 0–2 only. Rungs 3–9 blocked on Compiler Spine + Runtime/TestClaim interface definitions (§11.4 item 4).
 
 ---
@@ -143,23 +144,23 @@ Optional appendix (not headline): global rustc error count, top error classes, l
 
 - `src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag`
 
-**Structural templates (compose, do not copy blindly):**
+**Structural templates (compose, do not copy blindly)** — paths and line ranges verified on `origin/main` at `9cc2392cc`:
 
-| Pattern | File | Use for |
-| ------- | ---- | ------- |
-| Fixture import + claim binding | `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag:57-62` | `import v4.test.claim.algebra_laws.nat_semiring { … }` |
-| `CompilesClaim` row | `src/v4/test/claim/self_host/claim_runner_compiles.dag:35-41` | Per-target compile claims |
+| Pattern | File (line range) | Use for |
+| ------- | ----------------- | ------- |
+| Fixture import + drift guard | `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag:57-62` | Comment + `import` binding pattern (`:62`); substitute `v4.test.claim.algebra_laws.nat_semiring { … }` for Phase 1 |
+| `CompilesClaim` row | `src/v4/test/claim/self_host/claim_runner_compiles.dag:35-40` | Per-target compile claims; note `classification: TestClassification { tier: Tier1, layer: Integration }` — `Integration` is `TestgenLayer`, not a `TestClaim` variant |
 | Fixture `List<TestClaim>` roster | `src/v4/test/claim/workflow/affected_set_ci_runner.dag:99-103` | Named roster for gate selection |
-| Law-row `EqualsClaim` | `src/v4/test/claim/algebra_laws/nat_semiring.dag:112-151` | Fixture claim exports to import |
+| Law-row `EqualsClaim` | `src/v4/test/claim/algebra_laws/nat_semiring.dag:112-166` | Fixture claim exports to import |
 
-Minimum claim shapes (map to existing `v4.std.verification` variants):
+Minimum claim shapes (`v4.std.verification` — assertion coproduct is `CompilesClaim` | `DiagnosticClaim` | `EqualsClaim` | `RoundTripClaim`; `Integration` is only `TestgenLayer` inside `TestClassification`):
 
-| Rung | Suggested claim variant | Notes |
-| ---- | ----------------------- | ----- |
-| 0–1 | `CompilesClaim` per target slice | `input` = fixture law-subject or module anchor node; label must encode `fixture=phase1/nat_semiring` + `rung` + `target`. |
-| 2 | `CompilesClaim` × 3 targets OR one `Integration` row | Name `rust` / `python` / `go` in label until target axis is first-class. |
+| Rung | Suggested shape | Notes |
+| ---- | ----------------- | ----- |
+| 0–1 | `CompilesClaim` per target slice | `input` = fixture law-subject or module anchor node; `classification: TestClassification { tier: Tier1, layer: Unit }` unless integration-tier receipt is intentional |
+| 2 | Three `CompilesClaim` rows (rust / python / go) | Encode target in `label` (`fixture=… rung=2 target=rust predicate=R2-rust-compile`, etc.); optional `layer: Integration` on all three if tiering matches `claim_runner_compiles.dag:40` |
 
-Execution may remain `Deferred` behind T-38 **only** for substrate claims; the **CI gate** must still invoke toolchain checks directly until `TestClaimRun` verdicts are PROVEN (`05_eval.dag:1732` still defers `RoundTripClaim`).
+Execution may remain `Deferred` behind T-38 **only** for substrate claims; the **CI gate** must still invoke toolchain checks directly until `TestClaimRun` verdicts are PROVEN (`src/v4/compiler/05_eval.dag:1732-1736` — `RoundTripClaim` arm returns `Deferred`).
 
 **CI wiring (where the matrix lands):**
 
@@ -234,16 +235,19 @@ Do not dispatch “Fix SG-*” or “M1-class-fix” workers without a brief tha
 
 ---
 
-## 5. Spot-check receipts (planning doc vs `main` HEAD)
+## 5. Spot-check receipts (planning doc vs `origin/main` @ `9cc2392cc`)
+
+Verified 2026-05-30 with `git cat-file -e origin/main:<path>` and `git show origin/main:<path>` (file sizes: `05_eval.dag` 1869 lines; not the stale 1119-line tree).
 
 | Planning claim | Spot-check | Result |
 | ---------------- | ---------- | ------ |
-| `nat_semiring.dag` in corpus with algebra laws | `src/v4/test/claim/algebra_laws/nat_semiring.dag:1-167` | **CONFIRMED** — 6 `EqualsClaim` + 1 `DiagnosticClaim`; T-14, eval deferred comment at :3-4 |
-| Round-trip eval deferred (rung 3) | `src/v4/compiler/05_eval.dag:1732-1733` | **CONFIRMED** — `RoundTripClaim` → `Deferred` |
-| TestClaim corpus runner gated T-38 | `src/v4/test/claim/workflow/testclaim_corpus_runner.dag:2-5` | **CONFIRMED** — wedge; replaces `scripts/v4-testclaim-corpus-gate.sh` on landing |
-| CI: corpus rust probe, not fixture matrix | `src/v4/workflow/ci.dag:255-257` `M1RustEmitProbeCommand`; `ci.dag:5` T-38 dissolution note | **CONFIRMED** — no `phase1/nat_semiring` job yet |
+| `nat_semiring.dag` in corpus with algebra laws | `src/v4/test/claim/algebra_laws/nat_semiring.dag:1-166` | **CONFIRMED** — 6 `EqualsClaim` + 1 `DiagnosticClaim`; T-14, eval deferred comment at :3-4 |
+| Round-trip eval deferred (rung 3) | `src/v4/compiler/05_eval.dag:1732-1736` | **CONFIRMED** — `RoundTripClaim { … } => Deferred { … }` |
+| TestClaim corpus runner gated T-38 | `src/v4/test/claim/workflow/testclaim_corpus_runner.dag:1-4` | **CONFIRMED** — wedge; T-38 gated comment at :4 |
+| CI: corpus rust probe, not fixture matrix | `src/v4/workflow/ci.dag:256-257` `M1RustEmitProbeCommand` job; header :5 T-38 note | **CONFIRMED** on `9cc2392cc` — no `phase1_nat_semiring` job (lands via #3955) |
 | No Python/Go compile gate on v4 CI | `src/v4/workflow/ci.dag` — no `python`/`go` toolchain symbols | **CONFIRMED** — rung 2 gap matches planning §3 |
 | Laws tested on model only, not post-emit (rung 6) | `nat_semiring.dag` uses `EqualsClaim` on Node subjects, not emitted code | **CONFIRMED** — aligns planning §9.3 row |
+| Template paths in §2.5 exist on `main` | `dag_ingest_round_trip.dag`, `affected_set_ci_runner.dag`, `testclaim_corpus_runner.dag` | **CONFIRMED** on `9cc2392cc` |
 
 ---
 
