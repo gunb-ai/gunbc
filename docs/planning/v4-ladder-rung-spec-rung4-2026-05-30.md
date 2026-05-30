@@ -100,7 +100,7 @@ fixture=phase1/nat_semiring
 blocking_receipt: <predicate id> | <upstream_blocked:…> | none
 ```
 
-Rung 4 is reported **independently** of rung 3 per joint spec §4.4 rung-split. The combined "rungs 3–4 closed" line is the **conjunction**, evaluated by Ladder/Fixture **only when both rows are renderable**; until rung 3 spec lands (gated on PR #3972) the rung-4 row stands alone and the conjunction line is omitted.
+Rung 4 is reported **independently** of rung 3 per joint spec §4.4 rung-split. The combined "rungs 3–4 closed" line is the **conjunction**, evaluated by Ladder/Fixture **only when both rows are renderable** on the same fixture id. The rung-3 spec landed via PR #4003; the real gate on the conjunction line is now fixture-row renderability (rung-3 row needs `claim_nat_semiring_module_roundtrip` bound to the ladder fixture per the rung-3 companion §2.3, and the W1b emit→ingest comparator landed per rung-3 companion §6) — not the spec's existence. Until both rows are renderable on `phase1/nat_semiring`, the rung-4 row stands alone and the conjunction line is omitted.
 
 ### 2.5 TestClaim wiring target (worker implementation)
 
@@ -225,6 +225,6 @@ Once W3 lands (transport wired + Rust row in `nat_semiring_rung34_runtime_value_
 | Prerequisite chain (§2.3) — R4-rust requires R2-rust=PASS + transport + roster | **RATIFIED** |
 | No-rustc-clean headline extension to rung 4 (§4) | **RATIFIED** |
 | Independent gating from rung 3 per joint spec §4.4 | **RATIFIED** |
-| Rung 3 acceptance predicate | **DEFERRED** — gated on PR #3972 (Compiler Spine W1 `RoundTripClaim` verdict shape); follow-up spec lands once #3972 merges |
+| Rung 3 acceptance predicate | **LANDED** — companion spec `v4-ladder-rung-spec-rung3-2026-05-30.md` (PR #4003) cites PR #3960 (`run_test_claim_round_trip_verdict`); PR #3972 is leaf-model verification, orthogonal lane |
 | W3 roster fill (`nat_semiring_rung34_runtime_value_rows`) | **PENDING** Runtime/TestClaim follow-up (joint spec §4.4 W3) — not this lane's authority |
 | Host gate script + CI matrix extension for rung 4 | **PENDING** — depends on W3; Ladder/Fixture wires `nat_semiring_rung4_gate` consumption into `scripts/v4-phase1-nat-semiring-rung-gate.sh` matrix once W3 produces a first executed verdict |
