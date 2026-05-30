@@ -12,8 +12,7 @@ import v4.std.node { Symbol }
 import v4.std.refinement {
   NonNegativeInt,
   make_non_negative_int,
-  non_negative_int_authoritative_literal,
-  non_negative_int_discharge_outcome
+  non_negative_int_authoritative_literal
 }
 import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 
@@ -25,11 +24,6 @@ type Lean4NatValue = NonNegativeInt
 
 fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
   make_non_negative_int(value: value, at: at)
-}
-
-
-fn lean4_catalog_nat(value: Int) -> Lean4NatValue {
-  non_negative_int_discharge_outcome(receipt: non_negative_int_authoritative_literal(value: value))
 }
 
 
@@ -52,8 +46,8 @@ type Lean4OptionAssignment {
 
 // 🟡 gated — feature: lean4-option-closed-set — bind T-4.16 follow-on — dissolve-on-arrival: replace lake_lean_options open list with typed fields once Lean4 documents a fixed set of formatter-relevant set_option keys; forbidden: parallel closed-list approximations outside this substrate.
 type Lean4FormatConfig {
-  format_width: Lean4NatValue
-  format_indent: Lean4NatValue
+  format_width: Outcome<Lean4NatValue>
+  format_indent: Outcome<Lean4NatValue>
   format_unicode: Bool
   pp_oneline: Bool
   lake_lean_options: List<Lean4OptionAssignment> // 🟡 gated: lean4-option-closed-set
@@ -61,8 +55,8 @@ type Lean4FormatConfig {
 
 
 data lean4_format_defaults: Lean4FormatConfig = Lean4FormatConfig {
-  format_width: lean4_catalog_nat(value: 120),
-  format_indent: lean4_catalog_nat(value: 2),
+  format_width: non_negative_int_authoritative_literal(value: 120),
+  format_indent: non_negative_int_authoritative_literal(value: 2),
   format_unicode: true,
   pp_oneline: false,
   lake_lean_options: [],

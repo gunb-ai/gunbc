@@ -1,6 +1,6 @@
 // src/v4/std/refinement.dag
 // Scope: value-predicate refinement substrate — base type plus fail-closed validation obligation discharged at a named constructor boundary.
-// Status: T-25-core modeled; opaque Refined<B> carrier + hoisted int refinement factories (§A1 substrate).
+// Status: T-25-core modeled; hoisted int refinement factories (§A1 substrate). Structural opacity for bare construction: T-25-tail.
 // Anchor: https://en.wikipedia.org/wiki/Refinement_type
 
 
@@ -38,16 +38,11 @@ type Validation<B> {
 }
 
 
-type RefinedBody<B> {
-  base: B
-}
-
-
-// Opaque generic carrier: inhabit only via refine (fail-closed) or refined_discharge_outcome (catalog receipt).
+// Inhabit via refine (fail-closed) or make_* packing an Accepted refine receipt.
 // 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via refine / refined_discharge_outcome; forbidden: bare Refined { body: RefinedBody { base } }.
+// compiler-enforced construction only via refine / make_*; forbidden: bare Refined { base }.
 type Refined<B> {
-  body: RefinedBody<B>
+  base: B
 }
 
 
@@ -55,7 +50,7 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
   let admits = by.admits
   if admits(base) {
     Accepted {
-      value: Refined { body: RefinedBody { base: base } },
+      value: Refined { base: base },
       diagnostics: None
     }
   } else {
@@ -72,16 +67,8 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
 }
 
 
-// Catalog discharge: unwrap only an Accepted refine receipt (witness-proved at catalog rows).
-fn refined_discharge_outcome<B>(receipt: Outcome<Refined<B>>) -> Refined<B> {
-  match receipt {
-    Accepted { value: refined, diagnostics: _ } => refined
-  }
-}
-
-
 fn refined_base<B>(r: Refined<B>) -> B {
-  r.body.base
+  r.base
 }
 
 
@@ -145,89 +132,64 @@ data exact_one_int_validation: Validation<Int> = Validation {
 }
 
 
-type PositiveIntRep {
-  value: Int
-}
-
-
-// Nominal ≥1 int — predicate-indexed rep; not interchangeable with other int refinements.
+// Nominal ≥1 int — distinct from other int refinements (posix.dag / extdeps pattern).
 // 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_* / *_discharge_outcome; forbidden: bare PositiveInt { rep: PositiveIntRep { value } }.
+// construction only via make_*; forbidden: bare PositiveInt { refined: Refined { base } }.
 type PositiveInt {
-  rep: PositiveIntRep
-}
-
-
-type NonNegativeIntRep {
-  value: Int
+  refined: Refined<Int>
 }
 
 
 type NonNegativeInt {
-  rep: NonNegativeIntRep
-}
-
-
-type AtLeastMinusOneIntRep {
-  value: Int
+  refined: Refined<Int>
 }
 
 
 type AtLeastMinusOneInt {
-  rep: AtLeastMinusOneIntRep
-}
-
-
-type AtLeastMinusTwoIntRep {
-  value: Int
+  refined: Refined<Int>
 }
 
 
 type AtLeastMinusTwoInt {
-  rep: AtLeastMinusTwoIntRep
-}
-
-
-type ExactOneIntRep {
-  value: Int
+  refined: Refined<Int>
 }
 
 
 type ExactOneInt {
-  rep: ExactOneIntRep
+  refined: Refined<Int>
 }
 
 
 fn positive_int_value(p: PositiveInt) -> Int {
-  p.rep.value
+  refined_base(r: p.refined)
 }
 
 
 fn non_negative_int_value(p: NonNegativeInt) -> Int {
-  p.rep.value
+  refined_base(r: p.refined)
 }
 
 
 fn at_least_minus_one_int_value(p: AtLeastMinusOneInt) -> Int {
-  p.rep.value
+  refined_base(r: p.refined)
 }
 
 
 fn at_least_minus_two_int_value(p: AtLeastMinusTwoInt) -> Int {
-  p.rep.value
+  refined_base(r: p.refined)
 }
 
 
 fn exact_one_int_value(p: ExactOneInt) -> Int {
-  p.rep.value
+  refined_base(r: p.refined)
 }
 
 
 fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
   match refine(base: value, by: positive_int_validation, at: at) {
-    Accepted { value: _, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
-        value: PositiveInt { rep: PositiveIntRep { value: value } },
+        value: PositiveInt { refined: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -237,9 +199,9 @@ fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
 
 fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
   match refine(base: value, by: non_negative_int_validation, at: at) {
-    Accepted { value: _, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
-        value: NonNegativeInt { rep: NonNegativeIntRep { value: value } },
+        value: NonNegativeInt { refined: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -249,9 +211,9 @@ fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
 
 fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOneInt> {
   match refine(base: value, by: at_least_minus_one_int_validation, at: at) {
-    Accepted { value: _, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
-        value: AtLeastMinusOneInt { rep: AtLeastMinusOneIntRep { value: value } },
+        value: AtLeastMinusOneInt { refined: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -261,9 +223,9 @@ fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOne
 
 fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwoInt> {
   match refine(base: value, by: at_least_minus_two_int_validation, at: at) {
-    Accepted { value: _, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
-        value: AtLeastMinusTwoInt { rep: AtLeastMinusTwoIntRep { value: value } },
+        value: AtLeastMinusTwoInt { refined: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -273,47 +235,12 @@ fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwo
 
 fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
   match refine(base: value, by: exact_one_int_validation, at: at) {
-    Accepted { value: _, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
-        value: ExactOneInt { rep: ExactOneIntRep { value: value } },
+        value: ExactOneInt { refined: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
-}
-
-
-fn positive_int_discharge_outcome(receipt: Outcome<PositiveInt>) -> PositiveInt {
-  match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-  }
-}
-
-
-fn non_negative_int_discharge_outcome(receipt: Outcome<NonNegativeInt>) -> NonNegativeInt {
-  match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-  }
-}
-
-
-fn at_least_minus_one_int_discharge_outcome(receipt: Outcome<AtLeastMinusOneInt>) -> AtLeastMinusOneInt {
-  match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-  }
-}
-
-
-fn at_least_minus_two_int_discharge_outcome(receipt: Outcome<AtLeastMinusTwoInt>) -> AtLeastMinusTwoInt {
-  match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-  }
-}
-
-
-fn exact_one_int_discharge_outcome(receipt: Outcome<ExactOneInt>) -> ExactOneInt {
-  match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
   }
 }
 
@@ -368,10 +295,8 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Formatter config fields use Outcome<Carrier> (not bare Carrier): *_authoritative_literal and refine
-// return Outcome; .dag data literals cannot unwrap Rejected at assignment. Rejected defaults are
-// type-inhabitable but witness-proved Accepted for upstream catalog values; emit/runtime match or
-// call make_*. Steady-state target is bare Carrier on fields (former formatter-int-refinement
-// Refined<Int> intent) — bind T-25-tail / refinement-opaque-carrier for Outcome→Carrier once the
-// substrate supports closed proof or discharge without stripping the receipt.
-// Witnesses: refinement_formatter_literals_accept.dag (one per hoisted int type); runtime/user input: make_* + Outcome.
+// Formatter config fields use Outcome<Carrier>: *_authoritative_literal returns Outcome;
+// .dag data literals cannot unwrap Rejected at assignment. Witness-proved Accepted for catalog
+// values; runtime/user input uses make_* + Outcome. Bare-carrier catalog helpers that stripped
+// Rejected were removed (P3); T-25-tail adds structural opacity for bare Refined/PositiveInt.
+// Witnesses: refinement_formatter_literals_accept.dag (one per hoisted int type).

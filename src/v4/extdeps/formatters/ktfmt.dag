@@ -11,8 +11,7 @@ import v4.std.node { Symbol }
 import v4.std.refinement {
   PositiveInt,
   make_positive_int,
-  positive_int_authoritative_literal,
-  positive_int_discharge_outcome
+  positive_int_authoritative_literal
 }
 import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 
@@ -39,17 +38,12 @@ fn make_ktfmt_positive_int(value: Int, at: Locus) -> Outcome<KtfmtPositiveInt> {
 }
 
 
-fn ktfmt_catalog_positive(value: Int) -> KtfmtPositiveInt {
-  positive_int_discharge_outcome(receipt: positive_int_authoritative_literal(value: value))
-}
-
-
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: KtfmtConfigValidation witness checks editorconfig precedence ij_kotlin_indent_size > indent_size > tab_width and ij_kotlin_continuation_indent_size > ij_continuation_indent_size; forbidden: ad-hoc cross-field guards outside validation substrate.
 type KtfmtConfig {
   style: KtfmtStyle
-  max_width: KtfmtPositiveInt
-  block_indent: KtfmtPositiveInt
-  continuation_indent: KtfmtPositiveInt
+  max_width: Outcome<KtfmtPositiveInt>
+  block_indent: Outcome<KtfmtPositiveInt>
+  continuation_indent: Outcome<KtfmtPositiveInt>
   trailing_comma_management_strategy: KtfmtTrailingCommaManagementStrategy
   remove_unused_imports: Bool
   debugging_print_ops_after_formatting: Bool
@@ -60,21 +54,21 @@ type KtfmtConfig {
   enable_editorconfig: Bool
   quiet: Bool
 
-  editorconfig_max_line_length: KtfmtPositiveInt
-  editorconfig_indent_size: KtfmtPositiveInt
-  editorconfig_tab_width: KtfmtPositiveInt
-  editorconfig_ij_kotlin_indent_size: KtfmtPositiveInt
-  editorconfig_ij_continuation_indent_size: KtfmtPositiveInt
-  editorconfig_ij_kotlin_continuation_indent_size: KtfmtPositiveInt
+  editorconfig_max_line_length: Outcome<KtfmtPositiveInt>
+  editorconfig_indent_size: Outcome<KtfmtPositiveInt>
+  editorconfig_tab_width: Outcome<KtfmtPositiveInt>
+  editorconfig_ij_kotlin_indent_size: Outcome<KtfmtPositiveInt>
+  editorconfig_ij_continuation_indent_size: Outcome<KtfmtPositiveInt>
+  editorconfig_ij_kotlin_continuation_indent_size: Outcome<KtfmtPositiveInt>
   editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaManagementStrategy
 }
 
 
 data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   style: KtfmtMetaStyle,
-  max_width: ktfmt_catalog_positive(value: 100),
-  block_indent: ktfmt_catalog_positive(value: 2),
-  continuation_indent: ktfmt_catalog_positive(value: 4),
+  max_width: positive_int_authoritative_literal(value: 100),
+  block_indent: positive_int_authoritative_literal(value: 2),
+  continuation_indent: positive_int_authoritative_literal(value: 4),
   trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
   remove_unused_imports: true,
   debugging_print_ops_after_formatting: false,
@@ -85,12 +79,12 @@ data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   enable_editorconfig: false,
   quiet: false,
 
-  editorconfig_max_line_length: ktfmt_catalog_positive(value: 100),
-  editorconfig_indent_size: ktfmt_catalog_positive(value: 2),
-  editorconfig_tab_width: ktfmt_catalog_positive(value: 2),
-  editorconfig_ij_kotlin_indent_size: ktfmt_catalog_positive(value: 2),
-  editorconfig_ij_continuation_indent_size: ktfmt_catalog_positive(value: 4),
-  editorconfig_ij_kotlin_continuation_indent_size: ktfmt_catalog_positive(value: 4),
+  editorconfig_max_line_length: positive_int_authoritative_literal(value: 100),
+  editorconfig_indent_size: positive_int_authoritative_literal(value: 2),
+  editorconfig_tab_width: positive_int_authoritative_literal(value: 2),
+  editorconfig_ij_kotlin_indent_size: positive_int_authoritative_literal(value: 2),
+  editorconfig_ij_continuation_indent_size: positive_int_authoritative_literal(value: 4),
+  editorconfig_ij_kotlin_continuation_indent_size: positive_int_authoritative_literal(value: 4),
   editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
 }
 

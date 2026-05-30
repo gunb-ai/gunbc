@@ -61,7 +61,8 @@ import v4.std.diagnostic {
   Unavailable
 }
 import v4.std.node { Node, Symbol }
-import v4.std.refinement { Refined, Validation, refine, refined_base, refined_discharge_outcome }
+import v4.std.refinement { Refined, Validation, refine, refined_base }
+import v4.std.witness { Holds, Violates, Witness }
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -70,8 +71,8 @@ data complexity_projection_virtual_file: Symbol = complexity_projection_virtual_
 data complexity_variables_invalid: Symbol = complexity_variables_invalid
 
 
-// Intentionally trivial: routes lens-internal SizeVariable lists through refine/discharge
-// without adding rejection semantics beyond pre-PR bare Refined construction (T-12 placeholder).
+// Intentionally trivial: routes lens-internal SizeVariable lists through refine (T-12 placeholder).
+// 🟡 gated — feature:complexity-variables-refine-placeholder — bind T-12-COMPLEXITY-PROJECTION — dissolve-on-arrival: replace admits=true with a real SizeVariable-list predicate or remove the refine wrapper once complexity projection no longer needs a Refined carrier; forbidden: permanent vacuous refinement without a dissolution receipt.
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
 }
@@ -88,10 +89,11 @@ fn complexity_projection_locus() -> Locus {
 }
 
 
-fn complexity_variables_from_refine(xs: List<SizeVariable>) -> ComplexityVariables {
-  refined_discharge_outcome(
-    receipt: refine(base: xs, by: complexity_variables_validation, at: complexity_projection_locus())
-  )
+fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<ComplexityVariables> {
+  match refine(base: xs, by: complexity_variables_validation, at: complexity_projection_locus()) {
+    Accepted { value: refined, diagnostics: _ } => Holds { value: refined }
+    Rejected { diagnostics } => Violates { diagnostic: diagnostics.head }
+  }
 }
 
 
