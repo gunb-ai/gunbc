@@ -56,9 +56,9 @@ import v4.std.node {
   Symbol,
   TypeNode,
   fold_node,
-  node_positional_child_targets,
   well_formed
 }
+import v4.std.node_query { node_positional_child_targets }
 import v4.std.lexing {
   LexRules,
   LexRule,
