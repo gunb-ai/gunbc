@@ -4,7 +4,7 @@
 > **Authority:** PR #3938 §11.1 lane 2; joint runner spec [`compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md`](compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md) §3 row "rung 3" + §4.4 rung-split.
 > **Companion specs (gate vocabulary — do not duplicate):** [`v4-ladder-rung-specs-2026-05-30.md`](v4-ladder-rung-specs-2026-05-30.md) §2 (cell vocabulary, prerequisites, headlines); [`v4-ladder-rung-spec-rung3-2026-05-30.md`](v4-ladder-rung-spec-rung3-2026-05-30.md) (landed via PR #4003 — W1/W1b staged predicates, aux-row convention, P2 constructor rule). **This file is additive**: fixture-particular binding only.
 > **Line-number authority:** `origin/main` at `f7f629a30` (2026-05-30, post-#4018). Re-verify with `git show origin/main:<path>` if `main` advances.
-> **Scope:** Acceptance predicate for **rung 3 only** on `phase4/branch_dispatch`. Rungs 0–2: [`src/v4/test/claim/branch_dispatch/rung_0_to_2_three_targets.dag`](../src/v4/test/claim/branch_dispatch/rung_0_to_2_three_targets.dag). Rung 4: companion rung-4 phase4 doc (separate PR). Rungs 5–9: Phase 3+.
+> **Scope:** Acceptance predicate for **rung 3 only** on `phase4/branch_dispatch`. Rungs 0–2: [`src/v4/test/claim/branch_dispatch/rung_0_to_2_three_targets.dag`](../../src/v4/test/claim/branch_dispatch/rung_0_to_2_three_targets.dag). Rung 4: companion rung-4 phase4 doc (separate PR). Rungs 5–9: Phase 3+.
 
 ---
 
