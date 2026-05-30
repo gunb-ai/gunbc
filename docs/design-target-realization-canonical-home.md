@@ -1,7 +1,7 @@
 # Target-realization substrate — canonical home design
 
 **Owner:** Target Realization Manager (keen-heron-687)
-**Status:** Draft for sibling-manager + Modeling DFS review. Pre-dispatch. §8 D1-D7 operator sign-off still gates worker dispatch; this spec circulates inside the gate-wait window.
+**Status:** Updated 2026-05-30 post PR #3938 merge + Modeling DFS worker-brief routing (msg_643a013d). §1 placement decision revised to match Modeling DFS addendum (extend `v4.std.target_model` rather than new sibling file); §5 consumer reference corrected from v3 `05_emit` to v4 `06_translate`. Original Option B reasoning preserved in §1 history note for the PR record.
 **Scope:** Where `TargetAtomRealization` (SG-1), `TargetTypeExpressionProjection` (SG-2), and `TargetCollectionRealization` (SG-3) carrier type definitions live. Per-language rows remain in `extdeps/languages/<lang>.dag`.
 **Source PR:** #3938 §10.1, §10.2, §10.3, §10.6, §11.1, §11.3.
 **Modeling DFS ratification:** proud-pike-680 worksheet addendum 2026-05-30 (scaffold disposition, see §3).
@@ -16,21 +16,21 @@ Three candidate placements were evaluated:
 
 | Option | Placement | Verdict |
 | ------ | --------- | ------- |
-| A | Extend `std/target_model.dag` in place | **Rejected.** That file's stated scope is "TargetModel carrier + Conj-bundle edge keys + grammar-relation protocol symbols." Realization is a distinct concept-DAG layer (target *representation choice*, not target *model identity*). Conflating dilutes the P2 single-authority claim already written into target_model.dag:3. |
-| B | One new file `std/target_realization.dag` hosting all three carriers (Atom, TypeExpression, Collection) | **Accepted.** Sibling-to-target_model placement matches the §10.1 brief. Three carriers share one concept layer (target realization), share imports (Node, Symbol, TargetModel), and have a hard cross-section invariant (§10.1: `TargetAtomRealization.type_form` MUST be an instance of `TargetTypeExpressionProjection`). Co-location is the cheapest way to keep that invariant enforceable by inspection. |
-| C | Three files (`std/target_atom_realization.dag`, `std/target_type_expression_projection.dag`, `std/target_collection_realization.dag`) | **Rejected.** Splits a single concept layer across three files for no win; the cross-section invariant becomes a cross-file claim instead of an in-file claim; the M9 DFS-the-concept-DAG discipline gets harder to read. |
+| A | Extend `std/target_model.dag` in place | **Accepted (Modeling DFS ratified 2026-05-30 msg_643a013d).** That file's stated scope expands to host the three realization carriers alongside the existing TargetModel authority. The P2 single-authority claim is preserved by keeping `target_model.dag:3` ("single authority per INVARIANTS P2 — consumers import; do not redeclare") as the file-level invariant for everything in the file. Compiler-stage `v4.compiler.target_carriers` (`src/v4/compiler/07_target_carriers.dag`) imports the realization types the same way it imports `TargetModel` today. |
+| B | One new file `std/target_realization.dag` hosting all three carriers | **Initially proposed (Option B) but superseded by Modeling DFS Option A.** Original rationale: concept-DAG-layer separation between "target model identity" and "target representation choice." Rationale rejected because concept-layer placement is a modeling decision (proud-pike-680 authority per §11.1), and they ratified absorption into target_model.dag. Co-location of the three realization carriers in one file still holds — they now co-locate inside target_model.dag. |
+| C | Three files (one per carrier) | **Rejected.** Splits a single concept layer across three files for no win; cross-section invariant becomes cross-file. |
 
-**Decision: Option B.** New file `src/v4/std/target_realization.dag`. Module name `v4.std.target_realization`. Sibling to `v4.std.target_model`.
+**Decision: Option A.** Extend `src/v4/std/target_model.dag`. Module remains `v4.std.target_model`. The three realization carriers (`TargetAtomRealization`, `TargetTypeExpressionProjection`, `TargetCollectionRealization`) plus supporting target-side vocabulary co-locate with the existing `TargetModelBundle` declarations.
 
 ## §2. Carrier sketches
 
 Substrate sketch only — not authoritative content. Final field shapes are the worker's deliverable post §8 sign-off, constrained by the §10.1 / §10.2 / §10.3 worksheets and the §10.6 bidirectionality requirement.
 
 ```dag
-module v4.std.target_realization
+// Additions to existing module v4.std.target_model
+// (joins existing TargetModelBundle declarations)
 
-import v4.std.node { Node, Symbol }
-import v4.std.target_model { TargetModel }
+import v4.std.node { Node, Symbol }       // already present for Symbol edge-key data
 import v4.std.collection { List, Optional }
 import v4.std.diagnostic { Diagnostic }
 
@@ -105,9 +105,10 @@ Per Modeling DFS Mgr (proud-pike-680) addendum ratification 2026-05-30, the SG-1
 
 This spec is **substrate placement + carrier sketch + scaffold disposition**. It is NOT a worker brief.
 
-The worker brief (post §8 D1-D7 operator sign-off) will be the §10.1 *Tightened SG-1 worker brief* verbatim, **augmented** with:
-- the file path `src/v4/std/target_realization.dag` from §1 above
-- the scaffold-reconciliation table from §3 above
+The worker briefs (one per SG class — SG-2 first per Modeling DFS dispatch order) are the §10.1 / §10.2 / §10.3 *Tightened worker briefs* verbatim, **augmented** with:
+- the canonical-home placement `src/v4/std/target_model.dag` (module `v4.std.target_model`) from §1 above
+- the v4 consumer path `src/v4/compiler/06_translate.dag` from §5 above
+- the scaffold-reconciliation table from §3 above (SG-1 only)
 - the §10.6 bidirectional-readability falsification probe as acceptance criterion
 
 The worker brief will NOT decide field-level shape of the supporting target-side vocabulary (`TargetTypeExpression`, `TargetValueTemplate`, etc.) — those are co-substrate authoring within the same PR, but the *cross-carrier invariants* (§10.1 cross-section, §10.6 bidirectionality) are non-negotiable.
@@ -117,7 +118,7 @@ The worker brief will NOT decide field-level shape of the supporting target-side
 | Sibling manager | Touchpoint | Status |
 | --------------- | ---------- | ------ |
 | Modeling DFS (proud-pike-680) | §10.0 worksheet gate; scaffold-reconciliation disposition | **Gate cleared 2026-05-30** for first-artifact spec |
-| Compiler Spine (smart-stag-871) | `05_emit.dag` type-emit + value-emit consumers must read `TargetAtomRealization` row; `Instantiation` consumer added at type-expression projection | **Notify on §8 sign-off** — Compiler Spine owns the consumer-side refactor; TR owns the substrate row |
+| Compiler Spine (smart-stag-871) | `src/v4/compiler/06_translate.dag` type + value translate paths consume the realization rows; `Instantiation` consumer added at the type-expression projection. (v4 emit = translate + grammar-inverse serialize, NOT v3 `05_emit` templates.) | **Notify on each SG dispatch** — Compiler Spine owns the consumer-side refactor; TR owns the substrate carrier + rows |
 | Runtime/TestClaim (pending) | §10.6 bidirectional-readability falsification probe — Rust fixture round-trip | **Notify on spawn** |
 | Ladder/Fixture (keen-crab-361) | Phase 1 fixture (`nat_semiring.dag`) exercises rungs 0-2; SG-1 row landing affects rung-2 emit-clean gate | **No coordination needed pre-dispatch** — fixture choice is theirs; SG-1 row lands regardless |
 | Close/Receipt (sharp-otter-407) | Disposition vocabulary for the falsification-probe verdict (SUBSTRATE / GATED / DONE) | **No coordination needed pre-dispatch** |
