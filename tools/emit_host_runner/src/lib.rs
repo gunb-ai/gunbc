@@ -27,6 +27,10 @@ pub struct BuildLog {
     pub lines: Vec<String>,
 }
 
+// W3 reconciliation: modeled `EmitHostRunReceipt` in `host_run.dag` uses
+// `exit: Outcome<Witness<ExitOk>>` and `logical_run: Outcome<HostLogicalRun>` (stdout only when
+// exit Holds). This Rust transport row keeps a flat `HostExit::Ok|Err` + `stdout_bytes` until W3
+// wiring maps host-process results into the `.dag` carrier without merging diverging shapes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmitHostRunReceipt {
     pub source_text: String,

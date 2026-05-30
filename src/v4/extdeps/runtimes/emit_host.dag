@@ -28,6 +28,7 @@ import v4.std.diagnostic {
   None,
   diagnostics_singleton,
   port_locus,
+  node_locus,
   outcome_rejected
 }
 import v4.std.host_run {
@@ -96,7 +97,7 @@ fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
 fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
     reason: emit_host_emit_vs_eval_deferred,
-    at: port_locus(port: emit_host_transport_port),
+    at: node_locus(node: at),
     correction: None
   }
 }
