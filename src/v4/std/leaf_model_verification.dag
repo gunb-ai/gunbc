@@ -7,7 +7,7 @@
 module v4.std.leaf_model_verification
 
 import v4.std.collection { List }
-import v4.std.integer { Int }
+import v4.std.nat { Nat }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 import v4.std.verdict { Verdict }
@@ -56,12 +56,13 @@ type LeafModelClaimVerdictRow {
   falsification_verdict: Verdict<Symbol>
 }
 
+// Populations are Nat so negative totals are unrepresentable (same discipline as verdict.dag VerdictTally).
 type LeafModelVerificationTotals {
-  proven: Int
-  model_failed: Int
-  falsification_caught: Int
-  falsification_missed: Int
-  not_checked: Int
+  proven: Nat
+  model_failed: Nat
+  falsification_caught: Nat
+  falsification_missed: Nat
+  not_checked: Nat
 }
 
 // 🟡 gated — feature:leaf-model-verification-report — dissolve-on: runner aggregates per-model receipts.
