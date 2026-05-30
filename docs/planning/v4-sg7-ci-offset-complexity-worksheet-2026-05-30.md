@@ -143,6 +143,6 @@ Escalate to Modeling DFS:
 
 - `docs/audit/v4-rustc-error-catalog-2026-05-29.md` — SG-7 row, §3.2 M1 vs T-38
 - `docs/planning/v4-correctness-ladder-2026-05-30.md` §10.0 — worksheet discipline
-- `src/v4/std/node.dag` — `byte_offset_cache_digest_*` (L626+)
+- `src/v4/std/node.dag` — `byte_offset_cache_digest_*` / `byte_offset_cache_key` (L675+)
 - `src/v4/workflow/ci.dag` — L703-777, L1299-1308
 - `src/v4/test/claim/workflow/pipeline_rejections.dag` — compile consumer
