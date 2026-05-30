@@ -1820,5 +1820,45 @@ fn ci_char_projection_out_of_range_injective_witness() -> Bool {
 }
 
 
+// SG-7 / T-22: in-range chars use std `byte_offset_cache_key_projection_node` — distinct content_hash (no aliasing).
+fn ci_char_projection_in_range_injective_witness() -> Bool {
+  content_hash(n: ci_char_projection_node(c: 0)) !=
+    content_hash(n: ci_char_projection_node(c: 1))
+    && content_hash(n: ci_char_projection_node(c: 97)) !=
+      content_hash(n: ci_char_projection_node(c: 98))
+    && content_hash(n: ci_char_projection_node(c: 254)) !=
+      content_hash(n: ci_char_projection_node(c: 255))
+}
+
+
+fn ci_char_projection_matches_std_cache_key_projection_witness() -> Bool {
+  content_hash(n: ci_char_projection_node(c: 0)) ==
+    content_hash(n: byte_offset_cache_key_projection_node(i: 0))
+    && content_hash(n: ci_char_projection_node(c: 97)) ==
+      content_hash(n: byte_offset_cache_key_projection_node(i: 97))
+    && content_hash(n: ci_char_projection_node(c: 255)) ==
+      content_hash(n: byte_offset_cache_key_projection_node(i: 255))
+}
+
+
+fn ci_char_projection_byte_limb_boundary_witness() -> Bool {
+  content_hash(n: ci_char_projection_node(c: 255)) !=
+    content_hash(n: ci_char_projection_node(c: int_add(a: 255, b: 1)))
+    && content_hash(n: ci_char_projection_node(c: int_negate(i: 1))) !=
+      content_hash(n: ci_char_projection_node(c: 0))
+}
+
+
+fn ci_char_projection_cache_hash_surface_witness() -> Bool {
+  ci_char_projection_in_range_injective_witness()
+    && ci_char_projection_matches_std_cache_key_projection_witness()
+    && ci_char_projection_byte_limb_boundary_witness()
+    && ci_char_projection_out_of_range_injective_witness()
+}
+
+
 // Receipt: out-of-byte-range Char projections stay distinguishable under evaluator-input content_hash.
 data ci_char_projection_out_of_range_injective_ok: Bool = ci_char_projection_out_of_range_injective_witness()
+
+// Receipt: SG-7 cache-key projection surface pinned for evaluator-input content_hash (worksheet §3 probes 2–3).
+data ci_char_projection_cache_hash_surface_ok: Bool = ci_char_projection_cache_hash_surface_witness()
