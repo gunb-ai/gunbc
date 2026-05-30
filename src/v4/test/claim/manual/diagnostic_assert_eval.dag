@@ -7,11 +7,13 @@ module v4.test.claim.manual.diagnostic_assert_eval
 
 
 import v4.compiler.eval {
+  TestClaimEvalSubject,
   aggregate_verdicts,
   eval_diagnostic,
   run_test_claim_assert
 }
 import v4.std.verdict { Verdict, Pass, Fail, Deferred }
+import v4.std.node { Node }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
@@ -119,7 +121,7 @@ data witness_diagnostic_assert_match_pass: Bool = match run_test_claim_assert(
   at: diag_assert_node()
 ) {
   Pass => true
-  Fail { actual: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -130,12 +132,12 @@ data witness_diagnostic_assert_mismatch_fail: Bool = match run_test_claim_assert
   at: diag_assert_node()
 ) {
   Pass => false
-  Fail { actual: _ } => true
+  Fail { actual: _, falsification: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
 
 
-fn empty_node_verdicts() -> List<Verdict<Node>> {
+fn empty_node_verdicts() -> List<Verdict<TestClaimEvalSubject<Node>, Node>> {
   []
 }
 
@@ -146,19 +148,19 @@ data witness_diagnostic_assert_accepted_fail: Bool = match run_test_claim_assert
   at: diag_assert_node()
 ) {
   Pass => false
-  Fail { actual: _ } => true
+  Fail { actual: _, falsification: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
 
 
 data witness_aggregate_empty_fail: Bool = match aggregate_verdicts(rs: empty_node_verdicts(), at: diag_assert_node()) {
   Pass => false
-  Fail { actual: _ } => true
+  Fail { actual: _, falsification: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
 
 
-fn deferred_verdict() -> Verdict<Node> {
+fn deferred_verdict() -> Verdict<TestClaimEvalSubject<Node>, Node> {
   Deferred {
     actual: rejected_same,
     diagnostic: eval_diagnostic(reason: diag_assert_reason, node: diag_assert_node())
@@ -168,6 +170,6 @@ fn deferred_verdict() -> Verdict<Node> {
 
 data witness_aggregate_deferred_blocks_pass: Bool = match aggregate_verdicts(rs: [Pass, deferred_verdict()], at: diag_assert_node()) {
   Pass => false
-  Fail { actual: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => true
 }

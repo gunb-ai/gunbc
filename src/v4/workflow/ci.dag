@@ -66,7 +66,7 @@ import v4.std.node {
 import v4.std.integer { int_add, int_negate }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
-import v4.std.collection { List }
+import v4.std.collection { Absent, List }
 import v4.std.text { Char, String }
 import v4.std.diagnostic {
   Correction,
@@ -1118,7 +1118,7 @@ fn workflow_pipeline_receipt_failure_diagnostics(
   run: TestClaimRun<CiPipeline, CiPipeline>
 ) -> List<Diagnostic> {
   match run.verdict {
-    Fail { actual: Rejected { diagnostics: ds } } => ds
+    Fail { actual: Rejected { diagnostics: ds }, falsification: _ } => ds
     // Unreachable from `workflow_pipeline_plan_bound_pass_receipt` Fail arm today; honest tag if call sites change.
     _ =>
       diagnostics_singleton(d: ci_diagnostic(reason: ci_workflow_receipt_unexpected_verdict))
@@ -1130,12 +1130,13 @@ fn workflow_pipeline_receipt_failure_diagnostics(
 fn workflow_pipeline_pass_gate(
   run: TestClaimRun<CiPipeline, CiPipeline>,
   at: Node
-) -> Verdict<TestClaimRun<CiPipeline, CiPipeline>> {
+) -> Verdict<TestClaimEvalSubject<CiPipeline>, TestClaimRun<CiPipeline, CiPipeline>> {
   aggregate_verdicts(
     rs: [
       match run.verdict {
         Pass => Pass
-        Fail { actual: _ } => Fail { actual: Accepted { value: run, diagnostics: None } }
+        Fail { actual: _, falsification: _ } =>
+          Fail { actual: Accepted { value: run, diagnostics: None }, falsification: Absent }
         Deferred { actual: _, diagnostic: d } =>
           Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
       }
@@ -1162,7 +1163,7 @@ fn workflow_pipeline_plan_bound_pass_receipt(
           }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
-    Fail { actual: _ } =>
+    Fail { actual: _, falsification: _ } =>
       Rejected { diagnostics: workflow_pipeline_receipt_failure_diagnostics(run: run) }
     Deferred { actual: _, diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }

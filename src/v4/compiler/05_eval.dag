@@ -16,7 +16,7 @@ import v4.compiler.infer {
 import v4.std.algebra { fold_list }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map, list_nth }
-import v4.std.verdict { Verdict, verdict_fold }
+import v4.std.verdict { Verdict, verdict_fail, verdict_fold }
 import v4.std.runtime {
   EnvironmentBindingKey,
   Continue,
@@ -451,7 +451,7 @@ type TestClaimCacheReceipt<T> {
 // RULING-1: needs-more-work — executable corpus runner will replace Wave-0 run rows.
 type TestClaimRun<S, A> {
   cache: TestClaimCacheReceipt<S>
-  verdict: Verdict<A>
+  verdict: Verdict<TestClaimEvalSubject<S>, A>
 }
 
 
@@ -477,7 +477,7 @@ fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> TestClaim {
 }
 
 
-fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<A> {
+fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<TestClaimEvalSubject<S>, A> {
   run.verdict
 }
 
@@ -1703,7 +1703,7 @@ fn run_test_claim_assert(
   claim: TestClaim,
   actual: Outcome<Node>,
   at: Node
-) -> Verdict<Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
 }
 
@@ -1712,13 +1712,13 @@ fn run_test_claim_assert_decided(
   claim: TestClaim,
   actual: Outcome<Node>,
   at: Node
-) -> Verdict<Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
         Pass
       } else {
-        Fail { actual: actual }
+        verdict_fail(actual: actual)
       }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } =>
       if outcome_node_eq(
@@ -1727,7 +1727,7 @@ fn run_test_claim_assert_decided(
       ) {
         Pass
       } else {
-        Fail { actual: actual }
+        verdict_fail(actual: actual)
       }
     RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
       Deferred {
@@ -1740,9 +1740,9 @@ fn run_test_claim_assert_decided(
           if outcome_node_eq(a: actual, b: Rejected { diagnostics: expected }) {
             Pass
           } else {
-            Fail { actual: actual }
+            verdict_fail(actual: actual)
           }
-        _ => Fail { actual: actual }
+        _ => verdict_fail(actual: actual)
       }
   }
 }
@@ -1772,14 +1772,14 @@ fn run_test_claim_runtime_assert(
   interpretation: InterpretationAlgebra,
   actual: Outcome<RuntimeValue>,
   at: Node
-) -> Verdict<RuntimeValue> {
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: rhs })
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
       } else {
-        Fail { actual: actual }
+        verdict_fail(actual: actual)
       }
     }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
@@ -1787,7 +1787,7 @@ fn run_test_claim_runtime_assert(
       if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
         Pass
       } else {
-        Fail { actual: actual }
+        verdict_fail(actual: actual)
       }
     }
     RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
@@ -1801,9 +1801,9 @@ fn run_test_claim_runtime_assert(
           if outcome_runtime_value_eq(a: actual, b: Rejected { diagnostics: expected }) {
             Pass
           } else {
-            Fail { actual: actual }
+            verdict_fail(actual: actual)
           }
-        _ => Fail { actual: actual }
+        _ => verdict_fail(actual: actual)
       }
   }
 }
@@ -1811,14 +1811,17 @@ fn run_test_claim_runtime_assert(
 
 // Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Fail (no fabricated Pass).
 // Empty-case policy: Fail with eval_empty_verdict_list diagnostic (context-specific at-node).
-fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
+fn aggregate_verdicts<S, T>(
+  rs: List<Verdict<TestClaimEvalSubject<S>, T>>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<S>, T> {
   verdict_fold(
     rs: rs,
-    empty_verdict: Fail {
+    empty_verdict: verdict_fail(
       actual: outcome_rejected(
         d: eval_diagnostic(reason: eval_empty_verdict_list, node: at)
       )
-    }
+    )
   )
 }
 
