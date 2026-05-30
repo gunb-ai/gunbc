@@ -663,14 +663,6 @@ mod compiler_tests {
             "f64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bool".into()),
-            "bool"
-        );
-        assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Symbol".into()),
-            "String"
-        );
-        assert_eq!(
             coerce_primitive_type(RenderTarget::Rust, "Unit".into()),
             "()"
         );
@@ -862,14 +854,15 @@ mod compiler_tests {
         use crate::v2_compiler_coercion::*;
         assert_eq!(is_copy(RenderTarget::Rust, "Int".into()), Some(true));
         assert_eq!(is_copy(RenderTarget::Rust, "Float".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "Bool".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "Symbol".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Unit".into()), Some(true));
         assert_eq!(is_copy(RenderTarget::Rust, "String".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Hash".into()), Some(false));
+        assert_eq!(is_copy(RenderTarget::Rust, "Symbol".into()), Some(false));
+        assert_eq!(is_copy(RenderTarget::Rust, "Bool".into()), Some(true));
+        assert_eq!(is_copy(RenderTarget::Rust, "Char".into()), Some(true));
     }
 
     #[test]

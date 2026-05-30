@@ -7,16 +7,12 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, HigherOrderMethodSpec,
 };
 pub use crate::generated_method_template_projection::rust_method_template_emit;
-pub use crate::std_coercion::TargetAtomRealization;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_types::is_container_type;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
-pub use crate::v2_compiler_coercion::{
-    apply_atom_value_ctor_template, atom_realization_is_nominal_newtype, coerce_primitive_type,
-    default_expr, is_copy, lookup_atom_realization,
-};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
 pub use crate::v2_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v2_compiler_emit::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -417,42 +413,37 @@ pub fn rust_ord_derives_copy_text() -> String {
     "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
-pub fn rust_atom_nominal_newtype_def(row: Rc<TargetAtomRealization>) -> String {
+pub fn rust_nominal_identity_carrier_def(name: String) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(rust_ord_derives_text(), "\n".to_string()),
-                                rust_visibility_prefix(),
-                            ),
-                            rust_items().struct_keyword.clone(),
-                        ),
-                        " ".to_string(),
+                        v2_rt::concat(rust_ord_derives_text(), "\n".to_string()),
+                        rust_visibility_prefix(),
                     ),
-                    row.type_form.clone(),
+                    rust_items().struct_keyword.clone(),
                 ),
-                "(pub ".to_string(),
+                " ".to_string(),
             ),
-            row.storage_type.clone(),
+            name,
         ),
-        ");".to_string(),
+        "(pub String);".to_string(),
     )
 }
 
-pub fn rust_atom_nominal_newtype_shape_eligible(
+pub fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> bool {
+    (type_name.as_str() == "Symbol".to_string().as_str())
+}
+
+pub fn rust_nominal_identity_carrier_shape_eligible(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let name = authored_name_at(source_indices, n.clone());
-        (((atom_realization_is_nominal_newtype(RenderTarget::Rust, name)
-            && ((n.children.clone().len() as i64) == 0))
-            && ((n.params.clone().len() as i64) == 0))
-            && (n.connective.clone() == Connective::NoConnective))
-    }
+    ((((authored_name_at(source_indices, n.clone()).as_str() == "Symbol".to_string().as_str())
+        && ((n.children.clone().len() as i64) == 0))
+        && ((n.params.clone().len() as i64) == 0))
+        && (n.connective.clone() == Connective::NoConnective))
 }
 
 pub fn rust_diff_id_ord_carrier_shape_eligible(
@@ -465,7 +456,7 @@ pub fn rust_diff_id_ord_carrier_shape_eligible(
         false
     } else {
         match children.clone().first().cloned() {
-            Some(child) => rust_atom_nominal_newtype_shape_eligible(
+            Some(child) => rust_nominal_identity_carrier_shape_eligible(
                 child_type_node(child.clone()),
                 source_indices,
             ),
@@ -490,7 +481,7 @@ pub fn rust_nominal_ord_type_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (rust_atom_nominal_newtype_shape_eligible(elem_node.clone(), source_indices.clone())
+    (rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
         || rust_diff_id_ord_carrier_shape_eligible(
             authored_name_at(source_indices.clone(), elem_node.clone()),
             elem_node.children.clone(),
@@ -2974,34 +2965,9 @@ pub fn emit_typed_item(
         } else {
             if is_type_alias_item(item.clone(), env.source_indices.clone()) {
                 if (((item.params.clone().len() as i64) == 0)
-                    && atom_realization_is_nominal_newtype(RenderTarget::Rust, item_text.clone()))
+                    && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
                 {
-                    match lookup_atom_realization(RenderTarget::Rust, item_text.clone()) {
-                        Some(row) => rust_atom_nominal_newtype_def(row.clone()),
-                        None => v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(
-                                                rust_visibility_prefix(),
-                                                rust_items().type_alias_keyword.clone(),
-                                            ),
-                                            " ".to_string(),
-                                        ),
-                                        item_text.clone(),
-                                    ),
-                                    " = ".to_string(),
-                                ),
-                                render_rust_type(
-                                    resolved_type(item.clone()),
-                                    shared_types,
-                                    env.source_indices.clone(),
-                                ),
-                            ),
-                            ";".to_string(),
-                        ),
-                    }
+                    rust_nominal_identity_carrier_def(item_text.clone())
                 } else {
                     v2_rt::concat(
                         v2_rt::concat(
@@ -3030,15 +2996,9 @@ pub fn emit_typed_item(
             } else {
                 if is_type_decl_item(item.clone(), env.source_indices.clone()) {
                     if (((item.params.clone().len() as i64) == 0)
-                        && atom_realization_is_nominal_newtype(
-                            RenderTarget::Rust,
-                            item_text.clone(),
-                        ))
+                        && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
                     {
-                        match lookup_atom_realization(RenderTarget::Rust, item_text.clone()) {
-                            Some(row) => rust_atom_nominal_newtype_def(row.clone()),
-                            None => "".to_string(),
-                        }
+                        rust_nominal_identity_carrier_def(item_text.clone())
                     } else {
                         "".to_string()
                     }
@@ -16327,17 +16287,15 @@ pub fn emit_data_def(
                 type_node.clone(),
             ),
         );
-        let type_name = authored_name_at(
-            scope.type_env.clone().source_indices.clone(),
-            type_node.clone(),
-        );
         if (is_simple_type_node(
             type_node.clone(),
             scope.type_env.clone().source_indices.clone(),
-        ) || atom_realization_is_nominal_newtype(RenderTarget::Rust, type_name))
-        {
+        ) || rust_nominal_identity_carrier_type_eligible(authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            type_node.clone(),
+        ))) {
             {
-                let val_str = match rust_atom_identity_data_expr(
+                let val_str = match rust_nominal_identity_data_expr(
                     type_node.clone(),
                     value.clone(),
                     scope.type_env.clone().source_indices.clone(),
@@ -16396,34 +16354,32 @@ pub fn emit_data_def(
     }
 }
 
-pub fn rust_atom_identity_data_expr(
+pub fn rust_nominal_identity_data_expr(
     type_node: Rc<Node>,
     value: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let type_name = authored_name_at(source_indices.clone(), type_node.clone());
-        if (((type_node.connective.clone() == Connective::NoConnective)
+        let is_identity_type = (((rust_nominal_identity_carrier_type_eligible(type_name.clone())
+            && (type_node.connective.clone() == Connective::NoConnective))
             && ((type_node.children.clone().len() as i64) == 0))
-            && ((type_node.params.clone().len() as i64) == 0))
-        {
-            match lookup_atom_realization(RenderTarget::Rust, type_name) {
-                Some(row) => match row.value_ctor_template.clone() {
-                    Some(tmpl) => match (*value.expr_data.clone()).clone() {
-                        ExprData::ExprVar {
-                            binding_kind: _, ..
-                        } => {
-                            let ident = escape_string_literal_body(expr_var_name_at(
-                                value.clone(),
-                                source_indices.clone(),
-                            ));
-                            Some(apply_atom_value_ctor_template(tmpl.clone(), ident))
-                        }
-                        _ => None,
-                    },
-                    None => None,
-                },
-                None => None,
+            && ((type_node.params.clone().len() as i64) == 0));
+        if is_identity_type {
+            match (*value.expr_data.clone()).clone() {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => {
+                    let symbol_name = expr_var_name_at(value.clone(), source_indices.clone());
+                    Some(v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(type_name.clone(), "(\"".to_string()),
+                            escape_string_literal_body(symbol_name),
+                        ),
+                        "\".to_string())".to_string(),
+                    ))
+                }
+                _ => None,
             }
         } else {
             None
@@ -16801,8 +16757,17 @@ pub fn emit_rust_default_value(
 ) -> String {
     {
         let type_name = authored_name_at(source_indices, param_node_type_expr(param));
-        match default_expr(RenderTarget::Rust, type_name.clone()) {
-            Some(expr) => expr.clone(),
+        match lookup_checkpoint(RenderTarget::Rust, type_name.clone()) {
+            Some(cp) => match cp.default_expr.clone() {
+                Some(expr) => expr.clone(),
+                None => v2_rt::concat(
+                    v2_rt::concat(
+                        "compile_error!(\"no test default for type: ".to_string(),
+                        type_name.clone(),
+                    ),
+                    "\")".to_string(),
+                ),
+            },
             None => v2_rt::concat(
                 v2_rt::concat(
                     "compile_error!(\"no test default for type: ".to_string(),
