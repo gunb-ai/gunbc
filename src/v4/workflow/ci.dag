@@ -257,6 +257,7 @@ type CiComponentAffected {
   v4: Bool
   workflow_policy: Bool
   release_distribution: Bool
+  release_distribution_only: Bool
 }
 
 // RULING-1: 🟢 pretty-much-done — host `git diff --name-only` read outcome (T-24 / INVARIANTS P3).

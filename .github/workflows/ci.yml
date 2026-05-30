@@ -133,6 +133,7 @@ jobs:
       v4: ${{ steps.detect.outputs.v4 }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
       release_distribution: ${{ steps.detect.outputs.release_distribution }}
+      release_distribution_only: ${{ steps.detect.outputs.release_distribution_only }}
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |

@@ -219,6 +219,27 @@ fn assert_ci_dag_rust_bucket_parity(fn_name: &str) {
     );
 }
 
+fn assert_ci_dag_rust_mirror_release_distribution_only_parity() {
+    use ci_affected_components::{
+        ci_component_affected_from_changed_paths, ci_release_distribution_only_from_changed_paths,
+    };
+    assert!(ci_release_distribution_only_from_changed_paths([
+        "install.sh",
+        "src/v4/install/install.dag",
+    ]));
+    assert!(!ci_release_distribution_only_from_changed_paths([
+        "install.sh",
+        "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+    ]));
+    let mixed = ci_component_affected_from_changed_paths([
+        "install.sh",
+        "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+    ]);
+    assert!(mixed.release_distribution);
+    assert!(mixed.v4);
+    assert!(!mixed.release_distribution_only);
+}
+
 fn assert_ci_dag_rust_mirror_behavioral_parity() {
     use ci_affected_components::ci_component_affected_from_changed_paths;
     for fixture in CI_AFFECTED_BEHAVIORAL_FIXTURES {
