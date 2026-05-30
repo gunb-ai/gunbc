@@ -9,7 +9,7 @@ For deeper per-predicate analysis with fresh rustc error count, see merry-badger
 - **0 / 6 v4-done predicates PROVEN** (per #4021 / #4030 burn-down). 5 YELLOW (P1–P5 advancing), 1 GRAY (P6 gated on P4 + P3).
 - **~7,951 rustc errors** baseline on full-tree v4 emit (per `docs/audit/v4-rustc-error-catalog-2026-05-29.md`). Today's Wave 2 substrate landings (SG-2 #3962, SG-7 #4014, Upsert<T> #3981, CiUpsertStep #3989, SG-5 #3957) unblock the dominant closers; SG-1 #3956 is the largest unlanded Pareto closer (~2,978 E0423 errors expected closed when it lands).
 - Wave 1 MW-D8 exit conditions: **3 / 5 PROVEN per sharp-otter-407's authoritative #4017 ledger** (C1, C3 via OR-arm, C5 via mixed-arm). C2 (SG-7 dissolution) stays `GAP / SCAFFOLD_PRESENT` pending falsification receipt (impl #4014 merged but per ledger framework requires "executable receipt that the recursive shape is structurally impossible by construction" before ship_disposition flips). C4 (`ci_selection_receipt_shadow`) still `GAP / NO_ARTIFACT_FOUND`, gated on C2. **PM defers MW-D8 disposition to ledger.**
-- Wave 2 closure: **W2.1 SG-1 in flight (draft) • W2.2 SG-5 ✓ MERGED 22:23Z • W2.3 worksheet authoring (proud-pike) • W2.4 gated on W2.3 • W2.5 ✓ COMPLETE (3 phase4 fixtures × rungs 0-2/3/4) • W2.6 ✓ MERGED (python.dag verification)**.
+- Wave 2 closure: **W2.1 SG-1 in flight (draft, cursor RC under address) • W2.2 SG-5 ✓ MERGED 22:23Z • W2.3 worksheet `ready-for-worker-dispatch` (landed) • W2.4 `blocked-on-receipt:W2.3-worker-dispatch` • W2.5 ✓ COMPLETE (3 phase4 fixtures × rungs 0-2/3/4) • W2.6a Runtime slice ✓ MERGED #4022 / W2.6b DFS worksheet `blocked-on-decision:python-LeafModelClaim-subject-coproduct` / W2.6c TR carriers gated on W2.6b**.
 - Release posture: **flavor (iv) — alpha / WIP labeled, no Wave-2 gating**. v4 ships public AS-IS in v0.1.0 with honest disclaimers per `docs/RELEASE_v0.1.0.md` (#3991 merged), `docs/SUPPORTED.md` (#4025 merged), and README swap-line disclaimer (#4031 merged).
 
 ## Wave 2 status (per merge wave doc §5)
@@ -19,10 +19,12 @@ For deeper per-predicate analysis with fresh rustc error count, see merry-badger
 | W2.1 | SG-1 TargetAtomRealization | Target Realization (keen-heron / zesty-carp-242) | IN FLIGHT, draft | #3956 (draft, 10 CI passing, no approvals yet) |
 | W2.2 | SG-5 TargetCollectionRealization | Target Realization (keen-heron / vivid-heron-767) | ✓ MERGED 22:23Z | #3957 |
 | W2.2 | SG-6 BoundedLattice realization | Target Realization | NOT DISPATCHED (gated on SG-1) | — |
-| W2.3 | Phase 1.5 CiUpsertStep migration worksheet | Modeling DFS (proud-pike-680) | IN FLIGHT, worksheet ~4h ETA | — (worker dispatch follows) |
-| W2.4 | Phase 1b A3–A14 atom migration | Compiler Spine (smart-stag-871) | GATED on W2.3 maturity | — |
+| W2.3 | Phase 1.5 CiUpsertStep migration worksheet | Modeling DFS (proud-pike-680) | `ready-for-worker-dispatch` (worksheet landed) | (worker dispatch follows; held until #4014 + W1.5 per Compiler Spine sequencing) |
+| W2.4 | Phase 1b A3–A14 atom migration | Compiler Spine (smart-stag-871) | `blocked-on-receipt:W2.3-worker-dispatch` | — |
 | W2.5 | Phase 4 fixture widening | Ladder/Fixture (wise-seal-69 → archived; royal-wolf-898 → archived) | ✓ COMPLETE | #4018 + #4028 + #4034 + #4035 + #4036 + #4037 + #4038 + #4039 (3 fixtures × rungs 0-2/3/4) |
-| W2.6 | Cross-target python.dag leaf-model verification | Modeling DFS + TR + Runtime/TestClaim (quick-tern-735 / warm-tern-791) | ✓ MERGED 21:05Z | #4022 |
+| W2.6a | Runtime/TestClaim slice — python.dag leaf-model runner | Runtime/TestClaim (quick-tern-735 / warm-tern-791) | ✓ MERGED 21:05Z | #4022 |
+| W2.6b | Modeling DFS slice — M=python.dag LeafModelClaim worksheet | Modeling DFS (proud-pike-680) | `blocked-on-decision:keen-heron-python-LeafModelClaim-subject-coproduct` | — (TR-lane ratification of python.dag Subject/Expectation arms needed) |
+| W2.6c | Target Realization slice — python.dag carriers | Target Realization (keen-heron-687) | gated on W2.6b decision | — |
 
 Wave 2 is ~85% closed. Remaining: SG-1 #3956 to land, SG-6 to dispatch (after SG-1), W2.3 worksheet + worker dispatch + landing, W2.4 (gated on W2.3 maturity, deepest dependency chain).
 
@@ -71,7 +73,7 @@ That is roughly 40 v4-relevant PRs landed on 2026-05-30, of which the Wave 1 + W
 - PR #4040 Python emit fix (`session/emit-python-tco-fix` — match-as-expression + TCO temp-decl) — DRAFT, 10 CI passing. Workers gate on weather.dag + nat_semiring per smart-stag's brief. ETA 2-3 working days. Operator picked option (X) — README disclaimer in place now; fix lands in v0.1.1.
 - PR #4041 Go emit fix (`session/emit-go-layout-fix` — multi-file layout + := scope) — DRAFT, 10 CI passing. Same gates. ETA 1-2 working days.
 - PR #3956 SG-1 TargetAtomRealization (`session/zesty-carp-242-sg1-target-atom-realization`) — DRAFT, 10 CI passing, 0 approvals. Dominant Pareto error-closer when it lands.
-- Wave 2 worksheets: W2.3 Phase 1.5 CiUpsertStep migration (proud-pike-680). Worksheet gates worker dispatch on Phase 1.5 step migration. (W2.6 python.dag verification path already LANDED via #4022; worksheet predecessor work is closed.)
+- Wave 2 worksheets: W2.3 Phase 1.5 CiUpsertStep migration (proud-pike-680) `ready-for-worker-dispatch` (landed; Compiler Spine holds dispatch until #4014 + W1.5 land). W2.6b M=python.dag LeafModelClaim worksheet (proud-pike-680) `blocked-on-decision:python-LeafModelClaim-subject-coproduct` (TR-lane ratification needed). W2.6a python.dag Runtime verifier slice already LANDED via #4022.
 - W1.5 `ci_selection_receipt_shadow` (smart-stag) — last MW-D8 condition unmet. Drafts pending.
 
 Nothing else is dispatch-ready until either (a) W2.3 worksheet lands → worker dispatch on Phase 1.5 step migration (W2.3 / W2.4) OR (b) SG-1 #3956 lands → SG-6 dispatch (W2.2 closure) OR (c) Wave 3 framing ratified.
@@ -98,7 +100,7 @@ Active managers under PM (nimble-dove-733):
 
 | Manager | Lane | Children | Recent activity |
 |---|---|---|---|
-| proud-pike-680 | Modeling DFS | 0 | Authoring W2.3 + W2.6 worksheets (manager personally) |
+| proud-pike-680 | Modeling DFS | 0 | W2.3 CiUpsertStep worksheet `ready-for-worker-dispatch` (landed); W2.6 DFS slice `blocked-on-decision:keen-heron-python-LeafModelClaim-subject-coproduct` (TR-lane decision pending) |
 | keen-heron-687 | Target Realization | 2 (zesty-carp + vivid-heron) | SG-5 #3957 just merged; SG-1 #3956 draft |
 | sharp-otter-407 | Close/Receipt | 0 | #4032 merged 21:30Z; ledger #4017 maintained |
 | smart-stag-871 | Compiler Spine | 0 visible; #4040 + #4041 in sub-worker sessions outside graph view | SG-7 #4014 merged today; emit-fix workers in flight |
