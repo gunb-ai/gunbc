@@ -17,8 +17,8 @@
 | **Fixture subject** | Same module path: `src/v4/test/claim/algebra_laws/nat_semiring.dag` |
 | **Phase** | 2 (per parent planning doc §7) — rung 4 closure is independent of rung 3 closure |
 | **Target set (W2)** | `rust` only — Python/Go pre-allocated, deferred to Phase 3 per joint spec §4.2 A3 |
-| **Closure carrier (modeled)** | `nat_semiring_rung4_gate(report: CorpusEvalReport) -> Bool` (`src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:54-61`) |
-| **Closure carrier (host gate)** | Pending W3 — `nat_semiring_rung34_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>>` is empty (`nat_semiring_rung34_eval.dag:21`); §6 baseline records the wedge as **SKIP**, not **FAIL** (§2.5). |
+| **Closure carrier (modeled)** | `nat_semiring_rung4_gate(report: CorpusEvalReport) -> Bool` (`src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:56-63`) |
+| **Closure carrier (host gate)** | Pending W3 — `nat_semiring_rung34_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>>` is empty (`nat_semiring_rung34_eval.dag:23`); §6 baseline records the wedge as **SKIP**, not **FAIL** (§2.5). |
 
 **Out-of-scope for this spec (named so the boundary is auditable):**
 
@@ -54,7 +54,7 @@ Python/Go cells exist in the matrix as **`SKIP`** with blocking receipt `phase1/
 
 | Predicate id | Target | Pass condition | Fail blocking receipt |
 | ------------ | ------ | -------------- | --------------------- |
-| `R4-rust-emit-equals-eval` | `rust` | A `TestClaimRun<Node, RuntimeValue>` row exists in `nat_semiring_rung34_runtime_value_rows` (`nat_semiring_rung34_eval.dag:21`) for the fixture subject, was constructed via `run_test_claim_emit_vs_eval` (joint spec §4.2 — sole public constructor for rung-4 emit-vs-eval `Fail`), evidence is `Host { receipt: EmitHostRunReceipt }` (`src/v4/std/test_claim_falsification.dag:23-26`), `receipt.exit` ≡ `Accepted { value: Holds { value: ExitOk { code: 0 } }, diagnostics: None }` (`src/v4/std/host_run.dag:30,35-43`), `receipt.logical_run` is `Accepted { value: HostLogicalRun { stdout: HostRunStdout { … } }, … }`, host-stdout parsed via `RuntimeValueParse` for `TargetModel { target: rust }` is `Outcome.Accepted`, and the resulting `Verdict<RuntimeValue>` is `Pass` (`src/v4/std/verdict.dag:38-41`). | `phase1/nat_semiring/rung4/rust_emit_equals_eval_failed` |
+| `R4-rust-emit-equals-eval` | `rust` | A `TestClaimRun<Node, RuntimeValue>` row exists in `nat_semiring_rung34_runtime_value_rows` (`nat_semiring_rung34_eval.dag:23`) for the fixture subject, was constructed via `run_test_claim_emit_vs_eval` (joint spec §4.2 — sole public constructor for rung-4 emit-vs-eval `Fail`), evidence is `Host { receipt: EmitHostRunReceipt }` (`src/v4/std/test_claim_falsification.dag:23-26`), `receipt.exit` ≡ `Accepted { value: Holds { value: ExitOk { code: 0 } }, diagnostics: None }` (`src/v4/std/host_run.dag:30,35-43`), `receipt.logical_run` is `Accepted { value: HostLogicalRun { stdout: HostRunStdout { … } }, … }`, host-stdout parsed via `RuntimeValueParse` for `TargetModel { target: rust }` is `Outcome.Accepted`, and the resulting `Verdict<RuntimeValue>` is `Pass` (`src/v4/std/verdict.dag:38-41`). | `phase1/nat_semiring/rung4/rust_emit_equals_eval_failed` |
 | `R4-python-emit-equals-eval` | `python` | (pre-allocated; not executed in W2) | (not used until Phase 3) |
 | `R4-go-emit-equals-eval` | `go` | (pre-allocated; not executed in W2) | (not used until Phase 3) |
 
@@ -85,7 +85,7 @@ If any prerequisite is not met → **`SKIP`** with one of:
 - `upstream_blocked:emit_host_transport_not_wired` (W3 transport pending),
 - `upstream_blocked:nat_semiring_rung34_runtime_value_rows_empty` (W3 roster wedge).
 
-**Forbidden:** `R4-rust-emit-equals-eval` **`FAIL`** when any prerequisite is not **`PASS`**. The empty roster (`nat_semiring_rung34_eval.dag:21`) does **not** read as closure — `nat_semiring_rung34_report_has_evidence` is `false` and `nat_semiring_rung4_gate` returns `false` (`nat_semiring_rung34_eval.dag:34-40,54-61`), which is the modeled fail-closed wedge.
+**Forbidden:** `R4-rust-emit-equals-eval` **`FAIL`** when any prerequisite is not **`PASS`**. The empty roster (`nat_semiring_rung34_eval.dag:23`) does **not** read as closure — `nat_semiring_rung34_report_has_evidence` is `false` and `nat_semiring_rung4_gate` returns `false` (`nat_semiring_rung34_eval.dag:36-42,56-63`), which is the modeled fail-closed wedge.
 
 ### 2.4 Verdict reporting shape (rung 4 row addition)
 
@@ -106,9 +106,9 @@ Rung 4 is reported **independently** of rung 3 per joint spec §4.4 rung-split. 
 
 | Pattern | File (line range, `origin/main` @ `7facb1934`) | Use for |
 | ------- | --------------------------------------------- | ------- |
-| Rung-3/4 corpus eval entry | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:23-28` | `run_nat_semiring_rung34_eval` aggregator |
-| Rung-4 gate | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:54-61` | `nat_semiring_rung4_gate` — consumes `CorpusEvalReport` tally |
-| Rung-4 row carrier (empty wedge) | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:21` | `nat_semiring_rung34_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>>` — W3 populates |
+| Rung-3/4 corpus eval entry | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:26-32` | `run_nat_semiring_rung34_eval` aggregator |
+| Rung-4 gate | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:56-63` | `nat_semiring_rung4_gate` — consumes `CorpusEvalReport` tally |
+| Rung-4 row carrier (empty wedge) | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:23` | `nat_semiring_rung34_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>>` — W3 populates |
 | Emit-vs-eval constructor | `src/v4/compiler/emit_host.dag` — `run_test_claim_emit_vs_eval` | Sole public constructor for rung-4 `Verdict.Fail`; must populate `evidence: Host { receipt: EmitHostRunReceipt }` when host ran |
 | Host receipt carriers | `src/v4/std/host_run.dag:30,35-43` (`HostExit`, `HostLogicalRun`, `EmitHostRunReceipt`) | `R4-rust-emit-equals-eval` pass-condition fields |
 | Falsification receipt | `src/v4/std/test_claim_falsification.dag:23-26,29-35` (`ExecutionEvidence`, `FalsificationReceipt<Subj,A>`) | Verdict `Fail` payload (required, not optional per joint spec §4.2 A4 for the W2 Rust row) |
@@ -183,8 +183,8 @@ Verified 2026-05-30 with `git show origin/main:<path>`.
 | `ExecutionEvidence = Host \| Interpreter \| EvidenceNone` | `src/v4/std/test_claim_falsification.dag:23-26` | **CONFIRMED** |
 | `FalsificationReceipt<Subj, A>` shape | `src/v4/std/test_claim_falsification.dag:29-35` | **CONFIRMED** — subject typing on receipt, not `Verdict<S,T>` |
 | `Verdict<S,T>.Fail { actual, falsification: Optional<…> }` | `src/v4/std/verdict.dag:38-41` | **CONFIRMED** — W2 `Optional` shape; emit-vs-eval rows use `Present { receipt }` |
-| `nat_semiring_rung34_runtime_value_rows` empty wedge | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:21` | **CONFIRMED** — empty `List<TestClaimRun<Node, RuntimeValue>>`; comment names W3 backlog |
-| `nat_semiring_rung4_gate` fail-closed on empty roster | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:34-40,54-61` | **CONFIRMED** — `report_has_evidence` returns `false`, gate returns `false` |
+| `nat_semiring_rung34_runtime_value_rows` empty wedge | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:23` | **CONFIRMED** — empty `List<TestClaimRun<Node, RuntimeValue>>`; comment names W3 backlog |
+| `nat_semiring_rung4_gate` fail-closed on empty roster | `src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag:36-42,56-63` | **CONFIRMED** — `report_has_evidence` returns `false`, gate returns `false` |
 | `emit_host_transport_not_wired` substrate stub | `src/v4/compiler/emit_host.dag:64,79-86` | **CONFIRMED** — 🟡 dissolution marker bound to W3 (`run_emit_host_rust` wiring) |
 | `tools/emit_host_runner` executable boundary | `tools/emit_host_runner/src/lib.rs:1-50` | **CONFIRMED** — host-process boundary; `HOST_BUILD_TIMEOUT`, `HOST_RUN_TIMEOUT`, byte cap |
 | Joint runner spec §3 rung-4 row | `docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md` §3 | **CONFIRMED** — pass condition aligned with §2.2 here |
