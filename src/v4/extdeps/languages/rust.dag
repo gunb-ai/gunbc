@@ -115,6 +115,7 @@ import v4.std.target_model {
   target_type_expr_instantiation_emitted,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
+  target_type_expr_wrapped_emitted,
   TargetTypeExprFieldSlot,
   TargetTypeExprInstantiation,
   TargetTypeExprVariantSlot
@@ -3305,6 +3306,41 @@ fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
       }
     )
   }
+}
+
+fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: fold(base.children, init: Empty, f: fn(acc, e) {
+      match e.label {
+        Positional => acc
+        _ => list_snoc_item(xs: acc, item: e)
+      }
+    })
+  }
+}
+
+fn rust_sg2_malformed_arrow_one_positional_emitted() -> Node {
+  target_type_expr_arrow_emitted(
+    form: rust_type_expression_projection().arrow_form,
+    inputs: Empty,
+    output: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_x
+    )
+  )
+}
+
+fn rust_sg2_malformed_instantiation_zero_positional_emitted() -> Node {
+  target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprInstantiation,
+    surface: rust_type_expression_projection().instantiation_form.surface,
+    children: Empty
+  )
 }
 
 fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {

@@ -6,9 +6,13 @@ module v4.test.claim.manual.sg2_type_expression_projection
 
 import v4.compiler.translate {
   project_type_expression_node,
-  target_serialize_source_from_model
+  target_bundle_child_optional_type_expr_projection,
+  target_serialize_source_from_model,
+  translate,
+  ProjectionAbsent
 }
 import v4.extdeps.languages.rust {
+  rust_mvp1_target_model,
   rust_sg2_arrow_malformed_source_type_node,
   rust_sg2_arrow_source_type_node,
   rust_sg2_binary_fn_source_type_node,
@@ -17,6 +21,9 @@ import v4.extdeps.languages.rust {
   rust_sg2_conj_xy_emitted,
   rust_sg2_instantiation_source_type_node,
   rust_sg2_malformed_atom_extra_positional_emitted,
+  rust_sg2_malformed_atom_zero_positional_emitted,
+  rust_sg2_malformed_arrow_one_positional_emitted,
+  rust_sg2_malformed_instantiation_zero_positional_emitted,
   rust_sg2_malformed_atom_missing_surface_emitted,
   rust_sg2_malformed_atom_duplicate_surface_emitted,
   rust_sg2_malformed_atom_wrong_surface_emitted,
@@ -29,6 +36,11 @@ import v4.extdeps.languages.rust {
   rust_token_gt,
   rust_token_lt,
   rust_type_expression_projection
+}
+import v4.std.target_model { target_type_expr_emitted_wire_decode }
+import v4.test.claim.manual.mvp1_rust_add_translate {
+  mvp1_rust_inferred_tree,
+  mvp1_rust_target_model
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
@@ -323,6 +335,52 @@ data claim_sg2_serialize_rejects_atom_extra_named: TestClaim = CompilesClaim {
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_named_emitted())
   ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_wire_decode_rejects_atom_zero_positional: TestClaim = CompilesClaim {
+  label: "manual/sg2: wire decode rejects kind-tagged atom emitted with zero positional children",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_atom_zero_positional_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_wire_decode_rejects_arrow_one_positional: TestClaim = CompilesClaim {
+  label: "manual/sg2: wire decode rejects kind-tagged arrow emitted with one positional child",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_arrow_one_positional_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_wire_decode_rejects_instantiation_zero_positional: TestClaim = CompilesClaim {
+  label: "manual/sg2: wire decode rejects kind-tagged instantiation emitted with zero positional children",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_instantiation_zero_positional_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_mvp1_projection_absent: TestClaim = CompilesClaim {
+  label: "manual/sg2: rust_mvp1_target_model lacks type-expression projection row (ProjectionAbsent)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(ok: sg2_mvp1_projection_absent()),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_mvp1_translate_fallback: TestClaim = CompilesClaim {
+  label: "manual/sg2: MVP1 translate fallback still grounds TypeNode subtrees (no projection row)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(ok: sg2_mvp1_translate_fallback_accepts()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
