@@ -131,7 +131,7 @@ These are where the project's bigger choices live. None are dispatch-ready until
 | W3.2 | **Phase 2.5: affected-set intersection gate firing** | Heavy: requires W1.2 Upsert<T> + W2.3 CiUpsertStep + W3.1 Phase 2 |
 | W3.3 | **Cross-target equivalence on substantial fixture set (rung 5 closure)** | Scope: which targets (Python, Go, C++, TypeScript, etc.)? How many fixtures? |
 | W3.4 | **L7 algebraic preservation post-emit (rung 6 closure)** | Per-fixture per-target per-algebra — combinatorial |
-| W3.5 | **Self-emit fixpoint (rung 7) — T-15 close** | THE v4-done predicate; requires every Wave 1-2 item + W3.1 + a binary that compiles compiler.dag to itself bit-identically |
+| W3.5 | **Self-emit fixpoint (rung 7) — T-15 close** | Load-bearing for predicate 4 (bit-identical self-output) of TASKS.md:805-817's six v4-done predicates — NOT v4-done alone. Per PR #3938 §8 D4: v4-done = all six predicates collectively (every other scheduled task + corpus compiles + emit compiles + bit-identical self-output + TestClaim suite passes + reproduction proves hand-Rust not editable authority). Requires every Wave 1-2 item + W3.1 + a binary that compiles compiler.dag to itself bit-identically. |
 | W3.6 | **TestClaim corpus actually executes (rung 8)** | Requires runner + cache + all SG fixes; per Phase 0 audit it's the largest unaddressed standard block |
 | W3.7 | **Lenses gate PRs (rung 9): complexity / ownership / idempotency / grounding / synthesis** | Each lens needs activation; substrate-rich/activation-poor pattern at its widest scope |
 
