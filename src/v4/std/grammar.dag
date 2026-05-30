@@ -765,10 +765,11 @@ fn formal_production_matches_emitted_child(
 }
 
 
-// 🟢 PR-1.5b DESIGN-2 — lhs-exact production selection for grammar-inverse derive: filter by
-// emitted-slot arity, then walk RHS symbols against positional emitted children (binding atoms
-// and nested lhs-exact recursion). Canonical for multi-production lhs disambiguation until
-// parser-derived selection lands; not an arity-only scaffold.
+// 🟡 gated — feature:grammar-inverse-lhs-exact-selection — owner/lane: T-11 typescript ext PR-1.5b
+// (DESIGN-2) — dissolve-on: parser-derived production selection replaces this hand-rolled
+// lhs+emitted-shape walk in formal_production_for_lhs_exact (same commit train as
+// v4.compiler.parse substrate convergence). Interim: filter by emitted-slot arity, then walk
+// RHS symbols against positional emitted children (binding atoms + nested lhs-exact recursion).
 fn formal_production_for_lhs_exact(
   productions: List<FormalProduction>,
   lhs: Symbol,
