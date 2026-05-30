@@ -1,6 +1,6 @@
 // src/v4/std/determinism.dag
 // Scope: determinism classification — Deterministic vs NonDeterministic { source } per signature.
-// Status: PR-1 carrier; PR-2 lens enforces; orthogonal to v4.std.effects (idempotency axis).
+// Status: PR-1 carrier on main; PR-2 lens enforces; orthogonal to v4.std.effects (idempotency axis).
 // Anchor: https://en.wikipedia.org/wiki/Deterministic_algorithm
 
 module v4.std.determinism

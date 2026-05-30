@@ -1,22 +1,23 @@
 # T-15 bin/main.dag lane — worker closeout receipt
 
-**Session:** `proud-otter-724` (closeout child of `nimble-carp-710`)  
-**Work item:** `node://adhoc-63221782-2d4` — *T-15 bin/main.dag lane closeout*  
-**Execution PR:** [#3897](https://github.com/gunb-ai/gunbc/pull/3897) (`session/nimble-carp-710`)  
+**Session:** `cool-dove-432` (closeout child of `still-tern-34`)  
+**Work item:** `node://adhoc-a1c824bf-2fb` — *T-15 bin/main.dag lane closeout*  
+**Execution PR:** [#3897](https://github.com/gunb-ai/gunbc/pull/3897) (`session/nimble-carp-710`) — **MERGED** 2026-05-29  
 **Authority:** `src/v4/TASKS.md` §T-15, `src/v4/bin/main.dag`, `src/v4/workflow/bootstrap.dag`
 
-## What was verified (closeout pass)
+## What was verified (closeout pass — `cool-dove-432`, 2026-05-29)
 
 | Artifact | Status |
 |----------|--------|
-| `src/v4/bin/main.dag` | Trampoline `String` authority + B1 digest operand placeholders present; header updated to reference harness + claim wiring |
+| `src/v4/bin/main.dag` | Trampoline `String` authority + B1 digest operand placeholders present; header references harness + claim wiring |
 | `src/v4/test/claim/self_host/claim_t15_self_host_fixed_point.dag` | `EqualsClaim` over `stub_stage1_*` / `stub_stage2_*` imports from `v4.bin.main` |
 | `src/v4/workflow/bootstrap.dag` | `FixptStage1Stage2` + `bootstrap_plan_well_formed` requires stage1==stage2 digest convergence (not stage0==seed) |
 | `src/v4/compiler/self_host.dag` | Runner remains fail-closed (`self_host_runner_not_realized`) per scaffold contract |
-| `v4_t15_self_host_fixed_point_harness_test.rs` | `t_15_self_host_fixed_point` passes locally after RC fixes (compile + clippy) |
-| `v4_bin_main_dag_smoke_test.rs` | Unchanged smoke; still passes on same tree |
-| CI wiring | `ci.yml` + `ci_github_actions_workflow.dag` add `t_15_self_host_fixed_point` step under v4/v3/workflow_policy gates |
-| SG-0 / INVARIANTS | `EXPECTED_HAND_AUTHORED_TEST` +1 (`v4_t15_self_host_fixed_point_harness_test.rs`); `_internal/INVARIANTS_OPS.md` row; `sg0-pr-body-append.3897.txt` documents net +1 |
+| `v4_t15_self_host_fixed_point_harness_test.rs` | `t_15_self_host_fixed_point` PASS on `main@f2c7f9255` (`CTRL_BUILD_WRAP_CARGO=0`) |
+| `v4_bin_main_dag_smoke_test.rs` | PASS on same tree |
+| CI wiring | `ci.yml` + `ci_github_actions_workflow.dag` — `t_15_self_host_fixed_point` step under v4/v3/workflow_policy gates |
+| SG-0 / INVARIANTS | `EXPECTED_HAND_AUTHORED_TEST` lists both harness paths; `_internal/INVARIANTS_OPS.md` rows present |
+| PR [#3897](https://github.com/gunb-ai/gunbc/pull/3897) | **MERGED**; merge CI green (v3/v4/self_host_ratchet SUCCESS on merge run) |
 
 ## RC fixes applied (closeout)
 
@@ -37,6 +38,6 @@ Per `TASKS.md` §T-15 **Close-status** and §Bootstrap execution convergence:
 
 ## Hand-off
 
-- **Parent (`nimble-carp-710`):** mark [#3897](https://github.com/gunb-ai/gunbc/pull/3897) ready for review; pursue two distinct dashboard approvals.
-- **Operator:** merge when review policy satisfied; close dashboard work items for execution + closeout sessions.
-- **Closeout session:** archive after PR merge confirmed on `main`.
+- **Parent (`still-tern-34`):** bin/main.dag lane structural receipt is **landed on `main`** via [#3897](https://github.com/gunb-ai/gunbc/pull/3897). Closeout verified; no further lane work unless a new execution PR is opened.
+- **Operator:** merge [#3929](https://github.com/gunb-ai/gunbc/pull/3929) (receipt doc only); archive `cool-dove-432` closeout session. T-15 **program** close remains gated per §T-15 Close-status (B1 merkle pins, T-22/T-38 eval, P5 bridge removal, whole-plan minus T-15).
+- **Closeout session (`cool-dove-432`):** DONE — ready for archive after this PR merges.
