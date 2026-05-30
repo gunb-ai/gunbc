@@ -65,6 +65,29 @@ if [[ ! -x "$bin" ]]; then
   exit 0
 fi
 
+# Host toolchain availability: distinguish "host setup gap" from "fixture rung failure".
+# Without this guard a missing python3 or go binary would surface as R0-*-parse / R2-*-compile
+# FAIL with a fixture blocking_receipt, conflating substrate emit failures with CI host
+# provisioning gaps. INVARIANTS P2 (host-process boundary) / P3 (fail-closed with the right
+# receipt). Cargo is checked downstream where it's actually invoked (same pattern as M1 probe).
+missing_tools=()
+if ! command -v "$python_bin" >/dev/null 2>&1; then
+  missing_tools+=("$python_bin")
+fi
+if ! command -v "$go_bin" >/dev/null 2>&1; then
+  missing_tools+=("$go_bin")
+fi
+if [[ "${#missing_tools[@]}" -gt 0 ]]; then
+  echo "error: required host toolchain(s) missing: ${missing_tools[*]}" >&2
+  echo "error: install python3 and go on the runner, or override via V4_PHASE1_NAT_SEMIRING_PYTHON / V4_PHASE1_NAT_SEMIRING_GO" >&2
+  if [[ "$strict" == "1" ]]; then
+    echo "::error title=phase1/nat_semiring rung gate setup::host toolchain missing: ${missing_tools[*]} (phase1/nat_semiring/setup/host_toolchain_missing)"
+    exit 2
+  fi
+  echo "::notice title=phase1/nat_semiring rung gate::skipped — host toolchain missing: ${missing_tools[*]}"
+  exit 0
+fi
+
 rm -rf "$out"
 mkdir -p "$out/rust" "$out/python" "$out/go" "$out/logs"
 

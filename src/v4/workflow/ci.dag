@@ -1239,6 +1239,7 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
     || changed == "scripts/v4-m1-rust-emit-probe.sh"
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-mvp1")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-m1")
+    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-phase1-nat-semiring")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-testclaim-")
     || ci_repo_path_has_prefix(path: changed, prefix: "dsl/std/")
     || changed == "Cargo.toml"
