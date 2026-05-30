@@ -349,6 +349,34 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
     }
 }
 
+pub fn atom_realization_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+    {
+        let label = target_label(target.clone());
+        let atoms = target_atom_realizations(target.clone());
+        if ((atoms.clone().len() as i64) == 0) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![Rc::new(CoercionTestEntry {
+                test_name: v2_rt::concat(
+                    v2_rt::concat("coercion_".to_string(), label),
+                    "_atom_realization_resolves_type_form".to_string(),
+                ),
+                assertions: Rc::new({
+                    let mut __result = Vec::new();
+                    for row in atoms.clone().iter().cloned() {
+                        __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
+                            target: target.clone(),
+                            dag_name: row.dag_name.clone(),
+                            expected_type: row.type_form.clone(),
+                        }));
+                    }
+                    __result
+                }),
+            })])
+        }
+    }
+}
+
 pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let cps = target_checkpoints(RenderTarget::Rust);
@@ -488,10 +516,13 @@ pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
-                                checkpoint_tests(RenderTarget::Rust),
-                                checkpoint_tests(RenderTarget::Python),
+                                v2_rt::concat(
+                                    checkpoint_tests(RenderTarget::Rust),
+                                    checkpoint_tests(RenderTarget::Python),
+                                ),
+                                checkpoint_tests(RenderTarget::Go),
                             ),
-                            checkpoint_tests(RenderTarget::Go),
+                            atom_realization_tests(RenderTarget::Rust),
                         ),
                         inhabitant_tests(RenderTarget::Rust),
                     ),

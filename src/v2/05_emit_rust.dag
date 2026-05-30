@@ -80,10 +80,7 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
-import v2.compiler.coercion {
-  coerce_primitive_type, is_copy, default_expr,
-  lookup_atom_realization, apply_atom_value_ctor_template
-}
+import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name }
@@ -6020,8 +6017,12 @@ fn emit_operation_test(projection: TestProjection, depth: Int) -> String {
 
 fn emit_rust_default_value(param: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let type_name = authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: param))
-  match default_expr(target: Rust, dag_name: type_name) {
-    Some { value: expr } => expr
+  match lookup_checkpoint(target: Rust, dag_name: type_name) {
+    Some { value: cp } =>
+      match cp.default_expr {
+        Some { value: expr } => expr
+        None => concat("compile_error!(\"no test default for type: ", type_name, "\")")
+      }
     None => concat("compile_error!(\"no test default for type: ", type_name, "\")")
   }
 }
