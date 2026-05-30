@@ -43,26 +43,28 @@ import std.resources { Filesystem }
 import std.types { FilePath, Milliseconds }
 import std.filesystem { partition_entries, is_text_readable }
 
-// ── Upsert<T> type substrate (Phase 1.4 — v4-upsert-t-substrate-worksheet-2026-05-30.md §1.1; §8 closed) ─
-// Phase bodies are typed nodes/expressions, not Symbol strings (P2).
-// `T` brands the step payload specialization (e.g. VerificationReport, CiPipeline);
-// `inputs` belong on CiUpsertStep<T> only (Phase 1.5 — v4-ci-schema-worksheet §1.2).
+// ── Upsert<T> type substrate skeleton (Phase 1.4a — v4-upsert-t-substrate-worksheet §1.1) ─
+// Generic Upsert owns verify/create/resolve phase shape. Domain-specific dependency
+// inputs belong on specializations such as CiUpsertStep<T> (Phase 1.5 — v4-ci-schema
+// worksheet §1.2), not on generic Upsert<T>.
 //
-// P1.4-PARSER follow-on (audit §4 A1): generic `pattern ensure<Check, Action>` /
-// `pattern upsert<Check, Create, Resolve>` bodies below stay commented until
-// pattern-declaration generics land (ROADMAP desired parser features).
+// 🟡 staged: T is a payload brand until ResolveExpr<T> makes T load-bearing (E-P).
+// Phase bodies are typed nodes/expressions, not Symbol strings (P2).
+// Dissolution: replace VerifyCheck/CreateAction/ResolveExpr Node aliases with dedicated
+// phase carriers; P1.4-PARSER (A1) uncomments generic pattern bodies below.
+//
+// Phase 1.5 may reference Upsert<T> after this lands; active CI step migration must
+// not rely on phase-body semantics until dedicated carriers or phase-class witnesses land.
 
-// 🟡 gated — feature:upsert-phase-substrate — bind dedicated VerifyCheck carrier when
-// E-P routes literal recursive-type set beyond Node — dissolve-on-arrival: replace
-// Node alias with the dedicated phase substrate type.
+// 🟡 gated — feature:upsert-phase-substrate — dissolve-on-arrival: dedicated carriers.
 type VerifyCheck = Node
 type CreateAction = Node
-type ResolveExpr = Node
+type ResolveExpr<T> = Node
 
 type Upsert<T> {
   verify: VerifyCheck
   create: CreateAction
-  resolve: ResolveExpr
+  resolve: ResolveExpr<T>
 }
 
 fn eq(a: String, b: String) -> Bool {
@@ -187,8 +189,8 @@ type ContentUpsertStubResult { written: Bool }
 // filesystem idempotency — `written` is a compile stub only; tools.bootstrap/readme
 // must not treat outcomes as real upsert semantics until the pattern body lands.
 fn content_upsert(content: String, path: String) -> ContentUpsertStubResult {
-  let empty = content == ""
-  return { written: empty != true }
+  // Fail-closed stub: never report a real write (tools must not treat as idempotent I/O).
+  return { written: false }
 }
 
 // --- Transaction (begin -> body -> commit/rollback) --------------------
