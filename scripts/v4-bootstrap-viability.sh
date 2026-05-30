@@ -25,7 +25,8 @@ mkdir -p "$out"
 
 compile_timeout="${V4_BOOTSTRAP_TIMEOUT_SECS:-}"
 if [[ -n "${GITHUB_ACTIONS:-}" && -z "$compile_timeout" ]]; then
-  compile_timeout=180
+  # 480s: full src/v4 --target dag on loaded self-hosted runners (exit 143 at lower caps).
+  compile_timeout=480
 fi
 
 set +e

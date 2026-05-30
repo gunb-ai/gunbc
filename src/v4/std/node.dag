@@ -1081,6 +1081,12 @@ fn content_hash(n: Node) -> Hash {
 }
 
 
+// RULING-1: 🟢 structural substrate node-set selector (v4-ci-schema-worksheet §2; concept home v4.std.node).
+// `Connective` is sole authority for ByConnective (`Atom { identity }` carries symbol identity).
+type NodeQuery
+  = NodeQueryByConnective { connective: Connective }
+  | NodeQueryByPath { at: Path }
+
 type Path {
   steps: List<Symbol>
 }

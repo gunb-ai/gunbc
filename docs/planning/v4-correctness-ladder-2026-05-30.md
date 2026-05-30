@@ -700,7 +700,7 @@ Systemic fix:
     type TargetTypeExpressionProjection {
       target_model: LanguageModel
       atom_form: TargetAtomTypeShape
-      conj_form: TargetRecordTypeShape
+      conj_form: TargetGenericApply
       disj_form: TargetSumTypeShape
       arrow_form: TargetFunctionTypeShape
       cardinality_form: TargetGenericApply       // List<T>, Vec<T>, ...
