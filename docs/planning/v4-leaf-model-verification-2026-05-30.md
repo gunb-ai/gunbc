@@ -183,7 +183,7 @@ Leaf-model verification fits cleanly as Upsert<T> CI steps:
 ```dag
 data verify_rust_dag_r1: CiUpsertStep<VerificationReport> = upsert {
   inputs: [
-    FileGlob { glob: "src/v4/extdeps/languages/rust.dag" }
+    FileSet { selector: FileSetSelector { root: RepoRoot, pattern: "src/v4/extdeps/languages/rust.dag" } }
     LensOutputRef { lens: TestgenLens, ports: [rust_r1_fixture] }
   ],
   verify: cached_verification_holds(rust_r1_claim),
@@ -194,7 +194,7 @@ data verify_rust_dag_r1: CiUpsertStep<VerificationReport> = upsert {
 
 Then:
 - A PR touching `src/v4/extdeps/languages/rust.dag` triggers all rust.dag claim re-verifications.
-- A PR touching a single rust primitive (via finer-grained FileGlob or SubstrateNodeSet) triggers only that primitive's claim re-verifications.
+- A PR touching a single rust primitive (via finer-grained FileSet or SubstrateNodeSet) triggers only that primitive's claim re-verifications.
 - The verify-first phase short-circuits unchanged claims to cached `PROVEN`.
 - Each verification produces a `Verdict<ClaimSubject>` per quick-tern-735's contract.
 
