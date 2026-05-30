@@ -63,7 +63,6 @@ import v4.std.diagnostic {
 import v4.std.node { Node, Symbol }
 import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.std.witness { Holds, Violates, Witness }
-import v4.std.witness { Holds, Violates, Witness }
 
 
 data complexity_reason_unmodeled_cost_projection: Symbol = complexity_reason_unmodeled_cost_projection
@@ -193,19 +192,19 @@ fn combine_complexity_variables(
 fn complexity_variables_from_cost(cost: SymbolicCost) -> Witness<ComplexityVariables> {
   match cost {
     ConstantCost { value: _ } =>
-      Holds { value: empty_complexity_variables() }
+      empty_complexity_variables()
     LogCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      single_complexity_variable(size_var: v)
     LinearCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      single_complexity_variable(size_var: v)
     PolynomialCost { variable: v, degree: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      single_complexity_variable(size_var: v)
     PolyLogCost { variable: v, exponent: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      single_complexity_variable(size_var: v)
     ExponentialCost { variable: v, base: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      single_complexity_variable(size_var: v)
     FactorialCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+      single_complexity_variable(size_var: v)
     SumCost { lhs: lhs, rhs: rhs } =>
       combine_complexity_variables(
         lhs: complexity_variables_from_cost(cost: lhs),

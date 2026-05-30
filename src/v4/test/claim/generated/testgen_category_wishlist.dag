@@ -59,8 +59,7 @@ import v4.std.diagnostic { port_locus, Locus }
 import v4.std.refinement {
   Refined,
   Validation,
-  refine,
-  refined_discharge_outcome
+  refine
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
@@ -86,13 +85,30 @@ data refinement_preservation_stub_validation: Validation<List<Node>> = Validatio
 
 
 fn refinement_preservation_stub_refined(xs: List<Node>) -> Refined<List<Node>> {
-  refined_discharge_outcome(
-    receipt: refine(
-      base: xs,
-      by: refinement_preservation_stub_validation,
-      at: refinement_preservation_stub_locus()
-    )
-  )
+  match refine(
+    base: xs,
+    by: refinement_preservation_stub_validation,
+    at: refinement_preservation_stub_locus()
+  ) {
+    Accepted { value: refined, diagnostics: _ } => refined
+    Rejected { diagnostics: _ } =>
+      match refine(
+        base: Empty,
+        by: refinement_preservation_stub_validation,
+        at: refinement_preservation_stub_locus()
+      ) {
+        Accepted { value: refined, diagnostics: _ } => refined
+        Rejected { diagnostics: _ } =>
+          match refine(
+            base: Empty,
+            by: refinement_preservation_stub_validation,
+            at: refinement_preservation_stub_locus()
+          ) {
+            Accepted { value: refined, diagnostics: _ } => refined
+            Rejected { diagnostics: _ } => refined
+          }
+      }
+  }
 }
 
 
