@@ -1081,6 +1081,15 @@ fn content_hash(n: Node) -> Hash {
 }
 
 
+// RULING-1: 🟢 authority boundary — canonical repo root (v4-ci-schema-worksheet §2).
+// Ingress path literals use `v4.lens.edit_locus.RepoPath`; normalize to `RepoRoot` at authority.
+type RepoRoot = String
+
+// RULING-1: 🟢 structural substrate node-set selector (v4-ci-schema-worksheet §2; concept home v4.std.node).
+type NodeQuery
+  = NodeQueryByConnective { connective: Connective, identity: Symbol }
+  | NodeQueryByPath { at: Path }
+
 type Path {
   steps: List<Symbol>
 }

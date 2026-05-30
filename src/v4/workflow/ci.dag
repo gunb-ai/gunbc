@@ -27,7 +27,16 @@ import v4.lens.affected_set {
   affected_set_rerun_nodes
 }
 import v4.lens.edit_locus { GitDiffNameOnly, RepoPath }
-import v4.std.change { AffectedSet }
+import v4.std.change {
+  AffectedDependency,
+  AffectedSet,
+  AffectedSetEvidence,
+  AffectedSetFailClosed,
+  AffectedSetReason,
+  ChangeSet
+}
+import std.patterns { CreateAction, ResolveExpr, Upsert, VerifyCheck }
+import std.types { GlobPattern }
 import v4.compiler.eval {
   EvalContext,
   TestClaimCacheKey,
@@ -47,7 +56,9 @@ import v4.std.node {
   Hash,
   Named,
   Node,
+  NodeQuery,
   Positional,
+  RepoRoot,
   Symbol,
   TypeNode,
   combine_hash,
@@ -141,6 +152,83 @@ type CiPipeline {
   jobs: List<CiJob>
   gates: List<CiGate>
 }
+
+// ── Phase 1.5 UPSERT step substrate (v4-ci-schema-worksheet-2026-05-30 §1.2–1.4) ─────────────
+// Generic `Upsert<T>` lives in `dsl/std/patterns.dag` (#3981). CI specialization adds typed
+// verify-first inputs; cache authority is `content_hash` of the full step projection — never a
+// `cache_key` payload on the step type (Practice 10 row 5 / P2).
+
+type CiUpsertStep<T> = Upsert<T> {
+  inputs: List<UpsertInputRef>
+  verify: VerifyCheck
+  create: CreateAction
+  resolve: ResolveExpr<T>
+}
+
+type UpsertInputRef
+  = FileSet { selector: FileSetSelector }
+  | SubstrateNodeSet { selector: NodeQuery }
+  | LensOutputRef { lens: LensIdV0, ports: List<Symbol> }
+  | TestClaimRef { claim_id: Symbol }
+  | UpstreamUpsert { step_id: CiStepId }
+
+type FileSetSelector {
+  root: RepositoryRoot
+  pattern: GlobPattern
+}
+
+type RepositoryRoot = RepoRoot
+
+type CiJobId = Symbol
+type CiGateId = Symbol
+type CiCommandId = Symbol
+
+type CiStepId
+  = JobStep { job: CiJobId, step: CiCommandId }
+  | GateStep { job: CiJobId, gate: CiGateId }
+
+// 🟡 branded nominal — dissolve-on: std.types brand substrate when v4 imports it.
+type ManagerSessionId = String
+type DfsWorksheetRef = String
+
+type CiCarveout {
+  step_id: CiStepId
+  reason_code: Symbol
+  reason_detail: String
+  dissolution_target: DissolutionTarget
+}
+
+type DissolutionTarget
+  = ModelMissingSubstrate { what: Symbol }
+  | UnknownYet {
+      investigation_owner: ManagerSessionId
+      required_dfs_receipt: DfsWorksheetRef
+    }
+
+data ci_always_run_carveouts: List<CiCarveout> = []
+
+type CiSelectionReceipt {
+  pr: ChangeSet
+  affected: AffectedSet
+  decisions: List<CiStepSelection>
+}
+
+type CiStepSelection {
+  step_id: CiStepId
+  inputs_consulted: List<UpsertInputRef>
+  affected_intersection: List<AffectedDependency>
+  decision: SelectionDecision
+  cache_digest: Hash
+  reason: Symbol
+}
+
+type SelectionDecision
+  = Run
+  | Skip
+  | CarvedOut { carveout_reason: Symbol }
+
+// Receipt field alias — single authority with `v4.std.change` `AffectedDependency`.
+type AffectedNode = AffectedDependency
 
 // RULING-1: 🟢 pretty-much-done — GitHub Actions `affected` job outputs (v2/v3/v4/workflow_policy/release_distribution).
 // Structural replacement for scripts/detect-affected-components.sh (T-21/T-24); host transport:
@@ -508,6 +596,25 @@ data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_n
 data ci_projection_command_lenses_edge: Symbol = ci_projection_command_lenses_edge
 data ci_projection_command_selection_fn_edge: Symbol = ci_projection_command_selection_fn_edge
 data ci_projection_gate_policy_job_edge: Symbol = ci_projection_gate_policy_job_edge
+data ci_projection_upsert_inputs_edge: Symbol = ci_projection_upsert_inputs_edge
+data ci_projection_upsert_verify_edge: Symbol = ci_projection_upsert_verify_edge
+data ci_projection_upsert_create_edge: Symbol = ci_projection_upsert_create_edge
+data ci_projection_upsert_resolve_edge: Symbol = ci_projection_upsert_resolve_edge
+data ci_projection_upsert_input_file_set_edge: Symbol = ci_projection_upsert_input_file_set_edge
+data ci_projection_upsert_input_substrate_edge: Symbol = ci_projection_upsert_input_substrate_edge
+data ci_projection_upsert_input_lens_edge: Symbol = ci_projection_upsert_input_lens_edge
+data ci_projection_upsert_input_test_claim_edge: Symbol = ci_projection_upsert_input_test_claim_edge
+data ci_projection_upsert_input_upstream_edge: Symbol = ci_projection_upsert_input_upstream_edge
+data ci_projection_file_set_root_edge: Symbol = ci_projection_file_set_root_edge
+data ci_projection_file_set_pattern_edge: Symbol = ci_projection_file_set_pattern_edge
+data ci_projection_step_id_job_edge: Symbol = ci_projection_step_id_job_edge
+data ci_projection_step_id_gate_edge: Symbol = ci_projection_step_id_gate_edge
+data ci_cache_upsert_input_file_set_tag: Symbol = ci_cache_upsert_input_file_set_tag
+data ci_cache_upsert_input_substrate_tag: Symbol = ci_cache_upsert_input_substrate_tag
+data ci_cache_upsert_input_lens_tag: Symbol = ci_cache_upsert_input_lens_tag
+data ci_cache_upsert_input_test_claim_tag: Symbol = ci_cache_upsert_input_test_claim_tag
+data ci_cache_upsert_input_upstream_tag: Symbol = ci_cache_upsert_input_upstream_tag
+data ci_selection_shadow_reason: Symbol = ci_selection_shadow_reason
 
 
 fn ci_atom(sym: Symbol) -> Node {
@@ -1082,6 +1189,302 @@ fn ci_gate_cache_digest(g: CiGate) -> Hash {
 
 fn ci_pipeline_cache_digest(p: CiPipeline) -> Hash {
   content_hash(n: ci_pipeline_projection_node(p: p))
+}
+
+
+fn ci_glob_pattern_projection_node(pattern: GlobPattern) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: pattern.segments,
+      empty: Empty,
+      cons: fn(acc, segment) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: ci_string_projection_node(s: segment) }
+        )
+      }
+    )
+  }
+}
+
+
+fn ci_file_set_selector_projection_node(selector: FileSetSelector) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(
+        name: ci_projection_file_set_root_edge,
+        target: ci_string_projection_node(s: selector.root)
+      ),
+      ci_named_edge(
+        name: ci_projection_file_set_pattern_edge,
+        target: ci_glob_pattern_projection_node(pattern: selector.pattern)
+      )
+    ]
+  }
+}
+
+
+fn ci_node_query_projection_node(query: NodeQuery) -> Node {
+  match query {
+    NodeQueryByConnective { connective: c, identity: id } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_upsert_input_substrate_edge,
+            target: ci_atom(sym: ci_cache_upsert_input_substrate_tag)
+          ),
+          ci_named_edge(name: ci_projection_step_id_job_edge, target: ci_atom(sym: id))
+        ]
+      }
+    NodeQueryByPath { at: path } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_upsert_input_substrate_edge,
+            target: ci_symbol_list_projection_node(xs: path.steps)
+          )
+        ]
+      }
+  }
+}
+
+
+fn ci_step_id_projection_node(step_id: CiStepId) -> Node {
+  match step_id {
+    JobStep { job: job, step: step } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(name: ci_projection_step_id_job_edge, target: ci_atom(sym: job)),
+          ci_named_edge(name: ci_projection_step_id_gate_edge, target: ci_atom(sym: step))
+        ]
+      }
+    GateStep { job: job, gate: gate } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(name: ci_projection_step_id_job_edge, target: ci_atom(sym: job)),
+          ci_named_edge(name: ci_projection_step_id_gate_edge, target: ci_atom(sym: gate))
+        ]
+      }
+  }
+}
+
+
+fn ci_upsert_input_ref_projection_node(input_ref: UpsertInputRef) -> Node {
+  match input_ref {
+    FileSet { selector: selector } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_upsert_input_file_set_edge,
+            target: ci_atom(sym: ci_cache_upsert_input_file_set_tag)
+          ),
+          ci_named_edge(
+            name: ci_projection_file_set_pattern_edge,
+            target: ci_file_set_selector_projection_node(selector: selector)
+          )
+        ]
+      }
+    SubstrateNodeSet { selector: selector } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_upsert_input_substrate_edge,
+            target: ci_atom(sym: ci_cache_upsert_input_substrate_tag)
+          ),
+          ci_named_edge(
+            name: ci_projection_file_set_pattern_edge,
+            target: ci_node_query_projection_node(query: selector)
+          )
+        ]
+      }
+    LensOutputRef { lens: lens, ports: ports } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_upsert_input_lens_edge,
+            target: ci_atom(sym: ci_cache_upsert_input_lens_tag)
+          ),
+          ci_named_edge(
+            name: ci_projection_upsert_input_lens_edge,
+            target: ci_lens_id_projection_node(lens: lens)
+          ),
+          ci_named_edge(
+            name: ci_projection_upsert_input_upstream_edge,
+            target: ci_symbol_list_projection_node(xs: ports)
+          )
+        ]
+      }
+    TestClaimRef { claim_id: claim_id } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_upsert_input_test_claim_edge,
+            target: ci_atom(sym: ci_cache_upsert_input_test_claim_tag)
+          ),
+          ci_named_edge(
+            name: ci_projection_upsert_input_test_claim_edge,
+            target: ci_atom(sym: claim_id)
+          )
+        ]
+      }
+    UpstreamUpsert { step_id: step_id } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_upsert_input_upstream_edge,
+            target: ci_atom(sym: ci_cache_upsert_input_upstream_tag)
+          ),
+          ci_named_edge(
+            name: ci_projection_upsert_input_upstream_edge,
+            target: ci_step_id_projection_node(step_id: step_id)
+          )
+        ]
+      }
+  }
+}
+
+
+fn ci_upsert_input_ref_list_projection_node(refs: List<UpsertInputRef>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: refs,
+      empty: Empty,
+      cons: fn(acc, input_ref) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge {
+            label: Positional,
+            target: ci_upsert_input_ref_projection_node(input_ref: input_ref)
+          }
+        )
+      }
+    )
+  }
+}
+
+
+fn ci_upsert_step_projection_node<T>(step: CiUpsertStep<T>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(
+        name: ci_projection_upsert_inputs_edge,
+        target: ci_upsert_input_ref_list_projection_node(refs: step.inputs)
+      ),
+      ci_named_edge(name: ci_projection_upsert_verify_edge, target: step.verify),
+      ci_named_edge(name: ci_projection_upsert_create_edge, target: step.create),
+      ci_named_edge(name: ci_projection_upsert_resolve_edge, target: step.resolve)
+    ]
+  }
+}
+
+
+fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash {
+  content_hash(n: ci_upsert_step_projection_node(step: step))
+}
+
+
+fn ci_job_step_ids(jobs: List<CiJob>) -> List<CiStepId> {
+  fold_list(
+    xs: jobs,
+    empty: Empty,
+    cons: fn(acc, job) {
+      list_snoc_item(
+        xs: acc,
+        item: JobStep { job: job.id, step: job.id }
+      )
+    }
+  )
+}
+
+
+fn ci_pipeline_step_ids(p: CiPipeline) -> List<CiStepId> {
+  fold(
+    p.gates,
+    init: ci_job_step_ids(jobs: p.jobs),
+    f: fn(acc, gate) {
+      list_snoc_item(
+        xs: acc,
+        item: GateStep { job: gate.job, gate: gate.id }
+      )
+    }
+  )
+}
+
+
+fn ci_step_selection_shadow_row(step_id: CiStepId) -> CiStepSelection {
+  CiStepSelection {
+    step_id: step_id,
+    inputs_consulted: [],
+    affected_intersection: [],
+    decision: Run,
+    cache_digest: content_hash(n: ci_step_id_projection_node(step_id: step_id)),
+    reason: ci_selection_shadow_reason
+  }
+}
+
+
+fn ci_step_selection_shadow_rows(step_ids: List<CiStepId>) -> List<CiStepSelection> {
+  fold_list(
+    xs: step_ids,
+    empty: Empty,
+    cons: fn(acc, step_id) {
+      list_snoc_item(xs: acc, item: ci_step_selection_shadow_row(step_id: step_id))
+    }
+  )
+}
+
+
+fn ci_selection_receipt_shadow(
+  pr: ChangeSet,
+  affected: AffectedSet,
+  pipeline: CiPipeline
+) -> CiSelectionReceipt {
+  CiSelectionReceipt {
+    pr: pr,
+    affected: affected,
+    decisions: ci_step_selection_shadow_rows(step_ids: ci_pipeline_step_ids(p: pipeline))
+  }
+}
+
+
+fn ci_selection_receipt_well_formed(receipt: CiSelectionReceipt, pipeline: CiPipeline) -> Bool {
+  length(xs: receipt.decisions) == length(xs: ci_pipeline_step_ids(p: pipeline))
+}
+
+
+data ci_selection_receipt_shadow_empty_pr: ChangeSet = ChangeSet { changes: [] }
+
+data ci_selection_receipt_shadow_fail_closed_affected: AffectedSet = AffectedSetFailClosed {
+  changes: ci_selection_receipt_shadow_empty_pr,
+  evidence: AffectedSetReason { reason: ci_selection_shadow_reason }
+}
+
+data ci_selection_receipt_shadow_mode: CiSelectionReceipt = match ci_pipeline {
+  Accepted { value: pipeline, diagnostics: _ } =>
+    ci_selection_receipt_shadow(
+      pr: ci_selection_receipt_shadow_empty_pr,
+      affected: ci_selection_receipt_shadow_fail_closed_affected,
+      pipeline: pipeline
+    )
+  Rejected { diagnostics: _ } =>
+    ci_selection_receipt_shadow(
+      pr: ci_selection_receipt_shadow_empty_pr,
+      affected: ci_selection_receipt_shadow_fail_closed_affected,
+      pipeline: CiPipeline { jobs: [], gates: [] }
+    )
 }
 
 
