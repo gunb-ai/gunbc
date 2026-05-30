@@ -38,6 +38,7 @@ import v4.std.grammar {
 }
 import v4.std.lexing {
   CharClassPattern,
+  DelimitedPattern,
   DigitChar,
   IdentContinueChar,
   IdentStartChar,
@@ -51,6 +52,7 @@ import v4.std.lexing {
   OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
+  StringTextChar,
   TokenRule
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
@@ -228,6 +230,8 @@ data ts_token_eq: Symbol = ts_token_eq
 data ts_token_minus: Symbol = ts_token_minus
 data ts_token_star: Symbol = ts_token_star
 data ts_token_num_lit: Symbol = ts_token_num_lit
+data ts_token_pipe: Symbol = ts_token_pipe
+data ts_token_string_lit: Symbol = ts_token_string_lit
 
 data ts_token_kw_type: Symbol = ts_token_kw_type
 
@@ -241,6 +245,7 @@ data ts_production_wave2a_type_void: Symbol = ts_production_wave2a_type_void
 data ts_production_wave2a_type_name: Symbol = ts_production_wave2a_type_name
 data ts_production_wave2a_let_decl: Symbol = ts_production_wave2a_let_decl
 data ts_production_wave2a_const_decl: Symbol = ts_production_wave2a_const_decl
+data ts_production_wave2a_union_type: Symbol = ts_production_wave2a_union_type
 data ts_production_wave2a_record_field: Symbol = ts_production_wave2a_record_field
 data ts_production_wave2a_record_fields: Symbol = ts_production_wave2a_record_fields
 data ts_production_wave2a_record_type: Symbol = ts_production_wave2a_record_type
@@ -268,6 +273,7 @@ data ts_surface_type_name: Symbol = ts_surface_type_name
 data ts_surface_type_annotation: Symbol = ts_surface_type_annotation
 data ts_surface_let_decl: Symbol = ts_surface_let_decl
 data ts_surface_const_decl: Symbol = ts_surface_const_decl
+data ts_surface_union_type: Symbol = ts_surface_union_type
 data ts_surface_record_field: Symbol = ts_surface_record_field
 data ts_surface_record_fields: Symbol = ts_surface_record_fields
 data ts_surface_record_type: Symbol = ts_surface_record_type
@@ -1125,6 +1131,19 @@ fn ts_num_lit_lex_rule() -> LexRule {
   TokenRule { token_class: ts_token_num_lit, pattern: ts_num_lit_lex_pattern() }
 }
 
+// TS string literal — single-quoted form per TS handbook §Literal Types.
+// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#literal-types
+fn ts_string_lit_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ts_token_string_lit,
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "'" },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: LiteralPattern { text: "'" }
+    }
+  }
+}
+
 fn ts_wave2a_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -1144,6 +1163,8 @@ fn ts_wave2a_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ts_token_star, text: " * "),
       // `=` keeps leading space only so `= {` tokenizes (= consumes ` =`, `{` matches `{ `).
       ts_lex_rule(token_class: ts_token_eq, text: " ="),
+      ts_lex_rule(token_class: ts_token_pipe, text: " | "),
+      ts_string_lit_lex_rule(),
       ts_lex_rule(token_class: ts_token_lbrace, text: "{ "),
       ts_lex_rule(token_class: ts_token_rbrace, text: " }"),
       ts_lex_rule(token_class: ts_token_lparen, text: "("),
@@ -1215,6 +1236,26 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ts_production_wave2a_type_annotation,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_void)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_union_type,
+      rhs: [
+        grammar_formal_terminal(identity: ts_token_string_lit),
+        grammar_formal_terminal(identity: ts_token_pipe),
+        grammar_formal_terminal(identity: ts_token_string_lit)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_union_type,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_union_type),
+        grammar_formal_terminal(identity: ts_token_pipe),
+        grammar_formal_terminal(identity: ts_token_string_lit)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_type_annotation,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_union_type)]
     ),
     grammar_formal_production(
       lhs: ts_production_wave2a_type_name,
@@ -1502,7 +1543,10 @@ fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
               left: Nonterminal { production: ts_production_pr3_array_type },
               right: Choice {
                 left: Nonterminal { production: ts_production_wave2a_type_name },
-                right: Nonterminal { production: ts_production_wave2a_record_type }
+                right: Choice {
+                  left: Nonterminal { production: ts_production_wave2a_record_type },
+                  right: Nonterminal { production: ts_production_wave2a_union_type }
+                }
               }
             }
           }
@@ -1510,6 +1554,32 @@ fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
       }
     },
     emitted: ts_grammar_atom(id: ts_surface_type_annotation)
+  }
+}
+
+// TS string-literal discriminated union per TS handbook §Literal Types:
+// `type T = 'A' | 'B' | 'C';`. Payload-free coproducts (e.g. TaskStatus from
+// src/v4/test/fixture/task_manager_demo.dag) map cleanly to this surface; tagged
+// object unions land in a later wave once arm payloads enter scope.
+fn ts_grammar_production_wave2a_union_type() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_union_type,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_string_lit },
+      right: Sequence {
+        left: Sequence {
+          left: Terminal { token_class: ts_token_pipe },
+          right: Terminal { token_class: ts_token_string_lit }
+        },
+        right: Repeat {
+          element: Sequence {
+            left: Terminal { token_class: ts_token_pipe },
+            right: Terminal { token_class: ts_token_string_lit }
+          }
+        }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_union_type)
   }
 }
 
@@ -1743,6 +1813,7 @@ fn ts_wave2a_grammar_root() -> GrammarRoot {
   let let_decl = ts_grammar_production_wave2a_let_decl()
   let const_decl = ts_grammar_production_wave2a_const_decl()
   let type_alias_decl = ts_grammar_production_wave2a_type_alias_decl()
+  let union_type = ts_grammar_production_wave2a_union_type()
   let pr3_primary_type = ts_grammar_production_pr3_primary_type()
   let pr3_array_type = ts_grammar_production_pr3_array_type()
   let pr3_typed_param = ts_grammar_production_pr3_typed_param()
@@ -1752,7 +1823,7 @@ fn ts_wave2a_grammar_root() -> GrammarRoot {
   let item = ts_grammar_production_wave2a_item()
   GrammarRoot {
     start: ts_production_wave2a_item,
-    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_primary_type, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_params_opt, pr3_typed_fn_decl, item],
+    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, union_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_primary_type, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_params_opt, pr3_typed_fn_decl, item],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
