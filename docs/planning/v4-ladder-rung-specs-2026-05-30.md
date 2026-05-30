@@ -92,7 +92,7 @@ Seven other targets (cpp, ts, lean, swift, …) are **deferred** to Phase 4+ wid
 | Predicate id | Target | Pass condition | Fail blocking receipt |
 | ------------ | ------ | -------------- | --------------------- |
 | `R0-dag-parse` | `dag` | `v4` parse of `nat_semiring.dag` yields `Accepted` module AST (no parse `Rejected` diagnostics). | `phase1/nat_semiring/rung0/dag_parse_rejected` |
-| `R0-rust-parse` | `rust` | Emitted Rust **frontend parse only** — e.g. `rustc --emit=metadata` (or project-standard parse-only flag) on the fixture `.rs` exits 0. **`cargo check` / typecheck success is R1 only** and must not satisfy R0. | `phase1/nat_semiring/rung0/rust_emit_parse_rejected` |
+| `R0-rust-parse` | `rust` | Emitted Rust **lexer/parser frontend only** — syntax accepted with **no** name resolution or type checking. **Allowed receipts:** `rustc -Z parse-only` on the fixture `.rs` when the pinned toolchain supports it; else interim **`rustfmt --check`** on the emitted file (syntax surface only) until Compiler Spine ratifies a stable parse driver. **Forbidden for R0 (R1-owned):** `cargo check`, `cargo build`, `rustc --emit=metadata`, `rustc --emit=llvm-ir`, or any command whose success implies semantic analysis / typecheck. | `phase1/nat_semiring/rung0/rust_emit_parse_rejected` |
 | `R0-python-parse` | `python` | Emitted Python **parse only** — `python3 -m py_compile` on the fixture `.py` (syntax/parse surface). | `phase1/nat_semiring/rung0/python_emit_parse_rejected` |
 | `R0-go-parse` | `go` | Emitted Go **parse phase only** — `go build -n` or `go test -c` parse-phase success without requiring full link success (project-standard parse receipt). | `phase1/nat_semiring/rung0/go_emit_parse_rejected` |
 
@@ -108,7 +108,7 @@ Seven other targets (cpp, ts, lean, swift, …) are **deferred** to Phase 4+ wid
 
 | Predicate id | Target | Pass condition | Fail blocking receipt |
 | ------------ | ------ | -------------- | --------------------- |
-| `R1-rust-typecheck` | `rust` | `rustc` / `cargo check` on emitted Rust exits 0 with no type errors for the fixture artifact. | `phase1/nat_semiring/rung1/rust_typecheck_failed` |
+| `R1-rust-typecheck` | `rust` | `cargo check` (or `rustc --emit=metadata` / project-standard fast-check) on emitted Rust exits 0 with no type errors for the fixture artifact. Requires R0-rust-parse **PASS** (or `SKIP` only when emit unavailable). | `phase1/nat_semiring/rung1/rust_typecheck_failed` |
 
 **Note:** Rung 1 is necessary but not sufficient for v4 close (planning doc §4). It must not be used as the sole PR success headline (§4).
 
