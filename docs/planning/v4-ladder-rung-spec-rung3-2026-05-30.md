@@ -25,7 +25,7 @@
 **Out-of-scope for this spec (named so the boundary is auditable):**
 
 - R3 for emitted rust/python/go (round-trip of *emitted* code is rung 5 cross-target territory, not rung 3).
-- W1b emit→ingest bit-identical fidelity — gated on T-36 follow-up; this spec carries an explicit `SKIP` cell for it.
+- W1b emit→ingest bit-identical fidelity — gated on T-36 follow-up; this spec carries the W1b stage as the row's named blocking receipt (`dag_roundtrip_fidelity_w1b_unlanded`) while it remains unlanded, **not** as its own matrix cell (per §2.2 cell-render rule).
 - Authoring `claim_nat_semiring_module_roundtrip` on the ladder fixture — gated on module-loader landing per joint spec §5 ("`dag_round_trip_mvp1`-style structural binding once module-loader lands"); §2.3 records the wedge.
 - Rung-4 predicate (companion spec).
 - Rungs 5–9 (Phase 3+).
@@ -210,7 +210,7 @@ Verified 2026-05-30 with `git show origin/main:<path>`.
 | C5 trivia DeclaredNormalized | `src/v4/extdeps/languages/dag.dag:3160-3166` (`dag_round_trip_normalization_declared`) | **CONFIRMED** — whitespace + line-comment + block-comment |
 | W1 wave-1 readiness scope (not full fidelity) | `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag:3` ("emit→ingest fidelity W1b") + `:80` (claim label "wave-1 readiness") | **CONFIRMED** — explicit W1 / W1b split in landed claim |
 | Aux fixture committed | `src/v4/test/fixture/dag_round_trip_mvp1.dag` (referenced at `dag_ingest_round_trip.dag:45`) | **CONFIRMED** |
-| No `RoundTripClaim` row on `nat_semiring` | `git grep -l RoundTripClaim src/v4/test/claim/algebra_laws/` returns nothing | **CONFIRMED** — wedge per §2.3 |
+| No `RoundTripClaim` **row** on `nat_semiring` | `git grep -nE 'RoundTripClaim *\{' origin/main -- src/v4/test/claim/algebra_laws/nat_semiring.dag` returns nothing (only an import of the symbol from `v4.std.verification` for the diagnostic falsifier exists; no `RoundTripClaim { … }` data row) | **CONFIRMED** — wedge per §2.3 |
 | Eval P2 (no embedded-atom trust) | `src/v4/extdeps/languages/dag.dag:3121` + `:3167+` ("eval re-derives lex/grammar/C5 from dag.dag only (P2)") | **CONFIRMED** |
 | Joint runner spec §3 rung-3 row | `docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md` §3 | **CONFIRMED** — RoundTripClaim Pass (not Deferred) on at least one fixture-bound claim |
 | Joint runner spec §4.4 rung-split | same doc §4.4 | **CONFIRMED** — rung 3 may green independently of rung 4 |
