@@ -726,11 +726,18 @@ fn ci_int_offset_authority_projection_node(i: Int) -> Node {
         ci_named_edge(name: ci_projection_char_offset_neg_edge, target: ci_atom(sym: canonical_tag_scalar_int_neg)),
         ci_named_edge(
           name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_node(i: int_negate(i: i))
+          target: ci_int_offset_authority_projection_nonneg(i: 0 - i)
         )
       ]
     }
-  } else if i == 0 {
+  } else {
+    ci_int_offset_authority_projection_nonneg(i: i)
+  }
+}
+
+
+fn ci_int_offset_authority_projection_nonneg(i: Int) -> Node {
+  if i == 0 {
     ci_atom(sym: canonical_tag_scalar_int_zero)
   } else if i <= 255 {
     ci_byte_limb_projection_node(limb: i)
@@ -744,7 +751,7 @@ fn ci_int_offset_authority_projection_node(i: Int) -> Node {
         ),
         ci_named_edge(
           name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_node(i: i / 256)
+          target: ci_int_offset_authority_projection_nonneg(i: i / 256)
         ),
         ci_named_edge(
           name: ci_projection_char_offset_byte_edge,
