@@ -802,6 +802,29 @@ fn formal_production_for_lhs_exact(
   lhs: Symbol,
   child: Node
 ) -> Witness<FormalProduction> {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    formal_production_for_lhs_exact_supported(
+      productions: productions,
+      lhs: lhs,
+      child: child
+    )
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: grammar_relation_emitted_not_conj,
+        at: node_locus(node: child),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+
+fn formal_production_for_lhs_exact_supported(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node
+) -> Witness<FormalProduction> {
   let emitted_slot_count = emitted_node_slot_count(emitted: child)
   match fold_list(
     xs: productions,
