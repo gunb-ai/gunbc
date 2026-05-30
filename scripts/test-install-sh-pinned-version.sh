@@ -22,17 +22,18 @@ CURL_LOG="$TMP/curl.log"
 mkdir -p "$FAKE_BIN" "$INSTALL_DIR"
 : >"$CURL_LOG"
 
-cat >"$FAKE_BIN/curl" <<'EOF'
+cat >"$FAKE_BIN/curl" <<EOF
 #!/usr/bin/env sh
 set -eu
-log="${CURL_LOG:?CURL_LOG unset}"
-printf 'curl %s\n' "$*" >>"$log"
+log="\${CURL_LOG:?CURL_LOG unset}"
+root="\${GUNBC_INSTALL_TEST_ROOT:?GUNBC_INSTALL_TEST_ROOT unset}"
+printf 'curl %s\n' "\$*" >>"\$log"
 out=""
 url=""
-while [ $# -gt 0 ]; do
-  case "$1" in
+while [ \$# -gt 0 ]; do
+  case "\$1" in
     -o)
-      out=$2
+      out=\$2
       shift 2
       ;;
     -fsSL)
@@ -42,17 +43,24 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     *)
-      url=$1
+      url=\$1
       shift
       ;;
   esac
 done
-if [ -z "$out" ] || [ -z "$url" ]; then
+if [ -z "\$out" ] || [ -z "\$url" ]; then
   echo "fake curl: expected -fsSL <url> -o <path>" >&2
   exit 1
 fi
-printf '#!/bin/sh\necho gunbc-smoke\n' >"$out"
-chmod +x "$out"
+case "\$url" in
+  *release-target-triples.sh*)
+    cat "\$root/scripts/release-target-triples.sh" >"\$out"
+    ;;
+  *)
+    printf '#!/bin/sh\necho gunbc-smoke\n' >"\$out"
+    chmod +x "\$out"
+    ;;
+esac
 EOF
 chmod +x "$FAKE_BIN/curl"
 
@@ -62,6 +70,7 @@ run_install() {
     cd "$ROOT"
     export PATH="$FAKE_BIN:$PATH"
     export CURL_LOG
+    export GUNBC_INSTALL_TEST_ROOT="$ROOT"
     export GUNBC_INSTALL_DIR="$INSTALL_DIR"
     "$@"
   )
