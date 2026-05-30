@@ -299,7 +299,7 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 // .dag data literals cannot unwrap Rejected at assignment. Witness-proved Accepted for catalog
 // values; runtime/user input uses make_* + Outcome. Bare-carrier catalog helpers that stripped
 // Rejected were removed (P3); T-25-tail adds structural opacity for bare Refined/PositiveInt.
-// Witnesses: refinement_formatter_literals_accept.dag (one per hoisted int type).
+// Witnesses: refinement_authoritative_constants.dag (reject paths); catalog accept witnesses land in §A1 follow-on (T-22 compile budget).
 
 
 // 🟢 coproduct dissolution — TERMINAL. The ordered/unordered distinction is the irreducible
