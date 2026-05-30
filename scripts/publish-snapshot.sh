@@ -93,14 +93,12 @@ STRIP_PATHS=(
   "docs/perf"
   "docs/decisions"
 
-  # v3 is frozen and not part of the public story.
-  "src/v3"
-
-  # v4 is stripped wholesale per D-REL-1 (CONFIRMED 2026-05-30 in
-  # docs/RELEASE_v0.1.0.md). The substrate is not at public confidence;
-  # v0.1.0 is v2-scoped. This supersedes the older RELEASE_TODO.md §6
-  # "Keep" list for src/v4/std, compiler/, etc.
-  "src/v4"
+  # v3 + v4 substrate SHIP public in v0.1.0 labeled alpha / WIP per
+  # the D-REL-1 (iv) flip (2026-05-30, docs/RELEASE_v0.1.0.md). They are
+  # not on the supported contract; SUPPORTED.md per-surface labels what
+  # is/isn't claimed. This supersedes both the earlier "strip src/v3"
+  # legacy and the previous "strip src/v4 wholesale" ruling, and
+  # overrides the older RELEASE_TODO.md §6 housecleaning notes.
 
   # v2 internal design docs.
   "src/v2/CM.md"

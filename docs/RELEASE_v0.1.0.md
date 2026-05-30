@@ -26,6 +26,18 @@ verified surface either stays private or is documented as unsupported with a
 fail-closed runtime behavior. The previously broad "ship daglang + gunbc"
 scope from earlier drafts is narrowed by the D-REL decisions below.
 
+**Reconciliation with D-REL-1 (iv) flip (2026-05-30).** "Stripped" is no
+longer the default for v3/v4; the operative path is "explicitly
+unsupported": v3 and v4 substrate **ships public labeled alpha / WIP**,
+sits outside the supported contract (which is Rust + Python + Go only),
+and is documented honestly in `SUPPORTED.md` and the
+`sharp-otter-407` ship-disposition supplement. The reviewer posture
+("only a small, verified, fail-closed product surface" + "everything
+else explicitly unsupported") is preserved; the choice between
+"stripped" and "explicitly unsupported with alpha label" is now made
+case-by-case (process docs / agent traffic = stripped; substrate
+in-progress = alpha-labeled).
+
 **Working framing (project maintainer, 2026-05-30, updated post-audit):**
 
 > A small public daglang/gunbc release with a verified subset, verified
@@ -69,16 +81,19 @@ The release sentence the tag must make true:
 
 **Non-goals.**
 
-1. v4 substrate in the public v0.1.0 snapshot. **D-REL-1 = CONFIRMED:
-   strip `src/v4` from public v0.1.0** (project maintainer 2026-05-30).
+1. ~~v4 substrate in the public v0.1.0 snapshot.~~ **REVISED
+   2026-05-30:** v3 and v4 substrate now **ship public in v0.1.0
+   labeled alpha / WIP** per the D-REL-1 flip. Not on the supported
+   contract — see `SUPPORTED.md`.
 2. Comprehensive `.dag` comment-stripping pass — load-bearing markers
    (`🟡 dissolve-on-arrival`, `🟢`/`🔴` coproduct tags, `// Anchor:`,
    dissolve-target session-slug attribution, `adhoc-<UUID>` work-item refs)
    are NOT cleanup targets.
 3. Inverted-sync tooling (private → public PR flow); v0.2.0+ concern.
 4. External community surface (Issues/Discussions wiring on `daglang`).
-5. Removal of `src/v3/` from the internal workspace (stripped from snapshot
-   only).
+5. ~~Removal of `src/v3/` from the internal workspace (stripped from
+   snapshot only).~~ **REVISED 2026-05-30:** `src/v3` now ships public
+   in v0.1.0 labeled alpha / WIP per D-REL-1.
 6. Frontend ([`gunb-ai/frontend`](https://github.com/gunb-ai/frontend)) —
    separate repo, own release cadence, does not gate v0.1.0.
 7. Any binary target (of the six in `release.dag`) that does not pass the
@@ -95,12 +110,14 @@ The release sentence the tag must make true:
    v0.1.0** (maintainer ruling 2026-05-30, post-audit). C++ / LLVM / etc.
    are not v0.1.0 public support (D-REL-3b).
 10. **v4-done predicates** (the six in `src/v4/TASKS.md:805–817`) are
-    out of scope for the v0.1.0 tag. The maintainer-facing burn-down is
-    tracked privately in
+    not a tag gate (flavor (iv) drops Wave-2 acceptance gating);
+    predicate-closure continues as MATURATION work for v0.1.1+. The
+    maintainer-facing tracker is
     `docs/planning/v4-done-predicate-tracker-2026-05-30.md`; do not
-    conflate gunbc `main` maturity with the public daglang slice.
-    Cross-check (per `nimble-crane-490`): 0/6 predicates PROVEN, 5
-    YELLOW, 1 GRAY (P6).
+    conflate gunbc `main` maturity with the v0.1.0 supported contract
+    (Rust + Python + Go only). Cross-check (per `nimble-crane-490`):
+    0/6 predicates PROVEN, 5 YELLOW, 1 GRAY (P6) — documented honestly
+    in `SUPPORTED.md`'s v4-alpha section, not used as a strip trigger.
 
 ## D-REL decisions
 
@@ -113,8 +130,8 @@ recommendation as the default until the project maintainer rules otherwise.
 | D-REL-2 | Binary distribution scope | **Advertised target = passed dry-run. No dry-run = not advertised. Source build is acceptable if binaries are flaky.** | **CONFIRMED 2026-05-30** (project maintainer). |
 | D-REL-3a | Day-one daglang subset (source) | Small example-backed `.dag` subset anchored to `weather.dag` + `interp_test.dag` and the `dsl/std` vocabulary those examples exercise. Anything outside this subset is unsupported and must fail closed. | **CONFIRMED 2026-05-30.** Exact list enumerated in `docs/SUPPORTED.md` (downstream). |
 | D-REL-3b | Day-one target/artifact matrix | **Rust, Go, and Python only** (one per v2 emit lens). Rust must pass `rustc`/`cargo check` on shipped examples; Go must pass `go build` / `go vet`; Python must compile (`python -m py_compile`) and the documented example must run. **TypeScript moves to v4 early-support**, not v0.1.0. C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED + RECONCILED 2026-05-30** (maintainer post-audit ruling). Reflects the existing v2 substrate (`05_emit_rust.dag`, `05_emit_go.dag`, `05_emit_python.dag`); resolves verification gap V1. Per-surface support level (full compile vs example-run vs artifact-only) declared explicitly in `SUPPORTED.md`. |
-| D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | **DECIDED 2026-05-30; enforcement PENDING.** The user-facing docs above do not all exist yet (downstream authoring work). `scripts/publish-snapshot.sh` `STRIP_PATHS` currently strips only the agent/process subtrees (`docs/briefs`, `docs/debt`, etc.) and v3/v4 — root `THESIS`/`INVARIANTS`/`MODELING`/`CODING`/`TESTING` and the large `docs/thesis/`, `docs/invariants/`, `docs/planning/`, `docs/design-*` trees are **not yet stripped**. A follow-up pass before tag must (a) land the user docs and (b) extend `STRIP_PATHS` to remove everything outside the D-REL-4 keep list. Gate B and Gate D catch the gap if this slips. |
-| D-REL-5 | Release before v4 confidence | **YES**, because D-REL-1 strips v4 and v0.1.0 is scoped to the verified v2 / product slice. | **CONFIRMED 2026-05-30.** |
+| D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | **DECIDED 2026-05-30; enforcement PENDING.** The user-facing docs above do not all exist yet (downstream authoring work). `scripts/publish-snapshot.sh` `STRIP_PATHS` currently strips only the agent/process subtrees (`docs/briefs`, `docs/debt`, etc.); v3/v4 are no longer stripped (per the D-REL-1 (iv) flip). Root `THESIS`/`INVARIANTS`/`MODELING`/`CODING`/`TESTING` and the large `docs/thesis/`, `docs/invariants/`, `docs/planning/`, `docs/design-*` trees are also not yet stripped. A follow-up pass before tag must (a) land the user docs and (b) extend `STRIP_PATHS` to remove everything outside the D-REL-4 keep list. Gate B and Gate D catch the gap if this slips. |
+| D-REL-5 | Release before v4 confidence | **YES**, under flavor (iv): v3/v4 ship public labeled alpha / WIP with honest error counts; v0.1.0's *supported contract* (Rust + Python + Go) does not depend on v4 reaching predicate-closure. | **CONFIRMED 2026-05-30** (revised post-(iv)-flip). |
 
 ## Pre-tag verification gaps (open)
 
@@ -126,9 +143,9 @@ resolved.
 | # | Gap | Resolution path | Owner / ETA |
 |---|-----|-----------------|-------------|
 | V1 | ~~TypeScript surface unsubstantiated.~~ | **RESOLVED 2026-05-30:** maintainer ruled v0.1.0 = Rust + Go + Python (the three existing v2 emit paths); TypeScript moves to v4 early-support. D-REL-3b, Goals, Non-goals, framing, and Gates A/E updated accordingly. | RESOLVED. |
-| V2 | **`docs/SUPPORTED.md` does not exist.** Item D names it as the single normative authority; README, website, and release notes all derive from it. No file, no owner, no ETA. | Author `docs/SUPPORTED.md` enumerating the D-REL-3a `.dag` subset, the D-REL-3b verified surfaces with per-surface support level, the verified install/target matrix, CLI commands, OS matrix, and fail-closed guarantee. | **PENDING owner.** Likely lane: `nimble-crane-490` (the v4-done/release-sign-off worker who already cross-checked this doc). |
-| V3 | **`install.sh` PR #3992 STALLED.** Open, mergeable=MERGEABLE, 0 reviews, 0 CI checks completed; no shepherd. The doc says `curl install.sh` ships only if #3992 lands and verifies before tag. | Route a shepherd to #3992, OR drop `curl install.sh` from the v0.1.0 install path and rely solely on build-from-source. Decision needed before Gate C can pass. | **PENDING owner.** |
-| V4 | **Weather demo end-to-end UNVERIFIED.** Gate A requires every example to run end-to-end; the hero `dsl/examples/weather/` path against `--target rust` has not been exercised against a `target/release/gunbc` built from a clean checkout. The README hero invocation uses `--target dag` rather than the verified emit path. | Build `gunbc` from clean checkout; run the weather example with `--target rust`; verify generated Rust passes `cargo check`; record commit SHA + run timestamp in the Evidence column on Gate A. | **PENDING.** Can be done by any worker with a green build slot. |
+| V2 | **`docs/SUPPORTED.md` does not exist.** Item D names it as the single normative authority; README, website, and release notes all derive from it. | Author `docs/SUPPORTED.md` enumerating the D-REL-3a `.dag` subset, the D-REL-3b verified surfaces (Rust + Python + Go) with per-surface support level, the v3/v4 alpha section (pulling from `sharp-otter-407`'s ship-disposition supplement), the verified install/target matrix, CLI commands, OS matrix, and fail-closed guarantee. | **WORKER DISPATCH IN FLIGHT** — `snappy-bee-513` dispatching once D-REL-3b confirmed (confirmation just landed 2026-05-30). |
+| V3 | **`install.sh` PR #3992 STALLED.** Open, mergeable=MERGEABLE, 0 reviews, 0 CI checks completed; no shepherd. The doc says `curl install.sh` ships only if #3992 lands and verifies before tag. | Route a shepherd to #3992, OR drop `curl install.sh` from the v0.1.0 install path and rely solely on build-from-source. Decision needed before Gate C can pass. | **SHEPHERD CHECK IN FLIGHT** — `snappy-bee-513` checking shepherd dispatch 2026-05-30. Fallback: build-from-source becomes canonical install. |
+| V4 | **Weather demo end-to-end UNVERIFIED.** Gate A requires every example to run end-to-end; the hero `dsl/examples/weather/` path against `--target rust` has not been exercised against a `target/release/gunbc` built from a clean checkout. The README hero invocation uses `--target dag` rather than the verified emit path. PM's earlier attempt (clean checkout → `cargo build` → `gunbc compile --target rust` → `cargo check`) never produced a binary. | Build `gunbc` from clean checkout; run the weather example with `--target rust`; verify generated Rust passes `cargo check`; record commit SHA + run timestamp in the Evidence column on Gate A. | **WORKER DISPATCH IN FLIGHT** — fresh `weather-demo-e2e-verification` worker being dispatched by `snappy-bee-513` 2026-05-30. |
 | V5 | **No verification log.** Gates A–E are aspirational checklists with no "actual run result + evidence link + verification date" column. A reviewer cannot today distinguish "pre-checked" from "untested". | Add an Evidence column to each gate bullet (✓ verified with commit/run link / ⏳ in flight / ✗ not run). This doc's job is reviewer-readable readiness — Evidence is the only way to fulfil it. | **PENDING.** This doc maintained by current author. |
 
 The five gaps map onto the five gates: V1+V4 → Gate A (product
@@ -156,7 +173,10 @@ Gate D and Gate E are unaffected by this audit.
   `deb-control`, and APT repo are modeled in `src/v4/install/install.dag`
   with 🟡 markers as active emission intent. They ship as the
   `ShellStatic` / `Formula-Static` / `deb-control` / `apt-repo`
-  projections actually land. Modeled ≠ shipped.
+  projections actually land. Modeled ≠ shipped. **The D-REL-1 (iv) flip
+  is about v3/v4 substrate posture only — it does not change the
+  distribution-channel timeline; Homebrew/`.deb`/APT remain v0.2.0+
+  regardless.**
 - **Public website:** GitHub Pages from `gunb-ai/daglang`, served at
   <https://gunb.ai>. The `daglang` PR #1 (session `fierce-dove-549`) is
   ready; the visibility/Pages flip is a launch-day maintainer action.
@@ -201,9 +221,14 @@ When written, it will enumerate:
   the examples that ship (`weather.dag`, `interp_test.dag`) and the
   `dsl/std` vocabulary those examples exercise. Anything not on this list
   is unsupported.
-- **Target/artifact matrix (D-REL-3b)** — **Rust, Go, and Python only**,
-  one per existing v2 emit lens. For each surface, `SUPPORTED.md`
-  declares the support level explicitly:
+- **Target/artifact matrix (D-REL-3b)** — **Rust, Python, and Go** as
+  the v0.1.0 supported emit targets (one per existing v2 emit lens),
+  per the maintainer's authoritative ruling 2026-05-30: "for v2, i
+  would focus on the three it actually emits, ts can be v4 only (in
+  alpha right now)". **TypeScript is v4-alpha only**, not part of the
+  v2 / v0.1.0 supported contract; it lives in `SUPPORTED.md`'s v4-alpha
+  section alongside the rest of v4/v3 substrate. For each surface,
+  `SUPPORTED.md` declares the support level explicitly:
   - *Full compile target* — `.dag` → emitted source → external toolchain
     check passes for the documented examples (`rustc`/`cargo check`,
     `go build`/`go vet`, `python -m py_compile`).
@@ -212,9 +237,14 @@ When written, it will enumerate:
     declared in `SUPPORTED.md`).
   - "v0.1.0 supports X" is never used without saying what "supports"
     means.
-  - **Out of scope (call out explicitly):** TypeScript (v4
-    early-support, not v0.1.0), C++, LLVM, arbitrary corpus emit, v4
-    full-tree Rust emit, React app generation, self-host fixed point.
+  - **Alpha / WIP (ships but NOT on the support contract per D-REL-1
+    post-flip):** `src/v3` and `src/v4` substrate. Honest error count
+    documented (~7,951 v4 rustc errors at the diagnosis lane).
+    `sharp-otter-407` authors the per-surface alpha/PROVEN/GAP detail
+    in `docs/release/v0.1.0-v4-ship-disposition.md` (separate in-flight
+    PR); `SUPPORTED.md` pulls from that supplement.
+  - **Out of scope (call out explicitly):** C++, LLVM, arbitrary corpus
+    emit, React app generation, self-host fixed point.
 - **Verified install targets** — every OS/arch combination that passed the
   release dry-run (per D-REL-2). Targets that did not pass are absent;
   they are not listed as "experimental".
@@ -264,8 +294,9 @@ yet. See "Pre-tag verification gaps" above (V5) for the open work.
 
 - Public `SUPPORTED.md` exists and is authoritative.
 - Public `README` states the v0.1.0 scope on the first screen.
-- `src/v4` is stripped from the public snapshot (D-REL-1 = CONFIRMED;
-  no "if it ships" escape).
+- **v3 + v4 substrate ships public in v0.1.0 labeled alpha / WIP**
+  (D-REL-1 post-flip). It is **not on the supported contract**;
+  `SUPPORTED.md` per-surface labels what is/isn't claimed.
 - No public doc references `T-##` / operator / dashboard / session /
   audit / scratchpad machinery.
 
@@ -312,17 +343,27 @@ yet. See "Pre-tag verification gaps" above (V5) for the open work.
 
 ## Item F — Rollback plan
 
-If the publish leaks private content (any file from the strip list, any
-PM/session jargon, any unintended path):
+**Leak rollback (export sanitation failure).** If the publish leaks
+private content (any file from the strip list, any PM/session jargon,
+any unintended path):
 
 1. **Immediately flip `gunb-ai/daglang` back to PRIVATE.**
 2. Delete the release and the tag if either has been published.
 3. Rotate any credentials that were exposed (tokens, keys, webhook
    secrets) — even if the leak window was short.
-4. Fix the strip list (`scripts/publish-snapshot.sh` `STRIP_PATHS`) or the
-   root-doc source so the leaked content cannot leak again.
-5. Re-run `scripts/publish-snapshot.sh` dry-run and the public-clone smoke
-   test. Only re-attempt publish once **Gate D** is green again.
+4. Fix the strip list (`scripts/publish-snapshot.sh` `STRIP_PATHS`) or
+   the root-doc source so the leaked content cannot leak again.
+5. Re-run `scripts/publish-snapshot.sh` dry-run and the public-clone
+   smoke test. Only re-attempt publish once **Gate D** is green again.
+
+**v4-compile rollback (D-REL-1 fail-closed, flavor (iv) semantics).**
+If `src/v4` does not compile at tag time:
+
+1. The README + `SUPPORTED.md` flip the alpha label to
+   **pre-alpha / experimental** for the v4 surface (and v3 by parallel).
+2. **No scope strip** — v3/v4 still ship public.
+3. **No tag delay** — the release proceeds.
+4. The truthful labeling is the entire mitigation; nothing else changes.
 
 ## Item G — This doc is private
 
@@ -432,7 +473,8 @@ channels are a separate axis from the binary target matrix:
 ### §6 — Housecleaning
 
 - `src/v1/` — deleted.
-- `src/v3/` — still in tree, stripped from the public snapshot.
+- `src/v3/` — ships public in v0.1.0 labeled alpha / WIP per D-REL-1
+  (post-flip). No longer stripped.
 - `wip/chatgpt_reviewer.dag` — stripped from snapshot.
 - `.cursor/` and `_internal/` — stripped from snapshot.
 - `Cargo.toml` workspace metadata for crates.io readiness — outstanding;
@@ -468,3 +510,9 @@ When **Gates A–E** are all green:
 - Install model authority: [`src/v4/install/install.dag`](../src/v4/install/install.dag)
 - Frontend repo (separate, not part of this tag): [`gunb-ai/frontend`](https://github.com/gunb-ai/frontend)
 - Public website source: `gunb-ai/daglang` PR #1 (session `fierce-dove-549`)
+- v4 ship-disposition supplement (alpha/PROVEN/GAP per-surface detail):
+  `docs/release/v0.1.0-v4-ship-disposition.md` (`sharp-otter-407`,
+  separate in-flight PR)
+- Release-note truth table for the public GH Release body:
+  `docs/release/v0.1.0-release-notes.md` (PR #4005, in flight; will be
+  revised to flavor (iv) framing separately)
