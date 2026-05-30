@@ -176,7 +176,32 @@ SNAPSHOT_LABEL="$(date -u +%Y-%m-%d)"
 git -c user.name="gunbc-release" -c user.email="release@gunb.ai" \
     commit -m "snapshot ${SNAPSHOT_LABEL}"
 
+EXPORT_SHA="$(git rev-parse HEAD)"
+
 popd >/dev/null
+
+# Release receipt: emit public-export-manifest.txt as a sibling of the export
+# dir so it doesn't get committed into the public snapshot or matched by the
+# leak-grep gate. Operators paste this into release notes / audit trails to
+# record what shipped, what was stripped, and the SHA correspondence.
+MANIFEST_PATH="${EXPORT_DIR%/}.manifest.txt"
+MANIFEST_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+{
+  echo "# public-export-manifest"
+  echo "timestamp_utc: ${MANIFEST_TIMESTAMP}"
+  echo "snapshot_source_sha: ${SNAPSHOT_REF}"
+  echo "export_sha: ${EXPORT_SHA}"
+  echo "snapshot_branch: ${SNAPSHOT_BRANCH}"
+  echo
+  echo "## stripped_paths"
+  for p in "${STRIP_PATHS[@]}"; do
+    echo "${p}"
+  done
+  echo
+  echo "## included_paths"
+  git -C "$EXPORT_DIR" ls-files
+} > "$MANIFEST_PATH"
+echo "manifest: ${MANIFEST_PATH}"
 
 if [[ "$PUBLISH" -eq 1 ]]; then
   echo "force-pushing snapshot to ${REMOTE}/${BRANCH}..."
