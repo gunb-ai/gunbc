@@ -271,10 +271,9 @@ mod tests {
 
     #[test]
     fn run_command_bounded_times_out() {
-        let out = run_command_bounded(
-            Command::new("sleep").arg("60"),
-            Duration::from_millis(200),
-        )
+        let mut sleep_cmd = Command::new("sleep");
+        sleep_cmd.arg("60");
+        let out = run_command_bounded(sleep_cmd, Duration::from_millis(200))
         .expect("spawn sleep");
         assert!(out.timed_out, "expected timeout");
     }
