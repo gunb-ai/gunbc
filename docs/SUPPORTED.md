@@ -5,108 +5,76 @@ release of [daglang](https://github.com/gunb-ai/daglang) and the **gunbc**
 compiler. README, release notes, and the project website must not claim
 capabilities beyond what is listed here.
 
+| Tier | Section |
+| ---- | ------- |
+| **Supported** | [§1 — v0.1.0 supported](#1-v010-supported) |
+| **Alpha / WIP** | [§2 — Alpha and work-in-progress](#2-alpha-and-work-in-progress) |
+
+If a feature is not listed under **§1**, treat it as **unsupported** — even if the
+CLI accepts a flag or the repository contains related code.
+
 **Compiler generation.** v0.1.0’s supported product surface is the **v2**
-self-hosted compiler (`gunbc`, crate `v2-compiler`). Everything under
-`src/v3/` and `src/v4/` may appear in the repository but is **not** on this
-contract unless explicitly called out in the [Alpha and work-in-progress](#alpha-and-work-in-progress) section.
+self-hosted compiler (`gunbc`, crate `v2-compiler`). Everything under `src/v3/` and
+`src/v4/` is **§2 alpha / WIP** unless this file explicitly promotes it.
+
+Related (alpha disposition detail, not normative for §1): when present in the
+public tree, see `docs/release/v0.1.0-v4-ship-disposition.md` (v4 ship-disposition
+supplement). Release readiness snapshot: `docs/RELEASE_v0.1.0.md` (when landed).
 
 ---
 
-## Two public tiers
+## 1. v0.1.0 supported
 
-| Tier | Meaning for you |
-| ---- | ---------------- |
-| **Supported** | We intend v0.1.0 to work here. Bug reports are welcome. Documented examples and checks below are the regression bar. |
-| **Alpha / WIP** | Ships in-tree for transparency. **No compile guarantee, no regression contract.** You may hit errors, missing features, or stale docs. |
+### v2 per-target confidence
 
-If a feature is not listed under **Supported**, treat it as **unsupported** —
-even if the CLI accepts a flag or the repository contains related code.
+v0.1.0 advertises **three** v2 emit targets (`src/v2/05_emit_rust.dag`,
+`05_emit_python.dag`, `05_emit_go.dag`). Confidence below is **for the supported
+small-`dsl` examples only** — not for arbitrary `src/v4/` programs.
 
----
+| Target | Confidence | §1 contract summary |
+| ------ | ------------ | ------------------- |
+| **rust** | **HIGH** | Full compile target for documented examples; see verification bar below. |
+| **python** | **MEDIUM** | Small `dsl/` examples only; **v4-substrate Python NOT supported.** |
+| **go** | **MEDIUM-LOW** | Small smoke only; **v4-fixture Go build is open.** |
 
-## Supported emit targets (v2)
+**Rust = HIGH confidence for v0.1.0 supported.** Verified via scripts/v4-mvp1-e2e-gate.sh on main CI + cargo test -p v2-compiler-tests pipeline/bootstrap emit tests. Works for fixtures/v4-mvp1/add.dag + small in-tree modules. **Limit:** full src/v4 emit produces ~7951 rustc errors (SG-1 Symbol/E0423 + SG-2 generic arity/E0107 dominate) — this is v4 substrate, NOT v0.1.0 supported.
 
-v0.1.0 advertises **three** emit targets, one per v2 emitter
-(`src/v2/05_emit_rust.dag`, `05_emit_python.dag`, `05_emit_go.dag`):
+**Python = MEDIUM confidence.** Verified via v2-compiler-tests unit tests (same_source_emits_to_rust_and_python, scrambled_name_emit_python). **NOT** a dedicated add.dag → python CI gate. **Known open bug:** emit_python TCO bug on complex modules (emit_tco_unified path); phase1/nat_semiring v4-scoped emit often fails py_compile. **#3996 did NOT fix this.** Honest for small dsl examples. DO NOT label v4-substrate Python 'supported'.
 
-| Target | Support level in v0.1.0 | Verification bar |
-| ------ | ------------------------ | ------------------ |
-| **rust** | **Full compile target** | Documented examples emit Rust that passes `cargo check` (or `rustc` on the emitted crate). |
-| **python** | **Full compile target** | Emitted `.py` files pass `python3 -m py_compile`. The interpreter example below must run. |
-| **go** | **Full compile target** | Emitted Go passes `go build` and `go vet` on the documented example tree. |
+**Go = MEDIUM-LOW confidence.** Verified via v2-compiler-tests only. **Known open bug:** phase1/nat_semiring go build still substrate-red (multi-file package/module-path mismatches reported as missing-package); #4015 in flight is gate-alignment honesty, NOT emitter fix. Small smoke OK; v4 fixture build still open; lagging Rust/Python.
 
-**What “supports” means.** Saying v0.1.0 supports a target always means: for the
-[supported source subset](#supported-daglang-subset) and [shipped examples](#shipped-examples),
-`gunbc compile --target <name>` succeeds and the external toolchain check in the
-table passes. It does **not** mean every `.dag` file in the repository compiles to
-that target.
+**What “supports” means.** For the [supported daglang subset](#supported-daglang-subset) and [shipped examples](#shipped-examples), `gunbc compile --target <name>` succeeds and the external toolchain check for that target passes at the confidence level above. It does **not** mean every `.dag` file in the repository compiles to that target.
 
-**Not on the v0.1.0 emit contract**
+**Not on the v0.1.0 emit contract (§1)**
 
-- **TypeScript** — modeled in v4 (`src/v4/extdeps/languages/typescript.dag`) as
-  **alpha only**; see [TypeScript (v4 alpha)](#typescript-v4-alpha).
-- **C, C++, LLVM IR, Swift, Java, WASM, and other language models** — not v0.1.0
-  public support.
-- **`--target dag`** — accepted by the CLI for compiler development (typed DAG
-  artifact JSON). It is **not** a user-facing v0.1.0 product target; do not build
-  production workflows on it.
+- **TypeScript** — **§2 v4 alpha only** (not v2 / not §1).
+- **C, C++, LLVM IR, Swift, Java, WASM, and other language models** — **§2** or out of scope.
+- **`--target dag`** — CLI accepts it for compiler development (typed DAG artifact JSON). **Not** a user-facing v0.1.0 product target.
 
 Any other `--target` value is rejected at startup with a non-zero exit and an
 explicit error (fail-closed).
 
----
+#### Known open bugs per target
 
-## Supported daglang subset
+| Target | Open issue | Impact on §1 |
+| ------ | ---------- | ------------- |
+| **rust** | Full-tree `src/v4` emit → ~7,951 `rustc` errors (SG-1 `E0423`, SG-2 `E0107` dominate) | Does **not** reduce §1 confidence for small `dsl/` examples; **do not** treat full v4-tree Rust emit as supported. |
+| **python** | `emit_tco_unified` TCO bug on complex modules; `phase1/nat_semiring` v4-scoped emit often fails `py_compile` (#3996 did not fix) | §1 limited to **small `dsl/` examples**; v4-substrate Python is **not** supported. |
+| **go** | `phase1/nat_semiring` `go build` still substrate-red (multi-file package / module-path mismatches); #4015 is gate-alignment honesty, not an emitter fix | §1 **small smoke** only; v4-fixture Go build remains **open**. |
 
-v0.1.0 supports a **small, example-backed** slice of the language — not the full
-`dsl/std/` corpus and not arbitrary programs under `src/v2/` or `src/v4/`.
+#### Verification bar (§1 examples)
 
-**Anchors.** Support is defined by what the shipped examples compile and run:
+| Target | Toolchain check on documented examples |
+| ------ | -------------------------------------- |
+| **rust** | Emitted crate passes `cargo check`. |
+| **python** | Emitted `.py` passes `python3 -m py_compile`; `gunbc run` works for `interp_test`. |
+| **go** | Emitted tree passes `go build` and `go vet` on the weather example layout. |
 
-- [`dsl/examples/weather/weather.dag`](../dsl/examples/weather/weather.dag)
-- [`dsl/examples/interp_test/interp_test.dag`](../dsl/examples/interp_test/interp_test.dag)
+### Weather hero demo
 
-plus the **`dsl/std/`** vocabulary those programs import transitively (primitives,
-`List`, `concat`, `to_string`, list algebra, and related std modules).
+Weather demo is **COMPILE-VERIFIED** (emit-to-Rust compiles per check-clean-checkout-build.sh ignoring bootstrap_l4_structural). There is **NO routine CI proof of cargo RUN binary** at HEAD. The Quick Start command sequence is verified to **PRODUCE** Rust output and **PASS** `cargo check`; running the binary end-to-end is being verified by adhoc-bec7923f-4d7 (merry-bear-248) — embed the verification transcript reference once their report arrives.
 
-**Language features on the contract** (as used in those examples):
-
-- `module` declarations and multi-root `--source-root` layout (entry modules in
-  the first root; dependencies resolved from additional roots).
-- Product types (records) and sum types (coproducts / enums), including variants
-  with payloads.
-- Functions with typed parameters and return types; top-level `fn` definitions.
-- `let` bindings; `if` / `else`.
-- `match` with variant patterns and payload destructuring.
-- List literals and `List<T>`.
-- Pipeline syntax (`|>`) with `map`, `filter`, and `fold`.
-- String concatenation (`concat`) and `to_string` for numeric values.
-- Closures in pipeline callbacks (as in `interp_test.dag`).
-
-**Explicitly unsupported for v0.1.0** (non-exhaustive):
-
-- Programs outside the construct set above (e.g. workflows, services, REST/Shell
-  transports, effects, and most of `dsl/extdeps/`).
-- Compiling the compiler’s own `src/v2/` pipeline as user daglang.
-- “Works on my machine” `.dag` that imports modules not reachable from the
-  documented `--source-root` layout.
-- Any claim of **exhaustive** `dsl/std/` coverage — only the std modules pulled
-  by the shipped examples are in scope.
-
-Using unsupported constructs should **fail closed**: the compiler reports
-diagnostics and exits non-zero rather than emitting partial or guessed target
-code.
-
----
-
-## Shipped examples
-
-| Example | Role | Supported commands |
-| ------- | ---- | ------------------ |
-| **Weather** | Hero compile demo (types, enums, match, list pipeline) | `gunbc compile` with `--target rust`, `python`, or `go`; Rust path verified with `cargo check` on the output tree. |
-| **Interpreter test** | End-to-end execution demo | `gunbc run` with `--source-root dsl/examples/interp_test` and `--source-root dsl/std`. |
-
-**Weather — Rust gate** (from repo root after `cargo build --release -p v2-compiler --bin gunbc`):
+**Weather — compile gate** (from repo root after `cargo build --release -p v2-compiler --bin gunbc`):
 
 ```bash
 ./target/release/gunbc compile \
@@ -117,7 +85,37 @@ code.
 cargo check --manifest-path /tmp/weather-out/Cargo.toml
 ```
 
-**Interpreter test — run gate:**
+Swap `--target rust` for `python` or `go` only within the confidence limits above.
+
+### Supported daglang subset
+
+v0.1.0 supports a **small, example-backed** slice of the language — not the full
+`dsl/std/` corpus and not arbitrary programs under `src/v2/` or `src/v4/`.
+
+**Anchors.**
+
+- [`dsl/examples/weather/weather.dag`](../dsl/examples/weather/weather.dag)
+- [`dsl/examples/interp_test/interp_test.dag`](../dsl/examples/interp_test/interp_test.dag)
+
+plus the **`dsl/std/`** vocabulary those programs import transitively.
+
+**Language features on the contract** (as used in those examples):
+
+- `module` declarations and multi-root `--source-root` layout.
+- Product types (records) and sum types (coproducts / enums), including variants with payloads.
+- Functions with typed parameters and return types; top-level `fn` definitions.
+- `let` bindings; `if` / `else`; `match` with variant patterns and payload destructuring.
+- List literals and `List<T>`; pipeline syntax (`|>`) with `map`, `filter`, and `fold`.
+- `concat`, `to_string`, and closures in pipeline callbacks (`interp_test.dag`).
+
+**Explicitly unsupported for v0.1.0** (non-exhaustive): workflows, services, REST/Shell transports, effects, most of `dsl/extdeps/`, compiling `src/v2/` as user daglang, and any claim of exhaustive `dsl/std/` coverage.
+
+### Shipped examples
+
+| Example | Role | §1 commands |
+| ------- | ---- | ----------- |
+| **Weather** | Hero **compile** demo | `gunbc compile` → rust / python / go per confidence table; Rust path: `cargo check` on output (run verification pending — see [Weather hero demo](#weather-hero-demo)). |
+| **Interpreter test** | Execution demo | `gunbc run` with `--source-root dsl/examples/interp_test` and `--source-root dsl/std`. |
 
 ```bash
 ./target/release/gunbc run \
@@ -125,40 +123,26 @@ cargo check --manifest-path /tmp/weather-out/Cargo.toml
   --source-root dsl/std
 ```
 
-Other files under `dsl/examples/` (including transport demos) are **not** on the
-v0.1.0 contract unless listed above.
+Other files under `dsl/examples/` are **not** on the §1 contract unless listed above.
 
----
-
-## CLI on the support contract
+### CLI on the support contract
 
 | Command | Supported flags / behavior |
 | ------- | ------------------------- |
-| `gunbc compile` | `--source-root` (repeatable), `--output-dir`, `--target` ∈ {`rust`, `python`, `go`} for the contract; `--source-dir` legacy single-tree mode. |
+| `gunbc compile` | `--source-root` (repeatable), `--output-dir`, `--target` ∈ {`rust`, `python`, `go`} for §1; `--source-dir` legacy mode. |
 | `gunbc run` | `--source-root` (repeatable), `--function` (default `main`). |
-| Global | `--dry-run` (mock service calls). |
-| `gunbc --help` | Usage text for the above. |
+| Global | `--dry-run`. |
+| `gunbc --help` | Usage for the above. |
 
-Subcommands and flags not listed here are **unsupported** for v0.1.0.
+### Installing gunbc
 
----
-
-## Installing gunbc
-
-**Always supported:** build from source with a stable Rust toolchain (see
-`rust-toolchain.toml`):
+**Always supported:** build from source (`rust-toolchain.toml`):
 
 ```bash
 cargo build --release -p v2-compiler --bin gunbc
 ```
 
-The release binary is `target/release/gunbc`.
-
-**Prebuilt binaries** (GitHub Releases on tag `v0.1.0`):
-
-Release CI builds the following **target triples** when the release workflow is
-green. **Only triples that passed the release dry-run before tag are advertised**
-on the download page; if your platform is missing, use the source build.
+**Prebuilt binaries** (GitHub Releases on tag `v0.1.0`): only triples that passed the release dry-run before tag are advertised.
 
 | OS | Architecture | Target triple | Release asset (basename) |
 | -- | ------------- | ------------- | ------------------------- |
@@ -169,97 +153,75 @@ on the download page; if your platform is missing, use the source build.
 | Windows | x86_64 | `x86_64-pc-windows-msvc` | `gunbc-x86_64-pc-windows-msvc.exe` |
 | Windows | arm64 | `aarch64-pc-windows-msvc` | `gunbc-aarch64-pc-windows-msvc.exe` |
 
-**Not guaranteed in v0.1.0:** Homebrew, `.deb`/APT, or crates.io distribution.
-Use source build or release assets only.
+**Not guaranteed in v0.1.0:** Homebrew, `.deb`/APT, crates.io.
 
-**Host OS for development:** Linux and macOS are the primary environments used in
-CI. Windows is supported via release artifacts and local `cargo build`; emitted
-*user* code targets depend on the table in [Supported emit targets](#supported-emit-targets-v2).
+### Fail-closed guarantee (§1)
+
+For v0.1.0 supported paths, **unsupported must not mean undefined**:
+
+1. **Unknown emit targets** — non-zero exit; error names allowed targets.
+2. **Compile-time errors** — diagnostics printed; hard errors → non-zero exit.
+3. **Missing modules or roots** — explicit failure, not silent omission.
+4. **No silent partial emit** on §1 examples with §1 targets.
 
 ---
 
-## Alpha and work-in-progress
+## 2. Alpha and work-in-progress
 
-### v3 and v4 trees
+**Alpha / WIP** surfaces ship in-tree for transparency. **No compile guarantee, no
+regression contract, no fail-closed bar.** Users accept current-state errors.
 
-`src/v3/` and `src/v4/` ship in the public repository **labeled alpha / WIP**.
-They are **not** on the v0.1.0 support contract:
+### v3 and v4 trees (general)
 
-- No promise of clean compile across the full v4 tree.
-- No regression discipline for v4 substrate changes.
-- v4 compiler pipeline and bootstrap workflows may require internal CI bridges
-  not available to end users.
+`src/v3/` and `src/v4/` are **not** on the §1 contract. v2 (`gunbc` + §1) is the
+supported path for trying daglang in v0.1.0.
 
-v2 (`gunbc` + this document) is the supported path for trying daglang today.
+### v4 Rust (alpha)
 
-### TypeScript (v4 alpha)
+**Rust** → "alpha with verification framework + measured gap count"
+(~7,951 errors on full-tree v4 emit, falling as SG-1/SG-5 land).
 
-TypeScript is **v4 early-support only** — **not** v0.1.0 supported emit.
+Full-tree `src/v4` Rust emit is **not** §1 supported. Per-target leaf-model runners
+(R1/R2a/R2b/R3-external) exist for substrate work; that does not promote full-tree
+emit to §1.
 
-- Substrate: `src/v4/extdeps/languages/typescript.dag` (and related ECMAScript
-  model).
-- **TypeScript output is not currently checked against `tsc`; report-and-track
-  basis only.** Do not expect clean `tsc` emit from v4 in v0.1.0.
-- Structural tests (parse, grammar round-trip) may exist; they do not establish
-  a user-facing compile guarantee.
+### v4 TypeScript (alpha)
+
+**TypeScript** → "alpha substrate-only, no verification path, exploratory" (must
+say this honestly).
+
+TypeScript is **v4 early-support only** — **not** v0.1.0 §1 supported emit.
+
+**TypeScript output is not currently checked against `tsc`; report-and-track
+basis only.** Do not expect clean `tsc` emit from v4 in v0.1.0.
+
+Substrate: `src/v4/extdeps/languages/typescript.dag` (and related ECMAScript model).
+Structural tests (parse, grammar round-trip) do not establish a user-facing compile
+guarantee.
 
 ### Other v4 language models
 
 C++, LLVM IR, Swift, Java, and additional models under `src/v4/extdeps/languages/`
-may appear as substrate. Unless a future amendment to this file promotes a
-surface to **Supported**, treat them as **alpha / WIP** with no user contract.
+ship as **alpha / WIP** with no user contract unless a future amendment promotes
+them to §1.
 
----
-
-## Explicitly out of scope for v0.1.0
+### Explicitly out of scope (§2 and beyond)
 
 - Self-hosting fixed point (v4 compiling v4 without bootstrap bridges).
 - React / framework application generation.
 - Arbitrary corpus emit or “all of `dsl/std/`.”
-- v4-done predicate closure as a release gate (internal maturation only).
-- TypeScript, C++, and LLVM as **supported** emit targets (see above).
-
----
-
-## Fail-closed guarantee
-
-For v0.1.0, **unsupported must not mean undefined**:
-
-1. **Unknown emit targets** — CLI exits with an error naming `rust`, `python`,
-   `go`, and `dag` (the latter is developer-only, not contract-supported).
-2. **Compile-time errors** — parse, resolve, infer, and emit report diagnostics;
-   hard errors yield a non-zero exit after printing them (complexity analyzer
-   limitations may emit non-blocking warnings only where documented in the
-   compiler).
-3. **Missing modules or roots** — missing `--source-root`, duplicate `module`
-   paths, or unreadable files fail with an explicit panic or diagnostic, not
-   silent omission.
-4. **No silent partial emit** — if emission cannot complete for a supported
-   example with a supported target, the run fails; users should not rely on
-   incomplete output trees.
-
-If you observe silent success on an unsupported path, please file a bug — that
-is a defect against this contract.
+- v4-done predicate closure as a v0.1.0 release gate.
 
 ---
 
 ## Reporting issues
 
-For **supported** surfaces, open an issue on the public repository with:
+For **§1 supported** surfaces, open an issue with: `gunbc --help` (or version/commit), exact command line, host/target toolchain versions, and example name (`weather` or `interp_test`).
 
-- `gunbc --help` output (or version/commit).
-- Exact `gunbc compile` / `gunbc run` command line.
-- Target triple (for binary issues) or `rustc --version` / `go version` /
-  `python3 --version` (for emit issues).
-- Relevant `.dag` source or example name (`weather` or `interp_test`).
-
-For **alpha / WIP** surfaces, issues are still welcome but may be closed as
-“not v0.1.0 contract” unless they affect a supported path.
+For **§2 alpha / WIP**, issues are welcome but may be closed as “not v0.1.0 §1 contract” unless they affect a §1 path.
 
 ---
 
 ## Amendments
 
-Promoting a feature from alpha to **Supported** requires an update to this file
-(and the documented verification gates). Demotions use the same process. Patch
-releases may narrow support only with clear release-note callouts.
+Promoting a feature from §2 to **§1** requires an update to this file and documented verification gates. Demotions use the same process. Patch releases may narrow §1 only with clear release-note callouts.
