@@ -138,6 +138,11 @@ type CiStepId {
 }
 // Alternative (if gate-less jobs only): newtype wrapper over Symbol with brand — still NOT bare Symbol on UpsertInputRef.
 
+// Dashboard session identity for carveout accountability (v4-ci-overhaul §5 operator-ratified).
+// NOT bare Symbol — a Symbol owner would let UnknownYet carveouts behave like undifferentiated
+// "Always because vibes" (P1 closed-system / P2 single authority).
+type ManagerSessionId = String where brand("ManagerSessionId")
+
 type CiCarveout {
   step_id: CiStepId
   reason_code: Symbol
@@ -147,7 +152,7 @@ type CiCarveout {
 
 type DissolutionTarget
   = ModelMissingSubstrate { what: Symbol }
-  | UnknownYet { investigation_owner: Symbol, review_due_by: Symbol }
+  | UnknownYet { investigation_owner: ManagerSessionId, review_due_by: Symbol }
 
 data ci_always_run_carveouts: List<CiCarveout> = [ /* small honest list */ ]
 
@@ -214,7 +219,8 @@ Step cache projection        | v4.std.node content_hash            | Derive dige
 1. `NodeQuery` — substrate node set selector (for `SubstrateNodeSet`).
 2. `RepositoryRoot` / `RepoRoot` — repo boundary for file sets (or justify `RepoPath` only).
 3. `CiStepId` — step identity (replaces raw `Symbol` in upstream refs and receipts).
-4. `AffectedNode` (receipt field) — projection of intersection evidence; likely alias/subset of `AffectedDependency` or `Change.subject`.
+4. `ManagerSessionId` — dashboard manager session binding for `UnknownYet.investigation_owner` (lands with `CiCarveout` in `v4.workflow.ci` or sibling workflow module).
+5. `AffectedNode` (receipt field) — projection of intersection evidence; likely alias/subset of `AffectedDependency` or `Change.subject`.
 
 ---
 
@@ -241,6 +247,7 @@ Step cache projection        | v4.std.node content_hash            | Derive dige
 | `UpstreamUpsert { step_id: Symbol }` | Untyped step identity |
 | `dependency_set` / `DependencySource` | Retired vocabulary (PR #3959) |
 | Reusing `CiGateRunPolicy` for step selection | GHA interim projection only (🟡) |
+| `UnknownYet { investigation_owner: Symbol, ... }` | Supersedes operator-ratified `ManagerSessionId` (v4-ci-overhaul §5) |
 
 ---
 
@@ -297,7 +304,7 @@ Escalate (do not spot-fix):
 - [ ] `CiStepId` shape approved (job+gate vs branded Symbol)
 - [ ] `RepositoryRoot` / `RepoRoot` resolution approved
 - [ ] Cache derived-only rule accepted (no payload field)
-- [ ] Carveout + `UnknownYet` owner/cadence accepted
+- [ ] `ManagerSessionId` + carveout `UnknownYet` owner/cadence accepted (matches v4-ci-overhaul §5)
 - [ ] Worker dispatch authorized (still blocked on Phase 1.4 completion)
 
 ---
