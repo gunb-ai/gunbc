@@ -165,6 +165,7 @@ fn diagnostic_for_violation(v: DeterminismViolation) -> Diagnostic {
 
 type CalleeScanState {
   current: Node
+  registry: Map<Symbol, DeterminismClass>
   violation: Optional<DeterminismViolation>
 }
 
@@ -209,23 +210,27 @@ fn callee_positional_edge_violation(
   }
 }
 
-fn callee_scan_init(n: Node) -> CalleeScanState {
-  CalleeScanState { current: n, violation: optional_absent() }
+fn callee_scan_init(registry: Map<Symbol, DeterminismClass>, n: Node) -> CalleeScanState {
+  CalleeScanState {
+    current: n,
+    registry: registry,
+    violation: optional_absent()
+  }
 }
 
 fn callee_scan_step(
-  registry: Map<Symbol, DeterminismClass>,
   acc: CalleeScanState,
   edge: Edge,
   child: CalleeScanState
 ) -> CalleeScanState {
   CalleeScanState {
     current: acc.current,
+    registry: acc.registry,
     violation: optional_prefer_first_present(
       left: acc.violation,
       right: optional_prefer_first_present(
         left: callee_positional_edge_violation(
-          registry: registry,
+          registry: acc.registry,
           parent: acc.current,
           edge: edge
         ),
@@ -237,10 +242,10 @@ fn callee_scan_step(
 
 fn callee_scan_fold_algebra(registry: Map<Symbol, DeterminismClass>) -> NodeFold<CalleeScanState> {
   NodeFold {
-    init: callee_scan_init,
-    step: fn(acc, edge, child) {
-      callee_scan_step(registry: registry, acc: acc, edge: edge, child: child)
-    }
+    init: fn(n0) {
+      callee_scan_init(registry: registry, n: n0)
+    },
+    step: callee_scan_step
   }
 }
 
