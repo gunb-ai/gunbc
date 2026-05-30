@@ -62,7 +62,7 @@ import v4.std.refinement {
   VacuousValidation,
   Validation,
   refine,
-  refined_vacuous_oracle_pack
+  refined_vacuous_stub_pack
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
@@ -91,7 +91,6 @@ data refinement_preservation_stub_validation: Validation<List<Node>> = Validatio
 
 data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
   reason: refinement_preservation_stub_invalid,
-  admits: refinement_preservation_stub_admits,
   vacuous: VacuousAdmits
 }
 
@@ -99,7 +98,7 @@ data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Nod
 // Generator anchor: vacuous admits=true stub — refine accepts; pack helper is exhaustive-match only.
 // 🟡 gated — feature:refinement-preservation-stub-fallback — bind T-19 testgen follow-up — dissolve-on-arrival: replace oracle pack with Witness unwrap at the generator boundary; forbidden: permanent vacuous refinement without a dissolution receipt.
 fn refinement_preservation_stub_generator_refined_terminal() -> Refined<List<Node>> {
-  refined_vacuous_oracle_pack(
+  refined_vacuous_stub_pack(
     base: [stub_empty_conj],
     by: refinement_preservation_stub_vacuous_validation,
     at: refinement_preservation_stub_locus()

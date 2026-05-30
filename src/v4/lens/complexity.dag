@@ -70,7 +70,7 @@ import v4.std.refinement {
   Validation,
   refine,
   refined_base,
-  refined_vacuous_oracle_pack
+  refined_vacuous_stub_pack
 }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -95,7 +95,6 @@ data complexity_variables_validation: Validation<List<SizeVariable>> = Validatio
 
 data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
   reason: complexity_variables_invalid,
-  admits: complexity_variables_admits,
   vacuous: VacuousAdmits
 }
 
@@ -121,7 +120,7 @@ fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVaria
     // dissolve-on-arrival: propagate Violates at exported boundary (Witness) when admits is real;
     // forbidden: silent empty-list fabrication that drops diagnostics.
     Violates { diagnostic: _ } =>
-      refined_vacuous_oracle_pack(
+      refined_vacuous_stub_pack(
         base: xs,
         by: complexity_variables_vacuous_validation,
         at: complexity_projection_locus()

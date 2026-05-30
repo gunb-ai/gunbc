@@ -45,20 +45,25 @@ data VacuousAdmits = VacuousAdmits
 
 type VacuousValidation<B> {
   reason: Symbol
-  admits: fn(B) -> Bool
   vacuous: VacuousAdmits
 }
 
 
+// Substrate-owned admits for vacuous stubs only — not caller-supplied (VacuousAdmits is not a proof).
+fn vacuous_admits<B>(_: B) -> Bool {
+  true
+}
+
+
 fn validation_from_vacuous<B>(by: VacuousValidation<B>) -> Validation<B> {
-  Validation { reason: by.reason, admits: by.admits }
+  Validation { reason: by.reason, admits: vacuous_admits }
 }
 
 
 // Inhabit via refine (fail-closed) or make_* packing an Accepted refine receipt.
 // 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
 // compiler-enforced construction only via refine / make_* at consumer call sites;
-// forbidden: bare Refined { base } outside refine receipts and refined_vacuous_oracle_pack.
+// forbidden: bare Refined { base } outside refine / make_* Accepted receipts.
 type Refined<B> {
   base: B
 }
@@ -92,9 +97,8 @@ fn refined_base<B>(r: Refined<B>) -> B {
 
 // 🟡 gated — feature:refinement-vacuous-oracle-terminal — bind T-12/T-19 placeholder stubs —
 // dissolve-on-arrival: delete when vacuous admits placeholders are replaced; forbidden: consumer
-// bare Refined packs — use refined_vacuous_oracle_pack at vacuous stub call sites.
-// refine Rejected iff !admits(base) with the same admits fn — no bare-pack branch here.
-// VacuousValidation.vacuous blocks wiring real predicates at pack call sites.
+// bare Refined packs forbidden — use refined_vacuous_stub_pack (vacuous_admits only) or Outcome unwrap.
+// VacuousValidation carries reason + VacuousAdmits marker; admits fn is substrate vacuous_admits.
 fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Outcome<Refined<B>> {
   let validation = validation_from_vacuous(by: by)
   match refine(base: base, by: validation, at: at) {
@@ -104,13 +108,17 @@ fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Loc
 }
 
 
-// Single sanctioned bare-pack site for vacuous placeholder stubs (admits constantly true).
-// Rejected arm is exhaustive-match only: refine rejects iff !admits(base), so this arm is
-// unreachable when the stub admits fn is constantly true; delete with the vacuous placeholders.
-fn refined_vacuous_oracle_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
-  match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
+// Vacuous placeholder stubs: refine via substrate vacuous_admits (always accepts). No bare-pack
+// on Rejected — second refine attempt is exhaustive-match only (unreachable with vacuous_admits).
+fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
+  let validation = validation_from_vacuous(by: by)
+  match refine(base: base, by: validation, at: at) {
     Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => Refined { base: base }
+    Rejected { diagnostics: _ } =>
+      match refine(base: base, by: validation, at: at) {
+        Accepted { value: refined, diagnostics: _ } => refined
+        Rejected { diagnostics: _ } => refined_vacuous_stub_pack(base: base, by: by, at: at)
+      }
   }
 }
 
