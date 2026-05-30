@@ -1,34 +1,7 @@
 // src/v4/std/determinism.dag
-// Scope: determinism classification — closed coproduct naming whether a function's outputs
-// are a deterministic relation on its inputs, and (when not) which substrate-recognized
-// non-deterministic source breaks it. Foundation for the determinism-as-modeled-effect lane.
-// Status: PR-1 carrier substrate — fact-bundle only; lens enforcement is PR-2, signature
-// plumbing is PR-3/PR-4, DB-8 5x emit retirement is PR-5.
+// Scope: determinism classification carrier — orthogonal axis to v4.std.effects EffectShape.
+// Status: PR-1 carrier substrate; lens/plumbing deferred (co-evolves with #3468).
 // Anchor: https://en.wikipedia.org/wiki/Deterministic_algorithm
-// Anchor: https://en.wikipedia.org/wiki/Referential_transparency
-//
-// MODELING NOTE (P1 Step 1 — DAG-ancestor): determinism is **orthogonal** to the
-// idempotency partition carried in `src/v4/std/effects.dag` (`EffectShape =
-// IsIdempotent | IsBreaking`). IsIdempotent/IsBreaking describe what an effect does to
-// the world; determinism describes whether the function's implementation produces a
-// single-valued relation on its inputs. These are two axes of one function signature,
-// not alternatives on one axis — extending `EffectShape` with a `Deterministic` arm
-// would conflate orthogonal concerns (P1 Step 2: coordinates, not alternatives at the
-// EffectShape level; but at the **determinism** level the question IS alternatives,
-// hence a sum type here).
-//
-// MODELING NOTE (P1 canonical-name rule): "determinism / referential transparency" is
-// a recognized CS concept; this file is its v4 home. The v2 precedent
-// `dsl/std/behavioral.dag` already declares
-// `type Determinism = Deterministic | NonDeterministic | EventuallyConsistent`
-// attached to `OperationBehavior`. The v4 form refines `NonDeterministic` with a
-// closed `NonDetSource` so the structural verifier (PR-2) has named sources to forbid.
-//
-// CO-EVOLUTION WITH #3468: `EffectClassification` in `src/v4/lens/effect.dag` is a
-// signature-deferred slot whose closure is gated by #3468. Determinism is a **separate
-// axis** that co-evolves with that work — PR-1 ships independently per PM Option A.
-// Downstream lenses (PR-2) compose `Witness<DeterminismFact>` the same way effect-kind
-// lenses will compose `Witness<EffectClassification>` once #3468 closes.
 
 
 module v4.std.determinism
@@ -37,19 +10,7 @@ module v4.std.determinism
 import v4.std.node { Symbol }
 
 
-// 🟢 coproduct dissolution — TERMINAL at the substrate scope.
-// The substrate-recognized sources of non-determinism the PR-2 structural verifier
-// forbids in Deterministic functions. Closed set — adding a source is a substrate
-// change reviewed against this list, not a free-form string.
-//   HashIteration:      iteration over HashMap/HashSet (insertion-order not stable).
-//   TimeRead:           wall-clock read (`now()`, system time).
-//   RandomRead:         RNG read without a seed bound at the signature.
-//   EnvRead:            environment-variable / external-config read.
-//
-// Termination is intentionally NOT modeled here: a pure recursive fn whose
-// (input → output) relation is total is deterministic regardless of recursion
-// depth. Termination has its own substrate carriers (descent evidence, Loop
-// bounds) and stays out of PR-2's structural lens scope.
+// 🟢 coproduct dissolution
 type NonDetSource
   = HashIteration
   | TimeRead
@@ -57,20 +18,12 @@ type NonDetSource
   | EnvRead
 
 
-// 🟢 coproduct dissolution — TERMINAL.
-// Classification of a function's determinism. `Deterministic` is the proof side
-// (PR-2's lens witnesses it structurally); `NonDeterministic` names the first
-// substrate-recognized source that breaks the proof.
+// 🟢 coproduct dissolution
 type DeterminismClass
   = Deterministic
   | NonDeterministic { source: NonDetSource }
 
 
-// Per-signature determinism row. The `signature` field references a function by
-// its declared `Symbol`; PR-4 attaches one row per annotated `fn` so the PR-2
-// lens can look up the claimed classification and check it structurally against
-// the body. Kept as a flat fact-bundle (P2 boundary discipline) so the lens
-// reads named edges rather than positional payload.
 type DeterminismFact {
   signature: Symbol,
   classification: DeterminismClass
