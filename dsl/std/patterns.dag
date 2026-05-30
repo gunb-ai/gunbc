@@ -43,7 +43,7 @@ import std.resources { Filesystem }
 import std.types { FilePath, Milliseconds }
 import std.filesystem { partition_entries, is_text_readable }
 
-// ── Upsert<T> type substrate (Phase 1.4 — v4-upsert-t-substrate-worksheet §1.1) ─
+// ── Upsert<T> type substrate (Phase 1.4 — v4-upsert-t-substrate-worksheet-2026-05-30.md §1.1; §8 closed) ─
 // Phase bodies are typed nodes/expressions, not Symbol strings (P2).
 // `T` brands the step payload specialization (e.g. VerificationReport, CiPipeline);
 // `inputs` belong on CiUpsertStep<T> only (Phase 1.5 — v4-ci-schema-worksheet §1.2).
