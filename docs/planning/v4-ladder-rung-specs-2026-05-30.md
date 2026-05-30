@@ -184,7 +184,7 @@ Execution may remain `Deferred` behind T-38 **only** for substrate claims; the *
 | ----- | ---- | ---- |
 | Authority (jobs/gates) | `src/v4/workflow/ci.dag` | Add a **new** `CiJob` + `CiGate` for `phase1/nat_semiring` rungs 0–2 — do not repurpose `M1RustEmitProbeCommand` (corpus-wide, diagnostic) or `TestClaimCorpusEvalCommand` (full corpus T-38). |
 | GHA projection | `dsl/gunbc/ci_github_actions_workflow.dag` | New step/job projecting the modeled command. |
-| Interim host script (if needed) | **New** `scripts/v4-phase1-nat-semiring-rung-gate.sh` | Fixture-scoped emit+toolchain; pattern from `scripts/v4-m1-rust-emit-probe.sh` but **single module path**, not full `src/v4`. |
+| Host gate script | `scripts/v4-phase1-nat-semiring-rung-gate.sh` (**landed** on `main` via #3953) | Fixture-scoped emit+toolchain; **align** to §2.1 parse-only + §2.4 `SKIP` semantics per §6 — do not recreate. |
 
 **Worker brief triple (required on your PR):**
 
