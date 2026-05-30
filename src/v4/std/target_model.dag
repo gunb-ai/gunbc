@@ -282,14 +282,30 @@ fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) ->
   )
 }
 
-fn target_type_expr_generic_apply_emitted(
+fn target_type_expr_wrapped_emitted_labeled(
   kind: TargetTypeExprKind,
+  surface: Symbol,
+  slot_edges: List<Edge>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: list_append(
+        left: slot_edges,
+        right: Cons { head: target_type_expr_surface_edge(surface: surface), tail: Empty }
+      ),
+      right: Cons { head: target_type_expr_kind_edge(kind: kind), tail: Empty }
+    )
+  }
+}
+
+fn target_type_expr_instantiation_emitted(
   form: TargetGenericApply,
   head: Node,
   args: List<Node>
 ) -> Node {
   target_type_expr_wrapped_emitted(
-    kind: kind,
+    kind: TargetTypeExprInstantiation,
     surface: form.surface,
     children: list_append(
       left: Cons { head: head, tail: Empty },
@@ -298,15 +314,50 @@ fn target_type_expr_generic_apply_emitted(
   )
 }
 
-fn target_type_expr_field_slot_type_nodes(fields: List<TargetTypeExprFieldSlot>) -> List<Node> {
+fn target_type_expr_cardinality_emitted(
+  form: TargetGenericApply,
+  head: Node,
+  args: List<Node>
+) -> Node {
+  target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprCardinality,
+    surface: form.surface,
+    children: list_append(
+      left: Cons { head: head, tail: Empty },
+      right: args
+    )
+  )
+}
+
+fn target_type_expr_field_slot_edges(fields: List<TargetTypeExprFieldSlot>) -> List<Edge> {
   fold(fields, init: Empty, f: fn(acc, field) {
-    list_snoc_item(xs: acc, item: field.type_expr)
+    list_snoc_item(
+      xs: acc,
+      item: Edge { label: Named { name: field.label }, target: field.type_expr }
+    )
   })
 }
 
-fn target_type_expr_variant_slot_type_nodes(variants: List<TargetTypeExprVariantSlot>) -> List<Node> {
+fn target_type_expr_variant_slot_edges(variants: List<TargetTypeExprVariantSlot>) -> List<Edge> {
   fold(variants, init: Empty, f: fn(acc, variant) {
-    list_snoc_item(xs: acc, item: variant.type_expr)
+    list_snoc_item(
+      xs: acc,
+      item: Edge { label: Named { name: variant.label }, target: variant.type_expr }
+    )
+  })
+}
+
+fn target_type_expr_emitted_slot_type_nodes(node: Node) -> List<Node> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: n } =>
+        if n == target_type_expr_field_surface || n == target_type_expr_field_kind {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: e.target)
+        }
+      Positional => acc
+    }
   })
 }
 
@@ -314,10 +365,10 @@ fn target_type_expr_record_emitted(
   form: TargetRecordTypeShape,
   fields: List<TargetTypeExprFieldSlot>
 ) -> Node {
-  target_type_expr_wrapped_emitted(
+  target_type_expr_wrapped_emitted_labeled(
     kind: TargetTypeExprRecord,
     surface: form.surface,
-    children: target_type_expr_field_slot_type_nodes(fields: fields)
+    slot_edges: target_type_expr_field_slot_edges(fields: fields)
   )
 }
 
@@ -325,10 +376,10 @@ fn target_type_expr_sum_emitted(
   form: TargetSumTypeShape,
   variants: List<TargetTypeExprVariantSlot>
 ) -> Node {
-  target_type_expr_wrapped_emitted(
+  target_type_expr_wrapped_emitted_labeled(
     kind: TargetTypeExprSum,
     surface: form.surface,
-    children: target_type_expr_variant_slot_type_nodes(variants: variants)
+    slot_edges: target_type_expr_variant_slot_edges(variants: variants)
   )
 }
 

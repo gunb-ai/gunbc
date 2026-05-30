@@ -111,7 +111,9 @@ import v4.std.target_model {
   target_type_expr_field_separator,
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
-  target_type_expr_generic_apply_emitted,
+  target_type_expr_cardinality_emitted,
+  target_type_expr_emitted_slot_type_nodes,
+  target_type_expr_instantiation_emitted,
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted
@@ -1465,8 +1467,7 @@ fn project_type_expression_node(
             o: list_head_and_tail(xs: projected, node: node),
             f: fn(split) {
               Accepted {
-                value: target_type_expr_generic_apply_emitted(
-                  kind: TargetTypeExprInstantiation,
+                value: target_type_expr_instantiation_emitted(
                   form: projection.instantiation_form,
                   head: split.head,
                   args: split.tail
@@ -1488,8 +1489,7 @@ fn project_type_expression_node(
             o: list_head_and_tail(xs: projected, node: node),
             f: fn(split) {
               Accepted {
-                value: target_type_expr_generic_apply_emitted(
-                  kind: TargetTypeExprCardinality,
+                value: target_type_expr_cardinality_emitted(
                   form: projection.cardinality_form,
                   head: split.head,
                   args: split.tail
@@ -1728,7 +1728,7 @@ fn serialize_type_expr_record_bounded(
           target,
           projection,
           form.separator,
-          node_positional_child_targets(node: node)
+          target_type_expr_emitted_slot_type_nodes(node: node)
         ),
         f: fn(fields_source) {
           bind_outcome(
@@ -1760,7 +1760,7 @@ fn serialize_type_expr_sum_bounded(
     target,
     projection,
     form.variant_separator,
-    node_positional_child_targets(node: node)
+    target_type_expr_emitted_slot_type_nodes(node: node)
   )
 }
 fn serialize_type_expr_arrow_input_wrapped(
