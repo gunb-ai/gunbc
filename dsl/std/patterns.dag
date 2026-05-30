@@ -43,6 +43,28 @@ import std.resources { Filesystem }
 import std.types { FilePath, Milliseconds }
 import std.filesystem { partition_entries, is_text_readable }
 
+// ── Upsert<T> type substrate (Phase 1.4 — v4-upsert-t-substrate-worksheet §1.1) ─
+// Phase bodies are typed nodes/expressions, not Symbol strings (P2).
+// `T` brands the step payload specialization (e.g. VerificationReport, CiPipeline);
+// `inputs` belong on CiUpsertStep<T> only (Phase 1.5 — v4-ci-schema-worksheet §1.2).
+//
+// P1.4-PARSER follow-on (audit §4 A1): generic `pattern ensure<Check, Action>` /
+// `pattern upsert<Check, Create, Resolve>` bodies below stay commented until
+// pattern-declaration generics land (ROADMAP desired parser features).
+
+// 🟡 gated — feature:upsert-phase-substrate — bind dedicated VerifyCheck carrier when
+// E-P routes literal recursive-type set beyond Node — dissolve-on-arrival: replace
+// Node alias with the dedicated phase substrate type.
+type VerifyCheck = Node
+type CreateAction = Node
+type ResolveExpr = Node
+
+type Upsert<T> {
+  verify: VerifyCheck
+  create: CreateAction
+  resolve: ResolveExpr
+}
+
 fn eq(a: String, b: String) -> Bool {
   a == b
 }
@@ -124,9 +146,9 @@ fn eq(a: String, b: String) -> Bool {
 // (with a resolve step) and content_upsert specializes (with
 // file_content_matches as the check and fs.write as the action).
 
-// ensure, upsert, content_upsert: commented out pending parser support
-// for generics on pattern declarations (pattern ensure<Check, Action>).
-// See ROADMAP.md "Desired Parser Features" for tracking.
+// ensure, upsert, content_upsert pattern bodies: commented pending P1.4-PARSER (A1)
+// — generic pattern declarations (pattern ensure<Check, Action>).
+// See ROADMAP.md "Desired Parser Features" and § Upsert<T> type substrate above.
 //
 // pattern ensure<Check, Action>(
 //   should_act: fn(Check.Output) -> Bool = c => !c.exists
@@ -156,13 +178,17 @@ fn eq(a: String, b: String) -> Bool {
 //   return { written: result.acted }
 // }
 
-// STRAY (2026-05-29 audit): does not implement verify-first — stub keeps
-// imports typechecking until pattern generics + resource `uses` land.
-// `written` is not authoritative; tools.bootstrap/readme must not rely on
-// real filesystem idempotency until this dissolves to pattern content_upsert.
-fn content_upsert(content: String, path: String) -> { written: Bool } {
-  let matches = content == ""
-  { written: !matches }
+// Named stub result — handwritten parser rejects anonymous `{ written: Bool }` in fn sig.
+type ContentUpsertStubResult { written: Bool }
+
+// 🟡 dissolve-on-arrival — audit S1 (docs/audit/upsert-pattern-compiler-stray-2026-05-29.md):
+// replace this fn with commented `pattern content_upsert` when P1.4-PARSER (A1) +
+// P1.4-RESOURCES (`uses fs:` binding) land. Non-authoritative: no verify-first /
+// filesystem idempotency — `written` is a compile stub only; tools.bootstrap/readme
+// must not treat outcomes as real upsert semantics until the pattern body lands.
+fn content_upsert(content: String, path: String) -> ContentUpsertStubResult {
+  let empty = content == ""
+  return { written: empty != true }
 }
 
 // --- Transaction (begin -> body -> commit/rollback) --------------------
