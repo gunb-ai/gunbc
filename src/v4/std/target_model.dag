@@ -715,10 +715,11 @@ type TargetRepresentation {
   apply: TargetGenericApply
 }
 
-type RequiredTraitWitness {
-  trait_name: Symbol
-  type_param: Symbol
-}
+// 🟢 coproduct dissolution — SG-5 required-trait witness axis (illegal trait tags unrepresentable).
+type RequiredTraitWitness
+  = TargetCollectionWitnessOrd { type_param: Symbol }
+  | TargetCollectionWitnessHash { type_param: Symbol }
+  | TargetCollectionWitnessEq { type_param: Symbol }
 
 type TargetRepresentationChoice {
   form: TargetRepresentation
@@ -789,6 +790,13 @@ fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectio
   }
 }
 
+// 🟡 gated — feature:SG-5-element-trait-eligibility — bind docs/planning/v4-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: witness eligibility reads declared_inhabitants algebra witnesses instead of kernel atom tags.
+data target_collection_kernel_string: Symbol = target_collection_kernel_string
+data target_collection_kernel_int: Symbol = target_collection_kernel_int
+data target_collection_kernel_bool: Symbol = target_collection_kernel_bool
+data target_collection_kernel_unit: Symbol = target_collection_kernel_unit
+
+// 🟢 coproduct dissolution — SG-5 element Ord-eligibility predicate on inferred type-expression atoms.
 fn target_collection_element_ord_eligible(elem: Node) -> Bool {
   match elem.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -800,28 +808,28 @@ fn target_collection_element_ord_eligible(elem: Node) -> Bool {
   }
 }
 
+// 🟢 coproduct dissolution — SG-5 element Hash-eligibility predicate (MVP-1: same kernel set as Ord).
 fn target_collection_element_hash_eligible(elem: Node) -> Bool {
   target_collection_element_ord_eligible(elem: elem)
 }
 
+// 🟢 coproduct dissolution — SG-5 element Eq-eligibility predicate (MVP-1: same kernel set as Hash).
 fn target_collection_element_eq_eligible(elem: Node) -> Bool {
   target_collection_element_hash_eligible(elem: elem)
 }
 
-data target_collection_kernel_string: Symbol = target_collection_kernel_string
-data target_collection_kernel_int: Symbol = target_collection_kernel_int
-data target_collection_kernel_bool: Symbol = target_collection_kernel_bool
-data target_collection_kernel_unit: Symbol = target_collection_kernel_unit
-
+// 🟢 coproduct dissolution — SG-5 witness satisfaction fold over RequiredTraitWitness coproduct.
 fn target_collection_trait_witness_satisfied(
   witness: RequiredTraitWitness,
   elem: Node
 ) -> Bool {
-  match witness.trait_name {
-    target_collection_trait_ord => target_collection_element_ord_eligible(elem: elem)
-    target_collection_trait_hash => target_collection_element_hash_eligible(elem: elem)
-    target_collection_trait_eq => target_collection_element_eq_eligible(elem: elem)
-    _ => false
+  match witness {
+    TargetCollectionWitnessOrd { type_param: _ } =>
+      target_collection_element_ord_eligible(elem: elem)
+    TargetCollectionWitnessHash { type_param: _ } =>
+      target_collection_element_hash_eligible(elem: elem)
+    TargetCollectionWitnessEq { type_param: _ } =>
+      target_collection_element_eq_eligible(elem: elem)
   }
 }
 
@@ -864,6 +872,7 @@ fn target_collection_select_choice(
   }
 }
 
+// 🟢 coproduct dissolution — SG-5 Set carrier recognition on Cardinality type-expression nodes.
 fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Cardinality } =>

@@ -100,6 +100,9 @@ import v4.std.target_model {
   TargetRepresentation,
   TargetRepresentationChoice,
   RequiredTraitWitness,
+  TargetCollectionWitnessOrd,
+  TargetCollectionWitnessHash,
+  TargetCollectionWitnessEq,
   target_collection_set_carrier,
   target_collection_set_carrier_node,
   target_collection_set_no_representation_diagnostic,
@@ -1505,10 +1508,7 @@ fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
       apply: rust_set_collection_apply_btree()
     },
     constraints: [
-      RequiredTraitWitness {
-        trait_name: target_collection_trait_ord,
-        type_param: target_collection_type_param_t
-      }
+      TargetCollectionWitnessOrd { type_param: target_collection_type_param_t }
     ]
   }
 }
@@ -1520,14 +1520,8 @@ fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
       apply: rust_set_collection_apply_hash()
     },
     constraints: [
-      RequiredTraitWitness {
-        trait_name: target_collection_trait_hash,
-        type_param: target_collection_type_param_t
-      },
-      RequiredTraitWitness {
-        trait_name: target_collection_trait_eq,
-        type_param: target_collection_type_param_t
-      }
+      TargetCollectionWitnessHash { type_param: target_collection_type_param_t },
+      TargetCollectionWitnessEq { type_param: target_collection_type_param_t }
     ]
   }
 }
@@ -1576,18 +1570,49 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
 }
 
 fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: target_collection_witness_field_trait_name,
-        target: rust_inhabitant_atom(id: witness.trait_name)
-      ),
-      rust_named_edge(
-        name: target_collection_witness_field_type_param,
-        target: rust_inhabitant_atom(id: witness.type_param)
-      )
-    ]
+  match witness {
+    TargetCollectionWitnessOrd { type_param: type_param } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: target_collection_trait_ord)
+          ),
+          rust_named_edge(
+            name: target_collection_witness_field_type_param,
+            target: rust_inhabitant_atom(id: type_param)
+          )
+        ]
+      }
+    TargetCollectionWitnessHash { type_param: type_param } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: target_collection_trait_hash)
+          ),
+          rust_named_edge(
+            name: target_collection_witness_field_type_param,
+            target: rust_inhabitant_atom(id: type_param)
+          )
+        ]
+      }
+    TargetCollectionWitnessEq { type_param: type_param } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: target_collection_trait_eq)
+          ),
+          rust_named_edge(
+            name: target_collection_witness_field_type_param,
+            target: rust_inhabitant_atom(id: type_param)
+          )
+        ]
+      }
   }
 }
 
