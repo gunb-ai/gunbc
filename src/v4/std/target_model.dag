@@ -6,7 +6,7 @@
 module v4.std.target_model
 
 import v4.std.algebra { Cons, Empty, fold_list, list_snoc_item, length, list_append }
-import v4.std.collection { List, Map }
+import v4.std.collection { List, Map, Optional, optional_absent, optional_present }
 import v4.std.lexing { LexRules }
 import v4.std.node {
   Atom,
@@ -50,8 +50,24 @@ data serialize_source_field_source_grammar: Symbol = serialize_source_field_sour
 // TargetModel bundle edge — per-language TargetTypeExpressionProjection row (SG-2).
 data target_model_edge_type_expression_projection: Symbol = target_model_edge_type_expression_projection
 
-// Emitted type-expression Conj fields — bidirectional surface tag + positional slots.
+// Emitted type-expression Conj fields — declared kind coproduct tag + surface + positional slots.
+data target_type_expr_field_kind: Symbol = target_type_expr_field_kind
 data target_type_expr_field_surface: Symbol = target_type_expr_field_surface
+data target_type_expr_kind_atom: Symbol = target_type_expr_kind_atom
+data target_type_expr_kind_instantiation: Symbol = target_type_expr_kind_instantiation
+data target_type_expr_kind_cardinality: Symbol = target_type_expr_kind_cardinality
+data target_type_expr_kind_record: Symbol = target_type_expr_kind_record
+data target_type_expr_kind_sum: Symbol = target_type_expr_kind_sum
+data target_type_expr_kind_arrow: Symbol = target_type_expr_kind_arrow
+
+// 🟢 coproduct dissolution — SG-2 emitted type-expression wire-shape tag (six projection row forms).
+type TargetTypeExprKind
+  = TargetTypeExprAtom
+  | TargetTypeExprInstantiation
+  | TargetTypeExprCardinality
+  | TargetTypeExprRecord
+  | TargetTypeExprSum
+  | TargetTypeExprArrow
 
 // TargetTypeExpressionProjection bundle edge keys (row stored on TargetModel bundle).
 data target_type_expr_field_atom: Symbol = target_type_expr_field_atom
@@ -131,6 +147,87 @@ fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
   }
 }
 
+fn target_type_expr_kind_atom_for(kind: TargetTypeExprKind) -> Symbol {
+  match kind {
+    TargetTypeExprAtom => target_type_expr_kind_atom
+    TargetTypeExprInstantiation => target_type_expr_kind_instantiation
+    TargetTypeExprCardinality => target_type_expr_kind_cardinality
+    TargetTypeExprRecord => target_type_expr_kind_record
+    TargetTypeExprSum => target_type_expr_kind_sum
+    TargetTypeExprArrow => target_type_expr_kind_arrow
+  }
+}
+
+fn target_type_expr_kind_from_atom(id: Symbol) -> Optional<TargetTypeExprKind> {
+  if id == target_type_expr_kind_atom {
+    optional_present(value: TargetTypeExprAtom)
+  } else {
+    if id == target_type_expr_kind_instantiation {
+      optional_present(value: TargetTypeExprInstantiation)
+    } else {
+      if id == target_type_expr_kind_cardinality {
+        optional_present(value: TargetTypeExprCardinality)
+      } else {
+        if id == target_type_expr_kind_record {
+          optional_present(value: TargetTypeExprRecord)
+        } else {
+          if id == target_type_expr_kind_sum {
+            optional_present(value: TargetTypeExprSum)
+          } else {
+            if id == target_type_expr_kind_arrow {
+              optional_present(value: TargetTypeExprArrow)
+            } else {
+              optional_absent()
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
+  Edge {
+    label: Named { name: target_type_expr_field_kind },
+    target: Node {
+      kind: TypeNode {
+        connective: Atom { identity: target_type_expr_kind_atom_for(kind: kind) }
+      },
+      children: []
+    }
+  }
+}
+
+fn target_type_expr_emitted_kind(node: Node) -> Optional<TargetTypeExprKind> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold_list(
+        xs: node.children,
+        empty: optional_absent(),
+        cons: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              match e.label {
+                Named { name: n } =>
+                  if n == target_type_expr_field_kind {
+                    match e.target.kind {
+                      TypeNode { connective: Atom { identity: id } } =>
+                        target_type_expr_kind_from_atom(id: id)
+                      _ => optional_absent()
+                    }
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      )
+    _ => optional_absent()
+  }
+}
+
 fn target_type_expr_positional_edges(children: List<Node>) -> List<Edge> {
   fold_list(
     xs: children,
@@ -144,18 +241,26 @@ fn target_type_expr_positional_edges(children: List<Node>) -> List<Edge> {
   )
 }
 
-fn target_type_expr_wrapped_emitted(surface: Symbol, children: List<Node>) -> Node {
+fn target_type_expr_wrapped_emitted(
+  kind: TargetTypeExprKind,
+  surface: Symbol,
+  children: List<Node>
+) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: list_snoc_item(
-      xs: target_type_expr_positional_edges(children: children),
-      item: target_type_expr_surface_edge(surface: surface)
+      xs: list_snoc_item(
+        xs: target_type_expr_positional_edges(children: children),
+        item: target_type_expr_surface_edge(surface: surface)
+      ),
+      item: target_type_expr_kind_edge(kind: kind)
     )
   }
 }
 
 fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) -> Node {
   target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprAtom,
     surface: form.surface,
     children: [
       Node {
@@ -167,11 +272,13 @@ fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) ->
 }
 
 fn target_type_expr_generic_apply_emitted(
+  kind: TargetTypeExprKind,
   form: TargetGenericApply,
   head: Node,
   args: List<Node>
 ) -> Node {
   target_type_expr_wrapped_emitted(
+    kind: kind,
     surface: form.surface,
     children: list_append(
       left: Cons { head: head, tail: Empty },
@@ -184,11 +291,19 @@ fn target_type_expr_record_emitted(
   form: TargetRecordTypeShape,
   fields: List<Node>
 ) -> Node {
-  target_type_expr_wrapped_emitted(surface: form.surface, children: fields)
+  target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprRecord,
+    surface: form.surface,
+    children: fields
+  )
 }
 
 fn target_type_expr_sum_emitted(form: TargetSumTypeShape, variants: List<Node>) -> Node {
-  target_type_expr_wrapped_emitted(surface: form.surface, children: variants)
+  target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprSum,
+    surface: form.surface,
+    children: variants
+  )
 }
 
 fn target_type_expr_arrow_emitted(
@@ -197,6 +312,7 @@ fn target_type_expr_arrow_emitted(
   codomain: Node
 ) -> Node {
   target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprArrow,
     surface: form.surface,
     children: [domain, codomain]
   )
