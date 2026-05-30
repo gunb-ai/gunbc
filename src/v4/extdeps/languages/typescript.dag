@@ -1161,11 +1161,13 @@ fn ts_wave2a_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ts_token_plus, text: " + "),
       ts_lex_rule(token_class: ts_token_minus, text: " - "),
       ts_lex_rule(token_class: ts_token_star, text: " * "),
-      // `=` keeps leading space only so `= {` tokenizes (= consumes ` =`, `{` matches `{ `).
+      // 🟡 gated — feature:ts-wave2a-whitespace-trivia — owner: cool-moth-495 — lane: node://adhoc-ece453af-47e —
+      // tracker: #3900 — dissolve-on-arrival: substrate lex moves punctuation literals to a whitespace-trivia
+      // model; interim split-space punct rules (`" ="` / `" { "`) bridge `= {` in claim fixtures.
       ts_lex_rule(token_class: ts_token_eq, text: " ="),
       ts_lex_rule(token_class: ts_token_pipe, text: " | "),
       ts_string_lit_lex_rule(),
-      ts_lex_rule(token_class: ts_token_lbrace, text: "{ "),
+      ts_lex_rule(token_class: ts_token_lbrace, text: " { "),
       ts_lex_rule(token_class: ts_token_rbrace, text: " }"),
       ts_lex_rule(token_class: ts_token_lparen, text: "("),
       ts_lex_rule(token_class: ts_token_rparen, text: ")"),
