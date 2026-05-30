@@ -5,11 +5,17 @@
 # selection must not live in .github/workflows/*.yml — see
 # scripts/workflow-path-regex-forbidden-substrings.txt).
 #
-# Emits should_run=true|false to GITHUB_OUTPUT when set; otherwise prints to stdout.
+# Emits to GITHUB_OUTPUT (or the given file):
+#   should_run=true|false  — run the full fixture-scoped rung gate (emit + rustc/…)
+#   policy_check=true|false — run the lightweight workflow-policy ratchet only
+#
+# Full gate: fixture paths, or workflow edits to gate *execution* (script invoke,
+# STRICT env, modeled ci.dag rung signal). Scope-detector / if-routing narrowing
+# alone triggers policy_check (Gate #103 inventory + detector smoke), not the
+# substrate-red rung gate (ladder §6 appendix).
 #
 # Usage:
 #   detect-phase1-nat-semiring-gate-scope.sh <event_name> <output_file>
-#   detect-phase1-nat-semiring-gate-scope.sh pull_request /dev/stdout
 
 set -euo pipefail
 
@@ -30,20 +36,25 @@ if [[ "$event_name" == "push" && "${GITHUB_REF:-}" == "refs/heads/main" ]]; then
 fi
 
 should_run=false
-if git diff --name-only "$range" | grep -qE '^(src/v4/test/claim/(algebra_laws/nat_semiring|nat_semiring/)|scripts/v4-phase1-nat-semiring)'; then
+policy_check=false
+
+if git diff --name-only "$range" | grep -qE '^(src/v4/test/claim/(algebra_laws/nat_semiring|nat_semiring/)|scripts/v4-phase1-nat-semiring-rung-gate\.sh)'; then
   should_run=true
 fi
-# Workflow-policy gate wiring: any edit to the rung gate, its prerequisites, scope
-# detector, or modeled ci.dag signal — including `if:` lines that route through
-# phase1_nat_semiring_fixture_scope (fail-closed self-validation; do not filter those out).
-if [[ "$should_run" != true ]] && git diff --name-only "$range" | grep -qE '^(\.github/workflows/ci\.yml|src/v4/workflow/ci\.dag|dsl/gunbc/ci_github_actions_workflow\.dag)'; then
-  if git diff "$range" -- .github/workflows/ci.yml src/v4/workflow/ci.dag dsl/gunbc/ci_github_actions_workflow.dag 2>/dev/null \
-    | grep '^[-+]' | grep -v '^[-+][[:space:]]*#' \
-    | grep -qE 'phase1/nat_semiring rungs 0-2 gate|Setup Go \(phase1/nat_semiring|v4-phase1-nat-semiring-rung-gate\.sh|V4_PHASE1_NAT_SEMIRING_STRICT|phase1_nat_semiring_rung_gate|phase1_nat_semiring_fixture_scope|detect-phase1-nat-semiring-gate-scope'; then
-    should_run=true
+
+workflow_paths='^(\.github/workflows/ci\.yml|src/v4/workflow/ci\.dag|dsl/gunbc/ci_github_actions_workflow\.dag|scripts/detect-phase1-nat-semiring-gate-scope\.sh)'
+if git diff --name-only "$range" | grep -qE "$workflow_paths"; then
+  policy_check=true
+  if [[ "$should_run" != true ]]; then
+    if git diff "$range" -- .github/workflows/ci.yml src/v4/workflow/ci.dag dsl/gunbc/ci_github_actions_workflow.dag 2>/dev/null \
+      | grep '^[-+]' | grep -v '^[-+][[:space:]]*#' \
+      | grep -qE 'v4-phase1-nat-semiring-rung-gate\.sh|V4_PHASE1_NAT_SEMIRING_STRICT|phase1_nat_semiring_rung_gate'; then
+      should_run=true
+    fi
   fi
 fi
 
 {
   echo "should_run=${should_run}"
+  echo "policy_check=${policy_check}"
 } >>"$output_file"
