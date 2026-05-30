@@ -2964,29 +2964,35 @@ pub fn emit_typed_item(
             )
         } else {
             if is_type_alias_item(item.clone(), env.source_indices.clone()) {
-                v2_rt::concat(
+                if (((item.params.clone().len() as i64) == 0)
+                    && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
+                {
+                    rust_nominal_identity_carrier_def(item_text.clone())
+                } else {
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
                                 v2_rt::concat(
                                     v2_rt::concat(
-                                        rust_visibility_prefix(),
-                                        rust_items().type_alias_keyword.clone(),
+                                        v2_rt::concat(
+                                            rust_visibility_prefix(),
+                                            rust_items().type_alias_keyword.clone(),
+                                        ),
+                                        " ".to_string(),
                                     ),
-                                    " ".to_string(),
+                                    item_text.clone(),
                                 ),
-                                item_text.clone(),
+                                " = ".to_string(),
                             ),
-                            " = ".to_string(),
+                            render_rust_type(
+                                resolved_type(item.clone()),
+                                shared_types,
+                                env.source_indices.clone(),
+                            ),
                         ),
-                        render_rust_type(
-                            resolved_type(item.clone()),
-                            shared_types,
-                            env.source_indices.clone(),
-                        ),
-                    ),
-                    ";".to_string(),
-                )
+                        ";".to_string(),
+                    )
+                }
             } else {
                 if is_type_decl_item(item.clone(), env.source_indices.clone()) {
                     if (((item.params.clone().len() as i64) == 0)
