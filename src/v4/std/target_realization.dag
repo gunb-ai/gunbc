@@ -1,0 +1,233 @@
+// src/v4/std/target_realization.dag
+// Scope: language-parametric target realization carriers (SG-1 atom, SG-2 type-expression, SG-3 collection).
+// Status: SG-1 — TargetAtomRealization canonical home; Rust Symbol/Bool/Char rows in extdeps/languages/rust.dag.
+// Anchor: docs/planning/v4-correctness-ladder-2026-05-30.md §10.1; docs/design-target-realization-canonical-home.md §1–§2.
+
+module v4.std.target_realization
+
+import v4.std.algebra { Empty, fold_list, list_snoc_item }
+import v4.std.collection { List, Optional, optional_absent }
+import v4.std.logic { Bool, bool_node }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, content_hash }
+import v4.std.target_model { TargetModel }
+import v4.std.text { Char }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_rejected
+}
+
+// --- SG-2 substrate (minimal atom arm for SG-1; connective arms owned by SG-2 workers) ---
+
+type TargetTypeExpression
+  = TargetTypeAlias { spelling: String }
+
+type TargetAtomTypeShape {
+  type_spelling: String
+}
+
+// 🟡 scaffold — SG-2 owns full per-connective arms; atom arm is live for SG-1 cross-section invariant.
+type TargetTypeExpressionProjection {
+  target_model: TargetModel
+  atom_form: TargetAtomTypeShape
+}
+
+// --- SG-1 atom realization vocabulary ---
+
+type SourceAtomValue
+  = SourceSymbol { identity: Symbol }
+  | SourceBool { value: Bool }
+  | SourceChar { codepoint: Char }
+
+type TargetValueExpression
+  = TargetExprSymbolIdentity { identity: Symbol }
+  | TargetExprSymbolToOwnedString { identity: Symbol }
+  | TargetExprBoolLiteral { value: Bool }
+  | TargetExprCharUnicodeScalar { codepoint: Char }
+
+// Bidirectional templates: emission and ingestion share the same row (§10.6).
+type TargetValueTemplate
+  = ValueSymbolIdentityPassthrough
+  | ValueSymbolToOwnedString
+  | ValueBoolLiteral
+  | ValueCharUnicodeScalar
+
+type TargetConstructorTemplate
+  = ConstructorAbsent
+
+type TargetAtomRealization {
+  source_carrier: Node
+  target_model: TargetModel
+  type_form: TargetTypeExpression
+  value_form: TargetValueTemplate
+  constructor_form: Optional<TargetConstructorTemplate>
+  display_name: Symbol
+}
+
+data target_atom_realization_lookup_miss: Symbol = target_atom_realization_lookup_miss
+data target_atom_realization_lookup_ambiguous: Symbol = target_atom_realization_lookup_ambiguous
+
+// Kernel-ambient type carriers (Node-keyed authority; not spelling-keyed tables).
+data symbol_kernel_type_atom: Symbol = symbol_kernel_type_atom
+data char_kernel_type_atom: Symbol = char_kernel_type_atom
+
+fn symbol_kernel_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_kernel_type_atom } },
+    children: []
+  }
+}
+
+fn char_kernel_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: char_kernel_type_atom } },
+    children: []
+  }
+}
+
+fn target_type_expression_spelling(form: TargetTypeExpression) -> String {
+  match form {
+    TargetTypeAlias { spelling: s } => s
+  }
+}
+
+fn target_value_template_apply(
+  template: TargetValueTemplate,
+  value: SourceAtomValue
+) -> TargetValueExpression {
+  match template {
+    ValueSymbolIdentityPassthrough =>
+      match value {
+        SourceSymbol { identity: id } => TargetExprSymbolIdentity { identity: id }
+        _ => target_value_template_mismatch()
+      }
+    ValueSymbolToOwnedString =>
+      match value {
+        SourceSymbol { identity: id } => TargetExprSymbolToOwnedString { identity: id }
+        _ => target_value_template_mismatch()
+      }
+    ValueBoolLiteral =>
+      match value {
+        SourceBool { value: b } => TargetExprBoolLiteral { value: b }
+        _ => target_value_template_mismatch()
+      }
+    ValueCharUnicodeScalar =>
+      match value {
+        SourceChar { codepoint: c } => TargetExprCharUnicodeScalar { codepoint: c }
+        _ => target_value_template_mismatch()
+      }
+  }
+}
+
+fn target_value_template_mismatch() -> TargetValueExpression {
+  TargetExprSymbolIdentity { identity: target_atom_realization_lookup_miss }
+}
+
+type TargetAtomRealizationLookup
+  = TargetAtomRealizationMissing
+  | TargetAtomRealizationUnique { row: TargetAtomRealization }
+  | TargetAtomRealizationAmbiguous
+
+fn target_atom_realization_lookup_step(
+  acc: TargetAtomRealizationLookup,
+  row: TargetAtomRealization,
+  source_carrier: Node
+) -> TargetAtomRealizationLookup {
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+    match acc {
+      TargetAtomRealizationMissing =>
+        TargetAtomRealizationUnique { row: row }
+      TargetAtomRealizationUnique { row: _ } => TargetAtomRealizationAmbiguous
+      TargetAtomRealizationAmbiguous => TargetAtomRealizationAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+fn target_atom_realization_lookup_in_catalog(
+  catalog: List<TargetAtomRealization>,
+  source_carrier: Node
+) -> Outcome<TargetAtomRealization> {
+  match fold_list(
+    xs: catalog,
+    empty: TargetAtomRealizationMissing,
+    cons: fn(acc, row) {
+      target_atom_realization_lookup_step(
+        acc: acc,
+        row: row,
+        source_carrier: source_carrier
+      )
+    }
+  ) {
+    TargetAtomRealizationMissing =>
+      outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+    TargetAtomRealizationUnique { row: row } =>
+      Accepted { value: row, diagnostics: None }
+    TargetAtomRealizationAmbiguous =>
+      outcome_rejected(target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+  }
+}
+
+fn target_atom_realization_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_atom_realization_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_atom_realization_lookup_ambiguous,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_atom_type_spelling(row: TargetAtomRealization) -> String {
+  target_type_expression_spelling(form: row.type_form)
+}
+
+fn target_atom_value_expression(
+  row: TargetAtomRealization,
+  value: SourceAtomValue
+) -> TargetValueExpression {
+  target_value_template_apply(template: row.value_form, value: value)
+}
+
+fn target_atom_realization_catalog_node(rows: List<TargetAtomRealization>) -> Node {
+  fold_list(
+    xs: rows,
+    empty: Node { kind: TypeNode { connective: Conj }, children: [] },
+    cons: fn(acc, row) {
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: list_snoc_item(
+          xs: acc.children,
+          item: target_realization_named_edge(
+            name: row.display_name,
+            target: target_atom_realization_row_shell(row: row)
+          )
+        )
+      }
+    }
+  )
+}
+
+fn target_realization_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn target_atom_realization_row_shell(row: TargetAtomRealization) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_realization_named_edge(name: row.display_name, target: row.source_carrier)
+    ]
+  }
+}
