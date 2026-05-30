@@ -2503,9 +2503,7 @@ fn translate_node(
       Rejected { diagnostics: r }
   }
 }
-// 🟡 coproduct dissolution — MVP1 translate shim (253ea20fa): delete ProjectionAbsent arm and
-// translate_node_computation fallback once every TargetModel extdep row carries
-// target_model_edge_type_expression_projection.
+// 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 4/9) — feature:sg-2-mvp1-projection-absent-shim — consumer:translate_node — bind PR #3962 / docs/planning/v4-sg2-type-expression-projection-worksheet-2026-05-30.md — owner:Target Realization (SG-2) — lane:extdeps TargetModel row rollout — dissolve-on-arrival: every v4.extdeps.languages.* TargetModel bundle carries target_model_edge_type_expression_projection; delete ProjectionAbsent arm, translate_node_mvp1, and TypeExprProjectionPresence from translate_node — forbidden: steady-state dual translate paths or new ProjectionAbsent match arms outside this gate.
 type TypeExprProjectionPresence
   = ProjectionPresent
   | ProjectionAbsent
