@@ -15,11 +15,13 @@ permissions:
   contents: read
   pull-requests: read
 concurrency:
-  # Interim CI relief (operator 2026-05-30): key on `github.ref` so a newer
-  # commit on the same PR branch supersedes any still-running prior CI; push-to-
-  # main is exempt from cancellation. Dissolves when ci.dag Phase 2 lands.
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # One in-flight `ci` workflow per pull request (keyed by PR number). Omitting
+  # `head.sha` from the group lets a newer `synchronize` supersede (cancel) an
+  # older run instead of stacking multiple v2→v4 bootstrap compiles on the same
+  # runner pool. Push-to-main still keys off `run_id` (unique per run, so
+  # `cancel-in-progress: true` has nothing to cancel on main).
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
