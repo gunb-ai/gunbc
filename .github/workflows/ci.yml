@@ -107,6 +107,8 @@ jobs:
       run: bash scripts/check-release-doc-authority.sh
     - name: Release-doc authority self-test (consumer not ceremonial)
       run: bash scripts/test-check-release-doc-authority.sh
+    - name: install.sh pinned-version smoke (hermetic)
+      run: bash scripts/test-install-sh-pinned-version.sh
     - name: Manager-brief authority check (P2 single-authority discipline)
       run: bash scripts/check-manager-brief-authority.sh
       env:
