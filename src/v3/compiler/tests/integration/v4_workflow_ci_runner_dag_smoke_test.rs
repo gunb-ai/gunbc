@@ -264,6 +264,7 @@ fn assert_ci_dag_rust_mirror_full_parity() {
     for fn_name in CI_CHANGED_PATH_AFFECTS_FNS {
         assert_ci_dag_rust_bucket_parity(fn_name);
     }
+    assert_ci_dag_rust_mirror_release_distribution_only_parity();
     assert_ci_dag_rust_mirror_behavioral_parity();
 }
 

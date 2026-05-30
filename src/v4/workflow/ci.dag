@@ -1856,6 +1856,32 @@ fn ci_changed_path_affects_release_distribution(changed: RepoPath) -> Bool {
 }
 
 
+fn ci_changed_path_triggers_ci_component(changed: RepoPath) -> Bool {
+  ci_changed_path_affects_v2(changed: changed)
+    || ci_changed_path_affects_v3(changed: changed)
+    || ci_changed_path_affects_v4(changed: changed)
+    || ci_changed_path_affects_workflow_policy(changed: changed)
+    || ci_changed_path_affects_release_distribution(changed: changed)
+}
+
+
+// RELEASE §5 — skip orthogonal fixture gates only when the diff is exclusively
+// release-distribution paths (mixed release + phase1 fixture paths must not skip).
+fn ci_release_distribution_only_from_git_diff(git_diff: GitDiffNameOnly) -> Bool {
+  let saw_release = any(
+    xs: git_diff.changed_paths,
+    predicate: ci_changed_path_affects_release_distribution
+  )
+  let only_release_lane = all(
+    xs: git_diff.changed_paths,
+    predicate: path =>
+      !ci_changed_path_triggers_ci_component(changed: path)
+        || ci_changed_path_affects_release_distribution(changed: path)
+  )
+  saw_release && only_release_lane
+}
+
+
 fn ci_component_affected_fail_closed() -> CiComponentAffected {
   CiComponentAffected {
     v2: true
@@ -1863,6 +1889,7 @@ fn ci_component_affected_fail_closed() -> CiComponentAffected {
     v4: true
     workflow_policy: true
     release_distribution: true
+    release_distribution_only: false
   }
 }
 
@@ -1879,7 +1906,8 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
     release_distribution: any(
       xs: git_diff.changed_paths,
       predicate: ci_changed_path_affects_release_distribution
-    )
+    ),
+    release_distribution_only: ci_release_distribution_only_from_git_diff(git_diff: git_diff)
   }
 }
 

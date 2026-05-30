@@ -336,7 +336,7 @@ jobs:
     # gap). Python3 is pre-installed on srv1/srv2. setup-go@v5 is cached.
     - name: Setup Go (phase1/nat_semiring rung gate prerequisite)
       # RELEASE §5: release_distribution-only PRs skip fixture rung gate (orthogonal lane).
-      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true' && needs.affected.outputs.release_distribution != 'true'
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true' && needs.affected.outputs.release_distribution_only != 'true'
       uses: actions/setup-go@v5
       with:
         go-version: 'stable'
