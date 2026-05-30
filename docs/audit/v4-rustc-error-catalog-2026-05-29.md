@@ -55,7 +55,49 @@ A standalone `src/v2` / `dsl/` rust emit baseline is **not cleanly runnable** at
 
 ---
 
-## §3 rustc error code histogram (top 15)
+## §3 Per-row evidence catalog (routing table)
+
+Full population: **7951** `error[E####]` lines, **262** / 294 emitted files with errors. Probe: `f2c7f925` @ 2026-05-29. Regenerate: `bash scripts/v4-m1-rust-emit-probe.sh` (§Repro).
+
+Columns: **class** | **rust_error_code** | **count** | **v4_emit_excerpt** (primary site) | **v2 oracle** | **minimal repro** (`.dag` → emitted `.rs`).
+
+| class | rust_error_code | count | v4_emit_excerpt | v2 oracle | minimal repro |
+| --- | --- | ---: | --- | --- | --- |
+| SG-1 | `E0423` expected fn/variant, found type alias `Symbol` | 2978 | `pub fn loop_bound_edge() -> String { Symbol("loop_bound_edge".to_string()) }` @ src/v4_std_node.rs:125 | `dsl/extdeps/languages/rust/types.dag:41` — `Symbol` → `String`, `literal_suffix: ".to_string()"` (value, not ctor) | `src/v4/std/node.dag` `data loop_bound_edge: Symbol = loop_bound_edge` |
+| SG-3 | `E0308` mismatched types | 1191 | `pub fn feature(&self) -> Feature {` @ src/v4_extdeps_languages_fidelity.rs:27 | `dsl/extdeps/languages/rust/emit.dag` realization row vs emitted signature | Emit site under `src/v4/extdeps/**` or `src/v4/std/**` |
+| SG-2 | `E0282` type annotations needed | 743 | `bounded_lattice: Rc::new(BoundedLattice {` @ src/v4_std_logic.rs:57 | Incomplete emitted closures / missing generic context (often post-SG-2) | `src/v4/std/logic.dag` `BoundedLattice` meet/join closures |
+| SG-2 | `E0107` missing generics for enum `Outcome` | 578 | `pub type FileReadResult = Rc<Outcome>;` @ src/v4_std_diagnostic.rs:115 | `src/v4/std/diagnostic.dag` — `Outcome<T>` must emit type args | `fn outcome_accepted<T>(value: T) -> Outcome<T>` → emitted `Rc<Outcome>` |
+| SG-8 | `E0433` failed to resolve: use of undeclared type `EdgeLabel` | 193 | `label: Rc::new(EdgeLabel::Named {` @ src/v4_std_effects.rs:351 | Emitted child type not in scope — module graph | `src/v4/std/effects.dag` `EdgeLabel::Named` |
+| SG-8 | `E0432` unresolved import `crate::v4_std_node::NodeRef` | 162 | `pub use crate::v4_std_node::{..., NodeRef, ...};` @ src/v4_std_algebra.rs:10 | `src/v2/05_emit_rust.dag` crate `pub use` graph | `src/v4/std/algebra.dag` imports `NodeRef` |
+| SG-3 | `E0573` expected type, found variant `String` | 159 | `pub element_type_ref: String,` @ src/v4_extdeps_languages_go.rs:152 | Dag type name where Rust expects a type (extdeps tables) | `src/v4/extdeps/languages/go.dag` language table rows |
+| SG-2 | `E0107` missing generics for enum `Witness` | 113 | `pub type BootstrapRoundtripCheck = Rc<Witness>;` @ src/v4_std_witness.rs:16 | Generic carrier — emit type args | `src/v4/std/witness.dag` |
+| SG-2 | `E0107` missing generics for struct `TestClaimRun` | 104 | `pub fn test_claim_run_claim<S, A>(run: Rc<TestClaimRun>)` @ src/v4_compiler_eval.rs:246 | Generic carrier — emit type args | `src/v4/std/verification.dag` `data TestClaimRun<C>` |
+| SG-8 | `E0425` cannot find type `TargetModelBundle` in this scope | 95 | `-> Rc<TargetModelBundle>` @ src/v4_extdeps_languages_cpp.rs:1031 | `dsl/extdeps/languages/rust/emit.dag` | `src/v4/extdeps/languages/cpp.dag` |
+| SG-2 | `E0107` missing generics for struct `TestClaimEvalSubject` | 83 | `subject: Rc<TestClaimEvalSubject>` @ src/v4_compiler_eval.rs:220 | Generic carrier — emit type args | `src/v4/std/verification.dag` |
+| SG-2 | `E0107` missing generics for enum `FreeMonoid` | 71 | (import/ctor site) @ src/v4_std_algebra.rs:116 | Generic carrier — emit type args | `src/v4/std/algebra.dag` `FreeMonoid<T>` in eval fold |
+| SG-8 | `E0432` unresolved import `crate::v4_std_text::GoScalarKind` | 70 | `pub use crate::v4_std_text::{GoScalarKind};` @ src/v4_compiler_target_carriers.rs:11 | Module graph | `src/v4/compiler/target_carriers.dag` |
+| SG-8 | `E0432` unresolved import `crate::v4_std_collection::List` | 63 | `pub use crate::v4_std_collection::{List};` @ src/v4_compiler_self_host.rs:10 | Module graph | cross-module `List` import |
+| SG-8 | `E0425` cannot find type `Char` in this scope | 63 | `pub type TargetSource = FreeMonoid<Char>;` @ src/v4_compiler_target_carriers.rs:16 | Map `Char` → `char` in rust realization | `src/v4/compiler/target_carriers.dag` |
+| SG-2 | `E0107` missing generics for struct `Validation` | 61 | `-> Rc<Outcome>` in `refine` @ src/v4_std_refinement.rs:21 | Generic carrier — emit type args | `src/v4/std/refinement.dag` |
+| SG-3 | `E0277` trait bound `OpenApiSpecificationExtensionKey: Eq` not satisfied | 45 | @ src/v4_extdeps_formats_openapi.rs:154 | Missing `Eq`/`Hash` on emitted carrier | `src/v4/extdeps/formats/openapi.dag` |
+| SG-3 | `E0277` trait bound `OpenApiSpecificationExtensionKey: Hash` not satisfied | 45 | @ src/v4_extdeps_formats_openapi.rs:154 | Missing `Eq`/`Hash` on emitted carrier | `src/v4/extdeps/formats/openapi.dag` |
+| SG-2 | `E0107` missing generics for struct `ClassifiedDependencyView` | 40 | `classify_dependency_view<C>` @ src/v4_std_dependency.rs:56 | Generic carrier — emit type args | `src/v4/std/dependency.dag` |
+| SG-2 | `E0107` missing generics for enum `Verdict` | 40 | `verdict_combine<T>` @ src/v4_std_verdict.rs:20 | Generic carrier — emit type args | `src/v4/std/verdict.dag` |
+| SG-3 | `E0308` arguments to this function are incorrect | 35 | `leap_second_insertion_date(...)` @ src/v4_std_datetime.rs:316 | Realization / arity | `src/v4/std/datetime.dag` |
+| SG-8 | `E0425` cannot find type `K` / `V` in this scope | 68 | `v2_rt::rc_empty_map::<K, V>()` @ src/v4_compiler_parse.rs:662 | Emit must bind fn type params | `src/v4/compiler/parse.dag` |
+| SG-8 | `E0433` failed to resolve: `PointwisePower` | 28 | `Rc::new(PointwisePower::Set {` @ src/v4_lens_subsumption.rs:72 | Module graph | `src/v4/lens/subsumption.dag` |
+| SG-3 | `E0369` binary op `<=` on `Rc<Nat>` | 24 | `(value <= 9999)` @ src/v4_std_datetime.rs:368 | `Nat` carrier needs operator impl | `src/v4/std/datetime.dag` |
+| SG-3 | `E0560` struct field missing (`TargetModelBundle`) | 94 | `bundle:` / `lex:` @ src/v4_extdeps_languages_cpp.rs:1033 | Struct literal vs `.dag` decl | `src/v4/extdeps/languages/cpp.dag` |
+| SG-8 | `E0433` undeclared type `FreeMonoid` | 22 | `FreeMonoid::Empty` @ src/v4_std_diagnostic.rs:408 | Import hygiene (SG-4) | `src/v4/std/diagnostic.dag` |
+| SG-3 | `E0121` placeholder `_` in item signature | 22 | `BTreeSet<_>` @ src/v4_std_logic.rs:58 | Emit must infer set element type | `src/v4/std/logic.dag` |
+| SG-2 | `E0107` (remaining carriers, count &lt; 40 each) | 127 | e.g. `Rc<Generator>`, `Rc<Optional>`, `Rc<NodeFold>` | Per-row generic in substrate | See `src/v4/std/**`, `src/v4/lens/**` |
+| SG-7 | `v2-diagnostic` complexity: same-argument recursion | 24 | `fn ci_int_offset_authority_projection_node(i: Int) -> Node {` @ src/v4/workflow/ci.dag:721 | v2 `complexity` pass — **not rustc** | `ci_int_offset_authority_projection_node` self-call |
+| SG-5 | `compile_error!` Set not Ord-eligible for BTreeSet | 7 | `compile_error!(...DiffId...BTreeSet)` @ src/v4_lens_subsumption.rs:67 | `src/v2/05_emit_rust.dag:295` Ord whitelist | `src/v4/lens/subsumption.dag` `Set<DiffId>` |
+| SG-6 | `compile_error!` BoundedLattice missing meet/join | 8 | `compile_error!(...meet...)` @ src/v4_lens_cost.rs:684 | Substrate lattice instance incomplete | `src/v4/lens/cost.dag` |
+
+*Full E0107 sub-rows (Outcome 578, Witness 113, TestClaimRun 104, …) are in the table above; 30 additional E0107 variants with count &lt; 40 are rolled into the summary row — re-run the probe parser to expand if dispatch needs each carrier split.*
+
+### §3.1 Code histogram (rollup)
 
 | Code | Count | Share |
 | --- | ---: | ---: |
@@ -67,14 +109,20 @@ A standalone `src/v2` / `dsl/` rust emit baseline is **not cleanly runnable** at
 | E0425 | 332 | 4.2% |
 | E0277 | 330 | 4.2% |
 | E0433 | 259 | 3.3% |
-| E0573 | 159 | 2.0% |
-| E0369 | 110 | 1.4% |
-| E0560 | 98 | 1.2% |
-| other | 393 | 4.9% |
+| other | 960 | 12.1% |
 
-**E0423 message (uniform):** `expected function, tuple struct or tuple variant, found type alias 'Symbol'` (all 2978).
+---
 
-**E0107 clusters:** missing type args on `Outcome` (578), `Witness` (113), `TestClaimRun` (104), `TestClaimEvalSubject` (83), `FreeMonoid` (71), `Validation` (61), …
+## §3.2 M1 probe vs T-38 — SG-7 is **not** a gate on the M1 iteration meter
+
+| Path | Requires `0` v2 diagnostics? | Requires `compile` exit 0? | Runs `cargo check`? | Use for post-fix residual count? |
+| --- | ---: | ---: | ---: | --- |
+| **`scripts/v4-m1-rust-emit-probe.sh`** | **No** (24 diagnostics OK at HEAD) | Yes | Yes → **7951** rustc lines | **Yes — primary iteration meter** |
+| **`scripts/v4-testclaim-corpus-eval.sh`** (T-38-PR1) | **Yes** | Yes | No (stops before runtime) | No — blocked until SG-7 clears |
+
+**Answer for dispatch:** use **M1** to measure rustc residual after SG-1 / SG-2 / SG-5 / SG-6 land. **SG-7 does not need to be first** for that loop. SG-7 only blocks (a) T-38-PR1’s `0 diagnostics` receipt and JSON scaffold, and (b) any workflow that insists on a clean v2 compile log before emit. Regenerating **this catalog** is `bash scripts/v4-m1-rust-emit-probe.sh` + probe-log parse — independent of T-38.
+
+**Recommended dispatch order (PM iteration):** **SG-1** (Pareto) → **SG-2** → SG-4/8 → SG-5/6 → SG-3 mop-up; **SG-7 in parallel** when T-38 scaffold / zero-diagnostic CI is needed, not as a prerequisite for M1 ratchet.
 
 ---
 
@@ -114,15 +162,17 @@ Prioritize SG-1/2 fixes in **std/diagnostic** + **compiler/eval** + **extdeps/la
 
 ---
 
-## §6 Recommended dispatch order (M1 close)
+## §6 Recommended dispatch order
 
-1. **SG-7** — unblock T-38 scaffold (0 v2 diagnostics)  
-2. **SG-1** — collapses ~38% of rustc lines  
-3. **SG-2** — restores #3654-era top codes in correct shape  
-4. **SG-4** + **SG-8** — import graph hygiene  
-5. **SG-5** + **SG-6** — substrate `.dag` (remove `compile_error!` stubs)  
-6. **SG-3** — mop-up cascades  
-7. **T-38-PR2** — cargo-clean subset + real `CorpusEvalReport` verdict rows  
+**M1 rustc ratchet (use `v4-m1-rust-emit-probe.sh`):**
+
+1. **SG-1** — ~38% of lines (E0423)  
+2. **SG-2** — generic arity (E0107/E0282)  
+3. **SG-4** + **SG-8** — import / module graph  
+4. **SG-5** + **SG-6** — substrate `.dag` (remove `compile_error!` stubs)  
+5. **SG-3** — mop-up cascades  
+
+**T-38 track (parallel, not blocking M1 meter):** **SG-7** when zero-diagnostic compile + T-38-PR1 scaffold is required; then **T-38-PR2** cargo-clean subset + `CorpusEvalReport` verdict rows.
 
 ---
 
