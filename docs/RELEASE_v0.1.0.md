@@ -97,7 +97,7 @@ The release sentence the tag must make true:
 10. **v4-done predicates** (the six in `src/v4/TASKS.md:805–817`) are
     out of scope for the v0.1.0 tag. The maintainer-facing burn-down is
     tracked privately in
-    `docs/planning/v4-done-predicate-burn-down-2026-05-30.md`; do not
+    `docs/planning/v4-done-predicate-tracker-2026-05-30.md`; do not
     conflate gunbc `main` maturity with the public daglang slice.
     Cross-check (per `nimble-crane-490`): 0/6 predicates PROVEN, 5
     YELLOW, 1 GRAY (P6).
