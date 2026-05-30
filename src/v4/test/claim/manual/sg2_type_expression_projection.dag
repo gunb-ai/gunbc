@@ -89,6 +89,7 @@ fn sg2_claim_input(ok: Bool) -> Node {
 fn sg2_project_instantiation_emitted() -> Node {
   match project_type_expression_node(
     node: rust_sg2_instantiation_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
@@ -104,6 +105,7 @@ fn sg2_projection_matches_golden() -> Bool {
 fn sg2_project_arrow_emitted() -> Node {
   match project_type_expression_node(
     node: rust_sg2_arrow_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
@@ -114,6 +116,7 @@ fn sg2_project_arrow_emitted() -> Node {
 fn sg2_project_conj_emitted() -> Node {
   match project_type_expression_node(
     node: rust_sg2_conj_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
@@ -124,6 +127,7 @@ fn sg2_project_conj_emitted() -> Node {
 fn sg2_binary_fn_projection_accepts() -> Bool {
   match project_type_expression_node(
     node: rust_sg2_binary_fn_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -134,6 +138,7 @@ fn sg2_binary_fn_projection_accepts() -> Bool {
 fn sg2_arrow_malformed_projection_rejects() -> Bool {
   match project_type_expression_node(
     node: rust_sg2_arrow_malformed_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => false
