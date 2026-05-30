@@ -72,14 +72,27 @@ Upsert<T> is what unifies ergonomics + mechanical efficiency in one shape: the d
 
 **Layer A — Authority.** `workflow/ci.dag` is the sole authority. `.github/workflows/ci.yml` is the generated emit (Shape-B per THESIS). Hand-edits to `ci.yml` are FORBIDDEN per T-24 Phase 2.
 
-**Layer B — Each CI step is an Upsert<T> Node.** `CiCommand` becomes an Upsert<T> specialization (per the `ensure<Check, Action>` / `upsert<Check, Create, Resolve>` / `content_upsert` specializations in the patterns canon). The step declares:
+**Layer B — Each CI step is an Upsert<T> Node.** `CiCommand` becomes an Upsert<T> specialization (per the `ensure<Check, Action>` / `upsert<Check, Create, Resolve>` / `content_upsert` specializations in the patterns canon).
+
+**Substrate-landing note (codex review 2026-05-30):** Upsert<T> today is the operator-ratified pattern canon in `dsl/std/patterns.dag:15` (UPSERT<T> section header) with **commented-out pattern bodies** at ~lines 127–156 — blocked on pattern-declaration generics per ROADMAP desired parser features. **The Upsert<T> type is NOT yet a usable substrate primitive.** Phase 1.5 must therefore include landing Upsert<T> as a proper substrate type (with whatever parser/substrate prerequisites it needs) BEFORE CiUpsertStep<T> can specialize it. This is a substrate-extension scope; Modeling DFS Manager's worksheet must explicitly cover the parser/substrate prerequisites.
+
+Once landed, the step shape:
 ```dag
+// Phase 1.5 substrate landing (prerequisite): Upsert<T> usable as type
+//   per dsl/std/patterns.dag UPSERT<T> canon + parser support
+// Then CiUpsertStep<T> specializes it:
 type CiUpsertStep<T> = Upsert<T> {
   inputs: List<UpsertInputRef>          // what facts the verify-first phase reads
   verify: VerifyCheck                    // is desired state already satisfied?
   create: CreateAction                   // action to take if verify says action needed
   resolve: ResolveExpr                   // stable handle / value to return
-  cache_key: ContentHashKey              // structural cache key derived from inputs
+  cache_key: ContentHash                 // content_hash of the COMPLETE CiUpsertStep
+                                          // subgraph (per T-24 / B1 discipline:
+                                          // "cacheable job's actions/cache key is
+                                          // content_hash (B1) of its input subgraph,
+                                          // not a hand-authored hashFiles(...) glob"
+                                          // TASKS.md:1215). NOT just over inputs —
+                                          // the whole step's structural identity.
 }
 
 type UpsertInputRef
@@ -91,6 +104,8 @@ type UpsertInputRef
   | Always                                // unconditional (integrity-class)
 ```
 CI generation MUST reject any step that isn't an Upsert<T> Node (fail-closed per INVARIANTS P3). This eliminates the "blind run every step" failure mode by construction.
+
+**Cache-key boundary (T-21 alignment):** the cache key for a `CiUpsertStep<T>` is the content-hash of the COMPLETE step subgraph — same discipline as T-21's TestClaim cache-key authority (`test_claim_interpretation_cache_digest`, `inferred_tree_digest`). Hashing only inputs would lose the verify/create/resolve identity and let two structurally-different steps with the same inputs share a cache entry — a P2 violation in cache scope. The B1 content_hash of the complete subgraph is the existing pattern.
 
 **Layer C — Affected-set drives the verify-first phase.** `lens/affected_set.dag` projects the per-PR change set into the canonical `AffectedSet` type from `std/change.dag`. The verify-first phase of each Upsert<T> step is:
 ```
@@ -116,7 +131,8 @@ Per the ratified T-24 phase plan, with ONE addition (Phase 1.5):
 | Phase | Scope | T-24 status after |
 |-------|-------|-------------------|
 | **1a** (already in scope) | ci.dag sole policy authority for I0–I8 integrity; T-22 interpreter on ci_pipeline; coarse bucket `if:` dissolved | OPEN |
-| **1.5** (**NEW** — needed for affected-set-driven minimal-CI; **Upsert<T>-shaped per operator directive 2026-05-29**) | Every CI step becomes an Upsert<T> Node (`CiUpsertStep<T>`) with `inputs`/`verify`/`create`/`resolve`/`cache_key` fields; CI generation rejects any step not Upsert<T>-shaped. Existing-shell retirement under clever-cat-115 per `project_no_new_shell` directive. | OPEN |
+| **1.4** (**NEW** prerequisite — substrate-extension scope) | **Land Upsert<T> as usable substrate primitive in `dsl/std/patterns.dag`** (currently header + commented stubs per upsert-pattern audit; blocked on parser-declaration generics per ROADMAP). Modeling DFS worksheet must cover the parser/substrate prerequisites. | n/a (substrate landing) |
+| **1.5** (**NEW** — needed for affected-set-driven minimal-CI; **Upsert<T>-shaped per operator directive 2026-05-29**, DEPENDS on Phase 1.4) | Every CI step becomes an Upsert<T> Node (`CiUpsertStep<T>`) with `inputs`/`verify`/`create`/`resolve`/`cache_key` fields; `cache_key = content_hash` of COMPLETE step subgraph (per T-24 / B1 discipline); CI generation rejects any step not Upsert<T>-shaped. Existing-shell retirement under clever-cat-115 per `project_no_new_shell` directive. | OPEN |
 | **1b** | Atoms A3–A14 promoted opt-in; A6–A8 delete `scripts/check-*` | OPEN |
 | **2** (A15) | Shape-B `ci.yml` emitted from CiPipeline; all hand-authored YAML deleted (C4) | **[DONE]** |
 | **2.5** (NEW — minimal-CI activation) | Each step's gate consumes Layer C's intersection predicate; minimal CI fires per PR | **[DONE+]** |
