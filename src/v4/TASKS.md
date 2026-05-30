@@ -2177,7 +2177,7 @@ every milestone of this task by seed-size + no-hand-edit, never by
 "v2 removed".
 
 **Phase 1 — DEFINITION (design-first; reviewed; gates all
-reduction work).** Before any reduction, produce an reviewed
+reduction work).** Before any reduction, produce a reviewed
 definition of exactly what "minimum never-hand-edited seed" means. The
 open design question — posed in `src/v3/SELF_HOSTING.md` ("how small can
 the seed parser be?") and never resolved:
