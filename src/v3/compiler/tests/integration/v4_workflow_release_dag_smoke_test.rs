@@ -261,11 +261,15 @@ fn v4_install_scripts_hand_synced_to_release_authority() {
             "{INSTALL_SH_PATH}: install path must cover release triple `{target}`"
         );
     }
+    assert!(
+        INSTALL_SH.contains("asset=\"gunbc-${target}\""),
+        "{INSTALL_SH_PATH}: asset naming must project release artifact basename gunbc-{{triple}} at runtime"
+    );
     for artifact in &RELEASE_PUBLISHED_ARTIFACTS[..4] {
         let triple = artifact.strip_prefix("gunbc-").unwrap_or(artifact);
         assert!(
-            INSTALL_SH.contains(&format!("gunbc-{triple}")),
-            "{INSTALL_SH_PATH}: asset naming must follow release artifact basename `gunbc-{triple}`"
+            RELEASE_TARGET_TRIPLES_SH.contains(triple),
+            "{RELEASE_TARGET_TRIPLES_SH_PATH}: POSIX targets must include triple `{triple}` for artifact `{artifact}`"
         );
     }
     assert!(
