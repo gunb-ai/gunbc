@@ -110,6 +110,7 @@ STRIP_PATHS=(
   # Work-in-progress and internal tooling.
   "wip"
   "scripts/session-dashboard"
+  "scripts/_internal"
   "tools/gen_gunbc_ci_workflow_dag"
 
   # Editor/agent metadata.
@@ -148,6 +149,25 @@ for path in "${STRIP_PATHS[@]}"; do
     echo "stripped: $path"
   fi
 done
+
+# Workspace members must match the stripped tree — otherwise `cargo fmt` and
+# other metadata commands fail on missing manifests (public snapshot CI).
+snapshot_patch_workspace_cargo() {
+  local cargo_toml="Cargo.toml"
+  if [[ ! -f "$cargo_toml" ]]; then
+    echo "ERROR: missing $cargo_toml in export worktree" >&2
+    return 1
+  fi
+  awk '
+    /"src\/v3\// { next }
+    /gen_gunbc_ci_workflow_dag/ { next }
+    { print }
+  ' "$cargo_toml" > "${cargo_toml}.snapshot" \
+    && mv "${cargo_toml}.snapshot" "$cargo_toml"
+  echo "patched: $cargo_toml (removed workspace members absent from public snapshot)"
+}
+
+snapshot_patch_workspace_cargo
 
 # Stage everything (including deletions) on a fresh orphan branch so the
 # public history is a single root commit per snapshot — no internal SHAs leak.
