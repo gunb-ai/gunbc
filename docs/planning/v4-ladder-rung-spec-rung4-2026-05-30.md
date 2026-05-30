@@ -22,7 +22,7 @@
 
 **Out-of-scope for this spec (named so the boundary is auditable):**
 
-- Rung 3 round-trip predicate (W1 — Compiler Spine, PR #3972 pending).
+- Rung 3 round-trip predicate — owned by the rung-3 companion spec (cites PR #3960 RoundTripClaim eval path; PR #3972 is leaf-model verification, orthogonal lane).
 - R4 Python / Go cells (W2 ships Rust only; rows pre-allocated per joint spec §4.2 A3).
 - R5 cross-target equivalence (Phase 3+).
 - R6 post-emit algebraic law re-check (Phase 3+).
