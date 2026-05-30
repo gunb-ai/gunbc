@@ -12,13 +12,16 @@
 
 ```dag
 type RustClaimSubject =
-  | RustPrimitiveTypeSubject       { primitive: RustPrimitive }              // 🟢 firm
-  | RustAlgebraInhabitanceSubject  { algebra: AlgebraCarrier, on: RustPrimitive }  // 🟢 firm
-  | RustAtomRealizationSubject     { atom: Node }                             // 🟡 gated — see §1.1
-  | RustCollectionRealizationSubject { collection: Node }                     // 🟡 gated — see §1.1
-  | RustGrammarProductionSubject   { production: GrammarProduction }          // 🟡 gated — see §1.1
-  | RustLexRuleSubject             { rule: LexRule }                          // 🟡 gated — see §1.1
+  | RustPrimitiveTypeSubject       { primitive: RustPrimitive }                                                  // 🟢 firm
+  | RustAlgebraInhabitanceSubject  { inhabitance_decl: AlgebraInhabitanceDecl }                                  // 🟢 firm
+  | RustAtomRealizationSubject     { atom: Node }                                                                // 🟡 gated — see §1.1
+  | RustAtomRealizationProjectionMismatchSubject { atom: Node, declared_type_form: Symbol, exercised_value_form: Symbol }   // 🟡 gated — R3-external mismatch falsification (see §1.1)
+  | RustCollectionRealizationSubject { collection: Node }                                                        // 🟡 gated — see §1.1
+  | RustGrammarProductionSubject   { production: GrammarProduction }                                             // 🟡 gated — see §1.1
+  | RustLexRuleSubject             { rule: LexRule }                                                             // 🟡 gated — see §1.1
 ```
+
+**Field-shape note (aligned to landed substrate `src/v4/std/rust_leaf_model_claim.dag`):** `RustAlgebraInhabitanceSubject` carries `inhabitance_decl: AlgebraInhabitanceDecl` (the derived inhabitance value), NOT a separate `{ algebra, on }` field pair. The decl already structurally pins both the algebra and the primitive it inhabits, so a parallel `{ algebra: AlgebraCarrier, on: RustPrimitive }` shape would be redundant authority (P2). The `RustAtomRealizationProjectionMismatchSubject` arm exists specifically for R3-external falsification: the mismatched-projection case needs to carry the deliberately-wrong declared/exercised form pair, which can't be expressed via the plain `RustAtomRealizationSubject { atom }` variant alone.
 
 **Closure rationale.** Open-extension coproducts in claim space are the heuristic-enum pattern operator rejected (memory `feedback_heuristics_recoverable_to_substrate`). New subject arms must enter via modeling escalation (Modeling DFS Mgr authority), not worker initiative — keeps the verification surface modelable end-to-end.
 
@@ -29,11 +32,12 @@ type RustClaimSubject =
 | `RustPrimitiveTypeSubject` | 🟢 firm | Rust primitive type space is fixed by the Rust Reference (i8..i128, u8..u128, isize, usize, bool, char, str, unit, never, f32, f64). The set is enumerable, model-owned (rust.dag `rust_facts_*` records), and not expected to dissolve. No trigger. |
 | `RustAlgebraInhabitanceSubject` | 🟢 firm | Mirrors std/algebra carrier (OrderedRing, ApproximateField, BooleanAlgebra, ...) paired with a RustPrimitive. Both sides are firm; no trigger. |
 | `RustAtomRealizationSubject` | 🟡 gated | Dissolve-on-arrival: SG-1 (TargetAtomRealization) + SG-5 (TargetCollectionRealization) land per PR #3938 §10.1 / §10.3. Once those rows exist for the full atom/collection set (Symbol/Bool/Char + Set/Map/List/...), this arm transitions 🟢 firm. Currently 🟡 because the underlying realization carrier is partly PLANNED. |
+| `RustAtomRealizationProjectionMismatchSubject` | 🟡 gated | Dissolve-on-arrival: per landed substrate gated note — `AtomRealizationForm` coproduct replaces the `declared_type_form` / `exercised_value_form` Symbol pair with a structured representation. Currently 🟡 because the pair-of-Symbols form is a Phase-1 compromise; the structural replacement is Phase-2 modeling work. Forbidden: closed Symbol pairs without a bounded dissolution receipt on this sub-shape. |
 | `RustCollectionRealizationSubject` | 🟡 gated | Same as above — dissolves to 🟢 firm when SG-5 row set lands. |
 | `RustGrammarProductionSubject` | 🟡 gated | Dissolve-on-arrival: T-4.17 wave 2 grammar productions complete on main. Currently grammar block is wave-1+wave-2-partial. Transitions 🟢 firm when grammar is closed. |
 | `RustLexRuleSubject` | 🟡 gated | Dissolve-on-arrival: lex-rule block on main reaches Rust-Reference parity. Currently partial; transitions 🟢 firm when complete. |
 
-**No 🔴 arms.** A 🔴 (provisional / candidate-for-removal) arm would be one where the modeling decision to include is itself uncertain. All six arms above are structurally justified by existing rust.dag fact families; none are speculative.
+**No 🔴 arms.** A 🔴 (provisional / candidate-for-removal) arm would be one where the modeling decision to include is itself uncertain. All seven arms above are structurally justified by existing rust.dag fact families and the landed substrate; none are speculative.
 
 **Node-keyed atom/collection identity (TR-authority constraint).** `RustAtomRealizationSubject.atom` and `RustCollectionRealizationSubject.collection` are typed as `Node` (canonical source-node identity), NOT `Symbol` (raw spelling). If R3-internal becomes spelling-keyed, the falsification probe can spuriously succeed by string-matching what is not actually a single-authority change. This constraint is enforced by Modeling DFS in the generic `LeafModelClaim` shape and reflected here as the Subject-arm field type.
 
@@ -240,11 +244,15 @@ falsification (locus: artifact — pending §4.1 ArtifactVariant substrate):
 ### R2a — i32 supports algebra ops
 ```text
 fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)    // derived-fact key per rust.dag:1768 function applied to rust.dag:574 facts; algebra-operations verification angle
-subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
+subject:    RustAlgebraInhabitanceSubject { inhabitance_decl: rust_integer_algebra_inhabitance(rust_facts_i32) }
 expectation: RustcAcceptsExpectation { invocation_form: rustc("pub fn r2a_test(a: i32, b: i32) -> (i32, bool) { (a + b, a < b) }") }
-falsification:
-  subject_variant: claim non-existent op (e.g., i32::log2_exact)
+falsification (locus: artifact — pending §4.1 ArtifactVariant substrate):
+  artifact_variant: rustc("pub fn r2a_test(a: i32) -> i32 { a.log2_exact() }")
   expected_failure_mode: RustcRejectsExpectation { ..., expected_error_code: E0599 }
+  // Wrongness is in the emitted artifact (calling a non-existent method on i32), NOT in the Subject
+  // — RustAlgebraInhabitanceSubject's only field is the derived inhabitance_decl, which doesn't
+  // structurally express "claim X exists." The subject is the same on both paths; only the artifact
+  // exercises a method whose absence the claim implicitly denies.
 ```
 
 ### R2b — i32 overflow semantics declared (SPLIT per OverflowDisposition field)
@@ -268,7 +276,7 @@ For Phase-1 fixture economy: implement the two distinct-value sub-claims as live
 ```text
 // R2b sub-claim 1 of 4 — debug-default
 fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)
-subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
+subject:    RustAlgebraInhabitanceSubject { inhabitance_decl: rust_integer_algebra_inhabitance(rust_facts_i32) }
 expectation: RustRuntimeBehaviorExpectation {
               invocation_form: rustc-then-run(
                 source: "pub fn r2b_test(a: i32, b: i32) -> i32 { a + b }
@@ -286,7 +294,7 @@ falsification (locus: expectation — pending §4.1 ExpectationVariant substrate
 
 // R2b sub-claim 2 of 4 — release-default
 fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)
-subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
+subject:    RustAlgebraInhabitanceSubject { inhabitance_decl: rust_integer_algebra_inhabitance(rust_facts_i32) }
 expectation: RustRuntimeBehaviorExpectation {
               invocation_form: rustc-then-run(
                 source: "pub fn r2b_test(a: i32, b: i32) -> i32 { a + b }
@@ -316,10 +324,16 @@ fact_id:    rust_atom_realization_symbol    // PLANNED — to be declared by SG-
 subject:    RustAtomRealizationSubject { atom: <Symbol carrier Node> }
 expectation: RustcAcceptsExpectation { invocation_form: rustc(emitted-from-TargetAtomRealization-row) }
 falsification (locus: subject — the deliberately-wrong Subject IS the real change here):
-  subject_variant: RustAtomRealizationSubject { atom: <Symbol carrier Node with mismatched TargetAtomRealization row — type alias + value-constructor call> }
+  subject_variant: RustAtomRealizationProjectionMismatchSubject {
+                     atom: <Symbol carrier Node>,
+                     declared_type_form: <Symbol naming the type alias form>,
+                     exercised_value_form: <Symbol naming the value-constructor call form>
+                   }
   expected_failure_mode: RustcRejectsExpectation { ..., expected_error_code: E0423 }    // the SG-1 root-cause error
-  // Wrongness lives in the Subject's atom Node identity (different realization row); current
-  // FalsificationCase.subject_variant slot types this cleanly without §4.1 extension.
+  // Per landed substrate (src/v4/std/rust_leaf_model_claim.dag): the projection-mismatch arm
+  // carries the deliberately-wrong declared/exercised form pair structurally, NOT as free text
+  // in the artifact. Current FalsificationCase.subject_variant slot types this cleanly without
+  // §4.1 extension.
 ```
 
 ### R3-internal — TargetAtomRealization row mutation receipt
