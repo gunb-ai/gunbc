@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_determinism/nested_invoke_effect_leak.dag
-// Scope: PR-2 claim — positional invoke under nested Transform still triggers effect_leak.
+// Scope: PR-2 claim — nested BindsTo call site still triggers effect_leak.
 
 
 module v4.test.claim.lens_determinism.nested_invoke_effect_leak
@@ -11,14 +11,14 @@ import v4.lens.determinism {
 }
 import v4.std.determinism { DeterminismFact, Deterministic }
 import v4.std.logic { Bool }
+import v4.std.dependency { dependency_binds_to_edge }
 import v4.std.node {
   Atom,
-  ComputationNode,
+  Conj,
   Edge,
+  Named,
   Node,
-  Positional,
   Symbol,
-  Transform,
   TypeNode
 }
 import v4.std.witness { Violates, Witness }
@@ -30,6 +30,7 @@ import v4.test.claim.lens_common.infer_fixture {
 
 data det_nested_caller_symbol: Symbol = det_nested_caller_symbol
 data det_nested_callee_symbol: Symbol = det_nested_callee_symbol
+data det_nested_inner_field: Symbol = det_nested_inner_field
 data det_nested_type_symbol: Symbol = det_nested_type_symbol
 data det_nested_algebra_symbol: Symbol = det_nested_algebra_symbol
 data det_nested_descent_symbol: Symbol = det_nested_descent_symbol
@@ -37,20 +38,20 @@ data det_nested_descent_symbol: Symbol = det_nested_descent_symbol
 data det_nested_callee_target: Node = claim_atom_node(s: det_nested_callee_symbol)
 
 data det_nested_inner: Node = Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Positional,
+      label: Named { name: dependency_binds_to_edge },
       target: det_nested_callee_target
     }
   ]
 }
 
 data det_nested_body: Node = Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Positional,
+      label: Named { name: det_nested_inner_field },
       target: det_nested_inner
     }
   ]

@@ -21,23 +21,23 @@ import v4.std.determinism {
   determinism_registry_from_facts,
   determinism_registry_lookup
 }
+import v4.std.dependency {
+  BindsTo,
+  DependencyView,
+  dependency_lens
+}
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
   Unavailable,
   node_locus
 }
-import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
-  ComputationNode,
   Edge,
-  Named,
   Node,
   NodeFold,
-  Positional,
   Symbol,
-  Transform,
   TypeNode,
   fold_node
 }
@@ -164,13 +164,7 @@ fn diagnostic_for_violation(v: DeterminismViolation) -> Diagnostic {
   }
 }
 
-type CalleeScanState {
-  current: Node
-  registry: Map<Symbol, DeterminismClass>
-  violation: Optional<DeterminismViolation>
-}
-
-fn callee_symbol_from_invoke_target(target: Node) -> Optional<Symbol> {
+fn callee_symbol_from_atom_node(target: Node) -> Optional<Symbol> {
   match target.kind {
     TypeNode { connective: Atom { identity: callee_sym } } =>
       optional_present(value: callee_sym)
@@ -178,75 +172,32 @@ fn callee_symbol_from_invoke_target(target: Node) -> Optional<Symbol> {
   }
 }
 
-fn callee_positional_edge_violation(
+// 🟡 gated — feature:determinism-effect-leak-binds-to — bind v4.std.dependency BindsTo; dissolve-on: T-9 resolve stamps Transform call-site callee as BindsTo (PR-4); forbidden: callee inference from generic Transform positional children.
+fn callee_binds_to_violation(
   registry: Map<Symbol, DeterminismClass>,
-  parent: Node,
-  edge: Edge
+  view: DependencyView
 ) -> Optional<DeterminismViolation> {
-  match parent.kind {
-    ComputationNode { behavior: Transform } =>
-      match edge.label {
-        Positional =>
-          match callee_symbol_from_invoke_target(target: edge.target) {
-            Present { value: callee_sym } =>
-              match determinism_registry_lookup(registry: registry, signature: callee_sym) {
-                Holds { value: classification } =>
-                  match classification {
-                    Deterministic => optional_absent()
-                    NonDeterministic { source: _ } =>
-                      optional_present(
-                        value: EffectLeak { callee: callee_sym, at: edge.target }
-                      )
-                  }
-                Violates { diagnostic: _ } =>
+  match view.kind {
+    BindsTo =>
+      match callee_symbol_from_atom_node(target: view.dependent) {
+        Present { value: callee_sym } =>
+          match determinism_registry_lookup(registry: registry, signature: callee_sym) {
+            Holds { value: classification } =>
+              match classification {
+                Deterministic => optional_absent()
+                NonDeterministic { source: _ } =>
                   optional_present(
-                    value: EffectLeak { callee: callee_sym, at: edge.target }
+                    value: EffectLeak { callee: callee_sym, at: view.usage_site }
                   )
               }
-            Absent => optional_absent()
+            Violates { diagnostic: _ } =>
+              optional_present(
+                value: EffectLeak { callee: callee_sym, at: view.usage_site }
+              )
           }
-        Named { name: _ } => optional_absent()
+        Absent => optional_absent()
       }
     _ => optional_absent()
-  }
-}
-
-fn callee_scan_init(registry: Map<Symbol, DeterminismClass>, n: Node) -> CalleeScanState {
-  CalleeScanState {
-    current: n,
-    registry: registry,
-    violation: optional_absent()
-  }
-}
-
-fn callee_scan_step(
-  acc: CalleeScanState,
-  edge: Edge,
-  child: CalleeScanState
-) -> CalleeScanState {
-  CalleeScanState {
-    current: acc.current,
-    registry: acc.registry,
-    violation: optional_prefer_first_present(
-      left: acc.violation,
-      right: optional_prefer_first_present(
-        left: callee_positional_edge_violation(
-          registry: acc.registry,
-          parent: acc.current,
-          edge: edge
-        ),
-        right: child.violation
-      )
-    )
-  }
-}
-
-fn callee_scan_fold_algebra(registry: Map<Symbol, DeterminismClass>) -> NodeFold<CalleeScanState> {
-  NodeFold {
-    init: fn(n0) {
-      callee_scan_init(registry: registry, n: n0)
-    },
-    step: callee_scan_step
   }
 }
 
@@ -254,10 +205,16 @@ fn first_effect_leak_in_body(
   body: Node,
   registry: Map<Symbol, DeterminismClass>
 ) -> Optional<DeterminismViolation> {
-  fold_node(
-    n: body,
-    algebra: callee_scan_fold_algebra(registry: registry)
-  ).violation
+  fold(
+    dependency_lens(root: body),
+    init: optional_absent(),
+    f: fn(acc, view) {
+      optional_prefer_first_present(
+        left: acc,
+        right: callee_binds_to_violation(registry: registry, view: view)
+      )
+    }
+  )
 }
 
 fn first_violation_in_body(

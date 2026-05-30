@@ -11,16 +11,14 @@ import v4.lens.determinism {
 }
 import v4.std.determinism { DeterminismFact, Deterministic }
 import v4.std.logic { Bool }
+import v4.std.dependency { dependency_binds_to_edge }
 import v4.std.node {
   Atom,
-  ComputationNode,
   Conj,
   Edge,
   Named,
   Node,
-  Positional,
   Symbol,
-  Transform,
   TypeNode
 }
 import v4.std.witness { Holds, Witness }
@@ -42,10 +40,10 @@ data det_clean_map_node: Node = claim_atom_node(s: deterministic_carrier_btree_m
 data det_clean_callee_target: Node = claim_atom_node(s: det_clean_callee_symbol)
 
 data det_clean_call_node: Node = Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Positional,
+      label: Named { name: dependency_binds_to_edge },
       target: det_clean_callee_target
     }
   ]

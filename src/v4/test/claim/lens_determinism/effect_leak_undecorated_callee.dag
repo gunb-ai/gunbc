@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_determinism/effect_leak_undecorated_callee.dag
-// Scope: PR-2 claim — Deterministic caller invoking callee absent from registry -> effect_leak.
+// Scope: PR-2 claim — Deterministic caller with BindsTo to callee absent from registry -> effect_leak.
 
 
 module v4.test.claim.lens_determinism.effect_leak_undecorated_callee
@@ -11,14 +11,14 @@ import v4.lens.determinism {
 }
 import v4.std.determinism { DeterminismFact, Deterministic }
 import v4.std.logic { Bool }
+import v4.std.dependency { dependency_binds_to_edge }
 import v4.std.node {
   Atom,
-  ComputationNode,
+  Conj,
   Edge,
+  Named,
   Node,
-  Positional,
   Symbol,
-  Transform,
   TypeNode
 }
 import v4.std.witness { Violates, Witness }
@@ -37,10 +37,10 @@ data det_leak_descent_symbol: Symbol = det_leak_descent_symbol
 data det_leak_callee_target: Node = claim_atom_node(s: det_leak_callee_symbol)
 
 data det_leak_body: Node = Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Positional,
+      label: Named { name: dependency_binds_to_edge },
       target: det_leak_callee_target
     }
   ]
