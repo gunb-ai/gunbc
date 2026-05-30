@@ -1,6 +1,6 @@
 # v4 ladder rung specs — Phase 1 (`nat_semiring` × rungs 0–2)
 
-> **Status:** MANAGER DRAFT FOR REVIEW — Ladder/Fixture Manager (`keen-crab-361`), 2026-05-30.
+> **Status:** MANAGER RATIFIED — Ladder/Fixture Manager (`keen-crab-361`), 2026-05-30. Operator sign-off: PR #3938 merged (`b129ce3f2`); §7 Phase 1 dispatch ratified per PM 2026-05-30.
 > **Authority:** PR #3938 §11.1 lane 2. **9-rung ontology:** PR #3938 §6 (`docs/planning/v4-correctness-ladder-2026-05-30.md` on `session/nimble-dove-733`).
 > **PR:** https://github.com/gunb-ai/gunbc/pull/3946 (`session/keen-crab-361`).
 > **Scope:** Ratify Phase 1 fixture; acceptance predicates for rungs 0–2 only. Rungs 3–9 blocked on Compiler Spine + Runtime/TestClaim interface definitions (§11.4 item 4).
@@ -230,7 +230,7 @@ Do not dispatch “Fix SG-*” or “M1-class-fix” workers without a brief tha
 3. `predicate id` from §2.1–§2.3 expected to flip
 4. Modeling DFS worksheet approval when touching `TargetAtomRealization` / `TargetTypeExpressionProjection` (planning doc §11.4)
 
-**Operator sign-off gate (2026-05-30 PM brief):** implementation workers **HOLD** until PR #3938 §8 decisions D1–D7 are operator-ratified. This spec is review input; wiring PRs may be drafted but must not merge ahead of sign-off.
+**Operator sign-off (2026-05-30):** PR #3938 merged; §7 Phase 1 dispatch ratified. Wiring PRs (#3953 substrate, ci.dag follow-up) may proceed to review. SG-1/SG-2 substrate touches still require Modeling DFS worksheet approval per §11.4.
 
 ---
 
@@ -262,8 +262,8 @@ Do not dispatch “Fix SG-*” or “M1-class-fix” workers without a brief tha
 
 | Decision | Disposition |
 | -------- | ----------- |
-| Phase 1 fixture = `nat_semiring` | **RATIFIED** (pending operator §8) |
-| Rungs 0–2 acceptance predicates (§2) | **RATIFIED** (pending operator §8) |
-| Phase 1 target set = dag + rust + python + go | **RATIFIED** (pending operator §8) |
-| No rustc-clean headline rule (§4) | **RATIFIED** (pending operator §8) |
-| Worker wiring PR | **HOLD until operator §8 sign-off** |
+| Phase 1 fixture = `nat_semiring` | **RATIFIED** |
+| Rungs 0–2 acceptance predicates (§2) | **RATIFIED** |
+| Phase 1 target set = dag + rust + python + go | **RATIFIED** |
+| No rustc-clean headline rule (§4) | **RATIFIED** |
+| Worker wiring PR (#3953 + ci.dag follow-up) | **UNBLOCKED** (2026-05-30 PM) |
