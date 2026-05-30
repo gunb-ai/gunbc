@@ -12,9 +12,11 @@ import v4.extdeps.languages.rust {
   rust_sg2_instantiation_source_type_node,
   rust_sg2_rc_foobar_xy_emitted,
   rust_sg2_type_expr_target_model,
+  rust_token_comma,
+  rust_token_gt,
+  rust_token_lt,
   rust_type_expression_projection
 }
-import v4.compiler.target_carriers { TargetSource }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v4.std.text { String }
@@ -70,13 +72,13 @@ fn sg2_projection_matches_golden() -> Bool {
     content_hash(n: rust_sg2_rc_foobar_xy_emitted())
 }
 
-fn sg2_serialized_type_text() -> TargetSource {
+fn sg2_serialized_type_text() -> String {
   match target_serialize_source_from_model(
     target: rust_sg2_type_expr_target_model(),
     emitted: rust_sg2_rc_foobar_xy_emitted()
   ) {
     Accepted { value: source, diagnostics: _ } => source
-    Rejected { diagnostics: _ } => Empty
+    Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -84,26 +86,12 @@ fn sg2_serialize_matches_expected() -> Bool {
   sg2_serialized_type_text() == sg2_expected_type_text
 }
 
-// Bidirectional readability: emission delimiters are lex literals readable on ingest path.
+// §10.6 bidirectional readability: ingest/emission share the same delimiter token-class row.
 fn sg2_instantiation_delimiters_bidirectional() -> Bool {
-  let form = rust_type_expression_projection().instantiation_form
-  let target = rust_sg2_type_expr_target_model()
-  match target_serialize_source_from_model(
-    target: target,
-    emitted: rust_sg2_rc_foobar_xy_emitted()
-  ) {
-    Accepted { value: _, diagnostics: _ } =>
-      form.open == rust_token_lt &&
-      form.separator == rust_token_comma &&
-      form.close == rust_token_gt
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-import v4.extdeps.languages.rust {
-  rust_token_lt,
-  rust_token_comma,
-  rust_token_gt
+  let row = rust_type_expression_projection()
+  row.instantiation_form.open == rust_token_lt &&
+    row.instantiation_form.separator == rust_token_comma &&
+    row.instantiation_form.close == rust_token_gt
 }
 
 data claim_sg2_projection_structural: TestClaim = EqualsClaim {
