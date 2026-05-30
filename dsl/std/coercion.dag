@@ -43,10 +43,7 @@ type TypeCheckpoint {
   literal_suffix: String?   // Rust String: ".to_string()" (&str → String ownership)
 }
 
-// PRACTICE 4 CHECKPOINT: 🟡 STAGED (docs/modeling-discipline.md §4 coproduct dissolution)
-// TargetAtomTypeDeclKind: how a kernel-ambient atom is declared in the target language.
-// Dissolution trigger: fold `type_decl_kind` into `TypeCheckpoint` and delete this coproduct
-// (owner: coercion lane; artifact: single `TypeCheckpoint` row carries decl + value surface).
+// 🟡 coproduct dissolution — feature:sg-1-target-atom-realization — consumer:v2.coercion emit/read atom realization rows — owner:coercion lane PR #3964 — dissolve-on-arrival: fold type_decl_kind into TypeCheckpoint and delete TargetAtomTypeDeclKind
 type TargetAtomTypeDeclKind
   = TransparentAlias
   | NominalNewtype
