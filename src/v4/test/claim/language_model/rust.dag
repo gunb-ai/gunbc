@@ -24,9 +24,6 @@ import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.runtime { Panic, RuntimeOutcome, Wrap }
 import v4.std.rust_leaf_model_claim {
-  E0308,
-  E0423,
-  E0599,
   Rustc_ErrorCode_Phase1,
   RustAlgebraInhabitanceSubject,
   RustAtomRealizationProjectionMismatchSubject,
@@ -36,6 +33,9 @@ import v4.std.rust_leaf_model_claim {
   RustEmitProjectionEqualityExpectation,
   rust_leaf_phase1_algebra_carrier_ordered_ring,
   rust_leaf_phase1_primitive_i32,
+  rust_leaf_phase1_err_e0308,
+  rust_leaf_phase1_err_e0423,
+  rust_leaf_phase1_err_e0599,
   RustPrimitiveTypeSubject,
   RustRuntimeBehaviorExpectation,
   RustcAcceptsExpectation,
@@ -85,7 +85,7 @@ data claim_rust_leaf_r1_i32_type: RustLeafModelClaim = LeafModelClaim {
   expectation: rust_leaf_rustc_accepts(),
   falsification_case: FalsificationCase {
     subject_variant: RustPrimitiveTypeSubject { primitive: rust_leaf_phase1_primitive_i32 },
-    expected_failure_mode: rust_leaf_rustc_rejects(code: E0308 {})
+    expected_failure_mode: rust_leaf_rustc_rejects(code: rust_leaf_phase1_err_e0308)
   }
 }
 
