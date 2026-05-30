@@ -1419,37 +1419,6 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_rust_type_alias_item(item: Node, item_text: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let alias_decl = rust_type_alias_decl(item_text: item_text, item: item, shared_types: shared_types, source_indices: source_indices)
-  if (item.params |> count) == 0 {
-    match lookup_atom_realization(target: Rust, dag_name: item_text) {
-      Some { value: row } =>
-        match row.type_decl_kind {
-          NominalNewtype => rust_atom_nominal_newtype_def(row: row)
-          TransparentAlias => alias_decl
-        }
-      None => alias_decl
-    }
-  } else {
-    alias_decl
-  }
-}
-
-fn emit_rust_type_decl_item(item: Node, item_text: String) -> String {
-  if (item.params |> count) == 0 {
-    match lookup_atom_realization(target: Rust, dag_name: item_text) {
-      Some { value: row } =>
-        match row.type_decl_kind {
-          NominalNewtype => rust_atom_nominal_newtype_def(row: row)
-          TransparentAlias => ""
-        }
-      None => ""
-    }
-  } else {
-    ""
-  }
-}
-
 fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
