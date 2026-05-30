@@ -268,7 +268,6 @@ jobs:
     - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
       if: needs.affected.outputs.v4 == 'true' && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
       id: v4_bootstrap_resolve_posture
-      continue-on-error: true
       run: |
         set -euo pipefail
         V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1 \
@@ -276,8 +275,6 @@ jobs:
           bash scripts/v4-bootstrap-resolve-posture-gate.sh
     - name: v4 bootstrap gate result (compile or tracked bridge)
       if: always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'
-      # W2: SG-7 complexity wall — full-tree emit often 143/1 until T-38; do not block host-harness PRs.
-      continue-on-error: true
       run: |
         set -euo pipefail
         if [[ "${{ steps.v4_bootstrap_compile.outcome }}" == "success" ]]; then
@@ -292,8 +289,6 @@ jobs:
         exit 1
     - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
-      # SG-7 / T-38: structural rust emit wall (0 files, complexity diagnostics) — receipt only.
-      continue-on-error: true
       env:
         V4_TESTCLAIM_TIMEOUT_SECS: "480"
       run: bash scripts/v4-testclaim-corpus-gate.sh
