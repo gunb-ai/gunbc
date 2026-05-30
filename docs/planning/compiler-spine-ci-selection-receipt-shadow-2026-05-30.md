@@ -29,7 +29,7 @@ Produce a **per-PR `CiSelectionReceipt`** that records, for every modeled CI ste
 
 ## 3. Receipt carriers (canonical)
 
-Aligned with `docs/planning/v4-ci-overhaul-2026-05-30.md` §5. `Outcome<ContentHash>` is `std.diagnostic.Outcome` (Practice 10 — no parallel projection carrier).
+Aligned with `docs/planning/v4-ci-overhaul-2026-05-30.md` §5 (**this PR amends** parent `CiStepSelection.cache_digest` to `Outcome<ContentHash>` — single authority, P3 fail-closed). `Outcome<ContentHash>` is `std.diagnostic.Outcome` (Practice 10 — no parallel projection carrier).
 
 ```dag
 type CiSelectionReceipt {
