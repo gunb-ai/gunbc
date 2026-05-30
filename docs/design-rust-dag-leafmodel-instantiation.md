@@ -80,7 +80,7 @@ Inventory at main HEAD `edc8cba73` (approximate counts; row counts verified agai
 
 | fact_id family | count | Source location | Phase 1? |
 | -------------- | ----- | --------------- | -------- |
-| Primitive type facts (`rust_facts_*` — `RustIntegerPrimitiveFacts` + `RustNonIntegerPrimitiveFacts` records) | ~18 | rust.dag:562-660 (integer) + rust.dag:648-700 (non-integer) | R1 covers `rust_facts_i32` (rust.dag:574) only |
+| Primitive type facts (`rust_facts_*` records) | 19 total | Integer (`RustIntegerPrimitiveFacts`, 12 entries): rust.dag:562-633 covering `i8`/`i16`/`i32`/`i64`/`i128`/`u8`/`u16`/`u32`/`u64`/`u128`/`isize`/`usize`. Float (`RustFloatPrimitiveFacts`, 2 entries): rust.dag:634-647 covering `f32`/`f64`. Non-integer (`RustNonIntegerPrimitiveFacts`, 5 entries): rust.dag:648-700 covering `bool`/`char`/`str`/`unit`/`never`. | R1 covers `rust_facts_i32` (rust.dag:574) only |
 | Algebra inhabitance (function-derived from primitive facts) | per-primitive | rust.dag:1768 `rust_integer_algebra_inhabitance(facts)` derives `AlgebraInhabitanceDecl` per `rust_facts_*` row | R2a/R2b cover the derived inhabitance for `rust_facts_i32` only |
 | `rust_std_projection_*` | 19 | rust.dag:265-283 | none in Phase 1 |
 | `rust_surface_spelling_*` | 19 | rust.dag:285-303 | none in Phase 1 |
