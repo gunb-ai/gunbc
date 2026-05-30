@@ -32,8 +32,8 @@ pub use crate::v2_compiler_emit::{
     scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
     service_field_decls, service_var_name, tco_reassign_core, test_function_name, to_lower_char,
     to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings, wrap_shared_type, BlockEmitState, EmitResult,
-    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput, TestProjection,
+    typed_named_arg_matches, unique_strings, BlockEmitState, EmitResult, InterpPart,
+    ServiceFieldSet, TcoFrame, TcoReassignInput, TestProjection,
 };
 pub use crate::v2_compiler_infer::{
     build_emit_graph_info, build_params_scope, expr_span, extend_scope, InferScope,
@@ -16287,11 +16287,6 @@ pub fn emit_data_def(
                 type_node.clone(),
             ),
         );
-        let ty_str = if (needs_rc.clone() && !rust_type_is_rc_wrapped(ty_str.clone())) {
-            wrap_shared_type(RenderTarget::Rust, ty_str.clone())
-        } else {
-            ty_str.clone()
-        };
         if (is_simple_type_node(
             type_node.clone(),
             scope.type_env.clone().source_indices.clone(),
@@ -16350,7 +16345,7 @@ pub fn emit_data_def(
                     depth,
                     shared_types.clone(),
                     emit_info,
-                    needs_rc.clone(),
+                    needs_rc,
                 );
                 let kw = rust_items().func_keyword.clone();
                 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    thread_local! {\n".to_string()), "        static CACHED: ".to_string()), ty_str.clone()), " = {\n".to_string()), body), "\n".to_string()), "        };\n".to_string()), "    }\n".to_string()), "    CACHED.with(|c: &".to_string()), ty_str.clone()), "| c.clone())\n".to_string()), "}".to_string())
