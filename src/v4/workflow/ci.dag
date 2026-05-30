@@ -719,7 +719,7 @@ fn ci_byte_limb_projection_node(limb: Int) -> Node {
 
 
 // Bounded positive-offset peel (v2 complexity): limbs_remaining decreases each /256 step — not same-argument self-call.
-data ci_int_offset_projection_max_limbs: Int = 9
+data ci_int_offset_projection_max_limbs: Int = 4
 
 fn ci_int_offset_authority_projection_positive(n: Int, limbs_remaining: Int) -> Node {
   if limbs_remaining == 0 {
