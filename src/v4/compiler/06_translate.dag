@@ -74,7 +74,6 @@ import v4.std.target_model {
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
-  TargetRecordTypeShape,
   TargetSumTypeShape,
   TargetTypeExprFieldSlot,
   TargetTypeExpression,
@@ -83,12 +82,6 @@ import v4.std.target_model {
   TargetTypeExprAtom,
   TargetTypeExprArrow,
   TargetTypeExprCardinality,
-  TargetTypeExprEmittedArrow,
-  TargetTypeExprEmittedAtom,
-  TargetTypeExprEmittedCardinality,
-  TargetTypeExprEmittedInstantiation,
-  TargetTypeExprEmittedRecord,
-  TargetTypeExprEmittedSum,
   TargetTypeExprInstantiation,
   TargetTypeExprKind,
   TargetTypeExprRecord,
@@ -1142,22 +1135,6 @@ fn type_expr_generic_apply_shape_from_node(node: Node) -> Outcome<TargetGenericA
     }
   )
 }
-fn type_expr_record_shape_from_node(node: Node) -> Outcome<TargetRecordTypeShape> {
-  bind_outcome(
-    o: type_expr_generic_apply_shape_from_node(node: node),
-    f: fn(form) {
-      Accepted {
-        value: TargetRecordTypeShape {
-          surface: form.surface,
-          open: form.open,
-          separator: form.separator,
-          close: form.close
-        },
-        diagnostics: None
-      }
-    }
-  )
-}
 fn type_expr_sum_shape_from_node(node: Node) -> Outcome<TargetSumTypeShape> {
   bind_outcome(
     o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_surface),
@@ -1219,7 +1196,7 @@ fn type_expression_projection_from_bundle(bundle: Node) -> Outcome<TargetTypeExp
             o: conj_named_child(parent: bundle, edge_name: target_type_expr_field_conj),
             f: fn(conj_node) {
               bind_outcome(
-                o: type_expr_record_shape_from_node(node: conj_node),
+                o: type_expr_generic_apply_shape_from_node(node: conj_node),
                 f: fn(conj_form) {
                   bind_outcome(
                     o: conj_named_child(parent: bundle, edge_name: target_type_expr_field_disj),
@@ -1996,7 +1973,7 @@ fn serialize_type_expr_record_bounded(
   remaining: Int,
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
-  form: TargetRecordTypeShape,
+  form: TargetGenericApply,
   node: Node
 ) -> Outcome<TargetSource> {
   bind_outcome(
@@ -2227,48 +2204,48 @@ fn serialize_type_expr_emitted_wire_bounded(
   projection: TargetTypeExpressionProjection,
   wire: TargetTypeExpression
 ) -> Outcome<TargetSource> {
-  match wire {
-    TargetTypeExprEmittedAtom { node: emitted } =>
-      type_expr_spelling_for_atom(target: target, node: emitted)
-    TargetTypeExprEmittedInstantiation { node: emitted } =>
+  match wire.kind {
+    TargetTypeExprAtom =>
+      type_expr_spelling_for_atom(target: target, node: wire.node)
+    TargetTypeExprInstantiation =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
         projection: projection,
         form: projection.instantiation_form,
-        node: emitted
+        node: wire.node
       )
-    TargetTypeExprEmittedCardinality { node: emitted } =>
+    TargetTypeExprCardinality =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
         projection: projection,
         form: projection.cardinality_form,
-        node: emitted
+        node: wire.node
       )
-    TargetTypeExprEmittedRecord { node: emitted } =>
+    TargetTypeExprRecord =>
       serialize_type_expr_record_bounded(
         remaining: remaining - 1,
         target: target,
         projection: projection,
         form: projection.conj_form,
-        node: emitted
+        node: wire.node
       )
-    TargetTypeExprEmittedSum { node: emitted } =>
+    TargetTypeExprSum =>
       serialize_type_expr_sum_bounded(
         remaining: remaining - 1,
         target: target,
         projection: projection,
         form: projection.disj_form,
-        node: emitted
+        node: wire.node
       )
-    TargetTypeExprEmittedArrow { node: emitted } =>
+    TargetTypeExprArrow =>
       serialize_type_expr_arrow_bounded(
         remaining: remaining - 1,
         target: target,
         projection: projection,
         form: projection.arrow_form,
-        node: emitted
+        node: wire.node
       )
   }
 }

@@ -77,7 +77,6 @@ import v4.std.target_model {
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
-  TargetRecordTypeShape,
   TargetSumTypeShape,
   TargetTypeExpressionProjection,
   concrete_syntax_token_field_binding,
@@ -2849,7 +2848,7 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: rust_surface_type_atom,
       ident_token: rust_token_ident
     },
-    conj_form: TargetRecordTypeShape {
+    conj_form: TargetGenericApply {
       surface: rust_surface_type_record,
       open: rust_token_lbrace,
       separator: rust_token_comma,
@@ -2953,7 +2952,7 @@ fn rust_type_expression_projection_bundle_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(name: target_type_expr_field_atom, target: rust_type_expr_atom_shape_node(form: row.atom_form)),
-      rust_named_edge(name: target_type_expr_field_conj, target: rust_type_expr_record_shape_node(form: row.conj_form)),
+      rust_named_edge(name: target_type_expr_field_conj, target: rust_type_expr_generic_apply_shape_node(form: row.conj_form)),
       rust_named_edge(name: target_type_expr_field_disj, target: rust_type_expr_sum_shape_node(form: row.disj_form)),
       rust_named_edge(name: target_type_expr_field_arrow, target: rust_type_expr_arrow_shape_node(form: row.arrow_form)),
       rust_named_edge(name: target_type_expr_field_cardinality, target: rust_type_expr_generic_apply_shape_node(form: row.cardinality_form)),
@@ -2973,18 +2972,6 @@ fn rust_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
 }
 
 fn rust_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
-      rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
-      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
-    ]
-  }
-}
-
-fn rust_type_expr_record_shape_node(form: TargetRecordTypeShape) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
