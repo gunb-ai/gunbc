@@ -183,9 +183,29 @@ Gate D and Gate E are unaffected by this audit.
   The website **must obey the support matrix in `SUPPORTED.md`**: no
   claim of broad language/compiler support; CTA points to supported
   examples and the verified install path only; the website states that
-  v0.1.0's verified target surfaces are **Rust, Go, and Python** (the
-  three v2 emit paths) and that TypeScript is **v4 early-support, not
+  v0.1.0's verified target surfaces are **Rust, Python, and Go** (the
+  three v2 emit paths) and that TypeScript is **v4-alpha only, not
   v0.1.0**.
+
+  **Marketing-surface guards (apply to the homepage, README first
+  screen, and any social/landing copy):**
+  - No raw maintainer-internal figures on the marketing surface — e.g.
+    `~7,951 rustc errors` and similar `v4-alpha` measurements live in
+    `SUPPORTED.md` / `docs/v4-status.md`, not in the hero. The hero may
+    say "v4 substrate is WIP and outside the supported contract."
+  - No install/build command appears on the homepage unless it is
+    verified under Gate C on every advertised target. In particular,
+    `make install` / `brew install` / `apt install` are absent from the
+    homepage unless and until they ship per the distribution ruling.
+  - Hero claims are scoped to the v0.1.0 supported contract (Rust +
+    Python + Go for the documented subset). Omni-emission, lens-as-CI,
+    impossible-bug-class material is allowed in clearly-labeled
+    "Vision / where this goes" sections, not in the hero or in a
+    support-claim register.
+  - "Impossible bug" framing is scoped: only used for bug classes
+    actually PROVEN on the v0.1.0 surface; otherwise phrased as "bug
+    classes the lens suite is designed to catch" or "bug classes we are
+    making structurally unrepresentable" (forward-looking).
 - **Private ↔ public sync model:** public `gunb-ai/daglang` is the source
   of truth post-launch; private `gunb-ai/gunbc` is a scratchpad whose sole
   purpose is to keep internal session traffic off the public repo. The
