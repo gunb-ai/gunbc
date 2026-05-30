@@ -94,25 +94,53 @@ type CiUpsertStep<T> = Upsert<T> {
   // the complete subgraph at emission / cache-lookup time.
 }
 
+type FileSetSelector {
+  root: RepositoryRoot                   // canonical root (not raw path string)
+  pattern: GlobPattern                   // typed glob, not bare Symbol
+}
+
 type UpsertInputRef
-  = FileGlob { glob: Symbol }            // "src/v4/std/**/*.dag"
+  = FileSet { selector: FileSetSelector }   // typed path-set, NOT bare Symbol glob
+                                              // (raw globs at GitHub ingress; immediately
+                                              //  normalized into FileSetSelector inside the model)
   | SubstrateNodeSet { selector: NodeQuery }
   | LensOutputRef { lens: LensId, ports: List<Port> }
   | TestClaimRef { claim_id: Symbol }
-  | UpstreamUpsert { step_id: Symbol }   // dependency-resolution: upstream upsert must succeed first
+  | UpstreamUpsert { step_id: CiStepId }     // typed step identity, NOT Symbol
 ```
+
+`CiStepId` is the typed step-identity carrier (defined elsewhere in workflow/ci.dag). Step identity is never a raw atom.
 
 **Every step is AffectedOnly by construction** — there is NO per-step `Always` policy variant. Per operator directive 2026-05-30 ("I'm really not a fan of introducing heuristics this early on — this is a closed system; if we're missing something, I'd rather add it now instead of adding these heuristics/coproducts"): no `CiRunPolicy` / `CiRunMode` enum. The closed-system reasoning (INVARIANTS P1) says heuristics are recoverable to missing structural facts.
 
 **Carve-out list (NOT a mode/heuristic).** A small explicit data declaration enumerates steps that always run, each with a literal reason (including "superstition? not sure why exactly?" as a valid honest entry):
 ```dag
+type CiCarveout {
+  step_id: CiStepId
+  reason: Symbol                              // honest reason, including "superstition? not sure why exactly"
+  dissolution_target: DissolutionTarget       // explicit path to remove this entry
+                                                // (what substrate fact, when modeled, removes the need for the carveout)
+}
+
+type DissolutionTarget
+  = ModelMissingSubstrate { what: Symbol }    // "affected-set lens circular-dep on v2" etc.
+  | UnknownYet                                  // we genuinely don't know what would dissolve it
+                                                // (forces explicit acknowledgment that we don't know)
+
 data ci_always_run_carveouts: List<CiCarveout> = [
-  { step_id: ci_step_v2_compile_src_v4, reason: "v2-compiler integrity gate; affected-set lens itself imports v2 substrate — circular dependency unmodeled" },
-  { step_id: ci_step_<integrity_X>, reason: "superstition — not sure why exactly" },
-  // ... small list with explicit reasons
+  { step_id: ci_step_v2_compile_src_v4,
+    reason: "v2-compiler integrity gate; affected-set lens itself imports v2 substrate — circular dependency unmodeled",
+    dissolution_target: ModelMissingSubstrate { what: "v2_substrate_dependency_modeled_in_affected_set" }
+  },
+  { step_id: ci_step_<integrity_X>,
+    reason: "superstition — not sure why exactly",
+    dissolution_target: UnknownYet
+  },
+  // ... small list — every entry has reason + dissolution_target
 ]
-type CiCarveout { step_id: CiStepId, reason: Symbol }
 ```
+
+Adding a carveout requires BOTH a reason AND a dissolution_target. `UnknownYet` is a valid honest answer; it forces explicit acknowledgment that we don't yet know what would let us remove the carveout. Each carveout entry is reviewed on its dissolution_target progress.
 
 Each carve-out entry is a **dissolution target**: as we figure out the actual missing dependency, we model it (add the substrate fact), and the entry comes off the list. The list itself is data — small, honest, reviewable. Adding an entry is a deliberate decision with a reason; removing one is a substrate-modeling deliverable.
 
@@ -132,6 +160,34 @@ verify(step, PR) =
     then satisfied   // short-circuit: cached outcome stable, no action
     else needs_action  // verify says action required → create phase runs
 ```
+
+**First observable artifact — `CiSelectionReceipt`** (operator-ratified 2026-05-30 as "the actual results ASAP" surface). Each PR produces:
+
+```dag
+type CiSelectionReceipt {
+  pr: ChangeSet
+  affected: AffectedSet
+  selected: List<CiStepSelection>
+  skipped: List<CiStepSelection>
+  carved_out: List<CiCarveout>             // the always-run override list, with reasons + dissolution targets
+}
+
+type CiStepSelection {
+  step_id: CiStepId
+  inputs_consulted: List<UpsertInputRef>
+  affected_intersection: List<AffectedNode>   // what specifically intersected
+  decision: SelectionDecision                  // Run | Skip | CarvedOut
+  cache_digest: ContentHash                    // projected from complete step subgraph
+  reason: Symbol
+}
+
+type SelectionDecision
+  = Run
+  | Skip                                       // dep intersection empty
+  | CarvedOut { carveout_reason: Symbol }     // matched ci_always_run_carveouts
+```
+
+The receipt is the **first thing CI should produce, before active skipping is trusted**. Even in shadow mode (where the receipt is computed but the existing CI still runs everything), the receipt tells operator + managers whether the dependency machinery is producing useful output. The transition from shadow → active is: once receipts are stable and reviewable, gate the existing workflow on the receipt's `selected` list.
 
 **Minimal CI per PR** falls out of Upsert<T> semantics. By construction:
 - Steps in `ci_always_run_carveouts` always run (carve-out override).

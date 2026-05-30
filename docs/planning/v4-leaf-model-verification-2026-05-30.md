@@ -67,7 +67,41 @@ It is also the natural consumer of the §10.0 two-axis disposition vocabulary fr
 
 ## §5. Per-leaf-model verification framework (3-layer, mirrors CI overhaul)
 
-**Layer A — Claim authority.** Each leaf model's claims live in the model itself (declared facts) OR in a sibling `test/claim/language_model/<model>.dag` directory of CLAIM declarations that reference the model. Claim authoring follows the existing `TestClaim` discipline.
+**Canonical claim carriers (operator-ratified 2026-05-30 — define before dispatch):**
+
+```dag
+type LeafModelClaim<M, Subject, Expectation> {
+  model: M                                  // the leaf model the claim is about (e.g., rust.dag)
+  subject: Subject                          // what specifically (e.g., Rust i32 primitive)
+  expectation: Expectation                  // what the model claims about subject
+  falsification_case: FalsificationCase<Subject, Expectation>  // REQUIRED, not optional
+}
+
+type FalsificationCase<Subject, Expectation> {
+  subject_variant: Subject                  // deliberately-wrong subject
+  expected_failure_mode: TargetVerdict      // what target verdict proves the model
+                                              // would have caught this wrongness
+}
+
+type LeafModelFixture<C> {
+  claim: C                                  // LeafModelClaim<M, Subject, Expectation>
+  artifact: TargetArtifact                  // source string / AST graph
+  invocation: TargetInvocation              // how to exercise (rustc / pyright / ...)
+  expected_verdict: TargetVerdict
+  falsification_artifact: TargetArtifact    // the wrong variant per claim.falsification_case
+  expected_falsification_verdict: TargetVerdict
+}
+
+type LeafModelVerificationReport<M> {
+  model: M
+  claims: List<{ claim_id: Symbol, verdict: Verdict<ClaimSubject>, falsification_verdict: Verdict<ClaimSubject> }>
+  totals: { proven: Int, falsified: Int, falsification_missed: Int, not_checked: Int }
+}
+```
+
+**Layer A — Claim authority.** Each leaf model's claims live as `LeafModelClaim<M, Subject, Expectation>` declarations either in the model itself (self-declared facts) OR in a sibling `test/claim/language_model/<model>.dag` directory referencing the model. Claim authoring follows the existing `TestClaim` discipline.
+
+**Falsification probe contract (hard requirement, not example).** Every `LeafModelClaim` MUST include a `falsification_case`. A claim without a paired falsification is NOT a verifiable claim — it's an unfalsifiable assertion (per Popper-style discipline). The runner exercises both the happy path AND the falsification path; the claim is `PROVEN` only when both verdicts match expectations.
 
 **Layer B — Fixture generator.** For each claim type, a generator emits the minimal fixture that exercises the claim against the target. Generators live with the testgen substrate (T-19, `lens/testgen.dag`) and produce target-source-string OR target-AST-graph artifacts.
 
