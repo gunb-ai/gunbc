@@ -3,20 +3,17 @@
 #
 # Phase 1 rung gate: drives rungs 0–2 acceptance predicates over the ratified Phase 1
 # fixture phase1/nat_semiring on a single module path, not the corpus-wide src/v4 sweep.
-# Reports the §2.4 verdict matrix:
+# Reports the §2.4 verdict matrix with PASS|FAIL|SKIP cell vocabulary:
 #
 #   fixture=phase1/nat_semiring
-#     rung0: PASS|FAIL (dag rust python go)
-#     rung1: PASS|FAIL (rust)
-#     rung2: PASS|FAIL (rust python go)
-#   blocking_receipt: <predicate id> | none
+#     rung0: PASS|FAIL (dag=… rust=… python=… go=…)
+#     rung1: PASS|FAIL (rust=…)
+#     rung2: PASS|FAIL (rust=… python=… go=…)
+#   blocking_receipt: <predicate id> | upstream_blocked:<predicate-id> | none
 #
-# Authority: docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.1–§2.5 (rung gate shape +
-# CI matrix wiring). Modeled CiCommand arm Phase1NatSemiringRungGateCommand lands in
-# src/v4/workflow/ci.dag in the same PR as this transport (PR #3955); the script's role
-# is the §2.5 "interim host script" layer until TestClaimRun verdicts evaluate
-# phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets).
-# Pattern: scripts/v4-m1-rust-emit-probe.sh (single-module scope, not full src/v4).
+# Authority: docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.1–§2.5 + §6 follow-up
+# (parse-only R0 receipts, §2.4 SKIP/upstream_blocked semantics). Cells are PASS|FAIL|SKIP;
+# rung row is PASS iff every cell is PASS, else FAIL (a row of all-SKIP is FAIL, not SKIP).
 #
 # Env:
 #   V2_COMPILER                — v2-compiler binary (default: target/release/gunbc)
@@ -25,6 +22,8 @@
 #   V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS — timeout per toolchain check (CI: 300)
 #   V4_PHASE1_NAT_SEMIRING_PYTHON — python3 binary (default: python3)
 #   V4_PHASE1_NAT_SEMIRING_GO     — go binary (default: go)
+#   V4_PHASE1_NAT_SEMIRING_RUSTC  — rustc binary (default: rustc)
+#   V4_PHASE1_NAT_SEMIRING_GOFMT  — gofmt binary (default: gofmt)
 
 set -euo pipefail
 
@@ -47,6 +46,8 @@ else
 fi
 python_bin="${V4_PHASE1_NAT_SEMIRING_PYTHON:-python3}"
 go_bin="${V4_PHASE1_NAT_SEMIRING_GO:-go}"
+rustc_bin="${V4_PHASE1_NAT_SEMIRING_RUSTC:-rustc}"
+gofmt_bin="${V4_PHASE1_NAT_SEMIRING_GOFMT:-gofmt}"
 timeout_secs="${V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS:-300}"
 strict="${V4_PHASE1_NAT_SEMIRING_STRICT:-0}"
 summary="${out}.rung-gate-summary.txt"
@@ -57,10 +58,6 @@ if [[ ! -f "$fixture_module_path" ]]; then
 fi
 
 if [[ ! -x "$bin" ]]; then
-  # v2-compiler missing: setup gap, not fixture gap. Symmetric with the host-toolchain
-  # guard below — distinct setup receipt phase1/nat_semiring/setup/v2_compiler_missing,
-  # exit 2 under STRICT=1 to fail-closed at the boundary contract named by the gate's
-  # V2_COMPILER env (operator-required per ladder rung specs §2). INVARIANTS P3.
   echo "error: v2-compiler not found at $bin (build v2-compiler --release first)" >&2
   if [[ "$strict" == "1" ]]; then
     echo "::error title=phase1/nat_semiring rung gate setup::v2-compiler missing at $bin (phase1/nat_semiring/setup/v2_compiler_missing)"
@@ -70,21 +67,15 @@ if [[ ! -x "$bin" ]]; then
   exit 0
 fi
 
-# Host toolchain availability: distinguish "host setup gap" from "fixture rung failure".
-# Without this guard a missing python3 or go binary would surface as R0-*-parse / R2-*-compile
-# FAIL with a fixture blocking_receipt, conflating substrate emit failures with CI host
-# provisioning gaps. INVARIANTS P2 (host-process boundary) / P3 (fail-closed with the right
-# receipt). Cargo is checked downstream where it's actually invoked (same pattern as M1 probe).
+# Host toolchain availability is distinct from fixture rung failure. Missing host binary
+# is a CI provisioning gap (setup receipt + exit 2 under STRICT=1), not a fixture R0 FAIL.
 missing_tools=()
-if ! command -v "$python_bin" >/dev/null 2>&1; then
-  missing_tools+=("$python_bin")
-fi
-if ! command -v "$go_bin" >/dev/null 2>&1; then
-  missing_tools+=("$go_bin")
-fi
+command -v "$python_bin" >/dev/null 2>&1 || missing_tools+=("$python_bin")
+command -v "$go_bin"     >/dev/null 2>&1 || missing_tools+=("$go_bin")
+command -v "$gofmt_bin"  >/dev/null 2>&1 || missing_tools+=("$gofmt_bin")
+command -v "$rustc_bin"  >/dev/null 2>&1 || missing_tools+=("$rustc_bin")
 if [[ "${#missing_tools[@]}" -gt 0 ]]; then
   echo "error: required host toolchain(s) missing: ${missing_tools[*]}" >&2
-  echo "error: install python3 and go on the runner, or override via V4_PHASE1_NAT_SEMIRING_PYTHON / V4_PHASE1_NAT_SEMIRING_GO" >&2
   if [[ "$strict" == "1" ]]; then
     echo "::error title=phase1/nat_semiring rung gate setup::host toolchain missing: ${missing_tools[*]} (phase1/nat_semiring/setup/host_toolchain_missing)"
     exit 2
@@ -96,34 +87,35 @@ fi
 rm -rf "$out"
 mkdir -p "$out/rust" "$out/python" "$out/go" "$out/logs"
 
-# Fixture-scoped entry isolation: v2-compiler treats the FIRST --source-root as the entry pool
-# (every .dag in it becomes an entry); subsequent --source-root values are dep pools resolved
-# via imports. Mirror the Lens-CI step pattern: copy ONLY the fixture module into entry_root
-# at its canonical module path, then layer the rest of src/v4 as deps with the fixture file
-# removed from the dep pool to avoid module-path collisions. This scopes the compile to the
-# fixture module's transitive closure — the §2.5 "fixture-scoped emit + toolchain" contract.
+# Fixture-scoped entry isolation: v2-compiler treats the FIRST --source-root as the entry
+# pool; subsequent --source-root values are dep pools resolved via imports. Scope the
+# compile to the fixture module's transitive closure — the §2.5 "fixture-scoped" contract.
 entry_root="$out/entry"
 deps_root="$out/deps"
-fixture_relpath="${fixture_module_path#src/v4/}"   # test/claim/algebra_laws/nat_semiring.dag
+fixture_relpath="${fixture_module_path#src/v4/}"
 mkdir -p "$entry_root/$(dirname "$fixture_relpath")"
 cp "$fixture_module_path" "$entry_root/$fixture_relpath"
 cp -R src/v4/. "$deps_root/"
 rm -f "$deps_root/$fixture_relpath"
 
-# Per-predicate verdict slots. PASS|FAIL; default FAIL until proven.
+# Per-predicate verdict slots. Cell vocabulary: PASS|FAIL|SKIP (§2.4). Default SKIP until
+# the predicate is actually executed and observed; emit/typecheck/compile only flip to
+# PASS or FAIL when the receipt-bearing command was run end-to-end (INVARIANTS P3).
 declare -A verdict=(
-  [R0-dag-parse]=FAIL
-  [R0-rust-parse]=FAIL
-  [R0-python-parse]=FAIL
-  [R0-go-parse]=FAIL
-  [R1-rust-typecheck]=FAIL
-  [R2-rust-compile]=FAIL
-  [R2-python-compile]=FAIL
-  [R2-go-compile]=FAIL
+  [R0-dag-parse]=SKIP
+  [R0-rust-parse]=SKIP
+  [R0-python-parse]=SKIP
+  [R0-go-parse]=SKIP
+  [R1-rust-typecheck]=SKIP
+  [R2-rust-compile]=SKIP
+  [R2-python-compile]=SKIP
+  [R2-go-compile]=SKIP
 )
 blocking_receipt="none"
 
 note_blocking() {
+  # First-failure-wins per §2.4: lowest rung, earliest predicate that was executed and
+  # failed (or first *_emit_unavailable / upstream_blocked attribution).
   local pred="$1"
   if [[ "$blocking_receipt" == "none" ]]; then
     blocking_receipt="$pred"
@@ -154,15 +146,16 @@ set -e
 if [[ "$parse_status" -eq 0 ]]; then
   verdict[R0-dag-parse]=PASS
 else
+  verdict[R0-dag-parse]=FAIL
   note_blocking "phase1/nat_semiring/rung0/dag_parse_rejected"
 fi
 
-# --- Rust target: R0-rust-parse, R1-rust-typecheck, R2-rust-compile ---
-# Per spec §2.1 R0-rust-parse: "Emitted Rust ... parses under rustc frontend (parse-only or
-# full compile)." Per spec §2.3 R2-rust-compile: "Same as R1-rust-typecheck (rung 2 Rust ⊇
-# rung 1)." So cargo check is the load-bearing receipt — it parses AND typechecks — and
-# R0-rust-parse only flips on cargo-check exit-0 with artifact-presence proof, not on emit
-# exit alone (INVARIANTS P3 fail-closed).
+# --- Rust target ---
+# §2.1 R0-rust-parse: parse-only receipt. Allowed: `rustc -Z parse-only` when the pinned
+# toolchain supports it (nightly). FORBIDDEN: `cargo check`, `cargo build`,
+# `rustc --emit=metadata`, `rustfmt --check`. If `-Z parse-only` is unavailable (stable
+# rustc), this cell is SKIP with `rust_parse_driver_unavailable` — the spec accepts
+# ship_disposition: GAP until Compiler Spine ratifies a stable parse driver.
 rust_emit_log="$out/logs/rust_emit.log"
 set +e
 run_step "$rust_emit_log" "$bin" compile \
@@ -177,34 +170,81 @@ if [[ -d "$out/rust" ]]; then
   rust_rs_count="$(find "$out/rust" -name '*.rs' 2>/dev/null | wc -l | tr -d ' ')"
 fi
 if [[ "$rust_emit_status" -ne 0 ]]; then
+  verdict[R0-rust-parse]=FAIL
   note_blocking "phase1/nat_semiring/rung0/rust_emit_parse_rejected"
-elif [[ ! -f "$out/rust/Cargo.toml" ]]; then
-  echo "no Cargo.toml emitted under $out/rust — Rust rung predicates fail closed" >&2
-  note_blocking "phase1/nat_semiring/rung0/rust_emit_parse_rejected"
-elif [[ "${rust_rs_count:-0}" -lt 1 ]]; then
-  echo "no .rs files emitted under $out/rust — Rust rung predicates fail closed" >&2
-  note_blocking "phase1/nat_semiring/rung0/rust_emit_parse_rejected"
+elif [[ ! -f "$out/rust/Cargo.toml" || "${rust_rs_count:-0}" -lt 1 ]]; then
+  # No emit artifact: SKIP, not FAIL (§2.1 emit-unavailable carve-out).
+  verdict[R0-rust-parse]=SKIP
+  note_blocking "phase1/nat_semiring/rung0/rust_emit_unavailable"
 else
+  # Probe nightly `-Z parse-only` support on this rustc; otherwise GAP/SKIP.
+  rust_parse_probe_log="$out/logs/rust_parse_probe.log"
+  set +e
+  "$rustc_bin" -Z parse-only --edition=2021 --crate-type lib /dev/null >"$rust_parse_probe_log" 2>&1
+  rust_parse_probe_status=$?
+  set -e
+  # A toolchain that recognises -Z parse-only accepts it; stable rustc rejects -Z flags
+  # entirely with "the option `Z` is only accepted on the nightly compiler".
+  if grep -qE 'only accepted on the nightly compiler|requires -Zunstable-options' "$rust_parse_probe_log" 2>/dev/null; then
+    verdict[R0-rust-parse]=SKIP
+    note_blocking "phase1/nat_semiring/rung0/rust_parse_driver_unavailable"
+  else
+    rust_parse_log="$out/logs/rust_parse.log"
+    : >"$rust_parse_log"
+    rust_parse_ok=1
+    while IFS= read -r -d '' rs; do
+      set +e
+      "$rustc_bin" -Z parse-only --edition=2021 --crate-type lib "$rs" >>"$rust_parse_log" 2>&1
+      rs_status=$?
+      set -e
+      if [[ "$rs_status" -ne 0 ]]; then
+        rust_parse_ok=0
+      fi
+    done < <(find "$out/rust" -name '*.rs' -print0 2>/dev/null)
+    if [[ "$rust_parse_ok" -eq 1 ]]; then
+      verdict[R0-rust-parse]=PASS
+    else
+      verdict[R0-rust-parse]=FAIL
+      note_blocking "phase1/nat_semiring/rung0/rust_emit_parse_rejected"
+    fi
+  fi
+fi
+
+# R1-rust-typecheck: prerequisite §2.4 — runs only when R0-rust-parse is PASS.
+if [[ "${verdict[R0-rust-parse]}" == "PASS" ]]; then
   rust_check_log="$out/logs/rust_check.log"
   set +e
   run_step "$rust_check_log" "$cargo_bin" check --jobs 4 --manifest-path "$out/rust/Cargo.toml"
   rust_check_status=$?
   set -e
   if [[ "$rust_check_status" -eq 0 ]]; then
-    # cargo check completed: parse phase succeeded (= R0-rust-parse) and typecheck phase
-    # succeeded (= R1-rust-typecheck). R2-rust-compile is defined as R1 per spec §2.3.
-    verdict[R0-rust-parse]=PASS
     verdict[R1-rust-typecheck]=PASS
-    verdict[R2-rust-compile]=PASS
   else
-    # Treat any cargo-check failure as the R0 parse rejection unless a later predicate
-    # (rung1/rung2) is the more specific blocker. Single-receipt model collapses parse
-    # and typecheck reporting; structured rustc diagnostic categorization is future work.
+    verdict[R1-rust-typecheck]=FAIL
     note_blocking "phase1/nat_semiring/rung1/rust_typecheck_failed"
+  fi
+else
+  verdict[R1-rust-typecheck]=SKIP
+  note_blocking "upstream_blocked:R0-rust-parse"
+fi
+
+# R2-rust-compile: §2.3 rung 2 Rust ⊇ rung 1; runs only when R1 is PASS.
+if [[ "${verdict[R1-rust-typecheck]}" == "PASS" ]]; then
+  verdict[R2-rust-compile]=PASS
+else
+  verdict[R2-rust-compile]=SKIP
+  # Attribute via the same upstream chain — note_blocking is first-wins so this is a
+  # no-op when R1 / R0 already set blocking_receipt.
+  if [[ "${verdict[R1-rust-typecheck]}" == "SKIP" ]]; then
+    note_blocking "upstream_blocked:R1-rust-typecheck"
+  else
+    note_blocking "upstream_blocked:R1-rust-typecheck"
   fi
 fi
 
-# --- Rung 0 python-parse + Rung 2 python-compile ---
+# --- Python target ---
+# §2.2 explicitly accepts `python3 -m py_compile` as the surface for both R0-python-parse
+# and R2-python-compile in Phase 1; both predicates flip on the same receipt.
 py_emit_log="$out/logs/python_emit.log"
 set +e
 run_step "$py_emit_log" "$bin" compile \
@@ -214,19 +254,18 @@ run_step "$py_emit_log" "$bin" compile \
   --target python
 py_emit_status=$?
 set -e
-# R0-python-parse and R2-python-compile both flip on the same py_compile receipt: py_compile
-# IS the Python parse check (spec §2.1 "python3 -m py_compile or equivalent") and the spec
-# §2.3 R2-python-compile pass condition is the same toolchain invocation. Both predicates
-# require fail-closed artifact presence: zero .py files cannot pass either.
 py_file_count=0
 if [[ -d "$out/python" ]]; then
   py_file_count="$(find "$out/python" -name '*.py' 2>/dev/null | wc -l | tr -d ' ')"
 fi
 if [[ "$py_emit_status" -ne 0 ]]; then
+  verdict[R0-python-parse]=FAIL
+  verdict[R2-python-compile]=SKIP
   note_blocking "phase1/nat_semiring/rung0/python_emit_parse_rejected"
 elif [[ "${py_file_count:-0}" -lt 1 ]]; then
-  echo "no .py files emitted under $out/python — Python rung predicates fail closed" >&2
-  note_blocking "phase1/nat_semiring/rung0/python_emit_parse_rejected"
+  verdict[R0-python-parse]=SKIP
+  verdict[R2-python-compile]=SKIP
+  note_blocking "phase1/nat_semiring/rung0/python_emit_unavailable"
 else
   py_check_log="$out/logs/python_check.log"
   set +e
@@ -238,11 +277,16 @@ else
     verdict[R0-python-parse]=PASS
     verdict[R2-python-compile]=PASS
   else
-    note_blocking "phase1/nat_semiring/rung2/python_compile_failed"
+    verdict[R0-python-parse]=FAIL
+    verdict[R2-python-compile]=SKIP
+    note_blocking "phase1/nat_semiring/rung0/python_emit_parse_rejected"
   fi
 fi
 
-# --- Rung 0 go-parse + Rung 2 go-compile ---
+# --- Go target ---
+# §2.1 R0-go-parse: parse-only. Allowed: `gofmt -e` (reports parse/syntax errors only,
+# does not build). FORBIDDEN for R0: `go build`, `go test -c`. R2-go-compile uses
+# `go build` and runs only when R0-go-parse is PASS (§2.4 prerequisite).
 go_emit_log="$out/logs/go_emit.log"
 set +e
 run_step "$go_emit_log" "$bin" compile \
@@ -252,43 +296,60 @@ run_step "$go_emit_log" "$bin" compile \
   --target go
 go_emit_status=$?
 set -e
-# R0-go-parse and R2-go-compile both flip on the same go-build receipt: `go build` parses
-# AND compiles, satisfying both spec §2.1 R0-go-parse ("parse phase") and spec §2.3
-# R2-go-compile ("builds without compile errors") in one invocation. Artifact-presence
-# guarded — empty .go tree cannot pass either predicate (INVARIANTS P3).
 go_file_count=0
 if [[ -d "$out/go" ]]; then
   go_file_count="$(find "$out/go" -name '*.go' 2>/dev/null | wc -l | tr -d ' ')"
 fi
 if [[ "$go_emit_status" -ne 0 ]]; then
+  verdict[R0-go-parse]=FAIL
   note_blocking "phase1/nat_semiring/rung0/go_emit_parse_rejected"
 elif [[ "${go_file_count:-0}" -lt 1 ]]; then
-  echo "no .go files emitted under $out/go — Go rung predicates fail closed" >&2
-  note_blocking "phase1/nat_semiring/rung0/go_emit_parse_rejected"
+  verdict[R0-go-parse]=SKIP
+  note_blocking "phase1/nat_semiring/rung0/go_emit_unavailable"
 else
-  go_check_log="$out/logs/go_check.log"
+  go_parse_log="$out/logs/go_parse.log"
   set +e
-  ( cd "$out/go" && run_step "$go_check_log" "$go_bin" build ./... )
-  go_check_status=$?
+  find "$out/go" -name '*.go' -print0 2>/dev/null \
+    | xargs -0 "$gofmt_bin" -e -l >"$go_parse_log" 2>&1
+  go_parse_status=$?
   set -e
-  if [[ "$go_check_status" -eq 0 ]]; then
+  if [[ "$go_parse_status" -eq 0 ]]; then
     verdict[R0-go-parse]=PASS
-    verdict[R2-go-compile]=PASS
   else
-    note_blocking "phase1/nat_semiring/rung2/go_compile_failed"
+    verdict[R0-go-parse]=FAIL
+    note_blocking "phase1/nat_semiring/rung0/go_emit_parse_rejected"
   fi
 fi
 
-# --- Rung roll-up (AND of constituent predicates). ---
-rung0_pass="PASS"
-for p in R0-dag-parse R0-rust-parse R0-python-parse R0-go-parse; do
-  if [[ "${verdict[$p]}" != "PASS" ]]; then rung0_pass="FAIL"; fi
-done
-rung1_pass="${verdict[R1-rust-typecheck]}"
-rung2_pass="PASS"
-for p in R2-rust-compile R2-python-compile R2-go-compile; do
-  if [[ "${verdict[$p]}" != "PASS" ]]; then rung2_pass="FAIL"; fi
-done
+if [[ "${verdict[R0-go-parse]}" == "PASS" ]]; then
+  go_build_log="$out/logs/go_build.log"
+  set +e
+  ( cd "$out/go" && run_step "$go_build_log" "$go_bin" build ./... )
+  go_build_status=$?
+  set -e
+  if [[ "$go_build_status" -eq 0 ]]; then
+    verdict[R2-go-compile]=PASS
+  else
+    verdict[R2-go-compile]=FAIL
+    note_blocking "phase1/nat_semiring/rung2/go_compile_failed"
+  fi
+else
+  verdict[R2-go-compile]=SKIP
+  note_blocking "upstream_blocked:R0-go-parse"
+fi
+
+# --- Rung roll-up (§2.4): row PASS iff every cell PASS; otherwise FAIL (all-SKIP → FAIL). ---
+row_aggregate() {
+  local row_pass="PASS"
+  local p
+  for p in "$@"; do
+    if [[ "${verdict[$p]}" != "PASS" ]]; then row_pass="FAIL"; fi
+  done
+  echo "$row_pass"
+}
+rung0_pass="$(row_aggregate R0-dag-parse R0-rust-parse R0-python-parse R0-go-parse)"
+rung1_pass="$(row_aggregate R1-rust-typecheck)"
+rung2_pass="$(row_aggregate R2-rust-compile R2-python-compile R2-go-compile)"
 
 {
   echo "fixture=${fixture_id}"
