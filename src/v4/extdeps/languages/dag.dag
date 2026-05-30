@@ -3118,6 +3118,7 @@ fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-readiness-receipt-node — bind TASKS.md T-36 — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces Node/Atom axis witnesses in claim input; eval authority is dag_round_trip_wave1_authorities_ready only; forbidden: eval reading embedded ready atoms (P2).
 fn dag_round_trip_bool_node(pass: Bool) -> Node {
   if pass {
     dag_round_trip_atom(s: dag_round_trip_axis_ready)
@@ -3160,30 +3161,13 @@ fn dag_round_trip_normalization_declared() -> Bool {
 }
 
 
-fn dag_round_trip_axis_atom_ready(target: Node) -> Bool {
-  match target.kind {
-    TypeNode { connective: Atom { identity: s } } => s == dag_round_trip_axis_ready
-    _ => false
-  }
-}
-
-
-fn dag_round_trip_axis_ready_outcome(axis: Symbol, input: Node) -> Bool {
-  match find_named_child(root: input, name: axis) {
-    Accepted { value: child, diagnostics: _ } => dag_round_trip_axis_atom_ready(target: child)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-
-// Eval authority for T-36 wave-1 RoundTripClaim rows: Pass when all modeled precondition axes read ready.
-fn dag_round_trip_wave1_readiness_passes(input: Node) -> Bool {
-  dag_round_trip_axis_ready_outcome(axis: dag_round_trip_lex_axis, input: input) &&
-  dag_round_trip_axis_ready_outcome(axis: dag_round_trip_grammar_axis, input: input) &&
-  dag_round_trip_axis_ready_outcome(
-    axis: dag_round_trip_normalization_axis,
-    input: input
-  )
+// Eval authority for T-36 wave-1 RoundTripClaim rows: re-derive readiness from dag.dag
+// lex/grammar/C5 authorities (P2) — never trust ready atoms embedded in claim input.
+fn dag_round_trip_wave1_authorities_ready() -> Bool {
+  let lm = dag_language_model_wave1_modeled()
+  dag_round_trip_lex_ready() &&
+  dag_round_trip_grammar_ready(lm: lm) &&
+  dag_round_trip_normalization_declared()
 }
 
 

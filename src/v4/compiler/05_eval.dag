@@ -129,7 +129,7 @@ import v4.std.verification {
   test_claim_input
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v4.extdeps.languages.dag { dag_round_trip_wave1_readiness_passes }
+import v4.extdeps.languages.dag { dag_round_trip_wave1_authorities_ready }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
   v4_eval_wave1_allocate_literal,
@@ -1700,11 +1700,8 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
-fn run_test_claim_round_trip_verdict(
-  input: Node,
-  at: Node
-) -> Verdict<Node> {
-  if dag_round_trip_wave1_readiness_passes(input: input) {
+fn run_test_claim_round_trip_verdict(at: Node) -> Verdict<Node> {
+  if dag_round_trip_wave1_authorities_ready() {
     Pass
   } else {
     Fail {
@@ -1746,8 +1743,8 @@ fn run_test_claim_assert_decided(
       } else {
         verdict_fail(actual: actual)
       }
-    RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
-      run_test_claim_round_trip_verdict(input: input, at: at)
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      run_test_claim_round_trip_verdict(at: at)
     DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
@@ -1804,8 +1801,8 @@ fn run_test_claim_runtime_assert(
         verdict_fail(actual: actual)
       }
     }
-    RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
-      run_test_claim_round_trip_verdict(input: input, at: at)
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      run_test_claim_round_trip_verdict(at: at)
     DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
@@ -1842,10 +1839,10 @@ fn run_test_claim(
 ) -> TestClaimRun<Node, RuntimeValue> {
   let at = test_claim_input(c: subject.claim)
   match subject.claim {
-    RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       TestClaimRun {
         cache: test_claim_cache_receipt_node(subject: subject),
-        verdict: run_test_claim_round_trip_verdict(input: input, at: at)
+        verdict: run_test_claim_round_trip_verdict(at: at)
       }
     _ => {
       let actual = eval(

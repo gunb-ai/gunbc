@@ -1,6 +1,7 @@
 // src/v4/test/claim/round_trip/dag_ingest_round_trip.dag
 // Scope: T-36 — executable .dag ingest→emit round-trip fidelity claim.
-// Status: T-36 wired claim receipt; RoundTripClaim eval via dag_round_trip_wave1_readiness_passes (05_eval.dag).
+// Status: T-36 wired claim receipt; RoundTripClaim eval re-derives via dag_round_trip_wave1_authorities_ready (05_eval.dag).
+// Claim input embeds axis witnesses for IRT-4 frontier only — eval does not trust embedded ready atoms (P2).
 // Fixture: src/v4/test/fixture/dag_round_trip_mvp1.dag (committed wave-1 surface program).
 // Normalization budget: C5 trivia normalization from dag.dag only — whitespace and comments are
 //   DeclaredNormalized (TriviaRule-stripped); all other surface features are Modeled (lossless).
