@@ -1813,13 +1813,7 @@ fn ts_wave2a_grammar_root() -> GrammarRoot {
   let let_decl = ts_grammar_production_wave2a_let_decl()
   let const_decl = ts_grammar_production_wave2a_const_decl()
   let type_alias_decl = ts_grammar_production_wave2a_type_alias_decl()
-<<<<<<< HEAD
   let union_type = ts_grammar_production_wave2a_union_type()
-  let item = ts_grammar_production_wave2a_item()
-  GrammarRoot {
-    start: ts_production_wave2a_item,
-    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, union_type, type_annot, let_decl, const_decl, type_alias_decl, item],
-=======
   let pr3_primary_type = ts_grammar_production_pr3_primary_type()
   let pr3_array_type = ts_grammar_production_pr3_array_type()
   let pr3_typed_param = ts_grammar_production_pr3_typed_param()
@@ -1829,8 +1823,7 @@ fn ts_wave2a_grammar_root() -> GrammarRoot {
   let item = ts_grammar_production_wave2a_item()
   GrammarRoot {
     start: ts_production_wave2a_item,
-    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_primary_type, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_params_opt, pr3_typed_fn_decl, item],
->>>>>>> origin/main
+    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, union_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_primary_type, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_params_opt, pr3_typed_fn_decl, item],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
