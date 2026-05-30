@@ -113,7 +113,7 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
   target_type_expr_cardinality_emitted,
-  target_type_expr_emitted_slot_type_nodes,
+  target_type_expr_emitted_labeled_slot_nodes,
   target_type_expr_instantiation_emitted,
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
@@ -1723,10 +1723,14 @@ fn type_expr_atom_binding_from_positional(
   bind_outcome(
     o: list_head_and_tail(xs: targets, node: node),
     f: fn(split) {
-      match split.head.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          Accepted { value: id, diagnostics: None }
-        _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+      if is_empty(xs: split.tail) {
+        match split.head.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            Accepted { value: id, diagnostics: None }
+          _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        }
+      } else {
+        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
       }
     }
   )
@@ -1988,28 +1992,33 @@ fn serialize_type_expr_record_bounded(
   node: Node
 ) -> Outcome<TargetSource> {
   bind_outcome(
-    o: lex_rules_literal(target: target, token_class: form.open),
-    f: fn(open_source) {
+    o: target_type_expr_emitted_labeled_slot_nodes(node: node),
+    f: fn(slots) {
       bind_outcome(
-        o: serialize_type_expr_separated_bounded(
-          remaining: remaining - 1,
-          target: target,
-          projection: projection,
-          separator: form.separator,
-          items: target_type_expr_emitted_slot_type_nodes(node: node),
-          anchor: node
-        ),
-        f: fn(fields_source) {
+        o: lex_rules_literal(target: target, token_class: form.open),
+        f: fn(open_source) {
           bind_outcome(
-            o: lex_rules_literal(target: target, token_class: form.close),
-            f: fn(close_source) {
-              Accepted {
-                value: list_append(
-                  left: list_append(left: open_source, right: fields_source),
-                  right: close_source
-                ),
-                diagnostics: None
-              }
+            o: serialize_type_expr_separated_bounded(
+              remaining: remaining - 1,
+              target: target,
+              projection: projection,
+              separator: form.separator,
+              items: slots,
+              anchor: node
+            ),
+            f: fn(fields_source) {
+              bind_outcome(
+                o: lex_rules_literal(target: target, token_class: form.close),
+                f: fn(close_source) {
+                  Accepted {
+                    value: list_append(
+                      left: list_append(left: open_source, right: fields_source),
+                      right: close_source
+                    ),
+                    diagnostics: None
+                  }
+                }
+              )
             }
           )
         }
@@ -2024,13 +2033,18 @@ fn serialize_type_expr_sum_bounded(
   form: TargetSumTypeShape,
   node: Node
 ) -> Outcome<TargetSource> {
-  serialize_type_expr_separated_bounded(
-    remaining: remaining - 1,
-    target: target,
-    projection: projection,
-    separator: form.variant_separator,
-    items: target_type_expr_emitted_slot_type_nodes(node: node),
-    anchor: node
+  bind_outcome(
+    o: target_type_expr_emitted_labeled_slot_nodes(node: node),
+    f: fn(variants) {
+      serialize_type_expr_separated_bounded(
+        remaining: remaining - 1,
+        target: target,
+        projection: projection,
+        separator: form.variant_separator,
+        items: variants,
+        anchor: node
+      )
+    }
   )
 }
 fn serialize_type_expr_arrow_input_wrapped(

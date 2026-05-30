@@ -112,8 +112,10 @@ import v4.std.target_model {
   target_type_expr_cardinality_emitted,
   target_type_expr_instantiation_emitted,
   target_type_expr_record_emitted,
+  target_type_expr_sum_emitted,
   TargetTypeExprFieldSlot,
-  TargetTypeExprInstantiation
+  TargetTypeExprInstantiation,
+  TargetTypeExprVariantSlot
 }
 import v4.std.node {
   Arrow,
@@ -3185,5 +3187,72 @@ fn rust_sg2_conj_source_type_node() -> Node {
       rust_named_edge(name: rust_binding_sg2_x, target: rust_sg2_atom_node(binding: rust_binding_sg2_x)),
       rust_named_edge(name: rust_binding_sg2_y, target: rust_sg2_atom_node(binding: rust_binding_sg2_y))
     ]
+  }
+}
+
+fn rust_sg2_sum_xy_emitted() -> Node {
+  target_type_expr_sum_emitted(
+    form: rust_type_expression_projection().disj_form,
+    variants: [
+      TargetTypeExprVariantSlot {
+        label: rust_binding_sg2_x,
+        type_expr: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_x
+        )
+      },
+      TargetTypeExprVariantSlot {
+        label: rust_binding_sg2_y,
+        type_expr: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_y
+        )
+      }
+    ]
+  )
+}
+
+fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: Edge {
+        label: Positional,
+        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+      }
+    )
+  }
+}
+
+fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {
+  let base = rust_sg2_conj_xy_emitted()
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: Edge {
+        label: Positional,
+        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+      }
+    )
+  }
+}
+
+fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
+  let base = rust_sg2_sum_xy_emitted()
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: Edge {
+        label: Positional,
+        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+      }
+    )
   }
 }

@@ -7,6 +7,16 @@ module v4.std.target_model
 
 import v4.std.algebra { Cons, Empty, fold_list, list_snoc_item, length, list_append }
 import v4.std.collection { List, Map, Optional, optional_absent, optional_present }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_rejected
+}
 import v4.std.lexing { LexRules }
 import v4.std.node {
   Atom,
@@ -201,17 +211,22 @@ fn target_type_expr_kind_from_atom(id: Symbol) -> Optional<TargetTypeExprKind> {
   }
 }
 
+data target_type_expr_emitted_shape_malformed: Symbol = target_type_expr_emitted_shape_malformed
+
 // Emitted-wire kind authority probe — exactly-one decodable kind marker, or fail-closed invalid.
+// 🟢 coproduct dissolution — SG-2 emitted type-expression kind authority read surface.
 type TargetTypeExprKindProbe
   = TypeExprKindAuthority { value: TargetTypeExprKind }
   | TypeExprKindNotEmitted
   | TypeExprKindAuthorityInvalid
 
+// 🟢 coproduct dissolution — internal fold state for target_type_expr_emitted_kind authority scan.
 type TargetTypeExprKindAuthorityFold
   = KindAuthorityFoldNone
   | KindAuthorityFoldUnique { value: TargetTypeExprKind }
   | KindAuthorityFoldConflict
 
+// 🟢 coproduct dissolution — internal edge decode for target_type_expr_emitted_kind authority scan.
 type TargetTypeExprKindEdgeDecode
   = KindEdgeNotKindField
   | KindEdgeAuthority { value: TargetTypeExprKind }
@@ -398,6 +413,38 @@ fn target_type_expr_emitted_slot_type_nodes(node: Node) -> List<Node> {
       Positional => acc
     }
   })
+}
+
+fn target_type_expr_emitted_has_positional_child(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(acc, e) {
+    if acc {
+      true
+    } else {
+      match e.label {
+        Positional => true
+        Named { name: _ } => false
+      }
+    }
+  })
+}
+
+fn target_type_expr_emitted_shape_malformed_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_type_expr_emitted_shape_malformed,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_type_expr_emitted_labeled_slot_nodes(node: Node) -> Outcome<List<Node>> {
+  if target_type_expr_emitted_has_positional_child(node: node) {
+    outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  } else {
+    Accepted {
+      value: target_type_expr_emitted_slot_type_nodes(node: node),
+      diagnostics: None
+    }
+  }
 }
 
 fn target_type_expr_record_emitted(
