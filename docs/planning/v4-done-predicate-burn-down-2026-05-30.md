@@ -5,7 +5,7 @@
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
 > **Tree HEAD:** `907936852` (`main` 2026-05-30T20:18Z) — post–merge-wave + evening landings (#4000, #4012, #4013, #4016, #4006, …).  
 > **Wave posture:** Wave 1 exit **3/5 MW-D8** (`docs/planning/v4-mw-d8-wave1-exit-ledger-2026-05-30.md`); Wave 2 dispatch **queued** pending C2 + C4 close.  
-> **Jun 1 operator push:** internal v4 predicate burn-down (not public v4 ship — D-REL-1 stays strip; see §Jun 1 forecast).
+> **Jun 1 operator push:** v4 predicate burn-down continues (Wave 2); **D-REL-1 flavor (iv)** — `src/v4` ships public **alpha/WIP-labeled**, no closure gate on v0.1.0 tag (operator flip 2026-05-30T20:23Z via PM `nimble-dove-733`). See §Public ship disposition.
 
 ## Operator summary (read this first)
 
@@ -22,7 +22,7 @@
 
 - **Resolve-posture bridge** (INVARIANTS A3/P5 — *not* predicate P5): blocks honest **P2** close until deleted (`.github/workflows/ci.yml:293-300`).
 - **Wave 1 exit** (MW-D8): **3/5 PROVEN** (C1 #3972, C3 OR-arm #3981+#3989+worksheet, C5 #4000 merged 19:55Z — Close/Receipt re-adjudication pending). **Open:** C2 [#4014](https://github.com/gunb-ai/gunbc/pull/4014) SG-7 impl; C4 receipt shadow (blocked on C2). Wave 1 completion is necessary for Wave 2 dispatch; neither closes any v4-done predicate to GREEN.
-- **D-REL-1 / v0.1.0:** public snapshot strips `src/v4` (CONFIRMED); internal Jun 1 push targets predicate burn-down only. Coordinate with `snappy-bee-513` on `docs/RELEASE_v0.1.0.md` cross-check refresh ([#3991](https://github.com/gunb-ai/gunbc/pull/3991) open).
+- **D-REL-1 / v0.1.0 (flavor iv, operator 2026-05-30T20:23Z):** `src/v4` **ships public AS-IS**, labeled **alpha / WIP** — honest state documented, not gated. Prior STRIP-`src/v4` recommendation **superseded**. This burn-down feeds `SUPPORTED.md` + `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407`). Closures upgrade v0.1.1 narrative; they do **not** block v0.1.0 tag.
 
 ---
 
@@ -39,11 +39,25 @@
 | **P5** | **YELLOW** (strongest Jun 1 mover) | [#3972](https://github.com/gunb-ai/gunbc/pull/3972) R1 PROVEN; [#4000](https://github.com/gunb-ai/gunbc/pull/4000) R2a/R2b/R3-external landed. Jun 1 anti-shelfware asks structural-bridge **deletion schedule**, not full T-38 GREEN. `scripts/v4-testclaim-corpus-gate.sh` likely still live Jun 1. |
 | **P6** | **GRAY** (unchanged) | Upstream on P4 + P3; no Jun 1 path. |
 
-**D-REL-1 revision (Self-host/Release → Release lane):** operator scope flip **“get v4 in Jun 1”** = **internal predicate burn-down push**, not public v4 inclusion. D-REL-1 **CONFIRMED strip `src/v4`** remains correct at 0/6 PROVEN. Recommend `docs/RELEASE_v0.1.0.md` cross-check cite this forecast; enforce wholesale `src/v4` strip via [#3991](https://github.com/gunb-ai/gunbc/pull/3991) (`publish-snapshot.sh` on `main` still strips v4 *docs* only — gap vs D-REL-1 text).
+**D-REL-1 flavor (iv) — public framing:** v0.1.0 ships v4 substrate **alpha/WIP-labeled** regardless of predicate color below. Honest public state at tag time: **0/6 PROVEN**, **5 YELLOW + 1 GRAY**, ~7951 rustc errors (full-tree v4 Rust emit per diagnosis lane). Any predicate that flips **GREEN by Jun 1 morning** upgrades from alpha/WIP to **partial-PROVEN** in release notes (`snappy-bee-513`); v0.1.0 tag is **not** blocked on closures.
 
 ---
 
-## Wave 2 dispatch — named PR per predicate
+## Public ship disposition (D-REL-1 flavor iv)
+
+**Authority:** operator via PM `nimble-dove-733` (2026-05-30T20:23Z) — *"release an alpha v4 assuming it's compilable — note the errors/wherever we are — WIP instead of arbitrarily gating it."*
+
+| Surface | Source artifact | Role |
+| ------- | --------------- | ---- |
+| Per-predicate status | **This doc** (`§Jun 1 forecast`, `§Per-predicate burn-down`) | Honest 0/6 PROVEN / YELLOW / GRAY ledger |
+| Per-surface PROVEN/GAP labels | `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407`, in flight) | `SUPPORTED.md` substrate |
+| Release notes alpha/WIP prose | `snappy-bee-513` lane | User-facing GH Release body |
+
+**Jun 1 morning flag protocol:** Self-host/Release pings Release lane with any predicate that flipped GREEN overnight — those rows move from alpha/WIP to partial-PROVEN framing in release notes. Forecast at authoring: **none** (see §Jun 1 forecast).
+
+**Do NOT:** add wholesale `src/v4` to `publish-snapshot.sh` `STRIP_PATHS` — substrate goes public under flavor (iv).
+
+---
 
 Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §5. **Dispatch gate:** MW-D8 Wave 1 exit (all five conditions `PROVEN`). PM owns formal Wave 2 fan-out; table maps **named in-flight / held PRs** to predicate touch.
 
@@ -176,7 +190,7 @@ High-signal buckets for predicate burn-down (full inventory: `docs/planning/v4-m
 | TestClaim / leaf model | #3972, #3961, #3958, #3960, #3970 | **P5** primary — **YELLOW** |
 | Target Realization | #3962, #3971 | **P3** — **YELLOW** |
 | Ladder / fixture | #3946, #3955, #3990, #4003 | Ladder rungs 0–4 — supports **P4/P5** path, not v4-done |
-| Release (v0.1.0) | #4004, #4006, #4016, snappy-bee subtree | **Out of v4-done scope** (v2 public slice; D-REL-1 strips `src/v4`) |
+| Release (v0.1.0) | #4004, #4006, #4016, snappy-bee subtree | **D-REL-1 flavor (iv):** v4 ships public alpha/WIP; burn-down feeds honest state docs |
 
 ---
 
@@ -200,10 +214,11 @@ High-signal buckets for predicate burn-down (full inventory: `docs/planning/v4-m
 - Wave posture: [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §7 (MW-D1–D8)  
 - Wave 1 exit ledger: [`v4-mw-d8-wave1-exit-ledger-2026-05-30.md`](v4-mw-d8-wave1-exit-ledger-2026-05-30.md) (3/5 PROVEN at last spot-check; C5 #4000 pending Close/Receipt re-adjudication)  
 - Close ledger: `docs/audit/v4-close-ledger-2026-05-30.md` (346 probes; 0/346 `PROVEN` on last spot-check)  
-- Release cross-check: `docs/RELEASE_v0.1.0.md` ([#3991](https://github.com/gunb-ai/gunbc/pull/3991) — D-REL-1 + predicate burn-down cross-link)
+- Public ship disposition: `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407` — SUPPORTED.md substrate)  
+- Release maintainer snapshot: `docs/RELEASE_v0.1.0.md` ([#3991](https://github.com/gunb-ai/gunbc/pull/3991) — needs D-REL-1 flavor-iv refresh)
 
 ## What this doc is NOT
 
 - Not a TASKS.md amendment and not a predicate narrowing.  
 - Not a substitute for §10.0 `PROVEN` receipts — **GREEN** only when executable proof exists.  
-- Not v0.1.0 release authority — see Assignment 2 / `snappy-bee-513` lane.
+- Not a v0.1.0 **gate** — flavor (iv) ships v4 alpha/WIP regardless; closures upgrade v0.1.1 narrative. Release packaging authority: `snappy-bee-513`; per-surface labels: `sharp-otter-407`.
