@@ -70,6 +70,8 @@ data complexity_projection_virtual_file: Symbol = complexity_projection_virtual_
 data complexity_variables_invalid: Symbol = complexity_variables_invalid
 
 
+// Intentionally trivial: routes lens-internal SizeVariable lists through refine/discharge
+// without adding rejection semantics beyond pre-PR bare Refined construction (T-12 placeholder).
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
 }
