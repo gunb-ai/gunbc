@@ -257,6 +257,8 @@ jobs:
       id: v4_bootstrap_compile
       timeout-minutes: 35
       continue-on-error: true
+      env:
+        V4_BOOTSTRAP_TIMEOUT_SECS: '300'
       run: |
         set +euo pipefail
         bash scripts/v4-bootstrap-viability.sh
@@ -287,6 +289,9 @@ jobs:
         exit 1
     - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      timeout-minutes: 15
+      env:
+        V4_TESTCLAIM_TIMEOUT_SECS: '420'
       run: bash scripts/v4-testclaim-corpus-gate.sh
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
