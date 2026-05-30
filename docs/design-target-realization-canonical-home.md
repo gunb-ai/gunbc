@@ -143,7 +143,7 @@ The worker brief will NOT decide field-level shape of the supporting target-side
 
 | Sibling manager | Touchpoint | Status |
 | --------------- | ---------- | ------ |
-| Modeling DFS (proud-pike-680) | §10.0 worksheet gate; scaffold-reconciliation disposition | **Gate cleared 2026-05-30** for first-artifact spec |
+| Modeling DFS (cool-ibex-692) | §10.0 worksheet gate; scaffold-reconciliation disposition | **Gate cleared 2026-05-30** — SG-1/2/5/6 worksheets in `docs/planning/v4-modeling-dfs-manager-pass-2026-05-30.md` |
 | Compiler Spine (smart-stag-871) | `src/v4/compiler/06_translate.dag` type + value translate paths consume the realization rows; `Instantiation` consumer added at the type-expression projection. (v4 emit = translate + grammar-inverse serialize, NOT v3 `05_emit` templates.) | **Notify on each SG dispatch** — Compiler Spine owns the consumer-side refactor; TR owns the substrate carrier + rows |
 | Runtime/TestClaim (pending) | §10.6 bidirectional-readability falsification probe — Rust fixture round-trip | **Notify on spawn** |
 | Ladder/Fixture (keen-crab-361) | Phase 1 fixture (`nat_semiring.dag`) exercises rungs 0-2; SG-1 row landing affects rung-2 emit-clean gate | **No coordination needed pre-dispatch** — fixture choice is theirs; SG-1 row lands regardless |
