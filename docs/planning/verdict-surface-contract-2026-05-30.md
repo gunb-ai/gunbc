@@ -58,7 +58,7 @@ type Verdict<S, T>
 - Draft A attached `falsification: Option<...>` next to `verdict` on `TestClaimRun`. The product made `Pass + Some` representable — a P2 violation flagged on #3961.
 - Draft B lifted the slot into `Fail` as `Fail { actual: Outcome<T>, falsification: Option<FalsificationReceipt<S, T>> }`. That deleted `Pass + Some` but kept *two* authorities for the observed outcome — `Fail.actual: Outcome<T>` and the now-absent `FalsificationReceipt.actual: A` (or, with receipt-as-Some, the receipt's own observed values) — and admitted `Fail + None` as a silent un-instrumented state. Codex flagged this on #3961 acc5789d.
 
-The receipt-as-payload shape collapses both axes: `Fail` has exactly one field (the receipt); the receipt has exactly one observed-outcome slot (`actual: A`, see §2.3); structural rejects construct a receipt with `evidence: EvidenceNone`; there is no un-instrumented `Fail` state because there is nowhere to *not* construct a receipt. `Deferred` keeps `actual: Outcome<T>` because Deferred is the "could not evaluate" state — its outcome is the wrapped reason, not a falsification, and there is only one authority for it within `Deferred`.
+The receipt-as-payload shape collapses both axes: `Fail` has exactly one field (the receipt); the receipt has exactly one observed-outcome slot (`actual: Outcome<A>`, see §2.3 — same `Outcome` wrap the current `Fail.actual` carries, so `Rejected{diagnostics}` failures are preserved, not collapsed to a bare `A`); structural rejects construct a receipt with `evidence: EvidenceNone`; there is no un-instrumented `Fail` state because there is nowhere to *not* construct a receipt. `Deferred` keeps `actual: Outcome<T>` because Deferred is the "could not evaluate" state — its outcome is the wrapped reason, not a falsification, and there is only one authority for it within `Deferred`.
 
 The §2.2-vs-§2.3 `None`-meaning ambiguity (cursor 2026-05-30) is moot under this shape: there is no `None` at the verdict layer. The only "no execution evidence" encoding is `FalsificationReceipt { …, evidence: EvidenceNone }`.
 
@@ -79,8 +79,8 @@ No new slot on `TestClaimRun` itself; the carrier change lives entirely in `std/
 ```dag
 data FalsificationReceipt<S, A> = FalsificationReceipt {
   subject:    TestClaimEvalSubject<S>,
-  expected:   A,
-  actual:     A,
+  expected:   Outcome<A>,
+  actual:     Outcome<A>,
   divergence: ValueDiff<A>,
   evidence:   ExecutionEvidence,
 }
@@ -111,7 +111,7 @@ Both lanes converge on `VerdictTally` (`pass`, `fail`, `deferred` counts). Close
 ## 3. Typing constraints (spine-flagged, ratified)
 
 - **`InterpreterTrace` must be modeled substrate.** Minimum v1 = `{ pinned_eval_call: EvalPin, diagnostics: List<Diagnostic> }` or a comparable typed shape. **Not** a `String` blob. This keeps Close/Receipt mechanical and lets later lenses (idempotency, ownership) consume traces without parsing.
-- **`ValueDiff<A>`** stays minimal v1 = `{ path: NodePath, side: DivergenceSide }` (the *locus* of disagreement, not the full value tree). The full values are already in `expected`/`actual`.
+- **`ValueDiff<A>`** stays minimal v1 = `{ path: NodePath, side: DivergenceSide }` (the *locus* of disagreement, not the full value tree). The full outcomes are already in `expected`/`actual` (both `Outcome<A>`); the diff is only well-defined when both sides are `Accepted` — `Rejected`-vs-`Accepted` divergence is encoded by the outcome shapes themselves, not by `ValueDiff`.
 - **`EmitHostRunReceipt`** typed per joint runner spec §4.2 (`stdout_bytes` + `stderr_bytes` + `HostExit` + `build_log`; `RuntimeValueParse` is a separate named symbol).
 
 ---
@@ -135,7 +135,7 @@ W2 worker PR [#3958](https://github.com/gunb-ai/gunbc/pull/3958) (`keen-raven-29
 
 **~36 total `Fail {` match sites.** The follow-up touches three substrate authors (`std/verdict.dag` for the carrier change, `05_eval.dag` for spine pattern-match updates, `workflow/ci.dag` for Phase 1a CI pattern-match updates) plus 5 test files plus the `EXPECTED_HAND_AUTHORED_TEST` census row. Bounded, but **not** "W2-only": the spine lane (`05_eval.dag`) and the Phase 1a CI lane (`ci.dag`) both consume the carrier and need synchronized edits. Coordination with Compiler Spine manager (`smart-stag-871`) before the follow-up PR opens is required.
 
-The change is still **mechanical** per site (rename `actual: actual` → `actual: receipt.actual` reads, replace `Fail { actual: x }` constructions with `Fail { receipt: build_receipt(x, …) }` helpers, drop the `Option`), but the count of touched files is wider than the earlier wording claimed. Treat the follow-up as a small multi-file PR, not a single-file change.
+The change is **mechanical** per site because `receipt.actual` is `Outcome<A>` (same wrap the current `Fail.actual` carries — see §2.3) — existing `Outcome<T>` values flow through with no extraction or coercion. Per-site shape: rename `Fail { actual: x }` constructions to `Fail { receipt: build_receipt(actual: x, expected: …, …) }` helpers; rename `Fail { actual: x }` pattern-matches to `Fail { receipt: { actual: x, … } }`; drop the `Option` on the `falsification` slot since the new shape has no Option. The semantic step is preserved by `Outcome<A>`; the mechanical step is the carrier rename. Treat the follow-up as a small multi-file PR (Compiler Spine coordination required per the census above), not a semantic redesign.
 
 ---
 
