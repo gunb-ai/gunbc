@@ -103,6 +103,9 @@ type TargetGenericApply {
 }
 
 // SG-2 — record / conj product type { f: T, ... }.
+// 🟡 coproduct dissolution — feature:sg2-delimited-surface-shape-unification — structurally
+// identical to TargetGenericApply; dissolve-on: single delimited-surface carrier consumed
+// by conj_form + cardinality_form + instantiation_form (forbidden: parallel record types).
 type TargetRecordTypeShape {
   surface: Symbol
   open: Symbol

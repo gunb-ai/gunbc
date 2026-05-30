@@ -136,7 +136,6 @@ data translate_binding_spelling_not_found: Symbol = translate_binding_spelling_n
 data translate_concrete_token_class_missing: Symbol = translate_concrete_token_class_missing
 data translate_concrete_token_kind_invalid: Symbol = translate_concrete_token_kind_invalid
 data translate_serialize_recursion_limit_exhausted: Symbol = translate_serialize_recursion_limit_exhausted
-data translate_type_expression_projection_missing: Symbol = translate_type_expression_projection_missing
 data translate_type_expression_shape_missing: Symbol = translate_type_expression_shape_missing
 // node_subtree_count + translation_rules subtree — initial measure for grammar-inverse serialize.
 fn node_subtree_count(n: Node) -> Int {
@@ -1063,13 +1062,6 @@ fn coerce_grounded_node(
     }
   )
 }
-fn translate_type_expression_projection_missing_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: translate_type_expression_projection_missing,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
 fn translate_type_expression_shape_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: translate_type_expression_shape_missing,
@@ -1132,32 +1124,17 @@ fn type_expr_generic_apply_shape_from_node(node: Node) -> Outcome<TargetGenericA
 }
 fn type_expr_record_shape_from_node(node: Node) -> Outcome<TargetRecordTypeShape> {
   bind_outcome(
-    o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_surface),
-    f: fn(surface) {
-      bind_outcome(
-        o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_open),
-        f: fn(open) {
-          bind_outcome(
-            o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_separator),
-            f: fn(separator) {
-              bind_outcome(
-                o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_close),
-                f: fn(close) {
-                  Accepted {
-                    value: TargetRecordTypeShape {
-                      surface: surface,
-                      open: open,
-                      separator: separator,
-                      close: close
-                    },
-                    diagnostics: None
-                  }
-                }
-              )
-            }
-          )
-        }
-      )
+    o: type_expr_generic_apply_shape_from_node(node: node),
+    f: fn(form) {
+      Accepted {
+        value: TargetRecordTypeShape {
+          surface: form.surface,
+          open: form.open,
+          separator: form.separator,
+          close: form.close
+        },
+        diagnostics: None
+      }
     }
   )
 }
@@ -1943,7 +1920,9 @@ fn translate_node(
       Rejected { diagnostics: r }
   }
 }
-// 🟢 coproduct dissolution — SG-2 type-expression projection presence probe (present | absent).
+// 🟡 coproduct dissolution — MVP1 translate shim (253ea20fa): delete ProjectionAbsent arm and
+// translate_node_computation fallback once every TargetModel extdep row carries
+// target_model_edge_type_expression_projection.
 type TypeExprProjectionPresence
   = ProjectionPresent
   | ProjectionAbsent
