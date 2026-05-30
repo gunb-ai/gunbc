@@ -60,7 +60,6 @@ import v4.std.collection {
   Absent,
   List,
   Map,
-  Optional,
   Present,
   Set,
   empty_map,
