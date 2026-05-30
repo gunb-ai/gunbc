@@ -64,29 +64,48 @@ Three blockers compound:
 
 ---
 
-## §5. Target architecture (three layers)
+## §5. Target architecture (three layers, Upsert<T>-shaped)
+
+**The primitive is Upsert<T>**, not generic step gating. Per the operator directive 2026-05-29 (canonical pattern in `dsl/std/patterns.dag` UPSERT<T> section + `docs/audit/upsert-pattern-compiler-stray-2026-05-29.md`): **"do this" = "upsert this"** — never blind create, never blind overwrite. The 4 phases are fractal at every scale: **verify-first → satisfy-dependencies-recursively → create-if-missing → cache-outcome**.
+
+Upsert<T> is what unifies ergonomics + mechanical efficiency in one shape: the developer writes one `upsert<Check, Create, Resolve>`; the framework handles verify, dep-resolution, cache, and action. The verify-first phase is exactly where affected-set fires.
 
 **Layer A — Authority.** `workflow/ci.dag` is the sole authority. `.github/workflows/ci.yml` is the generated emit (Shape-B per THESIS). Hand-edits to `ci.yml` are FORBIDDEN per T-24 Phase 2.
 
-**Layer B — Per-step dependency declaration.** Each `CiJob` and `CiCommand` declares its input dependency set:
+**Layer B — Each CI step is an Upsert<T> Node.** `CiCommand` becomes an Upsert<T> specialization (per the `ensure<Check, Action>` / `upsert<Check, Create, Resolve>` / `content_upsert` specializations in the patterns canon). The step declares:
 ```dag
-type DependencySource
-  = FileGlob { glob: Symbol }                      // "src/v4/std/**/*.dag"
-  | SubstrateNodeSet { selector: NodeQuery }       // all nodes inhabiting OrderedRing
-  | LensOutputRef { lens: LensId, ports: List<Port> }  // affected_set output
-  | TestClaimRef { claim_id: Symbol }              // specific claim
-  | Always                                          // unconditional (integrity)
+type CiUpsertStep<T> = Upsert<T> {
+  inputs: List<UpsertInputRef>          // what facts the verify-first phase reads
+  verify: VerifyCheck                    // is desired state already satisfied?
+  create: CreateAction                   // action to take if verify says action needed
+  resolve: ResolveExpr                   // stable handle / value to return
+  cache_key: ContentHashKey              // structural cache key derived from inputs
+}
 
-extend CiCommand with: dependency_set: List<DependencySource>
+type UpsertInputRef
+  = FileGlob { glob: Symbol }            // "src/v4/std/**/*.dag"
+  | SubstrateNodeSet { selector: NodeQuery }
+  | LensOutputRef { lens: LensId, ports: List<Port> }
+  | TestClaimRef { claim_id: Symbol }
+  | UpstreamUpsert { step_id: Symbol }   // dependency-resolution: upstream upsert must succeed first
+  | Always                                // unconditional (integrity-class)
 ```
-CI generation MUST reject any CiCommand without a `dependency_set` (fail-closed per INVARIANTS P3).
+CI generation MUST reject any step that isn't an Upsert<T> Node (fail-closed per INVARIANTS P3). This eliminates the "blind run every step" failure mode by construction.
 
-**Layer C — Affected-set projection.** `lens/affected_set.dag` projects the per-PR change set into the canonical `AffectedSet` type from `std/change.dag`. Each step's gate is:
+**Layer C — Affected-set drives the verify-first phase.** `lens/affected_set.dag` projects the per-PR change set into the canonical `AffectedSet` type from `std/change.dag`. The verify-first phase of each Upsert<T> step is:
 ```
-step_runs ⟺ intersect(step.dependency_set.expand(), affected_set(PR)) ≠ ∅
+verify(step, PR) =
+  if intersect(step.inputs, affected_set(PR)) = ∅
+    then satisfied   // short-circuit: cached outcome stable, no action
+    else needs_action  // verify says action required → create phase runs
 ```
 
-**Minimal CI per PR** = the set of steps whose gate fires. By construction, all `Always` (integrity-class) steps run; all other steps run iff their declared dependencies are touched.
+**Minimal CI per PR** falls out of Upsert<T> semantics. By construction:
+- `Always` (integrity-class) upserts run (their inputs are never satisfied-by-affected-set).
+- All other upserts short-circuit to cached when affected_set doesn't intersect — no action, no compute, no time.
+- Dependency resolution is recursive per UPSERT canon: if step X depends on step Y, X's verify-first triggers Y's verify-first.
+
+The 30-minute CI dissolves: every step that doesn't need to run, doesn't run, and the framework knows because every step is an Upsert<T> with a verify-first phase that reads affected_set.
 
 ---
 
@@ -97,12 +116,19 @@ Per the ratified T-24 phase plan, with ONE addition (Phase 1.5):
 | Phase | Scope | T-24 status after |
 |-------|-------|-------------------|
 | **1a** (already in scope) | ci.dag sole policy authority for I0–I8 integrity; T-22 interpreter on ci_pipeline; coarse bucket `if:` dissolved | OPEN |
-| **1.5** (**NEW** — needed for affected-set-driven minimal-CI) | Every `CiJob`/`CiCommand` declares `dependency_set: List<DependencySource>`; CI generation rejects un-declared | OPEN |
+| **1.5** (**NEW** — needed for affected-set-driven minimal-CI; **Upsert<T>-shaped per operator directive 2026-05-29**) | Every CI step becomes an Upsert<T> Node (`CiUpsertStep<T>`) with `inputs`/`verify`/`create`/`resolve`/`cache_key` fields; CI generation rejects any step not Upsert<T>-shaped. Existing-shell retirement under clever-cat-115 per `project_no_new_shell` directive. | OPEN |
 | **1b** | Atoms A3–A14 promoted opt-in; A6–A8 delete `scripts/check-*` | OPEN |
 | **2** (A15) | Shape-B `ci.yml` emitted from CiPipeline; all hand-authored YAML deleted (C4) | **[DONE]** |
 | **2.5** (NEW — minimal-CI activation) | Each step's gate consumes Layer C's intersection predicate; minimal CI fires per PR | **[DONE+]** |
 
-**Rationale for Phase 1.5 BEFORE Phase 1b:** without per-step dependency declaration, A3–A14 atoms can't be ported individually without losing their CI gate semantics. Declaring the dependency_set is a prerequisite for the atom-by-atom migration. Putting Phase 1.5 between 1a and 1b is the cheapest sequencing.
+**Rationale for Phase 1.5 BEFORE Phase 1b (Upsert<T> shape):** without per-step Upsert<T> declaration, A3–A14 atoms can't be ported individually without losing their CI gate semantics. Declaring each step as an Upsert<T> Node is a prerequisite for the atom-by-atom migration AND for affected-set-driven minimal CI. Putting Phase 1.5 between 1a and 1b is the cheapest sequencing.
+
+**Why Upsert<T> over generic dependency_set:**
+- *Ergonomics*: developer writes one `upsert<Check, Create, Resolve>` per step; framework handles verify, cache, dep-resolution.
+- *Mechanical efficiency*: verify-first phase reads affected_set; short-circuits to cached when inputs not touched.
+- *Single authority*: the Upsert<T> canon is in `dsl/std/patterns.dag` UPSERT<T> section — no parallel "CI dependency declaration" carrier (would be P2 violation).
+- *Fractal*: the same pattern that scaffolds the compiler internals scaffolds CI steps (per the operator's "do this = upsert this" framing).
+- *Coordination with clever-cat-115's existing-shell retirement*: ports each shell script to a `content_upsert` or `ensure<Check, Action>` row instead of inventing new types.
 
 **Rationale for Phase 2.5:** Phase 2's T-24 [DONE] gate only requires ci.yml-emitted-from-ci.dag — it does NOT require affected-set-driven minimal-CI. Phase 2.5 is the operator's "minimal-for-highest-confidence" ask. Should it be IN T-24 or POST?
 
