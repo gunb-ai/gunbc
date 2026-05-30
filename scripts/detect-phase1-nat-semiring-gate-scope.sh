@@ -33,10 +33,13 @@ should_run=false
 if git diff --name-only "$range" | grep -qE '^(src/v4/test/claim/(algebra_laws/nat_semiring|nat_semiring/)|scripts/v4-phase1-nat-semiring)'; then
   should_run=true
 fi
+# Workflow-policy gate wiring: any edit to the rung gate, its prerequisites, scope
+# detector, or modeled ci.dag signal — including `if:` lines that route through
+# phase1_nat_semiring_fixture_scope (fail-closed self-validation; do not filter those out).
 if [[ "$should_run" != true ]] && git diff --name-only "$range" | grep -qE '^(\.github/workflows/ci\.yml|src/v4/workflow/ci\.dag|dsl/gunbc/ci_github_actions_workflow\.dag)'; then
   if git diff "$range" -- .github/workflows/ci.yml src/v4/workflow/ci.dag dsl/gunbc/ci_github_actions_workflow.dag 2>/dev/null \
-    | grep '^[-+]' | grep -v '^[-+][[:space:]]*#' | grep -v 'phase1_nat_semiring_fixture_scope' | grep -v 'Detect phase1/nat_semiring fixture scope' \
-    | grep -qE 'phase1/nat_semiring rungs 0-2 gate|v4-phase1-nat-semiring-rung-gate\.sh|V4_PHASE1_NAT_SEMIRING_STRICT|phase1_nat_semiring_rung_gate'; then
+    | grep '^[-+]' | grep -v '^[-+][[:space:]]*#' \
+    | grep -qE 'phase1/nat_semiring rungs 0-2 gate|Setup Go \(phase1/nat_semiring|v4-phase1-nat-semiring-rung-gate\.sh|V4_PHASE1_NAT_SEMIRING_STRICT|phase1_nat_semiring_rung_gate|phase1_nat_semiring_fixture_scope|detect-phase1-nat-semiring-gate-scope'; then
     should_run=true
   fi
 fi
