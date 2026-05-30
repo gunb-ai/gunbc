@@ -17,6 +17,9 @@ type InterpreterTrace {
   diagnostics: List<Diagnostic>
 }
 
+// 🟡 coproduct dissolution — feature:verdict-surface-execution-evidence (#3961);
+// bound task: W3 wires `run_emit_host_rust` (dissolves `emit_host_transport_not_wired`) and
+// interpreter trace population for emit-vs-eval rows; `EvidenceNone` is the fail-closed empty arm.
 type ExecutionEvidence
   = Host { receipt: EmitHostRunReceipt }
   | Interpreter { trace: InterpreterTrace }

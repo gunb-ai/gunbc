@@ -18,6 +18,8 @@
 //!
 //! **TESTING.md:** substrate `.dag` eval remains hermetic (`run_emit_host_rust` → `Rejected` until
 //! W3/CI wiring); this test exercises the Rust transport the `.dag` row models, not substrate eval.
+//! The transport uses bounded child I/O (`HOST_BUILD_TIMEOUT`, `HOST_RUN_TIMEOUT`,
+//! `HOST_STREAM_BYTE_CAP` in `emit_host_runner`) and isolates `CARGO_TARGET_DIR` under `work_dir`.
 
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/extdeps/runtimes/emit_host.dag");
 const HOST_RUN_DAG: &str = include_str!("../../../../v4/std/host_run.dag");
@@ -64,6 +66,7 @@ fn v4_falsification_execution_evidence_sum_present() {
     for needle in [
         "type FalsificationReceipt",
         "subject: Subj",
+        "🟡 coproduct dissolution — feature:verdict-surface-execution-evidence",
         "type ExecutionEvidence",
         "Host { receipt: EmitHostRunReceipt }",
         "Interpreter { trace: InterpreterTrace }",
