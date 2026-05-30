@@ -13,6 +13,7 @@ pub struct CiComponentAffected {
     pub v2: bool,
     pub v3: bool,
     pub v4: bool,
+    pub testclaim_corpus: bool,
     pub workflow_policy: bool,
     pub release_distribution: bool,
 }
@@ -23,6 +24,7 @@ pub fn ci_component_affected_fail_closed() -> CiComponentAffected {
         v2: true,
         v3: true,
         v4: true,
+        testclaim_corpus: true,
         workflow_policy: true,
         release_distribution: true,
     }
@@ -37,6 +39,7 @@ where
         v2: false,
         v3: false,
         v4: false,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: false,
     };
@@ -49,6 +52,9 @@ where
         }
         if ci_changed_path_affects_v4(path) {
             out.v4 = true;
+        }
+        if ci_changed_path_affects_testclaim_corpus(path) {
+            out.testclaim_corpus = true;
         }
         if ci_changed_path_affects_workflow_policy(path) {
             out.workflow_policy = true;
@@ -88,6 +94,10 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
         || path.starts_with("dsl/std/")
         || path == "Cargo.toml"
         || path == "Cargo.lock"
+}
+
+pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
+    path.starts_with("src/v4/test/claim/")
 }
 
 pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
@@ -146,6 +156,22 @@ mod tests {
     }
 
     #[test]
+    fn testclaim_corpus_includes_all_v4_claim_paths() {
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/manual/mvp1_rust_add_translate.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"
+        ));
+        assert!(!ci_changed_path_affects_testclaim_corpus(
+            "src/v4/workflow/ci.dag"
+        ));
+    }
+
+    #[test]
     fn dsl_std_triggers_v3_and_v4() {
         assert!(ci_changed_path_affects_v3("dsl/std/node.dag"));
         assert!(ci_changed_path_affects_v4("dsl/std/node.dag"));
@@ -173,7 +199,21 @@ mod tests {
         assert!(!flags.v2);
         assert!(!flags.v3);
         assert!(flags.v4);
+        assert!(!flags.testclaim_corpus);
         assert!(flags.workflow_policy);
+        assert!(!flags.release_distribution);
+    }
+
+    #[test]
+    fn claim_corpus_paths_only_raise_testclaim_bucket() {
+        let flags = ci_component_affected_from_changed_paths([
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+        ]);
+        assert!(!flags.v2);
+        assert!(!flags.v3);
+        assert!(!flags.v4);
+        assert!(flags.testclaim_corpus);
+        assert!(!flags.workflow_policy);
         assert!(!flags.release_distribution);
     }
 

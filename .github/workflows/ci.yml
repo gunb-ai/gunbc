@@ -71,6 +71,7 @@ jobs:
       v2: ${{ steps.detect.outputs.v2 }}
       v3: ${{ steps.detect.outputs.v3 }}
       v4: ${{ steps.detect.outputs.v4 }}
+      testclaim_corpus: ${{ steps.detect.outputs.testclaim_corpus }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
       release_distribution: ${{ steps.detect.outputs.release_distribution }}
     steps:
@@ -286,7 +287,7 @@ jobs:
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
     - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: bash scripts/v4-testclaim-corpus-gate.sh
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
