@@ -37,7 +37,7 @@ import v4.std.change {
 // Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
 // `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
 import v4.std.patterns { CreateAction, ResolveExpr, VerifyCheck }
-import v4.std.types { GlobPattern, RepoRoot, RepositoryRoot }
+import v4.std.types { GlobPattern, GlobSegment, RepoRoot, RepositoryRoot }
 import v4.compiler.eval {
   EvalContext,
   TestClaimCacheKey,
@@ -77,7 +77,7 @@ import v4.std.node {
 import v4.std.integer { int_add, int_negate }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
-import v4.std.collection { Absent, List }
+import v4.std.collection { Absent, List, Optional, Present }
 import v4.std.text { Char, String }
 import v4.std.diagnostic {
   Correction,
@@ -187,6 +187,22 @@ type UpsertInputRef
 type FileSetSelector {
   root: RepositoryRoot
   pattern: GlobPattern
+}
+
+// W2.3 Bucket A — repo-relative `FileSet` inputs (authority: `ci_changed_path_affects_*` mirrors).
+data ci_repository_root: RepositoryRoot = ""
+
+fn ci_glob_pattern_one(segment: GlobSegment) -> GlobPattern {
+  GlobPattern { segments: [segment] }
+}
+
+fn ci_upsert_file_set_input(segment: GlobSegment) -> UpsertInputRef {
+  FileSet {
+    selector: FileSetSelector {
+      root: ci_repository_root
+      pattern: ci_glob_pattern_one(segment: segment)
+    }
+  }
 }
 
 type CiJobId = Symbol
@@ -413,6 +429,91 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     }
   ]
 })
+
+
+// ── W2.3 Phase 1.5 — CiUpsertStep rows (Bucket A FileSet slice) ─────────────────────────────
+// In-scope: job steps expressible with `FileSet` inputs only (§2.1 bucket A).
+// Out-of-scope (later buckets): lens_ci_registry_execution (LensOutputRef), testclaim_corpus_eval_execution
+// (TestClaimRef), all five `GateStep` rows (UpstreamUpsert — bucket E).
+
+type CiUpsertStepRow {
+  step_id: CiStepId
+  step: CiUpsertStep<Symbol>
+}
+
+data ci_upsert_v2_compile_src_v4: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
+  inputs: [
+    ci_upsert_file_set_input(segment: "src/v2/**"),
+    ci_upsert_file_set_input(segment: "Cargo.toml"),
+    ci_upsert_file_set_input(segment: "Cargo.lock")
+  ]
+  verify: ci_command_projection_node(
+    c: BootstrapStageCompile { produces: v4_stage0_binary }
+  )
+  create: ci_job_projection_node(
+    j: CiJob {
+      id: v2_compile_src_v4,
+      command: BootstrapStageCompile { produces: v4_stage0_binary },
+      needs: []
+    }
+  )
+  resolve: ci_atom(sym: v4_stage0_binary)
+  payload_type: ci_atom(sym: ci_cache_cmd_bootstrap_compile_tag)
+}
+
+data ci_upsert_m1_rust_emit_probe_execution: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
+  inputs: [
+    ci_upsert_file_set_input(segment: "src/v4/**"),
+    ci_upsert_file_set_input(segment: "scripts/v4-m1*"),
+    ci_upsert_file_set_input(segment: "Cargo.toml"),
+    ci_upsert_file_set_input(segment: "Cargo.lock")
+  ]
+  verify: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+  create: ci_job_projection_node(
+    j: CiJob {
+      id: m1_rust_emit_probe_execution,
+      command: M1RustEmitProbeCommand,
+      needs: [v2_compile_src_v4]
+    }
+  )
+  resolve: ci_atom(sym: m1_rust_emit_probe_execution)
+  payload_type: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+}
+
+data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
+  inputs: [
+    ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
+    ci_upsert_file_set_input(segment: "src/v4/**")
+  ]
+  verify: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+  create: ci_job_projection_node(
+    j: CiJob {
+      id: phase1_nat_semiring_rung_gate_execution,
+      command: Phase1NatSemiringRungGateCommand,
+      needs: [v2_compile_src_v4]
+    }
+  )
+  resolve: ci_atom(sym: phase1_nat_semiring_rung_gate_execution)
+  payload_type: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+}
+
+data ci_upsert_steps: List<CiUpsertStepRow> = [
+  CiUpsertStepRow {
+    step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
+    step: ci_upsert_v2_compile_src_v4
+  },
+  CiUpsertStepRow {
+    step_id: JobStep { job: m1_rust_emit_probe_execution, step: m1_rust_emit_probe_execution },
+    step: ci_upsert_m1_rust_emit_probe_execution
+  },
+  CiUpsertStepRow {
+    step_id: JobStep {
+      job: phase1_nat_semiring_rung_gate_execution,
+      step: phase1_nat_semiring_rung_gate_execution
+    },
+    step: ci_upsert_phase1_nat_semiring_rung_gate_execution
+  }
+]
 
 
 data ci_duplicate_job_id: Symbol = ci_duplicate_job_id
@@ -1371,6 +1472,39 @@ fn ci_upsert_step_projection_node<T>(step: CiUpsertStep<T>) -> Node {
 
 fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash {
   content_hash(n: ci_upsert_step_projection_node(step: step))
+}
+
+
+fn ci_upsert_step_row_lookup(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> Optional<CiUpsertStepRow> {
+  fold(rows, init: Absent, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if ci_step_id_eq(left: step_id, right: row.step_id) {
+          Present { value: row }
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+
+fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      list_snoc_item(xs: acc, item: row.step_id)
+    }
+  )
+}
+
+
+fn ci_upsert_steps_slice_bijection_holds(rows: List<CiUpsertStepRow>) -> Bool {
+  let ids = ci_upsert_steps_slice_step_ids(rows: rows)
+  length(xs: ids) == length(xs: rows)
+    && length(xs: ids) == length(xs: unique(xs: ids, eq: ci_step_id_eq))
 }
 
 
