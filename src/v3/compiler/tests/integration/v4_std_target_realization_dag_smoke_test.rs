@@ -4,7 +4,7 @@
 //! carrier home; Rust rows in `extdeps/languages/rust.dag`; `06_translate.dag` consumer.
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceField, SurfaceItem};
+use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
 use v3_compiler::tokenize_for_test;
 
 const TARGET_REALIZATION_DAG: &str = include_str!("../../../../v4/std/target_realization.dag");
@@ -50,6 +50,29 @@ fn surface_declares_data(
     })
 }
 
+fn surface_type_name(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Named { name, .. } => name.clone(),
+        SurfaceType::Parameterized { name, args, .. } => {
+            let rendered = args
+                .iter()
+                .map(|arg| match arg {
+                    v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty } => {
+                        surface_type_name(ty)
+                    }
+                    v3_compiler::parse_surface::TypeAngleArg::WidthNatLiteral {
+                        decimal,
+                        ..
+                    } => decimal.clone(),
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{rendered}>")
+        }
+        other => format!("{other:?}"),
+    }
+}
+
 fn type_record_fields(
     module: &v3_compiler::parse_surface::SurfaceModule,
     name: &str,
@@ -65,17 +88,7 @@ fn type_record_fields(
             } if item_name == name => Some(
                 fields
                     .iter()
-                    .map(|f: &SurfaceField| {
-                        (
-                            f.name.clone(),
-                            match &f.ty {
-                                v3_compiler::parse_surface::SurfaceType::Named(parts) => {
-                                    parts.join(".")
-                                }
-                                other => format!("{other:?}"),
-                            },
-                        )
-                    })
+                    .map(|f: &SurfaceField| (f.name.clone(), surface_type_name(&f.ty)))
                     .collect(),
             ),
             _ => None,
