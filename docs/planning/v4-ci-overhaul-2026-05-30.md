@@ -137,18 +137,20 @@ type DissolutionTarget
 
 data ci_always_run_carveouts: List<CiCarveout> = [
   { step_id: ci_step_v2_compile_src_v4,
-    reason: "v2-compiler integrity gate; affected-set lens itself imports v2 substrate — circular dependency unmodeled",
+    reason_code: v2_substrate_circular_dep,
+    reason_detail: "v2-compiler integrity gate; affected-set lens itself imports v2 substrate — circular dependency unmodeled",
     dissolution_target: ModelMissingSubstrate { what: "v2_substrate_dependency_modeled_in_affected_set" }
   },
   { step_id: ci_step_<integrity_X>,
-    reason: "superstition — not sure why exactly",
-    dissolution_target: UnknownYet
+    reason_code: unmodeled_dependency,
+    reason_detail: "superstition — not sure why exactly",
+    dissolution_target: UnknownYet { investigation_owner: <manager_session>, review_due_by: "next_quarterly_review" }
   },
-  // ... small list — every entry has reason + dissolution_target
+  // ... small list — every entry has reason_code + reason_detail + dissolution_target
 ]
 ```
 
-Adding a carveout requires BOTH a reason AND a dissolution_target. `UnknownYet` is a valid honest answer; it forces explicit acknowledgment that we don't yet know what would let us remove the carveout. Each carveout entry is reviewed on its dissolution_target progress.
+Adding a carveout requires reason_code + reason_detail + dissolution_target. `UnknownYet` is a valid honest answer for ignorance, BUT it is not free — it requires a named `investigation_owner` (a manager session-id that takes responsibility for the unknown) AND a `review_due_by` (forcing a review cadence). Each carveout entry is reviewed on its dissolution_target progress. This is the "hard dispatch rule" per operator review 2026-05-30: every UnknownYet entry has a named owner and a recurring review trigger; permanent-ignorance carveouts are not allowed.
 
 Each carve-out entry is a **dissolution target**: as we figure out the actual missing dependency, we model it (add the substrate fact), and the entry comes off the list. The list itself is data — small, honest, reviewable. Adding an entry is a deliberate decision with a reason; removing one is a substrate-modeling deliverable.
 
@@ -202,7 +204,7 @@ The receipt is the **first thing CI should produce, before active skipping is tr
 - All other upserts short-circuit to cached when affected_set doesn't intersect — no action, no compute, no time.
 - Dependency resolution is recursive per UPSERT canon: if step X depends on step Y, X's verify-first triggers Y's verify-first.
 
-The 30-minute CI dissolves: every step that doesn't need to run, doesn't run, and the framework knows because every step is an Upsert<T> with a verify-first phase that reads affected_set.
+**Structural success criterion** (operator review 2026-05-30: avoid making elapsed runtime the primary acceptance metric): the receipt is correct iff every step's `decision` is justified by either (a) `inputs ∩ affected_set ≠ ∅` evidence (selected), (b) `inputs ∩ affected_set = ∅` evidence plus valid cache digest (skipped safely), or (c) explicit `ci_always_run_carveouts` match (carved out). Wall-clock reduction is a downstream consequence, not the gate. Elapsed-time wins are visible but secondary to "every decision is justified by structural facts."
 
 ---
 
@@ -272,7 +274,7 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 
 **D-CI-5.** Scope of "minimal for highest confidence" — per operator directive 2026-05-30 ("I would minimize it to 'run affected only' — and then we can have a separate carve-out (not a mode/heuristic), just a literal list of 'things we always run regardless (superstition? not sure why exactly?)'"):
 
-*Proposed:* **Every step is AffectedOnly by construction.** No `CiRunPolicy` / `CiRunMode` enum (heuristic — forbidden in a closed system per INVARIANTS P1). Always-run exceptions live in an explicit `ci_always_run_carveouts: List<CiCarveout>` data declaration; each entry carries a literal `reason: Symbol` (including "superstition? not sure why exactly?" as a valid honest entry). Each carve-out entry is a dissolution target: as we figure out the actual missing dependency, we model the substrate fact and remove the entry. Adding entries is a deliberate documented decision; removing entries is a substrate-modeling deliverable.
+*Proposed:* **Every step is AffectedOnly by construction.** No `CiRunPolicy` / `CiRunMode` enum (heuristic — forbidden in a closed system per INVARIANTS P1). Always-run exceptions live in an explicit `ci_always_run_carveouts: List<CiCarveout>` data declaration; each entry carries `reason_code: Symbol` (stable machine key) + `reason_detail: String` (operator-readable prose, including "superstition — not sure why exactly" as valid honest content) + `dissolution_target: DissolutionTarget`. `UnknownYet` dissolution-targets require named `investigation_owner` + `review_due_by` per operator review 2026-05-30. Each carveout entry is a dissolution target: as we figure out the actual missing dependency, we model the substrate fact and remove the entry. Adding entries is a deliberate documented decision; removing entries is a substrate-modeling deliverable.
 
 **D-CI-7.** Accept the **Phase 1.4 prerequisite** (land Upsert<T> as a usable substrate primitive — parser/substrate prerequisites in `dsl/std/patterns.dag`)?
 

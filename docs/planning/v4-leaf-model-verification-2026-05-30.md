@@ -95,11 +95,27 @@ type LeafModelFixture<C> {
 type LeafModelVerificationReport<M> {
   model: M
   claims: List<{ claim_id: Symbol, verdict: Verdict<ClaimSubject>, falsification_verdict: Verdict<ClaimSubject> }>
-  totals: { proven: Int, falsified: Int, falsification_missed: Int, not_checked: Int }
+  totals: {
+    proven: Int                        // both happy-path and falsification-path matched expectations
+    model_failed: Int                  // happy-path verdict diverged from model expectation (model claim is wrong)
+    falsification_caught: Int          // deliberately-wrong variant was correctly rejected (verification works)
+    falsification_missed: Int          // deliberately-wrong variant passed (model unfalsifiable; suspicious)
+    not_checked: Int                   // fixture couldn't be generated or runner couldn't exercise
+  }
+  // (field naming per operator review 2026-05-30: prior `falsified` was ambiguous —
+  //  could mean "model failed" or "falsification caught." Split into 4 explicit categories.)
 }
 ```
 
-**Layer A — Claim authority.** Each leaf model's claims live as `LeafModelClaim<M, Subject, Expectation>` declarations either in the model itself (self-declared facts) OR in a sibling `test/claim/language_model/<model>.dag` directory referencing the model. Claim authoring follows the existing `TestClaim` discipline.
+**Layer A — Claim authority (crisp boundary per operator review 2026-05-30):**
+
+```text
+The leaf model owns FACTS (stable, claimable fact IDs declared in the model itself).
+The claim corpus owns VERIFICATION OBLIGATIONS (LeafModelClaim rows in sibling files referencing those fact IDs).
+The runner owns TARGET VERDICTS (verdict per fixture exercise).
+```
+
+Each leaf model carries stable fact IDs / claimable facts as substrate declarations. Sibling claim files at `test/claim/language_model/<model>.dag` define `LeafModelClaim` rows referencing those fact IDs. **The model itself should NOT become cluttered with runner concerns** — claim authoring lives separately. Claim authoring follows the existing `TestClaim` discipline.
 
 **Falsification probe contract (hard requirement, not example).** Every `LeafModelClaim` MUST include a `falsification_case`. A claim without a paired falsification is NOT a verifiable claim — it's an unfalsifiable assertion (per Popper-style discipline). The runner exercises both the happy path AND the falsification path; the claim is `PROVEN` only when both verdicts match expectations.
 
@@ -158,13 +174,22 @@ Operator framing: *"I suspect they are the highest value / hard value targets."*
 
 This R2 split exists specifically because subtle modeling questions like "what algebra does a fixed-width integer actually inhabit?" should surface in leaf-model verification — not after emit goes through and silently produces wrong code in some overflow regime.
 
-**Claim R3**: rust.dag declares Symbol projects to `String` in Rust (per the SG-1 worksheet's tentative target realization).
-- **Fixture**: emit `pub fn r3_test() -> /* Symbol */ String { "loop_bound_edge".to_string() }`.
-- **Target exercise**: rustc compile + verify the function returns a String at runtime.
-- **Expected verdict**: PROVEN if compile + runtime behavior matches.
-- **Falsification probe**: emit Symbol as a wrapper struct (`pub struct Symbol(pub String); pub fn r3_test() -> Symbol { Symbol("foo".to_string()) }`); verify rustc behavior changes. If both forms behave identically, the model's choice between alias-vs-newtype is undetectable — which is itself information about whether the claim is meaningful.
+**Claim R3** (split per operator review 2026-05-30 — Symbol projection is BOTH an external Rust fact AND an internal single-authority projection):
 
-For rust.dag at HEAD, the inventory is roughly:
+**R3-external**: rust.dag's TargetAtomRealization row for Symbol projects to a Rust shape that rustc accepts.
+- **Fixture**: emit `pub fn r3_test() -> /* Symbol projection */ { ... }` per the realization row.
+- **Target exercise**: rustc compile + verify behavior matches expected.
+- **Falsification probe**: deliberately-mismatched projection (e.g., declare Symbol as `String` alias but try value-constructor call on it); verify rustc rejects.
+
+**R3-internal** (the part that proves SG-1's root authority gap is fixed): **changing the TargetAtomRealization row for Symbol must change BOTH type-projection emit AND value-projection emit together.** This is NOT a rustc fact — it's a model/projection receipt internal to the compiler.
+- **Fixture**: take the current TargetAtomRealization row for Symbol; record emit output for type position + value position. Mutate the row (e.g., flip from alias to newtype struct). Re-emit. Both outputs MUST change.
+- **Target exercise**: structural-equality check between (mutated-row-type-emit, mutated-row-value-emit) and (original-row-type-emit, original-row-value-emit) — both should differ.
+- **Expected verdict**: PROVEN iff both type-emit AND value-emit changed in response to the row mutation.
+- **Falsification probe**: mutate the row; verify that one of (type-emit, value-emit) failed to change. If either is unaffected by the row mutation, the lane has a parallel authority (P2 violation) and SG-1's root cause is NOT fixed.
+
+Without R3-internal, R3-external could prove "rustc accepts X" while the type/value emit disagreement (SG-1's actual root cause) persists. Both must PROVEN for SG-1 to be sustainably closed.
+
+For rust.dag at HEAD, the eventual full inventory is roughly:
 - 13+ primitive type claims (int8/16/32/64/128, uint8/16/32/64/128, bool, char, etc.)
 - 4 algebra inhabitance claims (OrderedRing<Int*>, ApproximateField<Float*>, BooleanAlgebra<Bool>, ...)
 - Grammar productions per Rust Reference (T-4.17 wave 1 + 2)
@@ -172,7 +197,9 @@ For rust.dag at HEAD, the inventory is roughly:
 - Symbol/Bool/Char target realizations (pending SG-1)
 - 94 Symbol-tagged catalog entries (rust_std_projection_*, rust_surface_spelling_*, etc. — per keen-heron-687's pre-dispatch finding)
 
-Verification surface estimate: ~50–100 fixtures for rust.dag alone. Bounded, exercisable, and entirely within current testgen + multi-target check infrastructure once wired.
+Full verification surface estimate: ~50–100 fixtures for rust.dag alone.
+
+**Phase 1 explicit scope (operator review 2026-05-30 — fixture-first discipline)**: implement ONLY R1 + R2a + R2b + R3-external + R3-internal (5 fixtures across 4 claim IDs). Prove the framework end-to-end with this minimal set. Widening to the full ~50-100 fixture inventory is **Phase 2 only after Phase 1 demonstrates the framework produces useful verdicts**. Same fixture-first discipline as the correctness ladder; widening a broken framework across 100 fixtures is the same trap as the 7951-error chase the planning doc is designed to avoid.
 
 ---
 
