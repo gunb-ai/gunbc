@@ -19,7 +19,8 @@ const R2B_RUNTIME: &str =
 
 const R3_HAPPY: &str =
     "pub struct Symbol(pub String);\npub fn r3_test() -> Symbol { Symbol(\"x\".to_string()) }\n";
-const R3_FALSIFICATION: &str = "pub type Symbol = String;\npub fn r3_test() -> Symbol { Symbol(\"x\") }\n";
+const R3_FALSIFICATION: &str =
+    "pub type Symbol = String;\npub fn r3_test() -> Symbol { Symbol(\"x\") }\n";
 
 fn unescape_dag_string_literal(body: &str) -> String {
     let mut out = String::new();
@@ -120,7 +121,10 @@ fn v4_leaf_model_rust_r2a_fixture_strings_match_dag_authority() {
 fn v4_leaf_model_rust_r2a_happy_fixture_rustc_accepts() {
     let harness = RustcHarness::new("v4_leaf_model_rust_r2a");
     let (ok, stderr) = compile_lib(&harness, "happy", R2A_HAPPY);
-    assert!(ok, "rustc should accept R2a happy fixture; stderr:\n{stderr}");
+    assert!(
+        ok,
+        "rustc should accept R2a happy fixture; stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -128,7 +132,10 @@ fn v4_leaf_model_rust_r2a_falsification_fixture_rustc_e0599() {
     let harness = RustcHarness::new("v4_leaf_model_rust_r2a");
     let (ok, stderr) = compile_lib(&harness, "falsification", R2A_FALSIFICATION);
     assert!(!ok, "falsification must not compile");
-    assert!(stderr.contains("E0599"), "expected E0599; stderr:\n{stderr}");
+    assert!(
+        stderr.contains("E0599"),
+        "expected E0599; stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -142,7 +149,10 @@ fn v4_leaf_model_rust_r2b_debug_overflow_panics_at_runtime() {
     let harness = RustcHarness::new("v4_leaf_model_rust_r2b_debug");
     let (compiled, exit, stderr) = compile_bin_and_run(&harness, "debug", R2B_RUNTIME, &[]);
     assert!(compiled, "debug build must compile; stderr:\n{stderr}");
-    assert_ne!(exit, 0, "debug overflow must panic (non-zero exit); stderr:\n{stderr}");
+    assert_ne!(
+        exit, 0,
+        "debug overflow must panic (non-zero exit); stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -151,12 +161,16 @@ fn v4_leaf_model_rust_r2b_release_overflow_wraps_at_runtime() {
     let (compiled, exit, stderr) =
         compile_bin_and_run(&harness, "release", R2B_RUNTIME, &["-C", "opt-level=2"]);
     assert!(compiled, "release build must compile; stderr:\n{stderr}");
-    assert_eq!(exit, 0, "release overflow must wrap (exit 0); stderr:\n{stderr}");
+    assert_eq!(
+        exit, 0,
+        "release overflow must wrap (exit 0); stderr:\n{stderr}"
+    );
 }
 
 #[test]
 fn v4_leaf_model_rust_r3_external_fixture_strings_match_dag_authority() {
-    let happy = extract_fixture_source(FIXTURE_DAG, "rust_r3_external_happy_fixture_source").unwrap();
+    let happy =
+        extract_fixture_source(FIXTURE_DAG, "rust_r3_external_happy_fixture_source").unwrap();
     let falsification =
         extract_fixture_source(FIXTURE_DAG, "rust_r3_external_falsification_fixture_source")
             .unwrap();
@@ -168,7 +182,10 @@ fn v4_leaf_model_rust_r3_external_fixture_strings_match_dag_authority() {
 fn v4_leaf_model_rust_r3_external_happy_fixture_rustc_accepts() {
     let harness = RustcHarness::new("v4_leaf_model_rust_r3_external");
     let (ok, stderr) = compile_lib(&harness, "happy", R3_HAPPY);
-    assert!(ok, "rustc should accept R3 happy fixture; stderr:\n{stderr}");
+    assert!(
+        ok,
+        "rustc should accept R3 happy fixture; stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -176,5 +193,8 @@ fn v4_leaf_model_rust_r3_external_falsification_fixture_rustc_e0423() {
     let harness = RustcHarness::new("v4_leaf_model_rust_r3_external");
     let (ok, stderr) = compile_lib(&harness, "falsification", R3_FALSIFICATION);
     assert!(!ok, "falsification must not compile");
-    assert!(stderr.contains("E0423"), "expected E0423; stderr:\n{stderr}");
+    assert!(
+        stderr.contains("E0423"),
+        "expected E0423; stderr:\n{stderr}"
+    );
 }
