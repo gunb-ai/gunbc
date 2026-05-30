@@ -501,6 +501,43 @@ fn target_type_expr_expected_surface_for_kind(
   }
 }
 
+fn target_type_expr_emitted_validate_positional_arity(
+  node: Node,
+  kind: TargetTypeExprKind
+) -> Outcome<Bool> {
+  let positional = node_positional_child_targets(node: node)
+  match kind {
+    TargetTypeExprAtom =>
+      if length(xs: positional) == 1 {
+        Accepted { value: true, diagnostics: None }
+      } else {
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    TargetTypeExprInstantiation =>
+      if length(xs: positional) >= 1 {
+        Accepted { value: true, diagnostics: None }
+      } else {
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    TargetTypeExprCardinality =>
+      if length(xs: positional) >= 1 {
+        Accepted { value: true, diagnostics: None }
+      } else {
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    TargetTypeExprArrow =>
+      if length(xs: positional) >= 2 {
+        Accepted { value: true, diagnostics: None }
+      } else {
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    TargetTypeExprRecord =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    TargetTypeExprSum =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  }
+}
+
 fn target_type_expr_emitted_validate_positional_wire(
   node: Node,
   kind: TargetTypeExprKind,
@@ -514,7 +551,11 @@ fn target_type_expr_emitted_validate_positional_wire(
             match target_type_expr_emitted_surface_identity(node: node) {
               Accepted { value: surface, diagnostics: d } =>
                 if surface == target_type_expr_expected_surface_for_kind(kind: kind, projection: projection) {
-                  Accepted { value: true, diagnostics: d }
+                  match target_type_expr_emitted_validate_positional_arity(node: node, kind: kind) {
+                    Accepted { value: true, diagnostics: d2 } =>
+                      Accepted { value: true, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  }
                 } else {
                   outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
                 }
