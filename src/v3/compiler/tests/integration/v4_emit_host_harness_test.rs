@@ -198,7 +198,7 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
 }
 
 #[test]
-fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_empty_roster_gates() {
+fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
     let module = parse_module(NAT_SEMIRING_RUNG34_EVAL_DAG, NAT_SEMIRING_RUNG34_EVAL_PATH);
     for name in [
         "nat_semiring_rung34_report_has_evidence",
@@ -216,6 +216,6 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_empty_roster_gates() {
             item,
             SurfaceItem::Data { name, .. } if name == "nat_semiring_rung34_runtime_value_rows"
         )),
-        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: empty runtime roster"
+        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: runtime roster carrier"
     );
 }
