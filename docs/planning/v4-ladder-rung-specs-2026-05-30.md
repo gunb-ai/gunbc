@@ -108,7 +108,7 @@ Seven other targets (cpp, ts, lean, swift, …) are **deferred** to Phase 4+ wid
 
 | Predicate id | Target | Pass condition | Fail blocking receipt |
 | ------------ | ------ | -------------- | --------------------- |
-| `R1-rust-typecheck` | `rust` | `cargo check` (or `rustc --emit=metadata` / project-standard fast-check) on emitted Rust exits 0 with no type errors for the fixture artifact. Requires R0-rust-parse **PASS** (or `SKIP` only when emit unavailable). | `phase1/nat_semiring/rung1/rust_typecheck_failed` |
+| `R1-rust-typecheck` | `rust` | `cargo check` (or `rustc --emit=metadata` / project-standard fast-check) on emitted Rust exits 0 with no type errors for the fixture artifact. **Executed only when `R0-rust-parse` is `PASS`.** If `R0-rust-parse` is `FAIL` or `SKIP` (any cause), `R1` is **`SKIP`** (`upstream_blocked:R0-rust-parse`) — **not** `FAIL`. | `phase1/nat_semiring/rung1/rust_typecheck_failed` |
 
 **Note:** Rung 1 is necessary but not sufficient for v4 close (planning doc §4). It must not be used as the sole PR success headline (§4).
 
@@ -146,9 +146,18 @@ blocking_receipt: <predicate id> | none
 | ---- | ------- |
 | `PASS` | Predicate executed; pass condition met. |
 | `FAIL` | Predicate executed; pass condition not met (use matching `R*-*` blocking receipt). |
-| `SKIP` | Predicate not executed — emit artifact unavailable (`*_emit_unavailable`) or upstream blocker (`upstream_blocked:<predicate-id>`). **Forbidden:** label `FAIL` when the only evidence is a later rung’s toolchain failure. |
+| `SKIP` | Predicate **not executed** — emit artifact unavailable (`*_emit_unavailable`) or prerequisite not met (`upstream_blocked:<predicate-id>`). **Forbidden:** label `FAIL` when the predicate did not run or when the only evidence is a later rung’s toolchain failure. |
 
-`blocking_receipt` names the **lowest rung, earliest predicate** that was **executed** and **failed** (or the first `*_emit_unavailable` if emit never produced an artifact). Example: rust typecheck fails after rust parse passed → `rung0 rust=PASS`, `rung1 rust=FAIL`, `blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed` — **not** `R0-rust-parse` FAIL.
+**Prerequisite execution (rust chain — same target):**
+
+| Predicate | Runs only when |
+| --------- | -------------- |
+| `R1-rust-typecheck` | `R0-rust-parse` = **`PASS`** |
+| `R2-rust-compile` | `R1-rust-typecheck` = **`PASS`** (rung 2 Rust ⊇ rung 1) |
+
+If prerequisite is not `PASS`, the dependent cell is **`SKIP`** (`upstream_blocked:<prerequisite-id>`), never **`FAIL`**.
+
+`blocking_receipt` names the **lowest rung, earliest predicate** that was **executed** and **failed**, or the first `*_emit_unavailable`. Example: rust parse passes, typecheck fails → `rung0 rust=PASS`, `rung1 rust=FAIL`, `blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed`. Example: rust parse not proven → `rung0 rust=SKIP`, `rung1 rust=SKIP`, `blocking_receipt` names the first executed failure on the rust chain (often `R0-rust-parse` **FAIL** or `*_emit_unavailable`) — **not** `R1-rust-typecheck` **FAIL** when R1 did not run.
 
 Optional appendix (not headline): global rustc error count, top error classes, link to `docs/audit/v4-rustc-error-catalog-2026-05-29.md`.
 
@@ -293,12 +302,12 @@ blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed
 
 ```text
   rung0: FAIL  (dag=PASS rust=SKIP python=SKIP go=SKIP)
-  rung1: FAIL  (rust=FAIL)
-  rung2: FAIL  (rust=SKIP python=SKIP go=SKIP)
-blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed
+  rung1: SKIP  (rust=SKIP)
+  rung2: SKIP  (rust=SKIP python=SKIP go=SKIP)
+blocking_receipt: phase1/nat_semiring/rung0/rust_emit_parse_rejected
 ```
 
-(Rung rows are **`FAIL`** when any cell is not `PASS`. `SKIP` = emit artifact unavailable or upstream blocked — not a parse failure. Script @ `27054dd31` mislabeled emit cells as `FAIL`; honest rendering uses `SKIP` per §2.4.) Worker follow-up: align `scripts/v4-phase1-nat-semiring-rung-gate.sh` to §2.1 parse-only + §2.4 cell semantics — **not** a blocker on landing this planning authority.
+(Rung rows are **`FAIL`** when any cell is not `PASS`. `R0-rust-parse` not **PASS** → `R1`/`R2` rust cells **`SKIP`** per §2.2/§2.4 prerequisites — **not** `R1=FAIL` while `R0=SKIP`. Script @ `27054dd31` mislabeled cells and ran `cargo check` without parse-only R0 **PASS**; **substrate appendix (non-headline):** that illicit probe would fail typecheck — expected gap once R0 is PROVEN.) Worker follow-up: align `scripts/v4-phase1-nat-semiring-rung-gate.sh` to §2.1 parse-only + §2.4 prerequisites — **not** a blocker on landing this planning authority.
 
 Red CI under `STRICT=1` remains **expected substrate gap signaling**. Operator may merge #3955 when review criteria are met.
 
