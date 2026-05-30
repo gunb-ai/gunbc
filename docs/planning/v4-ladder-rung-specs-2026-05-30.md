@@ -154,9 +154,9 @@ Optional appendix (not headline): global rustc error count, top error classes, l
 
 ### 2.5 TestClaim wiring target (worker implementation)
 
-**Output path (net-new — no prior rung-gate module exists):**
+**Output path (landed on `origin/main` via #3953 — `305c63817`):**
 
-- `src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag`
+- `src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag` — **exists**; do not recreate. Follow-up work **aligns** roster labels and claim shapes to §2.1 parse vs §2.4 `PASS`/`FAIL`/`SKIP` (same posture as §6 script follow-up).
 
 **Structural templates (compose, do not copy blindly)** — paths and line ranges verified on `origin/main` at `9cc2392cc`:
 
@@ -312,4 +312,5 @@ Red CI under `STRICT=1` remains **expected substrate gap signaling**. Operator m
 | Rungs 0–2 acceptance predicates (§2) | **RATIFIED** |
 | Phase 1 target set = dag + rust + python + go | **RATIFIED** |
 | No rustc-clean headline rule (§4) | **RATIFIED** |
-| Worker wiring PR (#3955 substrate + ci.dag) | **LANDED** (baseline §6); operator merge pending |
+| TestClaim roster (`rung_0_to_2_three_targets.dag`) | **LANDED** on `main` (#3953) |
+| CI authority + host gate script (#3955) | **LANDED** (baseline §6); operator merge of #3955 pending |
