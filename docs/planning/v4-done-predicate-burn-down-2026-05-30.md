@@ -1,11 +1,11 @@
 # v4-done — six-predicate burn-down (operator view)
 
-> **Status:** PLANNING — operator burn-down companion to [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
+> **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `907936852` (`main` 2026-05-30T20:18Z) — post–merge-wave + evening landings (#4000, #4012, #4013, #4016, #4006, …).  
-> **Wave posture:** Wave 1 exit **3/5 MW-D8** (`docs/planning/v4-mw-d8-wave1-exit-ledger-2026-05-30.md`); Wave 2 dispatch **queued** pending C2 + C4 close.  
-> **Jun 1 operator push:** v4 predicate burn-down continues (Wave 2); **D-REL-1 flavor (iv)** — `src/v4` ships public **alpha/WIP-labeled**, no closure gate on v0.1.0 tag (operator flip 2026-05-30T20:23Z via PM `nimble-dove-733`). See §Public ship disposition.
+> **Tree HEAD:** `9ceb0d671` (`main` 2026-05-30T21:17Z) — post #4021 burn-down + Wave 2 landings (#4014, #4022, #4015, #4023).  
+> **Wave posture:** MW-D8 **3/5 PROVEN** (C2 impl [#4014](https://github.com/gunb-ai/gunbc/pull/4014) merged 21:01Z — Close/Receipt re-adjudication pending; C4 open). Wave 2 active.  
+> **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
 ## Operator summary (read this first)
 
@@ -21,7 +21,7 @@
 **Gated on (cross-cutting):**
 
 - **Resolve-posture bridge** (INVARIANTS A3/P5 — *not* predicate P5): blocks honest **P2** close until deleted (`.github/workflows/ci.yml:293-300`).
-- **Wave 1 exit** (MW-D8): **3/5 PROVEN** (C1 #3972, C3 OR-arm #3981+#3989+worksheet, C5 #4000 merged 19:55Z — Close/Receipt re-adjudication pending). **Open:** C2 [#4014](https://github.com/gunb-ai/gunbc/pull/4014) SG-7 impl; C4 receipt shadow (blocked on C2). Wave 1 completion is necessary for Wave 2 dispatch; neither closes any v4-done predicate to GREEN.
+- **Wave 1 exit** (MW-D8): **3/5 PROVEN** (C1, C3, C5). **C2 impl landed** [#4014](https://github.com/gunb-ai/gunbc/pull/4014) 21:01Z — Close/Receipt (`sharp-otter-407`) re-adjudication pending before row flips. **C4** receipt shadow still open (blocked on C2 adjudication). Maturation signal only — not a v0.1.0 gate.
 - **D-REL-1 / v0.1.0 (flavor iv, operator 2026-05-30T20:23Z):** `src/v4` **ships public AS-IS**, labeled **alpha / WIP** — honest state documented, not gated. Prior STRIP-`src/v4` recommendation **superseded**. This burn-down feeds `SUPPORTED.md` + `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407`). Closures upgrade v0.1.1 narrative; they do **not** block v0.1.0 tag.
 
 ---
@@ -50,7 +50,7 @@
 | Surface | Source artifact | Role |
 | ------- | --------------- | ---- |
 | Per-predicate status | **This doc** (`§Jun 1 forecast`, `§Per-predicate burn-down`) | Honest 0/6 PROVEN / YELLOW / GRAY ledger |
-| Per-surface PROVEN/GAP labels | `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407`, in flight) | `SUPPORTED.md` substrate |
+| Per-surface PROVEN/GAP labels | [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (Close/Receipt `sharp-otter-407`, #4023 merged) | `SUPPORTED.md` substrate |
 | Release notes alpha/WIP prose | `snappy-bee-513` lane | User-facing GH Release body |
 
 **Jun 1 morning flag protocol:** Self-host/Release pings Release lane with any predicate that flipped GREEN overnight — those rows move from alpha/WIP to partial-PROVEN framing in release notes. Forecast at authoring: **none** (see §Jun 1 forecast).
