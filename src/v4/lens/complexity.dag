@@ -117,8 +117,9 @@ fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVaria
   match complexity_variables_from_refine(xs: xs) {
     Holds { value: variables } => variables
     // 🟡 gated — feature:complexity-variables-vacuous-oracle-fallback — bind T-12-COMPLEXITY-PROJECTION —
-    // dissolve-on-arrival: propagate Violates at exported boundary (Witness) when admits is real;
-    // forbidden: silent empty-list fabrication that drops diagnostics.
+    // dissolve-on-arrival: propagate Violates at exported boundary when admits is real (delete
+    // refined_vacuous_stub_pack path). Today complexity_variables_admits is constantly true, so
+    // Violates is unreachable; this arm ignores the Violates diagnostic (placeholder only).
     Violates { diagnostic: _ } =>
       refined_vacuous_stub_pack(
         base: xs,

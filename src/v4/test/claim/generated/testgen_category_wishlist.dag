@@ -26,7 +26,7 @@ import v4.lens.testgen {
   lbe_subject_conj_dag_surface,
   law_nat_add_associativity
 }
-import v4.std.algebra { Empty, length }
+import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat {
