@@ -737,7 +737,9 @@ fn ci_int_offset_authority_projection_node(i: Int) -> Node {
 
 
 fn ci_int_offset_authority_projection_nonneg(i: Int) -> Node {
-  if i == 0 {
+  if i < 0 {
+    ci_int_offset_authority_projection_node(i: i)
+  } else if i == 0 {
     ci_atom(sym: canonical_tag_scalar_int_zero)
   } else if i <= 255 {
     ci_byte_limb_projection_node(limb: i)

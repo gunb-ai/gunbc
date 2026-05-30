@@ -14,6 +14,7 @@ import v4.std.refinement {
   naming_the_leak,
   refine_ordered_iteration,
 }
+import v4.std.algebra { Empty }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
