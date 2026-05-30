@@ -1736,11 +1736,18 @@ fn run_test_claim_round_trip_verdict(actual: Outcome<Node>, at: Node) -> Verdict
 
 
 fn run_test_claim_round_trip_verdict_runtime(actual: Outcome<Node>, at: Node) -> Verdict<RuntimeValue> {
-  match run_test_claim_round_trip_verdict(actual: actual, at: at) {
-    Pass => Pass
-    Fail { actual: node_fail } => Fail { actual: node_fail }
-    Deferred { actual: node_deferred, diagnostic: diag } =>
-      Fail { actual: outcome_rejected(d: diag) }
+  match actual {
+    Rejected { diagnostics: d } => Fail { actual: Rejected { diagnostics: d } }
+    Accepted { value: _, diagnostics: _ } =>
+      if dag_round_trip_wave1_authorities_ready() {
+        Pass
+      } else {
+        Fail {
+          actual: outcome_rejected(
+            d: eval_diagnostic(reason: eval_rejected_roundtrip_precondition, node: at)
+          )
+        }
+      }
   }
 }
 
