@@ -113,22 +113,26 @@ ci_selection_receipt_shadow(
     (carved_out on receipt = snapshot of matching ci_always_run_carveouts rows, not step partition)
 ```
 
-**Registry** (`CiShadowStepRow`): spine-owned bridge table mapping each `ci_pipeline` job/gate to provisional `List<UpsertInputRef>` until Phase 1.5. Rows are **data**, reviewable, versioned with `ci.dag`.
+**Registry** (`CiShadowStepRow`): spine-owned bridge table mapping **every** `ci_pipeline` job **and** gate id to provisional `List<UpsertInputRef>` until Phase 1.5. The selection loop (`:91-113`) is the **only** surface that emits `CiStepSelection`; carveout config (`ci_always_run_carveouts`) only overrides `decision` for rows already in the registry — it does not add steps by itself. Rows are **data**, reviewable, versioned with `ci.dag`.
 
 ---
 
 ## 6. Phase 2.0 shadow registry (interim bridge)
 
-Maps current `ci_pipeline` jobs (`src/v4/workflow/ci.dag`) to **typed** `FileSet` selectors (not bare path strings). Component flags (`CiComponentAffected`) remain a **coarse GitHub `if:` bridge** only — not authoritative for per-step receipt; receipt uses node-level `AffectedSet` from T-21 lens.
+Maps current `ci_pipeline` jobs and gates (`src/v4/workflow/ci.dag`) to **typed** `FileSet` / `UpstreamUpsert` selectors (not bare path strings). Component flags (`CiComponentAffected`) remain a **coarse GitHub `if:` bridge** only — not authoritative for per-step receipt; receipt uses node-level `AffectedSet` from T-21 lens.
 
-| `CiStepId` (job id) | Provisional `inputs_consulted` | Shadow notes |
-| ------------------- | ------------------------------ | ------------ |
-| `v2_compile_src_v4` | `FileSet { src/v2/**, Cargo.toml, Cargo.lock }` + `SubstrateNodeSet` over v4 compiler bootstrap nodes | Carveout candidate: v2 circular-dep (see §7) |
+| `CiStepId` (job or gate id) | Provisional `inputs_consulted` | Shadow notes |
+| --------------------------- | ------------------------------ | ------------ |
+| `v2_compile_src_v4` | `FileSet { src/v2/**, Cargo.toml, Cargo.lock }` + `SubstrateNodeSet` over v4 compiler bootstrap nodes | Carveout via §7 → `CarvedOut` in `selected` |
+| `structural_v2_compile` | `UpstreamUpsert { step_id: v2_compile_src_v4 }` | Gate on v2 compile job |
 | `lens_ci_registry_execution` | `FileSet { src/v4/**, dsl/std/** }` + `LensOutputRef` for declared lenses | |
+| `lens_ci_registry_signal` | `UpstreamUpsert { step_id: lens_ci_registry_execution }` | Interim `Always` → `CarvedOut` via §7 |
 | `m1_rust_emit_probe_execution` | `FileSet { src/v4/**, scripts/v4-m1*, Cargo.* }` | |
+| `m1_rust_emit_probe_signal` | `UpstreamUpsert { step_id: m1_rust_emit_probe_execution }` | Interim `Always` → `CarvedOut` via §7 |
 | `testclaim_corpus_eval_execution` | `TestClaimRef` roster + `SubstrateNodeSet` rerun frontier from `ci_select_from_affected_set` | Selection fn must stay `ci_select_from_affected_set` |
+| `testclaim_corpus_eval_signal` | `UpstreamUpsert { step_id: testclaim_corpus_eval_execution }` | Gate on corpus eval job |
 
-Gates with interim `CiGateRunPolicy::Always` (`lens_ci_registry_signal`, `m1_rust_emit_probe_signal`) appear in receipt as **CarvedOut** once listed in `ci_always_run_carveouts`, not as a permanent policy enum.
+Interim `CiGateRunPolicy::Always` is **not** a receipt policy enum: registry rows for those gates exist above; when listed in `ci_always_run_carveouts` (§7) the algorithm sets `decision := CarvedOut` and the row lands in `selected` (Phase 2.5 runnable projection).
 
 ---
 
