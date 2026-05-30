@@ -1,0 +1,261 @@
+# v4 Emit Correctness: Standards, Current Gating, and the Ladder Forward
+
+> **Status:** PLANNING DRAFT — operator sign-off requested on §6 (ladder), §7 (sequencing), §8 (decisions).
+> **Date:** 2026-05-30
+> **Author:** PM May 29 (session `nimble-dove-733`)
+> **Trigger:** v4-close diagnosis lane converging on "0 rustc errors" as the success criterion; operator question (2026-05-30): *"i don't think the goal should just be '0 rustc errors' — how do we even know the emitted code is correct? what standards do we have?"*
+
+---
+
+## §1. The provocation
+
+The diagnosis lane (sunny-cat-359 catalog, `docs/audit/v4-rustc-error-catalog-2026-05-29.md`) measured 7951 rustc errors when the modeled runner (T-38-PR1) attempts to emit and compile the full `src/v4` corpus. The convergent framing inside the close lane has been *"shrink that number to zero."*
+
+That framing has a known failure mode: **rustc-clean is one specific correctness bar — parseable, type-checking Rust — and it is far from the only standard the project has committed to.** The operator's question reframes the conversation: closing T-15 against rustc-clean only would close v4 on the lowest of the standards the thesis already names.
+
+The operator's specific phrasing — *"how do we even know the emitted code is correct?"* — maps directly to **THESIS.md §"What falls out" L4**: *"emitted code executes and matches .dag evaluation."* The thesis already has this question answered at the *commitment* level. What's missing is the *operationalization* — which gates fire on which PRs, in what order.
+
+This doc:
+1. Inventories the 17 correctness standards the project has already articulated (§2).
+2. Audits which of them gate PRs today vs which are substrate-only or aspirational (§3).
+3. Critiques "0 rustc errors" as a singular target (§4).
+4. Proposes a 9-rung correctness ladder that operationalizes the 17 standards (§6).
+5. Proposes a 30-day fixture-first sequencing (§7).
+6. Surfaces 6 operator decisions that must be answered before §7 dispatches (§8).
+
+This doc invents no new standards. The 17 are pre-existing in `THESIS.md`. The audit, ladder, and sequencing are the contribution.
+
+---
+
+## §2. The 17 correctness standards already articulated
+
+Extracted from `THESIS.md` §"Thesis claims — complete list", §"Tier 1/2/3", §"Self-hosting — four facets", and §"Enumerable impossible-bug classes":
+
+### Tier 1 — Structural correctness (caught at compile time)
+
+1. **Type / field / exhaustiveness / circularity / imports / cross-target drift** caught at compile time.
+2. **CX termination bound** — every recursive function has a proven complexity bound.
+3. **Coercion = emission** — the compiler reads a target spec and translates; no separate coercion engine.
+4. **Ownership** — emitted code provably has no aliased mutation.
+5. **Grounding completeness** — target primitives modeled from the target language reference; `.dag` → target mapping is a structural algebra-homomorphism search, not a string lookup.
+
+### Tier 2 — Runtime safety (proven safe or total)
+
+6. **Division-by-zero, integer overflow, OOB, force-unwrap, partial functions** — either proven safe at compile time or made total. No partial functions in runtime.
+
+### Tier 3 — Verification from structure
+
+7. **L4** — emitted code executes and matches `.dag` evaluation.
+8. **L5** — same `.dag` produces same observable behavior in Rust / Python / Go (cross-target equivalence).
+9. **L6** — every structural form compiles to every target.
+10. **L7** — operations obey declared algebraic laws (preserved through emit).
+
+### Self-hosting — four facets
+
+11. **Facet 1** — compiler written in the language it compiles.
+12. **Facet 2** — compiler self-emits (fixed-point); `.dag` is source of truth, emitted Rust is one realization.
+13. **Facet 3** — tests are data; `TestClaim` declarations + generated target test code; **zero** hand-authored test residual under 0-floor.
+14. **Facet 4** — lens self-application to build/CI pipeline.
+
+### Enumerable impossible-bug classes (release scope)
+
+15. **Suboptimal-complexity contract violation** — `complexity ≤ O(n log n)` annotation enforced at compile time.
+16. **Idempotency-contract violation** — `@idempotent` enforced structurally.
+17. **Transport / type drift** — client and server cannot hold different types for the same field.
+
+**This is the standard.** It is the basis for "what does correct emit mean?" Nothing in the rest of this doc redefines it.
+
+---
+
+## §3. What is actually gated today (honest audit)
+
+Verification conducted 2026-05-30 against `main` HEAD `4baef9551`. For each standard above, the live gating status:
+
+| #   | Standard                                | Substrate today?            | Gate fires on PRs today? | Evidence                                                                                                          |
+| --- | --------------------------------------- | --------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| 1   | Tier 1 type check                       | YES (Rust emit)             | Per slice; corpus **NO** | `scripts/v4-testclaim-corpus-gate.sh`; 7951 errors per `docs/audit/v4-rustc-error-catalog-2026-05-29.md`          |
+| 2   | CX termination bound                    | YES (`lens/complexity.dag`, 301L) | NO                       | activation lane in flight (sharp-ferret-729); lens not wired to PR gate                                           |
+| 3   | Coercion = emission                     | YES (T-9 substrate)         | partial (per-slice only) | `src/v4/compiler/infer.dag`                                                                                       |
+| 4   | Ownership proof                         | YES (`lens/ownership.dag`)  | NO                       | substrate only; no PR gate                                                                                        |
+| 5   | Grounding completeness                  | YES (T-30 `lens/fact_density.dag`) | NO                | substrate only                                                                                                    |
+| 6   | Tier 2 runtime safety                   | partial                     | NO                       | aspirational; substrate work post-R1                                                                              |
+| 7   | **L4 emit-matches-`.dag`-eval**         | NO execution loop           | NO                       | `scripts/v4-testclaim-corpus-eval.sh` reports `execution_status=blocked_m1_subset`                                |
+| 8   | **L5 cross-target equivalence**         | design doc only             | NO; **zero** tests       | `docs/design-cross-target-equivalence.md` exists; no `src/v4/test/claim/cross_target/` directory                  |
+| 9   | **L6 every form compiles every target** | partial (Rust only in CI)   | NO; single-target        | only `rustc` invoked; pyright / go vet / clang / tsc / lean / swift not wired into CI                             |
+| 10  | **L7 algebraic law preservation**       | model-side only             | NO post-emit             | `test/claim/algebra_laws/nat_semiring.dag` tests laws on the Node model, not on emitted Rust/Python               |
+| 11  | Facet 1 (.dag authors compiler)         | partial                     | n/a (descriptive)        | v4 substrate at 0 hand-maintained `.rs` in compiler tree; stage0 Rust scaffold remains for bootstrap              |
+| 12  | **Facet 2 self-emit fixpoint**          | placeholder claim           | NO                       | `test/claim/self_host/claim_t15_self_host_fixed_point.dag` uses digest stubs; "deferred to T-22 eval / host harness" |
+| 13  | **Facet 3 tests as data**               | 55 `TestClaim` files        | NO (never executed)      | `src/v4/test/claim/manual/` — type-checked, no eval; corpus runner blocked at M1                                  |
+| 14  | Facet 4 lens self-application           | substrate (`workflow/ci.dag`) | NO                       | no lens-on-CI gate fires                                                                                          |
+| 15  | Suboptimal-complexity violation         | substrate (lens/complexity) | NO                       | release-scoped per THESIS                                                                                         |
+| 16  | Idempotency violation                   | substrate (lens/idempotency) | NO                      | release-scoped per THESIS                                                                                         |
+| 17  | Transport / type drift                  | partial (lens/synthesis #3768 DONE) | partial          | T-17 substrate landed; not generalized to a PR gate                                                               |
+
+**Honest summary:**
+- **Of 17 named standards, exactly one fires on PRs today** — and only per-slice (#1, Rust type check). The full-corpus gate produces 7951 errors and is therefore *not* a passing PR gate.
+- **Substrate exists for 13 of the remaining 16** — but the activation step (wiring the substrate into a gate that fails a PR) is missing.
+- **The pattern is "substrate-rich, activation-poor"** — independently diagnosed in `docs/audit/v4-deferral-audit-2026-05-29.md` for the deferral surface, and shown here at the correctness-gate scale.
+
+---
+
+## §4. Why "0 rustc errors" is not the right goal
+
+If T-15 closes against rustc-clean alone:
+
+- We close on the **lowest of 17 standards** (#1, per-slice version).
+- We have **no evidence** that emit_rust behaves equivalently to `.dag` evaluation (#7 / L4).
+- We have **no evidence** that emit_rust and emit_python produce the same observable behavior (#8 / L5).
+- **Six other emit targets** (python, go, cpp, ts, lean, swift) are unexercised (#9 / L6).
+- Algebraic laws declared in the model (#10 / L7) are not propagated through emit.
+- The **release-scope impossible-bug classes** (#15-17) are unverified.
+- **Self-hosting fixpoint** (#12) is a placeholder.
+
+Worst-case scenario: a future regression silently breaks L4 semantic correctness, rustc stays clean, no gate notices. The "substrate-rich, activation-poor" pattern is the exact failure mode this doc and the prior deferral audit both diagnose.
+
+"0 rustc errors" is **necessary but not sufficient**. It's rung 1 of a longer ladder.
+
+---
+
+## §5. Two principles for sequencing
+
+**Principle A — gate the broadest standards first, even on tiny fixtures.**
+L4 (emit-matches-eval) is foundational. If emit doesn't *run*, L5/L6/L7 are moot. A working L4 gate on one fixture is more valuable than a broken L1 gate across the whole corpus.
+
+**Principle B — small fixture end-to-end before widening.**
+The 7951-error count is large because we ran a single-rung gate against the whole corpus. The inversion: run a 9-rung gate against ONE small fixture, then widen the fixture set. After widening, the 7951 number becomes diagnostic ("these Node shapes are wrong") instead of an undifferentiated mass.
+
+These principles are derived from `TESTING.md` Principle #5 ("Mocks over compile") and INVARIANTS.md P5 ("Progress Is Dissolution") — they're not new claims.
+
+---
+
+## §6. The proposed correctness ladder (operator-decision artifact)
+
+The 17 standards collapse into a 9-rung gating ladder. Each rung is a binary: gates fire on PRs or they don't. No rung is aspirational — every rung is achievable today with existing substrate, on a small fixture.
+
+| Rung | Property                                                | Standards covered | Today's status                                  |
+| ---- | ------------------------------------------------------- | ----------------- | ----------------------------------------------- |
+| 0    | Parses in target                                        | (parse side of #1) | Yes (per slice, per target rustc)               |
+| 1    | Type-checks in target Rust                              | #1                | Per slice; corpus blocked at 7951 errors        |
+| 2    | Compiles in **all** chosen targets (multi-target)       | #1, #9            | NO (Rust only in CI)                            |
+| 3    | Round-trip preserved (parse-emit-parse ≡ up to normalization) | (implicit T-36) | Claim exists; eval deferred behind T-38         |
+| 4    | Emit runs and output matches `.dag` interpreter eval    | #7 (L4)           | NO                                              |
+| 5    | Cross-target equivalence on small fixture               | #8 (L5)           | NO                                              |
+| 6    | Algebraic laws preserved on small fixture (post-emit)   | #10 (L7)          | NO                                              |
+| 7    | Self-emit fixpoint on small fixture                     | #12 (Facet 2)     | NO (placeholder digests)                        |
+| 8    | `TestClaim` corpus actually executes                    | #13 (Facet 3)     | NO (55 claims un-run)                           |
+| 9    | Lenses gate PRs (complexity, ownership, idempotency, grounding, synthesis) | #2-#5, #15-17, #14 | NO (substrate-rich, activation-poor) |
+
+Each rung addresses a specific question the operator can ask of any PR:
+- *Rung 0*: did the source parse?
+- *Rung 1*: did the emit type-check in Rust?
+- *Rung 2*: did the emit type-check in every target we care about?
+- *Rung 3*: did re-parsing the emit reproduce the source?
+- *Rung 4*: did the emit run and produce the answer the `.dag` interpreter produces?
+- *Rung 5*: did Rust and Python emits agree on the answer?
+- *Rung 6*: did the algebraic properties survive emit?
+- *Rung 7*: can the compiler emit itself and reproduce its own output?
+- *Rung 8*: is the test corpus actually executing, not just type-checking?
+- *Rung 9*: are the property lenses gating PRs, or are they shelfware?
+
+---
+
+## §7. Proposed 30-day sequencing — fixture-first
+
+**Strategy.** Pick ONE small fixture with high algebraic content. Drive emit through every rung that has substrate. Each ungated rung gets a `TestClaim` + activation in the same PR (the 4-tuple unit-of-work from the prior dispatch contract: claim authored + substrate fix if needed + lens activation + demonstrated error-class collapse).
+
+**Proposed fixture:** `src/v4/test/claim/algebra_laws/nat_semiring.dag` — already in the corpus; exercises Node + Atom + Conj + Arrow + algebra inhabitance + nat-add-associativity / nat-mul-associativity. Small surface, rich properties.
+
+### Phase 1 (week 1): rungs 0–2 on the fixture
+
+- Confirm rung 0/1 (parse + Rust type-check) pass for the fixture specifically.
+- Add rungs 2 for **three** targets only: Rust + Python + Go. Not all seven.
+  - If silent-boar-535's multi-target checker work (currently WIP, branch `session/silent-boar-535`) is recoverable, salvage it. Otherwise build a narrow 3-target gate scaffold.
+- Output: `src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag` + matching CI step.
+
+### Phase 2 (week 2): rungs 3–4 on the fixture
+
+- Rung 3: round-trip `TestClaim` against the fixture, **executed**, not deferred. Requires T-38-PR2 progress.
+- Rung 4: `TestClaim` that compiles the fixture's Rust emit, runs it, and asserts the output equals the `.dag` interpreter's eval for the same fixture.
+- Output: rung 3/4 claims + execution wiring; first gate of the operator's "how do we know it's correct?" question.
+
+### Phase 3 (week 3): rungs 5 + 6 on the fixture
+
+- Rung 5: emit_rust(fixture) + emit_python(fixture) both run; outputs compared for observable equivalence. First L5 gate ever to fire on this project.
+- Rung 6: `claim_nat_add_associativity` re-evaluated against emitted Rust AND emitted Python — not just the Node model. First L7-post-emit gate.
+- Output: cross-target equivalence + algebraic preservation proven end-to-end on one fixture.
+
+### Phase 4 (week 4): widen, not deepen
+
+- Add 2 more fixtures targeting Node shapes the first fixture doesn't cover (proposal: one Branch-using, one Loop-using).
+- Re-run rungs 0–6 against all 3 fixtures. (Rungs 7–9 stay phase-5+.)
+- Catalog Node shapes still uncovered; queue as Phase 5+ fixtures.
+
+### What this replaces
+
+The still-fox-289 SG-1 / SG-2 / SG-7 substrate-fix lanes as the **primary** dispatch shape. Those substrate fixes still happen — but they happen *in service of* rungs 4–6 on a fixture, not as standalone error-count reduction. **The unit of work becomes "rung-of-ladder on fixture", not "error-class collapse."**
+
+### Why the 7951 number stops being the headline
+
+After Phase 4, the 7951 errors number is more diagnostic: it shows which Node shapes' emit is *structurally wrong* (because the 9-rung ladder passes on the fixture-covered shapes), not just which slices fail rustc. The error count becomes a queue for Phase 5+ widening, not a success metric.
+
+---
+
+## §8. Operator decisions surfaced
+
+The following questions need answers before §7 Phase 1 dispatches. Proposed answers are PM-recommendation; operator can confirm or redirect.
+
+### D1. Is §6 (the 9-rung ladder) the right correctness ontology?
+
+**Proposed:** Yes. The 9 rungs collectively cover all 17 articulated standards from §2.
+**Operator decides:** confirm ontology, OR name standards missing from the ladder.
+
+### D2. Is "small fixture first, widen later" (§7) the right strategy vs "broad rustc-fix first, ladder second"?
+
+**Proposed:** Small fixture first. A 9-rung gate proves the ladder shape works; widening then exposes Node-shape-specific gaps cleanly. Reverse order risks fixing 7951 errors then discovering rungs 5/6/7 have no infrastructure — and that the substrate-rich/activation-poor pattern persists.
+**Operator decides:** confirm sequencing, OR redirect to a different strategy.
+
+### D3. Is rung 5 (cross-target equivalence) a release gate or post-release?
+
+**Proposed:** Rung 5 on a minimal fixture set (3 fixtures) is **release-gate**; widening to full corpus is post-release. Rationale: THESIS L5 is a thesis claim, not labeled release-scoped explicitly — but shipping v4 without ONE proven cross-target equivalence claim ships a thesis claim that has never been demonstrated.
+**Operator decides:** release-gate on 3 fixtures, OR defer entirely to post-release.
+
+### D4. Is rung 7 (self-emit fixpoint) the release gate, or is rung 4 (emit-matches-eval) enough?
+
+**Proposed:** Rung 4 on 3+ fixtures is **release-minimum**. Rung 7 (full fixpoint) is post-release self-hosting maturity. THESIS §"Fixed-point acceptance" names rung 7 as the eventual target but does not require it for v4 ship.
+**Operator decides:** confirm release-minimum bar = rung 4, OR raise it to rung 7.
+
+### D5. What is the policy on standards-with-substrate-but-no-activation?
+
+**Proposed:** Every substrate that lands without a same-PR activation gets a tracked dissolution deadline (≤30 days from substrate landing). After the deadline, blocks PRs in the same lens family until activated. This codifies a structural fix for the substrate-rich/activation-poor pattern that both this audit and the deferral audit (`docs/audit/v4-deferral-audit-2026-05-29.md`) diagnose.
+**Operator decides:** confirm policy, OR propose a different anti-shelfware mechanism, OR rule that no policy is needed.
+
+### D6. Sequencing — accept §7 as the next 30 days?
+
+**Proposed:** §7 as drafted. Phase 1 dispatches immediately on sign-off; Phase 2/3/4 dispatched after preceding phase closes.
+**Operator decides:** accept Phase 1 dispatch, OR sequence differently.
+
+---
+
+## §9. What this doc is NOT
+
+- **Not a redefinition of correctness.** The 17 standards are pre-existing in `THESIS.md`. This doc maps them to gating reality and proposes operationalization, nothing more.
+- **Not a complete 30-day plan.** Operator sign-off on §6 ladder + §7 Phase 1 unblocks the first dispatch. Phases 2/3/4 are dispatched after their predecessor closes — sequenced, not pre-committed.
+- **Not a substitute for per-rung detailed briefs.** Each rung at dispatch time will likely need its own brief naming the fixture, the substrate touchpoints, the activation lane, and the success predicate.
+- **Not a critique of the existing tree.** The substrate-rich state of v4 is genuine progress — without the substrate, none of the rungs would even be authorable. The critique is *only* the activation gap.
+
+---
+
+## §10. Related artifacts
+
+- `THESIS.md` §"What falls out", §"Tier 1/2/3", §"Self-hosting — four facets", §"Enumerable impossible-bug classes" — the 17 standards.
+- `INVARIANTS.md` P5 "Progress Is Dissolution" — the principle driving "activation must follow substrate."
+- `TESTING.md` Principle #5 "Mocks over compile" — the discipline that enables rungs 4–7 without forcing full-pipeline.
+- `docs/audit/v4-rustc-error-catalog-2026-05-29.md` (sunny-cat-359) — the 7951-error catalog this doc reframes.
+- `docs/audit/v4-deferral-audit-2026-05-29.md` — the prior substrate-rich/activation-poor diagnosis.
+- `docs/audit/ci-anatomy-and-redundancy-2026-05-29.md` — current CI shape vs target.
+- `docs/design-cross-target-equivalence.md` — existing design substrate for rung 5.
+- `docs/design-pure-bootstrap-zero.md` — 0-floor self-hosting target (rung 7).
+- `src/v4/TASKS.md` T-15, T-19, T-22, T-36, T-38 — the close-related task IDs implicated.
+- `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag` — existing rung 3 claim (eval deferred).
+- `src/v4/test/claim/self_host/claim_t15_self_host_fixed_point.dag` — existing rung 7 placeholder.
+- `src/v4/test/claim/algebra_laws/nat_semiring.dag` — proposed Phase 1 fixture.
