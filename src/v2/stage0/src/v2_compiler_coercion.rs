@@ -11,10 +11,14 @@ pub use crate::extdeps_languages_python_types::{
     python_type_checkpoints,
 };
 pub use crate::extdeps_languages_rust_types::{
-    rust_algebra_inhabitants, rust_callable, rust_cast_syntax, rust_optional_template,
-    rust_type_checkpoints,
+    rust_algebra_inhabitants, rust_atom_realizations, rust_callable, rust_cast_syntax,
+    rust_optional_template, rust_type_checkpoints,
 };
-pub use crate::std_coercion::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
+use crate::std_coercion::TargetAtomTypeDeclKind::*;
+pub use crate::std_coercion::{
+    CallableRepr, CastSyntax, InhabitantDecl, TargetAtomRealization, TargetAtomTypeDeclKind,
+    TypeCheckpoint,
+};
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
@@ -124,27 +128,89 @@ pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<Ty
     .cloned()
 }
 
+pub fn target_atom_realizations(target: RenderTarget) -> Rc<Vec<Rc<TargetAtomRealization>>> {
+    match target {
+        RenderTarget::Rust => rust_atom_realizations(),
+        RenderTarget::Python => Rc::new(vec![]),
+        RenderTarget::Go => Rc::new(vec![]),
+        RenderTarget::Dag => Rc::new(vec![]),
+    }
+}
+
+pub fn lookup_atom_realization(
+    target: RenderTarget,
+    dag_name: String,
+) -> Option<Rc<TargetAtomRealization>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for row in target_atom_realizations(target).iter().cloned() {
+            if (row.dag_name.clone().as_str() == dag_name.clone().as_str()) {
+                __result.push(row);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+}
+
+pub fn atom_realization_is_nominal_newtype(target: RenderTarget, dag_name: String) -> bool {
+    match lookup_atom_realization(target, dag_name) {
+        Some(row) => match row.type_decl_kind.clone() {
+            TargetAtomTypeDeclKind::NominalNewtype => true,
+            TargetAtomTypeDeclKind::TransparentAlias => false,
+        },
+        None => false,
+    }
+}
+
+pub fn apply_atom_value_ctor_template(template: String, ident: String) -> String {
+    v2_rt::replace(template, "{ident}".to_string(), ident)
+}
+
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
-    match lookup_checkpoint(target, dag_name.clone()) {
-        Some(cp) => cp.target_type.clone(),
-        None => dag_name.clone(),
+    match lookup_atom_realization(target.clone(), dag_name.clone()) {
+        Some(row) => row.type_form.clone(),
+        None => match lookup_checkpoint(target.clone(), dag_name.clone()) {
+            Some(cp) => cp.target_type.clone(),
+            None => dag_name.clone(),
+        },
     }
 }
 
 pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
-    match lookup_checkpoint(target, dag_name) {
-        Some(cp) => cp.is_copy.clone(),
-        None => None,
+    match lookup_atom_realization(target.clone(), dag_name.clone()) {
+        Some(row) => row.is_copy.clone(),
+        None => match lookup_checkpoint(target.clone(), dag_name.clone()) {
+            Some(cp) => cp.is_copy.clone(),
+            None => None,
+        },
     }
 }
 
 pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> {
-    match lookup_checkpoint(target, dag_name) {
-        Some(cp) => match cp.literal_suffix.clone() {
+    match lookup_atom_realization(target.clone(), dag_name.clone()) {
+        Some(row) => match row.literal_suffix.clone() {
             Some(s) => Some(s.clone()),
             None => Some("".to_string()),
         },
-        None => None,
+        None => match lookup_checkpoint(target.clone(), dag_name.clone()) {
+            Some(cp) => match cp.literal_suffix.clone() {
+                Some(s) => Some(s.clone()),
+                None => Some("".to_string()),
+            },
+            None => None,
+        },
+    }
+}
+
+pub fn default_expr(target: RenderTarget, dag_name: String) -> Option<String> {
+    match lookup_atom_realization(target.clone(), dag_name.clone()) {
+        Some(row) => row.default_expr.clone(),
+        None => match lookup_checkpoint(target.clone(), dag_name.clone()) {
+            Some(cp) => cp.default_expr.clone(),
+            None => None,
+        },
     }
 }
 
@@ -296,7 +362,7 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
 pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let cps = target_checkpoints(RenderTarget::Rust);
-        let copy_assertions = Rc::new({
+        let checkpoint_copy = Rc::new({
             let mut __result = Vec::new();
             for cp in cps.iter().cloned() {
                 __result.extend(
@@ -314,6 +380,25 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
             }
             __result
         });
+        let atom_copy = Rc::new({
+            let mut __result = Vec::new();
+            for row in target_atom_realizations(RenderTarget::Rust).iter().cloned() {
+                __result.extend(
+                    (*match row.is_copy.clone() {
+                        Some(v) => Rc::new(vec![Rc::new(CoercionAssertion::CopyAssertion {
+                            target: RenderTarget::Rust,
+                            dag_name: row.dag_name.clone(),
+                            expected_copy: v.clone(),
+                        })]),
+                        None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let copy_assertions = v2_rt::concat(checkpoint_copy, atom_copy);
         if ((copy_assertions.clone().len() as i64) == 0) {
             Rc::new(vec![])
         } else {
