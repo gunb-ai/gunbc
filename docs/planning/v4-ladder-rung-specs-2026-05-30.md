@@ -251,14 +251,27 @@ Verified 2026-05-30 with `git cat-file -e origin/main:<path>` and `git show orig
 
 ---
 
-## 6. Current baseline (as of ratification)
+## 6. Current baseline (executable receipt)
 
-| Rung | Expected baseline on `main` | Notes |
-| ---- | --------------------------- | ----- |
-| 0 `dag` | **PASS** (module committed and parseable) | Receipt: file present + v4 parse in dev workflow. |
-| 0 `rust/python/go` emit | **FAIL** (`GAP`) | Emit + parse not gated on fixture. |
-| 1 | **FAIL** (`GAP`) | Corpus blocked; fixture-specific path unproven. |
-| 2 | **FAIL** (`GAP`) | CI invokes Rust only; no Python/Go fixture gate. |
+**Ratification-time expectation** (pre-wiring): dag-parse PASS; emit targets FAIL (`GAP`). **Confirmed** by first fixture-scoped gate run on PR #3955.
+
+| Field | Value |
+| ----- | ----- |
+| Source PR | [#3955](https://github.com/gunb-ai/gunbc/pull/3955) |
+| Commit | `27054dd312d4cea7056f4e65544da6b14dd8f3fa` |
+| CI | run `26673521649`, job `78623706504` |
+| Gate | `scripts/v4-phase1-nat-semiring-rung-gate.sh` with `STRICT=1` |
+| Filed | 2026-05-30 (jolly-bee-506 → keen-crab-361) |
+
+```
+fixture=phase1/nat_semiring
+  rung0: FAIL  (dag=PASS rust=FAIL python=FAIL go=FAIL)
+  rung1: FAIL  (rust=FAIL)
+  rung2: FAIL  (rust=FAIL python=FAIL go=FAIL)
+blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed
+```
+
+**Interpretation:** `R0-dag-parse` PASS (fixture parseable in isolation). `R0-rust/python/go-parse`, `R1-rust-typecheck`, and `R2-*` FAIL — v2 emit + toolchain checks on the fixture transitive closure surface rustc typecheck errors before downstream targets. First blocking receipt after dag-parse is `R1-rust-typecheck` (`phase1/nat_semiring/rung1/rust_typecheck_failed`). Red CI under `STRICT=1` is **expected substrate gap signaling**, not a gate-shape defect; operator may merge #3955 when review criteria are met.
 
 ---
 
@@ -270,4 +283,4 @@ Verified 2026-05-30 with `git cat-file -e origin/main:<path>` and `git show orig
 | Rungs 0–2 acceptance predicates (§2) | **RATIFIED** |
 | Phase 1 target set = dag + rust + python + go | **RATIFIED** |
 | No rustc-clean headline rule (§4) | **RATIFIED** |
-| Worker wiring PR (#3953 + ci.dag follow-up) | **UNBLOCKED** (2026-05-30 PM) |
+| Worker wiring PR (#3955 substrate + ci.dag) | **LANDED** (baseline §6); operator merge pending |
