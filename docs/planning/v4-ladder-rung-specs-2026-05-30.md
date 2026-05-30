@@ -1,7 +1,7 @@
 # v4 ladder rung specs — Phase 1 (`nat_semiring` × rungs 0–2)
 
 > **Status:** MANAGER RATIFIED — Ladder/Fixture Manager (`keen-crab-361`), 2026-05-30. Operator sign-off: PR #3938 merged (`b129ce3f2`); §7 Phase 1 dispatch ratified per PM 2026-05-30.
-> **Authority:** PR #3938 §11.1 lane 2. **9-rung ontology:** PR #3938 §6 (`docs/planning/v4-correctness-ladder-2026-05-30.md` on `session/nimble-dove-733`).
+> **Authority:** PR #3938 §11.1 lane 2. **9-rung ontology:** PR #3938 §6 — parent doc `docs/planning/v4-correctness-ladder-2026-05-30.md` (landed on `origin/main` via #3938, included in this branch by merge).
 > **PR:** https://github.com/gunb-ai/gunbc/pull/3946 (`session/keen-crab-361`).
 > **Line-number authority:** `origin/main` at `9cc2392cc` (2026-05-30). Re-verify with `git show origin/main:<path>` before dispatch if `main` advances.
 > **Scope:** Ratify Phase 1 fixture; acceptance predicates for rungs 0–2 only. Rungs 3–9 blocked on Compiler Spine + Runtime/TestClaim interface definitions (§11.4 item 4).
