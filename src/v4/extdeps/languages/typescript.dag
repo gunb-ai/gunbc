@@ -25,6 +25,8 @@ import v4.std.grammar {
   GrammarRoot,
   ModeledGrammar,
   Nonterminal,
+  Optional,
+  Repeat,
   Sequence,
   Terminal,
   grammar_carries_symbol,
@@ -245,9 +247,11 @@ data ts_production_wave2a_record_type: Symbol = ts_production_wave2a_record_type
 data ts_production_wave2a_type_alias_decl: Symbol = ts_production_wave2a_type_alias_decl
 data ts_production_wave2a_item: Symbol = ts_production_wave2a_item
 
+data ts_production_pr3_primary_type: Symbol = ts_production_pr3_primary_type
 data ts_production_pr3_array_type: Symbol = ts_production_pr3_array_type
 data ts_production_pr3_typed_param: Symbol = ts_production_pr3_typed_param
 data ts_production_pr3_typed_params: Symbol = ts_production_pr3_typed_params
+data ts_production_pr3_typed_params_opt: Symbol = ts_production_pr3_typed_params_opt
 data ts_production_pr3_typed_fn_decl: Symbol = ts_production_pr3_typed_fn_decl
 
 data ts_token_lbracket: Symbol = ts_token_lbracket
@@ -270,9 +274,11 @@ data ts_surface_record_type: Symbol = ts_surface_record_type
 data ts_surface_type_alias_decl: Symbol = ts_surface_type_alias_decl
 data ts_surface_item: Symbol = ts_surface_item
 
+data ts_surface_primary_type: Symbol = ts_surface_primary_type
 data ts_surface_array_type: Symbol = ts_surface_array_type
 data ts_surface_typed_param: Symbol = ts_surface_typed_param
 data ts_surface_typed_params: Symbol = ts_surface_typed_params
+data ts_surface_typed_params_opt: Symbol = ts_surface_typed_params_opt
 data ts_surface_typed_fn_decl: Symbol = ts_surface_typed_fn_decl
 
 data ts_binding_fn_add: Symbol = ts_binding_fn_add
@@ -1301,9 +1307,33 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_const_decl)]
     ),
     grammar_formal_production(
+      lhs: ts_production_pr3_primary_type,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_number)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_pr3_primary_type,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_string)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_pr3_primary_type,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_boolean)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_pr3_primary_type,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_void)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_pr3_primary_type,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_name)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_pr3_primary_type,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_record_type)]
+    ),
+    grammar_formal_production(
       lhs: ts_production_pr3_array_type,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_number),
+        grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_primary_type),
         grammar_formal_terminal(identity: ts_token_lbracket),
         grammar_formal_terminal(identity: ts_token_rbracket)
       ]
@@ -1311,31 +1341,7 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ts_production_pr3_array_type,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_string),
-        grammar_formal_terminal(identity: ts_token_lbracket),
-        grammar_formal_terminal(identity: ts_token_rbracket)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ts_production_pr3_array_type,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_boolean),
-        grammar_formal_terminal(identity: ts_token_lbracket),
-        grammar_formal_terminal(identity: ts_token_rbracket)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ts_production_pr3_array_type,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_void),
-        grammar_formal_terminal(identity: ts_token_lbracket),
-        grammar_formal_terminal(identity: ts_token_rbracket)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ts_production_pr3_array_type,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_name),
+        grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_array_type),
         grammar_formal_terminal(identity: ts_token_lbracket),
         grammar_formal_terminal(identity: ts_token_rbracket)
       ]
@@ -1351,6 +1357,14 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ts_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_annotation)
       ]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_pr3_typed_params_opt,
+      rhs: []
+    ),
+    grammar_formal_production(
+      lhs: ts_production_pr3_typed_params_opt,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_typed_params)]
     ),
     grammar_formal_production(
       lhs: ts_production_pr3_typed_params,
@@ -1370,7 +1384,7 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ts_token_kw_function),
         grammar_formal_terminal(identity: ts_token_ident),
         grammar_formal_terminal(identity: ts_token_lparen),
-        grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_typed_params),
+        grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_typed_params_opt),
         grammar_formal_terminal(identity: ts_token_rparen),
         grammar_formal_terminal(identity: ts_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_annotation),
@@ -1571,33 +1585,55 @@ fn ts_grammar_production_wave2a_const_decl() -> GrammarProduction {
   }
 }
 
-fn ts_pr3_array_suffix(element: Symbol) -> GrammarExpr {
+fn ts_grammar_production_pr3_primary_type() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_pr3_primary_type,
+    expression: Choice {
+      left: Nonterminal { production: ts_production_wave2a_type_number },
+      right: Choice {
+        left: Nonterminal { production: ts_production_wave2a_type_string },
+        right: Choice {
+          left: Nonterminal { production: ts_production_wave2a_type_boolean },
+          right: Choice {
+            left: Nonterminal { production: ts_production_wave2a_type_void },
+            right: Choice {
+              left: Nonterminal { production: ts_production_wave2a_type_name },
+              right: Nonterminal { production: ts_production_wave2a_record_type }
+            }
+          }
+        }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_primary_type)
+  }
+}
+
+fn ts_pr3_bracket_pair() -> GrammarExpr {
   Sequence {
-    left: Nonterminal { production: element },
-    right: Sequence {
-      left: Terminal { token_class: ts_token_lbracket },
-      right: Terminal { token_class: ts_token_rbracket }
-    }
+    left: Terminal { token_class: ts_token_lbracket },
+    right: Terminal { token_class: ts_token_rbracket }
   }
 }
 
 fn ts_grammar_production_pr3_array_type() -> GrammarProduction {
   GrammarProduction {
     name: ts_production_pr3_array_type,
-    expression: Choice {
-      left: ts_pr3_array_suffix(element: ts_production_wave2a_type_number),
-      right: Choice {
-        left: ts_pr3_array_suffix(element: ts_production_wave2a_type_string),
-        right: Choice {
-          left: ts_pr3_array_suffix(element: ts_production_wave2a_type_boolean),
-          right: Choice {
-            left: ts_pr3_array_suffix(element: ts_production_wave2a_type_void),
-            right: ts_pr3_array_suffix(element: ts_production_wave2a_type_name)
-          }
-        }
+    expression: Sequence {
+      left: Nonterminal { production: ts_production_pr3_primary_type },
+      right: Sequence {
+        left: ts_pr3_bracket_pair(),
+        right: Repeat { element: ts_pr3_bracket_pair() }
       }
     },
     emitted: ts_grammar_atom(id: ts_surface_array_type)
+  }
+}
+
+fn ts_grammar_production_pr3_typed_params_opt() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_pr3_typed_params_opt,
+    expression: Optional { element: Nonterminal { production: ts_production_pr3_typed_params } },
+    emitted: ts_grammar_atom(id: ts_surface_typed_params_opt)
   }
 }
 
@@ -1642,7 +1678,7 @@ fn ts_grammar_production_pr3_typed_fn_decl() -> GrammarProduction {
         right: Sequence {
           left: Terminal { token_class: ts_token_lparen },
           right: Sequence {
-            left: Nonterminal { production: ts_production_pr3_typed_params },
+            left: Nonterminal { production: ts_production_pr3_typed_params_opt },
             right: Sequence {
               left: Terminal { token_class: ts_token_rparen },
               right: Sequence {
@@ -1707,14 +1743,16 @@ fn ts_wave2a_grammar_root() -> GrammarRoot {
   let let_decl = ts_grammar_production_wave2a_let_decl()
   let const_decl = ts_grammar_production_wave2a_const_decl()
   let type_alias_decl = ts_grammar_production_wave2a_type_alias_decl()
+  let pr3_primary_type = ts_grammar_production_pr3_primary_type()
   let pr3_array_type = ts_grammar_production_pr3_array_type()
   let pr3_typed_param = ts_grammar_production_pr3_typed_param()
   let pr3_typed_params = ts_grammar_production_pr3_typed_params()
+  let pr3_typed_params_opt = ts_grammar_production_pr3_typed_params_opt()
   let pr3_typed_fn_decl = ts_grammar_production_pr3_typed_fn_decl()
   let item = ts_grammar_production_wave2a_item()
   GrammarRoot {
     start: ts_production_wave2a_item,
-    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_fn_decl, item],
+    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_primary_type, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_params_opt, pr3_typed_fn_decl, item],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
