@@ -2,7 +2,7 @@
 
 > **Status:** ACTIVE — Modeling DFS Manager (proud-pike-680); work item `adhoc-b86786f5-9fe` track **(C)**.  
 > **Date:** 2026-05-30  
-> **Trigger:** Operator postmortem on PR #3962 (`TargetTypeExpression` six-arm tag-shadow); complements §10.0 DFS worksheets (SG-class) and dissolution-lens enforcement tracks **(A)** / **(B)**.
+> **Trigger:** Operator postmortem on PR #3962 (`TargetTypeExpression` six-arm tag-shadow); complements §10.0 DFS worksheets (SG-class) and automated enforcement track **(A)** plus a **proposed** lens sub-signature track **(B)** (see §4 — not L1.4.b).
 
 ---
 
@@ -90,11 +90,11 @@ type TargetTypeExpression {
 
 | Track | Owner work item | Catches |
 |-------|-----------------|--------|
-| **(A)** `v4.lens.structural_similarity` | `adhoc-1941f9fc-580` | Automated histogram from `TypeShape.variant_set` |
-| **(B)** L1.4 IdenticalVariantPayload sub-signature | `adhoc-caef5039-f11` | Lens finding on identical payloads (#3962 class) |
-| **(C)** This doc | `adhoc-b86786f5-9fe` | Human review discipline until (A)+(B) land |
+| **(A)** `v4.lens.structural_similarity` | `adhoc-1941f9fc-580` | Automated per-variant field-shape histogram from `TypeShape.variant_set` (primary mechanical detector for #3962-class M6 tag-shadow) |
+| **(B)** Proposed `IdenticalPayloadCoproduct` lens sub-signature *(design amendment — not L1.4.b)* | `adhoc-caef5039-f11` | **Scope:** add a **new** dissolution sub-signature (sibling to L1.4.b, to be named in `docs/design-dissolution-lens.md`) for coproduct arms whose **payload fingerprints are identical** and tag is **not recoverable** from payload alone. **Does NOT map to L1.4.b `VariantParameterClone`:** that sub-signature explicitly **does not fire** when two variants share the same canonical payload signature (`V1 { x: A }` + `V2 { x: A }` → STAY; see `docs/design-dissolution-lens.md:525-536`). Until **(B)** is ratified in the lens design doc, #3962-class enforcement is **(C)** §3 histogram + M6 checklist + **(A)** when landed. |
+| **(C)** This doc | `adhoc-b86786f5-9fe` | Human review discipline (always required for substrate-shape PRs) |
 
-Operator priority 2026-05-30: promote **(A)** from future to **needed for review safety**.
+Operator priority 2026-05-30: promote **(A)** from future to **needed for review safety**. Track **(B)** is a design-doc + lens-spec follow-on — must not mis-wire to L1.4.b.
 
 ---
 
@@ -102,7 +102,7 @@ Operator priority 2026-05-30: promote **(A)** from future to **needed for review
 
 - `MODELING.md` — M6, M9
 - `docs/modeling-discipline.md` — Practices 4, 8, 10, 11
-- `docs/design-dissolution-lens.md` — §5.1, §10.2 (`structural_similarity`), L1.4.b
+- `docs/design-dissolution-lens.md` — §5.1, §10.2 (`structural_similarity`), L1.4.b (variant-parameter clone — **not** #3962 identical-payload class)
 - `docs/planning/v4-correctness-ladder-2026-05-30.md` — §10.0 DFS worksheets (SG-class)
 - `INVARIANTS.md` — P2, P3
 
@@ -112,4 +112,4 @@ Operator priority 2026-05-30: promote **(A)** from future to **needed for review
 
 - [x] Checklist + histogram template — Modeling DFS §8 2026-05-30 (proud-pike-680)
 - [ ] (A) structural_similarity producer on main
-- [ ] (B) IdenticalVariantPayload sub-signature active in lens CI
+- [ ] (B) `IdenticalPayloadCoproduct` (or ratified name) sub-signature amended in design-dissolution-lens + active in lens CI
