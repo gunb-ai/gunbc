@@ -1303,12 +1303,12 @@ fn type_expr_arrow_split_from_types_bounded(
     bind_outcome(
       o: list_head_and_tail(xs: types, node: node),
       f: fn(split) {
-        bind_outcome(
-          o: list_head_and_tail(xs: split.tail, node: node),
-          f: fn(rest) {
-            if is_empty(xs: split.tail) {
-              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-            } else {
+        if is_empty(xs: split.tail) {
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        } else {
+          bind_outcome(
+            o: list_head_and_tail(xs: split.tail, node: node),
+            f: fn(rest) {
               if is_empty(xs: rest.tail) {
                 Accepted {
                   value: TypeExprArrowSplit {
@@ -1336,8 +1336,8 @@ fn type_expr_arrow_split_from_types_bounded(
                 )
               }
             }
-          }
-        )
+          )
+        }
       }
     )
   }
