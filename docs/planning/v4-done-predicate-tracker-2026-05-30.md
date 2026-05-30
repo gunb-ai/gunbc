@@ -3,13 +3,14 @@
 > **Status:** PLANNING — first artifact for Self-host/Release Manager (`nimble-crane-490`).  
 > **Authority:** `src/v4/TASKS.md:805-817` (v4-done definition + six bullets); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map). Line anchors are to current `main` (post-#3938).  
 > **Session:** `nimble-crane-490` · **Parent:** `nimble-dove-733` (PM May 29)  
-> **Tree HEAD spot-check:** refresh from live `main` after material lane landings (initial pass 2026-05-30, post-#3938 / #3948). Line-anchor table: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md) (Close/Receipt, PR [#3973](https://github.com/gunb-ai/gunbc/pull/3973)).
+> **Tree HEAD spot-check:** post–merge-wave baseline 2026-05-30 (`main` after [#3983](https://github.com/gunb-ai/gunbc/pull/3983); tracker refresh [#3975](https://github.com/gunb-ai/gunbc/pull/3975); mapping [#3973](https://github.com/gunb-ai/gunbc/pull/3973)). Line-anchor table: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md). Wave posture: [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §7 (MW-D1–D8).
 
 ## Non-negotiables
 
 - **Cannot narrow v4-done.** Per PR #3938 §8.D4: any predicate relaxation requires an explicit `src/v4/TASKS.md:805-817` amendment with named operator rationale — not a PM or manager call.
 - **Closure vocabulary (§10.0):** `ship_disposition: PROVEN` only with an executable receipt (+ falsification when the probe asks). Substrate alone → `GAP` + `engineering_state: SUBSTRATE_PRESENT` (or finer states below).
 - **§8 ratified:** PR #3938 merged (`b129ce3f2` on main); ladder + disposition vocabulary authoritative via `docs/planning/v4-correctness-ladder-2026-05-30.md`. Worker dispatch still follows per-class DFS worksheet approval (PR #3938 §11.4) — this tracker does not self-dispatch.
+- **MW-D8 (merge-wave):** Wave 1 exit ≠ v4-done. Summary `ship_disposition` rows stay `GAP` until §10.0 executable receipts; Wave 1 PR volume does not move predicate closure.
 
 ## Summary matrix
 
@@ -37,7 +38,7 @@ Re-expresses legacy `src/v4/TASKS.md:819` prose (`main@678bb8bbd`, 2026-05-28) i
 | P5 (TestClaim suite passes) | **PARTIAL** | #3803 structural corpus bridge; T-38 runner bar open |
 | P6 (hand-Rust reproduction authority) | **Not reported** | Absent from `:819`; tracker holds `GAP` |
 
-**INVARIANTS A3/P5 resolve-posture bridge** (separate from predicate P5): **OPEN** — `scripts/v4-bootstrap-resolve-posture-gate.sh` + `.github/workflows/ci.yml:266-273` (`v2 → v4 bootstrap resolve-posture gate` step) until script + paired CI step deleted per header. *(Legacy `TASKS.md:819` still cites `ci.yml:249` — that line is the unrelated M1 rust-emit probe; tracker uses live wiring.)*
+**INVARIANTS A3/P5 resolve-posture bridge** (separate from predicate P5): **OPEN** — `scripts/v4-bootstrap-resolve-posture-gate.sh` + `.github/workflows/ci.yml:293-300` (`v2 → v4 bootstrap resolve-posture gate` step; script invoke `:300`) until script + paired CI step deleted per header. *(Legacy `TASKS.md:819` still cites `ci.yml:249` — unrelated M1 rust-emit probe; post-#3983 `:273` is `phase1/nat_semiring` gate.)*
 
 ---
 
@@ -86,7 +87,7 @@ Re-expresses legacy `src/v4/TASKS.md:819` prose (`main@678bb8bbd`, 2026-05-28) i
 **Evidence (file:line):**
 
 - **T-37 landed:** `src/v4/TASKS.md:2246-2271` — #3791; dissolution trigger (b) met on probe.
-- **Resolve-posture bridge still live** (INVARIANTS A3/P5 scaffolding — not predicate P5): `scripts/v4-bootstrap-resolve-posture-gate.sh:1-12` (dissolve when (a) or (b) + 14-day soak); CI `.github/workflows/ci.yml:273` invokes it.
+- **Resolve-posture bridge still live** (INVARIANTS A3/P5 scaffolding — not predicate P5): `scripts/v4-bootstrap-resolve-posture-gate.sh:1-12` (dissolve when (a) or (b) + 14-day soak); CI `.github/workflows/ci.yml:293-300` invokes it.
 - **Structural compile today:** `scripts/v4-testclaim-corpus-gate.sh:3-18` compiles `src/v4` via **v2** `gunbc` (`:33-37`) — not the v4 self-host binary chain.
 - **Emit scaffold gates:** widespread `🟡` on compiler stages; SG-1 emit class still open per PR #3938 §10.1.
 
@@ -157,7 +158,7 @@ Re-expresses legacy `src/v4/TASKS.md:819` prose (`main@678bb8bbd`, 2026-05-28) i
 
 **Evidence:**
 
-- Structural bridge: `scripts/v4-testclaim-corpus-gate.sh` + `.github/workflows/ci.yml:290`.
+- Structural bridge: `scripts/v4-testclaim-corpus-gate.sh` + `.github/workflows/ci.yml:315-319` (`T-22 TestClaim corpus structural bridge` step).
 - Modeled runner scaffold: `src/v4/test/claim/workflow/testclaim_corpus_runner.dag:2-4` — `🟡 gated — feature:t38-testclaim-corpus-eval`.
 - `src/v4/workflow/ci.dag:117` — `TestClaimCorpusEvalCommand` dissolution step declared; not yet replacing shell gate.
 - `src/v4/TASKS.md:2277-2301` — T-38 close conditions 1–3 still open.
@@ -250,17 +251,17 @@ Claims checked against tree at `e332fc27b`:
 | §10.1 SG-1 blocks emit correctness | **Confirmed** | Open PR #3934 WIP; planning §10.1 |
 | T-15 harness is structural not executable fixpt | **Confirmed** | `claim_t15_self_host_fixed_point.dag:4`, closeout brief `:31-37` |
 | `RoundTripClaim` deferred | **Confirmed** | `05_eval.dag:1732-1736` |
-| Resolve-posture bridge still present | **Confirmed** | `ci.yml:273`, `v4-bootstrap-resolve-posture-gate.sh:1-12` |
+| Resolve-posture bridge still present | **Confirmed** | `ci.yml:293-300`, `v4-bootstrap-resolve-posture-gate.sh:1-12` |
 
-**`:819` numbering:** Close/Receipt mapping in PR [#3973](https://github.com/gunb-ai/gunbc/pull/3973) (`v4-done-predicate-tasks-mapping-2026-05-30.md`). Tracker snapshot above adopts §2.3 six-row shape; TASKS.md `:819` prose refresh awaits operator when status is re-reconnoitered.
+**`:819` numbering:** Close/Receipt mapping on `main` via [#3973](https://github.com/gunb-ai/gunbc/pull/3973) (`v4-done-predicate-tasks-mapping-2026-05-30.md`). Tracker snapshot adopts §2.3 six-row shape; TASKS.md `:819` prose refresh awaits operator when status is re-reconnoitered.
 
 ---
 
 ## Next actions (this manager — post-§8)
 
-1. **Tracker on `main`** via [#3948](https://github.com/gunb-ai/gunbc/pull/3948); this PR adds P1–P6 `:819` snapshot + P5 disambiguation + #3973 cross-link.
-2. **#3967** / **#3973** — sibling docs PRs merge-ready; operator manual merge per policy.
-3. **Ongoing:** Runtime/TestClaim coordination for predicate P5 (TestClaim); `t_15_self_host_fixed_point` on T-15-affecting merges.
+1. **Idle (PM 2026-05-30):** not a Wave 1 primary owner (W1.1–W1.5 → Compiler Spine / Modeling DFS / Runtime/TestClaim / TR). Refresh tracker rows only when material landings shift predicate evidence.
+2. **Lane standing:** `t_15_self_host_fixed_point` on T-15-affecting merges; coordinate Runtime/TestClaim when predicate P5 (TestClaim) evidence moves (expedited W1.3 Step 4 R1 is upstream lever per MW-D2).
+3. **MW-D3 note:** Rust + Python + Go is v4 release-minimum cross-target set for L5/L6 proof — does not narrow the six-predicate bar; rows stay `GAP` until executable receipts.
 
 ## What this doc is NOT
 
