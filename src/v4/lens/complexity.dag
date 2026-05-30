@@ -70,7 +70,7 @@ import v4.std.refinement {
   Validation,
   refine,
   refined_base,
-  refined_vacuous_oracle_terminal
+  refined_vacuous_oracle_pack
 }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -121,22 +121,11 @@ fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVaria
     // dissolve-on-arrival: propagate Violates at exported boundary (Witness) when admits is real;
     // forbidden: silent empty-list fabrication that drops diagnostics.
     Violates { diagnostic: _ } =>
-      match refined_vacuous_oracle_terminal(
+      refined_vacuous_oracle_pack(
         base: xs,
         by: complexity_variables_vacuous_validation,
         at: complexity_projection_locus()
-      ) {
-        Accepted { value: variables, diagnostics: _ } => variables
-        Rejected { diagnostics: _ } =>
-          match refine(
-            base: xs,
-            by: complexity_variables_validation,
-            at: complexity_projection_locus()
-          ) {
-            Accepted { value: variables, diagnostics: _ } => variables
-            Rejected { diagnostics: _ } => empty_complexity_variables()
-          }
-      }
+      )
   }
 }
 
