@@ -1,6 +1,7 @@
 // src/v4/extdeps/runtimes/emit_host.dag
 // Scope: T-38 / rung-4 host harness — compile + execute emitted artifacts; parse stdout to RuntimeValue.
-// Status: W2 substrate — Rust host row wired via tools/emit_host_runner; Python/Go rows pre-allocated (Phase 3).
+// Status: W2 substrate — executable boundary in tools/emit_host_runner; substrate transport stub
+//   (run_emit_host_rust → transport_not_wired) until W3/CI wiring; Python/Go rows Phase 3.
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
 
 module v4.extdeps.runtimes.emit_host

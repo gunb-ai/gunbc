@@ -1,6 +1,6 @@
 // src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag
 // Scope: W2 rung 3–4 corpus eval + rung-split gates (§4.4) for phase1/nat_semiring.
-// Status: roster wedge empty until W3 lands rung_3_4 claims; host runner via emit_host + tools/emit_host_runner.
+// Status: roster wedge empty until W3 lands rung_3_4 claims; emit_host substrate stub until W3 wiring.
 
 module v4.test.claim.workflow.nat_semiring_rung34_eval
 
