@@ -72,7 +72,15 @@ explicit error (fail-closed).
 
 ### Weather hero demo
 
-Weather demo is **COMPILE-VERIFIED** (emit-to-Rust compiles per check-clean-checkout-build.sh ignoring bootstrap_l4_structural). There is **NO routine CI proof of cargo RUN binary** at HEAD. The Quick Start command sequence is verified to **PRODUCE** Rust output and **PASS** `cargo check`; running the binary end-to-end is being verified by adhoc-bec7923f-4d7 (merry-bear-248) — embed the verification transcript reference once their report arrives.
+Weather demo is **COMPILE-VERIFIED** on the **public receipt** in the command block
+below: `gunbc compile` (weather + `dsl/std`, `--target rust`) produces an output
+tree that passes `cargo check`. Reproduce that gate with the commands shown; do not
+rely on maintainer-only release-rehearsal tooling that is absent from the public
+repository layout.
+
+There is **NO routine CI proof of `cargo run` on the emitted binary** at HEAD.
+End-to-end binary run verification is pending; this section will cite a public
+transcript when that gate is recorded.
 
 **Weather — compile gate** (from repo root after `cargo build --release -p v2-compiler --bin gunbc`):
 
