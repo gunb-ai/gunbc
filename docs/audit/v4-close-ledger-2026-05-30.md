@@ -786,5 +786,5 @@ Within a section, `owner_manager` is uniform per the §11.3 mapping. Each sectio
 - `docs/audit/v4-close-interrogation-validation-2026-05-30.md` — source data (PR #3941, merged).
 - `docs/v4-close-interrogation.md` — 346-probe questionnaire (probe sources cited per row).
 - `docs/planning/v4-close-receipt-manager-pass-2026-05-30.md` — this lane's manager-pass receipt (same PR): vocabulary, close grades, anti-shelfware policy, ladder ↔ questionnaire complementarity.
-- `docs/planning/v4-correctness-ladder-2026-05-30.md` — PR #3938 (open at ledger authoring time): lane architecture, §8 decisions, §10.0 vocabulary origin. **This ledger depends on PR #3938 landing.**
+- `docs/planning/v4-correctness-ladder-2026-05-30.md` — PR #3938 (merged 2026-05-30 as `b129ce3f2`): lane architecture, §8 decisions, §10.0 vocabulary origin. Operator merge without per-decision answers effectively ratified the §8 PM-recommendations.
 

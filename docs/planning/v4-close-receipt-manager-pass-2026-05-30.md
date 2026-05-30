@@ -1,7 +1,7 @@
 # Close / Receipt Manager Pass — 2026-05-30
 
 **Manager session:** `sharp-otter-407` (Close/Receipt lane per PR #3938 §11.1).
-**Depends on:** PR #3938 (`docs/planning/v4-correctness-ladder-2026-05-30.md`) landing — this receipt cites §3, §6, §8, §10.0, §11 of that doc.
+**Cites:** `docs/planning/v4-correctness-ladder-2026-05-30.md` (PR #3938, merged 2026-05-30 as `b129ce3f2`) §3, §6, §8, §10.0, §11. The operator merge of #3938 without per-decision answers effectively ratified the §8 PM-recommendations; this receipt records that ratification explicitly and adds the policy substance (close grades, anti-shelfware deadlines) within Close/Receipt-lane authority.
 **Authority scope (from §11.1):** close predicates, two-axis disposition vocabulary, ladder ↔ questionnaire complementarity, anti-shelfware deadline policy. **No implementation work.**
 
 This doc records the Close/Receipt manager-pass outcomes called for by PR #3938 §11.4 item 1. Where §8 names a decision as operator-authority (D4, D7) or as a substantive policy choice the manager should not unilaterally cement (D5), the pass records a **manager-recommendation** posture, not ratification.
@@ -178,7 +178,7 @@ This lane formally adopts the §9 framing:
 
 ## §7. Dependencies and downstream effects
 
-- **Blocks on:** PR #3938 landing (this receipt cites its §3, §6, §8, §10.0, §11 directly).
+- **Cites (now merged):** PR #3938 (`b129ce3f2`) §3, §6, §8, §10.0, §11.
 - **Unblocks:** Ladder/Fixture manager pass (§11.4 item 3) can cite §2 close grades and §5 complementarity. Modeling DFS manager pass (§11.4 item 2) can cite §1 vocabulary in worksheet rows.
 - **Future audit cadence:** this lane re-audits every `SUBSTRATE_CLOSED` lane on a per-window basis (per §4.2 table) rather than on a single calendar clock.
 
