@@ -422,7 +422,7 @@ jobs:
         echo "::notice::Restore criteria: per-test wall ≤ 2s under OnceLock/cached_compile amortization (rebuild session per #2722 §5)."
         exit 0
     - name: v3 full-suite split guard (integration test targets)
-      run: scripts/check-v3-full-suite-split-test-targets.sh
+      run: python3 scripts/check_v3_full_suite_split_test_targets.py
     # Single step for lib+bins → determinism → doc → integration timings capture.
     # srv1/srv2 self-hosted pools may dispatch consecutive workflow steps to
     # different runner instances; /tmp is not shared across steps, so splitting
@@ -518,7 +518,7 @@ jobs:
           exit 1
         fi
     - name: Compiler-std consolidation ratchet
-      run: scripts/check-compiler-std-ratchet.sh
+      run: python3 scripts/check_compiler_std_ratchet.py
     - name: Banked-dissolutions ratchet
       run: python3 scripts/check_banked_dissolutions.py
   self_host_ratchet:
