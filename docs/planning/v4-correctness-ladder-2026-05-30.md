@@ -236,7 +236,82 @@ The following questions need answers before §7 Phase 1 dispatches. Proposed ans
 
 ---
 
-## §9. What this doc is NOT
+## §9. Integration with the existing ship interrogation
+
+The project already has an adversarial questionnaire — `docs/v4-close-interrogation.md` (1335 lines, 17 sections, **346 probes** at HEAD; was 152 probes at the 2026-05-13 validation point). It was originally authored as the R3 close interrogation, migrated to v4 framing 2026-05-15 per operator directive ("v4 = R3 + R4 in one program").
+
+The questionnaire and this ladder are **complementary, not competing**:
+
+- The **questionnaire** asks "for each promise, show the receipt: code, demo, falsification probe." Granular, probe-by-probe.
+- The **ladder** (§6) asks "which gates fire on PRs in what order." Coarse-grained, sequencing-oriented.
+
+The questionnaire's §0 disposition vocabulary — **PROVEN / WEAK-EVIDENCE / GAP / OPERATOR-DECISION-REQUIRED / NOT-IN-V4 / NOT-PROMISED** — should be adopted across both artifacts.
+
+### §9.1 Where the questionnaire stands today
+
+The 2026-05-13 validation (`docs/audit/r3-close-interrogation-validation-2026-05-13.md`) found **0/152 probes marked answered** — every probe `- [ ]` not `- [x]`. The questionnaire's §0.5 (AUTHORITATIVE, 2026-05-15) verdicts **scaffold-passing** ("every promise has an owner file + task; zero unresolved OPERATOR-DECISION-REQUIRED") but does NOT verdict **receipt-passing** — receipt validation is the work that has never been done.
+
+The §3 audit in this doc *is* a partial questionnaire validation by-rung. Mapping is direct.
+
+### §9.2 Questionnaire ↔ ladder cross-map
+
+Each ladder rung activates verification for one or more questionnaire sections:
+
+| Rung | Questionnaire sections addressed |
+| ---- | -------------------------------- |
+| 0    | §3.1 parse paths (omni-emission entry) |
+| 1    | §3.1 Rust compile path |
+| 2    | §3.1 Rust + Python + Go omni-emission; §3.5 L6 every-form-every-target |
+| 3    | §3.7d round-trip (currently dispositioned NOT-PROMISED-as-separate-file; ladder reinstates as receipt gate) |
+| 4    | §3.7 testgen + integration; §3.6 L7 (eval matches interpreter is the foundational L7 receipt) |
+| 5    | §3.5 L6; §3.1 omni-emission semantic equivalence |
+| 6    | §3.6 L7 algebraic laws preserved through emit |
+| 7    | §4.2 self-host fixed point |
+| 8    | §3.3 tests-as-data |
+| 9    | §1.1-§1.5 dimension lenses; §4.1 lens self-application; §2.5 impossible-bugs by construction (META-PROMISE, 36 probes) |
+
+This means **closing rungs 4–9 with the §7 sequencing closes ~90% of the questionnaire's load-bearing receipt probes**.
+
+### §9.3 Sample probe evaluation (2026-05-30 spot-checks)
+
+To anchor the disposition vocabulary, 8 probes spot-checked against current main (`4baef9551`):
+
+| Probe (paraphrased) | §ref | Disposition | Evidence |
+| ------------------- | ---- | ----------- | -------- |
+| Rust primitives have algebra-inhabitance declared | §1.6 P1 | **WEAK-EVIDENCE** | `src/v4/extdeps/languages/rust.dag` exists with algebra-relevant terms; trace per-primitive grounding not verified end-to-end |
+| Algebra-homomorphism-search is structural, not name-keyed | §1.6 P2 | **NOT-CHECKED** | grep across `src/v4/` did not surface an obvious search function; needs targeted investigation |
+| TestClaim corpus executes on PRs | §3.3 P5 | **GAP** | CI step explicitly says "TestClaim verdict execution remains a T-38 follow-up"; 55 manual claims un-run |
+| v4 compiler emits v4 → bit-identical fixed point | §4.2 P7 | **GAP** | `claim_t15_self_host_fixed_point.dag` uses digest placeholders; real cycle deferred |
+| Non-trivial .dag program compiles to Rust + Python + Go | §3.1 | **GAP** | only `rustc` invoked in CI; no Python/Go compilation gate |
+| Algebraic law verified on emitted code (post-emit) | §3.6 | **GAP** | `algebra_laws/nat_semiring.dag` tests laws on model only |
+| Lens applied to `workflow/ci.dag` or `workflow/bootstrap.dag` (self-application) | §4.1 | **GAP** | substrate exists; no lens-on-CI-data gate fires |
+| Suboptimal-complexity contract violation rejected at compile time | §2.5 P8 | **NOT-CHECKED** | candidate test files exist (`map_id.dag`, `nested.dag`, etc.); per-test rejection-vs-pass classification not confirmed |
+
+Pattern: probes that map to **rungs 4–9 of the ladder** disposition predominantly as **GAP**. This is the same finding as §3 (substrate-rich, activation-poor) viewed through the questionnaire's lens.
+
+### §9.4 Proposed Phase 0 — systematic questionnaire validation
+
+Before Phase 1 (rungs 0–2 on `nat_semiring` fixture) dispatches, propose a **Phase 0** that runs in parallel:
+
+- Worker (dispatched to a child session) systematically evaluates all 346 questionnaire probes against current main.
+- Output: `docs/audit/v4-close-interrogation-validation-2026-05-30.md` (analogous to the 2026-05-13 doc), with per-probe disposition.
+- Probes batched by section so verification is efficient (many §1.x and §2.x probes share substrate checks).
+- Result feeds back into THIS doc's §3 as a more complete gating audit.
+
+Phase 0 estimate: ~6-10 hours of focused worker time. Runs in parallel with Phase 1 dispatch — does not block it.
+
+### §9.5 Effect on §8 operator decisions
+
+The questionnaire integration adds one decision and modifies one:
+
+- **D7 (new)**: should Phase 0 (full questionnaire validation) dispatch immediately on sign-off, in parallel with Phase 1?
+  - *Proposed*: Yes. Independent of Phase 1, surfaces more GAPs the ladder must address, and the 2026-05-13 validation is now 17 days stale.
+
+- **D1 (modified)**: in addition to confirming the ladder ontology, confirm that the ladder is the correct *complement* to the questionnaire — the questionnaire stays as the granular probe surface; the ladder stays as the gate-sequencing surface; both adopt the §0 disposition vocabulary.
+
+---
+
+## §10. What this doc is NOT
 
 - **Not a redefinition of correctness.** The 17 standards are pre-existing in `THESIS.md`. This doc maps them to gating reality and proposes operationalization, nothing more.
 - **Not a complete 30-day plan.** Operator sign-off on §6 ladder + §7 Phase 1 unblocks the first dispatch. Phases 2/3/4 are dispatched after their predecessor closes — sequenced, not pre-committed.
@@ -245,8 +320,10 @@ The following questions need answers before §7 Phase 1 dispatches. Proposed ans
 
 ---
 
-## §10. Related artifacts
+## §11. Related artifacts
 
+- `docs/v4-close-interrogation.md` — the existing adversarial ship interrogation (346 probes, 17 sections); §9 of this doc integrates with it.
+- `docs/audit/r3-close-interrogation-validation-2026-05-13.md` — the prior validation that found 0/152 probes answered.
 - `THESIS.md` §"What falls out", §"Tier 1/2/3", §"Self-hosting — four facets", §"Enumerable impossible-bug classes" — the 17 standards.
 - `INVARIANTS.md` P5 "Progress Is Dissolution" — the principle driving "activation must follow substrate."
 - `TESTING.md` Principle #5 "Mocks over compile" — the discipline that enables rungs 4–7 without forcing full-pipeline.
