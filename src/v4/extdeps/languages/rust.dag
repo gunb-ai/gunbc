@@ -711,8 +711,7 @@ data rust_noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts> = [
 ]
 
 // Leaf-model Layer-A — derived fact exposure + PLANNED SG-1 slot (PR #3971 §3; no parallel *_fact_id Symbol wrappers).
-data rust_integer_algebra_inhabitance_rust_facts_i32: AlgebraInhabitanceDecl =
-  rust_integer_algebra_inhabitance(facts: rust_facts_i32)
+data rust_integer_algebra_inhabitance_rust_facts_i32: AlgebraInhabitanceDecl = rust_integer_algebra_inhabitance(facts: rust_facts_i32)
 // 🟡 gated — feature:sg-1-target-atom-realization — bind PR #3938 §10.1 / design-target-realization-canonical-home.md —
 // dissolve-on: TargetAtomRealization row for Symbol lands; fact_id names that row.
 data rust_atom_realization_symbol: Symbol = rust_atom_realization_symbol
