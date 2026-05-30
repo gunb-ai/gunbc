@@ -108,8 +108,12 @@ fn rust_dag_claimable_fact_ids() -> List<Node> {
   // every fact in rust.dag that BOTH (a) has a verification angle the runner
   // can exercise and (b) is not a scaffolding/tag-only declaration.
   //
-  // Each entry maps 1:1 to a LeafModelClaim row in C(rust.dag) per the
-  // Layer A contract.
+  // Each entry is a claimable fact_id Node; C(rust.dag) expands each fact_id
+  // into one-or-more LeafModelClaim rows (one per verification angle) per the
+  // Layer A contract. Phase-1 example: 3 fact_id Node entries here expand to
+  // 8 LeafModelClaim rows in C(rust.dag) (R2a + R2b×4 share one fact_id;
+  // R3-external + R3-internal share another). See §3.2 for the row-expansion
+  // breakdown.
   //
   // Concrete contents — enumerated in §3.2 below.
   [ ... ]
