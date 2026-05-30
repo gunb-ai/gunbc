@@ -11,8 +11,6 @@ import v4.extdeps.languages.rust {
   rust_language_model_wave1,
   rust_overflow_field_checked_arithmetic_checks_disabled,
   rust_overflow_field_checked_arithmetic_checks_enabled,
-  rust_overflow_field_checked_arithmetic_debug_default,
-  rust_overflow_field_checked_arithmetic_release_default,
   rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32,
   rust_atom_realization_symbol_node,
   rust_leaf_model_fact_id_node_atom_realization_symbol,
