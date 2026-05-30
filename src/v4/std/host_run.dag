@@ -29,7 +29,10 @@ type ExitOk {
   code: Int
 }
 
-type HostExit = Outcome<Witness<ExitOk>>
+// Named carrier (not a type alias): v2 compile rejects `type X = Outcome<Witness<…>>`.
+type HostExit {
+  outcome: Outcome<Witness<ExitOk>>
+}
 
 // Phase-typed logical-run stdout: only constructible when exit Holds (P2 host-process boundary).
 type HostRunStdout {
@@ -48,7 +51,7 @@ type EmitHostRunReceipt {
 }
 
 fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: ByteString) -> Outcome<HostLogicalRun> {
-  match exit {
+  match exit.outcome {
     Accepted { value: Holds { value: _ }, diagnostics: None } =>
       Accepted {
         value: Holds { value: HostRunStdout { bytes: stdout_bytes } },

@@ -111,7 +111,7 @@ fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
 }
 
 fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
-  match exit {
+  match exit.outcome {
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       outcome_rejected(d: d)
     Rejected { diagnostics: ds } => outcome_rejected(d: ds)
