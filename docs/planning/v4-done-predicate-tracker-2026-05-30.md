@@ -3,26 +3,42 @@
 > **Status:** PLANNING — first artifact for Self-host/Release Manager (`nimble-crane-490`).  
 > **Authority:** `src/v4/TASKS.md:805-817` (v4-done definition + six bullets); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map). Line anchors are to current `main` (post-#3938).  
 > **Session:** `nimble-crane-490` · **Parent:** `nimble-dove-733` (PM May 29)  
-> **Tree HEAD spot-check:** `55ad5f3d3` (2026-05-30, post-#3938 `b129ce3f2` on main) — rebased `session/nimble-crane-490-predicate-tracker`.
+> **Tree HEAD spot-check:** post–merge-wave baseline 2026-05-30 (`main` after [#3983](https://github.com/gunb-ai/gunbc/pull/3983); tracker refresh [#3975](https://github.com/gunb-ai/gunbc/pull/3975); mapping [#3973](https://github.com/gunb-ai/gunbc/pull/3973)). Line-anchor table: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md). Wave posture: [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §7 (MW-D1–D8).
 
 ## Non-negotiables
 
 - **Cannot narrow v4-done.** Per PR #3938 §8.D4: any predicate relaxation requires an explicit `src/v4/TASKS.md:805-817` amendment with named operator rationale — not a PM or manager call.
 - **Closure vocabulary (§10.0):** `ship_disposition: PROVEN` only with an executable receipt (+ falsification when the probe asks). Substrate alone → `GAP` + `engineering_state: SUBSTRATE_PRESENT` (or finer states below).
 - **§8 ratified:** PR #3938 merged (`b129ce3f2` on main); ladder + disposition vocabulary authoritative via `docs/planning/v4-correctness-ladder-2026-05-30.md`. Worker dispatch still follows per-class DFS worksheet approval (PR #3938 §11.4) — this tracker does not self-dispatch.
+- **MW-D8 (merge-wave):** Wave 1 exit ≠ v4-done. Summary `ship_disposition` rows stay `GAP` until §10.0 executable receipts; Wave 1 PR volume does not move predicate closure.
 
 ## Summary matrix
 
 | # | Predicate (`TASKS.md:806-817`) | `ship_disposition` | `engineering_state` | Primary TASKS anchors | Blocking receipt (close) | Resolving manager lane |
 | - | ------------------------------ | ------------------ | --------------------- | --------------------- | ------------------------ | ---------------------- |
 | 1 | Every other scheduled task complete (whole plan minus T-15) | `GAP` | `CENSUS_NOT_RUN` (drift-proof; no mechanical census) | Plan graph `src/v4/TASKS.md:7-265`; Summary `src/v4/TASKS.md:1233-1239` | Per-task `DONE` / dissolution receipts against live plan at close time — not a frozen list | **Close/Receipt** (ledger) + **all lanes** (implementation) |
-| 2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | `GAP` | `PARTIAL_GATE_PRESENT` | `T-6`…`T-10`, `T-37` `src/v4/TASKS.md:474-686`, `:2246-2271` | v4 compiler-of-record executes full `src/v4/compiler/*.dag` pipeline without v2 OOM/SIGTERM mask; P5 resolve-posture bridge deleted | **Compiler Spine** |
+| 2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | `GAP` | `PARTIAL_GATE_PRESENT` | `T-6`…`T-10`, `T-37` `src/v4/TASKS.md:474-686`, `:2246-2271` | v4 compiler-of-record executes full `src/v4/compiler/*.dag` pipeline without v2 OOM/SIGTERM mask; resolve-posture bridge deleted | **Compiler Spine** |
 | 3 | v4 emits Rust that compiles to a binary | `GAP` | `PARTIAL_GATE_PRESENT` | `T-10`, `T-11`, `T-20`, `T-32` `src/v4/TASKS.md:612-686`, `:1057-1078`, `:2155-2216` | Emitted Rust is `cargo`-clean for release binary; bootstrap `compiled:` under v4 emit (not v2-only structural compile) | **Compiler Spine** + **Target Realization** |
 | 4 | Binary on `src/v4/compiler/*.dag` → bit-identical output (stage1==stage2) | `GAP` | `SCAFFOLD_PRESENT` | `T-15` `src/v4/TASKS.md:768-819`; `T-20`, `T-32`, `T-36` | B1 merkle `content_hash` pins replace digest placeholders; `self_host.dag` runner realized; `claim_t15` + `t_15_self_host_fixed_point` execute real fixpt (not structural-only) | **Self-host/Release** (this lane) + **Compiler Spine** |
 | 5 | TestClaim suite passes | `GAP` | `PARTIAL_GATE_PRESENT` | `T-14`, `T-22`, `T-38` `src/v4/TASKS.md:734-766`, `:1130-1151`, `:2277-2309` | Modeled T-22 eval over manual corpus + structured `TestClaimRun` verdicts in CI; delete `scripts/v4-testclaim-corpus-gate.sh` | **Runtime/TestClaim** (pending spawn) + **Compiler Spine** |
-| 6 | Hand-authored Rust not editable authority (reproduction-proven) | `GAP` | `PARTIAL_GATE_PRESENT` | `T-15`, `T-32`, INVARIANTS A3 / P5 | Rebuild-from-(.dag + frozen seed) reproduces pinned artifact hash; SG-0 hand-test census trends to dissolution; P5 bridges removed | **Self-host/Release** + **Close/Receipt** (census ratchet) |
+| 6 | Hand-authored Rust not editable authority (reproduction-proven) | `GAP` | `PARTIAL_GATE_PRESENT` | `T-15`, `T-32`, INVARIANTS A3 / P5 | Rebuild-from-(.dag + frozen seed) reproduces pinned artifact hash; SG-0 hand-test census trends to dissolution; INVARIANTS A3/P5 interim harnesses dissolved | **Self-host/Release** + **Close/Receipt** (census ratchet) |
 
 **Release bar:** predicates **1–6 collectively** (PR #3938 §8.D4). Ladder rungs 7–8 map to predicates 4–5; predicate 1 is strictly broader than any single rung.
+
+### Close-status snapshot (`TASKS.md:819` — tracker view)
+
+Re-expresses legacy `src/v4/TASKS.md:819` prose (`main@678bb8bbd`, 2026-05-28) in **P1–P6** form per [mapping doc §2.3](v4-done-predicate-tasks-mapping-2026-05-30.md). **Not** a TASKS.md edit — disposition text remains Self-host/Release-authoritative until operator refresh.
+
+| Predicate | Disposition (stale `:819` snapshot) | Source cue in `:819` |
+| --------- | ----------------------------------- | -------------------- |
+| P1 (whole plan minus T-15) | **Not reported** (implicit OPEN) | Legacy paragraph names only predicates 1–5 |
+| P2 (corpus compiles E2E) | **CLOSABLE** on trigger (b) | #3791 serializer fix landed |
+| P3 (emit Rust → binary) | **PARTIAL** | T-4 Wave 2 continues |
+| P4 (bit-identical self-output) | **PARTIAL** | #3794 T22-EVAL-CACHE-HASHES open |
+| P5 (TestClaim suite passes) | **PARTIAL** | #3803 structural corpus bridge; T-38 runner bar open |
+| P6 (hand-Rust reproduction authority) | **Not reported** | Absent from `:819`; tracker holds `GAP` |
+
+**INVARIANTS A3/P5 resolve-posture bridge** (separate from predicate P5): **OPEN** — `scripts/v4-bootstrap-resolve-posture-gate.sh` + `.github/workflows/ci.yml:293-300` (`v2 → v4 bootstrap resolve-posture gate` step; script invoke `:300`) until script + paired CI step deleted per header. *(Legacy `TASKS.md:819` still cites `ci.yml:249` — unrelated M1 rust-emit probe; post-#3983 `:273` is `phase1/nat_semiring` gate.)*
 
 ---
 
@@ -65,13 +81,13 @@
 | `ship_disposition` | `GAP` |
 | `engineering_state` | `PARTIAL_GATE_PRESENT` |
 | Owner sub-tasks | `T-6`, `T-7`, `T-8`, `T-9`, `T-10`, `T-37` (serializer unblock) |
-| Blocking receipt | v4 pipeline compiles `src/v4/compiler/*.dag` as compiler-of-record; no P5 bridge masking compile failure |
+| Blocking receipt | v4 pipeline compiles `src/v4/compiler/*.dag` as compiler-of-record; no resolve-posture bridge masking compile failure |
 | Resolving lane | **Compiler Spine** |
 
 **Evidence (file:line):**
 
 - **T-37 landed:** `src/v4/TASKS.md:2246-2271` — #3791; dissolution trigger (b) met on probe.
-- **P5 bridge still live:** `scripts/v4-bootstrap-resolve-posture-gate.sh:1-12` (dissolve when (a) or (b) + 14-day soak); CI `.github/workflows/ci.yml:273` invokes it.
+- **Resolve-posture bridge still live** (INVARIANTS A3/P5 scaffolding — not predicate P5): `scripts/v4-bootstrap-resolve-posture-gate.sh:1-12` (dissolve when (a) or (b) + 14-day soak); CI `.github/workflows/ci.yml:293-300` invokes it.
 - **Structural compile today:** `scripts/v4-testclaim-corpus-gate.sh:3-18` compiles `src/v4` via **v2** `gunbc` (`:33-37`) — not the v4 self-host binary chain.
 - **Emit scaffold gates:** widespread `🟡` on compiler stages; SG-1 emit class still open per PR #3938 §10.1.
 
@@ -95,7 +111,7 @@
 
 - `src/v4/workflow/bootstrap.dag:3` — `bootstrap-content-hash-pins` still `🟡`; placeholder `Hash` aliases until T-15 B1 operands land.
 - `src/v4/compiler/self_host.dag:3-4` — runner `scaffold-against-contract`; `self_host_runner_not_realized` at `:67-77`, `:148`.
-- Open emit-error program: PR #3938 §10.1 SG-1 (~2978 E0423 class) — **Target Realization** worker surface after DFS worksheet approval.
+- Open emit-error program: PR #3938 §10.1 SG-1 (~2978 E0423 class) — **Target Realization** worker surface; DFS worksheets approved (`v4-modeling-dfs-manager-pass-2026-05-30.md`); dispatch SG-2 before SG-1.
 
 ---
 
@@ -142,7 +158,7 @@
 
 **Evidence:**
 
-- Structural bridge: `scripts/v4-testclaim-corpus-gate.sh` + `.github/workflows/ci.yml:290`.
+- Structural bridge: `scripts/v4-testclaim-corpus-gate.sh` + `.github/workflows/ci.yml:315-319` (`T-22 TestClaim corpus structural bridge` step).
 - Modeled runner scaffold: `src/v4/test/claim/workflow/testclaim_corpus_runner.dag:2-4` — `🟡 gated — feature:t38-testclaim-corpus-eval`.
 - `src/v4/workflow/ci.dag:117` — `TestClaimCorpusEvalCommand` dissolution step declared; not yet replacing shell gate.
 - `src/v4/TASKS.md:2277-2301` — T-38 close conditions 1–3 still open.
@@ -217,7 +233,7 @@ Predicate 6 ──► Self-host/Release + Close/Receipt
 | ------- | ---- | ---------------- |
 | `sharp-otter-407` | Close/Receipt | 1, 6; adjudicates this tracker |
 | `keen-crab-361` | Ladder/Fixture | 4–5 (rung 7–8 receipts) |
-| `proud-pike-680` | Modeling DFS | 2–3 (SG worksheets before Target Realization dispatch) |
+| `cool-ibex-692` | Modeling DFS | 2–3 (SG-1/2/5/6 worksheets approved 2026-05-30; see `v4-modeling-dfs-manager-pass-2026-05-30.md`) |
 | `smart-stag-871` | Compiler Spine | 2–4 |
 | `keen-heron-687` | Target Realization | 2–3 |
 | *(pending)* | Runtime/TestClaim | 5; T-36 eval |
@@ -235,20 +251,20 @@ Claims checked against tree at `e332fc27b`:
 | §10.1 SG-1 blocks emit correctness | **Confirmed** | Open PR #3934 WIP; planning §10.1 |
 | T-15 harness is structural not executable fixpt | **Confirmed** | `claim_t15_self_host_fixed_point.dag:4`, closeout brief `:31-37` |
 | `RoundTripClaim` deferred | **Confirmed** | `05_eval.dag:1732-1736` |
-| P5 bridge still present | **Confirmed** | `ci.yml:273`, `v4-bootstrap-resolve-posture-gate.sh:1-12` |
+| Resolve-posture bridge still present | **Confirmed** | `ci.yml:293-300`, `v4-bootstrap-resolve-posture-gate.sh:1-12` |
 
-**Issue surfaced to PM:** `TASKS.md:819` Close-status paragraph uses predicate numbering (1–5) that does not label the six v4-done bullets at `:806-817` inline — risks mis-read during lane dispatch. Recommend a follow-on docs PR mapping P1–P6 ↔ `:806-817` (Close/Receipt lane). *(This tracker’s initial `:809-:813` authority cites were corrected in #3948 after review #21394.)*
+**`:819` numbering:** Close/Receipt mapping on `main` via [#3973](https://github.com/gunb-ai/gunbc/pull/3973) (`v4-done-predicate-tasks-mapping-2026-05-30.md`). Tracker snapshot adopts §2.3 six-row shape; TASKS.md `:819` prose refresh awaits operator when status is re-reconnoitered.
 
 ---
 
 ## Next actions (this manager — post-§8)
 
-1. **#3948** — rebased onto main post-#3938; awaiting operator merge (2 dashboard APPROVE, CI green).
-2. **TASKS.md:819** Close-status numbering fix — forwarded to operator via PM; land separately when assigned (Close/Receipt or operator pick).
-3. **Post-merge:** refresh predicate rows from live `main`; coordinate Runtime/TestClaim spawn for predicate 5; standing `t_15_self_host_fixed_point` on T-15-affecting merges.
+1. **Idle (PM 2026-05-30):** not a Wave 1 primary owner (W1.1–W1.5 → Compiler Spine / Modeling DFS / Runtime/TestClaim / TR). Refresh tracker rows only when material landings shift predicate evidence.
+2. **Lane standing:** `t_15_self_host_fixed_point` on T-15-affecting merges; coordinate Runtime/TestClaim when predicate P5 (TestClaim) evidence moves (expedited W1.3 Step 4 R1 is upstream lever per MW-D2).
+3. **MW-D3 note:** Rust + Python + Go is v4 release-minimum cross-target set for L5/L6 proof — does not narrow the six-predicate bar; rows stay `GAP` until executable receipts.
 
 ## What this doc is NOT
 
 - Not a TASKS.md amendment and not a predicate narrowing.
-- Not a worker brief — dispatch waits on DFS worksheet approval per PR #3938 §11.4.
+- Not a worker brief — SG-1/2/5/6 worksheets approved per `docs/planning/v4-modeling-dfs-manager-pass-2026-05-30.md`; Target Realization dispatches per dispatch order there.
 - Not a substitute for `docs/audit/v4-close-interrogation-validation-2026-05-30.md` (346-probe ledger stays with Close/Receipt).

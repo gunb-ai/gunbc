@@ -287,6 +287,8 @@ mod v4_compiler_compile_public_terminal_smoke_test;
 mod v4_compiler_emit_translate_smoke_test;
 #[path = "integration/v4_compiler_parse_table_dag_smoke_test.rs"]
 mod v4_compiler_parse_table_dag_smoke_test;
+#[path = "integration/v4_emit_host_harness_test.rs"]
+mod v4_emit_host_harness_test;
 #[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
 mod v4_extdeps_coordination_dag_smoke_test;
 #[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
@@ -1109,6 +1111,14 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/types.dag"),
             "dsl/std/types.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_patterns_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/patterns.dag"),
+            "dsl/std/patterns.dag",
         );
     }
 
