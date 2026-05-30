@@ -98,6 +98,18 @@ fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<Complexit
 }
 
 
+// Exported helpers return ComplexityVariables (main API); refine Witness stays internal.
+fn complexity_variables_from_witness(witness: Witness<ComplexityVariables>) -> ComplexityVariables {
+  match witness {
+    Holds { value: variables } => variables
+    Violates { diagnostic: _ } =>
+      complexity_variables_from_witness(
+        witness: complexity_variables_from_refine(xs: Empty)
+      )
+  }
+}
+
+
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type ComplexityVariables = Refined<List<SizeVariable>>
 
