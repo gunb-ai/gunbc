@@ -11,6 +11,31 @@
 // that gives the steps their operational meaning.
 //
 // See dsl-design.md 4.5 and Appendix H for the full pattern catalog.
+//
+// ── UPSERT<T> (operator canon 2026-05-29) ─────────────────────────────
+// Operational rule: "do this" means upsert this — never blind create,
+// never blind overwrite. The shape is fractal at every scale:
+//
+//   1. verify-first          — run Check (or lookup existing materialization)
+//   2. satisfy-dependencies  — Create's inputs are themselves upserts (recursive)
+//   3. create-if-missing     — Create runs only when should_act(check) (when edge)
+//   4. cache-outcome         — Resolve returns the stable value (file path, decl id,
+//                              memo slot) whether Check hit or Create ran
+//
+// Specializations (lightest → richest):
+//   ensure<Check, Action>     — phases 1–3 on a Bool acted flag (no Resolve cache)
+//   upsert<Check, Create, Resolve> — full four phases; Check/Create/Resolve are nodes
+//   content_upsert            — upsert with file_content_matches + fs.write
+//
+// Effect algebra (`std/effects.dag`): UpsertEffect is the runtime witness for
+// keyed convergent writes (lattice meet on Map<K,V>). Workflow patterns and
+// UpsertEffect classify the same operational commitment at different layers.
+//
+// Compiler mirror (Rust bootstrap): same phases under other names —
+// `find_equivalent_*` / `cardinality_idempotent_target` (verify-first),
+// `ensure_optional_match_disj` (verify → create-if-missing → cache on Dag),
+// `regen_bootstrap --verify` (verify-first for generated snapshots).
+// Stray audit: docs/audit/upsert-pattern-compiler-stray-2026-05-29.md
 
 module std.patterns
 
@@ -131,8 +156,10 @@ fn eq(a: String, b: String) -> Bool {
 //   return { written: result.acted }
 // }
 
-// Concrete stub: imported by tools.bootstrap and tools.readme.
-// When pattern generics land, replace with the pattern above.
+// STRAY (2026-05-29 audit): does not implement verify-first — stub keeps
+// imports typechecking until pattern generics + resource `uses` land.
+// `written` is not authoritative; tools.bootstrap/readme must not rely on
+// real filesystem idempotency until this dissolves to pattern content_upsert.
 fn content_upsert(content: String, path: String) -> { written: Bool } {
   let matches = content == ""
   { written: !matches }
