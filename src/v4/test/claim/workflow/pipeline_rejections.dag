@@ -20,7 +20,7 @@ import v4.workflow.ci {
   workflow_pipeline_plan_bound_pass_receipt,
   WorkflowPipelinePlanBoundPassReceipt
 }
-import v4.std.verdict { Verdict, Fail, Pass }
+import v4.std.verdict { Verdict, Pass, verdict_fail }
 import v4.compiler.infer {
   InferredFacts,
   InferredTree
@@ -118,12 +118,12 @@ fn run_pipeline_assert(
           match actual {
             Rejected { diagnostics: r } => {
               let comparable = Rejected { diagnostics: r }
-              if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
+              if outcome_node_eq(a: comparable, b: expected) { Pass } else { verdict_fail(actual: actual) }
             }
-            _ => Fail { actual: actual }
+            _ => verdict_fail(actual: actual)
           }
         _ =>
-          Fail { actual: actual }
+          verdict_fail(actual: actual)
       }
     Rejected { diagnostics: _ } =>
       Fail { actual: actual }

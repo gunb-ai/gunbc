@@ -202,98 +202,85 @@ fn run_test_claim_emit_vs_eval_verdict(
   }
 }
 
+fn run_test_claim_emit_vs_eval_for_input_root(
+  subject: TestClaimEvalSubject<Node>,
+  target: TargetModel,
+  input_root: Node
+) -> Verdict<RuntimeValue> {
+  let at = test_claim_input(c: subject.claim)
+  let interpretation = eval_context_interpretation(context: subject.context)
+  let expected = eval(
+    tree: subject.tree,
+    interpretation: interpretation,
+    inputs: Inputs { root: input_root }
+  )
+  match emit(tree: subject.tree, target: target) {
+    Accepted { value: source, diagnostics: _ } =>
+      match run_emit_host(
+        target: target,
+        source: source,
+        fixture_inputs: Inputs { root: input_root }
+      ) {
+        Accepted { value: host_receipt, diagnostics: _ } =>
+          match runtime_value_parse(target: target, bytes: host_receipt.stdout_bytes) {
+            Accepted { value: host_actual, diagnostics: _ } =>
+              run_test_claim_emit_vs_eval_verdict(
+                subject: subject,
+                target: target,
+                host_receipt: host_receipt,
+                host_actual: host_actual,
+                expected: expected
+              )
+            Rejected { diagnostics: ds } =>
+              verdict_fail(actual: outcome_rejected(d: ds))
+          }
+        Rejected { diagnostics: _ } =>
+          Deferred {
+            actual: expected,
+            diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
+          }
+      }
+    Rejected { diagnostics: ds } =>
+      verdict_fail(actual: outcome_rejected(d: ds))
+  }
+}
+
+fn run_test_claim_emit_vs_eval_run(
+  subject: TestClaimEvalSubject<Node>,
+  target: TargetModel,
+  verdict: Verdict<RuntimeValue>
+) -> TestClaimRun<Node, RuntimeValue> {
+  TestClaimRun {
+    cache: test_claim_cache_receipt_node(subject: subject),
+    verdict: verdict
+  }
+}
+
 fn run_test_claim_emit_vs_eval(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel
 ) -> TestClaimRun<Node, RuntimeValue> {
-  let at = test_claim_input(c: subject.claim)
-  let interpretation = eval_context_interpretation(context: subject.context)
-  let verdict = match subject.claim {
-    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
-      let expected = eval(
-        tree: subject.tree,
-        interpretation: interpretation,
-        inputs: Inputs { root: rhs }
-      )
-      match emit(tree: subject.tree, target: target) {
-        Accepted { value: source, diagnostics: _ } =>
-          match run_emit_host(
-            target: target,
-            source: source,
-            fixture_inputs: Inputs { root: rhs }
-          ) {
-            Accepted { value: host_receipt, diagnostics: _ } =>
-              match runtime_value_parse(target: target, bytes: host_receipt.stdout_bytes) {
-                Accepted { value: host_actual, diagnostics: _ } =>
-                  run_test_claim_emit_vs_eval_verdict(
-                    subject: subject,
-                    target: target,
-                    host_receipt: host_receipt,
-                    host_actual: host_actual,
-                    expected: expected
-                  )
-                Rejected { diagnostics: ds } =>
-                  verdict_fail(actual: outcome_rejected(d: ds))
-              }
-            Rejected { diagnostics: _ } =>
-              Deferred {
-                actual: expected,
-                diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
-              }
-          }
-        Rejected { diagnostics: ds } =>
-          verdict_fail(actual: outcome_rejected(d: ds))
-      }
-    }
-    CompilesClaim { expected_value: expected_value, label: _, anchor: _, input: _, classification: _ } => {
-      let expected = eval(
-        tree: subject.tree,
-        interpretation: interpretation,
-        inputs: Inputs { root: expected_value }
-      )
-      match emit(tree: subject.tree, target: target) {
-        Accepted { value: source, diagnostics: _ } =>
-          match run_emit_host(
-            target: target,
-            source: source,
-            fixture_inputs: Inputs { root: expected_value }
-          ) {
-            Accepted { value: host_receipt, diagnostics: _ } =>
-              match runtime_value_parse(target: target, bytes: host_receipt.stdout_bytes) {
-                Accepted { value: host_actual, diagnostics: _ } =>
-                  run_test_claim_emit_vs_eval_verdict(
-                    subject: subject,
-                    target: target,
-                    host_receipt: host_receipt,
-                    host_actual: host_actual,
-                    expected: expected
-                  )
-                Rejected { diagnostics: ds } =>
-                  verdict_fail(actual: outcome_rejected(d: ds))
-              }
-            Rejected { diagnostics: _ } =>
-              Deferred {
-                actual: expected,
-                diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
-              }
-          }
-        Rejected { diagnostics: ds } =>
-          verdict_fail(actual: outcome_rejected(d: ds))
-      }
-    }
-    _ => run_test_claim(subject: subject).verdict
-  }
   match subject.claim {
-    EqualsClaim { rhs: _, label: _, anchor: _, lhs: _, classification: _ } =>
-      TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
-        verdict: verdict
-      }
-    CompilesClaim { expected_value: _, label: _, anchor: _, input: _, classification: _ } =>
-      TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
-        verdict: verdict
-      }
+    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+      run_test_claim_emit_vs_eval_run(
+        subject: subject,
+        target: target,
+        verdict: run_test_claim_emit_vs_eval_for_input_root(
+          subject: subject,
+          target: target,
+          input_root: rhs
+        )
+      )
+    CompilesClaim { expected_value: expected_value, label: _, anchor: _, input: _, classification: _ } =>
+      run_test_claim_emit_vs_eval_run(
+        subject: subject,
+        target: target,
+        verdict: run_test_claim_emit_vs_eval_for_input_root(
+          subject: subject,
+          target: target,
+          input_root: expected_value
+        )
+      )
     _ => run_test_claim(subject: subject)
   }
 }
