@@ -53,9 +53,11 @@ import v4.lens.cost {
 import v4.std.algebra { Empty }
 import v4.std.collection { List }
 import v4.std.diagnostic {
+  Accepted,
   AmbiguousIntent,
   Diagnostic,
   Locus,
+  Rejected,
   Textual,
   WholeFile,
   Unavailable

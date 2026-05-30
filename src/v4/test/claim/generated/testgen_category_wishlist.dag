@@ -55,7 +55,7 @@ import v4.std.verification {
   generated_claim_anchor,
   manual_claim_anchor
 }
-import v4.std.diagnostic { port_locus, Locus }
+import v4.std.diagnostic { Accepted, port_locus, Locus, Rejected }
 import v4.std.refinement {
   Refined,
   Validation,
