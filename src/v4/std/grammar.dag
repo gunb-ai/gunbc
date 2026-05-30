@@ -549,25 +549,30 @@ type RhsSingletonTerminalLookup
   | RhsSingletonTerminalAmbiguous
 
 
+fn formal_production_rhs_singleton_terminal_identity_step(
+  state: RhsSingletonTerminalLookup,
+  symbol: FormalGrammarSymbol
+) -> RhsSingletonTerminalLookup {
+  match state {
+    RhsSingletonTerminalAmbiguous => state
+    RhsSingletonTerminalFound { identity: _ } => RhsSingletonTerminalAmbiguous
+    RhsSingletonTerminalNotSeen =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Absent => RhsSingletonTerminalFound { identity: terminal.identity }
+            Present { value: _ } => RhsSingletonTerminalAmbiguous
+          }
+        FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonTerminalAmbiguous
+      }
+  }
+}
+
 fn formal_production_rhs_singleton_terminal_identity(production: FormalProduction) -> Symbol? {
   match fold_list(
     xs: production.rhs,
     empty: RhsSingletonTerminalNotSeen,
-    cons: fn(state, symbol) {
-      match state {
-        RhsSingletonTerminalAmbiguous => state
-        RhsSingletonTerminalFound { identity: _ } => RhsSingletonTerminalAmbiguous
-        RhsSingletonTerminalNotSeen =>
-          match symbol {
-            FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
-              match binding {
-                Absent => RhsSingletonTerminalFound { identity: terminal.identity }
-                Present { value: _ } => RhsSingletonTerminalAmbiguous
-              }
-            FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonTerminalAmbiguous
-          }
-      }
-    }
+    cons: formal_production_rhs_singleton_terminal_identity_step
   ) {
     RhsSingletonTerminalFound { identity: id } => Some { value: id }
     _ => None
