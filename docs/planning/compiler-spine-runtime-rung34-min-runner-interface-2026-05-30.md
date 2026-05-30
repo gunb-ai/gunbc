@@ -95,7 +95,7 @@ Corpus aggregation reuses `src/v4/test/claim/workflow/testclaim_corpus_runner.da
 **Amendment rationale.**
 
 - **A1 (stdout typing).** Spine draft typed `EmitHostRunReceipt.stdout: RuntimeValue`, which silently embeds a deserialization step. Splitting `stdout_bytes` from a `RuntimeValueParse` function makes the parser a named symbol with per-target rows owned by Target Realization, and prevents fabricating typed values from raw bytes.
-- **A2 (typed exit, POSIX facts).** `HostExit` as `Outcome<Termination>` (`posix.dag`) — nonzero exit codes and signal termination remain structured `ExitCode` / `SignalNum` facts (P2 facts-flow-forward); only zero exit is `Exited`. Do **not** collapse to `Outcome<Witness<ExitOk>>` or bare `Int` — that drops signaled/nonzero semantics at the host boundary.
+- **A2 (typed exit, POSIX facts).** `HostExit` as `Outcome<Termination>` (`posix.dag`) — **nonzero process exit is still `Exited { code: ExitCode }`** (nonzero `code` is a first-class fact); **signal termination is `Signaled { signal: SignalNum }`**; only **success** is `Exited { code: 0 }`. Pass/fail interpretation belongs in the claim verdict layer, not by reclassifying nonzero exit away from `Exited`. Do **not** collapse to `Outcome<Witness<ExitOk>>` or bare `Int`.
 - **A3 (Rust-only W2 scope).** §4.3 places rustc/cargo invocation in Runtime, but the rung 5 cross-target gate is Phase 3, not Phase 2. W2 ships Rust only; Python/Go `run_emit_host` rows are pre-allocated symbols, not implementations, until Phase 3 dispatches.
 - **A4 (falsification receipt).** PR #3938 §11.1 row 6 names "falsification verdict receipts" as Runtime/TestClaim authority. A bare `Fail` verdict is not a receipt — `FalsificationReceipt<Node, RuntimeValue>` (subject inside the receipt) makes the wrong emit auditable post-hoc and is the artifact Self-host/Release will demand at rung 4 close.
 
@@ -131,10 +131,10 @@ The Spine draft proposed a single subset gate `fail_count == 0 and deferred_coun
 
 Split the gate by rung roster, both consuming `corpus_report_tally` over disjoint subsets of `CorpusEvalReport`:
 
-| Gate | Roster subset | Pass predicate |
-| ---- | ------------- | -------------- |
-| `nat_semiring_rung3_gate` | `RoundTripClaim` rows for the fixture | `fail == 0 && deferred == 0` |
-| `nat_semiring_rung4_gate` | emit-vs-eval rows for the fixture | `fail == 0 && deferred == 0` |
+| Gate | Roster subset | Pass predicate (fail-closed) |
+| ---- | ------------- | -------------------------- |
+| `nat_semiring_rung3_gate` | `RoundTripClaim` rows bound to the fixture module | `fail == 0 && deferred == 0 && pass_count >= 1` — at least one fixture `RoundTripClaim` row **`Pass`** (not vacuous on empty roster) |
+| `nat_semiring_rung4_gate` | emit-vs-eval rows for the fixture | `fail == 0 && deferred == 0 && pass_count >= 1` — at least one emit-vs-eval row **`Pass`** with host-sourced `actual` per §3 rung 4 |
 
 Both gates fail-closed independently; rung 4 may green before rung 3 if W2/W3 land first (and vice versa). Combined "rungs 3–4 closed" is the conjunction, evaluated by Ladder/Fixture.
 

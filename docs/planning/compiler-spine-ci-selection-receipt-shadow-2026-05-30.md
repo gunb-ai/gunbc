@@ -9,7 +9,7 @@
 
 ## 1. Purpose
 
-Produce a **per-PR `CiSelectionReceipt`** that records, for every modeled CI step, a **justified** `Run | Skip | CarvedOut` decision from structural facts (`ChangeSet`, `AffectedSet`, carve-out list). In **shadow mode** the existing workflow **still executes all steps**; the receipt is emitted first (or alongside) for human and manager review. Transition to **active** minimal CI gates on `receipt.selected` once receipts are stable (Phase 2.5 per `docs/planning/v4-ci-overhaul-2026-05-30.md`).
+Produce a **per-PR `CiSelectionReceipt`** that records, for every modeled CI step, a **justified** `Run | Skip | CarvedOut` decision from structural facts (`ChangeSet`, `AffectedSet`, carve-out list). In **shadow mode** the existing workflow **still executes all steps**; the receipt is emitted first (or alongside) for human and manager review. Transition to **active** minimal CI (Phase 2.5 per `docs/planning/v4-ci-overhaul-2026-05-30.md`) gates on **`receipt.selected` = every `CiStepSelection` whose `decision` is `Run | CarvedOut`** (executable projection). `skipped` holds `Skip` only; `carved_out` is the carveout-config snapshot (`List<CiCarveout>`), not a substitute for the runnable set.
 
 **Structural success criterion** (operator 2026-05-30): correct iff every step's `decision` is justified by (a) non-empty `inputs ∩ affected_set` evidence (`Run`), (b) empty intersection plus `cache_digest` projection `Accepted { value: … }` (`Skip`), or (c) explicit `ci_always_run_carveouts` match (`CarvedOut`). Wall-clock reduction is downstream, not the gate.
 
@@ -107,7 +107,10 @@ ci_selection_receipt_shadow(
     }
 
     append CiStepSelection { ..., decision, cache_digest := projected, reason }
-    partition into selected | skipped | carved_out per decision
+    partition per decision:
+      Run | CarvedOut  → selected    // Phase 2.5 runnable set (workflow executes these)
+      Skip             → skipped
+    (carved_out on receipt = snapshot of matching ci_always_run_carveouts rows, not step partition)
 ```
 
 **Registry** (`CiShadowStepRow`): spine-owned bridge table mapping each `ci_pipeline` job/gate to provisional `List<UpsertInputRef>` until Phase 1.5. Rows are **data**, reviewable, versioned with `ci.dag`.
