@@ -22,10 +22,11 @@ import v4.std.leaf_model_verification {
 import v4.std.text { String }
 
 
-// Fact anchor: rust.dag declares `rust_surface_spelling_i32` / coercion edge
-// `rust_coercion_field_i32_spelling` (primitive_fact_axis_surface_spelling).
-// Fixture embeds the spelled type + literal suffix so rustc is the external authority.
+// Fact anchor: rust.dag declares surface spelling + coercion edge for i32.
+data rust_r1_claim_surface_spelling_fact: Symbol = rust_surface_spelling_i32
+data rust_r1_claim_coercion_spelling_edge: Symbol = rust_coercion_field_i32_spelling
 
+// Fixture embeds the spelled type + literal suffix so rustc is the external authority.
 data rust_r1_happy_fixture_source: String = "pub fn r1_test() -> i32 { 0i32 }\n"
 
 data rust_r1_falsification_fixture_source: String = "pub fn r1_test() -> i32 { \"string\" }\n"
