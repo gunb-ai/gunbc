@@ -84,11 +84,13 @@ Minimum additions **outside** emit projection tables. Amendments A1–A4 are the
 | `EmitHostRunReceipt` | `{ target: TargetModel, source: TargetSource, exit: HostExit, stdout_bytes: ByteString, stderr_bytes: ByteString, build_log: BuildLog }` (A1) |
 | `RuntimeValueParse` | `(target: TargetModel, bytes: ByteString) -> Outcome<RuntimeValue>` — host stdout deserialization to the spine's typed `RuntimeValue`. Per-target rows supplied by Target Realization (cross-lane consult; this interface only declares the function symbol) (A1) |
 | `run_emit_host` | `(target: TargetModel, source: TargetSource, fixture_inputs: Inputs) -> Outcome<EmitHostRunReceipt>` — compile + execute emitted artifact for fixture entrypoint. **Rust-only in W2;** Python/Go rows deferred to Phase 3 (A3) |
-| `FalsificationReceipt<A>` | `{ subject: TestClaimEvalSubject<Node>, expected: A, actual: A, host_receipt: EmitHostRunReceipt, divergence: ValueDiff<A> }` — structured artifact returned on every non-`Pass` rung-4 verdict (A4) |
-| `run_test_claim_emit_vs_eval` | `(subject: TestClaimEvalSubject<Node>, target: TargetModel) -> TestClaimRun<Node, RuntimeValue>` with the additional invariant: a `Fail` verdict carries a `FalsificationReceipt<RuntimeValue>` in the `Verdict` payload (not just a boolean disagreement) (A4) |
+| `FalsificationReceipt<S, A>` | `{ subject: TestClaimEvalSubject<S>, expected, actual, divergence: ValueDiff<A>, evidence: ExecutionEvidence }` — `Host` \| `Interpreter` \| `EvidenceNone` per verdict-surface-contract (A4) |
+| `run_test_claim_emit_vs_eval` | `(subject, target) -> TestClaimRun<Node, RuntimeValue>` — **only** public constructor for rung-4 emit-vs-eval `Fail`; must return `Verdict<Node, RuntimeValue>.Fail` with `falsification` populated (`evidence: Host { … }` when host ran) (A4) |
 | `run_nat_semiring_rung34_eval` | `() -> CorpusEvalReport` — roster: fixture `RoundTripClaim` (rung 3) + one `EqualsClaim`/`CompilesClaim` emit-vs-eval row (rung 4) |
 
 Corpus aggregation reuses `src/v4/test/claim/workflow/testclaim_corpus_runner.dag` (`CorpusEvalReport`, `corpus_report_tally`). CI gate consumption is split per §4.4.
+
+**P2 enforcement (host + receipt).** `EmitHostRunReceipt.exit` is `Outcome<Termination>` from `v4.extdeps.posix` (`Termination = Exited { code: ExitCode } | Signaled { signal: SignalNum }`) — same carrier as `TerminatedProcessState.termination`, not `Outcome<Witness<ExitOk>>` or bare `Int`. Rung-4 falsification is type-enforced: `Verdict<S,T>.Fail` carries **required** `falsification: FalsificationReceipt<S,T>`; `run_test_claim_emit_vs_eval` is the sole public entry that may return rung-4 `Fail` and must populate `evidence: Host { receipt: EmitHostRunReceipt }` when the host path ran (structural fails use `EvidenceNone` / `Interpreter` via other constructors, still required field).
 
 **Amendment rationale.**
 
@@ -97,7 +99,7 @@ Corpus aggregation reuses `src/v4/test/claim/workflow/testclaim_corpus_runner.da
 - **A3 (Rust-only W2 scope).** §4.3 places rustc/cargo invocation in Runtime, but the rung 5 cross-target gate is Phase 3, not Phase 2. W2 ships Rust only; Python/Go `run_emit_host` rows are pre-allocated symbols, not implementations, until Phase 3 dispatches.
 - **A4 (falsification receipt).** PR #3938 §11.1 row 6 names "falsification verdict receipts" as Runtime/TestClaim authority. A bare `Fail` verdict is not a receipt — `FalsificationReceipt<A>` makes the wrong emit auditable post-hoc and is the artifact Self-host/Release will demand at rung 4 close.
 
-**A4 attachment (W2-kickoff default, both managers).** Extend `Verdict.Fail` with an optional `falsification: FalsificationReceipt<A>` beside `actual` (`std/verdict.dag` — spine lands the carrier; Runtime owns `FalsificationReceipt` typing). Rationale: verdict and receipt stay co-located; `TestClaimCacheReceipt` stays IRT-4/cache-only and avoids coupling host artifacts into the cache layer. Revisit only if `verdict_combine` monoid constraints block the extension at implementation time.
+**A4 attachment (W2-kickoff default, both managers; see verdict-surface-contract #3961).** `Verdict<S, T>.Fail { actual, falsification: FalsificationReceipt<S, T> }` — **required** field (not `Option` / `Absent` on rung-4 paths). P2: a `Fail` without a receipt is unrepresentable for emit-vs-eval; structural / interpreter rejects use the same carrier with `evidence: EvidenceNone` (or `Interpreter { … }`), not a separate optional slot. `verdict_fail` helpers that lack host context supply the minimal `EvidenceNone` shell. `run_test_claim_emit_vs_eval` is the API gate for rung 4: it cannot return `Fail` without a constructed receipt. Spine lands `Verdict<S, T>` in `std/verdict.dag`; Runtime owns `FalsificationReceipt` + `ExecutionEvidence`.
 
 ### 4.3 Explicit split (no authority bleed)
 
