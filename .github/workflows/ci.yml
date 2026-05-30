@@ -257,6 +257,8 @@ jobs:
       id: v4_bootstrap_compile
       timeout-minutes: 35
       continue-on-error: true
+      env:
+        V4_BOOTSTRAP_TIMEOUT_SECS: "480"
       run: |
         set +euo pipefail
         bash scripts/v4-bootstrap-viability.sh
