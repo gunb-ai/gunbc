@@ -498,6 +498,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: true,
           timeout_minutes: Some { value: 20 }
         }, RunStep {
+          name: Some { value: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)" },
+          id: none,
+          run: "bash scripts/v4-phase1-nat-semiring-rung-gate.sh",
+          shell: Bash,
+          env: { "V4_PHASE1_NAT_SEMIRING_OUT": "${{ runner.temp }}/v4-phase1-nat-semiring", "V4_PHASE1_NAT_SEMIRING_STRICT": "1" },
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: Some { value: 20 }
+        }, RunStep {
           name: Some { value: "v2 → v4 bootstrap compile (fail-closed full)" },
           id: Some { value: "v4_bootstrap_compile" },
           run: "set +euo pipefail\nbash scripts/v4-bootstrap-viability.sh\nec=$?\necho \"exitcode=${ec}\" >> \"$GITHUB_OUTPUT\"\nexit \"${ec}\"\n",

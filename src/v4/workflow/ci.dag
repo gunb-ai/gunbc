@@ -300,6 +300,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       id: testclaim_corpus_eval_signal,
       job: testclaim_corpus_eval_execution,
       run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    },
+    CiGate {
+      id: phase1_nat_semiring_rung_gate_signal,
+      job: phase1_nat_semiring_rung_gate_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
     }
   ]
 })
@@ -427,6 +432,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     M1RustEmitProbeCommand => true
     TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
       fn_name == ci_testclaim_corpus_selection_fn
+    Phase1NatSemiringRungGateCommand => true
   }
 }
 
@@ -443,6 +449,7 @@ data ci_cache_cmd_lens_ci_tag: Symbol = ci_cache_cmd_lens_ci_tag
 data ci_cache_cmd_bootstrap_compile_tag: Symbol = ci_cache_cmd_bootstrap_compile_tag
 data ci_cache_cmd_m1_probe_tag: Symbol = ci_cache_cmd_m1_probe_tag
 data ci_cache_cmd_testclaim_corpus_eval_tag: Symbol = ci_cache_cmd_testclaim_corpus_eval_tag
+data ci_cache_cmd_phase1_nat_semiring_rung_gate_tag: Symbol = ci_cache_cmd_phase1_nat_semiring_rung_gate_tag
 data ci_cache_gate_policy_always_tag: Symbol = ci_cache_gate_policy_always_tag
 data ci_cache_gate_policy_requires_job_tag: Symbol = ci_cache_gate_policy_requires_job_tag
 data ci_cache_jobs_empty_tag: Symbol = ci_cache_jobs_empty_tag
@@ -853,6 +860,7 @@ fn ci_command_projection_node(c: CiCommand) -> Node {
           ci_named_edge(name: ci_projection_command_selection_fn_edge, target: ci_atom(sym: fn_name))
         ]
       }
+    Phase1NatSemiringRungGateCommand => ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
   }
 }
 
