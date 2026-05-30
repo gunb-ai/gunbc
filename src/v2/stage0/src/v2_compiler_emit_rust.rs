@@ -11560,9 +11560,7 @@ pub fn record_field_needs_some_wrap(
         true
     } else {
         match rust_struct_field_type_node(scope, struct_name, field_name) {
-            Some(field_type) => {
-                field_type.return_cardinality.clone() == Cardinality::CardOptional
-            }
+            Some(field_type) => field_type.return_cardinality.clone() == Cardinality::CardOptional,
             None => false,
         }
     }
