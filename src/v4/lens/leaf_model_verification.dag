@@ -1,10 +1,14 @@
 // src/v4/lens/leaf_model_verification.dag
 // Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1–R3-external).
-// Status: R1 + R2a + R2b (debug/release live) + R3-external rustc source fixtures for rust.dag claims.
+// Status: R1 rust + R1 python + R2a + R2b (debug/release live) + R3-external rustc fixtures for rust.dag claims.
 
 module v4.lens.leaf_model_verification
 
 
+import v4.extdeps.languages.python {
+  python_facts_field_encoding,
+  python_surface_spelling_int
+}
 import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
   rust_coercion_field_i32_spelling,
@@ -14,7 +18,11 @@ import v4.extdeps.languages.rust {
 import v4.std.leaf_model_verification {
   LeafModelFixturePair,
   LeafModelFalsificationCase,
+  LeafModelPythonFixture,
+  LeafModelPythonFixturePair,
+  LeafModelPythonFalsificationCase,
   LeafModelRustFixture,
+  leaf_model_claim_python_r1_int_surface_spelling,
   leaf_model_claim_rust_r1_i32_surface_spelling,
   leaf_model_claim_rust_r2a_i32_algebra_operations,
   leaf_model_claim_rust_r2b_debug_default_overflow,
@@ -26,7 +34,8 @@ import v4.std.leaf_model_verification {
   TargetCompileRejected,
   target_diagnostic_e0308_type_mismatch,
   target_diagnostic_e0423_expected_value_found_type,
-  target_diagnostic_e0599_method_not_found
+  target_diagnostic_e0599_method_not_found,
+  target_diagnostic_python_name_error_undefined_name
 }
 import v4.std.node { Symbol }
 import v4.std.text { String }
@@ -78,6 +87,42 @@ fn rust_r1_fixture_pair() -> LeafModelFixturePair {
 // Testgen port: `rust_r1_fixture` (docs/planning/v4-leaf-model-verification-2026-05-30.md §8).
 fn rust_r1_fixture() -> LeafModelFixturePair {
   rust_r1_fixture_pair()
+}
+
+// Fact anchors: python.dag declares int surface spelling + encoding axis for int facts.
+data python_r1_claim_surface_spelling_fact: Symbol = python_surface_spelling_int
+data python_r1_claim_encoding_spelling_fact: Symbol = python_facts_field_encoding
+
+data python_r1_happy_fixture_source: String = "def r1_test() -> int:\n    return 0\n"
+
+data python_r1_falsification_fixture_source: String = "def r1_test() -> i32:\n    return 0\n"
+
+fn python_r1_happy_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r1_happy_fixture_source }
+}
+
+fn python_r1_falsification_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r1_falsification_fixture_source }
+}
+
+fn python_r1_fixture_pair() -> LeafModelPythonFixturePair {
+  LeafModelPythonFixturePair {
+    claim_id: leaf_model_claim_python_r1_int_surface_spelling,
+    surface_spelling_fact: python_r1_claim_surface_spelling_fact,
+    encoding_spelling_fact: python_r1_claim_encoding_spelling_fact,
+    happy: python_r1_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelPythonFalsificationCase {
+      fixture: python_r1_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_python_name_error_undefined_name
+      }
+    }
+  }
+}
+
+fn python_r1_fixture() -> LeafModelPythonFixturePair {
+  python_r1_fixture_pair()
 }
 
 // R2a — algebra inhabitance: ordered-ring ops on i32 (design-rust-dag-leafmodel-instantiation.md §5).
