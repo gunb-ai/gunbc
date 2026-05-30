@@ -1,0 +1,71 @@
+// src/v4/std/leaf_model_verification.dag
+// Scope: Leaf-model verification carriers — claim / falsification / fixture / report.
+// Status: Phase 1 substrate (docs/planning/v4-leaf-model-verification-2026-05-30.md §5).
+// Authority: leaf model owns FACTS (stable fact_id in extdeps); this module owns OBLIGA shape.
+// Co-authored with Modeling DFS (proud-pike-680) — consume Verdict<T> from verdict.dag (PR #3961).
+
+module v4.std.leaf_model_verification
+
+import v4.std.collection { List }
+import v4.std.integer { Int }
+import v4.std.node { Symbol }
+import v4.std.text { String }
+import v4.std.verdict { Verdict }
+
+// Layer A boundary: OBLIGA rows reference fact_id Symbols declared in the leaf model.
+type LeafModelClaim<M, Subject, Expectation> {
+  model: M
+  fact_id: Symbol
+  subject: Subject
+  expectation: Expectation
+  falsification_case: FalsificationCase<Subject, Expectation>
+}
+
+// REQUIRED paired probe — claim without falsification is not verifiable (planning doc §5).
+type FalsificationCase<Subject, Expectation> {
+  subject_variant: Subject
+  expected_failure_mode: Verdict<Subject>
+}
+
+// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
+// dissolve-on: testgen emits LeafModelFixture rows and runner exercises target toolchain;
+// forbidden: parallel fixture vocabulary outside this carrier.
+type TargetArtifact {
+  source_text: String
+}
+
+// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up.
+type TargetInvocation {
+  toolchain: Symbol
+  edition_or_profile: Symbol
+}
+
+type LeafModelFixture<C> {
+  claim: C
+  artifact: TargetArtifact
+  invocation: TargetInvocation
+  expected_verdict: Verdict<Symbol>
+  falsification_artifact: TargetArtifact
+  expected_falsification_verdict: Verdict<Symbol>
+}
+
+type LeafModelClaimVerdictRow {
+  claim_id: Symbol
+  verdict: Verdict<Symbol>
+  falsification_verdict: Verdict<Symbol>
+}
+
+type LeafModelVerificationTotals {
+  proven: Int
+  model_failed: Int
+  falsification_caught: Int
+  falsification_missed: Int
+  not_checked: Int
+}
+
+// 🟡 gated — feature:leaf-model-verification-report — dissolve-on: runner aggregates per-model receipts.
+type LeafModelVerificationReport<M> {
+  model: M
+  claims: List<LeafModelClaimVerdictRow>
+  totals: LeafModelVerificationTotals
+}
