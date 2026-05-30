@@ -91,12 +91,26 @@ jobs:
         rustflags: ''
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (affected / detect bin)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-affected-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('tools/ci_affected_components/**') }}
+        restore-keys: |
+          cargo-affected-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-affected-${{ runner.os }}-${{ runner.arch }}-
     - name: Fetch main for diff base
       if: github.event_name == 'pull_request'
       run: git fetch origin main:refs/remotes/origin/main
+    - name: Build detect-ci-affected-components
+      run: cargo build -p ci_affected_components --bin detect-ci-affected-components
     - name: Detect affected components
       id: detect
-      run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
+      run: target/debug/detect-ci-affected-components "${{ github.event_name }}" "$GITHUB_OUTPUT"
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
@@ -159,15 +173,20 @@ jobs:
       run: bash scripts/test-check-test-timeout.sh
     - name: Rust toolchain single-authority check (P2)
       run: bash scripts/check-rust-toolchain-single-authority.sh
+    # Skip rustup/registry when every cargo step in this job is gated off (docs-only PRs).
+    # Mirrors the union of `if:` on cargo steps below (+ push-to-main trunk gates).
     - name: Setup Rust
+      if: needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
         components: rustfmt
         cache: false
         rustflags: ''
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      if: needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (ci bootstrap gate)
+      if: needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       uses: actions/cache@v4
       with:
         path: |
