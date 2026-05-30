@@ -183,7 +183,7 @@ The 17 standards collapse into a 9-rung gating ladder. Each rung is a binary: ga
 | ---- | ------------------------------------------------------- | ----------------- | ----------------------------------------------- |
 | 0    | Parses in target                                        | (parse side of #1) | Yes (per slice, per target rustc)               |
 | 1    | Type-checks in target Rust                              | #1                | Per slice; corpus blocked at 7951 errors        |
-| 2    | Compiles in **all** chosen targets (multi-target)       | #1, #9            | NO (Rust only in CI)                            |
+| 2    | Compiles in every project-committed target (multi-target) | #1; **subset of #9** (see note) | NO (Rust only in CI)               |
 | 3    | Round-trip preserved (parse-emit-parse ≡ up to normalization) | (implicit T-36) | Claim exists; eval deferred behind T-38         |
 | 4    | Emit runs and output matches `.dag` interpreter eval    | #7 (L4)           | NO                                              |
 | 5    | Cross-target equivalence on small fixture               | #8 (L5)           | NO                                              |
@@ -192,10 +192,12 @@ The 17 standards collapse into a 9-rung gating ladder. Each rung is a binary: ga
 | 8    | `TestClaim` corpus actually executes                    | #13 (Facet 3)     | NO (55 claims un-run)                           |
 | 9    | Lenses gate PRs (complexity, ownership, idempotency, grounding, synthesis) | #2-#5, #15-17, #14 | NO (substrate-rich, activation-poor) |
 
+**Note on rung 2 vs standard #9 (L6).** Standard #9 (THESIS L6) is *"every structural form compiles to every target"* — universal across the target set. Rung 2 as a *gate* is necessarily phased: any single PR can only verify "every project-committed target as of this PR's HEAD" (a moving subset that grows as targets land). Rung 2 closure on a subset is **smoke coverage**, not L6 closure. Full L6 closure is achieved only when the target set has stabilized AND rung 2 is green on every PR for every target. This rung does NOT substitute for full L6 — both are needed, in sequence: rung 2 smoke on a fixture → rung 2 smoke on the corpus → L6 full coverage as targets stabilize. The doc treats this dilution explicitly here so an operator sign-off on §6 does not narrow the canonical L6 standard.
+
 Each rung addresses a specific question the operator can ask of any PR:
 - *Rung 0*: did the source parse?
 - *Rung 1*: did the emit type-check in Rust?
-- *Rung 2*: did the emit type-check in every target we care about?
+- *Rung 2*: did the emit type-check in every project-committed target (subset of L6 until target set is stable)?
 - *Rung 3*: did re-parsing the emit reproduce the source?
 - *Rung 4*: did the emit run and produce the answer the `.dag` interpreter produces?
 - *Rung 5*: did Rust and Python emits agree on the answer?
@@ -270,11 +272,22 @@ The following questions need answers before §7 Phase 1 dispatches. Proposed ans
 
 **Authority check.** `src/v4/TASKS.md:801-815` defines v4-done as: *"v4 compiles `src/v4/compiler/*.dag` end-to-end; v4 emits Rust source that compiles to a binary; That binary, run on `src/v4/compiler/*.dag`, produces bit-identical output; TestClaim suite passes; Hand-authored Rust is not the editable authority (proven by reproduction)."* And `TASKS.md:1239`: *"The release is when v4-done. Not before, not after."*
 
-**That definition IS rung 7 + rung 8** (self-emit fixpoint + TestClaim corpus actually executes). So the release gate per the operational authority is rung 7, not rung 4. An earlier draft of this section proposed rung 4 as release-minimum on the basis of THESIS framing — that contradicted TASKS.md and has been retracted.
+**TASKS.md:801-815 lists six v4-done predicates**, not just rungs 7+8:
+
+| TASKS.md predicate                                                            | Ladder mapping                                |
+| ----------------------------------------------------------------------------- | --------------------------------------------- |
+| 1. Every other scheduled task in this plan complete (whole plan minus T-15)   | **Broader than rungs** — covers all 38 T-tasks; not a ladder rung itself |
+| 2. v4 compiles `src/v4/compiler/*.dag` end-to-end                             | Rung 0 + Rung 1 (parse + Rust typecheck) on full corpus |
+| 3. v4 emits Rust source that compiles to a binary                             | Rung 1 on full corpus                         |
+| 4. Binary, run on `src/v4/compiler/*.dag`, produces bit-identical output      | Rung 7 (self-emit fixpoint)                   |
+| 5. TestClaim suite passes                                                     | Rung 8 (TestClaim corpus executes)            |
+| 6. Hand-authored Rust is not editable authority (reproduction-proven)         | Self-hosting structural commitment (Facet 1+2; meta-gate over rungs 7-8) |
+
+So the release gate per operational authority is **predicates 1-6 collectively, including all relevant rungs**. An earlier draft of this section proposed rung 4 as release-minimum citing THESIS framing — that contradicted TASKS.md and has been retracted. *Equally important:* a prior fix that named only "rung 7+8" was also incomplete because it omitted predicate 1 (whole plan minus T-15) which is broader than any single ladder rung.
 
 **Operator decides:**
-- **Option A**: confirm rung 7+8 as release gate per TASKS.md. Implication: §7 sequencing must be extended with phases 5+ that achieve rungs 7-8 before release. Currently §7 stops at Phase 4 (rungs 0-6).
-- **Option B**: amend TASKS.md:805-808 to lower the v4-done definition. This is a substantive operator change to the operational authority and requires its own documented decision, not just a checkbox here.
+- **Option A**: confirm all six predicates as release gate per TASKS.md. Implication: §7 must be extended with phases 5+ that achieve rungs 7-8 + complete predicate 1 (every other scheduled task) + verify predicate 6 (reproduction). Currently §7 stops at Phase 4 (rungs 0-6).
+- **Option B**: amend TASKS.md:801-815 to lower the v4-done definition. This is a substantive change to operational authority and requires its own documented decision, not just a checkbox here.
 
 **PM-recommendation (without lobbying)**: Option A. Lowering the v4-done bar to ship sooner would close on a definition that doesn't match the thesis's strongest correctness commitment. If sequencing pressure makes rung 7 infeasible by some deadline, the right surface is a TASKS.md amendment with named rationale — not a tacit narrowing via this doc.
 
@@ -287,6 +300,12 @@ The following questions need answers before §7 Phase 1 dispatches. Proposed ans
 
 **Proposed:** §7 as drafted. Phase 1 dispatches immediately on sign-off; Phase 2/3/4 dispatched after preceding phase closes.
 **Operator decides:** accept Phase 1 dispatch, OR sequence differently.
+
+### D7. Phase 0 — questionnaire validation dispatch (retrospective ratification)
+
+**Authority check.** Phase 0 was dispatched 2026-05-30 01:07Z at operator request before doc sign-off — see §9.4 for execution details, worker session id (`silent-raven-384`), work item (`adhoc-7020540d-622`), and the validation PR (#3941).
+
+**Operator decides (retrospective ratification):** ratify the Phase 0 dispatch + the redo guidance + acceptance criteria. Proposed acceptance: realistic disposition distribution (not uniform GAP); per-probe file:line evidence; section-level totals — see §3.1 and the redo brief. Phase 0 output is in flight on PR #3941; landed redo confirms substrate-rich/activation-poor at probe granularity.
 
 ---
 
@@ -357,11 +376,11 @@ Phase 0 was dispatched 2026-05-30 01:07Z (work item `adhoc-7020540d-622`, worker
 
 ### §9.5 Effect on §8 operator decisions
 
-The questionnaire integration retroactively introduces one decision and modifies one:
+The questionnaire integration retroactively introduces one decision (now formally placed in §8 as **D7**) and modifies one:
 
-- **D7 (retrospective ratification)**: Phase 0 was dispatched at operator request before doc sign-off. Operator decision is no longer "should Phase 0 dispatch?" but rather **"ratify the Phase 0 dispatch + the redo guidance + acceptance criteria for the resulting validation doc."** Proposed acceptance: realistic disposition distribution (not uniform GAP); per-probe file:line evidence; section-level totals — see §3.1 and the redo brief.
+- **D7**: moved to §8 (see §8.D7). Phase 0 dispatched at operator request before doc sign-off; operator decision is retrospective ratification.
 
-- **D1 (modified)**: in addition to confirming the ladder ontology, confirm that the ladder is the correct *complement* to the questionnaire — the questionnaire stays as the granular probe surface; the ladder stays as the gate-sequencing surface; both adopt the §0 disposition vocabulary.
+- **D1 (modified)**: in addition to confirming the ladder ontology + #6 standard gap acknowledgment, confirm that the ladder is the correct *complement* to the questionnaire — the questionnaire stays as the granular probe surface; the ladder stays as the gate-sequencing surface; both adopt the §0 disposition vocabulary. (Folded into §8.D1.)
 
 ---
 
@@ -431,30 +450,271 @@ So `loop_bound_edge` itself — the catalog's representative example — is a kn
 | Layer | Fix | Scope | Risk if skipped |
 | ----- | --- | ----- | --------------- |
 | 1     | Patch value-emit template | 1 file in `05_emit.dag` | calcifies layer 2 gap; blocks layer 3 dissolution |
-| 2     | Declare `RustAtomRealization` single-authority fact in `extdeps/languages/rust.dag`; both type-emit + value-emit consume it | new substrate carrier + refactor 2 emit paths | layer 3 still open, but no longer blocked |
+| 2     | Declare `TargetAtomRealization` single-authority fact in `extdeps/languages/<lang>.dag` (language-parametric, not Rust-only); both type-emit + value-emit consume it | new substrate carrier + refactor 2 emit paths | layer 3 still open, but no longer blocked |
 | 3     | Dissolve Symbol-as-edge-tag entirely per gated note (replace with structural Loop-bound coordinate) | substantial substrate migration spanning std/node, std/cardinality, lens/cost, all Loop-using sites | error-count side-effect; primary intent is modeling cleanup |
 
-**Recommendation: layer 2 first, layer 3 separately (it's already gated and owned by T-12).**
+**Recommendation: layer 2 first, layer 3 separately (it's already gated and owned by T-12 per `std/node.dag:84-85`).**
 
 Layer 2 is the right depth because:
 - It is *non-blocking* to layer 3 (the single-authority Atom realization is needed regardless of whether Loop bounds eventually stop using Symbol tags).
-- It is implementable as one bounded substrate addition (`RustAtomRealization` carrier) + two emit-stage consumers.
-- It generalizes: the same single-authority pattern applies to every kernel-ambient atom (Bool, Char, Symbol) in every target language. Solving for Symbol-in-Rust *correctly* solves the shape for the others by structure.
+- It is implementable as one bounded substrate addition + two emit-stage consumers.
+- It generalizes: the same single-authority pattern applies to every kernel-ambient atom (Bool, Char, Symbol) in every target language. **The carrier is language-parametric** (operator caution 2026-05-30: a Rust-only `RustAtomRealization` would calcify the pattern as language-specific). Sketch:
+  ```dag
+  type TargetAtomRealization {
+    source_atom: Symbol                       // e.g. Symbol, Bool, Char
+    target_model: LanguageModel               // Rust, Python, Go, ...
+    type_form: TargetTypeExpression           // emitted in type position
+    value_form: TargetValueExpression         // emitted in value position
+    constructor_form: Optional<TargetConstructorExpression>  // None for transparent aliases
+  }
+  ```
+  Rows for Rust + parallel rows for other targets.
 - It surfaces (rather than hides) layer 3 — if an Atom doesn't fit `{ type_form, value_form, constructor_form }`, that escalates as modeling work, not a worker fix.
+
+**Acceptance is NOT "E0423 decreased."** Acceptance is *"change the Symbol realization row, and both type-emit and value-emit change together. If only one changes, the single-authority problem remains."*
 
 **The dispatch shape that protects against the spot-fix trap.**
 
-- **One** work item, narrowly scoped: *"author `RustAtomRealization` fact-bundle in `extdeps/languages/rust.dag` covering kernel-ambient atoms; refactor `05_emit.dag` so both type-emit and value-emit consume the row; verify the 2978-error class collapses on the `v4-m1-rust-emit-probe`."*
+- **One** work item, narrowly scoped: *"author `TargetAtomRealization` (language-parametric) with Rust rows for Symbol/Bool/Char in `extdeps/languages/rust.dag`; refactor `05_emit.dag` so both type-emit and value-emit consume the row; verify the falsification probe (change row → both stages change together)."*
 - **Not** "fix SG-1." The dispatch frame is the modeling fact being added, not the error count being chased.
-- **Brief must FORBID** template special-casing and must require the worker to escalate (not "fix") any Atom whose Rust realization doesn't fit the `RustAtomRealization` schema. If found, that's a layer-2-modeling escalation to PM, not a worker call.
-- **Brief must FORBID** any new Symbol-tag consumers in generated Rust per the layer-3 gated note. The new emit must produce structural realizations only.
-- **Worker output**: the substrate row + the refactored emit paths + a falsification probe (grep for any remaining string-keyed Symbol projection logic in `05_emit.dag` — should be zero).
+- **Brief must FORBID** template special-casing and must require the worker to escalate (not "fix") any Atom whose realization doesn't fit the `TargetAtomRealization` schema. If found, that's a modeling escalation, not a worker call.
+- **Brief must FORBID** any new Symbol-tag consumers in generated Rust per the layer-3 gated note (`std/node.dag:84-85`). The new emit must produce structural realizations only.
+- **Worker output**: the substrate row(s) + the refactored emit paths + falsification probe receipts.
 
-**What does NOT get dispatched as a result of this analysis.**
+**What does NOT get dispatched.**
 - Worker chasing the 2978 errors directly.
-- Layer-3 dissolution (separately owned by T-12 — would be its own dispatch when T-12 is ready).
+- Layer-3 dissolution (separately owned by T-12 per the gated note).
 
-**Status of this example.** Draft for operator review. Once ratified, the same shape applies to SG-2 (generic-arity carriers — likely the same single-authority pattern, different fact-bundle) and SG-5/SG-6 (Set/BoundedLattice — likely modeling-level missing constraints rather than emit bugs).
+### §10.1.1 SG-1 worksheet form
+
+```text
+SG class: SG-1
+Representative emitted failure:
+  pub fn loop_bound_edge() -> String {
+      Symbol("loop_bound_edge".to_string())
+  }
+  // Symbol used as constructor on a type alias `type Symbol = String;`
+Immediate local patch:
+  Patch 05_emit value-emit template so Symbol("x") becomes "x".to_string().
+Why that patch is forbidden:
+  Leaves type-emit and value-emit independently deriving Symbol's Rust
+  realization. The single-authority problem (INVARIANTS P2) remains. Also
+  calcifies the Symbol-as-edge-tag pattern that std/node.dag:84-85 says is
+  supposed to dissolve (would create new forbidden consumers).
+DFS path:
+  std/ authority:
+    - type Symbol declared bare at std/node.dag:10 (kernel-ambient).
+    - Symbol values declared via `data X: Symbol = X` pattern, pervasive.
+  extdeps/language authority:
+    - extdeps/languages/rust.dag imports Symbol, uses as field type.
+    - NO declaration of Symbol's Rust target realization (verified via grep:
+      no "realization|projection.*rust|symbol.*rust|atom_to_rust" hits).
+  compiler stage consuming it:
+    - 05_emit type-emit chose `type Symbol = String;`.
+    - 05_emit value-emit chose `Symbol("...".to_string())`.
+    - Stages derived independently; they disagree.
+  existing scaffold/dissolution notes:
+    - std/node.dag:84-85 — Symbol-as-edge-tag dissolution gated under T-12
+      (loop_bound_edge specifically named "forbidden" for new consumers).
+Deepest unsound boundary:
+  Missing TargetAtomRealization fact-bundle in extdeps/languages/<lang>.dag.
+  Both emit stages derive independently because no single authority exists.
+Systemic fix:
+  TargetAtomRealization { source_atom, target_model, type_form, value_form,
+  constructor_form }. Rust rows for Symbol + Bool + Char. Both type-emit and
+  value-emit consume the row.
+Non-goals:
+  - Patching value-emit template (layer 1 spot fix).
+  - Rust-only carrier name (would calcify pattern as language-specific).
+  - Dissolving Symbol-tag pattern from std/node.dag (separately owned by T-12).
+Falsification probe:
+  Change the Symbol realization row (e.g., flip Rust to a newtype struct).
+  Verify BOTH type-emit and value-emit output change together. If only one
+  changes, single-authority is violated.
+  Secondary: grep for any string-keyed Symbol projection logic in 05_emit.dag
+  — should be zero after refactor.
+Metric allowed only as secondary:
+  2978 E0423 errors are evidence of the modeling gap. They collapse as
+  side-effect of the systemic fix. They are NOT the acceptance criterion.
+```
+
+### §10.2 SG-2 — Generic carrier arity (1219 + 747 errors)
+
+**Symptom (catalog).** Emitted Rust drops generic parameters:
+```rust
+pub type FileReadResult = Rc<Outcome>;
+```
+`Outcome` is emitted as a bare name; its type arguments are dropped. 1219 E0107 + 747 E0282 — second-largest cluster.
+
+**Operator hypothesis (ratified by DFS below):** *"The target type-expression projection is losing Instantiation / generic application structure, so emitted Rust sees raw carrier names like Outcome, Witness, or TestClaimRun without their type arguments."*
+
+**Worksheet form:**
+
+```text
+SG class: SG-2
+Representative emitted failure:
+  pub type FileReadResult = Rc<Outcome>;
+  // Should be Rc<Outcome<...>> with proper type arguments.
+Immediate local patch:
+  Maintain a name-keyed list in the emitter:
+    if type_name in {"Outcome", "Witness", "Refined", "TestClaimRun"}:
+      require one (or N) type args
+Why that patch is forbidden:
+  - Doesn't scale to new generic carriers (every new one requires an emitter edit).
+  - Creates parallel authority: the name-keyed list duplicates the fact already
+    declared in std/diagnostic.dag, std/witness.dag, std/refinement.dag.
+  - Calcifies the very anti-pattern (name-keyed table) INVARIANTS P3 forbids.
+DFS path:
+  std/ authority:
+    - Outcome<T> declared at std/diagnostic.dag:49
+    - Witness<C> declared at std/witness.dag:13
+    - Refined<B> declared at std/refinement.dag:40
+    - Instantiation declared as Connective at std/node.dag:19
+    - Instantiation lowering uses PositionalEdges per std/node.dag:113
+      (type arguments ARE present in the substrate as edges; they're not lost).
+  extdeps/language authority:
+    - extdeps/languages/rust.dag: grep for TargetTypeExpression / Instantiation /
+      generic projection / type_arg / type_application returns NO hits.
+    - No single-authority fact declares how Instantiation projects to Rust
+      generic-application syntax.
+  compiler stage consuming it:
+    - grep for "Instantiation" in src/v4/compiler/ returns NO hits.
+    - The stage that should consume Instantiation (likely 05_emit's
+      type-expression projection) does not explicitly process Instantiation today.
+  existing scaffold/dissolution notes:
+    - none surfaced; this is a foundational missing-substrate gap.
+Deepest unsound boundary:
+  The Instantiation connective is declared in std/node.dag but has NO per-target
+  realization fact. Each emit path encountering Instantiation must derive the
+  target-language generic-application syntax independently. Rust gets no
+  generic args because no consumer reads the Instantiation edges that carry
+  the type arguments.
+Systemic fix:
+  TargetTypeExpressionProjection fact-bundle in extdeps/languages/<lang>.dag
+  declaring per-connective projection to target type-expression syntax:
+
+    type TargetTypeExpressionProjection {
+      target_model: LanguageModel
+      atom_form: TargetAtomTypeShape
+      conj_form: TargetRecordTypeShape
+      disj_form: TargetSumTypeShape
+      arrow_form: TargetFunctionTypeShape
+      cardinality_form: TargetGenericApply       // List<T>, Vec<T>, ...
+      instantiation_form: TargetGenericApply     // F<A,B> in Rust; F[A,B] in Python
+    }
+
+  Refactor 05_emit's type-emission path to consume this projection per-connective.
+  For Instantiation: emit reads Instantiation.children edges (PositionalEdges per
+  std/node.dag:113) and applies instantiation_form.
+Non-goals:
+  - Name-keyed special cases for Outcome / Witness / Refined / TestClaimRun.
+  - Hardcoding "emit one generic arg" for known carriers.
+  - Patching individual emitted Rust files.
+Falsification probe:
+  Introduce a NEW generic carrier in std/ (e.g. `type FooBar<T, U> { ... }`).
+  Use it in a position. Emit. Verify the emitted Rust has `Rc<FooBar<X, Y>>`
+  with correct arity — WITHOUT adding any emitter branch for FooBar.
+Metric allowed only as secondary:
+  1219 E0107 + 747 E0282 are evidence the projection is missing. They are
+  NOT the acceptance criterion.
+```
+
+**Dispatch shape:** one work item — *"author `TargetTypeExpressionProjection` row for Rust in `extdeps/languages/rust.dag`; refactor `05_emit.dag` type-emission to consume it per-connective (including Instantiation); verify the falsification probe."*
+
+### §10.3 SG-5 / SG-6 — Set / BoundedLattice target-realization constraints
+
+**Symptom (catalog).** Rust emit produces `compile_error!` stubs:
+- Set keys lacking `Ord` (SG-5)
+- BoundedLattice instances lacking `meet`/`join` implementations (SG-6)
+
+Combined because they share the modeling shape — target representation requires constraints the model never declared.
+
+**Operator hypothesis (ratified by DFS below):** *"The model has not declared the target realization constraints required by the chosen Rust representation."*
+
+**Worksheet form:**
+
+```text
+SG class: SG-5 + SG-6
+Representative emitted failure:
+  // SG-5: Rust BTreeSet<T> requires T: Ord, but model declared no such
+  //       constraint on Set<T>. Emit produces compile_error! at Set sites.
+  pub type LookupKeys = Rc<Set<NodeId>>;
+
+  // SG-6: BoundedLattice instances emit `meet`/`join` as compile_error! stubs
+  //       because the .dag instance doesn't populate them.
+Immediate local patch:
+  - SG-5: patch emit to add `T: Ord` trait bound everywhere Set<T> is used.
+  - SG-6: patch emit to emit dummy meet/join function bodies.
+Why that patch is forbidden:
+  - Fabricates a guarantee the model never proved (INVARIANTS P3:
+    "no fabricated plausible output").
+  - SG-5: calcifies Set<T> as BTreeSet<T> without modeling alternatives
+    (HashSet for hash-keyed, Vec for ordered sequence). Realization choice
+    belongs in the model.
+  - SG-6: hides incomplete BoundedLattice instances under stub bodies;
+    contradicts P3 "either succeeds fully or fails with a typed diagnostic."
+DFS path:
+  std/ authority:
+    - Set<T> = PointwisePower<T> at std/collection.dag:52
+    - FiniteSet<T> at std/collection.dag:107 (separate concept)
+    - Set<T> declares NO Ord-eligibility constraint on T
+    - BoundedLattice<T> at std/algebra.dag:66 with meet: fn(T,T)->T + join: fn(T,T)->T
+    - BoundedLattice instances may not populate these fields; no required-witness check
+  extdeps/language authority:
+    - extdeps/languages/rust.dag has NO Set Rust realization (verified — only
+      unrelated lex_rule_set match); no representation choice declared.
+    - No constraint-propagation fact for collection target realization.
+  compiler stage consuming it:
+    - 05_emit derives "use BTreeSet, add T: Ord" without substrate authority.
+  existing scaffold/dissolution notes:
+    - none directly; missing-substrate situation, not tracked debt.
+Deepest unsound boundary:
+  (a) Collection-target realization choice — Set<T> → ? in Rust — should be
+      declared per-language with named alternatives plus per-alternative
+      T-constraints. Consumer picks the representation that satisfies the
+      available T-constraints OR fails closed.
+  (b) BoundedLattice instance completeness — the .dag should require meet/join
+      witnesses at instance declaration. The witness is part of the
+      inhabitance proof.
+Systemic fix:
+  (a) TargetCollectionRealization fact-bundle:
+
+      type TargetCollectionRealization {
+        source_carrier: Symbol                  // Set, Map, List, ...
+        target_model: LanguageModel
+        primary_form: TargetRepresentation      // BTreeSet, HashSet, Vec, ...
+        constraints: List<RequiredTraitWitness>   // [{trait: Ord, on: T}, ...]
+        alternative_forms: List<TargetRepresentation>  // fallback when constraints fail
+        fallback_diagnostic: Diagnostic         // typed failure if no representation fits
+      }
+
+  (b) BoundedLattice-instance completeness gate in 04_infer: every instance
+      either populates the witness fields OR is tagged as partial-instance
+      with typed diagnostic at consumer sites. No silent compile_error! stubs.
+Non-goals:
+  - Adding T: Ord everywhere as a Rust-side patch.
+  - Picking BTreeSet as the de-facto realization without modeling.
+  - Emitting dummy meet/join bodies.
+Falsification probe:
+  (a) Introduce a Set<NonOrdable> in test/. Verify EITHER compile-time rejection
+      OR alternative-representation selection OR a typed fail-closed diagnostic.
+      NOT a silently-added Ord bound.
+  (b) Introduce a BoundedLattice instance with missing `meet`, attempt to use
+      it, verify EITHER compile-time rejection OR a typed partial-instance
+      diagnostic. NOT a stubbed meet body.
+Metric allowed only as secondary:
+  SG-5 + SG-6 error counts are evidence; acceptance is falsification probe behavior.
+```
+
+**Dispatch shape:** two work items (one per modeling fact):
+- *"author `TargetCollectionRealization` row(s) for Rust in `extdeps/languages/rust.dag`; refactor `05_emit.dag` collection-realization to consume it; verify Set<NonOrdable> falsification probe."*
+- *"add BoundedLattice-instance completeness gate in `04_infer`; partial instances surface typed diagnostics rather than emit stubs; verify missing-meet falsification probe."*
+
+### §10.4 What this DFS discipline buys
+
+For each of SG-1, SG-2, SG-5/SG-6: dispatch is a **modeling fact to add** (or a typed gate to author), not an error count to reduce. Error count drops as side-effect; if it doesn't, the systemic fix was incomplete and the falsification probe surfaces that explicitly.
+
+Total new work items if all three are dispatched: **4** (SG-1: 1; SG-2: 1; SG-5/SG-6: 2). Compare to "fix all 7951 errors" framing: the dispatch is bounded, the modeling deliverables are reviewable, and the spot-fix trap is structurally prevented by the brief-required worksheets.
 
 ---
 
