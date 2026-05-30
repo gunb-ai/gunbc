@@ -1865,20 +1865,27 @@ fn ci_changed_path_triggers_ci_component(changed: RepoPath) -> Bool {
 }
 
 
+// Per-path: release lane, or no CI component bucket (avoid `!` in list predicates — tokenizer).
+fn ci_changed_path_in_release_only_lane(changed: RepoPath) -> Bool {
+  match ci_changed_path_affects_release_distribution(changed: changed) {
+    true => true
+    false =>
+      match ci_changed_path_triggers_ci_component(changed: changed) {
+        true => false
+        false => true
+      }
+  }
+}
+
+
 // RELEASE §5 — skip orthogonal fixture gates only when the diff is exclusively
 // release-distribution paths (mixed release + phase1 fixture paths must not skip).
 fn ci_release_distribution_only_from_git_diff(git_diff: GitDiffNameOnly) -> Bool {
-  let saw_release = any(
-    xs: git_diff.changed_paths,
-    predicate: ci_changed_path_affects_release_distribution
-  )
-  let only_release_lane = all(
-    xs: git_diff.changed_paths,
-    predicate: path =>
-      !ci_changed_path_triggers_ci_component(changed: path)
-        || ci_changed_path_affects_release_distribution(changed: path)
-  )
-  saw_release && only_release_lane
+  any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_release_distribution)
+    && all(
+      xs: git_diff.changed_paths,
+      predicate: ci_changed_path_in_release_only_lane
+    )
 }
 
 
