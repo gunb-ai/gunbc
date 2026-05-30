@@ -3,7 +3,7 @@
 > **Status:** PLANNING — first artifact for Self-host/Release Manager (`nimble-crane-490`).  
 > **Authority:** `src/v4/TASKS.md:805-817` (v4-done definition + six bullets); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map). Line anchors are to current `main` (post-#3938).  
 > **Session:** `nimble-crane-490` · **Parent:** `nimble-dove-733` (PM May 29)  
-> **Tree HEAD spot-check:** `55ad5f3d3` (2026-05-30, post-#3938 `b129ce3f2` on main) — rebased `session/nimble-crane-490-predicate-tracker`.
+> **Tree HEAD spot-check:** refresh from live `main` after material lane landings (initial pass 2026-05-30, post-#3938 / #3948).
 
 ## Non-negotiables
 
@@ -243,9 +243,9 @@ Claims checked against tree at `e332fc27b`:
 
 ## Next actions (this manager — post-§8)
 
-1. **#3948** — rebased onto main post-#3938; awaiting operator merge (2 dashboard APPROVE, CI green).
-2. **TASKS.md:819** Close-status numbering fix — forwarded to operator via PM; land separately when assigned (Close/Receipt or operator pick).
-3. **Post-merge:** refresh predicate rows from live `main`; coordinate Runtime/TestClaim spawn for predicate 5; standing `t_15_self_host_fixed_point` on T-15-affecting merges.
+1. **Tracker landed** — [#3948](https://github.com/gunb-ai/gunbc/pull/3948) merged on `main` (`1f3729033`); refresh predicate rows when upstream lanes land material changes.
+2. **TASKS.md:819** Close-status numbering fix — forwarded to operator via PM; **Close/Receipt** (#3949 lane) authoring P1–P6 ↔ `:806-817` mapping.
+3. **Ongoing:** coordinate Runtime/TestClaim spawn for predicate 5; standing `t_15_self_host_fixed_point` on T-15-affecting merges.
 
 ## What this doc is NOT
 
