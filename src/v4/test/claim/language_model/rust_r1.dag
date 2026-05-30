@@ -86,10 +86,10 @@ fn rust_r1_pending_verification_diagnostic() -> Diagnostic {
 // Receipt row default fail-closed until host runner overwrites (T-22 bridge follow-on).
 data rust_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
   claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
-  happy_verdict: verdict_fail<LeafModelClaimId, TargetCompileVerdict>(
+  happy_verdict: verdict_fail(
     actual: outcome_rejected(d: rust_r1_pending_verification_diagnostic())
   ),
-  falsification_verdict: verdict_fail<LeafModelClaimId, TargetCompileVerdict>(
+  falsification_verdict: verdict_fail(
     actual: outcome_rejected(d: rust_r1_pending_verification_diagnostic())
   )
 }
