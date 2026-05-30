@@ -111,8 +111,7 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_generic_apply_emitted,
   target_type_expr_record_emitted,
-  target_type_expr_positional_child_at,
-  target_type_expr_positional_children
+  target_type_expr_arrow_emitted
 }
 import v4.std.node {
   Arrow,
@@ -450,6 +449,7 @@ data rust_surface_primary_expr: Symbol = rust_surface_primary_expr
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
 data rust_surface_type_atom: Symbol = rust_surface_type_atom
 data rust_surface_type_generic_apply: Symbol = rust_surface_type_generic_apply
+data rust_surface_type_cardinality: Symbol = rust_surface_type_cardinality
 data rust_surface_type_record: Symbol = rust_surface_type_record
 data rust_surface_type_sum: Symbol = rust_surface_type_sum
 data rust_surface_type_arrow: Symbol = rust_surface_type_arrow
@@ -2856,7 +2856,7 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       arrow: rust_token_arrow
     },
     cardinality_form: TargetGenericApply {
-      surface: rust_surface_type_generic_apply,
+      surface: rust_surface_type_cardinality,
       open: rust_token_lt,
       separator: rust_token_comma,
       close: rust_token_gt
