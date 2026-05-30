@@ -37,19 +37,52 @@ Enterprise runner groups, `enterprise:` workflow keys all clear). Plan downgrade
 itself (billing action) and post-migration CI smoke remain outstanding — these
 are operator-driven, not code changes.
 
-### §2 — Public/private repo split
+### §2 — Public/private repo model
 
-- `public` git remote configured → `git@github.com:gunb-ai/daglang.git`
-  (Option A taken: internal slug retained, public uses `daglang`).
-- [`scripts/publish-snapshot.sh`](../scripts/publish-snapshot.sh) implemented,
-  with strip-list, dry-run default, and `PUBLISH_CONFIRM=yes` guard for the
-  destructive force-push.
-- `_internal/` exists and carries `INVARIANTS_OPS.md`, `ROADMAP_OPS.md`,
-  `DOWNSTREAM_REQUIREMENTS.md` — the "move ops content out of root" item
-  is partially done; the publish script still strips by explicit path list
-  rather than relying on `_internal/` alone.
-- **Remaining:** `v0.1.0` tag (Phase 1a + 1b prerequisites below); first
-  real `--publish` run.
+**Decided model (post-launch steady state).** `gunb-ai/daglang` is the
+source of truth. `gunb-ai/gunbc` remains private and serves as a development
+scratchpad whose sole purpose is to keep internal session traffic (agent
+briefs, debt ledgers, postmortems, dashboard ops) off the public repo.
+
+**Sync direction inverts at the v0.1.0 tag.**
+
+- *v0.1.0 path (now → tag):* substantive work continues to merge into the
+  private `main` (`gunb-ai/gunbc`). One more dry-run of
+  [`scripts/publish-snapshot.sh`](../scripts/publish-snapshot.sh) seeds the
+  launch snapshot. At tag time, `gunb-ai/daglang` flips PRIVATE → PUBLIC.
+  The force-push internal → public is a one-shot launch seed; external
+  contributors cannot meaningfully open PRs against `daglang` before
+  v0.1.0 lands because that force-push wipes any history they would have
+  branched from.
+- *v0.2.0+ path:* substantive code PRs target `gunb-ai/daglang` directly.
+  Private `gunb-ai/gunbc` pulls from public `main` to stay in sync. The
+  §2 strip-list paths (`docs/briefs`, `docs/history`, `docs/debt`,
+  `docs/review-findings`, `docs/admin`, `docs/db-history`, `docs/postmortems`,
+  `docs/audit`, `docs/r3`, `docs/proposals`, `docs/perf`, `docs/decisions`,
+  `src/v3`, `src/v4/{TASKS,BRIEF_TEMPLATE,CULTURE}.md`, `wip`,
+  `scripts/session-dashboard`, `tools/gen_gunbc_ci_workflow_dag`, `.cursor`)
+  stay private only.
+
+**Landed mechanics.** `public` git remote configured →
+`git@github.com:gunb-ai/daglang.git`. Publish script implemented with
+strip-list, dry-run default, and `PUBLISH_CONFIRM=yes` guard for the
+destructive force-push. `_internal/` exists and carries
+`INVARIANTS_OPS.md`, `ROADMAP_OPS.md`, `DOWNSTREAM_REQUIREMENTS.md`; the
+publish script still strips by explicit path list rather than relying on
+`_internal/` alone.
+
+**Open implementation questions for v0.2.0+ (do not block v0.1.0):**
+
+1. Tooling for the inverted flow — how private `gunb-ai/gunbc` opens PRs
+   *against* public `gunb-ai/daglang` and merges results back into the
+   private scratchpad without losing the private-only directories.
+2. Trigger policy — what causes a private-side change to be promoted to a
+   public PR (per-commit, batched, manual operator gesture).
+3. External community surface — where bugs and discussions are filed
+   (likely Issues + Discussions on `gunb-ai/daglang`, but not yet wired).
+
+**Remaining for tag:** `v0.1.0` tag itself; the seed `--publish` run; the
+private→public visibility flip on `gunb-ai/daglang`.
 
 ### §3 — Root doc cleanup
 
@@ -106,13 +139,17 @@ is at issue.
 3. Reviewer sign-off that §4 (comment stripping) and the §6 PR-template /
    workflow-trim items are acceptable as v0.1.1 follow-ups, OR a focused PR
    addresses them first.
-4. First `scripts/publish-snapshot.sh` (dry-run) inspected by reviewer; no
+4. Final `scripts/publish-snapshot.sh` dry-run inspected by reviewer; no
    leakage of stripped paths, internal session IDs, or operator-ratified
    provenance into the export commit.
+5. Operator ready to flip `gunb-ai/daglang` PRIVATE → PUBLIC immediately
+   after the seed push (per §2 decided model).
 
-When 1–4 are green, tag `v0.1.0` on `main`, run `PUBLISH_CONFIRM=yes
-scripts/publish-snapshot.sh --publish`, and verify the public repo HEAD
-matches the export.
+When 1–5 are green, tag `v0.1.0` on internal `main`, run
+`PUBLISH_CONFIRM=yes scripts/publish-snapshot.sh --publish` as the one-shot
+launch seed, flip `gunb-ai/daglang` to public, and verify the public repo
+HEAD matches the export. Sync direction inverts from that point onward
+(see §2).
 
 ## Deferred to post-v0.1.0
 
