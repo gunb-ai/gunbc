@@ -103,8 +103,7 @@ data claim_loop_linear_bound_equals_refl: TestClaim = EqualsClaim {
 }
 
 
-data witness_loop_linear_bound_content_hash_stable: Bool =
-  content_hash(n: loop_linear_bound_subject) == content_hash(n: loop_linear_bound_subject)
+data witness_loop_linear_bound_content_hash_stable: Bool = content_hash(n: loop_linear_bound_subject) == content_hash(n: loop_linear_bound_subject)
 
 
 data claim_loop_linear_bound_content_hash_stable: TestClaim = CompilesClaim {

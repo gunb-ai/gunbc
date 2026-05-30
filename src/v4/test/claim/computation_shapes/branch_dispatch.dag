@@ -103,8 +103,7 @@ data claim_branch_dispatch_equals_refl: TestClaim = EqualsClaim {
 }
 
 
-data witness_branch_dispatch_content_hash_stable: Bool =
-  content_hash(n: branch_dispatch_subject) == content_hash(n: branch_dispatch_subject)
+data witness_branch_dispatch_content_hash_stable: Bool = content_hash(n: branch_dispatch_subject) == content_hash(n: branch_dispatch_subject)
 
 
 data claim_branch_dispatch_content_hash_stable: TestClaim = CompilesClaim {
