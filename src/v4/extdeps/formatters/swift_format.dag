@@ -5,13 +5,23 @@
 
 module v4.extdeps.formatters.swift_format
 
+import v4.std.collection { List }
+import v4.std.diagnostic { Outcome }
 import v4.std.patch { ConfigPatchRecord, config_patch_layer }
+import v4.std.refinement {
+  ExactOneInt,
+  NonNegativeInt,
+  PositiveInt,
+  exact_one_int_authoritative_literal,
+  non_negative_int_authoritative_literal,
+  positive_int_authoritative_literal,
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SwiftFormatIndentation
-  = SwiftFormatSpaces { count: Int } // 🟡 gated: formatter-int-refinement — must be ≥1
-  | SwiftFormatTabs { count: Int }   // 🟡 gated: formatter-int-refinement — must be ≥1
+  = SwiftFormatSpaces { count: Outcome<PositiveInt> }
+  | SwiftFormatTabs { count: Outcome<PositiveInt> }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -50,15 +60,14 @@ type SwiftFormatOrderedImports {
 }
 
 
-// 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 // 🟡 gated — feature: swift-format-rules-carrier — bind v4-lang:map-primitive — dissolve-on-arrival: add rules: Map<String, Bool> field to SwiftFormatConfig once Map is available as a language-level primitive without requiring a std import; forbidden: List<SwiftFormatRuleOverride> workarounds that lose the Bool-keyed semantics of the rules dictionary.
 type SwiftFormatConfig {
-  version: Int // 🟡 gated: formatter-int-refinement — must be exactly 1
-  line_length: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  version: Outcome<ExactOneInt>
+  line_length: Outcome<PositiveInt>
   indentation: SwiftFormatIndentation,
-  tab_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1
-  maximum_blank_lines: Int // 🟡 gated: formatter-int-refinement — must be ≥0
-  spaces_before_end_of_line_comments: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  tab_width: Outcome<PositiveInt>
+  maximum_blank_lines: Outcome<NonNegativeInt>
+  spaces_before_end_of_line_comments: Outcome<NonNegativeInt>
   respects_existing_line_breaks: Bool,
   line_break_before_control_flow_keywords: Bool,
   line_break_before_each_argument: Bool,
@@ -80,12 +89,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: 1,
-  line_length: 100,
-  indentation: SwiftFormatSpaces { count: 2 },
-  tab_width: 8,
-  maximum_blank_lines: 1,
-  spaces_before_end_of_line_comments: 2,
+  version: exact_one_int_authoritative_literal(value: 1),
+  line_length: positive_int_authoritative_literal(value: 100),
+  indentation: SwiftFormatSpaces { count: positive_int_authoritative_literal(value: 2) },
+  tab_width: positive_int_authoritative_literal(value: 8),
+  maximum_blank_lines: non_negative_int_authoritative_literal(value: 1),
+  spaces_before_end_of_line_comments: non_negative_int_authoritative_literal(value: 2),
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,

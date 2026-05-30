@@ -1,0 +1,841 @@
+// src/v4/test/claim/manual/refinement_formatter_literals_accept.dag
+// Scope: formatter upstream default literals — inline catalog discharge matches Accepted make_*.
+// Status: T-25-core authoritative literal discharge witnesses.
+
+
+module v4.test.claim.manual.refinement_formatter_literals_accept
+
+
+import v4.std.refinement {
+  PositiveInt,
+  NonNegativeInt,
+  AtLeastMinusOneInt,
+  AtLeastMinusTwoInt,
+  ExactOneInt,
+  make_at_least_minus_one_int_at_authoritative,
+  make_at_least_minus_two_int_at_authoritative,
+  make_exact_one_int_at_authoritative,
+  make_non_negative_int_at_authoritative,
+  make_positive_int_at_authoritative,
+  at_least_minus_one_int_authoritative_literal,
+  at_least_minus_two_int_authoritative_literal,
+  exact_one_int_authoritative_literal,
+  non_negative_int_authoritative_literal,
+  positive_int_authoritative_literal,
+  refined_base,
+}
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.node { Node }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor,
+}
+import v4.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj,
+}
+
+fn positive_int_authoritative_literal_matches_accepted(
+  literal: Outcome<PositiveInt>,
+  accepted: PositiveInt,
+) -> Bool {
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn non_negative_int_authoritative_literal_matches_accepted(
+  literal: Outcome<NonNegativeInt>,
+  accepted: NonNegativeInt,
+) -> Bool {
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn at_least_minus_one_int_authoritative_literal_matches_accepted(
+  literal: Outcome<AtLeastMinusOneInt>,
+  accepted: AtLeastMinusOneInt,
+) -> Bool {
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn at_least_minus_two_int_authoritative_literal_matches_accepted(
+  literal: Outcome<AtLeastMinusTwoInt>,
+  accepted: AtLeastMinusTwoInt,
+) -> Bool {
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn exact_one_int_authoritative_literal_matches_accepted(
+  literal: Outcome<ExactOneInt>,
+  accepted: ExactOneInt,
+) -> Bool {
+  match literal {
+    Accepted { value: literal_value, diagnostics: _ } =>
+      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_positive_int_authoritative_literal_2_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 2) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 2),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_2_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_2_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 2) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_2_discharge_input(ok: witness_positive_int_authoritative_literal_2_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_positive_int_authoritative_literal_4_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 4) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 4),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_4_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_4_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 4) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_4_discharge_input(ok: witness_positive_int_authoritative_literal_4_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_positive_int_authoritative_literal_8_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 8) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 8),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_8_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_8_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 8) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_8_discharge_input(ok: witness_positive_int_authoritative_literal_8_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_positive_int_authoritative_literal_10_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 10) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 10),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_10_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_10_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 10) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_10_discharge_input(ok: witness_positive_int_authoritative_literal_10_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_positive_int_authoritative_literal_60_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 60) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 60),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_60_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_60_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 60) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_60_discharge_input(ok: witness_positive_int_authoritative_literal_60_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_positive_int_authoritative_literal_70_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 70) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 70),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_70_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_70_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 70) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_70_discharge_input(ok: witness_positive_int_authoritative_literal_70_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_positive_int_authoritative_literal_80_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 80) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 80),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_80_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_80_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 80) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_80_discharge_input(ok: witness_positive_int_authoritative_literal_80_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_positive_int_authoritative_literal_88_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 88) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 88),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_88_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_88_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 88) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_88_discharge_input(ok: witness_positive_int_authoritative_literal_88_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_positive_int_authoritative_literal_100_discharge() -> Bool {
+  match make_positive_int_at_authoritative(value: 100) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      positive_int_authoritative_literal_matches_accepted(
+        literal: positive_int_authoritative_literal(value: 100),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_positive_int_authoritative_literal_100_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_positive_int_authoritative_literal_100_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 100) catalog discharge matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_positive_int_authoritative_literal_100_discharge_input(ok: witness_positive_int_authoritative_literal_100_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_0_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 0) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 0),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_0_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_0_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 0) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_0_discharge_input(ok: witness_non_negative_int_authoritative_literal_0_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_1_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 1) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 1),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_1_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_1_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 1) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_1_discharge_input(ok: witness_non_negative_int_authoritative_literal_1_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_2_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 2) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 2),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_2_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_2_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 2) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_2_discharge_input(ok: witness_non_negative_int_authoritative_literal_2_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_4_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 4) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 4),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_4_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_4_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 4) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_4_discharge_input(ok: witness_non_negative_int_authoritative_literal_4_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_8_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 8) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 8),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_8_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_8_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 8) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_8_discharge_input(ok: witness_non_negative_int_authoritative_literal_8_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_10_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 10) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 10),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_10_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_10_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 10) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_10_discharge_input(ok: witness_non_negative_int_authoritative_literal_10_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_18_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 18) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 18),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_18_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_18_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 18) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_18_discharge_input(ok: witness_non_negative_int_authoritative_literal_18_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_19_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 19) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 19),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_19_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_19_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 19) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_19_discharge_input(ok: witness_non_negative_int_authoritative_literal_19_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_35_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 35) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 35),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_35_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_35_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 35) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_35_discharge_input(ok: witness_non_negative_int_authoritative_literal_35_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_50_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 50) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 50),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_50_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_50_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 50) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_50_discharge_input(ok: witness_non_negative_int_authoritative_literal_50_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_60_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 60) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 60),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_60_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_60_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 60) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_60_discharge_input(ok: witness_non_negative_int_authoritative_literal_60_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_80_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 80) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 80),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_80_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_80_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 80) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_80_discharge_input(ok: witness_non_negative_int_authoritative_literal_80_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_120_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 120) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 120),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_120_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_120_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 120) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_120_discharge_input(ok: witness_non_negative_int_authoritative_literal_120_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_150_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 150) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 150),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_150_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_150_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 150) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_150_discharge_input(ok: witness_non_negative_int_authoritative_literal_150_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_300_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 300) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 300),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_300_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_300_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 300) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_300_discharge_input(ok: witness_non_negative_int_authoritative_literal_300_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_500_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 500) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 500),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_500_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_500_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 500) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_500_discharge_input(ok: witness_non_negative_int_authoritative_literal_500_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_1000_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 1000) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 1000),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_1000_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_1000_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 1000) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_1000_discharge_input(ok: witness_non_negative_int_authoritative_literal_1000_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_non_negative_int_authoritative_literal_1000000_discharge() -> Bool {
+  match make_non_negative_int_at_authoritative(value: 1000000) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      non_negative_int_authoritative_literal_matches_accepted(
+        literal: non_negative_int_authoritative_literal(value: 1000000),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_non_negative_int_authoritative_literal_1000000_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_non_negative_int_authoritative_literal_1000000_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: non_negative_int_authoritative_literal(value: 1000000) catalog discharge matches make_non_negative_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_non_negative_int_authoritative_literal_1000000_discharge_input(ok: witness_non_negative_int_authoritative_literal_1000000_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_at_least_minus_one_int_authoritative_literal_0_discharge() -> Bool {
+  match make_at_least_minus_one_int_at_authoritative(value: 0) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      at_least_minus_one_int_authoritative_literal_matches_accepted(
+        literal: at_least_minus_one_int_authoritative_literal(value: 0),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_at_least_minus_one_int_authoritative_literal_0_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_at_least_minus_one_int_authoritative_literal_0_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: at_least_minus_one_int_authoritative_literal(value: 0) catalog discharge matches make_at_least_minus_one_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_at_least_minus_one_int_authoritative_literal_0_discharge_input(ok: witness_at_least_minus_one_int_authoritative_literal_0_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_at_least_minus_one_int_authoritative_literal_minus_1_discharge() -> Bool {
+  match make_at_least_minus_one_int_at_authoritative(value: -1) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      at_least_minus_one_int_authoritative_literal_matches_accepted(
+        literal: at_least_minus_one_int_authoritative_literal(value: -1),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_at_least_minus_one_int_authoritative_literal_minus_1_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_at_least_minus_one_int_authoritative_literal_minus_1_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: at_least_minus_one_int_authoritative_literal(value: -1) catalog discharge matches make_at_least_minus_one_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_at_least_minus_one_int_authoritative_literal_minus_1_discharge_input(ok: witness_at_least_minus_one_int_authoritative_literal_minus_1_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_at_least_minus_two_int_authoritative_literal_minus_2_discharge() -> Bool {
+  match make_at_least_minus_two_int_at_authoritative(value: -2) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      at_least_minus_two_int_authoritative_literal_matches_accepted(
+        literal: at_least_minus_two_int_authoritative_literal(value: -2),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_at_least_minus_two_int_authoritative_literal_minus_2_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_at_least_minus_two_int_authoritative_literal_minus_2_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: at_least_minus_two_int_authoritative_literal(value: -2) catalog discharge matches make_at_least_minus_two_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_at_least_minus_two_int_authoritative_literal_minus_2_discharge_input(ok: witness_at_least_minus_two_int_authoritative_literal_minus_2_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
+fn witness_exact_one_int_authoritative_literal_1_discharge() -> Bool {
+  match make_exact_one_int_at_authoritative(value: 1) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      exact_one_int_authoritative_literal_matches_accepted(
+        literal: exact_one_int_authoritative_literal(value: 1),
+        accepted: accepted
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn claim_exact_one_int_authoritative_literal_1_discharge_input(ok: Bool) -> Node {
+  if ok { stub_empty_conj } else { stub_empty_disj }
+}
+
+data claim_exact_one_int_authoritative_literal_1_discharge: TestClaim = EqualsClaim {
+  label: "manual/refinement: exact_one_int_authoritative_literal(value: 1) catalog discharge matches make_exact_one_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: claim_exact_one_int_authoritative_literal_1_discharge_input(ok: witness_exact_one_int_authoritative_literal_1_discharge()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit },
+}
+
