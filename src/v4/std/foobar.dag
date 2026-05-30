@@ -1,9 +1,0 @@
-// src/v4/std/foobar.dag
-// Scope: SG-2 falsification probe carrier — generic type with two parameters (not name-keyed in emitter).
-// Status: probe-only; no Rust-specific branches.
-
-module v4.std.foobar
-
-import v4.std.node { Symbol }
-
-data foobar_carrier: Symbol = foobar_carrier

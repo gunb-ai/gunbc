@@ -155,7 +155,6 @@ import v4.std.integer {
   uint128_interval_spec,
   uint_platform_interval_spec
 }
-import v4.std.foobar { foobar_carrier }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -3023,13 +3022,6 @@ fn rust_sg2_type_expr_target_model() -> TargetModel {
 }
 
 // SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Instantiation(Rc, FooBar), X, Y) positional chain.
-fn rust_sg2_foobar_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: foobar_carrier } },
-    children: []
-  }
-}
-
 fn rust_sg2_rc_foobar_xy_emitted() -> Node {
   target_type_expr_generic_apply_emitted(
     form: rust_type_expression_projection().instantiation_form,
@@ -3078,7 +3070,7 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
             Edge {
               label: Positional,
               target: Node {
-                kind: TypeNode { connective: Atom { identity: foobar_carrier } },
+                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_foobar } },
                 children: []
               }
             }
