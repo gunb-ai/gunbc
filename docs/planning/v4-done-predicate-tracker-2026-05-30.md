@@ -52,7 +52,7 @@
 
 **Landed (examples):** `T-19`, `T-29`, `T-33`, `T-34`, `T-37` marked `[DONE]` in task bodies; `T-25-core` / `T-26` `[SUBSTRATE LANDED]`.
 
-**Note:** `TASKS.md:815` Close-status snapshot (`main@678bb8bbd`) predates current HEAD; treat this tracker + live `TASKS.md` as operational — refresh Close-status in a dedicated receipt PR after §8 ratification.
+**Note:** `TASKS.md:815` Close-status snapshot (`main@678bb8bbd`) predates current HEAD; treat this tracker + live `TASKS.md` as operational — refresh Close-status when operator ratifies the P1–P6 numbering fix (forwarded via PM).
 
 ---
 
@@ -250,5 +250,5 @@ Claims checked against tree at `e332fc27b`:
 ## What this doc is NOT
 
 - Not a TASKS.md amendment and not a predicate narrowing.
-- Not a worker brief — dispatch waits on §8 + DFS worksheet gates per PR #3938 §11.4.
+- Not a worker brief — dispatch waits on DFS worksheet approval per PR #3938 §11.4.
 - Not a substitute for `docs/audit/v4-close-interrogation-validation-2026-05-30.md` (346-probe ledger stays with Close/Receipt).
