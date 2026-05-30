@@ -96,11 +96,11 @@ STRIP_PATHS=(
   # v3 is frozen and not part of the public story.
   "src/v3"
 
-  # v4 internal-process docs (the v4 code itself stays).
-  "src/v4/TASKS.md"
-  "src/v4/BRIEF_TEMPLATE.md"
-  "src/v4/CULTURE.md"
-  "src/v4/DECISIONS.md"
+  # v4 is stripped wholesale per D-REL-1 (CONFIRMED 2026-05-30 in
+  # docs/RELEASE_v0.1.0.md). The substrate is not at public confidence;
+  # v0.1.0 is v2-scoped. This supersedes the older RELEASE_TODO.md §6
+  # "Keep" list for src/v4/std, compiler/, etc.
+  "src/v4"
 
   # v2 internal design docs.
   "src/v2/CM.md"
