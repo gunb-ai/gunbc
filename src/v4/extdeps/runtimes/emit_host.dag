@@ -52,6 +52,7 @@ import v4.std.verification {
   EqualsClaim,
   CompilesClaim
 }
+import v4.std.witness { Holds, Violates }
 
 
 data emit_host_transport_not_wired: Symbol = emit_host_transport_not_wired
@@ -59,6 +60,7 @@ data emit_host_transport_port: Symbol = emit_host_transport_port
 data emit_host_parse_unsupported_target: Symbol = emit_host_parse_unsupported_target
 data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
 data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
+data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
 data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
 data emit_host_rust_authority_pin: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
@@ -91,6 +93,30 @@ fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
     reason: emit_host_emit_vs_eval_deferred,
     at: port_locus(port: emit_host_transport_port),
     correction: None
+  }
+}
+
+fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_exit_not_ok,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn host_exit_holds(exit: HostExit) -> Bool {
+  match exit {
+    Accepted { value: Holds { value: _ }, diagnostics: None } => true
+    _ => false
+  }
+}
+
+fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
+  match exit {
+    Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
+      outcome_rejected(d: d)
+    Rejected { diagnostics: ds } => outcome_rejected(d: ds)
+    _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
 
@@ -227,17 +253,21 @@ fn run_test_claim_emit_vs_eval_for_claim(
         fixture_inputs: Inputs { root: claim_input_root }
       ) {
         Accepted { value: host_receipt, diagnostics: _ } =>
-          match runtime_value_parse(target: target, bytes: host_receipt.stdout_bytes) {
-            Accepted { value: host_actual, diagnostics: _ } =>
-              run_test_claim_emit_vs_eval_verdict(
-                subject: subject,
-                target: target,
-                host_receipt: host_receipt,
-                host_actual: host_actual,
-                expected: expected
-              )
-            Rejected { diagnostics: ds } =>
-              verdict_fail(actual: outcome_rejected(d: ds))
+          if host_exit_holds(exit: host_receipt.exit) {
+            match runtime_value_parse(target: target, bytes: host_receipt.stdout_bytes) {
+              Accepted { value: host_actual, diagnostics: _ } =>
+                run_test_claim_emit_vs_eval_verdict(
+                  subject: subject,
+                  target: target,
+                  host_receipt: host_receipt,
+                  host_actual: host_actual,
+                  expected: expected
+                )
+              Rejected { diagnostics: ds } =>
+                verdict_fail(actual: outcome_rejected(d: ds))
+            }
+          } else {
+            verdict_fail(actual: host_exit_failure_outcome(exit: host_receipt.exit))
           }
         Rejected { diagnostics: _ } =>
           Deferred {

@@ -6,11 +6,17 @@ module v4.std.host_run
 
 
 import v4.std.collection { List }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic {
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  diagnostics_singleton
+}
 import v4.std.machine { Byte }
 import v4.std.target_model { TargetModel }
 import v4.std.text { String }
-import v4.std.witness { Witness }
+import v4.std.witness { Witness, Holds, Violates }
 
 
 type ByteString = List<Byte>
