@@ -21,10 +21,9 @@ Same discipline as PR #3938 §10.0. Acceptance is **T-22 complexity pass + cache
 SG class:               SG-7 (v2 complexity — same-argument recursion; NOT rustc E04xx)
 Representative failure:  v2-diagnostic: complexity same-argument recursion (24×) at
                          `fn ci_int_offset_authority_projection_node(i: Int) -> Node {`
-                         @ src/v4/workflow/ci.dag:721
-Immediate local patch:   Add memoization table keyed by `Symbol` on `ci_int_offset_authority_projection_node`;
-                         or rewrite only the `i < 0` branch with a different decrement idiom while leaving
-                         `ci_byte_limb_projection_node` recursive tree intact.
+                         @ src/v4/workflow/ci.dag:776 (catalog row cites :721 — re-anchor on landing)
+Immediate local patch:   Add `ci_int_offset_authority_projection_bounded` peel only (HEAD may have this) while
+                         keeping parallel ci tree; or memoize — still forbidden vs std/node single authority.
 Why forbidden:           Parallel offset authority vs `v4.std.node` `byte_offset_cache_digest_authority`
                          (limbs_remaining-bounded, already landed for T-22 cache claims); same-arg recursion
                          in ci.dag blocks honest T-38 / pipeline_rejections compile receipts.
@@ -36,9 +35,10 @@ DFS path:
       byte_offset_cache_key / byte_offset_cache_key_fingerprint;
       canonical tags (byte_offset_neg, byte_offset_out_of_ceiling, …)
   v4 workflow (CONSUMER — dissolve parallel tree):
-    - src/v4/workflow/ci.dag:703-777 — ci_byte_limb_projection_node,
-      ci_int_offset_authority_projection_node, ci_char_projection_node, ci_string_projection_node
-      (🟡 dissolve-on comment L703 already names std/node byte_offset_cache_key)
+    - src/v4/workflow/ci.dag:704-818 — ci_byte_limb_projection_node,
+      ci_int_offset_authority_projection_bounded (:724), ci_int_offset_authority_projection_node (:776),
+      ci_char_projection_node, ci_string_projection_node
+      (🟡 dissolve-on L704; bounded peel is interim — still parallel authority vs std/node)
   v4 test consumers:
     - src/v4/test/claim/manual/test_claim_cache_digest_sensitivity.dag — byte_offset_cache_key*
     - src/v4/test/claim/workflow/pipeline_rejections.dag — CiPipeline eval subjects → ci projections
@@ -132,7 +132,7 @@ Escalate to Modeling DFS:
 ## §4 Manager approval checklist — CLOSED 2026-05-30
 
 - [x] Single-authority fact: `ByteOffsetCacheDigestAuthority` / `byte_offset_cache_key` in `v4.std.node`
-- [x] ci.dag parallel tree marked for dissolution (L703-777)
+- [x] ci.dag parallel tree marked for dissolution (L704-818)
 - [x] Falsification probes (complexity + injective witness + cache sensitivity)
 - [x] M1 vs T-38 scope boundary (catalog §3.2)
 - [x] Implementation dispatch authorized → **Compiler Spine** (`smart-stag-871`) + **#3974** owner
@@ -144,5 +144,5 @@ Escalate to Modeling DFS:
 - `docs/audit/v4-rustc-error-catalog-2026-05-29.md` — SG-7 row, §3.2 M1 vs T-38
 - `docs/planning/v4-correctness-ladder-2026-05-30.md` §10.0 — worksheet discipline
 - `src/v4/std/node.dag` — `byte_offset_cache_digest_*` / `byte_offset_cache_key` (L675+)
-- `src/v4/workflow/ci.dag` — L703-777, L1299-1308
+- `src/v4/workflow/ci.dag` — L704-818, L1299-1308
 - `src/v4/test/claim/workflow/pipeline_rejections.dag` — compile consumer
