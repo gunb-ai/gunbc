@@ -58,8 +58,13 @@ scope from earlier drafts is narrowed by the D-REL decisions below.
    only).
 6. Frontend ([`gunb-ai/frontend`](https://github.com/gunb-ai/frontend)) —
    separate repo, own release cadence, does not gate v0.1.0.
-7. Any binary target that does not pass the release dry-run end-to-end
-   (D-REL-2 — drop it from the matrix, do not ship as "supported").
+7. Any binary target (of the six in `release.dag`) that does not pass the
+   `release.yml` dry-run end-to-end — D-REL-2 drops it from the matrix
+   rather than shipping as "supported".
+8. Homebrew, `.deb`, and APT distribution channels — modeled with 🟡
+   markers in `install.dag` as v0.2.0+ emission intent; the actual
+   Formula / deb-control / apt-repo content is **not yet emitted** and
+   does not ship at v0.1.0. See the "Already-decided rulings" above.
 
 ## D-REL decisions
 
@@ -269,15 +274,34 @@ core files is cosmetic and does not block the tag.
 
 ### §5 — Binary distribution
 
+Two separate concerns — keep them decoupled:
+
+**Binary target matrix (v0.1.0).** The six-target matrix in
+`src/v4/workflow/release.dag` (musl-linux ×2, darwin ×2, windows-msvc ×2)
+is gated per-target by `release.yml` dry-run under D-REL-2: each target
+that produces a working artifact ships; each target that fails the dry-run
+is **dropped from the matrix** for v0.1.0 (no "best effort" shipping).
+`SUPPORTED.md` lists which targets actually shipped.
+
 - `src/v4/workflow/release.dag` — present (semantic authority for the
-  target matrix lives here).
-- `src/v4/install/install.dag` — present, carries 🟡 markers for Homebrew,
-  `.deb`, and APT as active emission targets.
+  six-target matrix lives here).
 - `.github/workflows/release.yml` — present.
 - **Remaining for tag:** end-to-end dry-run of `release.yml` against a
-  throwaway pre-tag. Per D-REL-2, any target that fails the dry-run is
-  **dropped from the matrix**, not shipped as "best effort". Homebrew,
-  `.deb`, and APT are IN scope for v0.1.0 (per the decided ruling above).
+  throwaway pre-tag; per-target drop decisions made from the dry-run
+  results.
+
+**Install/distribution channels (v0.1.0 vs v0.2.0+).** Package-manager
+channels are a separate axis from the binary target matrix:
+
+- *v0.1.0 install paths:* `curl install.sh` (pending B1's PR #3992
+  `install.sh` resurrection) and/or build-from-source (always works).
+  **No Homebrew, no `.deb`, no APT at v0.1.0** — even though
+  `src/v4/install/install.dag` carries 🟡 markers for them, the actual
+  Formula / deb-control / apt-repo content is not yet emitted.
+- *v0.2.0+ scope:* Homebrew Formula, deb-control, and APT repo ship as
+  the corresponding `ShellStatic` / `Formula-Static` / `deb-control` /
+  `apt-repo` projections actually land. This is independent of the
+  per-target binary matrix outcome.
 
 ### §6 — Housecleaning
 
