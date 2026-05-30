@@ -36,10 +36,13 @@ type TargetArtifact {
 }
 
 // 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
-// dissolve-on: TargetToolchain/TargetEditionProfile coproducts replace toolchain/edition_or_profile Symbol fields; forbidden: parallel invocation vocab outside this carrier.
+// dissolve-on: TargetToolchain / TargetEdition / TargetBuildProfile / TargetOverflowDispositionField coproducts replace these Symbol scaffolds; forbidden: parallel invocation vocab outside this carrier.
+// Edition, build profile, and OverflowDisposition field pin are independent coordinates (not a single edition_or_profile union).
 type TargetInvocation {
   toolchain: Symbol
-  edition_or_profile: Symbol
+  edition: Symbol
+  build_profile: Symbol
+  overflow_disposition_field: Symbol
 }
 
 type LeafModelFixture<C> {
