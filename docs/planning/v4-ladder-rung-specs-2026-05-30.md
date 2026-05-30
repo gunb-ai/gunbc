@@ -92,11 +92,15 @@ Seven other targets (cpp, ts, lean, swift, …) are **deferred** to Phase 4+ wid
 | Predicate id | Target | Pass condition | Fail blocking receipt |
 | ------------ | ------ | -------------- | --------------------- |
 | `R0-dag-parse` | `dag` | `v4` parse of `nat_semiring.dag` yields `Accepted` module AST (no parse `Rejected` diagnostics). | `phase1/nat_semiring/rung0/dag_parse_rejected` |
-| `R0-rust-parse` | `rust` | Emitted Rust for the fixture module parses under `rustc` frontend (parse-only or full compile). | `phase1/nat_semiring/rung0/rust_emit_parse_rejected` |
-| `R0-python-parse` | `python` | Emitted Python for the fixture parses (`python3 -m py_compile` or equivalent). | `phase1/nat_semiring/rung0/python_emit_parse_rejected` |
-| `R0-go-parse` | `go` | Emitted Go for the fixture parses (`go build` / `go vet` parse phase). | `phase1/nat_semiring/rung0/go_emit_parse_rejected` |
+| `R0-rust-parse` | `rust` | Emitted Rust **frontend parse only** — e.g. `rustc --emit=metadata` (or project-standard parse-only flag) on the fixture `.rs` exits 0. **`cargo check` / typecheck success is R1 only** and must not satisfy R0. | `phase1/nat_semiring/rung0/rust_emit_parse_rejected` |
+| `R0-python-parse` | `python` | Emitted Python **parse only** — `python3 -m py_compile` on the fixture `.py` (syntax/parse surface). | `phase1/nat_semiring/rung0/python_emit_parse_rejected` |
+| `R0-go-parse` | `go` | Emitted Go **parse phase only** — `go build -n` or `go test -c` parse-phase success without requiring full link success (project-standard parse receipt). | `phase1/nat_semiring/rung0/go_emit_parse_rejected` |
+
+**Emit unavailable (not a parse failure):** if v2 emit does not produce the target artifact, disposition is **`SKIP`** with blocking receipt `phase1/nat_semiring/rung0/<target>_emit_unavailable` — do **not** record `R0-*-parse` **FAIL** when no artifact was parsed.
 
 **Disposition vocabulary (PR #3938 §10.0):** rung 0 is `ship_disposition: PROVEN` only when all four predicates pass **via executable receipt** (CI log or local `TestClaimRun` verdict). Substrate-only parse claims without execution remain `engineering_state: SUBSTRATE_PRESENT`, `ship_disposition: GAP`.
+
+**Evaluation order (fail-closed):** `emit` → R0 parse per target (independent per target) → R1 rust typecheck → R2 compile per target. A later-rung failure must **not** downgrade an earlier rung that already **PASS**ed; a missing upstream artifact must **SKIP** downstream cells, not **FAIL** them as parse/typecheck.
 
 ### 2.2 Rung 1 — type-checks in Rust (standard #1, Rust slice)
 
@@ -130,11 +134,21 @@ Gate output for operators, PR summaries, and CI must use this matrix (example):
 
 ```text
 fixture=phase1/nat_semiring
-  rung0: PASS | FAIL  (dag rust python go)
-  rung1: PASS | FAIL  (rust)
-  rung2: PASS | FAIL  (rust python go)
+  rung0: PASS | FAIL | SKIP  (dag rust python go)
+  rung1: PASS | FAIL | SKIP  (rust)
+  rung2: PASS | FAIL | SKIP  (rust python go)
 blocking_receipt: <predicate id> | none
 ```
+
+**Cell semantics:**
+
+| Cell | Meaning |
+| ---- | ------- |
+| `PASS` | Predicate executed; pass condition met. |
+| `FAIL` | Predicate executed; pass condition not met (use matching `R*-*` blocking receipt). |
+| `SKIP` | Predicate not executed — emit artifact unavailable (`*_emit_unavailable`) or upstream blocker (`upstream_blocked:<predicate-id>`). **Forbidden:** label `FAIL` when the only evidence is a later rung’s toolchain failure. |
+
+`blocking_receipt` names the **lowest rung, earliest predicate** that was **executed** and **failed** (or the first `*_emit_unavailable` if emit never produced an artifact). Example: rust typecheck fails after rust parse passed → `rung0 rust=PASS`, `rung1 rust=FAIL`, `blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed` — **not** `R0-rust-parse` FAIL.
 
 Optional appendix (not headline): global rustc error count, top error classes, link to `docs/audit/v4-rustc-error-catalog-2026-05-29.md`.
 
@@ -157,7 +171,9 @@ Minimum claim shapes (`v4.std.verification` — assertion coproduct is `Compiles
 
 | Rung | Suggested shape | Notes |
 | ---- | ----------------- | ----- |
-| 0–1 | `CompilesClaim` per target slice | `input` = fixture law-subject or module anchor node; `classification: TestClassification { tier: Tier1, layer: Unit }` unless integration-tier receipt is intentional |
+| 0 `dag` | Host/CI parse receipt or future parse-shaped claim | `R0-dag-parse` is v4 module ingest — not a `CompilesClaim`. Interim gate: script/`gunbc compile --target dag` per §2.1. |
+| 0 emit (`rust`/`python`/`go`) | **Not** `CompilesClaim` for parse authority | `TestClaim` coproduct has no `ParseClaim` today — **CI host script** (or `TestClaimRun` wrapper) must implement §2.1 parse-only tooling. Roster rows may *label* `R0-*-parse` but must not use compile/typecheck success as parse proof. |
+| 1 | One `CompilesClaim` (rust) | `predicate=R1-rust-typecheck`; `classification: TestClassification { tier: Tier1, layer: Unit }` unless integration-tier receipt is intentional |
 | 2 | Three `CompilesClaim` rows (rust / python / go) | Encode target in `label` (`fixture=… rung=2 target=rust predicate=R2-rust-compile`, etc.); optional `layer: Integration` on all three if tiering matches `claim_runner_compiles.dag:40` |
 
 Execution may remain `Deferred` behind T-38 **only** for substrate claims; the **CI gate** must still invoke toolchain checks directly until `TestClaimRun` verdicts are PROVEN (`src/v4/compiler/05_eval.dag:1732-1736` — `RoundTripClaim` arm returns `Deferred`).
@@ -271,7 +287,20 @@ fixture=phase1/nat_semiring
 blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed
 ```
 
-**Interpretation:** `R0-dag-parse` PASS (fixture parseable in isolation). `R0-rust/python/go-parse`, `R1-rust-typecheck`, and `R2-*` FAIL — v2 emit + toolchain checks on the fixture transitive closure surface rustc typecheck errors before downstream targets. First blocking receipt after dag-parse is `R1-rust-typecheck` (`phase1/nat_semiring/rung1/rust_typecheck_failed`). Red CI under `STRICT=1` is **expected substrate gap signaling**, not a gate-shape defect; operator may merge #3955 when review criteria are met.
+**Interpretation (substrate):** `R0-dag-parse` PASS; emit + rust typecheck path fails on fixture transitive closure (rustc errors). First **executed** failure with a named receipt: `R1-rust-typecheck`.
+
+**Interpretation (matrix contract — post openai-pro review):** Script @ `27054dd31` used a **collapsed** rung-0 row (`rust/python/go=FAIL`) while `blocking_receipt` named **R1** — that violates §2.4 `SKIP` vs `FAIL` rules. Under this spec, the honest §2.4 rendering is:
+
+```text
+  rung0: PARTIAL  (dag=PASS rust=SKIP python=SKIP go=SKIP)
+  rung1: FAIL     (rust=FAIL)
+  rung2: SKIP     (rust=SKIP python=SKIP go=SKIP)
+blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed
+```
+
+(`SKIP` = emit artifact present but parse not independently proven, or upstream blocked by R1 failure before per-target parse receipts ran.) Worker follow-up: align `scripts/v4-phase1-nat-semiring-rung-gate.sh` to §2.1 parse-only + §2.4 cell semantics — **not** a blocker on landing this planning authority.
+
+Red CI under `STRICT=1` remains **expected substrate gap signaling**. Operator may merge #3955 when review criteria are met.
 
 ---
 
