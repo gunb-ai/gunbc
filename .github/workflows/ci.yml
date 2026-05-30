@@ -283,11 +283,7 @@ jobs:
       timeout-minutes: 35
       continue-on-error: true
       env:
-<<<<<<< HEAD
-        V4_BOOTSTRAP_TIMEOUT_SECS: '300'
-=======
-        V4_BOOTSTRAP_TIMEOUT_SECS: 480
->>>>>>> origin/main
+        V4_BOOTSTRAP_TIMEOUT_SECS: '480'
       run: |
         set +euo pipefail
         bash scripts/v4-bootstrap-viability.sh
@@ -320,11 +316,7 @@ jobs:
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       timeout-minutes: 15
       env:
-<<<<<<< HEAD
-        V4_TESTCLAIM_TIMEOUT_SECS: '420'
-=======
-        V4_TESTCLAIM_TIMEOUT_SECS: 480
->>>>>>> origin/main
+        V4_TESTCLAIM_TIMEOUT_SECS: '480'
       run: bash scripts/v4-testclaim-corpus-gate.sh
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
