@@ -72,7 +72,7 @@ The gate applies to the **committed module** at the path above, not to the full 
 
 ## 2. Rung gate shape (acceptance predicates)
 
-Each rung is a **binary** gate on the ratified fixture. A rung **passes** only when every predicate cell in its row is `PASS` (§2.4); any `FAIL` or `SKIP` cell means the rung row is **`FAIL`** aggregate with a named blocking receipt. Matrix vocabulary is **`PASS` | `FAIL` | `SKIP` per cell only** — no fourth aggregate state (e.g. no `PARTIAL`).
+Each rung is a **binary** gate on the ratified fixture. A rung **passes** only when every predicate cell in its row is `PASS` (§2.4). **Two-level vocabulary (single authority):** (1) **Rung-row label** — `PASS` or `FAIL` only: `PASS` iff every cell in that rung is `PASS`; otherwise `FAIL` (including when all cells are `SKIP`). (2) **Per-target cells** (parentheses) — `PASS` | `FAIL` | `SKIP`. There is **no** rung-row `SKIP`; skipped work appears as `FAIL` at the row with `SKIP` cells inside the parentheses.
 
 Phase 1 **target set** (explicit subset of project-committed targets):
 
@@ -134,11 +134,13 @@ Gate output for operators, PR summaries, and CI must use this matrix (example):
 
 ```text
 fixture=phase1/nat_semiring
-  rung0: PASS | FAIL | SKIP  (dag rust python go)
-  rung1: PASS | FAIL | SKIP  (rust)
-  rung2: PASS | FAIL | SKIP  (rust python go)
+  rung0: PASS | FAIL  (dag=… rust=… python=… go=…)
+  rung1: PASS | FAIL  (rust=…)
+  rung2: PASS | FAIL  (rust=… python=… go=…)
 blocking_receipt: <predicate id> | none
 ```
+
+Each parenthetical value is a **cell** (`PASS` | `FAIL` | `SKIP`). The token after `rungN:` is the **row aggregate** (`PASS` | `FAIL` only).
 
 **Cell semantics:**
 
@@ -304,12 +306,12 @@ blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed
 
 ```text
   rung0: FAIL  (dag=PASS rust=SKIP python=SKIP go=SKIP)
-  rung1: SKIP  (rust=SKIP)
-  rung2: SKIP  (rust=SKIP python=SKIP go=SKIP)
+  rung1: FAIL  (rust=SKIP)
+  rung2: FAIL  (rust=SKIP python=SKIP go=SKIP)
 blocking_receipt: upstream_blocked:R0-rust-parse
 ```
 
-(Rung rows are **`FAIL`** when any cell is not `PASS`. `R0-rust-parse` not **PASS** → `R1`/`R2` rust cells **`SKIP`** per §2.2/§2.4 prerequisites — **not** `R1=FAIL` while `R0=SKIP`. Script @ `27054dd31` mislabeled cells and ran `cargo check` without parse-only R0 **PASS**; **substrate appendix (non-headline):** that illicit probe would fail typecheck — expected gap once R0 is PROVEN.) Worker follow-up: align `scripts/v4-phase1-nat-semiring-rung-gate.sh` to §2.1 parse-only + §2.4 prerequisites — **not** a blocker on landing this planning authority.
+(Row aggregate **`FAIL`** when any cell is not `PASS` — including all-`SKIP` rows. Per-cell: `R0-rust-parse` not **PASS** → `R1`/`R2` rust cells **`SKIP`** per §2.2/§2.4 prerequisites — **not** `R1=FAIL` while `R0=SKIP`. Script @ `27054dd31` mislabeled cells and ran `cargo check` without parse-only R0 **PASS**; **substrate appendix (non-headline):** that illicit probe would fail typecheck — expected gap once R0 is PROVEN.) Worker follow-up: align `scripts/v4-phase1-nat-semiring-rung-gate.sh` to §2.1 parse-only + §2.4 prerequisites — **not** a blocker on landing this planning authority.
 
 Red CI under `STRICT=1` remains **expected substrate gap signaling**. Operator may merge #3955 when review criteria are met.
 
