@@ -66,11 +66,15 @@ type SelectionDecision
 | **Shadow** (this deliverable) | GitHub Actions / hand `ci.yml` runs **unchanged** (all jobs that today's `if:` allows) | Compute + emit `CiSelectionReceipt` (structured log / artifact) |
 | **Active** (Phase 2.5) | Gate each step on `decision == Run ∨ CarvedOut` | Same receipt; workflow trusts it |
 
-**Fail-closed on receipt construction:** if `ChangeSet` read is `Rejected` or `AffectedSet` is fail-closed, every step is `Run` in the receipt **and** `reason` documents superset selection (mirrors `ci_component_affected_fail_closed` today). Receipt must not claim `Skip` without intersection evidence.
+**Fail-closed on receipt construction:** if `ChangeSet` read is `Rejected` or `AffectedSet` is fail-closed, every step is `Run` in the receipt **and** `reason` documents superset selection (mirrors `ci_component_affected_fail_closed` today). Receipt must not claim `Skip` unless intersection is empty **and** the projected `cache_digest` is valid (§5); invalid projection → `Run` with `cache_digest_projection_fail_closed`.
+
+**Valid projected `cache_digest` (Phase 2.1).** For a registry row, `project_cache_digest(row, pipeline) -> Outcome<ContentHash>` projects the **complete step subgraph** (interim: `ci_job_cache_digest` / `ci_gate_cache_digest` on the modeled `CiJob`/`CiGate` projection node — B1 / T-21 discipline, not inputs-only). **Valid** iff the outcome is `Accepted { value: digest }` with a non-sentinel hash; `Rejected` diagnostics or an empty/sentinel digest is **invalid** and must not justify `Skip`.
 
 ---
 
 ## 5. Selection algorithm (spine contract)
+
+Aligned with §1 and `docs/planning/v4-ci-overhaul-2026-05-30.md` §5 structural gate — `Skip` only when intersection is empty **and** cache projection is valid; otherwise fail-closed to `Run`.
 
 ```text
 ci_selection_receipt_shadow(
@@ -81,17 +85,29 @@ ci_selection_receipt_shadow(
 ) -> CiSelectionReceipt
 
   affected := affected_set_from_diff(pr)   // v4.lens.affected_set authority
+  if change_set_fail_closed(pr) || affected_set_fail_closed(affected):
+    return superset_run_receipt(pr, affected, registry, reason: receipt_inputs_fail_closed)
 
   for each row in registry:
+    projected := project_cache_digest(row, pipeline)
+    valid_digest := cache_digest_projection_valid(projected)
+
     if row.step_id ∈ carveouts.step_ids:
       decision := CarvedOut { carveout_reason := matching.reason_code }
+      reason := carveout_matched
     else if intersect(row.inputs, affected) ≠ ∅:
       decision := Run
-    else:
+      reason := affected_intersection_nonempty
+    else if valid_digest:
       decision := Skip
+      reason := affected_intersection_empty_cache_valid
+    else:
+      decision := Run                                    // P3 fail-closed — cannot skip safely
+      reason := cache_digest_projection_fail_closed
 
-    append CiStepSelection { ..., decision, cache_digest := row.cache_digest(pr, pipeline) }
-    partition into selected | skipped per decision
+    digest := projected.value when valid_digest else sentinel_for_audit
+    append CiStepSelection { ..., decision, cache_digest := digest, reason }
+    partition into selected | skipped | carved_out per decision
 ```
 
 **Registry** (`CiShadowStepRow`): spine-owned bridge table mapping each `ci_pipeline` job/gate to provisional `List<UpsertInputRef>` until Phase 1.5. Rows are **data**, reviewable, versioned with `ci.dag`.
