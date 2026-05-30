@@ -132,3 +132,34 @@ Until (1) clears `Deferred`, rung 3 is **not closable** regardless of global rus
 | Ladder/Fixture (`keen-crab-361`) | Consumes §3 predicates when ratifying Phase 2 |
 
 Amendments: spine carrier freeze (§2) requires both manager acks; acceptance predicates (§3) require Ladder/Fixture ack.
+
+---
+
+## Appendix A. Tree verification (spot-checks on `main` lineage, 2026-05-30)
+
+Claims in §2–§5 were checked against the v4 tree on branch `session/smart-stag-871` (parent `e332fc27b` + this doc). Use these anchors when reviewing; line numbers drift with edits.
+
+| Claim | Verified | Anchor |
+| ----- | -------- | ------ |
+| `InferredTree` shape | yes | `src/v4/compiler/04_infer.dag:91-94` |
+| `infer` signature | yes | `04_infer.dag:420` |
+| `emit(tree, target)` | yes | `05_emit.dag:33-36` |
+| `eval` → `Outcome<RuntimeValue>` | yes | `05_eval.dag:1663` |
+| `TestClaimRun<S,A>` | yes | `05_eval.dag:452-455` |
+| `TestClaimEvalSubject` carries `InferredTree` | yes | `05_eval.dag:421-425` |
+| `Verdict<T>` = Pass \| Fail \| Deferred | yes | `src/v4/std/verdict.dag:31-34` |
+| `RoundTripClaim` → **Deferred** (rung 3 blocker) | yes | `05_eval.dag:1732-1736`, `1793-1797` |
+| `run_test_claim` entry | yes | `05_eval.dag:1826-1849` |
+| `run_test_claim` used in manual roster wedge | yes | `eval_runtime_mvp.dag:402` (`run_eval_mvp2_test_claim_route`) |
+| T-38 `CorpusEvalReport` + tally | yes | `testclaim_corpus_runner.dag:35-68` |
+| Roster is **3 static rows**, not full manual corpus | yes | `manual_corpus_roster.dag:20-24` |
+| CI: structural bridge only; verdict exec deferred | yes | `ci.yml:288-290`, `ci.yml:342`; `scripts/v4-testclaim-corpus-gate.sh:9-18` |
+| `nat_semiring` = EqualsClaim law rows, not emit/host | yes | `algebra_laws/nat_semiring.dag:106-151` |
+| `GroundedProgramGraph` not in `src/v4/` | yes | grep empty — name is design prose only (`docs/design-v4-compiler-homomorphism.md`) |
+| `dag_ingest_round_trip` RoundTrip deferred to T-38 | yes | `round_trip/dag_ingest_round_trip.dag:3-4` |
+
+**Corrections surfaced (no spec change required):**
+
+- PM brief listed Runtime/TestClaim as “pending spawn”; dashboard graph shows **`quick-tern-735`** active — §7 owner id stands unless PM redispatches.
+- `run_manual_testclaim_corpus_eval()` assembles **pre-built** `TestClaimRun` data; it does not invoke `run_test_claim` at corpus-fold time. Phase-2 CI must either call `run_test_claim` from a modeled driver or document that rows are compile-time receipts only until the host runner lands (Runtime lane).
+- W3 CI gate must not treat `deferred_count == 0` as satisfied while `RoundTripClaim` rows remain on the global manual roster — rung 3–4 roster must be **fixture-scoped** (§4.2).
