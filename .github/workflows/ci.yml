@@ -257,13 +257,8 @@ jobs:
     # M1: full-tree --target rust + rustc gap surface (TASKS.md T-24; r3 gates #98/#100 bridge).
     # Modeled authority: src/v4/workflow/ci.dag `m1_rust_emit_probe_signal` +
     # `m1_ci_live_workflow_signal` (feature:project-github-actions-landed; non-blocking).
-    # Interim CI relief (operator 2026-05-30): runs only on push-to-main, not on
-    # PRs — the 7951-error rustc gap surface is already catalogued in
-    # docs/audit/v4-rustc-error-catalog-2026-05-29.md, and the SG-1/SG-2/SG-5-6
-    # substrate fixes that would shrink the surface land separately. Restored
-    # to per-PR when ci.dag Phase 2 lands or those substrate fixes ship.
     - name: M1 v4 full-tree rust emit probe (v2 emit + cargo check)
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       continue-on-error: true
       timeout-minutes: 20
       env:
