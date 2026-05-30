@@ -210,8 +210,9 @@ type FalsificationVariant<Subject, Expectation> =
   | SubjectVariant     { subject_variant: Subject }                    // current shape — wrongness in subject
   | ArtifactVariant    { artifact_variant: TargetArtifact }            // wrongness in emitted artifact only
   | ExpectationVariant { expectation_variant: Expectation }            // wrongness in expectation only
-  | CompoundVariant    { subject_variant: Optional<Subject>, artifact_variant: Optional<TargetArtifact>, expectation_variant: Optional<Expectation> }
 ```
+
+**Compound falsification omitted by design.** An earlier draft included a `CompoundVariant { subject_variant: Optional<Subject>, artifact_variant: Optional<TargetArtifact>, expectation_variant: Optional<Expectation> }` arm. Per openai-pro PR #3971 BLOCKING review (sha d18eca1f, finding 1), that shape made invalid states representable: it admitted all-fields-absent (zero-locus probe; meaningless) AND admitted one-field cases that duplicate `SubjectVariant`/`ArtifactVariant`/`ExpectationVariant`. The discipline is illegal-states-unrepresentable. If a Phase-2+ probe genuinely needs to mutate multiple loci, that's expressible as two sequential `FalsificationCase` probes (one per locus); no compound carrier is needed for the Phase-1 5-fixture set. If a compound carrier becomes necessary later, it should be `NonEmptyCompound<Subject, Expectation>` with at-least-one-populated enforced at the type level — but that's a future modeling decision, NOT pre-emptive scaffolding here.
 
 This widens `FalsificationCase` to carry the actual locus of wrongness without forcing it into the subject slot. Every Phase-1 §5 sketch then types cleanly: R1 uses `ArtifactVariant`, R2b uses `ExpectationVariant` (per-field overflow-disposition probe), R3-external uses `SubjectVariant` (the Symbol carrier IS the wrong subject when its realization row is mismatched), R3-internal uses `ExpectationVariant` (vary the `RustEmitProjectionEqualityExpectation.type_emit_must_change` / `value_emit_must_change` flags).
 
