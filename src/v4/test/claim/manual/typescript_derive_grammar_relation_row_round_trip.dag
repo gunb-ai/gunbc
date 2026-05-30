@@ -76,8 +76,8 @@ fn ts_mvp1_grammar_relation_row_std_node() -> Node {
   )
 }
 
-// Receipt that derive_grammar_relation_row_node is declared and callable on MVP-1 formal row
-// (terminal-only rhs — no multi-LHS production list).
+// Receipt: derive_grammar_relation_row_node is callable; Arrow emitted (MVP-1 add-fn) must
+// Violates — PR-1.5b path is Conj-positional only (no terminal-only fallback).
 data ts_mvp1_derive_row_node_receipt: Witness<Node> = derive_grammar_relation_row_node(
   production: ts_formal_production_mvp1_fn_add(),
   productions: [ts_formal_production_mvp1_fn_add()],

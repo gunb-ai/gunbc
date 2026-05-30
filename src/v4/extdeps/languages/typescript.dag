@@ -36,7 +36,6 @@ import v4.std.grammar {
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   grammar_production_to_node,
-  grammar_relation_emitted_not_conj,
   grammar_relation_row_tokens_not_conj,
   grammar_relation_row_to_node
 }
@@ -922,36 +921,21 @@ fn ts_wave2a_task_serialize_source_children() -> List<Edge> {
   ]
 }
 
-fn ts_grammar_relation_row_token_edges(row: Node) -> List<Edge> {
-  match row.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        row.children,
-        init: Absent,
-        f: fn(found, edge) {
-          match found {
-            Present { value: edges } => found
-            Absent =>
-              match edge.label {
-                Named { name: n } =>
-                  if n == grammar_relation_field_tokens {
-                    match edge.target.kind {
-                      TypeNode { connective: Conj } =>
-                        Present { value: edge.target.children }
-                      _ => Absent
-                    }
-                  } else {
-                    Absent
-                  }
-                Positional => Absent
-              }
+fn ts_grammar_relation_row_token_edges_witness(row: Node) -> Witness<List<Edge>> {
+  match find_named_child(root: row, name: grammar_relation_field_tokens) {
+    Accepted { value: tokens_root, diagnostics: _ } =>
+      match tokens_root.kind {
+        TypeNode { connective: Conj } => Holds { value: tokens_root.children }
+        _ =>
+          Violates {
+            diagnostic: Diagnostic {
+              reason: grammar_relation_row_tokens_not_conj,
+              at: node_locus(node: tokens_root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
           }
-        }
-      ) {
-        Present { value: edges } => edges
-        Absent => Empty
       }
-    _ => Empty
+    Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
   }
 }
 
@@ -959,14 +943,18 @@ fn ts_grammar_relation_row_token_edges(row: Node) -> List<Edge> {
 fn ts_wave2a_task_serialize_source_witness() -> Witness<Node> {
   match ts_wave2a_task_type_alias_relation_row_witness() {
     Holds { value: row } =>
-      Holds {
-        value: Node {
-          kind: TypeNode { connective: Conj },
-          children: list_append(
-            left: ts_wave2a_task_serialize_source_children(),
-            right: ts_grammar_relation_row_token_edges(row: row)
-          )
-        }
+      match ts_grammar_relation_row_token_edges_witness(row: row) {
+        Holds { value: token_edges } =>
+          Holds {
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: list_append(
+                left: ts_wave2a_task_serialize_source_children(),
+                right: token_edges
+              )
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
