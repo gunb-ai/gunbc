@@ -6,18 +6,22 @@ PM-authored forward-projection. Maps the labour-graph from current state (0/6 v4
 
 **Scope**: not a schedule, not a timeline. Each work-unit is named by the receipt it produces, the gating dependencies, and the responsible manager lane.
 
-## §1. The six predicates (TASKS.md:801–815)
+## §1. The six predicates (TASKS.md:806–817, verbatim)
 
-Per PR #3938 §8 D4: v4-done = ALL six PROVEN collectively. Any single predicate at non-PROVEN blocks v4-done close.
+Per PR #3938 §8 D4: v4-done = ALL six PROVEN collectively. Any single predicate at non-PROVEN blocks v4-done close. **No relaxation by manager pass.**
 
-| # | Predicate | What "PROVEN" requires |
-|---|---|---|
-| P1 | every-other-task | Each TASKS.md "other" task either PROVEN, named-blocked, or explicitly out-of-scope; no hidden incomplete tasks |
-| P2 | corpus-compiles | Full-tree `src/v4` emit → `cargo check` clean (zero rustc errors on emitted Rust over full v4 corpus) |
-| P3 | emit-compiles | Each supported emit target (Rust + Python + Go per D-REL-3) → target-toolchain check clean for the documented corpus |
-| P4 | bit-identical-self-output | T-15: compiler.dag compiles itself to byte-identical output across two consecutive runs (fixed-point) |
-| P5 | TestClaim-suite-passes | Per quick-tern F5 ratified 22:54Z: ≥1 fixture's complete claim roster executes T-22 → TestClaimRun → CorpusEvalReport → VerdictTally with zero `Deferred` verdicts. Widen fixture-by-fixture until full corpus pass. |
-| P6 | hand-Rust-not-editable-authority-proven-by-reproduction | Reproduction-from-`.dag` regenerates the compiler without hand-Rust edits; bit-identical to current. Gated on P4 + P3. |
+Authoritative-source citations verbatim from TASKS.md + burn-down blocking-receipt:
+
+| # | Predicate (TASKS.md verbatim) | Anchor | Blocking receipt per burn-down |
+|---|---|---|---|
+| P1 | Every other scheduled task in this plan complete (whole plan minus T-15) | `src/v4/TASKS.md:806-812` | Meta-gate; each scheduled task PROVEN, named-blocked, or out-of-scope per its own gate |
+| P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | `src/v4/TASKS.md:813` | **Compiler-of-record pipeline** active + **resolve-posture bridge** (`.github/workflows/ci.yml:293-300`) deleted (per burn-down P2 row: "Resolve-posture bridge still live; v4 compiler-of-record not proven") |
+| P3 | v4 emits Rust source that compiles to a binary | `src/v4/TASKS.md:814` | **emit → binary** PROVEN: v4 emits Rust source, that Rust compiles to a working binary (per burn-down P3 row: "~2978 E0423 class — dominant Pareto; landing by Jun 1 is possible but emit→binary PROVEN is not") |
+| P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | `src/v4/TASKS.md:815` | **Self-host fixed-point**: binary regenerates bit-identical output across two consecutive runs on compiler source (per burn-down P4: "T-15 runner scaffold; B1 pins open; W2.5 ladder fixtures support path only; bit-identical fixpt is Wave 3 (W3.5)") |
+| P5 | TestClaim suite passes | `src/v4/TASKS.md:816` | **Modeled T-22 eval + structural-bridge deletion**: per burn-down P5 row, "Jun 1 anti-shelfware asks structural-bridge deletion schedule, not full T-38 GREEN. `scripts/v4-testclaim-corpus-gate.sh` likely still live Jun 1." |
+| P6 | Hand-authored Rust is not the editable authority — proven by REPRODUCTION (A3) | `src/v4/TASKS.md:817` | **Reproduction**: rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. Gated on P4 + P3. |
+
+Note on P3: predicate is specifically about Rust-source-to-binary (TASKS.md:814 verbatim). Python + Go emit (per SUPPORTED.md + flavor (iv)) are **alpha/WIP outside the v4-done predicate bar**; they don't block P3 PROVEN.
 
 ## §2. Dependency graph
 
@@ -112,59 +116,69 @@ Each work-unit is named by the receipt-flip it produces. Manager lanes per PR #3
    - Gating: P1-B per-task status
    - Receipt: PR landings closing each open other-task
 
-### §3.2. P2 — corpus-compiles (rustc on full-tree v4 emit)
+### §3.2. P2 — v4 compiles `src/v4/compiler/*.dag` end-to-end (TASKS.md:813)
 
-**Status**: YELLOW. Current baseline ~7,951 rustc errors per `docs/audit/v4-rustc-error-catalog-2026-05-29.md`. Critical path Pareto: E0423 (~2,978) closed by SG-1 #3956.
+**Status**: YELLOW. Per burn-down P2 row: "Resolve-posture bridge still live; v4 compiler-of-record not proven." Blocking receipts: **compiler-of-record pipeline active** + **resolve-posture bridge (`.github/workflows/ci.yml:293-300`) deletion**.
 
-**Work units required**:
-1. **P2-A — SG-1 TargetAtomRealization lands**: closes ~2,978 E0423 (Symbol-as-callable). 
-   - Lane: Target Realization (keen-heron / zesty-carp-242)
-   - Gating: cursor RC clearance on #3956
-   - Receipt: #3956 merged + sub-class closure
-2. **P2-B — fresh M1 probe + tail reclassification**: re-run full-tree v4 → cargo check; reclassify residuals by missing modeled fact (not by error count).
-   - Lane: Close/Receipt + Modeling DFS
-   - Gating: P2-A landed
-   - Receipt: updated `docs/audit/v4-rustc-error-catalog-YYYY-MM-DD.md` + per-class DFS worksheet routing
-3. **P2-C — SG-6 BoundedLattice realization**: per merge-wave §5 W2.2 (gated on SG-1).
-   - Lane: Target Realization
-   - Gating: P2-A landed
-   - Receipt: SG-6 PR merged
-4. **P2-D — each remaining error class closes**: per P2-B reclassification, each class gets a DFS worksheet (Modeling DFS lane) + Target Realization carrier + per-class PR cycle.
-   - Lane: Modeling DFS + Target Realization (per-class)
-   - Gating: P2-B reclassification per class
-   - Receipt: per-class PR cycles; each closes a measurable rustc subset
-5. **P2-E — full-tree cargo check ZERO errors**: final receipt; flips P2 PROVEN.
-   - Lane: Close/Receipt (adjudication)
-   - Gating: all P2-D classes closed
-   - Receipt: ledger entry: P2 PROVEN
-
-### §3.3. P3 — emit-compiles (per target)
-
-**Status**: YELLOW. Rust subset of P2; Python (#4040 in flight) + Go (#4041 in flight) emit fixes for weather demo.
+**Bar is NOT "zero rustc errors on full-tree v4 corpus"** — that's a measurement proxy. The predicate is: v4 compiles its own `src/v4/compiler/*.dag` end-to-end via the modeled pipeline (not via the resolve-posture bridge fallback).
 
 **Work units required**:
-1. **P3-A — weather.dag emit-to-Rust verified end-to-end**: clean checkout → cargo build gunbc → gunbc compile weather → cargo check + cargo run.
-   - Lane: snappy-bee-513 (release subtree) — verification worker already dispatched
-   - Gating: gunbc binary compiles + weather emits clean (current state)
-   - Receipt: verification log on `docs/release/weather-e2e-receipt.md`
-2. **P3-B — Python emit fix lands (#4040)**: smart-stag sub-worker on `session/emit-python-tco-fix`. Match/case arms + TCO temp-decl.
-   - Lane: Compiler Spine (smart-stag-871 / sub-worker)
-   - Gating: worker iteration on draft #4040
-   - Receipt: #4040 merged + weather → Python passes `py_compile`
-3. **P3-C — Go emit fix lands (#4041)**: smart-stag sub-worker on `session/emit-go-layout-fix`. Multi-file layout + `:=` scope.
-   - Lane: Compiler Spine
-   - Gating: worker iteration on draft #4041
-   - Receipt: #4041 merged + weather → Go passes `go build`
-4. **P3-D — per-target test suite pass**: every documented example for each of Rust + Python + Go runs target-toolchain check clean.
-   - Lane: Runtime/TestClaim (quick-tern-735) + Close/Receipt
-   - Gating: P3-A + P3-B + P3-C
-   - Receipt: per-target test ledger entries
-5. **P3-E — P3 PROVEN ledger entry**: closure adjudication.
+1. **P2-A — Compiler-of-record pipeline active end-to-end**: the v4 compiler pipeline (parse / resolve / infer / emit) processes `src/v4/compiler/*.dag` without falling back to the resolve-posture bridge.
+   - Lane: Compiler Spine (smart-stag-871) + Modeling DFS (substrate support)
+   - Gating: substrate landings that the compiler depends on (subset of SG fixes; specifically what the compiler subdirectory needs, not the full corpus)
+   - Receipt: compiler pipeline traversal log showing no resolve-posture-bridge fallback
+2. **P2-B — Resolve-posture bridge deleted from CI**: `.github/workflows/ci.yml:293-300` (the bridge that lets v4 bootstrap fall back to v2-compiled output when v4 compile fails) removed. Per INVARIANTS A3/P5 (NOT predicate P5): the bridge is a stand-in honesty signal, not a real compiler.
+   - Lane: Compiler Spine (smart-stag-871) + Close/Receipt (sharp-otter-407 — adjudication)
+   - Gating: P2-A (compiler-of-record working without the bridge)
+   - Receipt: CI workflow with bridge code removed + green compiler-of-record run on main
+3. **P2-C — P2 PROVEN ledger entry**: closure adjudication per burn-down/ledger framework.
    - Lane: Close/Receipt
-   - Gating: P3-D all-targets-green
+   - Gating: P2-A + P2-B
+   - Receipt: P2 PROVEN
+
+**Subset Pareto closers** (advance P2 indirectly by closing errors that affect compiler-of-record bootstrap; NOT the predicate bar itself):
+- SG-1 #3956 closes ~2978 E0423 (Symbol-as-callable). Subset relevant if compiler depends on Symbol surface.
+- SG-5 #3957 ✓ MERGED — closes Set/collection-realization subset.
+- SG-6 follow-on (gated on SG-1).
+
+Per burn-down P2 row + #4014 evidence: "advances ci.dag authority, not corpus compile-of-record." Wave 1 SG-7 closure was substrate, not P2-direct.
+
+### §3.3. P3 — v4 emits Rust source that compiles to a binary (TASKS.md:814)
+
+**Status**: YELLOW. Per burn-down P3 row: "Wave 2 primary: #3964 SG-1 re-dispatch + held #3956. ~2978 E0423 class — dominant Pareto; landing by Jun 1 is possible but **emit→binary PROVEN** is not."
+
+**Bar is specifically Rust → binary.** Per TASKS.md:814 verbatim. Python + Go emit (per SUPPORTED.md + flavor (iv)) are alpha targets, NOT part of P3 PROVEN.
+
+**Work units required**:
+1. **P3-A — SG-1 TargetAtomRealization lands**: closes ~2978 E0423 — the dominant Pareto class blocking Rust emit-to-binary.
+   - Lane: Target Realization (keen-heron-687 / zesty-carp-242)
+   - Gating: cursor RC clearance on #3956
+   - Receipt: #3956 merged
+2. **P3-B — fresh M1 probe + tail reclassification**: re-run full-tree v4 → cargo check; reclassify residuals by missing modeled fact.
+   - Lane: Close/Receipt + Modeling DFS
+   - Gating: P3-A
+   - Receipt: updated rustc error catalog + per-class DFS worksheet routing
+3. **P3-C — SG-6 BoundedLattice realization**: per merge-wave §5 W2.2.
+   - Lane: Target Realization
+   - Gating: P3-A
+   - Receipt: SG-6 merged
+4. **P3-D — each remaining error class for Rust binary closes**: per P3-B reclassification, each class blocking Rust-source-to-binary gets DFS worksheet + TR carrier + per-class PR cycle.
+   - Lane: Modeling DFS + Target Realization (per-class)
+   - Gating: P3-B per-class routing
+   - Receipt: per-class PR cycles
+5. **P3-E — emit-to-binary executes**: v4 emits Rust source → cargo builds it to an actual binary.
+   - Lane: Compiler Spine + Self-host/Release
+   - Gating: P3-D for all blocking classes
+   - Receipt: working binary produced from v4 Rust emit
+6. **P3-F — P3 PROVEN ledger entry**.
+   - Lane: Close/Receipt
+   - Gating: P3-E
    - Receipt: P3 PROVEN
 
-**P3 also depends on P2 for the Rust path** (full-tree v4 emit Rust = subset of P3-Rust). If P2 lands, P3-Rust comes for free.
+**Alpha-target work (NOT part of P3 PROVEN, but happening in parallel)**:
+- **#4040 Python emit fix** (smart-stag sub-worker): weather → Python passes `py_compile`. Tracked for SUPPORTED.md upgrade, not P3.
+- **#4041 Go emit fix** (smart-stag sub-worker): weather → Go passes `go build`. Same.
+- **Weather demo verification** (snappy-bee-513 subtree): Rust path verified end-to-end. Demo evidence, not P3.
 
 ### §3.4. P4 — bit-identical-self-output (T-15)
 
@@ -212,9 +226,13 @@ Each work-unit is named by the receipt-flip it produces. Manager lanes per PR #3
    - Lane: Modeling DFS + Runtime/TestClaim
    - Gating: P5-A (transport) + T-38 rung-4 host runner
    - Receipt: per-law preservation receipt
-5. **P5-E — P5 PROVEN ledger entry**: full corpus VerdictTally zero-Deferred OR explicit subset proven + named-out-of-scope.
+5. **P5-E — Structural-bridge deletion**: per burn-down P5 row, the **anti-shelfware closure** asks `scripts/v4-testclaim-corpus-gate.sh` (the structural-bridge) be **deleted** so T-22 eval is the sole authority. Not a partial-subset close.
+   - Lane: Compiler Spine + Close/Receipt
+   - Gating: P5-A + P5-B + P5-C + P5-D
+   - Receipt: structural-bridge script removed from CI + T-22 eval is the only suite-pass authority
+6. **P5-F — P5 PROVEN ledger entry**: TestClaim suite passes per TASKS.md:816 with T-22 eval as sole authority (no structural-bridge fallback).
    - Lane: Close/Receipt
-   - Gating: P5-C + P5-D
+   - Gating: P5-E
    - Receipt: P5 PROVEN
 
 ### §3.6. P6 — hand-Rust-not-editable-authority-proven-by-reproduction
