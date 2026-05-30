@@ -6,7 +6,15 @@
 module v4.std.target_model
 
 import v4.std.algebra { Cons, Empty, fold_list, is_empty, list_snoc_item, length, list_append }
-import v4.std.collection { List, Map, Optional, optional_absent, optional_present }
+import v4.std.collection {
+  List,
+  Map,
+  Optional,
+  empty_map,
+  list_at_optional,
+  optional_absent,
+  optional_present
+}
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -18,7 +26,7 @@ import v4.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v4.std.lexing { LexRules }
+import v4.std.lexing { LexRules, VoidLexRules }
 import v4.std.node {
   Atom,
   Conj,
@@ -690,4 +698,244 @@ fn target_type_expr_arrow_emitted(
     surface: form.surface,
     children: list_append(left: inputs, right: Cons { head: output, tail: Empty })
   )
+}
+
+// ═══ SG-5 — TargetCollectionRealization (canonical home) ═══
+
+data target_model_edge_collection_realization: Symbol = target_model_edge_collection_realization
+
+// 🟢 coproduct dissolution — SG-5 collection representation kind axis (M6 product; no duplicate-payload arms).
+type TargetCollectionReprKind
+  = TargetCollectionReprBTreeSet
+  | TargetCollectionReprHashSet
+
+// SG-5 — per-representation wire authority (kind + generic-apply shape; no fill-in String templates).
+type TargetRepresentation {
+  kind: TargetCollectionReprKind
+  apply: TargetGenericApply
+}
+
+type RequiredTraitWitness {
+  trait_name: Symbol
+  type_param: Symbol
+}
+
+type TargetRepresentationChoice {
+  form: TargetRepresentation
+  constraints: List<RequiredTraitWitness>
+}
+
+// SG-5 — canonical collection realization row (source_carrier is Node-keyed per DFS).
+type TargetCollectionRealization {
+  source_carrier: Node
+  target_model: TargetModel
+  primary: TargetRepresentationChoice
+  alternatives: List<TargetRepresentationChoice>
+  fallback_diagnostic: Diagnostic
+}
+
+data target_collection_set_carrier: Symbol = target_collection_set_carrier
+data target_collection_trait_ord: Symbol = target_collection_trait_ord
+data target_collection_trait_hash: Symbol = target_collection_trait_hash
+data target_collection_trait_eq: Symbol = target_collection_trait_eq
+data target_collection_type_param_t: Symbol = target_collection_type_param_t
+data target_collection_repr_field_kind: Symbol = target_collection_repr_field_kind
+data target_collection_repr_field_apply: Symbol = target_collection_repr_field_apply
+data target_collection_choice_field_form: Symbol = target_collection_choice_field_form
+data target_collection_choice_field_constraints: Symbol = target_collection_choice_field_constraints
+data target_collection_row_field_source_carrier: Symbol = target_collection_row_field_source_carrier
+data target_collection_row_field_primary: Symbol = target_collection_row_field_primary
+data target_collection_row_field_alternatives: Symbol = target_collection_row_field_alternatives
+data target_collection_row_field_fallback: Symbol = target_collection_row_field_fallback
+data target_collection_set_no_representation: Symbol = target_collection_set_no_representation
+data target_collection_set_no_representation_port: Symbol = target_collection_set_no_representation_port
+
+fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: target_collection_set_no_representation,
+    at: port_locus(port: target_collection_set_no_representation_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_collection_set_carrier_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: target_collection_set_carrier } },
+    children: []
+  }
+}
+
+fn target_collection_repr_kind_atom(kind: TargetCollectionReprKind) -> Symbol {
+  match kind {
+    TargetCollectionReprBTreeSet => target_collection_repr_kind_btree_set
+    TargetCollectionReprHashSet => target_collection_repr_kind_hash_set
+  }
+}
+
+data target_collection_repr_kind_btree_set: Symbol = target_collection_repr_kind_btree_set
+data target_collection_repr_kind_hash_set: Symbol = target_collection_repr_kind_hash_set
+
+fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectionReprKind> {
+  if id == target_collection_repr_kind_btree_set {
+    optional_present(value: TargetCollectionReprBTreeSet)
+  } else {
+    if id == target_collection_repr_kind_hash_set {
+      optional_present(value: TargetCollectionReprHashSet)
+    } else {
+      optional_absent()
+    }
+  }
+}
+
+fn target_collection_element_ord_eligible(elem: Node) -> Bool {
+  match elem.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      id == target_collection_kernel_string
+        || id == target_collection_kernel_int
+        || id == target_collection_kernel_bool
+        || id == target_collection_kernel_unit
+    _ => false
+  }
+}
+
+fn target_collection_element_hash_eligible(elem: Node) -> Bool {
+  target_collection_element_ord_eligible(elem: elem)
+}
+
+fn target_collection_element_eq_eligible(elem: Node) -> Bool {
+  target_collection_element_hash_eligible(elem: elem)
+}
+
+data target_collection_kernel_string: Symbol = target_collection_kernel_string
+data target_collection_kernel_int: Symbol = target_collection_kernel_int
+data target_collection_kernel_bool: Symbol = target_collection_kernel_bool
+data target_collection_kernel_unit: Symbol = target_collection_kernel_unit
+
+fn target_collection_trait_witness_satisfied(
+  witness: RequiredTraitWitness,
+  elem: Node
+) -> Bool {
+  match witness.trait_name {
+    target_collection_trait_ord => target_collection_element_ord_eligible(elem: elem)
+    target_collection_trait_hash => target_collection_element_hash_eligible(elem: elem)
+    target_collection_trait_eq => target_collection_element_eq_eligible(elem: elem)
+    _ => false
+  }
+}
+
+fn target_collection_choice_constraints_satisfied(
+  choice: TargetRepresentationChoice,
+  elem: Node
+) -> Bool {
+  fold_list(
+    xs: choice.constraints,
+    empty: true,
+    cons: fn(acc, witness) {
+      acc && target_collection_trait_witness_satisfied(witness: witness, elem: elem)
+    }
+  )
+}
+
+fn target_collection_select_choice(
+  primary: TargetRepresentationChoice,
+  alternatives: List<TargetRepresentationChoice>,
+  elem: Node
+) -> Optional<TargetRepresentationChoice> {
+  if target_collection_choice_constraints_satisfied(choice: primary, elem: elem) {
+    optional_present(value: primary)
+  } else {
+    fold_list(
+      xs: alternatives,
+      empty: optional_absent(),
+      cons: fn(acc, choice) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if target_collection_choice_constraints_satisfied(choice: choice, elem: elem) {
+              optional_present(value: choice)
+            } else {
+              optional_absent()
+            }
+        }
+      }
+    )
+  }
+}
+
+fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Cardinality } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Present { value: head } =>
+          match head.kind {
+            TypeNode { connective: Atom { identity: id } } => id == target_collection_set_carrier
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
+}
+
+data target_collection_rust_surface_btree_set: Symbol = target_collection_rust_surface_btree_set
+data target_collection_rust_surface_hash_set: Symbol = target_collection_rust_surface_hash_set
+data target_collection_rust_token_lt: Symbol = target_collection_rust_token_lt
+data target_collection_rust_token_gt: Symbol = target_collection_rust_token_gt
+data target_collection_rust_token_comma: Symbol = target_collection_rust_token_comma
+
+fn target_collection_rust_set_realization_row() -> TargetCollectionRealization {
+  TargetCollectionRealization {
+    source_carrier: target_collection_set_carrier_node(),
+    target_model: TargetModel {
+      bundle: Node { kind: TypeNode { connective: Conj }, children: Empty },
+      lex: VoidLexRules,
+      binding_spellings: empty_map(),
+      authority_source_text: ""
+    },
+    primary: TargetRepresentationChoice {
+      form: TargetRepresentation {
+        kind: TargetCollectionReprBTreeSet,
+        apply: TargetGenericApply {
+          surface: target_collection_rust_surface_btree_set,
+          open: target_collection_rust_token_lt,
+          separator: target_collection_rust_token_comma,
+          close: target_collection_rust_token_gt
+        }
+      },
+      constraints: [
+        RequiredTraitWitness {
+          trait_name: target_collection_trait_ord,
+          type_param: target_collection_type_param_t
+        }
+      ]
+    },
+    alternatives: [
+      TargetRepresentationChoice {
+        form: TargetRepresentation {
+          kind: TargetCollectionReprHashSet,
+          apply: TargetGenericApply {
+            surface: target_collection_rust_surface_hash_set,
+            open: target_collection_rust_token_lt,
+            separator: target_collection_rust_token_comma,
+            close: target_collection_rust_token_gt
+          }
+        },
+        constraints: [
+          RequiredTraitWitness {
+            trait_name: target_collection_trait_hash,
+            type_param: target_collection_type_param_t
+          },
+          RequiredTraitWitness {
+            trait_name: target_collection_trait_eq,
+            type_param: target_collection_type_param_t
+          }
+        ]
+      }
+    ],
+    fallback_diagnostic: target_collection_set_no_representation_diagnostic()
+  }
 }

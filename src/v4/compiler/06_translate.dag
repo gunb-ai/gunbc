@@ -98,6 +98,12 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_translation_rules,
   target_model_edge_type_expression_projection,
+  target_model_edge_collection_realization,
+  TargetCollectionRealization,
+  target_collection_rust_set_realization_row,
+  target_collection_select_choice,
+  target_collection_set_element_type_node,
+  target_collection_type_node_is_set_carrier,
   target_type_expr_arrow_emitted,
   target_type_expr_atom_emitted,
   target_type_expr_field_arrow,
@@ -1263,6 +1269,63 @@ fn type_expression_projection_from_target(target: TargetModel) -> Outcome<Target
     o: target_bundle_child(target: target, edge_name: target_model_edge_type_expression_projection),
     f: fn(bundle) { type_expression_projection_from_bundle(bundle: bundle) }
   )
+}
+
+fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetCollectionRealization> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_collection_realization),
+    f: fn(_) {
+      Accepted {
+        value: target_collection_rust_set_realization_row(),
+        diagnostics: None
+      }
+    }
+  )
+}
+
+fn project_set_collection_type_node(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match target_collection_set_element_type_node(set_node: node) {
+    Present { value: elem } =>
+      bind_outcome(
+        o: collection_realization_from_target(target: target),
+        f: fn(row) {
+          match target_collection_select_choice(
+            primary: row.primary,
+            alternatives: row.alternatives,
+            elem: elem
+          ) {
+            Present { value: choice } =>
+              bind_outcome(
+                o: project_type_expression_node_bounded(
+                  remaining: node_subtree_count(n: elem),
+                  node: elem,
+                  projection: projection
+                ),
+                f: fn(elem_projected) {
+                  Accepted {
+                    value: target_type_expr_instantiation_emitted(
+                      form: choice.form.apply,
+                      head: target_type_expr_atom_emitted(
+                        form: projection.atom_form,
+                        identity: choice.form.apply.surface
+                      ),
+                      args: Cons { head: elem_projected, tail: Empty }
+                    ),
+                    diagnostics: None
+                  }
+                }
+              )
+            Absent => outcome_rejected(row.fallback_diagnostic)
+          }
+        }
+      )
+    Absent =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
 }
 type TypeExprHeadTail {
   head: Node

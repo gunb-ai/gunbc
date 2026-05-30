@@ -1,0 +1,35 @@
+// SG-5 falsification probe: Set<NonOrdable> must fail closed from
+// TargetCollectionRealization authority — not silently add Ord nor pick BTreeSet.
+// Status: manual receipt; v4 consumer is 06_translate collection-realization path
+//   (target_model.dag carrier + extdeps/languages/rust.dag row).
+// §10.6 bidirectional readability: emission uses TargetRepresentation { kind, apply }
+//   product wire; ingestion recognizes the same instantiation surface tokens.
+
+module v4.test.claim.manual.sg5_set_non_ordable_falsification
+
+import v4.std.collection { Set }
+import v4.std.testgen { TestClaim, TestClaimId, TestSuite, Enumerated }
+
+type NonOrdable {
+  payload: Float
+}
+
+type Bag {
+  ids: Set<NonOrdable>
+}
+
+data sg5_set_non_ordable_claim_id: TestClaimId = {
+  id: sg5_set_non_ordable_falsification
+}
+
+data sg5_set_non_ordable_falsification_claim: TestClaim = {
+  name: sg5_set_non_ordable_falsification,
+  description: "Set<NonOrdable> fails closed from TargetCollectionRealization fallback, not BTreeSet",
+  file_name: "sg5_set_non_ordable_falsification.v3",
+  predicates: []
+}
+
+data sg5_set_non_ordable_falsification_suite: TestSuite = {
+  name: "sg5/set-non-ordable-falsification",
+  claims: [Enumerated(sg5_set_non_ordable_falsification_claim)]
+}
