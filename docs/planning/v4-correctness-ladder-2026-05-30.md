@@ -356,7 +356,71 @@ The questionnaire integration retroactively introduces one decision and modifies
 
 ---
 
-## §10. What this doc is NOT
+## §10. Worked-example root-cause analyses (operator-driven, DFS discipline — not error-count chasing)
+
+**Why this section exists.** The §7 sequencing risks reverting to error-count-driven dispatch ("fix SG-1 → fix SG-2 → ..."). Past pattern: error-count reduction has led to spot-fixes that calcified poor modeling decisions into irreversible templates. **Anti-pattern protection: before dispatching ANY SG-class lane, walk the modeling DFS together — symptom → identification → root cause hypothesis → DFS through `std/` → systemic fix → dispatch shape that protects against the spot-fix trap.**
+
+This section is collaboratively developed with the operator. SG-1 is the first worked example. SG-2 and SG-5/SG-6 follow once the structure is ratified.
+
+### §10.1 SG-1 — Symbol / Atom value emission (2978 errors)
+
+**Symptom (from `docs/audit/v4-rustc-error-catalog-2026-05-29.md`).** Emitted Rust like:
+```rust
+pub fn loop_bound_edge() -> String {
+    Symbol("loop_bound_edge".to_string())
+}
+```
+fails because `Symbol` is realized as a type alias (`type Symbol = String;`) elsewhere — the constructor call `Symbol(...)` is invalid on an alias. Two emission stages disagree on whether Symbol is a wrapper struct or a transparent alias. 2978 instances of this shape (E0423) across emitted files.
+
+**Identification method.** Catalog-driven — the rustc-error class table flagged E0423 as the largest single class. The pattern in the emitted Rust was unmistakable: every `Symbol(...)` constructor call. The catalog itself is honest evidence (worth keeping); the question this section answers is *what to do with that evidence*.
+
+**Spot fix that would calcify the modeling gap.** Patch `05_emit.dag`'s value-emit template so it omits the `Symbol(...)` wrapper for Atom values. Closes 2978 errors immediately. **DO NOT DO THIS** — it cements a template special-case that hides three layers of underlying modeling debt:
+
+**Root cause — Layer 1 (the immediate template bug).** Type-emit chose `type Symbol = String;`; value-emit chose `Symbol("...".to_string())`. The two emission stages derive Symbol's Rust realization *independently* and disagree.
+
+**Root cause — Layer 2 (the substrate single-authority gap).** DFS through `std/` per MODELING.md M9:
+- `std/node.dag:10` declares `type Symbol` — bare, no body. Symbol is kernel-ambient per INVARIANTS.md P1 hollow-alias exception ("kernel-ambient atoms are genuinely atomic and exempt from fact-bundle modeling").
+- `extdeps/languages/rust.dag` imports Symbol as a type, uses it pervasively as a field type — but contains **no declaration of Symbol's Rust target realization**. (Grep `realization|projection.*rust|symbol.*rust|atom_to_rust` returns nothing.)
+- Therefore both type-emit and value-emit derive Symbol's Rust form independently. They violate INVARIANTS.md P2 ("every fact lives in exactly one authoritative place"). The disagreement is the bug; the missing single-authority fact is the modeling gap.
+
+**Root cause — Layer 3 (a tracked modeling debt *above* the entire pattern).** `std/node.dag:84-85` carries a 🟡 gated note:
+> *"feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared `Interval<D>` parent for Loop measure facts — **dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate**; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality."*
+
+So `loop_bound_edge` itself — the catalog's representative example — is a known modeling-debt site. The Symbol-as-edge-tag pattern is gated for dissolution into structural Loop-bound coordinates. **Spot-fixing the emitter for `loop_bound_edge` would create new Symbol-tag consumers in generated Rust, directly contradicting the gated "forbidden" clause and blocking the dissolution.**
+
+**The systemic fix — what depth does the operator want?**
+
+| Layer | Fix | Scope | Risk if skipped |
+| ----- | --- | ----- | --------------- |
+| 1     | Patch value-emit template | 1 file in `05_emit.dag` | calcifies layer 2 gap; blocks layer 3 dissolution |
+| 2     | Declare `RustAtomRealization` single-authority fact in `extdeps/languages/rust.dag`; both type-emit + value-emit consume it | new substrate carrier + refactor 2 emit paths | layer 3 still open, but no longer blocked |
+| 3     | Dissolve Symbol-as-edge-tag entirely per gated note (replace with structural Loop-bound coordinate) | substantial substrate migration spanning std/node, std/cardinality, lens/cost, all Loop-using sites | error-count side-effect; primary intent is modeling cleanup |
+
+**Recommendation: layer 2 first, layer 3 separately (it's already gated and owned by T-12).**
+
+Layer 2 is the right depth because:
+- It is *non-blocking* to layer 3 (the single-authority Atom realization is needed regardless of whether Loop bounds eventually stop using Symbol tags).
+- It is implementable as one bounded substrate addition (`RustAtomRealization` carrier) + two emit-stage consumers.
+- It generalizes: the same single-authority pattern applies to every kernel-ambient atom (Bool, Char, Symbol) in every target language. Solving for Symbol-in-Rust *correctly* solves the shape for the others by structure.
+- It surfaces (rather than hides) layer 3 — if an Atom doesn't fit `{ type_form, value_form, constructor_form }`, that escalates as modeling work, not a worker fix.
+
+**The dispatch shape that protects against the spot-fix trap.**
+
+- **One** work item, narrowly scoped: *"author `RustAtomRealization` fact-bundle in `extdeps/languages/rust.dag` covering kernel-ambient atoms; refactor `05_emit.dag` so both type-emit and value-emit consume the row; verify the 2978-error class collapses on the `v4-m1-rust-emit-probe`."*
+- **Not** "fix SG-1." The dispatch frame is the modeling fact being added, not the error count being chased.
+- **Brief must FORBID** template special-casing and must require the worker to escalate (not "fix") any Atom whose Rust realization doesn't fit the `RustAtomRealization` schema. If found, that's a layer-2-modeling escalation to PM, not a worker call.
+- **Brief must FORBID** any new Symbol-tag consumers in generated Rust per the layer-3 gated note. The new emit must produce structural realizations only.
+- **Worker output**: the substrate row + the refactored emit paths + a falsification probe (grep for any remaining string-keyed Symbol projection logic in `05_emit.dag` — should be zero).
+
+**What does NOT get dispatched as a result of this analysis.**
+- Worker chasing the 2978 errors directly.
+- Layer-3 dissolution (separately owned by T-12 — would be its own dispatch when T-12 is ready).
+
+**Status of this example.** Draft for operator review. Once ratified, the same shape applies to SG-2 (generic-arity carriers — likely the same single-authority pattern, different fact-bundle) and SG-5/SG-6 (Set/BoundedLattice — likely modeling-level missing constraints rather than emit bugs).
+
+---
+
+## §11. What this doc is NOT
 
 - **Not a redefinition of correctness.** The 17 standards are pre-existing in `THESIS.md`. This doc maps them to gating reality and proposes operationalization, nothing more.
 - **Not a complete 30-day plan.** Operator sign-off on §6 ladder + §7 Phase 1 unblocks the first dispatch. Phases 2/3/4 are dispatched after their predecessor closes — sequenced, not pre-committed.
@@ -365,7 +429,7 @@ The questionnaire integration retroactively introduces one decision and modifies
 
 ---
 
-## §11. Related artifacts
+## §12. Related artifacts
 
 - `docs/v4-close-interrogation.md` — the existing adversarial ship interrogation (346 probes, 17 sections); §9 of this doc integrates with it.
 - `docs/audit/r3-close-interrogation-validation-2026-05-13.md` — the prior validation that found 0/152 probes answered.
