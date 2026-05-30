@@ -71,7 +71,7 @@ type Task {
 // (argument types + return type) is the single authority for the wire
 // type; the WireContracts below reference these function identities
 // directly via `BindRef.identity` per coordination.dag's `BindRef`
-// coincidence with `std/node.dag` A1/K-1 (operator-ratified 2026-05-15).
+// coincidence with `std/node.dag` A1/K-1 (ratified 2026-05-15).
 // No standalone `Symbol` row alias, no parallel `response_type` field.
 // Bodies are minimal stand-ins; real handler bodies + persistence land in
 // subsequent T-16 slices.

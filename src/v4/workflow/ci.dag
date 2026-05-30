@@ -71,13 +71,8 @@ import v4.std.node {
   ByteOffsetCacheEligible,
   ByteOffsetCacheIneligible,
   byte_offset_cache_key,
-  byte_offset_cache_digest_max_limbs,
-  canonical_tag_byte_limb_out_of_range,
-  canonical_tag_scalar_int_one,
-  canonical_tag_scalar_int_succ,
-  canonical_tag_scalar_int_zero,
-  canonical_tag_byte_offset_out_of_ceiling,
-  canonical_tag_scalar_int_neg
+  byte_offset_cache_key_projection_node,
+  canonical_tag_byte_limb_out_of_range
 }
 import v4.std.integer { int_add, int_negate }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
@@ -257,6 +252,7 @@ type CiComponentAffected {
   v4: Bool
   workflow_policy: Bool
   release_distribution: Bool
+  release_distribution_only: Bool
 }
 
 // RULING-1: 🟢 pretty-much-done — host `git diff --name-only` read outcome (T-24 / INVARIANTS P3).
@@ -352,7 +348,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
 
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding.
 // 🟡 gated — feature:phase1-nat-semiring-rust-rung-interim-nonblocking — bind #3955 §6 (rust rung emit not rustc-clean on main) — dissolve-on-arrival: flip non_blocking to false when rung1 rust_typecheck passes under V4_PHASE1_NAT_SEMIRING_STRICT=1; until then non_blocking: true (continue-on-error at workflow) while STRICT=1 still logs fail-closed rung receipts; forbidden: silent YAML-only continue-on-error without modeled parity.
-// 🟡 tracked-bridge — feature:phase1-nat-semiring-rung-gate-binding-smoke — owner:keen-crab-361 (Ladder/Fixture Manager) — bind node://adhoc-2b191c1e-6b3 ("phase1/nat_semiring rung gate binding-smoke test (mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml)") — consumer:src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs new test function asserting ci.dag step_name/script_path/non_blocking/timeout_minutes parity with .github/workflows/ci.yml step block — dissolve-on-arrival: binding_smoke_step_name carries the new test's step name (e.g. "phase1/nat_semiring rung gate model/YAML binding smoke") AND ci.yml runs the new test as a cargo-test step paired with the gate; forbidden: re-emptying binding_smoke_step_name after the test lands. Until the bound work item closes, ci.dag↔ci.yml single-authority for THIS signal is enforced by the four-field parity (step_name / script_path / non_blocking / timeout_minutes) under operator-review checkpoint at PR-time — not by a CI binding test.
+// 🟡 tracked-bridge — feature:phase1-nat-semiring-rung-gate-binding-smoke — owner:keen-crab-361 (Ladder/Fixture Manager) — bind node://adhoc-2b191c1e-6b3 ("phase1/nat_semiring rung gate binding-smoke test (mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml)") — consumer:src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs new test function asserting ci.dag step_name/script_path/non_blocking/timeout_minutes parity with .github/workflows/ci.yml step block — dissolve-on-arrival: binding_smoke_step_name carries the new test's step name (e.g. "phase1/nat_semiring rung gate model/YAML binding smoke") AND ci.yml runs the new test as a cargo-test step paired with the gate; forbidden: re-emptying binding_smoke_step_name after the test lands. Until the bound work item closes, ci.dag↔ci.yml single-authority for THIS signal is enforced by the four-field parity (step_name / script_path / non_blocking / timeout_minutes) under review checkpoint at PR-time — not by a CI binding test.
 data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   binding_smoke_step_name: ""
   step_name: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)"
@@ -876,102 +872,7 @@ fn ci_gate_run_policy_projection_node(policy: CiGateRunPolicy) -> Node {
 }
 
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — dissolve-on: std/node canonical `byte_offset_cache_key` Node projection replaces this tree. Live consumer: `content_hash(ci_pipeline_evaluator_input_node)` (not `ci_char_cache_digest`).
-fn ci_byte_limb_projection_node(limb: Int) -> Node {
-  if limb == 0 {
-    ci_atom(sym: canonical_tag_scalar_int_zero)
-  } else if limb == 1 {
-    ci_atom(sym: canonical_tag_scalar_int_one)
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(name: ci_projection_char_succ_edge, target: ci_atom(sym: canonical_tag_scalar_int_succ)),
-        ci_named_edge(name: ci_projection_char_pred_edge, target: ci_byte_limb_projection_node(limb: limb - 1))
-      ]
-    }
-  }
-}
-
-
-// P4 bounded peel — mirrors std/node `byte_offset_cache_digest_nonneg_bounded_authority` limb budget;
-// dissolves same-argument recursion on `i` alone (SG-7 / T-22 zero-diagnostic gate).
-fn ci_int_offset_authority_projection_bounded(i: Int, limbs_remaining: Int) -> Node {
-  if limbs_remaining <= 0 {
-    if i == 0 {
-      ci_atom(sym: canonical_tag_scalar_int_zero)
-    } else {
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          ci_named_edge(
-            name: ci_projection_char_offset_quotient_edge,
-            target: ci_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
-          ),
-          ci_named_edge(
-            name: ci_projection_char_offset_authority_edge,
-            target: ci_atom(sym: canonical_tag_scalar_int_zero)
-          ),
-          ci_named_edge(
-            name: ci_projection_char_offset_byte_edge,
-            target: ci_byte_limb_projection_node(limb: i - (i / 256) * 256)
-          )
-        ]
-      }
-    }
-  } else if i == 0 {
-    ci_atom(sym: canonical_tag_scalar_int_zero)
-  } else if i <= 255 {
-    ci_byte_limb_projection_node(limb: i)
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(
-          name: ci_projection_char_offset_quotient_edge,
-          target: ci_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
-        ),
-        ci_named_edge(
-          name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_bounded(
-            i: i / 256,
-            limbs_remaining: limbs_remaining - 1
-          )
-        ),
-        ci_named_edge(
-          name: ci_projection_char_offset_byte_edge,
-          target: ci_byte_limb_projection_node(limb: i - (i / 256) * 256)
-        )
-      ]
-    }
-  }
-}
-
-
-fn ci_int_offset_authority_projection_node(i: Int) -> Node {
-  if i < 0 {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(name: ci_projection_char_offset_neg_edge, target: ci_atom(sym: canonical_tag_scalar_int_neg)),
-        ci_named_edge(
-          name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_bounded(
-            i: int_negate(i: i),
-            limbs_remaining: byte_offset_cache_digest_max_limbs
-          )
-        )
-      ]
-    }
-  } else {
-    ci_int_offset_authority_projection_bounded(
-      i: i,
-      limbs_remaining: byte_offset_cache_digest_max_limbs
-    )
-  }
-}
-
-
+// SG-7 dissolved: offset projection authority is v4.std.node `byte_offset_cache_key_projection_node` only.
 fn ci_char_projection_node(c: Char) -> Node {
   if c < 0 || c > 255 {
     Node {
@@ -983,12 +884,12 @@ fn ci_char_projection_node(c: Char) -> Node {
         ),
         ci_named_edge(
           name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_node(i: c)
+          target: byte_offset_cache_key_projection_node(i: c)
         )
       ]
     }
   } else {
-    ci_byte_limb_projection_node(limb: c)
+    byte_offset_cache_key_projection_node(i: c)
   }
 }
 
@@ -1845,10 +1746,46 @@ fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/workflow-path-regex-forbidden-substrings")
 }
 
-// RELEASE_TODO §5 Phase 1a — release workflow / matrix authority (install.dag is Phase 1b).
+// RELEASE_TODO §5 Phase 1a–1b — release workflow + hand-synced install scripts.
 fn ci_changed_path_affects_release_distribution(changed: RepoPath) -> Bool {
   changed == "src/v4/workflow/release.dag"
     || changed == ".github/workflows/release.yml"
+    || changed == "install.sh"
+    || changed == "scripts/release-target-triples.sh"
+    || changed == "src/v4/install/install.dag"
+}
+
+
+fn ci_changed_path_triggers_ci_component(changed: RepoPath) -> Bool {
+  ci_changed_path_affects_v2(changed: changed)
+    || ci_changed_path_affects_v3(changed: changed)
+    || ci_changed_path_affects_v4(changed: changed)
+    || ci_changed_path_affects_workflow_policy(changed: changed)
+    || ci_changed_path_affects_release_distribution(changed: changed)
+}
+
+
+// Per-path: release lane, or no CI component bucket (avoid `!` in list predicates — tokenizer).
+fn ci_changed_path_in_release_only_lane(changed: RepoPath) -> Bool {
+  match ci_changed_path_affects_release_distribution(changed: changed) {
+    true => true
+    false =>
+      match ci_changed_path_triggers_ci_component(changed: changed) {
+        true => false
+        false => true
+      }
+  }
+}
+
+
+// RELEASE §5 — skip orthogonal fixture gates only when the diff is exclusively
+// release-distribution paths (mixed release + phase1 fixture paths must not skip).
+fn ci_release_distribution_only_from_git_diff(git_diff: GitDiffNameOnly) -> Bool {
+  any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_release_distribution)
+    && all(
+      xs: git_diff.changed_paths,
+      predicate: ci_changed_path_in_release_only_lane
+    )
 }
 
 
@@ -1859,6 +1796,7 @@ fn ci_component_affected_fail_closed() -> CiComponentAffected {
     v4: true
     workflow_policy: true
     release_distribution: true
+    release_distribution_only: false
   }
 }
 
@@ -1875,7 +1813,8 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
     release_distribution: any(
       xs: git_diff.changed_paths,
       predicate: ci_changed_path_affects_release_distribution
-    )
+    ),
+    release_distribution_only: ci_release_distribution_only_from_git_diff(git_diff: git_diff)
   }
 }
 
@@ -1920,5 +1859,45 @@ fn ci_char_projection_out_of_range_injective_witness() -> Bool {
 }
 
 
+// SG-7 / T-22: in-range chars use std `byte_offset_cache_key_projection_node` — distinct content_hash (no aliasing).
+fn ci_char_projection_in_range_injective_witness() -> Bool {
+  content_hash(n: ci_char_projection_node(c: 0)) !=
+    content_hash(n: ci_char_projection_node(c: 1))
+    && content_hash(n: ci_char_projection_node(c: 97)) !=
+      content_hash(n: ci_char_projection_node(c: 98))
+    && content_hash(n: ci_char_projection_node(c: 254)) !=
+      content_hash(n: ci_char_projection_node(c: 255))
+}
+
+
+fn ci_char_projection_matches_std_cache_key_projection_witness() -> Bool {
+  content_hash(n: ci_char_projection_node(c: 0)) ==
+    content_hash(n: byte_offset_cache_key_projection_node(i: 0))
+    && content_hash(n: ci_char_projection_node(c: 97)) ==
+      content_hash(n: byte_offset_cache_key_projection_node(i: 97))
+    && content_hash(n: ci_char_projection_node(c: 255)) ==
+      content_hash(n: byte_offset_cache_key_projection_node(i: 255))
+}
+
+
+fn ci_char_projection_byte_limb_boundary_witness() -> Bool {
+  content_hash(n: ci_char_projection_node(c: 255)) !=
+    content_hash(n: ci_char_projection_node(c: int_add(a: 255, b: 1)))
+    && content_hash(n: ci_char_projection_node(c: int_negate(i: 1))) !=
+      content_hash(n: ci_char_projection_node(c: 0))
+}
+
+
+fn ci_char_projection_cache_hash_surface_witness() -> Bool {
+  ci_char_projection_in_range_injective_witness()
+    && ci_char_projection_matches_std_cache_key_projection_witness()
+    && ci_char_projection_byte_limb_boundary_witness()
+    && ci_char_projection_out_of_range_injective_witness()
+}
+
+
 // Receipt: out-of-byte-range Char projections stay distinguishable under evaluator-input content_hash.
 data ci_char_projection_out_of_range_injective_ok: Bool = ci_char_projection_out_of_range_injective_witness()
+
+// Receipt: SG-7 cache-key projection surface pinned for evaluator-input content_hash (worksheet §3 probes 2–3).
+data ci_char_projection_cache_hash_surface_ok: Bool = ci_char_projection_cache_hash_surface_witness()
