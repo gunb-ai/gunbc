@@ -2784,12 +2784,14 @@ fn project_type_expression_children_in_node_go(
           o: project_type_expression_subtree(
             remaining: node_subtree_count(n: split.head.target),
             node: split.head.target,
+            target: target,
             projection: projection
           ),
           f: fn(projected) {
             project_type_expression_children_in_node_go(
               remaining: remaining - 1,
               node: node,
+              target: target,
               projection: projection,
               edges: split.tail,
               acc: list_snoc_item(
@@ -2806,11 +2808,13 @@ fn project_type_expression_children_in_node_go(
 fn project_type_expression_children_in_node(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<Edge>> {
   project_type_expression_children_in_node_go(
     remaining: remaining,
     node: node,
+    target: target,
     projection: projection,
     edges: node.children,
     acc: Empty
