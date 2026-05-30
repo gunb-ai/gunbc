@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `b1ba7b8f0` (`main` 2026-05-30T23:21Z) — post #4053 burn-down sync (MW-D8 **4/5** after [#4050](https://github.com/gunb-ai/gunbc/pull/4050) C2 receipt).  
+> **Tree HEAD:** `20ae0436e` (`main` 2026-05-30T23:30Z) — post #4054 HEAD refresh; Wave A/D2 rung-3/4 runtime rows [#4046](https://github.com/gunb-ai/gunbc/pull/4046).  
 > **Wave posture:** MW-D8 **4/5 PROVEN** (C1, C2, C3, C5). **Remaining:** C4 `ci_selection_receipt_shadow` (`smart-stag-871`). Wave 2 active.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -190,6 +190,8 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4050](https://github.com/gunb-ai/gunbc/pull/4050) | ~23:05 | MW-D8 C2 receipt | **P2**, **P5** | MW-D8 **4/5** — C2 falsification receipt + ledger flip (Close/Receipt authority) |
 | [#4051](https://github.com/gunb-ai/gunbc/pull/4051) | 23:10 | Maintenance | *(tracker)* | Post-#4049 W2.3 worksheet + landing log refresh |
 | [#4053](https://github.com/gunb-ai/gunbc/pull/4053) | 23:21 | Maintenance | *(tracker)* | MW-D8 4/5 sync — operator burn-down aligned to #4050 ledger |
+| [#4054](https://github.com/gunb-ai/gunbc/pull/4054) | ~23:25 | Maintenance | *(tracker)* | Tree HEAD `b1ba7b8f0` + #4053 landing-log backfill |
+| [#4046](https://github.com/gunb-ai/gunbc/pull/4046) | ~23:30 | Wave A/D2 | **P4**, **P5** (ladder-adj) | YELLOW — rung-3/4 runtime value rows (empty W3 wedges per #3958); not T-15 fixpt |
 
 ---
 
