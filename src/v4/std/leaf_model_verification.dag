@@ -69,9 +69,9 @@ type LeafModelVerificationTotals {
   not_checked: Nat
 }
 
-// 🟡 gated — feature:leaf-model-verification-report — dissolve-on: runner aggregates per-model receipts.
+// Report rows are authoritative; LeafModelVerificationTotals is derived at runner emission only (not stored here).
+// 🟡 gated — feature:leaf-model-verification-report — dissolve-on: runner returns (report, totals) where totals is a fold over report.claims with bucket classification; forbidden: parallel stored totals beside source rows.
 type LeafModelVerificationReport<M> {
   model: M
   claims: List<LeafModelClaimVerdictRow>
-  totals: LeafModelVerificationTotals
 }

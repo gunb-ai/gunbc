@@ -27,11 +27,7 @@ data rust_leaf_phase1_algebra_carrier_ordered_ring: AlgebraCarrier = AlgebraCarr
 // dissolve-on-arrival: modeling-escalation-only extension arms beyond Phase-1 inventory; forbidden: worker-initiative coproduct growth.
 type RustClaimSubject
   = RustPrimitiveTypeSubject { primitive: RustPrimitive }
-  | RustAlgebraInhabitanceSubject {
-      algebra: AlgebraCarrier
-      on: RustPrimitive
-      inhabitance_decl: AlgebraInhabitanceDecl
-    }
+  | RustAlgebraInhabitanceSubject { inhabitance_decl: AlgebraInhabitanceDecl }
   | RustAtomRealizationSubject { atom: Node }
   // 🟡 gated — feature:rust-atom-realization-form-phase1 — bind docs/planning/v4-leaf-model-verification-2026-05-30.md §7 R3-external —
   // dissolve-on-arrival: AtomRealizationForm coproduct replaces declared_type_form/exercised_value_form Symbol pair; forbidden: closed Symbol pairs without a bounded dissolution receipt on this sub-shape.

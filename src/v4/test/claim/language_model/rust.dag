@@ -91,8 +91,6 @@ fn rust_leaf_rustc_rejects(code: Rustc_ErrorCode_Phase1) -> RustClaimExpectation
 
 fn rust_leaf_algebra_inhabitance_i32_subject() -> RustClaimSubject {
   RustAlgebraInhabitanceSubject {
-    algebra: rust_leaf_phase1_algebra_carrier_ordered_ring,
-    on: rust_leaf_phase1_primitive_i32,
     inhabitance_decl: rust_integer_algebra_inhabitance_rust_facts_i32
   }
 }
