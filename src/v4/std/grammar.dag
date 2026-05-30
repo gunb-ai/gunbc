@@ -7,6 +7,7 @@ module v4.std.grammar
 
 import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
 import v4.std.collection {
+  Absent,
   List,
   Optional,
   Present,
@@ -625,8 +626,117 @@ fn node_atom_identity_optional(node: Node) -> Symbol? {
 }
 
 
+type EmittedRhsMatchState
+  = EmittedRhsMatchOk { children: List<Node>, index: Int }
+  | EmittedRhsMatchFail
+
+
+fn formal_production_rhs_matches_emitted_conj_step(
+  state: EmittedRhsMatchState,
+  productions: List<FormalProduction>,
+  symbol: FormalGrammarSymbol
+) -> EmittedRhsMatchState {
+  match state {
+    EmittedRhsMatchFail => state
+    EmittedRhsMatchOk { children: children, index: index } =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Present { value: binding_symbol } =>
+              match list_nth(
+                xs: children,
+                wanted: index,
+                absent: Diagnostic {
+                  reason: grammar_relation_emitted_conj_slot_missing,
+                  at: node_locus(
+                    node: Node {
+                      kind: TypeNode { connective: Conj },
+                      children: []
+                    }
+                  ),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              ) {
+                Holds { value: slot_child } =>
+                  match node_atom_identity_optional(node: slot_child) {
+                    Some { value: atom_id } =>
+                      if atom_id == binding_symbol {
+                        EmittedRhsMatchOk { children: children, index: index + 1 }
+                      } else {
+                        EmittedRhsMatchFail
+                      }
+                    None => EmittedRhsMatchFail
+                  }
+                Violates { diagnostic: _ } => EmittedRhsMatchFail
+              }
+            Absent =>
+              EmittedRhsMatchOk { children: children, index: index }
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          match list_nth(
+            xs: children,
+            wanted: index,
+            absent: Diagnostic {
+              reason: grammar_relation_emitted_conj_slot_missing,
+              at: node_locus(
+                node: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: []
+                }
+              ),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ) {
+            Holds { value: slot_child } =>
+              match formal_production_for_lhs_exact(
+                productions: productions,
+                lhs: nonterminal.identity,
+                child: slot_child
+              ) {
+                Holds { value: _ } =>
+                  EmittedRhsMatchOk { children: children, index: index + 1 }
+                Violates { diagnostic: _ } => EmittedRhsMatchFail
+              }
+            Violates { diagnostic: _ } => EmittedRhsMatchFail
+          }
+      }
+  }
+}
+
+
+fn formal_production_rhs_matches_emitted_conj(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Bool {
+  let children = conj_positional_children(parent: emitted)
+  let child_count = fold_list(
+    xs: children,
+    empty: 0,
+    cons: fn(count, _) {
+      count + 1
+    }
+  )
+  match fold_list(
+    xs: production.rhs,
+    empty: EmittedRhsMatchOk { children: children, index: 0 },
+    cons: fn(state, symbol) {
+      formal_production_rhs_matches_emitted_conj_step(
+        state: state,
+        productions: productions,
+        symbol: symbol
+      )
+    }
+  ) {
+    EmittedRhsMatchOk { children: _, index: index } => index == child_count
+    EmittedRhsMatchFail => false
+  }
+}
+
+
 fn formal_production_matches_emitted_child(
   production: FormalProduction,
+  productions: List<FormalProduction>,
   child: Node
 ) -> Bool {
   match node_atom_identity_optional(node: child) {
@@ -640,18 +750,16 @@ fn formal_production_matches_emitted_child(
           }
       }
     None =>
-      emitted_node_slot_count(emitted: child) ==
-        formal_production_emitted_slot_count(production: production)
+      formal_production_rhs_matches_emitted_conj(
+        production: production,
+        productions: productions,
+        emitted: child
+      )
   }
 }
 
 
-type FormalProductionLookupState
-  = FormalProductionLookupFound { production: FormalProduction }
-  | FormalProductionLookupMissing
-
-
-// Exact lhs + emitted-child shape (PR-1.5b DESIGN-2): arity first, then terminal/binding atom match.
+// Exact lhs + emitted-child shape (PR-1.5b DESIGN-2): arity first, then structural emitted-child match.
 fn formal_production_for_lhs_exact(
   productions: List<FormalProduction>,
   lhs: Symbol,
@@ -660,27 +768,30 @@ fn formal_production_for_lhs_exact(
   let emitted_slot_count = emitted_node_slot_count(emitted: child)
   match fold_list(
     xs: productions,
-    empty: FormalProductionLookupMissing,
-    cons: fn(state, candidate) {
-      match state {
-        FormalProductionLookupFound { production: _ } => state
-        FormalProductionLookupMissing =>
+    empty: optional_absent(),
+    cons: fn(found, candidate) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
           if formal_production_matches_lhs_and_slot_count(
             production: candidate,
             lhs: lhs,
             emitted_slot_count: emitted_slot_count
           ) &&
-            formal_production_matches_emitted_child(production: candidate, child: child) {
-            FormalProductionLookupFound { production: candidate }
+            formal_production_matches_emitted_child(
+              production: candidate,
+              productions: productions,
+              child: child
+            ) {
+            optional_present(value: candidate)
           } else {
-            FormalProductionLookupMissing
+            Absent
           }
       }
     }
   ) {
-    FormalProductionLookupFound { production: production } =>
-      Holds { value: production }
-    FormalProductionLookupMissing =>
+    Present { value: production } => Holds { value: production }
+    Absent =>
       Violates {
         diagnostic: Diagnostic {
           reason: grammar_relation_production_not_found,
