@@ -309,11 +309,10 @@ fn bootstrap_target_model_bundle_construct_fold_step(
     Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
     Positional => []
   }
+  // Facet labels only — do not merge child.constructs: target.bundle subtrees carry
+  // rust/inhabitant Atoms; §4 footprint inventories subset symbols, not grammar atoms.
   BootstrapConstructFoldState {
-    constructs: bootstrap_construct_list_append_unique(
-      left: bootstrap_construct_list_append_unique(left: acc.constructs, right: child.constructs),
-      right: facet_constructs
-    )
+    constructs: bootstrap_construct_list_append_unique(left: acc.constructs, right: facet_constructs)
   }
 }
 
