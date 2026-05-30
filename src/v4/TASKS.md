@@ -744,7 +744,7 @@ from `DependencyKind` would re-author the effect fact in the wrong place.
 Manual claims in `test/claim/manual/` (connective_anchors, nat_law_anchors, process_numeric_refinements,
 refinement_nonempty_list, posix_output_capture, and others). Execution deferred to T-22 runner.
 **Files**: `src/v4/test/claim/*` directories (6 impossible_bug + algebra_laws + diagnostic_correction + future categories) + `src/v4/test/fixture/*`
-**Operator-ratified additions 2026-05-15**: scaffolds for all 6 R1+R2+ impossible-bug classes already present (`test/claim/impossible_bug/{suboptimal_complexity,idempotency_contract,transport_type_drift,nested_optional_flatten,unenumerated_effects,unhandled_diagnostic_paths}.dag`); diagnostic_correction/ + algebra_laws/ directories ready for fill-in.
+**Ratified additions 2026-05-15**: scaffolds for all 6 R1+R2+ impossible-bug classes already present (`test/claim/impossible_bug/{suboptimal_complexity,idempotency_contract,transport_type_drift,nested_optional_flatten,unenumerated_effects,unhandled_diagnostic_paths}.dag`); diagnostic_correction/ + algebra_laws/ directories ready for fill-in.
 
 **T-4 conformance file home (ratified 2026-05-25):** T-14 owns the **`test/claim/generated/`** corpus directory — including `language_behavior_equivalence.dag` (T-19 emission receipt). T-4 references rows in that corpus as its conformance deliverable; T-14 owns the file tree, T-19 owns generation mechanics.
 
@@ -1473,7 +1473,7 @@ Phase-1 execution). Theme-A missed-planning debt is **closed** — no fork
 remains open.
 
 ### T-33 — std/model_core.dag — shared substrate factoring  [DONE]
-**Operator-ratified 2026-05-21 (Option C runtime split).** The shared base
+**Ratified 2026-05-21 (Option C runtime split).** The shared base
 substrate that both `LanguageModel` (T-4) and concrete runtime extdeps
 (T-34) consume. `ModelCore` is the categorical floor for primitive-type
 and algebra-inhabitance declarations to stay consistent across language
@@ -1554,7 +1554,7 @@ deferred primitive/control paths; richer interpretation is T-22-owned
 `V4EvaluatorRuntime` plus `v4_evaluator_interpretation_wave1()`; full
 `RuntimeTarget` bundle wiring remains a T-22 follow-on.
 
-**Operator-ratified 2026-05-21 (Option C).** The former `HostModel`
+**Ratified 2026-05-21 (Option C).** The former `HostModel`
 umbrella is decomposed. Abstract runtime carriers live in
 `src/v4/std/runtime.dag`; concrete runtime fact-bundles live in
 `src/v4/extdeps/runtimes/*.dag` and consume those carriers plus
@@ -1602,7 +1602,7 @@ carriers (option C)" + §"Ratified Q1 supersession — option C runtime split".
 
 ### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [DONE]
 
-**Operator-ratified 2026-05-27.** `ModulePath = FreeMonoid<ModulePathSegment>`
+**Ratified 2026-05-27.** `ModulePath = FreeMonoid<ModulePathSegment>`
 where `ModulePathSegment = { name: Symbol }` is structurally a nickname for
 `FreeMonoid<Symbol>`. The wrapper adds nothing and the name is misleading —
 "path" implies graph traversal (cf. `Path { steps: List<Symbol> }` already in
@@ -1682,7 +1682,7 @@ operator code-examples gate.
 
 ### T-35 — virtual module-loader + ModuleBatch (filesystem-free ingest)  [SCHEDULED]
 
-**Operator-ratified 2026-05-26.** Eliminates filesystem I/O from the
+**Ratified 2026-05-26.** Eliminates filesystem I/O from the
 compile path by replacing file reads with a caller-supplied batch of
 pre-parsed module Nodes. This is the **ingest-side** infrastructure that
 T-23/AGENT-1 composes over — T-35 owns the no-filesystem entry point;
@@ -1851,7 +1851,7 @@ workflows.
 ---
 
 ### T-4.15 — extdeps/protocols/{rest,graphql,grpc}.dag — transport substrate  [SCHEDULED]
-**Operator-ratified 2026-05-20 (PR #3437, P4 — "Glue derivation is
+**Ratified 2026-05-20 (PR #3437, P4 — "Glue derivation is
 composed homomorphism, orthogonal to the compiler").** Transport
 semantics substrate — the carrier shape that a **future omni-stack
 expansion** (beyond T-16's current OpenAPI-based wire-contract scope)
@@ -1929,7 +1929,7 @@ derivation is composed homomorphism, orthogonal to the compiler" +
 
 ### T-4.16 — extdeps/formatters/*.dag — formatter config substrate  [ACTIVE]
 
-**Operator-ratified 2026-05-25.** Human-readable emitted code is a hard
+**Ratified 2026-05-25.** Human-readable emitted code is a hard
 requirement. Every language target the compiler emits must produce output
 that passes the canonical formatter for that language without modification.
 This task models the formatter option space for each language as real,
@@ -2004,7 +2004,7 @@ formatter config by construction.
 ### T-4.17 — Extended language set: full bidirectional ingest (Wave 2a + 2b)
 
 **Files**: `src/v4/extdeps/languages/{java,swift,kotlin,wasm,ecmascript}.dag`
-**Operator-ratified 2026-05-27.** All language files with a full `LanguageModel` /
+**Ratified 2026-05-27.** All language files with a full `LanguageModel` /
 `PrimitiveFactBundle` structure must reach bidirectional ingest fidelity — not just the
 primary Shape-A 5. This task covers the five languages that have Wave-1 scalar
 fact-bundles on main but lack complete lex/grammar data for round-trip ingest:
@@ -2042,7 +2042,7 @@ Both waves are in scope for this task; they may be dispatched per-language in pa
 - `src/v4/extdeps/languages/{verilog,llvm_ir,machine_code,ptx}.dag`
 - `src/v4/extdeps/formats/spice.dag`
 
-**Operator-ratified 2026-05-27.** The B2-OMNI stress probes (T-4.9–T-4.14) landed
+**Ratified 2026-05-27.** The B2-OMNI stress probes (T-4.9–T-4.14) landed
 their structural carrier vocabularies, validating the falsification axes. This task
 elevates each from structural-carrier-only to **full bidirectional ingest** by adding
 lex/grammar data so the tokenize/parse pipeline can actually run on real source:
@@ -2070,7 +2070,7 @@ Each language's wave can be dispatched independently once T-6/T-7 schema is conf
 ### T-4.19 — English formal-subset language model
 
 **File**: `src/v4/extdeps/languages/english.dag`
-**Operator-ratified 2026-05-27 (reversal of T-4.11 framing).**
+**Ratified 2026-05-27 (reversal of T-4.11 framing).**
 
 **Prior position (T-4.11):** "English is NOT a language model — boundary-honesty probe
 only." That framing assumed arbitrary English prose as the target, which has no formal
@@ -2104,7 +2104,7 @@ reflect that it tests the boundary of `english.dag`, not the absence of the file
 ---
 
 ### T-31 — de-prose / de-templating backward sweep  [SCHEDULED]
-**Operator-confirmed 2026-05-17 (D2-reversal Phase-1 execution).** The
+**Confirmed 2026-05-17 (D2-reversal Phase-1 execution).** The
 no-prose and no-templating principles are ratified, but they
 currently get only *forward* enforcement: `P1-KEYSTONE` makes new work
 compliant. The *backward* sweep had no task home — every already-merged
