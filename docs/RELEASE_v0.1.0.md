@@ -176,7 +176,14 @@ green.
   tree).
 - Every path on the strip list is absent from the export.
 - `grep` for private/internal terms (`operator-ratified`, `T-##`, session
-  slugs, `adhoc-`, dashboard URLs) is clean.
+  slugs, `adhoc-<UUID>` refs, dashboard URLs) is clean **in user-facing
+  docs only** — `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`,
+  `docs/LANGUAGE.md` / `SYNTAX.md`, `docs/CLI.md`, `docs/EXAMPLES.md`,
+  `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md`. **Excluded from this grep:**
+  all `.dag` source files and any path documented as carrying load-bearing
+  model marks (the `🟡 dissolve-on-arrival` markers, dissolve-target
+  session-slug attribution, and `adhoc-<UUID>` work-item refs ship in the
+  public snapshot as-is per the "dissolution comments stay" ruling above).
 - `RELEASE_v0.1.0.md` and `RELEASE_TODO.md` are NOT in the public export
   (see [Item G](#item-g--this-doc-is-private)).
 
