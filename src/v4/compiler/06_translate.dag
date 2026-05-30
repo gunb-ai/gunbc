@@ -114,6 +114,7 @@ import v4.std.target_model {
   target_type_expr_field_variant_separator,
   target_type_expr_cardinality_emitted,
   target_type_expr_emitted_labeled_slot_nodes,
+  target_type_expr_emitted_validate_wire_shape,
   target_type_expr_instantiation_emitted,
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
@@ -2213,6 +2214,67 @@ fn serialize_type_expr_arrow_bounded(
     }
   )
 }
+fn serialize_type_expr_emitted_kind_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  emitted: Node,
+  kind: TargetTypeExprKind
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: target_type_expr_emitted_validate_wire_shape(
+      node: emitted,
+      kind: kind,
+      projection: projection
+    ),
+    f: fn(_) {
+      match kind {
+        TargetTypeExprAtom =>
+          type_expr_spelling_for_atom(target: target, node: emitted)
+        TargetTypeExprInstantiation =>
+          serialize_type_expr_generic_apply_bounded(
+            remaining: remaining - 1,
+            target: target,
+            projection: projection,
+            form: projection.instantiation_form,
+            node: emitted
+          )
+        TargetTypeExprCardinality =>
+          serialize_type_expr_generic_apply_bounded(
+            remaining: remaining - 1,
+            target: target,
+            projection: projection,
+            form: projection.cardinality_form,
+            node: emitted
+          )
+        TargetTypeExprRecord =>
+          serialize_type_expr_record_bounded(
+            remaining: remaining - 1,
+            target: target,
+            projection: projection,
+            form: projection.conj_form,
+            node: emitted
+          )
+        TargetTypeExprSum =>
+          serialize_type_expr_sum_bounded(
+            remaining: remaining - 1,
+            target: target,
+            projection: projection,
+            form: projection.disj_form,
+            node: emitted
+          )
+        TargetTypeExprArrow =>
+          serialize_type_expr_arrow_bounded(
+            remaining: remaining - 1,
+            target: target,
+            projection: projection,
+            form: projection.arrow_form,
+            node: emitted
+          )
+      }
+    }
+  )
+}
 fn serialize_type_expr_emitted_bounded(
   remaining: Int,
   target: TargetModel,
@@ -2225,47 +2287,13 @@ fn serialize_type_expr_emitted_bounded(
     )
   } else {
   match target_type_expr_emitted_kind(node: emitted) {
-    TypeExprKindAuthority { value: TargetTypeExprAtom } =>
-      type_expr_spelling_for_atom(target: target, node: emitted)
-    TypeExprKindAuthority { value: TargetTypeExprInstantiation } =>
-      serialize_type_expr_generic_apply_bounded(
-        remaining: remaining - 1,
+    TypeExprKindAuthority { value: kind } =>
+      serialize_type_expr_emitted_kind_bounded(
+        remaining: remaining,
         target: target,
         projection: projection,
-        form: projection.instantiation_form,
-        node: emitted
-      )
-    TypeExprKindAuthority { value: TargetTypeExprCardinality } =>
-      serialize_type_expr_generic_apply_bounded(
-        remaining: remaining - 1,
-        target: target,
-        projection: projection,
-        form: projection.cardinality_form,
-        node: emitted
-      )
-    TypeExprKindAuthority { value: TargetTypeExprRecord } =>
-      serialize_type_expr_record_bounded(
-        remaining: remaining - 1,
-        target: target,
-        projection: projection,
-        form: projection.conj_form,
-        node: emitted
-      )
-    TypeExprKindAuthority { value: TargetTypeExprSum } =>
-      serialize_type_expr_sum_bounded(
-        remaining: remaining - 1,
-        target: target,
-        projection: projection,
-        form: projection.disj_form,
-        node: emitted
-      )
-    TypeExprKindAuthority { value: TargetTypeExprArrow } =>
-      serialize_type_expr_arrow_bounded(
-        remaining: remaining - 1,
-        target: target,
-        projection: projection,
-        form: projection.arrow_form,
-        node: emitted
+        emitted: emitted,
+        kind: kind
       )
     TypeExprKindNotEmitted =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: emitted))

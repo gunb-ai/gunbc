@@ -532,11 +532,30 @@ fn target_type_expr_emitted_validate_labeled_wire(
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Bool> {
   if is_empty(xs: node_positional_child_targets(node: node)) {
-    target_type_expr_emitted_validate_positional_wire(
-      node: node,
-      kind: kind,
-      projection: projection
-    )
+    match target_type_expr_emitted_kind(node: node) {
+      TypeExprKindAuthority { value: decoded } =>
+        if decoded == kind {
+          match target_type_expr_fold_named_metadata_edges(node: node) {
+            NamedMetadataFoldOk { kind_seen: true, surface_seen: true, extra_named: _ } =>
+              match target_type_expr_emitted_surface_identity(node: node) {
+                Accepted { value: surface, diagnostics: d } =>
+                  if surface == target_type_expr_expected_surface_for_kind(kind: kind, projection: projection) {
+                    Accepted { value: true, diagnostics: d }
+                  } else {
+                    outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+                  }
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              }
+            _ => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+          }
+        } else {
+          outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+        }
+      TypeExprKindNotEmitted =>
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      TypeExprKindAuthorityInvalid =>
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    }
   } else {
     outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
   }

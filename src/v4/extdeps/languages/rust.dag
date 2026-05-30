@@ -109,6 +109,8 @@ import v4.std.target_model {
   target_type_expr_field_separator,
   target_type_expr_field_variant_separator,
   target_type_expr_field_surface,
+  target_type_expr_field_kind,
+  target_type_expr_surface_edge,
   target_type_expr_cardinality_emitted,
   target_type_expr_instantiation_emitted,
   target_type_expr_record_emitted,
@@ -138,6 +140,7 @@ import v4.std.algebra {
   boolean_algebra_node,
   boolean_algebra_type_node,
   Empty,
+  fold,
   fold_list,
   list_append,
   list_snoc_item,
@@ -468,6 +471,8 @@ data rust_binding_sg2_foobar: Symbol = rust_binding_sg2_foobar
 data rust_binding_sg2_x: Symbol = rust_binding_sg2_x
 data rust_binding_sg2_y: Symbol = rust_binding_sg2_y
 data rust_binding_sg2_rc: Symbol = rust_binding_sg2_rc
+data rust_binding_sg2_bogus_meta: Symbol = rust_binding_sg2_bogus_meta
+data rust_binding_sg2_bogus_named: Symbol = rust_binding_sg2_bogus_named
 
 data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
 
@@ -3210,6 +3215,80 @@ fn rust_sg2_sum_xy_emitted() -> Node {
       }
     ]
   )
+}
+
+fn rust_sg2_emitted_without_named_edge(base: Node, field: Symbol) -> Node {
+  Node {
+    kind: base.kind,
+    children: fold(base.children, init: Empty, f: fn(acc, e) {
+      match e.label {
+        Named { name: n } =>
+          if n == field {
+            acc
+          } else {
+            list_snoc_item(xs: acc, item: e)
+          }
+        Positional => list_snoc_item(xs: acc, item: e)
+      }
+    })
+  }
+}
+
+fn rust_sg2_malformed_atom_missing_surface_emitted() -> Node {
+  rust_sg2_emitted_without_named_edge(
+    base: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_x
+    ),
+    field: target_type_expr_field_surface
+  )
+}
+
+fn rust_sg2_malformed_atom_duplicate_surface_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: target_type_expr_surface_edge(
+        surface: rust_type_expression_projection().atom_form.surface
+      )
+    )
+  }
+}
+
+fn rust_sg2_malformed_atom_wrong_surface_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: rust_sg2_emitted_without_named_edge(base: base, field: target_type_expr_field_surface).children,
+      item: target_type_expr_surface_edge(surface: rust_binding_sg2_bogus_meta)
+    )
+  }
+}
+
+fn rust_sg2_malformed_atom_extra_named_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: rust_named_edge(
+        name: rust_binding_sg2_bogus_named,
+        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+      )
+    )
+  }
 }
 
 fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {

@@ -17,6 +17,10 @@ import v4.extdeps.languages.rust {
   rust_sg2_conj_xy_emitted,
   rust_sg2_instantiation_source_type_node,
   rust_sg2_malformed_atom_extra_positional_emitted,
+  rust_sg2_malformed_atom_missing_surface_emitted,
+  rust_sg2_malformed_atom_duplicate_surface_emitted,
+  rust_sg2_malformed_atom_wrong_surface_emitted,
+  rust_sg2_malformed_atom_extra_named_emitted,
   rust_sg2_malformed_record_extra_positional_emitted,
   rust_sg2_malformed_sum_extra_positional_emitted,
   rust_sg2_rc_foobar_xy_emitted,
@@ -277,6 +281,46 @@ data claim_sg2_serialize_rejects_sum_extra_positional: TestClaim = CompilesClaim
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_sum_extra_positional_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_serialize_rejects_atom_missing_surface: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialize rejects kind-tagged atom emitted missing surface metadata",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_missing_surface_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_serialize_rejects_atom_duplicate_surface: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialize rejects kind-tagged atom emitted with duplicate surface metadata",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_duplicate_surface_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_serialize_rejects_atom_wrong_surface: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialize rejects kind-tagged atom emitted with wrong surface metadata",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_wrong_surface_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_serialize_rejects_atom_extra_named: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialize rejects kind-tagged atom emitted with extra named metadata edge",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_named_emitted())
   ),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
