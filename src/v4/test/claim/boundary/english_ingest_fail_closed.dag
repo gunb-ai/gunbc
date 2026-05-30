@@ -2,7 +2,7 @@
 //
 // Scope: TestClaim — the English boundary-honesty probe (T-4.11). English
 //        is NOT a language model (natural language has no formal grammar
-//        — operator-ratified fork). It is a boundary-honesty probe with
+//        — ratified fork). It is a boundary-honesty probe with
 //        two demonstrable wins:
 //          (a) Shape B emit: a `.dag` program walking typed values →
 //              English prose (this is the existing T-16 Markdown/docs
