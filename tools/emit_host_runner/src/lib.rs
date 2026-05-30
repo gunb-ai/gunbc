@@ -132,7 +132,7 @@ fn run_command_bounded(mut cmd: Command, timeout: Duration) -> Result<BoundedChi
                 let _ = child.kill();
                 let _ = child.wait();
                 timed_out = true;
-                break None
+                break None;
             }
             None => thread::sleep(Duration::from_millis(50)),
         }
@@ -273,8 +273,7 @@ mod tests {
     fn run_command_bounded_times_out() {
         let mut sleep_cmd = Command::new("sleep");
         sleep_cmd.arg("60");
-        let out = run_command_bounded(sleep_cmd, Duration::from_millis(200))
-        .expect("spawn sleep");
+        let out = run_command_bounded(sleep_cmd, Duration::from_millis(200)).expect("spawn sleep");
         assert!(out.timed_out, "expected timeout");
     }
 }
