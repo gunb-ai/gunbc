@@ -128,6 +128,8 @@ When a substrate PR lands without a same-PR activation, the lane owner files an 
 | target realization rows (per language) | 21 days | row authoring is mechanical once the parent realization type lands |
 | refinement / partiality (rung gap #6) | out of v4 scope per D1 Option C | no v4 deadline; tracked under T-25 |
 
+**Default fallback:** when a substrate PR is filed with no named lens family (or the family is not in the table above), the dissolution window is **30 days**. The default exists so that the absence of a family name does not let shelfware live indefinitely; the per-family table above takes precedence when the family is named.
+
 **Single-substrate single-deadline rule:** a substrate PR may not carry more than one named activation debt. Bundling multiple lens families into one substrate PR forces the worst-case (longest) window to apply to all — explicit incentive against omnibus substrate landings.
 
 **Operator-extension shape:** any window extension is a dashboard work item authored by the operator with named rationale, not a manager-pass act. This keeps the Close/Receipt lane honest: the lane can warn and block, but cannot quietly grant extensions.
