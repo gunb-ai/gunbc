@@ -4056,6 +4056,15 @@ pub fn emit_unified_typed_func_body(
                     }
                 }
             }
+            ExprData::ExprMatch => emit_unified_typed_expr(
+                body.clone(),
+                target.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                1024,
+                |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()),
+            ),
             _ => v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(prefix, "return ".to_string()),
@@ -5765,6 +5774,10 @@ pub fn emit_unified_variant_pattern(
     }
 }
 
+pub fn emit_match_arm_body_stmt(body_str: String) -> String {
+    v2_rt::concat("return ".to_string(), body_str)
+}
+
 pub fn emit_match_arm_line(
     arm: Rc<Node>,
     target: RenderTarget,
@@ -5840,7 +5853,10 @@ pub fn emit_typed_match_unified(
             let mut __result = Vec::new();
             for arm in arms.iter().cloned() {
                 __result.push({
-                    let body_str = recurse(arm_body(arm.clone()), body_depth.clone());
+                    let body_str = emit_match_arm_body_stmt(recurse(
+                        arm_body(arm.clone()),
+                        body_depth.clone(),
+                    ));
                     let guard_str = emit_arm_guard(arm.clone(), target.clone(), |g| {
                         recurse(g.clone(), depth.clone())
                     });

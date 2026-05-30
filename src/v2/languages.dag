@@ -648,14 +648,14 @@ fn python_spec() -> LanguageSpec {
       block_open: ":\n", block_close: "",
       else_clause: "else:\n",
       match_keyword: "match ", case_keyword: "case ",
-      arm_separator: "\n", stmt_terminator: "",
+      arm_separator: "\n", stmt_terminator: "\n",
       significant_whitespace: true
     },
     for_each_syntax: ForEachSyntax { prefix: "for ", separator: " in " },
     tco: TcoSyntax {
       loop_keyword: "while True",
       break_return: "return",
-      continue_str: "continue",
+      continue_str: "continue\n",
       temp_var_prefix: "__tco_",
       temp_decl_prefix: "",
       temp_assign_op: " = "
