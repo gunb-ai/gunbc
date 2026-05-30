@@ -25,10 +25,11 @@ if ! command -v rustc >/dev/null 2>&1; then
   exit 1
 fi
 
-readarray -t extracted < <(python3 - "$fixture_dag" <<'PY'
+eval "$(python3 - "$fixture_dag" <<'PY'
 from __future__ import annotations
 
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -45,14 +46,10 @@ def extract(name: str) -> str:
 
 happy = extract("rust_r1_happy_fixture_source")
 falsification = extract("rust_r1_falsification_fixture_source")
-print(happy, end="")
-print("\0", end="")
-print(falsification, end="")
+print(f"happy_source={shlex.quote(happy)}")
+print(f"falsification_source={shlex.quote(falsification)}")
 PY
-)
-
-happy_source="${extracted[0]}"
-falsification_source="${extracted[1]}"
+)"
 
 run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-$$}"
 tmp_root="${RUNNER_TEMP:-/tmp}"
@@ -64,10 +61,10 @@ compile_rust_lib() {
   local label="$1"
   local source="$2"
   local src_path="${scratch}/${label}.rs"
-  printf '%s' "$source" >"$src_path"
   local stderr_path="${scratch}/${label}.stderr"
+  printf '%s' "$source" >"$src_path"
   set +e
-  RUSTC_BOOTSTRAP= env -u RUSTC_BOOTSTRAP rustc \
+  env -u RUSTC_BOOTSTRAP rustc \
     --edition=2021 \
     --crate-type lib \
     "$src_path" \
