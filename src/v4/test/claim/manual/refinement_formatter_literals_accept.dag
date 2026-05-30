@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/refinement_formatter_literals_accept.dag
 // Scope: one accepted catalog discharge witness per hoisted int refinement type.
-// Status: T-25-core substrate witness (not exhaustive §A1 formatter literal enumeration).
+// Status: T-25-core substrate witness; per-formatter literal tables are §A1 follow-on (T-22 gate: avoid 240s compile timeout).
 
 
 module v4.test.claim.manual.refinement_formatter_literals_accept
