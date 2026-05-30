@@ -586,25 +586,30 @@ type RhsSingletonBindingLookup
   | RhsSingletonBindingAmbiguous
 
 
+fn formal_production_rhs_singleton_binding_step(
+  state: RhsSingletonBindingLookup,
+  symbol: FormalGrammarSymbol
+) -> RhsSingletonBindingLookup {
+  match state {
+    RhsSingletonBindingAmbiguous => state
+    RhsSingletonBindingFound { binding: _ } => RhsSingletonBindingAmbiguous
+    RhsSingletonBindingNotSeen =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: _, binding: binding } =>
+          match binding {
+            Present { value: b } => RhsSingletonBindingFound { binding: b }
+            Absent => RhsSingletonBindingAmbiguous
+          }
+        FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonBindingAmbiguous
+      }
+  }
+}
+
 fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symbol? {
   match fold_list(
     xs: production.rhs,
     empty: RhsSingletonBindingNotSeen,
-    cons: fn(state, symbol) {
-      match state {
-        RhsSingletonBindingAmbiguous => state
-        RhsSingletonBindingFound { binding: _ } => RhsSingletonBindingAmbiguous
-        RhsSingletonBindingNotSeen =>
-          match symbol {
-            FormalTerminalOccurrence { terminal: _, binding: binding } =>
-              match binding {
-                Present { value: b } => RhsSingletonBindingFound { binding: b }
-                Absent => RhsSingletonBindingAmbiguous
-              }
-            FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonBindingAmbiguous
-          }
-      }
-    }
+    cons: formal_production_rhs_singleton_binding_step
   ) {
     RhsSingletonBindingFound { binding: b } => Some { value: b }
     _ => None
