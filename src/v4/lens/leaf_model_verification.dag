@@ -13,8 +13,8 @@ import v4.std.leaf_model_verification {
   LeafModelFixturePair,
   LeafModelFalsificationCase,
   LeafModelRustFixture,
-  RustCrateTypeLib,
-  RustR1I32SurfaceSpelling,
+  leaf_model_claim_rust_r1_i32_surface_spelling,
+  leaf_model_rust_crate_type_lib,
   TargetCompileAccepted,
   TargetCompileRejected,
   target_diagnostic_e0308_type_mismatch
@@ -34,29 +34,29 @@ data rust_r1_falsification_fixture_source: String = "pub fn r1_test() -> i32 { \
 
 fn rust_r1_happy_fixture() -> LeafModelRustFixture {
   LeafModelRustFixture {
-    claim_id: RustR1I32SurfaceSpelling,
+    claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
     source: rust_r1_happy_fixture_source,
-    crate_type: RustCrateTypeLib
+    crate_type: leaf_model_rust_crate_type_lib
   }
 }
 
 
 fn rust_r1_falsification_fixture() -> LeafModelRustFixture {
   LeafModelRustFixture {
-    claim_id: RustR1I32SurfaceSpelling,
+    claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
     source: rust_r1_falsification_fixture_source,
-    crate_type: RustCrateTypeLib
+    crate_type: leaf_model_rust_crate_type_lib
   }
 }
 
 
 fn rust_r1_fixture_pair() -> LeafModelFixturePair {
   LeafModelFixturePair {
-    claim_id: RustR1I32SurfaceSpelling,
+    claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
     happy: rust_r1_happy_fixture(),
     expected_happy_verdict: TargetCompileAccepted,
     falsification: LeafModelFalsificationCase {
-      claim_id: RustR1I32SurfaceSpelling,
+      claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
       fixture: rust_r1_falsification_fixture(),
       expected_verdict: TargetCompileRejected {
         diagnostic_code: target_diagnostic_e0308_type_mismatch

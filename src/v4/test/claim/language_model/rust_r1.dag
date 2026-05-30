@@ -17,7 +17,7 @@ import v4.lens.leaf_model_verification {
 import v4.std.diagnostic { Rejected }
 import v4.std.leaf_model_verification {
   LeafModelVerificationRunReceipt,
-  RustR1I32SurfaceSpelling,
+  leaf_model_claim_rust_r1_i32_surface_spelling,
   TargetCompileRejected,
   target_diagnostic_e0308_type_mismatch
 }
@@ -52,7 +52,7 @@ data claim_rust_r1_fixture_pair_wired: TestClaim = EqualsClaim {
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_r1_claim_bool_atom(b: true),
   rhs: rust_r1_claim_bool_atom(
-    b: rust_r1_fixture().claim_id == RustR1I32SurfaceSpelling
+    b: rust_r1_fixture().claim_id == leaf_model_claim_rust_r1_i32_surface_spelling
       && rust_r1_fixture().happy.source == rust_r1_happy_fixture_source
       && rust_r1_fixture().falsification.fixture.source == rust_r1_falsification_fixture_source
   ),
@@ -62,7 +62,7 @@ data claim_rust_r1_fixture_pair_wired: TestClaim = EqualsClaim {
 
 // Receipt row default fail-closed until host runner overwrites (T-22 bridge follow-on).
 data rust_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
-  claim_id: RustR1I32SurfaceSpelling,
+  claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
   happy_verdict: Fail { actual: Rejected { diagnostics: None } },
   falsification_verdict: Fail { actual: Rejected { diagnostics: None } }
 }
@@ -72,7 +72,7 @@ data claim_rust_r1_verification_receipt_shape: TestClaim = EqualsClaim {
   label: "language_model/rust_r1: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_r1_claim_bool_atom(
-    b: rust_r1_verification_run_receipt_default.claim_id == RustR1I32SurfaceSpelling
+    b: rust_r1_verification_run_receipt_default.claim_id == leaf_model_claim_rust_r1_i32_surface_spelling
   ),
   rhs: rust_r1_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Boundary }
