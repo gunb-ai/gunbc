@@ -252,11 +252,38 @@ jobs:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_CARGO_CHECK_JOBS: "4"
       run: bash scripts/v4-m1-rust-emit-probe.sh
+    # Phase 1 rung gate setup: provision Go on the self-hosted runner. The gate
+    # invokes `go build` for R0-go-parse / R2-go-compile; without this step the
+    # script's host-toolchain guard would fail-closed with
+    # phase1/nat_semiring/setup/host_toolchain_missing (setup gap, not fixture
+    # gap). Python3 is pre-installed on srv1/srv2. setup-go@v5 is cached.
+    - name: Setup Go (phase1/nat_semiring rung gate prerequisite)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      uses: actions/setup-go@v5
+      with:
+        go-version: 'stable'
+        cache: false
+    # Phase 1 rung gate: fixture-scoped emit + rustc/py_compile/go build over
+    # src/v4/test/claim/algebra_laws/nat_semiring.dag. Modeled authority:
+    # src/v4/workflow/ci.dag `phase1_nat_semiring_rung_gate_signal` +
+    # `phase1_nat_semiring_rung_gate_ci_live_workflow_signal`. Strict mode
+    # (V4_PHASE1_NAT_SEMIRING_STRICT=1) — operator directive 2026-05-30; gate
+    # is BLOCKING per ladder rung specs §2 (no rustc-clean headline; fixture×rung shape).
+    - name: phase1/nat_semiring rungs 0-2 gate (dag rust python go)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      timeout-minutes: 20
+      env:
+        V2_COMPILER: target/release/gunbc
+        V4_PHASE1_NAT_SEMIRING_OUT: ${{ runner.temp }}/v4-phase1-nat-semiring
+        V4_PHASE1_NAT_SEMIRING_STRICT: "1"
+      run: bash scripts/v4-phase1-nat-semiring-rung-gate.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
       id: v4_bootstrap_compile
       timeout-minutes: 35
       continue-on-error: true
+      env:
+        V4_BOOTSTRAP_TIMEOUT_SECS: 480
       run: |
         set +euo pipefail
         bash scripts/v4-bootstrap-viability.sh
@@ -264,7 +291,7 @@ jobs:
         echo "exitcode=${ec}" >> "$GITHUB_OUTPUT"
         exit "${ec}"
     - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
-      if: needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outputs.exitcode != '0'
+      if: needs.affected.outputs.v4 == 'true' && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
       id: v4_bootstrap_resolve_posture
       run: |
         set -euo pipefail
@@ -287,6 +314,8 @@ jobs:
         exit 1
     - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      env:
+        V4_TESTCLAIM_TIMEOUT_SECS: 480
       run: bash scripts/v4-testclaim-corpus-gate.sh
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies

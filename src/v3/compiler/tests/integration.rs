@@ -77,6 +77,8 @@ mod e_p_per_call_descent_lens_consumer_cementing;
 mod effect_enumeration_lens_behavioral_completion;
 #[path = "integration/emission_provenance_lens_test.rs"]
 mod emission_provenance_lens_test;
+#[path = "integration/emit_verification_gates_test.rs"]
+mod emit_verification_gates_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
 mod extdeps_rust_primitives_loader_test;
 #[path = "integration/extdeps_sql_transport_test.rs"]
@@ -285,6 +287,8 @@ mod v4_compiler_compile_public_terminal_smoke_test;
 mod v4_compiler_emit_translate_smoke_test;
 #[path = "integration/v4_compiler_parse_table_dag_smoke_test.rs"]
 mod v4_compiler_parse_table_dag_smoke_test;
+#[path = "integration/v4_emit_host_harness_test.rs"]
+mod v4_emit_host_harness_test;
 #[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
 mod v4_extdeps_coordination_dag_smoke_test;
 #[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
