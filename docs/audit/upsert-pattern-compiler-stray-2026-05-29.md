@@ -72,6 +72,10 @@ for declaration graphs and bootstrap regen is **largely aligned**. Stray is
 concentrated in the **DSL workflow layer**: stub `content_upsert`, missing
 `dag_util` helper, and tools that import the stub as if authoritative.
 
+| ID | Location | Violation | Severity | Receipt |
+| --- | --- | --- | --- | --- |
+| **S-register** | `dag.rs` `try_register_lane2_workflow_effect` | Blind overwrite of existing `lane2_workflow` | **Remediated** PR #3923 | `upsert_lane2_workflow_on_node` + unit test; P5 deferral **T-PB-A** / `_internal/ROADMAP_OPS.md` § **Nine lanes** / `pb_hand_rust_at_shim_floor`; DB-18 write contract aligned |
+
 ---
 
 ## §3. Effect / workflow layer (aligned)
@@ -101,11 +105,15 @@ tracked lens/reflection boundaries.
 
 ---
 
-## §5. Test plan for this PR
+## §5. Test plan for PR #3923 (compiler stray remediation)
 
-- Docs + `.dag` comment canon only; no Rust behavior change.
-- `cargo test -p v3-compiler m1_3_lens_unused_parameters` — unchanged;
-  `content_upsert` synthetic-equivalent test remains the behavioral pin until A2.
+- **Rust behavior change:** `try_register_lane2_workflow_effect` — verify-first upsert via
+  `upsert_lane2_workflow_on_node` (no silent overwrite of existing `lane2_workflow`).
+- **Checkable receipt:** `cargo test -p v3-compiler try_register_lane2_workflow_effect_upserts`
+  (`dag.rs` unit test: create, idempotent re-stage, conflict → `false`).
+- **`.dag`:** `typescript_wave2a.dag` — merge hygiene + negative `missing_eq` regression claim
+  (orthogonal to S-register; keeps file valid after rebase onto main).
+- **Unchanged on this PR:** `content_upsert` stub / `m1_3_lens_unused_parameters` pin until audit A2.
 
 ---
 
