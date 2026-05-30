@@ -1,0 +1,97 @@
+// src/v4/test/claim/lens_determinism/nested_invoke_effect_leak.dag
+// Scope: PR-2 claim — invoke edge under nested Transform still triggers effect_leak.
+
+
+module v4.test.claim.lens_determinism.nested_invoke_effect_leak
+
+import v4.compiler.infer { InferredTree }
+import v4.lens.determinism {
+  determinism_effect_leak,
+  determinism_invoke_edge,
+  determinism_witness_from_facts
+}
+import v4.std.determinism { DeterminismFact, Deterministic }
+import v4.std.logic { Bool }
+import v4.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  Transform,
+  TypeNode
+}
+import v4.std.witness { Violates, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data det_nested_caller_symbol: Symbol = det_nested_caller_symbol
+data det_nested_callee_symbol: Symbol = det_nested_callee_symbol
+data det_nested_inner_field: Symbol = det_nested_inner_field
+data det_nested_type_symbol: Symbol = det_nested_type_symbol
+data det_nested_algebra_symbol: Symbol = det_nested_algebra_symbol
+data det_nested_descent_symbol: Symbol = det_nested_descent_symbol
+
+data det_nested_callee_target: Node = claim_atom_node(s: det_nested_callee_symbol)
+
+data det_nested_inner: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge {
+      label: Named { name: determinism_invoke_edge },
+      target: det_nested_callee_target
+    }
+  ]
+}
+
+data det_nested_body: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge {
+      label: Named { name: det_nested_inner_field },
+      target: det_nested_inner
+    }
+  ]
+}
+
+data det_nested_subject: DeterminismFact = DeterminismFact {
+  signature: det_nested_caller_symbol,
+  classification: Deterministic
+}
+
+fn det_nested_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: det_nested_body,
+    facts: claim_inferred_facts(
+      type_symbol: det_nested_type_symbol,
+      algebra_symbol: det_nested_algebra_symbol,
+      descent_symbol: det_nested_descent_symbol,
+    ),
+  )
+}
+
+type LensDeterminismNestedLeakClaim {
+  actual: Witness<DeterminismFact>
+}
+
+data det_nested_leak_claim: LensDeterminismNestedLeakClaim = LensDeterminismNestedLeakClaim {
+  actual: determinism_witness_from_facts(
+    tree: det_nested_tree(),
+    facts: [det_nested_subject],
+    subject: det_nested_subject,
+    body: det_nested_body,
+  )
+}
+
+fn det_nested_leak_claim_violates() -> Bool {
+  match det_nested_leak_claim.actual {
+    Violates { diagnostic: d } => d.reason == determinism_effect_leak
+    _ => false
+  }
+}
+
+data det_nested_leak_claim_passes: Bool = det_nested_leak_claim_violates()

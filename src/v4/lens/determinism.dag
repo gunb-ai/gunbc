@@ -30,14 +30,11 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
-  Bind,
-  ComputationNode,
   Edge,
   Named,
   Node,
   NodeFold,
   Symbol,
-  Transform,
   TypeNode,
   fold_node
 }
@@ -52,8 +49,8 @@ data determinism_invoke_edge: Symbol = determinism_invoke_edge
 
 data forbidden_symbol_hash_map: Symbol = forbidden_symbol_hash_map
 data forbidden_symbol_hash_set: Symbol = forbidden_symbol_hash_set
-data forbidden_symbol_btree_map: Symbol = forbidden_symbol_btree_map
-data forbidden_symbol_btree_set: Symbol = forbidden_symbol_btree_set
+data deterministic_carrier_btree_map: Symbol = deterministic_carrier_btree_map
+data deterministic_carrier_btree_set: Symbol = deterministic_carrier_btree_set
 data forbidden_symbol_now: Symbol = forbidden_symbol_now
 data forbidden_symbol_instant_now: Symbol = forbidden_symbol_instant_now
 data forbidden_symbol_system_time_now: Symbol = forbidden_symbol_system_time_now
@@ -209,58 +206,45 @@ fn callee_invoke_edge_violation(
   }
 }
 
-fn callee_edge_violation(
+fn callee_scan_step(
   registry: Map<Symbol, DeterminismClass>,
   parent: Node,
-  edge: Edge
-) -> Optional<DeterminismViolation> {
-  match parent.kind {
-    ComputationNode { behavior: Transform } =>
-      callee_invoke_edge_violation(registry: registry, edge: edge)
-    ComputationNode { behavior: Bind } =>
-      callee_invoke_edge_violation(registry: registry, edge: edge)
-    _ => optional_absent()
-  }
-}
-
-fn callee_scan_init(n: Node) -> CalleeScanState {
-  CalleeScanState {
-    current: n,
-    violation: optional_absent()
-  }
-}
-
-fn callee_scan_with_registry(
-  registry: Map<Symbol, DeterminismClass>,
   acc: CalleeScanState,
   edge: Edge,
   child: CalleeScanState
 ) -> CalleeScanState {
   CalleeScanState {
-    current: acc.current,
+    current: parent,
     violation: optional_prefer_first_present(
       left: acc.violation,
       right: optional_prefer_first_present(
-        left: callee_edge_violation(registry: registry, parent: acc.current, edge: edge),
+        left: callee_invoke_edge_violation(registry: registry, edge: edge),
         right: child.violation
       )
     )
   }
 }
 
+fn callee_scan_node(
+  registry: Map<Symbol, DeterminismClass>,
+  n: Node
+) -> CalleeScanState {
+  fold(n.children, init: CalleeScanState { current: n, violation: optional_absent() }, f: fn(acc, e) {
+    callee_scan_step(
+      registry: registry,
+      parent: n,
+      acc: acc,
+      edge: e,
+      child: callee_scan_node(registry: registry, n: e.target)
+    )
+  })
+}
+
 fn first_effect_leak_in_body(
   body: Node,
   registry: Map<Symbol, DeterminismClass>
 ) -> Optional<DeterminismViolation> {
-  fold_node(
-    n: body,
-    algebra: NodeFold {
-      init: callee_scan_init,
-      step: fn(acc, edge, child) {
-        callee_scan_with_registry(registry: registry, acc: acc, edge: edge, child: child)
-      }
-    }
-  ).violation
+  callee_scan_node(registry: registry, n: body).violation
 }
 
 fn first_violation_in_body(
