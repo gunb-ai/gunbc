@@ -5,6 +5,10 @@ release of [daglang](https://github.com/gunb-ai/daglang) and the **gunbc**
 compiler. README, release notes, and the project website must not claim
 capabilities beyond what is listed here.
 
+**Posture (operator):** note bugs honestly; **zero overclaim** — no capability ships
+without evidence. Disclaimers below describe worst-case at tag time; they may relax
+in a small revision if emit fixes land before release.
+
 | Tier | Section |
 | ---- | ------- |
 | **Supported** | [§1 — v0.1.0 supported](#1-v010-supported) |
@@ -17,9 +21,12 @@ CLI accepts a flag or the repository contains related code.
 self-hosted compiler (`gunbc`, crate `v2-compiler`). Everything under `src/v3/` and
 `src/v4/` is **§2 alpha / WIP** unless this file explicitly promotes it.
 
-Related (alpha disposition detail, not normative for §1): when present in the
-public tree, see `docs/release/v0.1.0-v4-ship-disposition.md` (v4 ship-disposition
-supplement). Release readiness snapshot: `docs/RELEASE_v0.1.0.md` (when landed).
+Related (alpha disposition detail, not normative for §1; keep aligned with §2 here):
+
+- `docs/release/v0.1.0-v4-ship-disposition.md` — v4 ship-disposition supplement
+  ([PR #4023](https://github.com/gunb-ai/gunbc/pull/4023), sharp-otter-407)
+- `docs/RELEASE_v0.1.0.md` — release readiness snapshot when landed
+  ([PR #3991](https://github.com/gunb-ai/gunbc/pull/3991), gentle-stag-876)
 
 ---
 
@@ -34,16 +41,16 @@ small-`dsl` examples only** — not for arbitrary `src/v4/` programs.
 | Target | Confidence | §1 contract summary |
 | ------ | ------------ | ------------------- |
 | **rust** | **HIGH** | Full compile target for documented examples; see verification bar below. |
-| **python** | **MEDIUM** | Small `dsl/` examples only; **v4-substrate Python NOT supported.** Weather-demo `--target python` not yet end-to-end clean (emit fix in flight). |
-| **go** | **MEDIUM-LOW** | Small smoke only; **v4-fixture Go build is open.** Weather-demo `--target go` not yet end-to-end clean (emit fix in flight). Operator-confirmed **§1** target; ratings may rise in v0.1.1 after Compiler Spine emit fixes land. |
+| **python** | **LIMITED** | small-smoke verified; weather and v4-substrate emit produces invalid Python; not on v0.1.0 support contract for non-trivial inputs |
+| **go** | **LIMITED** | small-smoke verified; weather and v4-substrate emit fails go build; not on v0.1.0 support contract for non-trivial inputs |
 
 **Rust = HIGH confidence for v0.1.0 supported.** Verified via scripts/v4-mvp1-e2e-gate.sh on main CI + cargo test -p v2-compiler-tests pipeline/bootstrap emit tests. Works for fixtures/v4-mvp1/add.dag + small in-tree modules. **Limit:** full src/v4 emit produces ~7951 rustc errors (SG-1 Symbol/E0423 + SG-2 generic arity/E0107 dominate) — this is v4 substrate, NOT v0.1.0 supported.
 
-**Python = MEDIUM confidence.** Verified via v2-compiler-tests unit tests (`same_source_emits_to_rust_and_python`, `scrambled_name_emit_python`). **NOT** a dedicated add.dag → python CI gate. **Known open bug:** emit_python TCO bug on complex modules (`emit_tco_unified` path); phase1/nat_semiring v4-scoped emit often fails `py_compile` (#3996 did not fix). **Weather-demo gap:** swapping `--target python` on `weather.dag` today can emit syntactically invalid Python (match-as-expression / `:=` leaks) — small-smoke verified via v2-compiler-tests only; weather swap target not yet end-to-end clean (Compiler Spine emit fix in flight). DO NOT label v4-substrate Python 'supported'.
+**Python = LIMITED confidence (small-smoke only).** small-smoke verified; weather and v4-substrate emit produces invalid Python; not on v0.1.0 support contract for non-trivial inputs. Evidence: v2-compiler-tests (`same_source_emits_to_rust_and_python`, `scrambled_name_emit_python`) on trivial fixtures only — **not** weather.dag swap, **not** v4-substrate programs. `gunbc compile` may still write `.py` files that fail `py_compile` or run; that is **not** §1 support (no “silently plausible output”).
 
-**Go = MEDIUM-LOW confidence.** Verified via v2-compiler-tests only. **Known open bug:** phase1/nat_semiring `go build` still substrate-red (multi-file package/module-path mismatches); #4015 in flight is gate-alignment honesty, NOT emitter fix. **Weather-demo gap:** swapping `--target go` on `weather.dag` is not yet end-to-end clean (same emit-class issues as Python). Small smoke OK; v4-fixture Go build still open. **Stays in §1** per operator decision; Compiler Spine is fixing emit bugs in parallel — expect v0.1.1 narrative upgrade when landed.
+**Go = LIMITED confidence (small-smoke only).** small-smoke verified; weather and v4-substrate emit fails go build; not on v0.1.0 support contract for non-trivial inputs. Evidence: v2-compiler-tests on trivial smoke only. **Stays listed in §1** per operator decision (alongside Rust) so users see honest limits; Compiler Spine emit fixes may lift disclaimers before tag via a small revision.
 
-**What “supports” means.** For the [supported daglang subset](#supported-daglang-subset) and [shipped examples](#shipped-examples), `gunbc compile --target <name>` succeeds and the external toolchain check for that target passes at the confidence level above. It does **not** mean every `.dag` file in the repository compiles to that target.
+**What “supports” means.** For **rust**, on the [supported daglang subset](#supported-daglang-subset) and [shipped examples](#shipped-examples), `gunbc compile --target rust` succeeds and `cargo check` passes. For **python** and **go**, §1 means only what the verbatim disclaimers above allow — **not** that every compile invocation produces valid target code. It does **not** mean every `.dag` file in the repository compiles to any target.
 
 **Not on the v0.1.0 emit contract (§1)**
 
@@ -59,8 +66,8 @@ explicit error (fail-closed).
 | Target | Open issue | Impact on §1 |
 | ------ | ---------- | ------------- |
 | **rust** | Full-tree `src/v4` emit → ~7,951 `rustc` errors (SG-1 `E0423`, SG-2 `E0107` dominate) | Does **not** reduce §1 confidence for small `dsl/` examples; **do not** treat full v4-tree Rust emit as supported. |
-| **python** | `emit_tco_unified` TCO bug; v4-scoped emit `py_compile` failures; **weather.dag `--target python`** emits invalid syntax today | §1 **small `dsl/` smoke** via unit tests only; **do not** claim weather multi-target swap is clean. |
-| **go** | `phase1/nat_semiring` `go build` substrate-red; #4015 is gate honesty not emitter fix; **weather.dag `--target go`** not e2e clean today | §1 **small smoke** only; v4-fixture Go build **open**; weather swap **not** advertised as working. |
+| **python** | Invalid emit on weather + v4-substrate; `emit_tco_unified` TCO on complex modules | Per disclaimer: **not on contract for non-trivial inputs** |
+| **go** | `go build` fails on weather + v4-substrate; phase1/nat_semiring substrate-red | Per disclaimer: **not on contract for non-trivial inputs** |
 
 #### Verification bar (§1 examples)
 
@@ -77,10 +84,9 @@ worth trying after `cargo build --release -p v2-compiler --bin gunbc`:
 
 1. **[`dsl/examples/weather/weather.dag`](../dsl/examples/weather/weather.dag)** —
    Multi-target **emit** hero: types, enums, match, list pipelines.
-   **Rust:** compile-verified (`cargo check` on emitted crate — see [Weather hero demo](#weather-hero-demo)).
-   **Python / Go:** swap-target on this demo is **not** end-to-end clean today
-   (invalid emit for weather.dag; Compiler Spine emit fix in flight); do not treat
-   README “swap `--target`” as true for weather until a public transcript lands.
+   **Rust compile-verified; Python and Go swap currently produces invalid code**
+   (see [Weather hero demo](#weather-hero-demo) for the Rust-only public receipt).
+   Do not treat README “swap `--target`” as true for weather.
 
 2. **[`src/v2/complexity.dag`](../src/v2/complexity.dag)** — Termination and
    **complexity analysis** in the v2 pipeline: symbolic cost terms, structural
@@ -110,7 +116,9 @@ worth trying after `cargo build --release -p v2-compiler --bin gunbc`:
 
 ### Weather hero demo
 
-Weather demo is **COMPILE-VERIFIED** on the **public receipt** in the command block
+**Rust compile-verified; Python and Go swap currently produces invalid code.**
+
+Weather demo is **COMPILE-VERIFIED (Rust only)** on the **public receipt** in the command block
 below: `gunbc compile` (weather + `dsl/std`, `--target rust`) produces an output
 tree that passes `cargo check`. Reproduce that gate with the commands shown; do not
 rely on maintainer-only release-rehearsal tooling that is absent from the public
@@ -162,7 +170,7 @@ plus the **`dsl/std/`** vocabulary those programs import transitively.
 
 | Example | Role | §1 commands |
 | ------- | ---- | ----------- |
-| **Weather** | Hero **compile** demo (Rust only today) | `gunbc compile --target rust` + `cargo check` (see [Weather hero demo](#weather-hero-demo)); Python/Go swap on weather **not** e2e clean yet. |
+| **Weather** | Hero **compile** demo | Rust: `gunbc compile --target rust` + `cargo check`. Python/Go swap on weather **produces invalid code today** — not on §1 contract for those targets. |
 | **Interpreter test** | Execution demo | `gunbc run` with `--source-root dsl/examples/interp_test` and `--source-root dsl/std`. |
 
 ```bash
@@ -210,14 +218,18 @@ For v0.1.0 supported paths, **unsupported must not mean undefined**:
 1. **Unknown emit targets** — non-zero exit; error names allowed targets.
 2. **Compile-time errors** — diagnostics printed; hard errors → non-zero exit.
 3. **Missing modules or roots** — explicit failure, not silent omission.
-4. **No silent partial emit** on §1 examples with §1 targets.
+4. **No silent partial emit** — invalid Python/Go output must not be read as success;
+   §1 lists those targets with **LIMITED** disclaimers, not full compile guarantees.
 
 ---
 
 ## 2. Alpha and work-in-progress
 
 **Alpha / WIP** surfaces ship in-tree for transparency. **No compile guarantee, no
-regression contract, no fail-closed bar.** Users accept current-state errors.
+regression contract, no fail-closed bar.** Users accept current-state errors. Framing
+must stay consistent with [PR #4023](https://github.com/gunb-ai/gunbc/pull/4023)
+(`docs/release/v0.1.0-v4-ship-disposition.md`) and [PR #3991](https://github.com/gunb-ai/gunbc/pull/3991)
+(`docs/RELEASE_v0.1.0.md` when landed); **§1 above is normative** for the supported contract.
 
 ### v3 and v4 trees (general)
 
