@@ -305,8 +305,6 @@ data wasm_production_labelidx_numeric: Symbol = wasm_production_labelidx_numeric
 data wasm_production_labelidx_named: Symbol = wasm_production_labelidx_named
 data wasm_production_funcidx_numeric: Symbol = wasm_production_funcidx_numeric
 data wasm_production_funcidx_named: Symbol = wasm_production_funcidx_named
-data wasm_production_wave2a_instr: Symbol = wasm_production_wave2a_instr
-data wasm_production_wave2a_text_fragment: Symbol = wasm_production_wave2a_text_fragment
 data wasm_production_control_br_if: Symbol = wasm_production_control_br_if
 data wasm_production_control_call: Symbol = wasm_production_control_call
 data wasm_production_mvp1_module_fn_suffix: Symbol = wasm_production_mvp1_module_fn_suffix
@@ -328,8 +326,6 @@ data wasm_surface_labelidx: Symbol = wasm_surface_labelidx
 data wasm_surface_funcidx: Symbol = wasm_surface_funcidx
 data wasm_surface_control_br_if: Symbol = wasm_surface_control_br_if
 data wasm_surface_control_call: Symbol = wasm_surface_control_call
-data wasm_surface_wave2a_instr: Symbol = wasm_surface_wave2a_instr
-data wasm_surface_wave2a_text_fragment: Symbol = wasm_surface_wave2a_text_fragment
 data wasm_binding_fn_add: Symbol = wasm_binding_fn_add
 data wasm_binding_localidx_0: Symbol = wasm_binding_localidx_0
 data wasm_binding_localidx_1: Symbol = wasm_binding_localidx_1
@@ -1700,6 +1696,16 @@ fn wasm_grammar_text_fragment_expr() -> GrammarExpr {
   )
 }
 
+fn wasm_grammar_text_fragment_wave2a_expr() -> GrammarExpr {
+  wasm_grammar_choice(
+    left: Nonterminal { production: wasm_production_control_br_if },
+    right: wasm_grammar_choice(
+      left: Nonterminal { production: wasm_production_control_call },
+      right: wasm_grammar_text_fragment_expr()
+    )
+  )
+}
+
 fn wasm_grammar_production_text_fragment() -> GrammarProduction {
   GrammarProduction {
     name: wasm_production_text_fragment,
@@ -2460,41 +2466,36 @@ fn wasm_grammar_production_control_call() -> GrammarProduction {
   }
 }
 
-fn wasm_grammar_production_wave2a_instr() -> GrammarProduction {
+fn wasm_grammar_production_text_fragment_wave2a() -> GrammarProduction {
   GrammarProduction {
-    name: wasm_production_wave2a_instr,
-    expression: wasm_grammar_choice(
-      left: Nonterminal { production: wasm_production_control_br_if },
-      right: Nonterminal { production: wasm_production_control_call }
-    ),
-    emitted: wasm_grammar_atom(id: wasm_surface_wave2a_instr)
-  }
-}
-
-fn wasm_grammar_production_wave2a_text_fragment() -> GrammarProduction {
-  GrammarProduction {
-    name: wasm_production_wave2a_text_fragment,
-    expression: wasm_grammar_repeat(
-      element: Nonterminal { production: wasm_production_wave2a_instr }
-    ),
-    emitted: wasm_grammar_atom(id: wasm_surface_wave2a_text_fragment)
+    name: wasm_production_text_fragment,
+    expression: wasm_grammar_text_fragment_wave2a_expr(),
+    emitted: wasm_grammar_atom(id: wasm_surface_text_fragment)
   }
 }
 
 fn wasm_wave2a_grammar_root() -> GrammarRoot {
   GrammarRoot {
-    start: wasm_production_wave2a_text_fragment,
+    start: wasm_production_text_fragment,
     productions: [
-      wasm_grammar_production_wave2a_text_fragment(),
-      wasm_grammar_production_wave2a_instr(),
-      wasm_grammar_production_control_br_if(),
-      wasm_grammar_production_control_call(),
+      wasm_grammar_production_text_fragment_wave2a(),
+      wasm_grammar_production_mvp1_fn_add(),
+      wasm_grammar_production_mvp1_module(),
+      wasm_grammar_production_value_type(),
+      wasm_grammar_production_i32_numeric_literal(),
+      wasm_grammar_production_i64_numeric_literal(),
+      wasm_grammar_production_f32_numeric_literal(),
+      wasm_grammar_production_f64_numeric_literal(),
       wasm_grammar_production_localidx_numeric(),
       wasm_grammar_production_localidx_named(),
       wasm_grammar_production_labelidx_numeric(),
       wasm_grammar_production_labelidx_named(),
       wasm_grammar_production_funcidx_numeric(),
-      wasm_grammar_production_funcidx_named()
+      wasm_grammar_production_funcidx_named(),
+      wasm_grammar_production_numeric_const_instr(),
+      wasm_grammar_production_numeric_binop_instr(),
+      wasm_grammar_production_control_br_if(),
+      wasm_grammar_production_control_call()
     ],
     sync_tokens: grammar_empty_sync_tokens()
   }
