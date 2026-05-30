@@ -118,7 +118,7 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
   match exit.outcome {
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       outcome_rejected(d: d)
-    Rejected { diagnostics: ds } => outcome_rejected(d: ds)
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
@@ -274,19 +274,19 @@ fn run_test_claim_emit_vs_eval_for_claim(
                     expected: expected
                   )
                 Rejected { diagnostics: ds } =>
-                  verdict_fail(actual: outcome_rejected(d: ds))
+                  verdict_fail(actual: Rejected { diagnostics: ds })
               }
             _ =>
               verdict_fail(actual: host_exit_failure_outcome(exit: host_receipt.exit))
           }
         Rejected { diagnostics: ds } =>
           Deferred {
-            actual: outcome_rejected(d: ds),
+            actual: Rejected { diagnostics: ds },
             diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
           }
       }
     Rejected { diagnostics: ds } =>
-      verdict_fail(actual: outcome_rejected(d: ds))
+      verdict_fail(actual: Rejected { diagnostics: ds })
   }
 }
 

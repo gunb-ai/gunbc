@@ -10,26 +10,104 @@
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` land in the same PR. **This PR (+1 census path):**
 //! `v4_emit_host_harness_test.rs` — behavior-driven `run_emit_host_rust` (compile + run fixture,
-//! `HostExit` Holds witness + five-byte stdout parse) plus minimal `.dag` surface needles for carriers wired
-//! in this PR. **Dissolution trigger:** W3 populates `nat_semiring_rung34_runtime_value_rows`
+//! `HostExit` Holds witness + five-byte stdout parse) plus **tokenize/parse** surface receipts
+//! for W2 `.dag` modules (not `str::contains` source probes per TESTING.md).
+//!
+//! **Dissolution trigger:** W3 populates `nat_semiring_rung34_runtime_value_rows`
 //! and wires `run_emit_host_rust` in `emit_host.dag` to invoke `tools/emit_host_runner` (removes
 //! `emit_host_transport_not_wired` on the Rust row); delete this file when rung-3/4 claims +
 //! generated harness replace hand-Rust probes (see `nat_semiring_rung34_eval.dag` roster comment).
 //!
 //! **TESTING.md:** substrate `.dag` eval remains hermetic (`run_emit_host_rust` → `Rejected` until
 //! W3/CI wiring); this test exercises the Rust transport the `.dag` row models, not substrate eval.
-//! The transport uses bounded child I/O (`HOST_BUILD_TIMEOUT`, `HOST_RUN_TIMEOUT`,
-//! `HOST_STREAM_BYTE_CAP` in `emit_host_runner`) and isolates `CARGO_TARGET_DIR` under `work_dir`.
+
+use v3_compiler::parse_for_test;
+use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceVariant, VariantPayload};
+use v3_compiler::tokenize_for_test;
 
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/compiler/emit_host.dag");
+const EMIT_HOST_PATH: &str = "src/v4/compiler/emit_host.dag";
 const HOST_RUN_DAG: &str = include_str!("../../../../v4/std/host_run.dag");
+const HOST_RUN_PATH: &str = "src/v4/std/host_run.dag";
 const FALSIFICATION_DAG: &str = include_str!("../../../../v4/std/test_claim_falsification.dag");
+const FALSIFICATION_PATH: &str = "src/v4/std/test_claim_falsification.dag";
 const NAT_SEMIRING_RUNG34_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung34_eval.dag");
+const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
+    "src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag";
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
     "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }";
+
+fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens =
+        tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
+    parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"))
+}
+
+fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Fn {
+            name: item_name, ..
+        }
+        | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::TypeSum { name: decl_name, .. }
+                | SurfaceItem::TypeRecord { name: decl_name, .. }
+                | SurfaceItem::TypeAlias { name: decl_name, .. }
+                | SurfaceItem::TypeAtom { name: decl_name, .. }
+                if decl_name == name
+        )
+    })
+}
+
+fn type_record_field_names(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    type_name: &str,
+) -> Vec<String> {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord { name, fields, .. } if name == type_name => {
+                Some(
+                    fields
+                        .iter()
+                        .map(|field| field.name.clone())
+                        .collect::<Vec<_>>(),
+                )
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{type_name}: missing type record"))
+}
+
+fn type_sum_variant<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    type_name: &str,
+    variant_name: &str,
+) -> &'a SurfaceVariant {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeSum { name, variants, .. } if name == type_name => {
+                variants.iter().find(|variant| variant.name == variant_name)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing `{type_name}.{variant_name}` variant"))
+}
 
 #[test]
 fn emit_host_runner_rust_row_builds_runs_and_parses_stdout() {
@@ -59,65 +137,87 @@ fn emit_host_runner_rust_row_builds_runs_and_parses_stdout() {
 }
 
 #[test]
-fn v4_host_run_logical_run_carrier_present() {
-    for needle in [
-        "type HostRunStdout",
-        "type HostLogicalRun",
-        "stdout: HostRunStdout",
-        "logical_run: Outcome<HostLogicalRun>",
-        "fn host_logical_run_from_exit",
-    ] {
-        assert!(
-            HOST_RUN_DAG.contains(needle),
-            "host_run.dag missing {needle}"
-        );
+fn v4_host_run_dag_tokenizes_and_parses_logical_run_carrier() {
+    let module = parse_module(HOST_RUN_DAG, HOST_RUN_PATH);
+    assert!(
+        surface_declares_type(&module, "HostRunStdout"),
+        "{HOST_RUN_PATH}: HostRunStdout carrier"
+    );
+    assert!(
+        surface_declares_type(&module, "HostLogicalRun"),
+        "{HOST_RUN_PATH}: HostLogicalRun carrier"
+    );
+    assert_eq!(
+        type_record_field_names(&module, "HostLogicalRun"),
+        vec!["stdout".to_string()],
+        "{HOST_RUN_PATH}: success-only logical run (no nested Witness)"
+    );
+    assert!(
+        surface_declares_fn(&module, "host_logical_run_from_exit"),
+        "{HOST_RUN_PATH}: host_logical_run_from_exit"
+    );
+}
+
+#[test]
+fn v4_falsification_dag_tokenizes_and_parses_execution_evidence() {
+    let module = parse_module(FALSIFICATION_DAG, FALSIFICATION_PATH);
+    assert!(
+        surface_declares_type(&module, "FalsificationReceipt"),
+        "{FALSIFICATION_PATH}: FalsificationReceipt"
+    );
+    let receipt_fields = type_record_field_names(&module, "FalsificationReceipt");
+    assert!(
+        receipt_fields.contains(&"subject".to_string()),
+        "{FALSIFICATION_PATH}: FalsificationReceipt.subject"
+    );
+    for variant in ["Host", "Interpreter", "EvidenceNone"] {
+        let _ = type_sum_variant(&module, "ExecutionEvidence", variant);
     }
 }
 
 #[test]
-fn v4_falsification_execution_evidence_sum_present() {
-    for needle in [
-        "type FalsificationReceipt",
-        "subject: Subj",
-        "🟡 coproduct dissolution — feature:verdict-surface-execution-evidence",
-        "type ExecutionEvidence",
-        "Host { receipt: EmitHostRunReceipt }",
-        "Interpreter { trace: InterpreterTrace }",
-        "EvidenceNone",
+fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
+    let module = parse_module(EMIT_HOST_DAG, EMIT_HOST_PATH);
+    for name in [
+        "run_emit_host_rust",
+        "run_emit_host",
+        "host_exit_failure_outcome",
+        "run_test_claim_emit_vs_eval_for_claim",
+        "run_test_claim_emit_vs_eval",
     ] {
         assert!(
-            FALSIFICATION_DAG.contains(needle),
-            "test_claim_falsification.dag missing {needle}"
+            surface_declares_fn(&module, name),
+            "{EMIT_HOST_PATH}: missing fn {name}"
         );
     }
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::Data { name, .. } if name == "emit_host_transport_not_wired"
+        )),
+        "{EMIT_HOST_PATH}: transport_not_wired symbol"
+    );
 }
 
 #[test]
-fn v4_emit_host_fail_closed_transport_and_logical_run_gate() {
-    for needle in [
-        "emit_host_transport_not_wired",
-        "match host_receipt.logical_run",
-        "claim_input_root: Node",
-        "expected_eval_root: Node",
-        "actual: outcome_rejected(d: ds)",
+fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_empty_roster_gates() {
+    let module = parse_module(NAT_SEMIRING_RUNG34_EVAL_DAG, NAT_SEMIRING_RUNG34_EVAL_PATH);
+    for name in [
+        "nat_semiring_rung34_report_has_evidence",
+        "nat_semiring_rung3_gate",
+        "nat_semiring_rung4_gate",
+        "run_nat_semiring_rung34_eval",
     ] {
         assert!(
-            EMIT_HOST_DAG.contains(needle),
-            "emit_host.dag missing {needle}"
+            surface_declares_fn(&module, name),
+            "{NAT_SEMIRING_RUNG34_EVAL_PATH}: missing fn {name}"
         );
     }
-}
-
-#[test]
-fn v4_nat_semiring_rung_gate_rejects_empty_roster() {
-    for needle in [
-        "fn nat_semiring_rung34_report_has_evidence",
-        "!is_empty(xs: report.entries)",
-        "nat_semiring_rung34_runtime_value_rows",
-    ] {
-        assert!(
-            NAT_SEMIRING_RUNG34_EVAL_DAG.contains(needle),
-            "nat_semiring_rung34_eval.dag missing {needle}"
-        );
-    }
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::Data { name, .. } if name == "nat_semiring_rung34_runtime_value_rows"
+        )),
+        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: empty runtime roster"
+    );
 }
