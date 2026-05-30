@@ -2893,7 +2893,13 @@ fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
       rust_ident_lex_rule(),
       rust_lex_rule(token_class: rust_token_lt, text: "<"),
       rust_lex_rule(token_class: rust_token_gt, text: ">"),
-      rust_lex_rule(token_class: rust_token_comma, text: ", ")
+      rust_lex_rule(token_class: rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
+      rust_lex_rule(token_class: rust_token_lparen, text: "("),
+      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
+      rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
+      rust_lex_rule(token_class: rust_token_pipe, text: " | ")
     ]
   }
 }
@@ -3091,6 +3097,74 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
           children: []
         }
       }
+    ]
+  }
+}
+
+fn rust_sg2_atom_node(binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: []
+  }
+}
+
+fn rust_sg2_arrow_xy_emitted() -> Node {
+  target_type_expr_arrow_emitted(
+    form: rust_type_expression_projection().arrow_form,
+    domain: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_x
+    ),
+    codomain: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_y
+    )
+  )
+}
+
+fn rust_sg2_arrow_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_y) }
+    ]
+  }
+}
+
+fn rust_sg2_arrow_ternary_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_y) },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_foobar) }
+    ]
+  }
+}
+
+fn rust_sg2_conj_xy_emitted() -> Node {
+  target_type_expr_record_emitted(
+    form: rust_type_expression_projection().conj_form,
+    fields: [
+      target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: rust_binding_sg2_x
+      ),
+      target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: rust_binding_sg2_y
+      )
+    ]
+  )
+}
+
+fn rust_sg2_conj_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_y) }
     ]
   }
 }

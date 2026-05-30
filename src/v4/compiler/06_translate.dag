@@ -109,7 +109,7 @@ import v4.std.target_model {
   target_type_expr_sum_emitted
 }
 import v4.std.collection { List, Map, Optional, empty_map, optional_absent, optional_present }
-import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, length, list_append, list_snoc_item, list_tail, zip_eq }
+import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, is_empty, length, list_append, list_snoc_item, list_tail, zip_eq }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 type TargetNodeTree = Node
@@ -1432,13 +1432,17 @@ fn project_type_expression_node(
               bind_outcome(
                 o: list_head_and_tail(xs: split.tail),
                 f: fn(codomain_split) {
-                  Accepted {
-                    value: target_type_expr_arrow_emitted(
-                      form: projection.arrow_form,
-                      domain: split.head,
-                      codomain: codomain_split.head
-                    ),
-                    diagnostics: None
+                  if is_empty(xs: codomain_split.tail) {
+                    Accepted {
+                      value: target_type_expr_arrow_emitted(
+                        form: projection.arrow_form,
+                        domain: split.head,
+                        codomain: codomain_split.head
+                      ),
+                      diagnostics: None
+                    }
+                  } else {
+                    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
                   }
                 }
               )
@@ -1589,6 +1593,162 @@ fn serialize_type_expr_args_bounded(
     }
   )
 }
+fn serialize_type_expr_separated_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  separator: Symbol,
+  items: List<Node>
+) -> Outcome<TargetSource> {
+  fold_list(
+    xs: items,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, item) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          bind_outcome(
+            o: serialize_type_expr_emitted_bounded(remaining - 1, target, projection, item),
+            f: fn(item_source) {
+              if partial == Empty {
+                Accepted { value: item_source, diagnostics: ad }
+              } else {
+                bind_outcome(
+                  o: lex_rules_literal(target: target, token_class: separator),
+                  f: fn(sep_source) {
+                    Accepted {
+                      value: list_append(
+                        left: list_append(left: partial, right: sep_source),
+                        right: item_source
+                      ),
+                      diagnostics: ad
+                    }
+                  }
+                )
+              }
+            }
+          )
+      }
+    }
+  )
+}
+fn serialize_type_expr_record_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  form: TargetRecordTypeShape,
+  node: Node
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: lex_rules_literal(target: target, token_class: form.open),
+    f: fn(open_source) {
+      bind_outcome(
+        o: serialize_type_expr_separated_bounded(
+          remaining - 1,
+          target,
+          projection,
+          form.separator,
+          target_type_expr_positional_children(node: node)
+        ),
+        f: fn(fields_source) {
+          bind_outcome(
+            o: lex_rules_literal(target: target, token_class: form.close),
+            f: fn(close_source) {
+              Accepted {
+                value: list_append(
+                  left: list_append(left: open_source, right: fields_source),
+                  right: close_source
+                ),
+                diagnostics: None
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+fn serialize_type_expr_sum_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  form: TargetSumTypeShape,
+  node: Node
+) -> Outcome<TargetSource> {
+  serialize_type_expr_separated_bounded(
+    remaining,
+    target,
+    projection,
+    form.variant_separator,
+    target_type_expr_positional_children(node: node)
+  )
+}
+fn serialize_type_expr_arrow_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  form: TargetFunctionTypeShape,
+  node: Node
+) -> Outcome<TargetSource> {
+  match target_type_expr_positional_child_at(node: node, index: 0) {
+    Present { value: domain_node } =>
+      match target_type_expr_positional_child_at(node: node, index: 1) {
+        Present { value: codomain_node } =>
+          bind_outcome(
+            o: lex_rules_literal(target: target, token_class: form.open),
+            f: fn(open_source) {
+              bind_outcome(
+                o: serialize_type_expr_emitted_bounded(
+                  remaining - 1,
+                  target,
+                  projection,
+                  domain_node
+                ),
+                f: fn(domain_source) {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.close),
+                    f: fn(close_source) {
+                      bind_outcome(
+                        o: lex_rules_literal(target: target, token_class: form.arrow),
+                        f: fn(arrow_source) {
+                          bind_outcome(
+                            o: serialize_type_expr_emitted_bounded(
+                              remaining - 1,
+                              target,
+                              projection,
+                              codomain_node
+                            ),
+                            f: fn(codomain_source) {
+                              Accepted {
+                                value: list_append(
+                                  left: list_append(
+                                    left: list_append(
+                                      left: list_append(left: open_source, right: domain_source),
+                                      right: close_source
+                                    ),
+                                    right: arrow_source
+                                  ),
+                                  right: codomain_source
+                                ),
+                                diagnostics: None
+                              }
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        Absent =>
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+      }
+    Absent =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
+}
 fn serialize_type_expr_emitted_bounded(
   remaining: Int,
   target: TargetModel,
@@ -1618,9 +1778,39 @@ fn serialize_type_expr_emitted_bounded(
               node: emitted
             )
           } else {
-            outcome_rejected(
-              translate_type_expression_shape_missing_diagnostic(node: emitted)
-            )
+            if surface == projection.conj_form.surface {
+              serialize_type_expr_record_bounded(
+                remaining: remaining,
+                target: target,
+                projection: projection,
+                form: projection.conj_form,
+                node: emitted
+              )
+            } else {
+              if surface == projection.disj_form.surface {
+                serialize_type_expr_sum_bounded(
+                  remaining: remaining,
+                  target: target,
+                  projection: projection,
+                  form: projection.disj_form,
+                  node: emitted
+                )
+              } else {
+                if surface == projection.arrow_form.surface {
+                  serialize_type_expr_arrow_bounded(
+                    remaining: remaining,
+                    target: target,
+                    projection: projection,
+                    form: projection.arrow_form,
+                    node: emitted
+                  )
+                } else {
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: emitted)
+                  )
+                }
+              }
+            }
           }
         }
       }
@@ -1783,6 +1973,7 @@ fn translate_node(
       Rejected { diagnostics: r }
   }
 }
+// 🟢 coproduct dissolution — SG-2 type-expression projection presence probe (present | absent).
 type TypeExprProjectionPresence
   = ProjectionPresent
   | ProjectionAbsent
