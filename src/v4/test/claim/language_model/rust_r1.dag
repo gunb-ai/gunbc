@@ -54,6 +54,8 @@ data claim_rust_r1_fixture_pair_wired: TestClaim = EqualsClaim {
   lhs: rust_r1_claim_bool_atom(b: true),
   rhs: rust_r1_claim_bool_atom(
     b: rust_r1_fixture().claim_id == leaf_model_claim_rust_r1_i32_surface_spelling
+      && rust_r1_fixture().surface_spelling_fact == rust_surface_spelling_i32
+      && rust_r1_fixture().coercion_spelling_fact == rust_coercion_field_i32_spelling
       && rust_r1_fixture().happy.source == rust_r1_happy_fixture_source
       && rust_r1_fixture().falsification.fixture.source == rust_r1_falsification_fixture_source
   ),
@@ -80,16 +82,16 @@ data claim_rust_r1_verification_receipt_shape: TestClaim = EqualsClaim {
 }
 
 
-fn rust_r1_surface_spelling_facts_linked() -> Bool {
-  rust_surface_spelling_i32 == rust_surface_spelling_i32
-    && rust_coercion_field_i32_spelling == rust_coercion_field_i32_spelling
+fn rust_r1_fixture_pair_carries_rust_dag_fact_anchors() -> Bool {
+  rust_r1_fixture().surface_spelling_fact == rust_surface_spelling_i32
+    && rust_r1_fixture().coercion_spelling_fact == rust_coercion_field_i32_spelling
 }
 
 
 data claim_rust_r1_surface_spelling_fact_ids_stable: TestClaim = EqualsClaim {
-  label: "language_model/rust_r1: claim references stable rust.dag i32 surface-spelling fact ids",
+  label: "language_model/rust_r1: fixture pair carries rust.dag i32 surface-spelling fact anchors",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: rust_r1_claim_bool_atom(b: rust_r1_surface_spelling_facts_linked()),
+  lhs: rust_r1_claim_bool_atom(b: rust_r1_fixture_pair_carries_rust_dag_fact_anchors()),
   rhs: rust_r1_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }

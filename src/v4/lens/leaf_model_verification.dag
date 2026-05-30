@@ -52,6 +52,8 @@ fn rust_r1_falsification_fixture() -> LeafModelRustFixture {
 fn rust_r1_fixture_pair() -> LeafModelFixturePair {
   LeafModelFixturePair {
     claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
+    surface_spelling_fact: rust_r1_claim_surface_spelling_fact,
+    coercion_spelling_fact: rust_r1_claim_coercion_spelling_edge,
     happy: rust_r1_happy_fixture(),
     expected_happy_verdict: TargetCompileAccepted,
     falsification: LeafModelFalsificationCase {

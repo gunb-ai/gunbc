@@ -50,6 +50,8 @@ type LeafModelFalsificationCase {
 
 type LeafModelFixturePair {
   claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  coercion_spelling_fact: Symbol
   happy: LeafModelRustFixture
   expected_happy_verdict: TargetCompileVerdict
   falsification: LeafModelFalsificationCase
