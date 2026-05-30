@@ -80,6 +80,7 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
+import std.coercion { TargetAtomRealization }
 import v2.compiler.coercion {
   coerce_primitive_type, is_copy, lookup_checkpoint,
   lookup_atom_realization, atom_realization_is_nominal_newtype, apply_atom_value_ctor_template
