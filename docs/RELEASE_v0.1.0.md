@@ -26,6 +26,16 @@ verified surface either stays private or is documented as unsupported with a
 fail-closed runtime behavior. The previously broad "ship daglang + gunbc"
 scope from earlier drafts is narrowed by the D-REL decisions below.
 
+**ZERO OVERCLAIM (operator 2026-05-30, hard bar).** The reviewer's
+"silently emits plausible-looking output" anti-pattern is the
+release-blocking failure mode. **No claim ships without evidence.**
+This applies across `SUPPORTED.md`, the homepage, the release notes,
+and any per-surface support level: if a target is not verified at the
+claimed scope (example, fixture, smoke), it does not appear in the
+support contract at that scope. Parallel disclaimers landing via
+`silent-bee-431` and `sharp-otter-407` carry the same posture —
+cross-reference when authoring `SUPPORTED.md` to avoid drift.
+
 **Reconciliation with D-REL-1 (iv) flip (2026-05-30).** "Stripped" is no
 longer the default for v3/v4; the operative path is "explicitly
 unsupported": v3 and v4 substrate **ships public labeled alpha / WIP**,
@@ -129,7 +139,7 @@ recommendation as the default until the project maintainer rules otherwise.
 | D-REL-1 | v3 + v4 substrate in public v0.1.0 | **SHIP PUBLIC, labeled alpha / WIP.** Honest-state release: no Wave-2 predicate-closure gating; full-tree ~7,951 v4 rustc errors documented (in `SUPPORTED.md` and `docs/v4-status.md`). Bar is "compilable bootstrap". Fail-closed: if v4 does not compile at tag time, the README + `SUPPORTED.md` label flips alpha → pre-alpha / experimental — no scope strip, no tag delay, just truthful labeling. v3 carries the same posture. | **REVISED 2026-05-30 (post-PM-flip):** supersedes the prior "strip src/v4" ruling and the older `RELEASE_TODO.md` §6 housecleaning legacy (which is now overridden). `scripts/publish-snapshot.sh` `STRIP_PATHS` no longer strips `src/v3` or `src/v4`. Per-surface alpha/PROVEN/GAP detail authored by `sharp-otter-407` in `docs/release/v0.1.0-v4-ship-disposition.md` (in flight, separate PR); `SUPPORTED.md` pulls from that supplement. |
 | D-REL-2 | Binary distribution scope | **Advertised target = passed dry-run. No dry-run = not advertised. Source build is acceptable if binaries are flaky.** | **CONFIRMED 2026-05-30** (project maintainer). |
 | D-REL-3a | Day-one daglang subset (source) | Small example-backed `.dag` subset anchored to `weather.dag` + `interp_test.dag` and the `dsl/std` vocabulary those examples exercise. Anything outside this subset is unsupported and must fail closed. | **CONFIRMED 2026-05-30.** Exact list enumerated in `docs/SUPPORTED.md` (downstream). |
-| D-REL-3b | Day-one target/artifact matrix | **Rust, Go, and Python only** (one per v2 emit lens). Rust must pass `rustc`/`cargo check` on shipped examples; Go must pass `go build` / `go vet`; Python must compile (`python -m py_compile`) and the documented example must run. **TypeScript moves to v4 early-support**, not v0.1.0. C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED + RECONCILED 2026-05-30** (maintainer post-audit ruling). Reflects the existing v2 substrate (`05_emit_rust.dag`, `05_emit_go.dag`, `05_emit_python.dag`); resolves verification gap V1. Per-surface support level (full compile vs example-run vs artifact-only) declared explicitly in `SUPPORTED.md`. |
+| D-REL-3b | Day-one target/artifact matrix | **Rust, Python, and Go** (one per v2 emit lens). **Per-surface honest scope (ZERO OVERCLAIM posture, operator 2026-05-30):** Rust passes `rustc` / `cargo check` on shipped examples today. Python and Go are **small-smoke verified only** — `python -m py_compile` / `go build` on minimal hand-curated fixtures. Weather and v4-substrate Python emit currently **produces invalid Python**; Go emit currently **fails `go build`**. Python and Go are therefore **not on the v0.1.0 support contract for non-trivial inputs** — only the small-smoke surface is claimed. **TypeScript is v4-alpha only**, not v0.1.0. C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED + RECONCILED 2026-05-30** (maintainer post-audit ruling + ZERO OVERCLAIM follow-on). Reflects the existing v2 substrate (`05_emit_rust.dag`, `05_emit_go.dag`, `05_emit_python.dag`) and the honest per-target state. Per-surface support level (full / small-smoke / unsupported-for-class) declared explicitly in `SUPPORTED.md`. |
 | D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | **DECIDED 2026-05-30; enforcement PENDING.** The user-facing docs above do not all exist yet (downstream authoring work). `scripts/publish-snapshot.sh` `STRIP_PATHS` currently strips only the agent/process subtrees (`docs/briefs`, `docs/debt`, etc.); v3/v4 are no longer stripped (per the D-REL-1 (iv) flip). Root `THESIS`/`INVARIANTS`/`MODELING`/`CODING`/`TESTING` and the large `docs/thesis/`, `docs/invariants/`, `docs/planning/`, `docs/design-*` trees are also not yet stripped. A follow-up pass before tag must (a) land the user docs and (b) extend `STRIP_PATHS` to remove everything outside the D-REL-4 keep list. Gate B and Gate D catch the gap if this slips. |
 | D-REL-5 | Release before v4 confidence | **YES**, under flavor (iv): v3/v4 ship public labeled alpha / WIP with honest error counts; v0.1.0's *supported contract* (Rust + Python + Go) does not depend on v4 reaching predicate-closure. | **CONFIRMED 2026-05-30** (revised post-(iv)-flip). |
 
@@ -337,16 +347,20 @@ yet. See "Pre-tag verification gaps" above (V5) for the open work.
   output, no silent no-op).
 - No public command is documented as supported without an end-to-end test
   backing it.
-- **Rust surface (D-REL-3b):** every documented example emits Rust and
-  the generated Rust passes `rustc` / `cargo check` (or `cargo run`
-  where the example is runnable).
-- **Go surface (D-REL-3b):** every documented example emits Go and the
-  generated Go passes `go build` / `go vet`. If an example is not
-  supposed to support Go, that absence is listed in `SUPPORTED.md`.
-- **Python surface (D-REL-3b):** every documented example emits Python,
-  passes `python -m py_compile`, and the documented runnable example
-  executes successfully. If an example is not supposed to support
-  Python, that absence is listed in `SUPPORTED.md`.
+- **Rust surface (D-REL-3b):** passes `rustc` / `cargo check` (or
+  `cargo run` where the example is runnable) on **shipped examples
+  today** — this is the only surface verified at example-scale.
+- **Python surface (D-REL-3b) — small-smoke only:** `python -m
+  py_compile` on a minimal hand-curated fixture set. Weather and
+  v4-substrate Python emit currently produces **invalid Python** and is
+  out of scope; `SUPPORTED.md` lists exactly which fixtures qualify and
+  declares non-trivial Python emit as **not on the v0.1.0 support
+  contract**.
+- **Go surface (D-REL-3b) — small-smoke only:** `go build` on a
+  minimal hand-curated fixture set. Non-trivial Go emit currently
+  **fails `go build`** and is out of scope; `SUPPORTED.md` lists the
+  qualifying fixtures and declares the rest as not on the support
+  contract.
 - **Negative tests:** unsupported-feature examples fail closed with
   named diagnostics.
 
