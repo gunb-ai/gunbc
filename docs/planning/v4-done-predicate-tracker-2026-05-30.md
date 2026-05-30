@@ -241,11 +241,11 @@ Claims checked against tree at `e332fc27b`:
 
 ---
 
-## Next actions (this manager — pre-§8)
+## Next actions (this manager — post-§8)
 
-1. **This doc** → PR from `session/nimble-crane-490-predicate-tracker` for operator/PM review (no worker dispatch).
-2. **After §8 ratification:** refresh `TASKS.md:815` Close-status from this matrix; coordinate Runtime/TestClaim spawn for predicate 5.
-3. **Standing checks:** re-run `t_15_self_host_fixed_point` on main after T-15-affecting merges; watch P5 bridge 14-day soak counter.
+1. **#3948** — rebased onto main post-#3938; awaiting operator merge (2 dashboard APPROVE, CI green).
+2. **TASKS.md:815** — numbering fix forwarded to operator via PM; land separately when assigned (Close/Receipt or operator pick).
+3. **Post-merge:** refresh predicate rows from live `main`; coordinate Runtime/TestClaim spawn for predicate 5; standing `t_15_self_host_fixed_point` on T-15-affecting merges.
 
 ## What this doc is NOT
 
