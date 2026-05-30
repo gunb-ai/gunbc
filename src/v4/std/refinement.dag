@@ -112,9 +112,10 @@ fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Loc
 
 // Vacuous placeholder stubs: unwrap oracle terminal (vacuous_admits always accepts).
 // Substrate self-exemption: bare Refined on Rejected is totality-only (unreachable while
-// validation_from_vacuous uses vacuous_admits). dissolve-on-arrival (T-12/T-19): delete
-// VacuousAdmits, vacuous_admits, refined_vacuous_oracle_terminal, and refined_vacuous_stub_pack
-// together when all placeholder consumers are replaced — not per-callsite patches.
+// validation_from_vacuous uses vacuous_admits). VacuousValidation is exported but admits is
+// substrate-owned only — do not extend this pattern to new call sites. dissolve-on-arrival
+// (T-12/T-19): delete VacuousAdmits, vacuous_admits, refined_vacuous_oracle_terminal, and
+// refined_vacuous_stub_pack together when all placeholder consumers are replaced.
 fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
   match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
     Accepted { value: refined, diagnostics: _ } => refined

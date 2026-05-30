@@ -182,23 +182,7 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
 
 
 fn lean4_nat_authoritative_literal(value: Int) -> Outcome<Lean4NatValue> {
-  if value < 0 {
-    Rejected {
-      diagnostics: diagnostics_singleton(
-        d: Diagnostic {
-          reason: lean4_nat_out_of_range,
-          at: lean4_format_authoritative_locus(),
-          correction: Unavailable { reason: UserInputBoundary }
-        }
-      )
-    }
-  } else if value == 2 {
-    Accepted { value: lean4_nat_catalog_format_indent(), diagnostics: None }
-  } else if value == 120 {
-    Accepted { value: lean4_nat_catalog_format_width(), diagnostics: None }
-  } else {
-    make_lean4_nat_value(value: value, at: lean4_format_authoritative_locus())
-  }
+  make_lean4_nat_value(value: value, at: lean4_format_authoritative_locus())
 }
 
 
