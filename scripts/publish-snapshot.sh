@@ -184,7 +184,7 @@ popd >/dev/null
 # dir so it doesn't get committed into the public snapshot or matched by the
 # leak-grep gate. Operators paste this into release notes / audit trails to
 # record what shipped, what was stripped, and the SHA correspondence.
-MANIFEST_PATH="${EXPORT_DIR%/}.manifest.txt"
+MANIFEST_PATH="$(dirname "$EXPORT_DIR")/public-export-manifest.txt"
 MANIFEST_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 {
   echo "# public-export-manifest"
@@ -217,15 +217,9 @@ LEAK_CONTENT_PATTERNS=(  # leak-gate-self
   'operator-[a-z]+'      # leak-gate-self
 )
 
-# Path patterns mirror STRIP_PATHS — if any glob hits the exported tree it
-# means strip-list failed to remove an internal-only path.
-LEAK_PATH_PATTERNS=(
-  '_internal/'
-  'docs/briefs/'
-  'docs/audit/'
-  'scripts/session-dashboard/'
-  '\.cursor/'
-)
+# Path patterns mirror STRIP_PATHS — any stripped path present in the export
+# means strip-list failed to remove an internal-only path. Derived directly
+# from STRIP_PATHS so the two stay in sync as the strip-list grows.
 
 echo "leak-grep gate: scanning export..."
 leak_fail=0
@@ -240,10 +234,13 @@ for pat in "${LEAK_CONTENT_PATTERNS[@]}"; do
     fi
   fi
 done
-for glob in "${LEAK_PATH_PATTERNS[@]}"; do
-  hits="$(git -C "$EXPORT_DIR" ls-files | grep -E -- "$glob" || true)"
+EXPORT_FILES="$(git -C "$EXPORT_DIR" ls-files)"
+for p in "${STRIP_PATHS[@]}"; do
+  # Match exact file or anything under the stripped prefix.
+  pat_escaped="${p//./\\.}"
+  hits="$(echo "$EXPORT_FILES" | grep -E "^${pat_escaped}(/|$)" || true)"
   if [[ -n "$hits" ]]; then
-    echo "LEAK: path pattern /${glob}/ matched (strip-list missed it):" >&2
+    echo "LEAK: stripped path '${p}' present in export (strip-list missed it):" >&2
     echo "$hits" | head -20 >&2
     leak_fail=1
   fi
