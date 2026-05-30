@@ -12,7 +12,7 @@ import v4.std.diagnostic { Accepted }
 import v4.std.verdict { Verdict, verdict_combine }
 
 
-// Target exercise outcome for compile-only Phase 1 fixtures (rustc / pyright / … widen later).
+// 🟢 coproduct dissolution — CP-LMV-TARGET-COMPILE-VERDICT-PHASE1 (Phase 1 R1 rustc gate; widen per target).
 type TargetCompileVerdict
   = TargetCompileAccepted
   | TargetCompileRejected { diagnostic_code: Symbol }
@@ -37,14 +37,12 @@ data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = RustCrateTypeLib
 
 
 type LeafModelRustFixture {
-  claim_id: LeafModelClaimId
   source: String
   crate_type: LeafModelRustCrateType
 }
 
 
 type LeafModelFalsificationCase {
-  claim_id: LeafModelClaimId
   fixture: LeafModelRustFixture
   expected_verdict: TargetCompileVerdict
 }
@@ -65,24 +63,15 @@ type LeafModelVerificationRunReceipt {
 }
 
 
-fn leaf_model_verification_run_proven(receipt: LeafModelVerificationRunReceipt) -> Bool {
-  match receipt.happy_verdict {
-    Pass => match receipt.falsification_verdict {
-      Pass => true
-      Fail { actual: _ } => false
-      Deferred { actual: _, diagnostic: _ } => false
-    }
-    Fail { actual: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
-}
-
-
 fn leaf_model_verification_claim_passes(receipt: LeafModelVerificationRunReceipt) -> Verdict<LeafModelClaimId> {
-  if leaf_model_verification_run_proven(receipt: receipt) {
-    Pass
-  } else {
-    Fail { actual: Accepted { value: receipt.claim_id, diagnostics: None } }
+  match verdict_combine(a: receipt.happy_verdict, b: receipt.falsification_verdict) {
+    Pass => Pass
+    Fail { actual: _ } => Fail { actual: Accepted { value: receipt.claim_id, diagnostics: None } }
+    Deferred { actual: _, diagnostic: diag } =>
+      Deferred {
+        actual: Accepted { value: receipt.claim_id, diagnostics: None },
+        diagnostic: diag
+      }
   }
 }
 

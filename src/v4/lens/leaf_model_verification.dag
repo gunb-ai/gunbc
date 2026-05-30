@@ -19,6 +19,7 @@ import v4.std.leaf_model_verification {
   TargetCompileRejected,
   target_diagnostic_e0308_type_mismatch
 }
+import v4.std.node { Symbol }
 import v4.std.text { String }
 
 
@@ -34,7 +35,6 @@ data rust_r1_falsification_fixture_source: String = "pub fn r1_test() -> i32 { \
 
 fn rust_r1_happy_fixture() -> LeafModelRustFixture {
   LeafModelRustFixture {
-    claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
     source: rust_r1_happy_fixture_source,
     crate_type: leaf_model_rust_crate_type_lib
   }
@@ -43,7 +43,6 @@ fn rust_r1_happy_fixture() -> LeafModelRustFixture {
 
 fn rust_r1_falsification_fixture() -> LeafModelRustFixture {
   LeafModelRustFixture {
-    claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
     source: rust_r1_falsification_fixture_source,
     crate_type: leaf_model_rust_crate_type_lib
   }
@@ -56,7 +55,6 @@ fn rust_r1_fixture_pair() -> LeafModelFixturePair {
     happy: rust_r1_happy_fixture(),
     expected_happy_verdict: TargetCompileAccepted,
     falsification: LeafModelFalsificationCase {
-      claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
       fixture: rust_r1_falsification_fixture(),
       expected_verdict: TargetCompileRejected {
         diagnostic_code: target_diagnostic_e0308_type_mismatch
