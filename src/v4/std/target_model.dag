@@ -727,9 +727,9 @@ type TargetRepresentationChoice {
 }
 
 // SG-5 — canonical collection realization row (source_carrier is Node-keyed per DFS).
+// Owning TargetModel is the translate caller's parameter — not stored on the row (avoids bundle back-edge).
 type TargetCollectionRealization {
   source_carrier: Node
-  target_model: TargetModel
   primary: TargetRepresentationChoice
   alternatives: List<TargetRepresentationChoice>
   fallback_diagnostic: Diagnostic

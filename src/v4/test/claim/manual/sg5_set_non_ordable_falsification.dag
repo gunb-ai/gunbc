@@ -2,6 +2,9 @@
 // TargetCollectionRealization authority — not silently add Ord nor pick BTreeSet.
 // Status: manual receipt; v4 consumer is 06_translate collection-realization path
 //   (target_model.dag carrier + extdeps/languages/rust.dag row).
+// MVP-1 caveat: element eligibility is kernel-atom tags (🟡 until declared_inhabitants
+//   witnesses). This probe receipts fail-closed on a custom atom, not Ord-trait
+//   semantics — same rejection path as any non-kernel element until witness wiring.
 
 module v4.test.claim.manual.sg5_set_non_ordable_falsification
 

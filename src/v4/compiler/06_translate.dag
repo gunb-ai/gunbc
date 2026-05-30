@@ -1514,7 +1514,6 @@ fn target_collection_realization_from_bundle(
                               Accepted {
                                 value: TargetCollectionRealization {
                                   source_carrier: source_carrier,
-                                  target_model: target,
                                   primary: primary,
                                   alternatives: alternatives,
                                   fallback_diagnostic: fallback_diagnostic
