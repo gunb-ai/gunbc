@@ -36,7 +36,7 @@ import v4.std.change {
 }
 // Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
 // `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
-import v4.std.patterns { CreateAction, ResolveExpr, Upsert, VerifyCheck }
+import v4.std.patterns { CreateAction, ResolveExpr, VerifyCheck }
 import v4.std.types { GlobPattern }
 import v4.compiler.eval {
   EvalContext,
@@ -166,7 +166,7 @@ type CiPipeline {
 
 // Fields mirror §1.2 `CiUpsertStep<T> = Upsert<T> { inputs, verify, create, resolve }`.
 // Parser does not yet accept generic base-type extension (`= Upsert<T> { … }`); consume via
-// `ci_upsert_step_upsert` until ROADMAP generic record extension lands (Phase 1.4 probe 4).
+// v4.std.patterns `Upsert<T>` field alignment until ROADMAP generic record extension lands (Phase 1.4 probe 4).
 // `ResolveExpr<T>` matches Phase 1.4 `dsl/std/patterns.dag` (`type ResolveExpr<T> = Node`).
 // `payload_brand` brands `T` in cache projection until `ResolveExpr<T>` is load-bearing (P1.5-PARSER).
 type CiUpsertStep<T> {
@@ -177,13 +177,8 @@ type CiUpsertStep<T> {
   payload_brand: Symbol
 }
 
-fn ci_upsert_step_upsert<T>(step: CiUpsertStep<T>) -> Upsert<T> {
-  Upsert<T> {
-    verify: step.verify,
-    create: step.create,
-    resolve: step.resolve
-  }
-}
+// Structural consumer of `v4.std.patterns.Upsert<T>`: field-compatible with generic Upsert (verify/create/resolve).
+// Record constructor `Upsert<T> { … }` is not yet supported by v4 `gunbc compile` (P1.5-PARSER).
 
 // 🟡 coproduct dissolution — feature:ci-upsert-step-migration — bind v4-ci-schema-worksheet Phase 2 — dissolve-on-arrival: per-step `UpsertInputRef` rows replace coarse component gates; forbidden: `List<Symbol>` / `FileGlob` inputs.
 type UpsertInputRef
