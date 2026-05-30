@@ -32,6 +32,9 @@ Snapshot date: 2026-05-30.
 5. External community surface (Issues/Discussions wiring on `daglang`).
 6. Removal of `src/v3/` from the internal workspace (stripped from snapshot
    only).
+7. Frontend ([`gunb-ai/frontend`](https://github.com/gunb-ai/frontend)) — a
+   separate repo with its own release cadence; not gated by, and does not
+   gate, the v0.1.0 compiler tag.
 
 **Acceptance criteria (testable conditions for `git tag v0.1.0`).**
 
@@ -222,3 +225,4 @@ HEAD matches the export. Sync direction inverts from that point onward
 - Release workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 - Release model authority: [`src/v4/workflow/release.dag`](../src/v4/workflow/release.dag)
 - Install model authority: [`src/v4/install/install.dag`](../src/v4/install/install.dag)
+- Frontend repo (separate, not part of this tag): [`gunb-ai/frontend`](https://github.com/gunb-ai/frontend)
