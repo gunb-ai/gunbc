@@ -86,34 +86,33 @@ data refinement_preservation_stub_validation: Validation<List<Node>> = Validatio
 }
 
 
-fn refinement_preservation_stub_refined_empty() -> Refined<List<Node>> {
+// Generator anchor only — one refine attempt, one bounded retry, then P3 terminal (no recursion).
+// 🟡 gated — feature:refinement-preservation-stub-fallback — bind T-19 testgen follow-up — dissolve-on-arrival: replace terminal Refined { base } pack with Witness unwrap at the generator boundary; forbidden: self-recursive Rejected fallback on tightened admits.
+fn refinement_preservation_stub_generator_refined_terminal() -> Refined<List<Node>> {
+  Refined { base: [stub_empty_conj] }
+}
+
+
+fn refinement_preservation_stub_generator_refined_rejected() -> Refined<List<Node>> {
   match refine(
-    base: Empty,
+    base: [stub_empty_conj],
     by: refinement_preservation_stub_validation,
     at: refinement_preservation_stub_locus()
   ) {
     Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } =>
-      match refine(
-        base: [stub_empty_conj],
-        by: refinement_preservation_stub_validation,
-        at: refinement_preservation_stub_locus()
-      ) {
-        Accepted { value: refined, diagnostics: _ } => refined
-        Rejected { diagnostics: _ } => refinement_preservation_stub_refined_empty()
-      }
+    Rejected { diagnostics: _ } => refinement_preservation_stub_generator_refined_terminal()
   }
 }
 
 
-fn refinement_preservation_stub_refined(xs: List<Node>) -> Refined<List<Node>> {
+fn refinement_preservation_stub_generator_refined() -> Refined<List<Node>> {
   match refine(
-    base: xs,
+    base: [stub_empty_conj],
     by: refinement_preservation_stub_validation,
     at: refinement_preservation_stub_locus()
   ) {
     Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => refinement_preservation_stub_refined_empty()
+    Rejected { diagnostics: _ } => refinement_preservation_stub_generator_refined_rejected()
   }
 }
 
@@ -243,7 +242,7 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
     anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
     slot: RefinementPreservation {
       subject: RefinementPreservationSubject {
-        refined: refinement_preservation_stub_refined(xs: [stub_empty_conj]),
+        refined: refinement_preservation_stub_generator_refined(),
         original: [stub_empty_conj],
       },
     }

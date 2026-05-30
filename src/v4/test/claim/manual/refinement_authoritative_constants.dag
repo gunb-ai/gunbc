@@ -16,7 +16,9 @@ import v4.std.refinement {
   make_non_negative_int_at_authoritative,
   make_positive_int_at_authoritative,
   non_negative_int_out_of_range,
-  positive_int_out_of_range
+  positive_int_authoritative_literal,
+  positive_int_out_of_range,
+  positive_int_value
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.node { Node }
@@ -32,6 +34,19 @@ import v4.std.verification {
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,
   stub_empty_disj
+}
+
+
+fn witness_positive_int_authoritative_literal_two_accepts() -> Bool {
+  match make_positive_int_at_authoritative(value: 2) {
+    Accepted { value: accepted, diagnostics: _ } =>
+      match positive_int_authoritative_literal(value: 2) {
+        Accepted { value: literal, diagnostics: _ } =>
+          positive_int_value(p: literal) == positive_int_value(p: accepted)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 
@@ -81,6 +96,15 @@ fn refinement_authoritative_claim_input(ok: Bool) -> Node {
   } else {
     stub_empty_disj
   }
+}
+
+
+data claim_positive_int_authoritative_literal_two_accepts: TestClaim = EqualsClaim {
+  label: "manual/refinement: positive_int_authoritative_literal(value: 2) matches make_positive_int_at_authoritative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: refinement_authoritative_claim_input(ok: witness_positive_int_authoritative_literal_two_accepts()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
