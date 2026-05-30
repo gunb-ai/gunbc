@@ -38,9 +38,16 @@
 | `nat_semiring_rung4_gate` | `branch_dispatch_rung4_gate` (TODO) |
 | Blocking receipt prefix | `phase4/branch_dispatch/rung4/…` |
 | Phase 3 unallocated SKIP | `phase4/branch_dispatch/rung4/python_emit_host_unallocated_phase3` (and `go_…`) |
-| Transport wedge | `upstream_blocked:branch_dispatch_rung34_runtime_value_rows_empty` |
 
-**Prerequisite wedge (current main):** No emit-vs-eval roster row → `rust=SKIP`, headline `upstream_blocked:emit_host_transport_not_wired` (same class as rung-4 companion §6 until W3 lands transport + populates roster with `run_test_claim_emit_vs_eval` for `branch_dispatch_subject`).
+**Prerequisite SKIP receipts (companion §2.3 — two states, one headline):**
+
+| Prerequisite not met | Per-cell `SKIP` receipt | When it applies |
+| -------------------- | ----------------------- | --------------- |
+| `run_emit_host_rust` transport not landed | `upstream_blocked:emit_host_transport_not_wired` | **Current main** — lowest unresolved upstream; **headline** blocking receipt for §3 matrix |
+| `branch_dispatch_rung34_runtime_value_rows` empty (W3 roster wedge) | `upstream_blocked:branch_dispatch_rung34_runtime_value_rows_empty` | After transport lands but emit-vs-eval row not yet populated |
+| `R2-rust-compile` not `PASS` | `upstream_blocked:R2-rust-compile` | Rung 2 rust cell not `PASS` |
+
+**Headline rule (companion §2.4):** use the **lowest** unmet prerequisite in the table above. On post-#4018 `main`, that is always `upstream_blocked:emit_host_transport_not_wired` — not `…_rows_empty`, until transport is dissolved.
 
 ---
 
@@ -72,7 +79,7 @@ predicate=R4-rust-emit-equals-eval expected to flip SKIP → PASS|FAIL
 | Field | Value |
 | ----- | ----- |
 | `branch_dispatch_rung34_eval` module | **Absent** — W3 follow-up |
-| Expected rung 4 | `FAIL` (all cells `SKIP`); transport wedge |
+| Expected rung 4 | `FAIL` (all cells `SKIP`); headline `upstream_blocked:emit_host_transport_not_wired` |
 
 ---
 
