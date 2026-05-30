@@ -92,9 +92,9 @@ Seven other targets (cpp, ts, lean, swift, …) are **deferred** to Phase 4+ wid
 | Predicate id | Target | Pass condition | Fail blocking receipt |
 | ------------ | ------ | -------------- | --------------------- |
 | `R0-dag-parse` | `dag` | `v4` parse of `nat_semiring.dag` yields `Accepted` module AST (no parse `Rejected` diagnostics). | `phase1/nat_semiring/rung0/dag_parse_rejected` |
-| `R0-rust-parse` | `rust` | Emitted Rust **lexer/parser frontend only** — syntax accepted with **no** name resolution or type checking. **Allowed receipts:** `rustc -Z parse-only` on the fixture `.rs` when the pinned toolchain supports it; else interim **`rustfmt --check`** on the emitted file (syntax surface only) until Compiler Spine ratifies a stable parse driver. **Forbidden for R0 (R1-owned):** `cargo check`, `cargo build`, `rustc --emit=metadata`, `rustc --emit=llvm-ir`, or any command whose success implies semantic analysis / typecheck. | `phase1/nat_semiring/rung0/rust_emit_parse_rejected` |
+| `R0-rust-parse` | `rust` | Emitted Rust **lexer/parser frontend only** — syntax accepted with **no** name resolution or type checking. **Allowed receipt:** `rustc -Z parse-only` on the fixture `.rs` when the pinned toolchain supports it. **Until Compiler Spine ratifies a stable parse driver:** `ship_disposition: GAP` for this cell (do not proxy with `rustfmt --check` — that is a format delta receipt, not parse). **Forbidden for R0 (R1-owned):** `cargo check`, `cargo build`, `rustc --emit=metadata`, `rustc --emit=llvm-ir`, `rustfmt --check`, or any command whose success implies semantic analysis / typecheck. | `phase1/nat_semiring/rung0/rust_emit_parse_rejected` |
 | `R0-python-parse` | `python` | Emitted Python **parse only** — `python3 -m py_compile` on the fixture `.py` (syntax/parse surface). | `phase1/nat_semiring/rung0/python_emit_parse_rejected` |
-| `R0-go-parse` | `go` | Emitted Go **parse phase only** — `go build -n` or `go test -c` parse-phase success without requiring full link success (project-standard parse receipt). | `phase1/nat_semiring/rung0/go_emit_parse_rejected` |
+| `R0-go-parse` | `go` | Emitted Go **parser frontend only** — syntax accepted with **no** typecheck/compile/link. **Allowed receipt:** `gofmt -e` on the fixture `.go` (reports parse/syntax errors; does not build). **Forbidden for R0 (R2-owned):** `go build`, `go test -c`, `go build -n` (dry-run only — does not execute parse), or any command whose failure mode is compile/link. | `phase1/nat_semiring/rung0/go_emit_parse_rejected` |
 
 **Emit unavailable (not a parse failure):** if v2 emit does not produce the target artifact, disposition is **`SKIP`** with blocking receipt `phase1/nat_semiring/rung0/<target>_emit_unavailable` — do **not** record `R0-*-parse` **FAIL** when no artifact was parsed.
 
@@ -313,4 +313,5 @@ Red CI under `STRICT=1` remains **expected substrate gap signaling**. Operator m
 | Phase 1 target set = dag + rust + python + go | **RATIFIED** |
 | No rustc-clean headline rule (§4) | **RATIFIED** |
 | TestClaim roster (`rung_0_to_2_three_targets.dag`) | **LANDED** on `main` (#3953) |
-| CI authority + host gate script (#3955) | **LANDED** (baseline §6); operator merge of #3955 pending |
+| Host gate script (`v4-phase1-nat-semiring-rung-gate.sh`) | **LANDED** on `main` (#3953); **align** to §2.1/§2.4 (follow-up) |
+| CI authority (`ci.dag` + GHA, #3955) | **PENDING** operator merge — §6 baseline recorded; not live on `main` until #3955 lands |
