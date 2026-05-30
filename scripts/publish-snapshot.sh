@@ -108,6 +108,15 @@ STRIP_PATHS=(
   # is/isn't claimed. This supersedes both the earlier "strip src/v3"
   # legacy and the previous "strip src/v4 wholesale" ruling, and
   # overrides the older RELEASE_TODO.md §6 housecleaning notes.
+  #
+  # Per the (iv) reconciliation rule ("process docs / agent traffic =
+  # stripped; substrate in-progress = alpha-labeled"), the v4 *process*
+  # markdown files (TASKS / BRIEF_TEMPLATE / CULTURE / DECISIONS) remain
+  # stripped — they are agent-process traffic, not substrate.
+  "src/v4/TASKS.md"
+  "src/v4/BRIEF_TEMPLATE.md"
+  "src/v4/CULTURE.md"
+  "src/v4/DECISIONS.md"
 
   # v2 internal design docs.
   "src/v2/CM.md"
