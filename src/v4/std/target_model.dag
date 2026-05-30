@@ -28,7 +28,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.node_query { node_positional_child_targets }
+import v4.std.node_query { find_named_child, node_positional_child_targets }
 import v4.std.text { String }
 
 type TargetModelBundle {
@@ -93,12 +93,6 @@ data target_type_expr_field_close: Symbol = target_type_expr_field_close
 data target_type_expr_field_separator: Symbol = target_type_expr_field_separator
 data target_type_expr_field_variant_separator: Symbol = target_type_expr_field_variant_separator
 
-// SG-2 — per-connective delimiter vocabulary (token classes, not free text).
-type TargetDelimiterPair {
-  open: Symbol
-  close: Symbol
-}
-
 // SG-2 — atom type name: bound ident from source Atom identity via binding_spellings.
 type TargetAtomTypeShape {
   surface: Symbol
@@ -150,7 +144,7 @@ type TargetFunctionTypeShape {
   arrow: Symbol
 }
 
-// SG-2 — projected target-side type-expression node (emitted graph fragment).
+// 🟡 coproduct dissolution — feature:sg1-target-atom-type-form — dissolve-on: TargetAtomRealization.type_form consumes TargetTypeExpression per design-target-realization-canonical-home.md §cross-section invariant.
 type TargetTypeExpression = Node
 
 // SG-2 — canonical per-connective type-expression projection (one row per target language).
@@ -421,6 +415,157 @@ fn target_type_expr_emitted_shape_malformed_diagnostic(node: Node) -> Diagnostic
     reason: target_type_expr_emitted_shape_malformed,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟢 coproduct dissolution — internal fold state for emitted metadata edge scan.
+type TargetTypeExprNamedMetadataFold
+  = NamedMetadataFoldMalformed
+  | NamedMetadataFoldOk { kind_seen: Bool, surface_seen: Bool, extra_named: Int }
+
+fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamedMetadataFold {
+  match fold(node.children, init: NamedMetadataFoldOk { kind_seen: false, surface_seen: false, extra_named: 0 }, f: fn(acc, e) {
+    match acc {
+      NamedMetadataFoldMalformed => acc
+      NamedMetadataFoldOk { kind_seen, surface_seen, extra_named } =>
+        match e.label {
+          Positional => acc
+          Named { name: n } =>
+            if n == target_type_expr_field_kind {
+              if kind_seen {
+                NamedMetadataFoldMalformed
+              } else {
+                match e.target.kind {
+                  TypeNode { connective: Atom { identity: _ } } =>
+                    NamedMetadataFoldOk { kind_seen: true, surface_seen, extra_named }
+                  _ => NamedMetadataFoldMalformed
+                }
+              }
+            } else {
+              if n == target_type_expr_field_surface {
+                if surface_seen {
+                  NamedMetadataFoldMalformed
+                } else {
+                  match e.target.kind {
+                    TypeNode { connective: Atom { identity: _ } } =>
+                      NamedMetadataFoldOk { kind_seen, surface_seen: true, extra_named }
+                    _ => NamedMetadataFoldMalformed
+                  }
+                }
+              } else {
+                NamedMetadataFoldOk { kind_seen, surface_seen, extra_named: extra_named + 1 }
+              }
+            }
+        }
+    }
+  }) {
+    NamedMetadataFoldOk { kind_seen, surface_seen, extra_named } =>
+      if kind_seen && surface_seen {
+        NamedMetadataFoldOk { kind_seen, surface_seen, extra_named }
+      } else {
+        NamedMetadataFoldMalformed
+      }
+    NamedMetadataFoldMalformed => NamedMetadataFoldMalformed
+  }
+}
+
+fn target_type_expr_emitted_surface_identity(node: Node) -> Outcome<Symbol> {
+  match find_named_child(root: node, name: target_type_expr_field_surface) {
+    Accepted { value: child, diagnostics: d } =>
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          Accepted { value: id, diagnostics: d }
+        _ => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn target_type_expr_expected_surface_for_kind(
+  kind: TargetTypeExprKind,
+  projection: TargetTypeExpressionProjection
+) -> Symbol {
+  match kind {
+    TargetTypeExprAtom => projection.atom_form.surface
+    TargetTypeExprInstantiation => projection.instantiation_form.surface
+    TargetTypeExprCardinality => projection.cardinality_form.surface
+    TargetTypeExprRecord => projection.conj_form.surface
+    TargetTypeExprSum => projection.disj_form.surface
+    TargetTypeExprArrow => projection.arrow_form.surface
+  }
+}
+
+fn target_type_expr_emitted_validate_positional_wire(
+  node: Node,
+  kind: TargetTypeExprKind,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Bool> {
+  match target_type_expr_emitted_kind(node: node) {
+    TypeExprKindAuthority { value: decoded } =>
+      if decoded == kind {
+        match target_type_expr_fold_named_metadata_edges(node: node) {
+          NamedMetadataFoldOk { kind_seen: true, surface_seen: true, extra_named: 0 } =>
+            match target_type_expr_emitted_surface_identity(node: node) {
+              Accepted { value: surface, diagnostics: d } =>
+                if surface == target_type_expr_expected_surface_for_kind(kind: kind, projection: projection) {
+                  Accepted { value: true, diagnostics: d }
+                } else {
+                  outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+                }
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            }
+          _ => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+        }
+      } else {
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    TypeExprKindNotEmitted =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    TypeExprKindAuthorityInvalid =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  }
+}
+
+fn target_type_expr_emitted_validate_labeled_wire(
+  node: Node,
+  kind: TargetTypeExprKind,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Bool> {
+  if is_empty(xs: node_positional_child_targets(node: node)) {
+    target_type_expr_emitted_validate_positional_wire(
+      node: node,
+      kind: kind,
+      projection: projection
+    )
+  } else {
+    outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  }
+}
+
+fn target_type_expr_emitted_validate_wire_shape(
+  node: Node,
+  kind: TargetTypeExprKind,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Bool> {
+  match kind {
+    TargetTypeExprRecord =>
+      target_type_expr_emitted_validate_labeled_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+    TargetTypeExprSum =>
+      target_type_expr_emitted_validate_labeled_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+    _ =>
+      target_type_expr_emitted_validate_positional_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
   }
 }
 
