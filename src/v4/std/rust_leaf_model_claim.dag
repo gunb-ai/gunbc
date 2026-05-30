@@ -13,11 +13,15 @@ import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeOutcome }
 
 // Phase-1 primitive subject axis (extension via modeling escalation only).
+// Unit-variant `{}` form required so v2 export surface includes constructors (not type-alias).
 type RustPrimitive
-  = RustPrimitiveI32
+  = RustPrimitiveI32 {}
 
 type AlgebraCarrier
-  = AlgebraCarrierOrderedRing
+  = AlgebraCarrierOrderedRing {}
+
+data rust_leaf_phase1_primitive_i32: RustPrimitive = RustPrimitiveI32 {}
+data rust_leaf_phase1_algebra_carrier_ordered_ring: AlgebraCarrier = AlgebraCarrierOrderedRing {}
 
 // 🟡 gated — feature:rust-leaf-model-claim-subject — bind docs/planning/v4-leaf-model-verification-2026-05-30.md §7 Phase-1 —
 // dissolve-on-arrival: modeling-escalation-only extension arms beyond Phase-1 inventory; forbidden: worker-initiative coproduct growth.
