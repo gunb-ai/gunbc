@@ -161,7 +161,7 @@ Per the ratified T-24 phase plan, with ONE addition (Phase 1.5):
 
 Does NOT need a new manager lane — fits within the existing §11 architecture from PR #3938.
 
-**Critical DFS gate (Modeling DFS Manager):** Phase 1.5's `DependencySource` type is substrate work. A DFS worksheet is REQUIRED before workers touch it. Spot-fix risk: workers could add `dependency_set: List<Symbol>` (string-keyed file globs) and miss the structural authority. The worksheet must establish that `DependencySource` is a *typed* carrier consuming `NodeQuery` / `LensOutputRef` etc., not a stringly-typed list.
+**Critical DFS gate (Modeling DFS Manager):** Phase 1.5's `CiUpsertStep<T>` + `UpsertInputRef` substrate is substrate work. A DFS worksheet is REQUIRED before workers touch it. Spot-fix risk: workers could add `inputs: List<Symbol>` (string-keyed file globs) and miss the structural authority. The worksheet must establish that `UpsertInputRef` is a *typed* coproduct (FileGlob / SubstrateNodeSet / LensOutputRef / TestClaimRef / UpstreamUpsert / Always) consuming `NodeQuery` / `LensId` etc., not a stringly-typed list. **Any worker brief still using the prior "dependency_set" / "DependencySource" terminology is wrong-spec** — those names came from an earlier draft superseded by the Upsert<T> reframe; the carrier is `UpsertInputRef`.
 
 ---
 
@@ -188,7 +188,7 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 - (b) Affected-set-intersect PLUS confidence-boost extras (e.g., always-run smoke gates regardless of touched files)
 - (c) Affected-set-intersect with operator-tunable confidence-floor (some lanes can override "minimal" to always-run during sensitive periods)
 
-*Proposed: (a) by default, with explicit `Always` variant in `DependencySource` for integrity-class steps.* (c) can be layered later by adding a `RunPolicy` field if needed; doesn't change the core architecture.
+*Proposed: (a) by default, with explicit `Always` variant in `UpsertInputRef` for integrity-class steps.* (c) can be layered later by adding a `RunPolicy` field if needed; doesn't change the core architecture.
 
 **D-CI-6.** Should Phase 2.5 (affected-set intersection gate firing) be **part of T-24 [DONE]** or **post-T-24** (separate close gate)?
 
@@ -200,7 +200,7 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 
 - **CI today runs `scripts/check-*`** that aren't yet typed `DisciplinePolicyCommand`. The bankruptcy doc plans A6–A8 to delete these in Phase 1b. Are there checks the operator wants preserved at integrity-class (`Always`) even after their script form is deleted?
 - **Self-hosted runners** (srv1/srv2 per `SelfHostedRunnerPool`): should runner allocation also be affected-set-driven (e.g., smaller affected-set → cheaper runner)? Out of scope for first pass; flag for later.
-- **CI determinism** (per memory `project_determinism_as_effect`): determinism gates are orthogonal — they apply to each step regardless of affected-set. Phase 1.5's `DependencySource = Always` handles this.
+- **CI determinism** (per memory `project_determinism_as_effect`): determinism gates are orthogonal — they apply to each step regardless of affected-set. Phase 1.5's `UpsertInputRef = Always` handles this.
 - **CI per-step timeouts**: per memory item from forwarded info, T-22 TestClaim corpus timeout (exit 143 SIGTERM at 240s) is a pre-existing infra blocker. Phase 1.5's modeling could include per-step `timeout: Duration` declaration to make this declarative, not script-bound.
 
 ---
