@@ -74,6 +74,11 @@ fi
 # Strip-list per RELEASE_TODO §2. Paths are relative to the export worktree
 # root. Adding to this list is the normal way to extend the snapshot policy.
 STRIP_PATHS=(
+  # Maintainer-facing planning docs (not for public).
+  "RELEASE_TODO.md"
+  "WISHLIST.md"
+  "docs/RELEASE_v0.1.0.md"
+
   # Internal docs (agent briefs, history, debt, audits, proposals, perf, decisions)
   "docs/briefs"
   "docs/history"
@@ -97,10 +102,17 @@ STRIP_PATHS=(
   "docs/v4-*.md"
   "docs/modeling/"
 
-  # v3 is frozen and not part of the public story.
-  "src/v3"
-
-  # v4 internal-process docs (the v4 code itself stays).
+  # v3 + v4 substrate SHIP public in v0.1.0 labeled alpha / WIP per
+  # the D-REL-1 (iv) flip (2026-05-30, docs/RELEASE_v0.1.0.md). They are
+  # not on the supported contract; SUPPORTED.md per-surface labels what
+  # is/isn't claimed. This supersedes both the earlier "strip src/v3"
+  # legacy and the previous "strip src/v4 wholesale" ruling, and
+  # overrides the older RELEASE_TODO.md §6 housecleaning notes.
+  #
+  # Per the (iv) reconciliation rule ("process docs / agent traffic =
+  # stripped; substrate in-progress = alpha-labeled"), the v4 *process*
+  # markdown files (TASKS / BRIEF_TEMPLATE / CULTURE / DECISIONS) remain
+  # stripped — they are agent-process traffic, not substrate.
   "src/v4/TASKS.md"
   "src/v4/BRIEF_TEMPLATE.md"
   "src/v4/CULTURE.md"
