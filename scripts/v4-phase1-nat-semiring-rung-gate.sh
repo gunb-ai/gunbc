@@ -133,6 +133,15 @@ run_step() {
   fi
 }
 
+# Bounded-command prefix for invocations that can't go through run_step (e.g. piped into
+# xargs, or where stdout needs to be discarded). Keeps the §22 per-toolchain timeout
+# contract uniform across every host-process boundary (INVARIANTS P3 fail-closed).
+if [[ "$timeout_secs" -gt 0 ]]; then
+  timed=(timeout --preserve-status "$timeout_secs")
+else
+  timed=()
+fi
+
 # --- Rung 0 dag-parse: v4 ingest of the fixture module accepts. ---
 parse_log="$out/logs/dag_parse.log"
 set +e
@@ -180,7 +189,7 @@ else
   # Probe nightly `-Z parse-only` support on this rustc; otherwise GAP/SKIP.
   rust_parse_probe_log="$out/logs/rust_parse_probe.log"
   set +e
-  "$rustc_bin" -Z parse-only --edition=2021 --crate-type lib /dev/null >"$rust_parse_probe_log" 2>&1
+  "${timed[@]}" "$rustc_bin" -Z parse-only --edition=2021 --crate-type lib /dev/null >"$rust_parse_probe_log" 2>&1
   rust_parse_probe_status=$?
   set -e
   # A toolchain that recognises -Z parse-only accepts it; stable rustc rejects -Z flags
@@ -194,7 +203,7 @@ else
     rust_parse_ok=1
     while IFS= read -r -d '' rs; do
       set +e
-      "$rustc_bin" -Z parse-only --edition=2021 --crate-type lib "$rs" >>"$rust_parse_log" 2>&1
+      "${timed[@]}" "$rustc_bin" -Z parse-only --edition=2021 --crate-type lib "$rs" >>"$rust_parse_log" 2>&1
       rs_status=$?
       set -e
       if [[ "$rs_status" -ne 0 ]]; then
@@ -305,7 +314,7 @@ else
   go_parse_log="$out/logs/go_parse.log"
   set +e
   find "$out/go" -name '*.go' -print0 2>/dev/null \
-    | xargs -0 "$gofmt_bin" -e >/dev/null 2>"$go_parse_log"
+    | xargs -0 "${timed[@]}" "$gofmt_bin" -e >/dev/null 2>"$go_parse_log"
   go_parse_status=$?
   set -e
   if [[ "$go_parse_status" -eq 0 ]]; then
