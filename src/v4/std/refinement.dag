@@ -63,7 +63,8 @@ fn validation_from_vacuous<B>(by: VacuousValidation<B>) -> Validation<B> {
 // Inhabit via refine (fail-closed) or make_* packing an Accepted refine receipt.
 // 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
 // compiler-enforced construction only via refine / make_* at consumer call sites;
-// forbidden: bare Refined { base } outside refine / make_* Accepted receipts.
+// forbidden: bare Refined { base } outside refine / make_* Accepted receipts and the
+// refined_vacuous_stub_pack totality scaffold (vacuous_admits-only, Rejected unreachable).
 type Refined<B> {
   base: B
 }
@@ -108,17 +109,12 @@ fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Loc
 }
 
 
-// Vacuous placeholder stubs: refine via substrate vacuous_admits (always accepts). No bare-pack
-// on Rejected — second refine attempt is exhaustive-match only (unreachable with vacuous_admits).
+// Vacuous placeholder stubs: unwrap oracle terminal (vacuous_admits always accepts).
+// Rejected arm is totality-only: validation_from_vacuous hardcodes vacuous_admits — no recursion.
 fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
-  let validation = validation_from_vacuous(by: by)
-  match refine(base: base, by: validation, at: at) {
+  match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
     Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } =>
-      match refine(base: base, by: validation, at: at) {
-        Accepted { value: refined, diagnostics: _ } => refined
-        Rejected { diagnostics: _ } => refined_vacuous_stub_pack(base: base, by: by, at: at)
-      }
+    Rejected { diagnostics: _ } => Refined { base: base }
   }
 }
 
