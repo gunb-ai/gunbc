@@ -75,20 +75,11 @@ fn refined_base<B>(r: Refined<B>) -> B {
 
 // 🟡 gated — feature:refinement-vacuous-oracle-terminal — bind T-12/T-19 placeholder stubs —
 // dissolve-on-arrival: delete when vacuous admits placeholders are replaced; forbidden: consumer
-// bare Refined packs — use refine or this bounded oracle only.
+// bare Refined packs — use refine once, then this single sanctioned fallback (refine is pure).
 fn refined_vacuous_oracle_terminal<B>(base: B, by: Validation<B>, at: Locus) -> Refined<B> {
   match refine(base: base, by: by, at: at) {
     Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } =>
-      match refine(base: base, by: by, at: at) {
-        Accepted { value: refined, diagnostics: _ } => refined
-        Rejected { diagnostics: _ } =>
-          match refine(base: base, by: by, at: at) {
-            Accepted { value: refined, diagnostics: _ } => refined
-            Rejected { diagnostics: _ } =>
-              Refined { base: base }
-          }
-      }
+    Rejected { diagnostics: _ } => Refined { base: base }
   }
 }
 

@@ -41,7 +41,66 @@ fn lean4_format_authoritative_locus() -> Locus {
 }
 
 
-// Ground non-negative Int into Peano Nat (coincidence with Lean ofNat); forbidden: NonNegativeInt alias.
+fn lean4_nat_succ(n: Nat) -> Nat {
+  Succ { prev: n }
+}
+
+
+fn lean4_nat_add_ten(n: Nat) -> Nat {
+  lean4_nat_succ(
+    n: lean4_nat_succ(
+      n: lean4_nat_succ(
+        n: lean4_nat_succ(
+          n: lean4_nat_succ(
+            n: lean4_nat_succ(
+              n: lean4_nat_succ(
+                n: lean4_nat_succ(
+                  n: lean4_nat_succ(n: lean4_nat_succ(n: lean4_nat_succ(n: n)))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+
+// Catalog default width (120): 12× add_ten on Zero — explicit composition, not Int-recursive peano (T-22).
+// 🟡 gated — feature:lean4-nat-catalog-encoding — bind T-4.16 / T-22 follow-on — dissolve-on-arrival:
+// log-depth or Int-literal Nat substrate for formatter catalog; forbidden: unary Int→Nat recursion in data defaults.
+fn lean4_nat_catalog_format_width() -> Nat {
+  lean4_nat_add_ten(
+    n: lean4_nat_add_ten(
+      n: lean4_nat_add_ten(
+        n: lean4_nat_add_ten(
+          n: lean4_nat_add_ten(
+            n: lean4_nat_add_ten(
+              n: lean4_nat_add_ten(
+                n: lean4_nat_add_ten(
+                  n: lean4_nat_add_ten(
+                    n: lean4_nat_add_ten(
+                      n: lean4_nat_add_ten(n: lean4_nat_add_ten(n: Zero))
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn lean4_nat_catalog_format_indent() -> Nat {
+  lean4_nat_succ(n: lean4_nat_succ(n: Zero))
+}
+
+
+// Runtime/user Int→Nat (may recurse on value); not used for catalog defaults.
 fn lean4_nat_peano_from_non_negative_int(value: Int) -> Nat {
   if value == 0 {
     Zero
@@ -72,7 +131,23 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
 
 
 fn lean4_nat_authoritative_literal(value: Int) -> Outcome<Lean4NatValue> {
-  make_lean4_nat_value(value: value, at: lean4_format_authoritative_locus())
+  if value < 0 {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: lean4_nat_out_of_range,
+          at: lean4_format_authoritative_locus(),
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  } else if value == 2 {
+    Accepted { value: lean4_nat_catalog_format_indent(), diagnostics: None }
+  } else if value == 120 {
+    Accepted { value: lean4_nat_catalog_format_width(), diagnostics: None }
+  } else {
+    make_lean4_nat_value(value: value, at: lean4_format_authoritative_locus())
+  }
 }
 
 
