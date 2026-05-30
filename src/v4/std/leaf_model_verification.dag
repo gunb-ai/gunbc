@@ -21,21 +21,20 @@ type TargetCompileVerdict
 data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_type_mismatch
 
 
-// Stable claim identity — references fact IDs declared in leaf models (not runner concerns).
-// 🟢 coproduct dissolution — CP-LMV-CLAIM-ID-PHASE1 (R1 only; widen per additional language-model claims).
-type LeafModelClaimId
-  = RustR1I32SurfaceSpelling
+// Stable claim identity — Symbol anchor until multi-claim coproduct widens (v4 bootstrap
+// rejects nullary single-arm sums; see commit 669ee5f3 / CI @ 816a836).
+type LeafModelClaimId = Symbol
 
 
-data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId = RustR1I32SurfaceSpelling
+data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId =
+  leaf_model_claim_rust_r1_i32_surface_spelling
 
 
-// 🟢 coproduct dissolution — CP-LMV-RUST-CRATE-TYPE-PHASE1 (lib fixtures only; widen for bin/exe).
-type LeafModelRustCrateType
-  = RustCrateTypeLib
+// Rust fixture crate kind — Symbol anchor until bin/exe arms land.
+type LeafModelRustCrateType = Symbol
 
 
-data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = RustCrateTypeLib
+data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = leaf_model_rust_crate_type_lib
 
 
 type LeafModelRustFixture {
