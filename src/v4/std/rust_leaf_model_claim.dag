@@ -19,7 +19,8 @@ type RustPrimitive
 type AlgebraCarrier
   = AlgebraCarrierOrderedRing
 
-// §1 — CLOSED coproduct (modeling-escalation-only extension).
+// 🟡 gated — feature:rust-leaf-model-claim-subject — bind docs/planning/v4-leaf-model-verification-2026-05-30.md §7 Phase-1 —
+// dissolve-on-arrival: modeling-escalation-only extension arms beyond Phase-1 inventory; forbidden: worker-initiative coproduct growth.
 type RustClaimSubject
   = RustPrimitiveTypeSubject { primitive: RustPrimitive }
   | RustAlgebraInhabitanceSubject {
@@ -28,7 +29,6 @@ type RustClaimSubject
       inhabitance_decl: AlgebraInhabitanceDecl
     }
   | RustAtomRealizationSubject { atom: Node }
-  // Modeling escalation (planning §7 R3-external): type_form vs value_form mismatch probe.
   | RustAtomRealizationProjectionMismatchSubject {
       atom: Node
       declared_type_form: Symbol
@@ -38,15 +38,16 @@ type RustClaimSubject
   | RustGrammarProductionSubject { production: GrammarProduction }
   | RustLexRuleSubject { rule: LexRule }
 
-// §2.1 — Phase-1 closed rustc error-code subset.
-// 🟡 dissolve-on-arrival: full RustcErrorCode coproduct — Phase 2.
+// 🟡 gated — feature:rustc-error-code-leaf-model-phase1 — bind docs/planning/v4-leaf-model-verification-2026-05-30.md Phase 2 —
+// dissolve-on-arrival: full RustcErrorCode coproduct owned by rust.dag leaf-model authority; forbidden: string-keyed parallel error tables.
 type Rustc_ErrorCode_Phase1
   = E0107
   | E0308
   | E0423
   | E0599
 
-// §2 — CLOSED expectation coproduct.
+// 🟡 gated — feature:rust-leaf-model-claim-expectation — bind docs/planning/v4-leaf-model-verification-2026-05-30.md §7 Phase-1 —
+// dissolve-on-arrival: modeling-escalation-only extension arms beyond Phase-1 inventory; forbidden: parallel expectation vocab outside this coproduct.
 type RustClaimExpectation
   = RustcAcceptsExpectation { invocation_form: TargetInvocation }
   | RustcRejectsExpectation {

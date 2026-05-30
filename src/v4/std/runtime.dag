@@ -61,9 +61,8 @@ type RuntimeValue
   | RuntimeClosure { value: RuntimeClosureValue }
   | RuntimeUnit { value: RuntimeUnitValue }
 
-// Leaf-model verification runtime outcomes (PR #3971 §2.2 — generic across targets).
 // 🟡 gated — feature:leaf-model-runtime-outcome — bind docs/planning/v4-leaf-model-verification-2026-05-30.md §5 —
-// dissolve-on-arrival: per-target outcome refinements as additional leaf models land.
+// dissolve-on-arrival: consumer:leaf-model-fixture-runner binds per-target outcome refinements; forbidden: parallel outcome vocab outside std/runtime.dag.
 type RuntimeOutcome
   = Panic { panic_classification: Symbol }
   | Wrap
