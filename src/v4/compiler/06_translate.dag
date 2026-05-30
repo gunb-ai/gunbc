@@ -2160,7 +2160,8 @@ fn serialize_type_expr_arrow_bounded(
           target: target,
           projection: projection,
           form: form,
-          inputs: split.inputs
+          inputs: split.inputs,
+          anchor: node
         ),
         f: fn(inputs_source) {
           bind_outcome(
@@ -2371,14 +2372,16 @@ fn project_type_expression_children_in_node_go(
 ) -> Outcome<List<Edge>> {
   if remaining <= 0 {
     outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  } else if is_empty(xs: edges) {
+    Accepted { value: acc, diagnostics: None }
   } else {
-    match edges {
-      Empty => Accepted { value: acc, diagnostics: None }
-      Cons { head: e, tail: rest } =>
+    bind_outcome(
+      o: edge_list_head_and_tail(edges: edges, node: node),
+      f: fn(split) {
         bind_outcome(
           o: project_type_expression_subtree(
             remaining: remaining - 1,
-            node: e.target,
+            node: split.head.target,
             projection: projection
           ),
           f: fn(projected) {
@@ -2386,15 +2389,16 @@ fn project_type_expression_children_in_node_go(
               remaining: remaining - 1,
               node: node,
               projection: projection,
-              edges: rest,
+              edges: split.tail,
               acc: list_snoc_item(
                 xs: acc,
-                item: Edge { label: e.label, target: projected }
+                item: Edge { label: split.head.label, target: projected }
               )
             )
           }
         )
-    }
+      }
+    )
   }
 }
 fn project_type_expression_children_in_node(
