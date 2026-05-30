@@ -111,6 +111,9 @@ fn lean4_nat_catalog_format_indent() -> Nat {
 
 
 // Caller must ensure 0 <= value <= lean4_nat_max_materializable(); use make_lean4_nat_value.
+// 🟡 gated — feature:lean4-nat-peano-materialize — bind T-4.16 / T-22 follow-on — dissolve-on-arrival:
+// replace unary Int→Nat Succ recursion with log-depth or literal Nat substrate; forbidden:
+// runtime materialization that builds value-deep Succ chains (catalog 2/120 use explicit encoders).
 fn lean4_nat_peano_from_non_negative_int(value: Int) -> Nat {
   if value == 0 {
     Zero

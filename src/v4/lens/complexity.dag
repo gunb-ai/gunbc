@@ -93,6 +93,8 @@ data complexity_variables_validation: Validation<List<SizeVariable>> = Validatio
 }
 
 
+// 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-12-COMPLEXITY-PROJECTION
+// with testgen (T-19); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
 data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
   reason: complexity_variables_invalid,
   vacuous: vacuous_admits_marker

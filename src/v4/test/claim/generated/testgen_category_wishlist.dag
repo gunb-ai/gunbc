@@ -89,6 +89,8 @@ data refinement_preservation_stub_validation: Validation<List<Node>> = Validatio
 }
 
 
+// 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-19 testgen follow-up
+// with complexity (T-12); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
 data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
   reason: refinement_preservation_stub_invalid,
   vacuous: vacuous_admits_marker
