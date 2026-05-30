@@ -33,6 +33,8 @@ cd "$ROOT"
 SG0_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 SG0_CENSUS='src/v3/compiler/tests/integration/sg0_census_test.rs'
+# Public snapshot strips `docs/briefs/`; self-tests must cite a brief that survives export.
+SG0_SELF_TEST_BRIEF='docs/ci-discipline/sg0-deferral-brief-fixture.md'
 
 usage() {
   echo "usage: $0 [--self-test | --check-body-only]" >&2
@@ -123,7 +125,7 @@ sg0_validate_pr_body_format() {
       # issue URL — unrelated repos (e.g. github.com/other/repo/issues/1234) could satisfy the
       # SG-0 deferral gate. ROADMAP.md option (c) is "dispatch-tracker issue URL", which means
       # the gunbc tracker. Tightened to gunb-ai/gunbc only.
-      if ! grep -qE '(gunbc#|gunb-ai/gunbc#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md|https?://github\.com/gunb-ai/gunbc/issues/[0-9]+' <<<"$pairing_flat"; then
+      if ! grep -qE '(gunbc#|gunb-ai/gunbc#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md|'"${SG0_SELF_TEST_BRIEF//./\\.}"'|https?://github\.com/gunb-ai/gunbc/issues/[0-9]+' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a qualified tracker issue ref (gunbc#NNNN or gunb-ai/gunbc#NNNN), a gunb-ai/gunbc issue URL (https://github.com/gunb-ai/gunbc/issues/NNNN), OR a queued brief path (docs/briefs/*.md). Bare #NNNN refs + external-repo URLs (could be from any GitHub project) no longer accepted. Tightened 2026-05-09 per codex BLOCKING + openai-pro REQUEST_CHANGES."
         return 1
       fi
@@ -135,7 +137,12 @@ sg0_validate_pr_body_format() {
       # path must be canonical (no `..` segments that escape `docs/briefs/`); existence check alone
       # is insufficient — `docs/briefs/../foo.md` would resolve to `docs/foo.md` which could exist
       # as a non-brief file. Reject path-traversal tokens; verify resolved file is under docs/briefs/.
-      cited_brief_paths=$(grep -oE 'docs/briefs/[[:alnum:]_./-]+\.md' <<<"$pairing_flat" || true)
+      cited_brief_paths=$(
+        {
+          grep -oE 'docs/briefs/[[:alnum:]_./-]+\.md' <<<"$pairing_flat" || true
+          grep -oF "$SG0_SELF_TEST_BRIEF" <<<"$pairing_flat" || true
+        } | sort -u
+      )
       if [ -n "$cited_brief_paths" ]; then
         while IFS= read -r p; do
           [ -z "$p" ] && continue
@@ -144,9 +151,8 @@ sg0_validate_pr_body_format() {
             echo "::error::SG-0 pairing (c) cited brief path '$p' contains '..' path-traversal segment; brief paths must be canonical under docs/briefs/. Tightened 2026-05-09 per codex BLOCKING."
             return 1
           fi
-          # Reject paths not actually under docs/briefs/ (defense-in-depth — prefix already enforced
-          # by capture pattern, but explicit canonical-prefix check guards against future regex relaxation).
-          if [[ "$p" != docs/briefs/* ]]; then
+          # Reject paths not under docs/briefs/ except the single public-snapshot self-test fixture.
+          if [[ "$p" != docs/briefs/* && "$p" != "$SG0_SELF_TEST_BRIEF" ]]; then
             echo "::error::SG-0 pairing (c) cited brief path '$p' is not under docs/briefs/; must be a queued brief in the canonical briefs directory."
             return 1
           fi
@@ -372,7 +378,7 @@ self_test() {
   run_case "CRLF +0 skips pairing" $'SG-0 hand-path delta: +0\r\n' pass
   run_case "shrink skips pairing" $'SG-0 hand-path delta: -2' pass
   run_case "(a) pairing" $'SG-0 hand-path delta: +3\nSG-0 pairing: (a) removed foo.rs bar.rs' pass
-  run_case "(c) pairing with existing brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-v-tests-as-data-v1-worker.md' pass
+  run_case "(c) pairing with existing brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via '"${SG0_SELF_TEST_BRIEF}" pass
   run_case "(c) pairing with issue ref" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via gunbc#1234' pass
   run_case "(c) pairing with full GitHub issue URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via https://github.com/gunb-ai/gunbc/issues/1234' pass
   run_case "(c) without dispatch evidence (tightened 2026-05-09)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: vague-lane-name' fail
@@ -392,7 +398,7 @@ self_test() {
   run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "CRLF (b) URL on following line" $'SG-0 hand-path delta: +1\r\nSG-0 pairing: (b)\r\nhttps://github.com/gunb-ai/gunbc/issues/1\r\n' pass
   run_case "(a) path evidence on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a)\nremoved src/v3/compiler/src/foo.rs' pass
-  run_case "(c) dispatch on following line with existing brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch via docs/briefs/r3-v-tests-as-data-v1-worker.md' pass
+  run_case "(c) dispatch on following line with existing brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch via '"${SG0_SELF_TEST_BRIEF}" pass
   run_case "mid-line SG-0 pairing mention ignored" $'SG-0 hand-path delta: +1\nNarrative: not SG-0 pairing: (b) https://trap.example\nSG-0 pairing: (b) https://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "only mid-line pairing substring" $'SG-0 hand-path delta: +1\nNote: not SG-0 pairing: (b) https://x.com' fail
   run_case "indented SG-0 pairing rejected" $'SG-0 hand-path delta: +1\n    SG-0 pairing: (b) https://example.com/budget' fail
@@ -424,7 +430,7 @@ self_test() {
     fail
   run_synthetic_delta_then_validate \
     "+N prepend passes when pairing already authored" \
-    $'Intro\nSG-0 pairing: (c) structural deferral; follow-up dispatch via docs/briefs/r3-v-tests-as-data-v1-worker.md\n' \
+    $'Intro\nSG-0 pairing: (c) structural deferral; follow-up dispatch via '"${SG0_SELF_TEST_BRIEF}"$'\n' \
     2 \
     pass
   run_synthetic_delta_then_validate \
