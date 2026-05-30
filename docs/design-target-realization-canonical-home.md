@@ -82,24 +82,50 @@ type RequiredTraitWitness { ... }
 
 **Bidirectional readability (§10.6):** every `*_form` field above must admit reading in both emission (`Node → target syntax`) and ingestion (`target syntax → Node`) directions. Forms encoding only one direction (e.g., a free-text emit template that can't be pattern-matched in reverse) are rejected at worker-brief level. The single-fixture round-trip falsification probe of §10.6 is the gate.
 
-## §3. Scaffold-reconciliation disposition (Modeling DFS ratified)
+## §3. Scaffold-reconciliation disposition — COEXIST (Modeling DFS ratified 2026-05-30 msg_7bf34553)
 
-`extdeps/languages/rust.dag:263-364` carries 94 Symbol-tagged catalog entries across five families: `rust_std_projection_*`, `rust_surface_spelling_*`, `rust_repr_*`, `rust_inhabitant_*`, `rust_coercion_field_*`. They are used inside `rust_facts_*` Conj bundles but have **zero compiler/translate consumers** — inert sentinels for the emit path, real as parallel name-keyed scaffold for the P2-authority question.
+**History note.** A first disposition (msg_b09cc9bf) called the bool/char sentinels "inert with zero compiler/translate consumers" and prescribed deletion-on-ABSORB. PR #3952 blocking review (briansrls 2026-05-30T03:35:50Z) flagged that as wrong: the sentinels are field values in live `RustNonIntegerPrimitiveFacts` records that flow through `rust_noninteger_facts_catalog` → `rust_inhabitant_*_node` → `TargetModel.declared_inhabitants`. Deletion would silently drop live target facts (INVARIANTS P1/P2). Modeling DFS re-DFS'd and ratified COEXIST (option b), recorded below.
 
-Per Modeling DFS Mgr (proud-pike-680) addendum ratification 2026-05-30, the SG-1 worker brief's scaffold-reconciliation disposition is:
+**Live fact-flow (verified on current rust.dag + 06_translate.dag):**
 
-| Family member | Disposition | SG-1 worker action |
-| ------------- | ----------- | ------------------ |
-| `rust_std_projection_bool`, `rust_std_projection_char` | **ABSORB** into `TargetAtomRealization` Rust rows as `type_form`/`value_form` slots (Node-keyed, not spelling-keyed) | Land Rust rows for Bool + Char that subsume these sentinels; delete the sentinel `data` lines in the same PR |
-| `rust_surface_spelling_bool`, `rust_surface_spelling_char` | **ABSORB** as above | Same |
-| `rust_inhabitant_bool`, `rust_inhabitant_char`, `rust_inhabitant_field_bool`, `rust_inhabitant_field_char` | **ABSORB** to the extent the Conj-bundle fields they tag become `value_form` slots; otherwise leave for SG-3-adjacent work | Worker brief enumerates which absorb, which stay |
-| `rust_repr_bool` | **ABSORB** as `value_form` representation discriminator | Same |
-| Symbol (the SG-1 carrier itself) | **GREENFIELD** — no rust.dag sentinel exists | Row is net-new |
-| All `rust_std_projection_int*`, `_uint*`, `_float*`, `_str`, `_unit`, `_never` and parallel `_surface_spelling_*` / `_repr_*` / `_inhabitant_*` / `_coercion_field_*` | **OUT OF SG-1 SCOPE** — dissolution-on-arrival when numeric / alias realization substrate exists | Worker brief explicitly forbids touching; flagged as separate follow-on work item under TR Mgr |
+```text
+rust.dag:648-653   rust_facts_bool: RustNonIntegerPrimitiveFacts {
+                     surface_spelling: rust_surface_spelling_bool,
+                     std_projection:   rust_std_projection_bool,
+                     representation:   rust_repr_bool
+                   }
+rust.dag:655-660   rust_facts_char  (analogous)
+rust.dag:705-711   rust_noninteger_facts_catalog = [rust_facts_bool, rust_facts_char, rust_facts_str, …]
+rust.dag:1042-1047 rust_inhabitant_bool_node() / rust_inhabitant_char_node()
+                     → rust_noninteger_inhabitant_node(id, facts)
+rust.dag:1071+     rust_declared_inhabitants_root
+rust.dag:1392-1393 TargetModelBundle.target_model_edge_declared_inhabitants edge
+06_translate.dag   declared_inhabitants consumer
+```
 
-**Forbidden by brief:** leaving bool/char sentinels live alongside the new `TargetAtomRealization` Rust rows for the same atoms. That is exactly the third-authority outcome the canonical home is supposed to eliminate.
+`grep` in `src/v4/compiler/` returns no direct hits on the sentinel identifier names. That is not absence of a consumer — the consumer is the Conj-bundle field reference inside `rust.dag` itself, which carries the value forward into TargetModel.
 
-**Forbidden by brief:** SG-1 worker migrating numeric/str/unit/never families. That widens scope past the SG-1 worksheet and pre-empts a future modeling decision (numeric atoms may want a different carrier shape — `TargetNumericRealization` with width/signedness/overflow-policy fields).
+**Ratified disposition: COEXIST.**
+
+| Atom carrier | In-SG-1 action | Out-of-SG-1 follow-on |
+| ------------ | --------------- | --------------------- |
+| **Symbol** (no `rust_facts_symbol` in noninteger catalog) | **GREENFIELD** — net-new TargetAtomRealization row. Addresses E0423 emit disagreement. | none |
+| **Bool / Char** (have `rust_facts_bool` / `rust_facts_char` in noninteger catalog) | **ADD** net-new TargetAtomRealization rows as PARALLEL authority for type/value emit. `rust_facts_bool/char` remain sole authority for the primitive inhabitant catalog. | A later ratified migration tranche may fold `rust_facts_bool/char` into TargetAtomRealization atomically with downstream consumer updates. When that tranche schedules, a `🟡 dissolve-on-arrival: TargetAtomRealization` gated note lands on `rust_facts_bool/char` — NOT in the SG-1 PR. |
+
+**FORBIDDEN in the SG-1 PR (per Modeling DFS msg_7bf34553):**
+- Deleting ANY `data` line at rust.dag:265-364.
+- Deleting `rust_facts_bool` / `rust_facts_char` / any `rust_facts_*` bundle.
+- Mutating `rust_noninteger_facts_catalog` membership.
+- Touching `declared_inhabitants` / ModelCore wiring without a separate ratified migration.
+- Adding the `🟡 dissolve-on` note to `rust_facts_bool/char` (the migration is not scheduled).
+
+**Allowed (and required) in the SG-1 PR:**
+- New rows in target-realization substrate (atom realization carrier) per §2 sketch.
+- Net-new Rust rows for Symbol, Bool, Char in `extdeps/languages/rust.dag` — additive only.
+- Refactor of `06_translate.dag` type + value paths to consume the new rows for atom realization.
+- Falsification probe + bidirectional readability receipt per §10.6.
+
+**Out of SG-1 worker scope (unchanged):** all integer / str / unit / never sentinel families. Dissolution-on-arrival via separate future work items under TR Mgr.
 
 ## §4. Dispatch boundary
 
