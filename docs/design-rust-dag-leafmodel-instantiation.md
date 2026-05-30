@@ -115,7 +115,7 @@ fn rust_dag_claimable_fact_ids() -> List<Node> {
 
 ### §3.1 Three classes of claimable fact_id in rust.dag
 
-Per the Node-typed `fact_id` discipline ratified by Modeling DFS msg_d5181972 and PR #3970 (`src/v4/extdeps/languages/rust.dag` projection fns `rust_leaf_model_fact_id_node_*`), claimable facts split into three structural classes:
+Per the Node-typed `fact_id` discipline ratified by Modeling DFS msg_d5181972 and PR #3970 (proposed projection fns `rust_leaf_model_fact_id_node_*` — currently in PR #3970, NOT yet on `origin/main`; will land in `src/v4/extdeps/languages/rust.dag` when #3970 merges), claimable facts split into three structural classes:
 
 1. **Top-level `data <name>: <RecordType>` declarations** — facts carried as full Conj-bundle records that the runner can introspect. Example: `rust_facts_i32: RustIntegerPrimitiveFacts` (rust.dag:574). Projection-fn: `rust_integer_facts_node(facts: rust_facts_i32)`.
 2. **Derived facts via model-owned functions** — facts computed by a rust.dag function from other facts. Example: `rust_integer_algebra_inhabitance(rust_facts_i32)` returns an `AlgebraInhabitanceDecl` (rust.dag:1768). Projection-fn: `rust_integer_algebra_inhabitance(facts: rust_facts_i32).algebra`.
@@ -131,20 +131,23 @@ Per the Node-typed `fact_id` discipline ratified by Modeling DFS msg_d5181972 an
 
 ### §3.2 Phase-1 enumeration — exact fact_id list
 
-The Phase-1 claimable subset is **4 fact_ids, 5 LeafModelClaim rows**. The full Phase-1 contents of `rust_dag_claimable_fact_ids()` for the Step 4 implementation:
+The Phase-1 claimable subset is **3 fact_id Node identities, 8 LeafModelClaim rows** (post the R2b 4-way split per §5). The full Phase-1 contents of `rust_dag_claimable_fact_ids()` for the Step 4 implementation (projection-fn names are proposed; live in PR #3970, NOT yet on `origin/main`):
 
 ```dag
 // Phase 1 of rust_dag_claimable_fact_ids() — exhaustively enumerated.
-// Phase 2 widens this list per §6 deferral.
+// Phase 2 widens this list per §3.3.
+// Projection-fn names are proposed in PR #3970; not yet on origin/main.
 
 [
-  rust_leaf_model_fact_id_node_rust_facts_i32(),                                  // R1 — Class 1 fact
-  rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),              // R2a + R2b share this fact (two angles)
-  rust_leaf_model_fact_id_node_atom_realization_symbol()                          // R3-external + R3-internal share this fact (two angles)
+  rust_leaf_model_fact_id_node_rust_facts_i32(),                                  // R1 — 1 LeafModelClaim row
+  rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),              // R2a + R2b(×4) share this fact — 5 LeafModelClaim rows total
+  rust_leaf_model_fact_id_node_atom_realization_symbol()                          // R3-external + R3-internal share this fact — 2 LeafModelClaim rows
 ]
 ```
 
-Three fact_ids in the Phase-1 list; 4th fact_id (R3) is named in §5 sketches via shared identity with the algebra Symbol. Per the Layer A contract this list, when iterated, MUST produce the 5 Phase-1 LeafModelClaim rows in C(rust.dag) — and only those.
+Three fact_id Node identities; **8 LeafModelClaim rows total**: R1 (1) + R2a (1) + R2b sub-claims (4 — see §5 split) + R3-external (1) + R3-internal (1) = 8. Per the Layer A contract this list, when iterated, MUST produce the 8 Phase-1 LeafModelClaim rows in C(rust.dag) — and only those for Phase 1.
+
+**Note on count vs PR #3959 §7 line 202 framing.** The PM planning doc says "5 fixtures across 4 claim IDs" as the Phase-1 commitment. The 8-row count here reflects the post-review R2b split (codex blocking review on this PR, finding #4/#8, root-caused to rust.dag's `OverflowDisposition` carrying 4 distinct OverflowAction fields — a single R2b row let a wrong release-default fact pass under a debug-only check). The split converts what PM framed as "1 fixture for R2b" into 4 sub-claim rows (2 live fixtures + 2 not_checked stubs per §5). Fact-id count is still 4 if you count R3 as one fact (PLANNED, currently a placeholder Node in PR #3970 substrate); 3 if you count only the on-main Node-identifiable facts.
 
 ### §3.3 Phase-2+ widening — exhaustive enumeration of remaining claimable facts
 
@@ -171,7 +174,7 @@ Inventory at main HEAD `edc8cba73` (approximate counts; row counts verified agai
 | TargetAtomRealization rows (Symbol/Bool/Char) | 3 (planned) | **Not on main yet — to be declared by SG-1 dispatch (Step 5).** R3-internal claim row authored at Step 4 references this fact_id (cited as `rust_atom_realization_symbol` for the Symbol carrier specifically) and stays `not_checked`/`GAP` until SG-1 lands. | R3 (Symbol only — fact_id `rust_atom_realization_symbol` covered by TWO LeafModelClaim rows: R3-external + R3-internal verification angles) |
 | TargetCollectionRealization rows (Set/…) | varies (planned) | **Not on main yet — to be declared by SG-5 dispatch.** | none in Phase 1 |
 
-**Every fact_id above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 4 fact_ids: (a) `rust_facts_i32` (rust.dag:574 — top-level data Symbol declaring `RustIntegerPrimitiveFacts` for i32), (b) `rust_integer_algebra_inhabitance(rust_facts_i32)` × `RustClaimExpectation.RustcAcceptsExpectation` angle (derived-fact key — algebra-operations claim; R2a), (c) `rust_integer_algebra_inhabitance(rust_facts_i32)` × `RustClaimExpectation.RustRuntimeBehaviorExpectation` angle (derived-fact key — overflow-semantics claim; R2b), (d) `rust_atom_realization_symbol` (planned — Symbol-carrier TargetAtomRealization row, to be declared by SG-1 dispatch in Step 5; cited in Step 4 R3-internal scaffold). Note that R2a and R2b reference the SAME derived fact but at distinct verification angles, mirroring the R3 two-rows-per-fact pattern. 5 LeafModelClaim rows total: R1 (1 row on (a)), R2a (1 row on (b)), R2b (1 row on (c)), R3-external + R3-internal (2 rows on (d)). Per the §5 Layer A contract above, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every fact_id has at least one claim," not "every fact_id has exactly one claim." The remaining ~85+ fact_ids enter C(rust.dag) with one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
+**Every claimable fact above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 3 fact_id Node identities (R3 PLANNED counts as one in the §3.2 list) with the following row distribution: (a) `rust_facts_i32` (rust.dag:574 — top-level data Symbol declaring `RustIntegerPrimitiveFacts` for i32) → 1 row (R1); (b) `rust_integer_algebra_inhabitance(rust_facts_i32)` derived-fact key (rust.dag:1768) → 5 rows (R2a + R2b×4 — see §5 split); (c) `rust_atom_realization_symbol` (PLANNED — Symbol-carrier TargetAtomRealization row, to be declared by SG-1 dispatch in Step 5) → 2 rows (R3-external + R3-internal). **8 LeafModelClaim rows total on 3 fact_ids.** Per the §5 Layer A contract above, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every claimable fact has at least one claim," not "every fact has exactly one claim." Per §3.0, the model-owned `rust_dag_claimable_fact_ids()` predicate (Step 4 deliverable) is the single authority for which facts enter C(rust.dag) at all; the remaining claimable facts that are not in Phase-1 scope enter C(rust.dag) with at least one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
 
 The 94 catalog sentinels (count per `docs/planning/v4-leaf-model-verification-2026-05-30.md` §7 line 198; the canonical-home spec PR #3952 first surfaced this scaffold during pre-dispatch verification, and §7 of the planning doc records the count) all land here. None are dropped; none are "implicit." This is the operator's framing made operational: every model fact has a verification obligation in C(M).
 
@@ -214,9 +217,9 @@ This widens `FalsificationCase` to carry the actual locus of wrongness without f
 
 **Pending the substrate extension**, §5 sketches below use a hybrid notation that names the actual locus of wrongness even though the current generic carrier types only `subject_variant`. Step 4 (quick-tern-735) is the right consumer to surface the shape gap concretely when building the runner; expect a substrate change request to silent-cat-599's follow-up PR before Phase-1 runner fully lands.
 
-## §5. Per-claim sketches (Phase 1 — 4 fact_ids, 6 LeafModelClaim rows post-R2b split)
+## §5. Per-claim sketches (Phase 1 — 3 fact_id Node identities, 8 LeafModelClaim rows post-R2b split)
 
-Schematic — full fixture content is Step 4 deliverable. R2b is split into per-OverflowAction-field sub-claims per the codex review (root-cause #4 + inline :142); Phase 1 row count grows from 5 to 6 (R1 + R2a + R2b-debug-default + R2b-release-default + R3-external + R3-internal). The R2b split closes the gap where a wrong release/wrap fact could pass Phase 1 under a debug-only check.
+Schematic — full fixture content is Step 4 deliverable. R2b is split into 4 per-OverflowAction-field sub-claims per the codex review (root-cause #4 + inline :142); Phase 1 row count grows from 5 to **8**: R1 (1) + R2a (1) + R2b sub-claims (4 — debug-default + release-default + overflow-checks-enabled + overflow-checks-disabled) + R3-external (1) + R3-internal (1) = 8 LeafModelClaim rows on 3 fact_id Node identities. The R2b split closes the gap where a wrong release/wrap fact could pass Phase 1 under a debug-only check.
 
 **Note on falsification-locus notation:** each sketch below names the wrongness locus explicitly (`subject_variant:`, `artifact_variant:`, `expectation_variant:`). Until the §4.1 substrate extension lands, the current `FalsificationCase` carrier types only `subject_variant`; the other forms are documented intent that Step 4 will need substrate to express cleanly.
 
