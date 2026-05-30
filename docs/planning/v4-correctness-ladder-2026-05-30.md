@@ -113,8 +113,10 @@ Asked during PR review: *"what doc tracks what tasks have actually been complete
 | `[SCHEDULED]` / `[MODELED]` | partial                                               |
 
 The ambiguity is real and load-bearing:
-- T-19 `lens/testgen.dag` is marked `[DONE]` per `TASKS.md:1015` — but is not activated against PRs (operator's own overview earlier in this conversation said so explicitly).
-- T-17 `lens/synthesis.dag` is marked `[DONE #3768]` per `TASKS.md:990` — but the §3 audit in this doc dispositions it as *partial* (substrate landed, not generalized to a PR gate).
+- T-17 `lens/synthesis.dag` is marked `[DONE #3768]` per `TASKS.md:990` — but the §3 audit in this doc dispositions it as *partial* (substrate landed, not generalized to a PR gate beyond what T-17 itself proves).
+- T-22 `compiler/05_eval.dag` has structural-bridge CI activation (`.github/workflows/ci.yml:288`, "T-22 TestClaim corpus structural bridge") yet the same step explicitly says "TestClaim verdict execution remains a T-38 follow-up" (`.github/workflows/ci.yml:342`) — substrate landed, gate fires, but the gate does not exercise the load-bearing receipt the task promises.
+
+(Counter-example for fairness: T-19 `lens/testgen.dag` IS gate-activated — `.github/workflows/ci.yml:145` runs `scripts/check_t19_testgen_activation.py` for testgen activation + LBE generated claims + `run_test_claim` receipts. `[DONE]` is sometimes accurate.)
 
 **Partial reality-side coverage exists across multiple docs (no consolidation):**
 
@@ -173,7 +175,9 @@ These principles are derived from `TESTING.md` Principle #5 ("Mocks over compile
 
 ## §6. The proposed correctness ladder (operator-decision artifact)
 
-The 17 standards collapse into a 9-rung gating ladder. Each rung is a binary: gates fire on PRs or they don't. No rung is aspirational — every rung is achievable today with existing substrate, on a small fixture.
+The 17 standards collapse into a 9-rung gating ladder. Each rung is a binary: gates fire on PRs or they don't.
+
+**Note on achievability** (clarifies a prior contradiction with §3): "achievable today" is rung-dependent. Rungs 0–2 are achievable now on a small fixture using existing substrate. **Rungs 3–4 depend on T-38-PR2 runner progress** (per §7 Phase 2). **Rung 7** depends on a self-host harness that does not yet exist as more than placeholder digests (§3 row 12). The §3 audit dispositions rungs 4–9 as NO today *because the activation work has not been done*, not because the substrate is missing — but for rungs 3, 4, and 7 the activation work itself depends on runner / harness progress not yet landed. The ladder is the *target shape*; §7 sequences which rungs become achievable in which phase.
 
 | Rung | Property                                                | Standards covered | Today's status                                  |
 | ---- | ------------------------------------------------------- | ----------------- | ----------------------------------------------- |
@@ -239,7 +243,7 @@ The still-fox-289 SG-1 / SG-2 / SG-7 substrate-fix lanes as the **primary** disp
 
 ### Why the 7951 number stops being the headline
 
-After Phase 4, the 7951 errors number is more diagnostic: it shows which Node shapes' emit is *structurally wrong* (because the 9-rung ladder passes on the fixture-covered shapes), not just which slices fail rustc. The error count becomes a queue for Phase 5+ widening, not a success metric.
+After Phase 4, the 7951 errors number is more diagnostic: it shows which Node shapes' emit is *structurally wrong* — because **rungs 0–6** of the ladder pass on the fixture-covered shapes (Phase 4 explicitly leaves rungs 7–9 for phase 5+ — self-emit fixpoint, full TestClaim corpus execution, and lens PR gates are NOT proven after Phase 4 and must not be claimed as such). The error count becomes a queue for Phase 5+ widening, not a success metric. Rungs 7–9 remain open after Phase 4 by design.
 
 ---
 
@@ -332,23 +336,21 @@ To anchor the disposition vocabulary, 8 probes spot-checked against current main
 
 Pattern: probes that map to **rungs 4–9 of the ladder** disposition predominantly as **GAP**. This is the same finding as §3 (substrate-rich, activation-poor) viewed through the questionnaire's lens.
 
-### §9.4 Proposed Phase 0 — systematic questionnaire validation
+### §9.4 Phase 0 — systematic questionnaire validation (dispatched 2026-05-30 at operator request)
 
-Before Phase 1 (rungs 0–2 on `nat_semiring` fixture) dispatches, propose a **Phase 0** that runs in parallel:
+Phase 0 was dispatched 2026-05-30 01:07Z (work item `adhoc-7020540d-622`, worker `silent-raven-384`) at operator request, in parallel with this doc's review:
 
-- Worker (dispatched to a child session) systematically evaluates all 346 questionnaire probes against current main.
-- Output: `docs/audit/v4-close-interrogation-validation-2026-05-30.md` (analogous to the 2026-05-13 doc), with per-probe disposition.
-- Probes batched by section so verification is efficient (many §1.x and §2.x probes share substrate checks).
+- Output target: `docs/audit/v4-close-interrogation-validation-2026-05-30.md` as separate PR (#3941 opened 2026-05-30 ~01:13Z).
+- Scope: all 346 probes in `docs/v4-close-interrogation.md` against current main.
+- Disposition vocabulary: §0 of the questionnaire (PROVEN / WEAK-EVIDENCE / GAP / NOT-CHECKED / OPERATOR-DECISION-REQUIRED / NOT-IN-V4 / NOT-PROMISED).
 - Result feeds back into THIS doc's §3 as a more complete gating audit.
-
-Phase 0 estimate: ~6-10 hours of focused worker time. Runs in parallel with Phase 1 dispatch — does not block it.
+- **Quality caveat**: first pass produced uniform-GAP boilerplate via a single structural argument (T-38 runner blocked → 346 GAP) rather than per-probe codebase search. Redo brief sent 2026-05-30 01:18Z asking for per-probe disposition with realistic WEAK-EVIDENCE distribution for substrate-rich-but-not-end-to-end-gated probes. Operator should read the PR #3941 "346 GAP" headline with that caveat until the redo lands.
 
 ### §9.5 Effect on §8 operator decisions
 
-The questionnaire integration adds one decision and modifies one:
+The questionnaire integration retroactively introduces one decision and modifies one:
 
-- **D7 (new)**: should Phase 0 (full questionnaire validation) dispatch immediately on sign-off, in parallel with Phase 1?
-  - *Proposed*: Yes. Independent of Phase 1, surfaces more GAPs the ladder must address, and the 2026-05-13 validation is now 17 days stale.
+- **D7 (retrospective ratification)**: Phase 0 was dispatched at operator request before doc sign-off. Operator decision is no longer "should Phase 0 dispatch?" but rather **"ratify the Phase 0 dispatch + the redo guidance + acceptance criteria for the resulting validation doc."** Proposed acceptance: realistic disposition distribution (not uniform GAP); per-probe file:line evidence; section-level totals — see §3.1 and the redo brief.
 
 - **D1 (modified)**: in addition to confirming the ladder ontology, confirm that the ladder is the correct *complement* to the questionnaire — the questionnaire stays as the granular probe surface; the ladder stays as the gate-sequencing surface; both adopt the §0 disposition vocabulary.
 
