@@ -31,7 +31,6 @@ pub struct TargetAtomRealization {
     pub type_form: String,
     pub storage_type: String,
     pub type_decl_kind: TargetAtomTypeDeclKind,
-    pub value_ctor_template: Option<String>,
     pub default_expr: Option<String>,
     pub is_copy: Option<bool>,
     pub literal_suffix: Option<String>,
