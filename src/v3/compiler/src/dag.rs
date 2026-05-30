@@ -3325,13 +3325,13 @@ pub enum ProducerLookup<'a> {
 
 /// Verify-first upsert for native `lane2_workflow` storage on `Value`/`Bind`.
 ///
-/// **P5 receipt (work-item `adhoc-342cfea2-653`, PR #3923):** explicit deferral —
-/// fail-closed remediation of audit stray **S-register** (`try_register_lane2_workflow_effect`
-/// blind overwrite). Not net hand-Rust scaffold growth: hardens the existing register API
-/// only (verify-first upsert per `dsl/std/patterns.dag` canon). Checkable receipt: unit test
-/// `try_register_lane2_workflow_effect_upserts_without_silent_overwrite` below. **SG-0:** no new
-/// `EXPECTED_HAND_AUTHORED_*` census rows (test lives in existing `dag.rs` `#[cfg(test)]` module,
-/// not `sg0_census_test.rs`). Canon/audit on `main` via #3920; this lane closes compiler stray only.
+/// **P5 Mechanism (b) — explicit deferral (PR #3923, work-item `adhoc-342cfea2-653`):** lane
+/// **T-PB-A**, concrete row `_internal/ROADMAP_OPS.md` § **Nine lanes** /
+/// `pb_hand_rust_at_shim_floor` (existing SG-0 non-test path
+/// `src/v3/compiler/src/dag.rs`; amended INVARIANTS_OPS receipt row in same PR). Interim change:
+/// fail-closed remediation of audit stray **S-register** — verify-first upsert per
+/// `dsl/std/patterns.dag` canon (no silent overwrite). **SG-0:** no new census paths. Checkable
+/// behavior: `try_register_lane2_workflow_effect_upserts_without_silent_overwrite` below.
 fn upsert_lane2_workflow_on_node(
     slot: &mut Option<Box<WorkflowEffect>>,
     workflow: WorkflowEffect,

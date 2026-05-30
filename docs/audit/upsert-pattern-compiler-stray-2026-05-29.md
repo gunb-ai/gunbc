@@ -74,7 +74,7 @@ concentrated in the **DSL workflow layer**: stub `content_upsert`, missing
 
 | ID | Location | Violation | Severity | Receipt |
 | --- | --- | --- | --- | --- |
-| **S-register** | `dag.rs` `try_register_lane2_workflow_effect` | Blind overwrite of existing `lane2_workflow` | **Remediated** PR #3923 | `upsert_lane2_workflow_on_node` + unit test; P5 comment at helper |
+| **S-register** | `dag.rs` `try_register_lane2_workflow_effect` | Blind overwrite of existing `lane2_workflow` | **Remediated** PR #3923 | `upsert_lane2_workflow_on_node` + unit test; P5 deferral **T-PB-A** / `_internal/ROADMAP_OPS.md` § **Nine lanes** / `pb_hand_rust_at_shim_floor`; DB-18 write contract aligned |
 
 ---
 
