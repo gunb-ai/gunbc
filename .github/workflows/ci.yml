@@ -324,8 +324,10 @@ jobs:
           should_run=true
         fi
         if [[ "$should_run" != true ]] && git diff --name-only "$range" | grep -qE '^(\.github/workflows/ci\.yml|src/v4/workflow/ci\.dag|dsl/gunbc/ci_github_actions_workflow\.dag)'; then
+          # Gate execution/env edits only — not comment-only or fixture-scope detector additions.
           if git diff "$range" -- .github/workflows/ci.yml src/v4/workflow/ci.dag dsl/gunbc/ci_github_actions_workflow.dag 2>/dev/null \
-            | grep -qE 'phase1/nat_semiring|phase1_nat_semiring|v4-phase1-nat-semiring'; then
+            | grep '^[-+]' | grep -v '^[-+][[:space:]]*#' | grep -v 'phase1_nat_semiring_fixture_scope' | grep -v 'Detect phase1/nat_semiring fixture scope' \
+            | grep -qE 'phase1/nat_semiring rungs 0-2 gate|v4-phase1-nat-semiring-rung-gate\.sh|V4_PHASE1_NAT_SEMIRING_STRICT|phase1_nat_semiring_rung_gate'; then
             should_run=true
           fi
         fi

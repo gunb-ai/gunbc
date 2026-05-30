@@ -91,16 +91,22 @@ type LeafModelRustCrateType = Symbol
 
 data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = leaf_model_rust_crate_type_lib
 
+// 🟡 gated — feature:leaf-model-r1-rustc-bridge — bind PR #3972 Phase 1 R1 —
+// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
+// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands
+// (docs/planning/v4-leaf-model-verification-2026-05-30.md §9 DFS gate).
 type LeafModelRustFixture {
   source: String
   crate_type: LeafModelRustCrateType
 }
 
+// 🟡 gated — feature:leaf-model-r1-rustc-bridge — dissolve-on-arrival: nested under LeafModelFixture<C>.falsification_artifact
 type LeafModelFalsificationCase {
   fixture: LeafModelRustFixture
   expected_verdict: TargetCompileVerdict
 }
 
+// 🟡 gated — feature:leaf-model-r1-rustc-bridge — dissolve-on-arrival: R1 row becomes LeafModelFixture<LeafModelClaim<...>>
 type LeafModelFixturePair {
   claim_id: LeafModelClaimId
   surface_spelling_fact: Symbol
