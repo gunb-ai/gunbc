@@ -88,13 +88,11 @@ enum ChildWaitFail {
     Io(String),
 }
 
+#[cfg(unix)]
 fn kill_process_group(pgid: i32) {
-    #[cfg(unix)]
-    {
-        use libc::{kill, SIGKILL};
-        if pgid > 0 && unsafe { kill(-pgid, SIGKILL) } < 0 {
-            // Best-effort: group may already be gone.
-        }
+    use libc::{kill, SIGKILL};
+    if pgid > 0 && unsafe { kill(-pgid, SIGKILL) } < 0 {
+        // Best-effort: group may already be gone.
     }
 }
 
