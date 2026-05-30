@@ -171,7 +171,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }],
       needs: [],
       env: none,
-      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}" },
+      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}", "release_distribution": "${{ steps.detect.outputs.release_distribution }}" },
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 15 },
@@ -263,7 +263,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Fabrication sentinel ratchet (P0-C)" },
           id: none,
-          run: "bash scripts/check-fabrication-sentinels.sh",
+          run: "python3 scripts/check_fabrication_sentinels.py",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -293,7 +293,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Release-doc authority check (P2 single-authority discipline)" },
           id: none,
-          run: "bash scripts/check-release-doc-authority.sh",
+          run: "python3 scripts/check_release_doc_authority.py",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -303,7 +303,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Release-doc authority self-test (consumer not ceremonial)" },
           id: none,
-          run: "bash scripts/test-check-release-doc-authority.sh",
+          run: "python3 scripts/test_check_release_doc_authority.py",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -343,7 +343,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Rust toolchain single-authority check (P2)" },
           id: none,
-          run: "bash scripts/check-rust-toolchain-single-authority.sh",
+          run: "python3 scripts/check_rust_toolchain_single_authority.py",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -391,7 +391,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Gate #103 — path-regex inventory ratchet (canvas §5)" },
           id: none,
-          run: "bash scripts/check-workflow-path-regex-inventory.sh",
+          run: "python3 scripts/check_workflow_path_regex_inventory.py",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -446,6 +446,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           env: none,
           working_directory: none,
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "RELEASE §5 v4 workflow release model/YAML binding smoke" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_workflow_release_dag_smoke_test -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
         }, UsesStep {
@@ -780,7 +790,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "v3 full-suite split guard (integration test targets)" },
           id: none,
-          run: "scripts/check-v3-full-suite-split-test-targets.sh",
+          run: "python3 scripts/check_v3_full_suite_split_test_targets.py",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -850,7 +860,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Compiler-std consolidation ratchet" },
           id: none,
-          run: "scripts/check-compiler-std-ratchet.sh",
+          run: "python3 scripts/check_compiler_std_ratchet.py",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -860,7 +870,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Banked-dissolutions ratchet" },
           id: none,
-          run: "scripts/check-banked-dissolutions.sh",
+          run: "python3 scripts/check_banked_dissolutions.py",
           shell: Bash,
           env: none,
           working_directory: none,
