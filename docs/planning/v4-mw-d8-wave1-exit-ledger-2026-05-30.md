@@ -15,12 +15,12 @@ Each row's `Condition` column quotes MW-D8 **verbatim** from PR #3983 `docs/plan
 | # | Condition (MW-D8 verbatim) | `ship_disposition` | `engineering_state` | Evidence | Last update | Revisit-by |
 | - | -------------------------- | ------------------ | ------------------- | -------- | ----------- | ---------- |
 | C1 | "Step 4 R1 produces an actual leaf-model verdict (`rust.dag` R1 → `rustc` → `Verdict<R1>`)." | `PROVEN` | n/a (closure reached) | #3972 merged 2026-05-30 18:24Z | 2026-05-30 19:55Z | n/a — closed |
-| C2 | "SG-7 `ci.dag` recursion is dissolved OR replaced by a modeled authority (`ByteOffsetCacheDigestAuthority` + `byte_offset_cache_key` consumed)." | `GAP` | `SCAFFOLD_PRESENT` (worksheet only) | #3977 worksheet merged; impl PR #4014 open (`smart-stag-871`) — anticipated-imminent but **not yet landed**; row stays GAP per closure invariant | 2026-05-30 20:25Z | 2026-05-31 12:00Z (24h if #4014 not merged) |
+| C2 | "SG-7 `ci.dag` recursion is dissolved OR replaced by a modeled authority (`ByteOffsetCacheDigestAuthority` + `byte_offset_cache_key` consumed)." | `PROVEN` (both arms hold) | n/a (closure reached) | #3977 worksheet + #4014 impl merged 2026-05-30 21:01:11Z; falsification receipt `docs/audit/v4-mw-d8-c2-falsification-receipt-2026-05-30.md` (this update) verifies both arms on `origin/main` | 2026-05-30 22:55Z | n/a — closed |
 | C3 | "`Upsert<T>` is either landed as usable substrate primitive OR explicitly blocked with a Modeling DFS worksheet naming the parser/substrate gap." | `PROVEN` (via OR-arm: explicit block with worksheet) | `SUBSTRATE_PRESENT` (skeleton landed; not full usable substrate per #3981 self-assessment) | #3981 + #3989 merged + `docs/planning/v4-upsert-t-substrate-worksheet-2026-05-30.md` (Modeling DFS worksheet naming SG-2b parser/substrate gap) | 2026-05-30 19:55Z | 2026-05-31 12:00Z (revisit if SG-2b dissolution path changes) |
 | C4 | "`ci_selection_receipt_shadow` exists and can be generated for at least one PR/change fixture (shadow mode, not active gating yet)." | `GAP` | `NO_ARTIFACT_FOUND` | none — `smart-stag-871` queued post-SG-7 (C2 prerequisite) | 2026-05-30 19:55Z | 2026-06-02 12:00Z (≤72h; blocked on C2) |
 | C5 | "R2a/R2b/R3-external/R3-internal claim authoring has ready-to-run OR explicitly-blocked status (each claim authored or its blocker named)." | `PROVEN` (mixed-arm: 3 ready-to-run + 1 explicitly-blocked-and-named) | n/a (closure reached) | #4000 merged 2026-05-30 19:55Z (`sharp-swift-715` via `quick-tern-735`) | 2026-05-30 20:25Z | n/a — closed |
 
-**Headline:** 3 of 5 conditions `PROVEN` (C1; C3 via OR-arm; C5 via mixed-arm). 2 remaining (C2, C4). C2 impl in flight via #4014 (smart-stag-871, not merged at update time); C4 still depends on C2.
+**Headline:** **4 of 5** conditions `PROVEN` (C1; C2 via both arms post-#4014 + falsification receipt; C3 via OR-arm; C5 via mixed-arm). 1 remaining (C4). C4 is unblocked structurally now that C2 is closed.
 
 ---
 
