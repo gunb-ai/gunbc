@@ -33,9 +33,13 @@ import v4.std.host_run {
   BuildLog,
   ByteString,
   EmitHostRunReceipt,
-  FalsificationReceipt,
   HostExit,
   ValueDiff
+}
+import v4.std.test_claim_falsification {
+  ExecutionEvidence,
+  FalsificationReceipt,
+  Host
 }
 import v4.std.machine { Byte }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
@@ -45,7 +49,6 @@ import v4.std.text { String }
 import v4.std.verdict { Verdict, Pass, Fail, Deferred, verdict_fail }
 import v4.std.verification {
   test_claim_input,
-  test_claim_label,
   EqualsClaim,
   CompilesClaim
 }
@@ -174,8 +177,7 @@ fn run_test_claim_emit_vs_eval_verdict(
   host_receipt: EmitHostRunReceipt,
   host_actual: RuntimeValue,
   expected: Outcome<RuntimeValue>
-) -> Verdict<RuntimeValue> {
-  let label = test_claim_label(c: subject.claim)
+) -> Verdict<Node, RuntimeValue> {
   match expected {
     Accepted { value: exp_val, diagnostics: None } =>
       if accepted_runtime_value_outcome_eq(
@@ -188,11 +190,11 @@ fn run_test_claim_emit_vs_eval_verdict(
           actual: Accepted { value: host_actual, diagnostics: None },
           falsification: Present {
             value: FalsificationReceipt {
-              subject_label: label,
+              subject: subject,
               expected: exp_val,
               actual: host_actual,
-              host_receipt: host_receipt,
-              divergence: ValueDiff { expected: exp_val, actual: host_actual }
+              divergence: ValueDiff { expected: exp_val, actual: host_actual },
+              evidence: Host { receipt: host_receipt }
             }
           }
         }
@@ -206,7 +208,7 @@ fn run_test_claim_emit_vs_eval_for_input_root(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,
   input_root: Node
-) -> Verdict<RuntimeValue> {
+) -> Verdict<Node, RuntimeValue> {
   let at = test_claim_input(c: subject.claim)
   let interpretation = eval_context_interpretation(context: subject.context)
   let expected = eval(
@@ -248,7 +250,7 @@ fn run_test_claim_emit_vs_eval_for_input_root(
 fn run_test_claim_emit_vs_eval_run(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,
-  verdict: Verdict<RuntimeValue>
+  verdict: Verdict<Node, RuntimeValue>
 ) -> TestClaimRun<Node, RuntimeValue> {
   TestClaimRun {
     cache: test_claim_cache_receipt_node(subject: subject),

@@ -477,7 +477,7 @@ fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> TestClaim {
 }
 
 
-fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<A> {
+fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<S, A> {
   run.verdict
 }
 
@@ -1703,7 +1703,7 @@ fn run_test_claim_assert(
   claim: TestClaim,
   actual: Outcome<Node>,
   at: Node
-) -> Verdict<Node> {
+) -> Verdict<Node, Node> {
   run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
 }
 
@@ -1712,7 +1712,7 @@ fn run_test_claim_assert_decided(
   claim: TestClaim,
   actual: Outcome<Node>,
   at: Node
-) -> Verdict<Node> {
+) -> Verdict<Node, Node> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
@@ -1772,7 +1772,7 @@ fn run_test_claim_runtime_assert(
   interpretation: InterpretationAlgebra,
   actual: Outcome<RuntimeValue>,
   at: Node
-) -> Verdict<RuntimeValue> {
+) -> Verdict<Node, RuntimeValue> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: rhs })
@@ -1811,7 +1811,7 @@ fn run_test_claim_runtime_assert(
 
 // Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Fail (no fabricated Pass).
 // Empty-case policy: Fail with eval_empty_verdict_list diagnostic (context-specific at-node).
-fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
+fn aggregate_verdicts<S, T>(rs: List<Verdict<S, T>>, at: Node) -> Verdict<S, T> {
   verdict_fold(
     rs: rs,
     empty_verdict: verdict_fail(

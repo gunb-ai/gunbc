@@ -110,7 +110,7 @@ fn run_pipeline_assert(
   claim: TestClaim,
   actual: Outcome<CiPipeline>,
   input: Node
-) -> Verdict<CiPipeline> {
+) -> Verdict<CiPipeline, CiPipeline> {
   match test_claim_expected_outcome(c: claim) {
     Accepted { value: expected, diagnostics: _ } =>
       match claim {
@@ -346,7 +346,7 @@ data subject_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = pipel
 data run_dangling_bootstrap_output: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_bootstrap_output)
 
 
-data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_dangling_bootstrap_output: Verdict<CiPipeline, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_bootstrap_output,
   at: test_claim_input(c: subject_dangling_bootstrap_output.claim)
 )
@@ -380,7 +380,7 @@ data subject_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = pipeline_rejec
 data run_duplicate_job_id: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_job_id)
 
 
-data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_duplicate_job_id: Verdict<CiPipeline, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_duplicate_job_id,
   at: test_claim_input(c: subject_duplicate_job_id.claim)
 )
@@ -414,7 +414,7 @@ data subject_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = pipeline_reje
 data run_duplicate_gate_id: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_gate_id)
 
 
-data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_duplicate_gate_id: Verdict<CiPipeline, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_duplicate_gate_id,
   at: test_claim_input(c: subject_duplicate_gate_id.claim)
 )
@@ -447,7 +447,7 @@ data subject_dangling_need: TestClaimEvalSubject<CiPipeline> = pipeline_rejectio
 data run_dangling_need: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_need)
 
 
-data gate_dangling_need: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_dangling_need: Verdict<CiPipeline, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_need,
   at: test_claim_input(c: subject_dangling_need.claim)
 )
@@ -480,7 +480,7 @@ data subject_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = pipeline_reje
 data run_dangling_gate_job: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_gate_job)
 
 
-data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_dangling_gate_job: Verdict<CiPipeline, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_gate_job,
   at: test_claim_input(c: subject_dangling_gate_job.claim)
 )
@@ -515,7 +515,7 @@ data subject_dependency_cycle: TestClaimEvalSubject<CiPipeline> = pipeline_rejec
 data run_dependency_cycle: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dependency_cycle)
 
 
-data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_dependency_cycle: Verdict<CiPipeline, TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dependency_cycle,
   at: test_claim_input(c: subject_dependency_cycle.claim)
 )
