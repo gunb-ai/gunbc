@@ -259,8 +259,11 @@ to avoid a window where two authors disagree.
 MUST:
   - Add the §8-approved Node projection to v4.std.node (single new fn; no new types).
   - Replace ci.dag:721 body with delegation; delete ci_byte_limb_projection_node if unreferenced.
-  - Land §3 TestClaims 1, 2, 5 (3, 4 are grep-gate fixtures, may be a follow-on per
-    v4-leaf-model-verification §8 worksheet).
+  - Land ALL §3 TestClaims (1, 2, 3, 4, 5) in the same PR. Probes 3 and 4 are the
+    anti-recursion / anti-parallel-shim grep gates — they are the structural guarantee
+    that the dissolution actually removed the parallel author and did not reintroduce a
+    shim. Splitting them to a follow-on would let the SG-7 PR merge with digest-equality
+    proven but recursion-absence unproven — the exact failure mode §4 forbids.
   - Remove the 🟡 marker at ci.dag:703.
   - Cite this worksheet + the v4-ci-overhaul §11 anchor + PR #3974 in the PR description.
 
@@ -290,7 +293,7 @@ Escalate (do not improvise) — single-authority bar:
 - **Q-SG7-1.** Concept-home for the new Node projection: `v4.std.node` (alongside `byte_offset_cache_key_fingerprint`)? — *Proposed: yes; same module owns the typed authority + both projections (Hash, Node).*
 - **Q-SG7-2.** Name: `byte_offset_cache_key_projection_node`? — *Proposed: yes; mirrors existing `*_projection_node` cadence.*
 - **Q-SG7-3.** Disposition of `ci_byte_limb_projection_node` (:704) — delete after delegation, or lift to `v4.std.node` as `byte_limb_projection_node`? — *Proposed: delete; no non-ci.dag consumer.*
-- **Q-SG7-4.** Falsification probes 3 & 4 (grep gates) — land in the SG-7 PR or a `v4-leaf-model-verification` follow-on per its §8 worksheet? — *Proposed: follow-on; SG-7 PR carries the digest-preservation claim (probe 2) and the projection-vs-fingerprint claim (probe 1) only.*
+- **Q-SG7-4.** Falsification probes 3 & 4 (grep gates) — confirmed REQUIRED in the SG-7 PR per §6 (no follow-on split). Probes 3 (no recursive Node-building pattern remains) and 4 (no parallel cache-shim introduced) are the structural guarantee the dissolution actually removed the parallel author; deferring them would let SG-7 merge with digest-equality proven but recursion-absence unproven. *Proposed: in-PR, fixture-style per `v4-leaf-model-verification` §8.* (Reconciles internal acceptance/dispatch consistency flagged by openai-pro review of f397318d.)
 - **Q-SG7-5.** Should the dissolution also update `src/v4/TASKS.md §T-22 T22-EVAL-CACHE-HASHES` close-status note to reference the SG-7 PR, or is that a separate Close/Receipt Manager call? — *Proposed: include in SG-7 PR (one-line cross-reference) since the dissolution closes the 🟡 marker that the close-status text cites.*
 
 ---
