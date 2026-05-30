@@ -80,7 +80,11 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
-import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
+import std.coercion { TargetAtomRealization, TargetAtomTypeDeclKind }
+import v2.compiler.coercion {
+  coerce_primitive_type, is_copy, default_expr,
+  lookup_atom_realization, apply_atom_value_ctor_template
+}
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name }
@@ -288,20 +292,34 @@ fn rust_ord_derives_copy_text() -> String {
   "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
 }
 
-fn rust_nominal_identity_carrier_def(name: String) -> String {
-  concat(rust_ord_derives_text(), "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, "(pub String);")
+fn rust_atom_nominal_newtype_def(row: TargetAtomRealization) -> String {
+  concat(
+    rust_ord_derives_text(), "\n",
+    rust_visibility_prefix(), rust_items().struct_keyword, " ", row.type_form, "(pub ", row.storage_type, ");")
 }
 
-// 🟡 gated — nominal Ord carrier whitelist for M3 Symbol/DiffId only.
-// Next nominal carrier must move this to a declared type property instead of
-// extending the string predicates below.
-fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
-  type_name == "Symbol"
+fn rust_type_alias_decl(item_text: String, item: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  concat(
+    rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ",
+    render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: source_indices), ";")
 }
 
-fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: n) == "Symbol"
-    && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
+fn rust_atom_is_nominal_newtype_name(type_name: String) -> Bool {
+  match lookup_atom_realization(target: Rust, dag_name: type_name) {
+    Some { value: row } => match row.type_decl_kind {
+      NominalNewtype => true
+      TransparentAlias => false
+    }
+    None => false
+  }
+}
+
+fn rust_atom_nominal_newtype_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if (n.children |> count) != 0 || (n.params |> count) != 0 || n.connective != NoConnective {
+    false
+  } else {
+    rust_atom_is_nominal_newtype_name(type_name: authored_name_at(source_indices: source_indices, node: n))
+  }
 }
 
 fn rust_diff_id_ord_carrier_shape_eligible(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -310,7 +328,7 @@ fn rust_diff_id_ord_carrier_shape_eligible(name: String, children: List<Node>, s
   } else {
     match children |> first {
       Some { value: child } =>
-        rust_nominal_identity_carrier_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
+        rust_atom_nominal_newtype_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
       None => false
     }
   }
