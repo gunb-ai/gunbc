@@ -111,7 +111,8 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_generic_apply_emitted,
   target_type_expr_record_emitted,
-  target_type_expr_arrow_emitted
+  target_type_expr_arrow_emitted,
+  TargetTypeExprInstantiation
 }
 import v4.std.node {
   Arrow,

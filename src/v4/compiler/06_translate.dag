@@ -76,6 +76,13 @@ import v4.std.target_model {
   TargetRecordTypeShape,
   TargetSumTypeShape,
   TargetTypeExpressionProjection,
+  TargetTypeExprAtom,
+  TargetTypeExprArrow,
+  TargetTypeExprCardinality,
+  TargetTypeExprInstantiation,
+  TargetTypeExprKind,
+  TargetTypeExprRecord,
+  TargetTypeExprSum,
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
@@ -103,6 +110,7 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
   target_type_expr_generic_apply_emitted,
+  target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted
 }
@@ -913,7 +921,7 @@ fn target_serialize_source_from_model_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else {
-    match type_expr_emitted_surface(node: emitted) {
+    match target_type_expr_emitted_kind(node: emitted) {
       Present { value: _ } =>
         bind_outcome(
           o: type_expression_projection_from_target(target: target),
@@ -1347,6 +1355,7 @@ fn project_type_expression_node(
             f: fn(split) {
               Accepted {
                 value: target_type_expr_generic_apply_emitted(
+                  kind: TargetTypeExprInstantiation,
                   form: projection.instantiation_form,
                   head: split.head,
                   args: split.tail
@@ -1369,6 +1378,7 @@ fn project_type_expression_node(
             f: fn(split) {
               Accepted {
                 value: target_type_expr_generic_apply_emitted(
+                  kind: TargetTypeExprCardinality,
                   form: projection.cardinality_form,
                   head: split.head,
                   args: split.tail
@@ -1436,23 +1446,8 @@ fn project_type_expression_node(
           )
         }
       )
-    _ =>
+    ComputationNode { behavior: _ } =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  }
-}
-fn type_expr_emitted_surface(node: Node) -> Optional<Symbol> {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      match conj_optional_named_child(parent: node, edge_name: target_type_expr_field_surface) {
-        Accepted { value: Some { value: surface_node } } =>
-          match node_atom_identity(node: surface_node) {
-            Accepted { value: s } => optional_present(value: s)
-            Rejected { diagnostics: _ } => optional_absent()
-          }
-        Accepted { value: None } => optional_absent()
-        Rejected { diagnostics: _ } => optional_absent()
-      }
-    _ => optional_absent()
   }
 }
 fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
@@ -1750,65 +1745,49 @@ fn serialize_type_expr_emitted_bounded(
   projection: TargetTypeExpressionProjection,
   emitted: Node
 ) -> Outcome<TargetSource> {
-  match type_expr_emitted_surface(node: emitted) {
-    Present { value: surface } =>
-      if surface == projection.atom_form.surface {
-        type_expr_spelling_for_atom(target: target, node: emitted)
-      } else {
-        if surface == projection.instantiation_form.surface {
-          serialize_type_expr_generic_apply_bounded(
-            remaining: remaining,
-            target: target,
-            projection: projection,
-            form: projection.instantiation_form,
-            node: emitted
-          )
-        } else {
-          if surface == projection.cardinality_form.surface {
-            serialize_type_expr_generic_apply_bounded(
-              remaining: remaining,
-              target: target,
-              projection: projection,
-              form: projection.cardinality_form,
-              node: emitted
-            )
-          } else {
-            if surface == projection.conj_form.surface {
-              serialize_type_expr_record_bounded(
-                remaining: remaining,
-                target: target,
-                projection: projection,
-                form: projection.conj_form,
-                node: emitted
-              )
-            } else {
-              if surface == projection.disj_form.surface {
-                serialize_type_expr_sum_bounded(
-                  remaining: remaining,
-                  target: target,
-                  projection: projection,
-                  form: projection.disj_form,
-                  node: emitted
-                )
-              } else {
-                if surface == projection.arrow_form.surface {
-                  serialize_type_expr_arrow_bounded(
-                    remaining: remaining,
-                    target: target,
-                    projection: projection,
-                    form: projection.arrow_form,
-                    node: emitted
-                  )
-                } else {
-                  outcome_rejected(
-                    translate_type_expression_shape_missing_diagnostic(node: emitted)
-                  )
-                }
-              }
-            }
-          }
-        }
-      }
+  match target_type_expr_emitted_kind(node: emitted) {
+    Present { value: TargetTypeExprAtom } =>
+      type_expr_spelling_for_atom(target: target, node: emitted)
+    Present { value: TargetTypeExprInstantiation } =>
+      serialize_type_expr_generic_apply_bounded(
+        remaining: remaining,
+        target: target,
+        projection: projection,
+        form: projection.instantiation_form,
+        node: emitted
+      )
+    Present { value: TargetTypeExprCardinality } =>
+      serialize_type_expr_generic_apply_bounded(
+        remaining: remaining,
+        target: target,
+        projection: projection,
+        form: projection.cardinality_form,
+        node: emitted
+      )
+    Present { value: TargetTypeExprRecord } =>
+      serialize_type_expr_record_bounded(
+        remaining: remaining,
+        target: target,
+        projection: projection,
+        form: projection.conj_form,
+        node: emitted
+      )
+    Present { value: TargetTypeExprSum } =>
+      serialize_type_expr_sum_bounded(
+        remaining: remaining,
+        target: target,
+        projection: projection,
+        form: projection.disj_form,
+        node: emitted
+      )
+    Present { value: TargetTypeExprArrow } =>
+      serialize_type_expr_arrow_bounded(
+        remaining: remaining,
+        target: target,
+        projection: projection,
+        form: projection.arrow_form,
+        node: emitted
+      )
     Absent =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: emitted))
   }
