@@ -79,14 +79,12 @@ fn type_record_field_names(
         .items
         .iter()
         .find_map(|item| match item {
-            SurfaceItem::TypeRecord { name, fields, .. } if name == type_name => {
-                Some(
-                    fields
-                        .iter()
-                        .map(|field| field.name.clone())
-                        .collect::<Vec<_>>(),
-                )
-            }
+            SurfaceItem::TypeRecord { name, fields, .. } if name == type_name => Some(
+                fields
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect::<Vec<_>>(),
+            ),
             _ => None,
         })
         .unwrap_or_else(|| panic!("{type_name}: missing type record"))
