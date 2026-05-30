@@ -80,7 +80,7 @@ Minimum additions **outside** emit projection tables. Amendments A1–A4 are the
 
 | Symbol | Responsibility |
 | ------ | -------------- |
-| `HostExit` | `Outcome<Witness<ExitOk>>` — typed exit, not raw int (A2) |
+| `HostExit` | `Outcome<Termination>` — canonical POSIX wait status from `v4.extdeps.posix` (`Exited { code: ExitCode }` \| `Signaled { signal: SignalNum }`); unparseable wait → `Rejected`, not ok-only witness (A2) |
 | `EmitHostRunReceipt` | `{ target: TargetModel, source: TargetSource, exit: HostExit, stdout_bytes: ByteString, stderr_bytes: ByteString, build_log: BuildLog }` (A1) |
 | `RuntimeValueParse` | `(target: TargetModel, bytes: ByteString) -> Outcome<RuntimeValue>` — host stdout deserialization to the spine's typed `RuntimeValue`. Per-target rows supplied by Target Realization (cross-lane consult; this interface only declares the function symbol) (A1) |
 | `run_emit_host` | `(target: TargetModel, source: TargetSource, fixture_inputs: Inputs) -> Outcome<EmitHostRunReceipt>` — compile + execute emitted artifact for fixture entrypoint. **Rust-only in W2;** Python/Go rows deferred to Phase 3 (A3) |
@@ -93,7 +93,7 @@ Corpus aggregation reuses `src/v4/test/claim/workflow/testclaim_corpus_runner.da
 **Amendment rationale.**
 
 - **A1 (stdout typing).** Spine draft typed `EmitHostRunReceipt.stdout: RuntimeValue`, which silently embeds a deserialization step. Splitting `stdout_bytes` from a `RuntimeValueParse` function makes the parser a named symbol with per-target rows owned by Target Realization, and prevents fabricating typed values from raw bytes.
-- **A2 (typed exit).** `HostExit` as `Outcome<Witness<ExitOk>>` — host nonzero exit becomes a modeled `Outcome.Err`, not an opaque int the verdict layer has to reinterpret.
+- **A2 (typed exit, POSIX facts).** `HostExit` as `Outcome<Termination>` (`posix.dag`) — nonzero exit codes and signal termination remain structured `ExitCode` / `SignalNum` facts (P2 facts-flow-forward); only zero exit is `Exited`. Do **not** collapse to `Outcome<Witness<ExitOk>>` or bare `Int` — that drops signaled/nonzero semantics at the host boundary.
 - **A3 (Rust-only W2 scope).** §4.3 places rustc/cargo invocation in Runtime, but the rung 5 cross-target gate is Phase 3, not Phase 2. W2 ships Rust only; Python/Go `run_emit_host` rows are pre-allocated symbols, not implementations, until Phase 3 dispatches.
 - **A4 (falsification receipt).** PR #3938 §11.1 row 6 names "falsification verdict receipts" as Runtime/TestClaim authority. A bare `Fail` verdict is not a receipt — `FalsificationReceipt<A>` makes the wrong emit auditable post-hoc and is the artifact Self-host/Release will demand at rung 4 close.
 
