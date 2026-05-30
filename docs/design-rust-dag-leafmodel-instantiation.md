@@ -74,26 +74,28 @@ The acceptance contract from `docs/planning/v4-leaf-model-verification-2026-05-3
 >
 > Operationalized: for every `fact_id` declared by M, the claim corpus C(M) contains one-or-more `LeafModelClaim` rows referencing `fact_id`.
 
-For M = rust.dag, the fact_id space at main HEAD comprises **all** Symbol-named declarations the model already carries. Inventory (approximate counts, current main):
+For M = rust.dag, the fact_id space at main HEAD comprises **all** facts the model declares, whether as top-level `data Symbol` lines OR as derived facts computed by model-owned functions (e.g., `rust_integer_algebra_inhabitance(facts)` at rust.dag:1768 derives an `AlgebraInhabitanceDecl` from a `RustIntegerPrimitiveFacts` record). The fact_id discipline accepts both shapes; verification claims reference the canonical form the model exposes (the Symbol for `data`-declared facts; the derived-value key for function-computed facts).
+
+Inventory at main HEAD `edc8cba73` (approximate counts; row counts verified against rust.dag line ranges):
 
 | fact_id family | count | Source location | Phase 1? |
 | -------------- | ----- | --------------- | -------- |
-| Primitive types (rust_primitive_*) | 13 | derived from RustPrimitive coproduct | R1 covers `i32` only |
-| Algebra inhabitance assertions | 4 | rust.dag inhabitance declarations | R2a/R2b cover `OrderedRing<Int32>` only |
+| Primitive type facts (`rust_facts_*` — `RustIntegerPrimitiveFacts` + `RustNonIntegerPrimitiveFacts` records) | ~18 | rust.dag:562-660 (integer) + rust.dag:648-700 (non-integer) | R1 covers `rust_facts_i32` (rust.dag:574) only |
+| Algebra inhabitance (function-derived from primitive facts) | per-primitive | rust.dag:1768 `rust_integer_algebra_inhabitance(facts)` derives `AlgebraInhabitanceDecl` per `rust_facts_*` row | R2a/R2b cover the derived inhabitance for `rust_facts_i32` only |
 | `rust_std_projection_*` | 19 | rust.dag:265-283 | none in Phase 1 |
 | `rust_surface_spelling_*` | 19 | rust.dag:285-303 | none in Phase 1 |
 | `rust_repr_*` / `rust_ieee754_*` / `rust_str_*` / `rust_char_*` | 7 | rust.dag:305-312 | none in Phase 1 |
 | `rust_inhabitant_*` | 19 | rust.dag:314-332 | none in Phase 1 |
 | `rust_inhabitant_field_*` | ~20 | rust.dag:334-353 | none in Phase 1 |
 | `rust_coercion_field_*` | ~10 | rust.dag:354-364 | none in Phase 1 |
-| Grammar productions (T-4.17 wave 1+2) | ~varies | rust.dag grammar block | none in Phase 1 |
-| Lex rules | ~varies | rust.dag lex block | none in Phase 1 |
-| TargetAtomRealization rows (Symbol/Bool/Char) | 3 | rust.dag — **post SG-1** | R3 (Symbol only — fact_id `rust_atom_realization_symbol` covered by TWO LeafModelClaim rows: R3-external + R3-internal verification angles) |
-| TargetCollectionRealization rows (Set/…) | varies | rust.dag — **post SG-5** | none in Phase 1 |
+| Grammar productions (T-4.17 wave 1+2) | varies | rust.dag grammar block | none in Phase 1 |
+| Lex rules | varies | rust.dag lex block | none in Phase 1 |
+| TargetAtomRealization rows (Symbol/Bool/Char) | 3 (planned) | **Not on main yet — to be declared by SG-1 dispatch (Step 5).** R3-internal claim row authored at Step 4 references this fact_id (cited as `rust_atom_realization_symbol` for the Symbol carrier specifically) and stays `not_checked`/`GAP` until SG-1 lands. | R3 (Symbol only — fact_id `rust_atom_realization_symbol` covered by TWO LeafModelClaim rows: R3-external + R3-internal verification angles) |
+| TargetCollectionRealization rows (Set/…) | varies (planned) | **Not on main yet — to be declared by SG-5 dispatch.** | none in Phase 1 |
 
-**Every fact_id above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 4 fact_ids (`rust_primitive_i32`, `rust_algebra_ops_int32`, `rust_algebra_overflow_int32`, `rust_atom_realization_symbol`) with 5 LeafModelClaim rows total: R1 (1 row on `rust_primitive_i32`), R2a (1 row on `rust_algebra_ops_int32`), R2b (1 row on `rust_algebra_overflow_int32`), and TWO rows on `rust_atom_realization_symbol` — R3-external (rustc-accepts angle) and R3-internal (mutation-receipt angle). Per the §5 Layer A contract above, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every fact_id has at least one claim," not "every fact_id has exactly one claim." The remaining ~85+ fact_ids enter C(rust.dag) with one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
+**Every fact_id above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 4 fact_ids: (a) `rust_facts_i32` (rust.dag:574 — top-level data Symbol declaring `RustIntegerPrimitiveFacts` for i32), (b) `rust_integer_algebra_inhabitance(rust_facts_i32)` × `RustClaimExpectation.RustcAcceptsExpectation` angle (derived-fact key — algebra-operations claim; R2a), (c) `rust_integer_algebra_inhabitance(rust_facts_i32)` × `RustClaimExpectation.RustRuntimeBehaviorExpectation` angle (derived-fact key — overflow-semantics claim; R2b), (d) `rust_atom_realization_symbol` (planned — Symbol-carrier TargetAtomRealization row, to be declared by SG-1 dispatch in Step 5; cited in Step 4 R3-internal scaffold). Note that R2a and R2b reference the SAME derived fact but at distinct verification angles, mirroring the R3 two-rows-per-fact pattern. 5 LeafModelClaim rows total: R1 (1 row on (a)), R2a (1 row on (b)), R2b (1 row on (c)), R3-external + R3-internal (2 rows on (d)). Per the §5 Layer A contract above, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every fact_id has at least one claim," not "every fact_id has exactly one claim." The remaining ~85+ fact_ids enter C(rust.dag) with one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
 
-The 94 catalog sentinels (per the canonical-home spec §3) all land here. None are dropped; none are "implicit." This is the operator's framing made operational: every model fact has a verification obligation in C(M).
+The 94 catalog sentinels (count per `docs/planning/v4-leaf-model-verification-2026-05-30.md` §7 line 198; the canonical-home spec PR #3952 first surfaced this scaffold during pre-dispatch verification, and §7 of the planning doc records the count) all land here. None are dropped; none are "implicit." This is the operator's framing made operational: every model fact has a verification obligation in C(M).
 
 ## §4. R3-internal timing — Step 4 authors row, Step 5 lands fact
 
@@ -114,7 +116,7 @@ Schematic — full fixture content is Step 4 deliverable.
 
 ### R1 — Rust i32 primitive declaration
 ```text
-fact_id:    rust_primitive_i32
+fact_id:    rust_facts_i32                  // rust.dag:574 (top-level data Symbol; RustIntegerPrimitiveFacts record for i32)
 subject:    RustPrimitiveTypeSubject { primitive: Rust_I32 }
 expectation: RustcAcceptsExpectation { invocation_form: rustc("pub fn r1_test() -> i32 { 0i32 }") }
 falsification:
@@ -125,7 +127,7 @@ falsification:
 
 ### R2a — i32 supports algebra ops
 ```text
-fact_id:    rust_algebra_ops_int32
+fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)    // derived-fact key per rust.dag:1768 function applied to rust.dag:574 facts; algebra-operations verification angle
 subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
 expectation: RustcAcceptsExpectation { invocation_form: rustc("pub fn r2a_test(a: i32, b: i32) -> (i32, bool) { (a + b, a < b) }") }
 falsification:
@@ -135,7 +137,7 @@ falsification:
 
 ### R2b — i32 overflow semantics declared
 ```text
-fact_id:    rust_algebra_overflow_int32
+fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)    // same derived fact as R2a; overflow-semantics verification angle (distinct angle, distinct LeafModelClaim row)
 subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
 expectation: RustRuntimeBehaviorExpectation { invocation_form: rustc-then-run("debug: i32::MAX + 1"), expected_outcome: Panic { panic_classification: arithmetic_overflow } }
 falsification:
@@ -145,7 +147,7 @@ falsification:
 
 ### R3-external — Symbol projection to Rust shape accepted by rustc
 ```text
-fact_id:    rust_atom_realization_symbol    // shared with R3-internal — two verification angles on one fact
+fact_id:    rust_atom_realization_symbol    // PLANNED — to be declared by SG-1 dispatch (Step 5); not on main yet. Step 4 authors this row at not_checked/GAP per §4. Shared with R3-internal — two verification angles on one fact
 subject:    RustAtomRealizationSubject { atom: <Symbol carrier Node> }
 expectation: RustcAcceptsExpectation { invocation_form: rustc(emitted-from-TargetAtomRealization-row) }
 falsification:
@@ -155,7 +157,7 @@ falsification:
 
 ### R3-internal — TargetAtomRealization row mutation receipt
 ```text
-fact_id:    rust_atom_realization_symbol    // shared with R3-external — two verification angles on one fact
+fact_id:    rust_atom_realization_symbol    // PLANNED (see R3-external note) — shared fact with R3-external; this is the mutation-receipt angle
 subject:    RustAtomRealizationSubject { atom: <Symbol carrier Node> }
 expectation: RustEmitProjectionEqualityExpectation {
               atom_realization_row: <Symbol carrier Node>,
