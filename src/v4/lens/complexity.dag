@@ -4,7 +4,7 @@
 // Anchor: https://en.wikipedia.org/wiki/Computational_complexity_theory + https://en.wikipedia.org/wiki/Big_O_notation
 // Unifies: (per THESIS:187) coercion cost = complexity. The cost of converting between representations IS a complexity-lens read; no parallel CoercionCost carrier. A worker computing coercion cost reads via this lens.
 //
-// U2 (operator-ratified 2026-05-15): this lens is the asymptotic
+// U2 (ratified 2026-05-15): this lens is the asymptotic
 // PROJECTION of `lens/cost.dag`'s SymbolicCost — it CONSUMES that
 // carrier and never independently re-derives cost. One mechanism, two
 // projections (SymbolicCost = the realization-cost expression;
