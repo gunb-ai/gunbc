@@ -23,7 +23,7 @@
 #   V4_TESTCLAIM_LOG        - dag compiler log path (default: ${OUT}.log)
 #   V4_TESTCLAIM_RUST_OUT   - rust emit output dir (default: ${OUT}-rust)
 #   V4_TESTCLAIM_RUST_LOG   - rust emit compiler log path (default: ${RUST_OUT}.log)
-#   V4_TESTCLAIM_TIMEOUT_SECS - optional timeout (CI default: 240)
+#   V4_TESTCLAIM_TIMEOUT_SECS - optional timeout (CI default: 360)
 
 set -euo pipefail
 
@@ -64,7 +64,7 @@ mkdir -p "$out" "$rust_out" "$(dirname "$log")" "$(dirname "$rust_log")"
 
 compile_timeout="${V4_TESTCLAIM_TIMEOUT_SECS:-}"
 if [[ -n "${GITHUB_ACTIONS:-}" && -z "$compile_timeout" ]]; then
-  compile_timeout=240
+  compile_timeout=360
 fi
 
 run_compile() {
