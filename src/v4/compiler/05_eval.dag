@@ -1739,6 +1739,8 @@ fn run_test_claim_round_trip_verdict_runtime(actual: Outcome<Node>, at: Node) ->
   match run_test_claim_round_trip_verdict(actual: actual, at: at) {
     Pass => Pass
     Fail { actual: node_fail } => Fail { actual: node_fail }
+    Deferred { actual: node_deferred, diagnostic: diag } =>
+      Fail { actual: outcome_rejected(d: diag) }
   }
 }
 
