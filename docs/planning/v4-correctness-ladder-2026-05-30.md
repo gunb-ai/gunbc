@@ -496,28 +496,88 @@ So `loop_bound_edge` itself — the catalog's representative example — is a kn
 Layer 2 is the right depth because:
 - It is *non-blocking* to layer 3 (the single-authority Atom realization is needed regardless of whether Loop bounds eventually stop using Symbol tags).
 - It is implementable as one bounded substrate addition + two emit-stage consumers.
-- It generalizes: the same single-authority pattern applies to every kernel-ambient atom (Bool, Char, Symbol) in every target language. **The carrier is language-parametric** (operator caution 2026-05-30: a Rust-only `RustAtomRealization` would calcify the pattern as language-specific). Sketch:
+- It generalizes: the same single-authority pattern applies to every kernel-ambient atom (Bool, Char, Symbol) in every target language. **The carrier is language-parametric** (operator caution 2026-05-30: a Rust-only `RustAtomRealization` would calcify the pattern as language-specific). Sketch (with the post-2026-05-30 operator-tightenings — canonical carrier identity not spelling, parametric `value_form`, reuse SG-2 substrate):
   ```dag
+  // Canonical carrier home (NOT inside any extdeps/languages/<lang>.dag):
+  // lives in the target-realization substrate alongside TargetTypeExpressionProjection
+  // (SG-2 owns the type-expression vocabulary; SG-1 must NOT coin a second one)
   type TargetAtomRealization {
-    source_atom: Symbol                       // e.g. Symbol, Bool, Char
-    target_model: LanguageModel               // Rust, Python, Go, ...
-    type_form: TargetTypeExpression           // emitted in type position
-    value_form: TargetValueExpression         // emitted in value position
-    constructor_form: Optional<TargetConstructorExpression>  // None for transparent aliases
+    source_carrier: Node                       // canonical source-node identity, NOT raw Symbol spelling
+                                                // (the realization is keyed by what the carrier IS,
+                                                // not by its name; prevents accidental name-keyed table)
+    target_model: LanguageModel                // Rust, Python, Go, ...
+    type_form: TargetTypeExpression            // instance of SG-2's TargetTypeExpressionProjection
+                                                // substrate — do NOT coin a parallel vocabulary
+    value_form: TargetValueTemplate            // parametric over the source atom value:
+                                                // `fn(SourceAtomValue) -> TargetValueExpression`
+                                                // OR a structural template with declared identity slot.
+                                                // Must NOT hardcode any specific symbol's value.
+    constructor_form: Optional<TargetConstructorTemplate>  // None for transparent aliases
+    display_name: Symbol                       // debug/diagnostic only — NEVER an authority
   }
   ```
-  Rows for Rust + parallel rows for other targets.
+  **Per-language rows live in `extdeps/languages/<lang>.dag`; carrier type definition lives ONCE in the canonical home** (target-realization substrate, sibling to SG-2's `TargetTypeExpressionProjection`).
 - It surfaces (rather than hides) layer 3 — if an Atom doesn't fit `{ type_form, value_form, constructor_form }`, that escalates as modeling work, not a worker fix.
+
+**Cross-reference to SG-2.** `TargetAtomRealization.type_form` MUST be an instance of the same `TargetTypeExpressionProjection` substrate SG-2 owns. SG-1 must not coin a second target-type-expression vocabulary. This is a hard cross-section invariant: SG-1 and SG-2 share authority over the target-type-expression surface; if they diverge, the single-authority discipline is violated within the substrate itself.
 
 **Acceptance is NOT "E0423 decreased."** Acceptance is *"change the Symbol realization row, and both type-emit and value-emit change together. If only one changes, the single-authority problem remains."*
 
 **The dispatch shape that protects against the spot-fix trap.**
 
-- **One** work item, narrowly scoped: *"author `TargetAtomRealization` (language-parametric) with Rust rows for Symbol/Bool/Char in `extdeps/languages/rust.dag`; refactor `05_emit.dag` so both type-emit and value-emit consume the row; verify the falsification probe (change row → both stages change together)."*
+Tightened SG-1 worker brief (operator-reviewed 2026-05-30):
+
+```text
+Implement language-parametric TargetAtomRealization.
+
+Canonical carrier home:
+  Define TargetAtomRealization and its TargetTypeExpression /
+  TargetValueExpression dependencies in the target-realization substrate
+  (sibling to SG-2's TargetTypeExpressionProjection — do NOT coin a second
+  type-expression vocabulary). NOT inside a Rust-only file.
+
+Rows:
+  Add Rust rows for Symbol, Bool, Char in extdeps/languages/rust.dag.
+  Prepare the carrier so Python/Go rows are parallel data, not new code paths.
+
+Consumers:
+  Refactor both type emit and value emit to consume the same realization row.
+  No template special-casing for Symbol is allowed.
+
+Authority key:
+  The realization is keyed by canonical source carrier Node/type identity,
+  not by raw spelling. A `display_name: Symbol` field is permitted for
+  diagnostics ONLY; it is never the authority.
+
+Parametric value_form:
+  value_form must consume the source atom value identity, not encode one
+  concrete symbol value. Either `fn(SourceAtomValue) -> TargetValueExpression`
+  or a structural template with declared identity slot. Hardcoding
+  `"loop_bound_edge".to_string()` in any row is rejected.
+
+Bidirectional readability (per §10.6):
+  type_form / value_form / constructor_form must be readable in BOTH
+  directions — emission Node→target AND ingestion target→Node consume the
+  same row. Forms whose shape only supports one direction are rejected.
+
+Falsification:
+  Change the Symbol realization row; verify both type emit and value emit
+  change together.
+  Grep for remaining string-keyed Symbol projection logic in emit; expected zero.
+
+Non-goals:
+  - Do NOT dissolve Symbol-tagged Loop-bound coordinates; that remains T-12.
+  - Do NOT dispatch parser sugar (SG-CANDIDATE-1) as part of SG-1.
+    SG-CANDIDATE-1 cannot be a prerequisite for SG-1.
+  - Do NOT use E0423 count reduction as acceptance.
+  - Do NOT coin a new target-type-expression vocabulary; reuse SG-2's
+    TargetTypeExpressionProjection.
+```
+
 - **Not** "fix SG-1." The dispatch frame is the modeling fact being added, not the error count being chased.
 - **Brief must FORBID** template special-casing and must require the worker to escalate (not "fix") any Atom whose realization doesn't fit the `TargetAtomRealization` schema. If found, that's a modeling escalation, not a worker call.
 - **Brief must FORBID** any new Symbol-tag consumers in generated Rust per the layer-3 gated note (`std/node.dag:84-85`). The new emit must produce structural realizations only.
-- **Worker output**: the substrate row(s) + the refactored emit paths + falsification probe receipts.
+- **Worker output**: the substrate row(s) + the refactored emit paths + falsification probe receipts + bidirectional-readability proof.
 
 **What does NOT get dispatched.**
 - Worker chasing the 2978 errors directly.
@@ -822,6 +882,21 @@ Metric allowed only as secondary:
 **Dispatch shape:** one work item — *"author `symbol X` and `symbols { X, Y, Z }` grammar productions in the v4 surface grammar (`std/grammar.dag` if the lexing/grammar migration has landed, else `v4/compiler/parse.dag`); add parse-stage desugar to canonical `data X: Symbol = X`; verify falsification probe (round-trip structural equality across all existing Symbol declarations in `std/`)."*
 
 **Cost:** small. Bounded to the parser. No substrate change. No invariant impact.
+
+**Three implementation constraints (operator-ratified 2026-05-30):**
+
+1. **Declared normalization in the `.dag` language model.** `emit ∘ ingest` may canonicalize the sugar back to the long form (e.g., the round-trip claim normalizes `symbol X` → `data X: Symbol = X`); that **must be declared** in the language model, not be surprising behavior. Otherwise the T-36 round-trip lane could interpret the text difference as information loss.
+
+2. **No new substrate Node shape.** `symbols { X, Y, Z }` must NOT create a substrate node like `SymbolsBlock`. After parse/normalize, downstream stages see only the same three `data X: Symbol = X` rows they see today. This is parser-level desugaring, not a substrate addition.
+
+3. **Per-symbol diagnostic loci.** If `Y` is invalid inside `symbols { X, Y, Z }`, the diagnostic must point to `Y` specifically, not to the whole block. Per "show the correct code" diagnostic discipline (THESIS §"Error handling"), the locus must survive desugaring.
+
+**SG-1 separation (hard rule).** SG-CANDIDATE-1 cannot be a prerequisite for SG-1, and SG-1 cannot be partially "solved" by adopting sugar in source `.dag` files:
+
+- SG-1 fixes **target realization** (the type/value emit disagreement, missing `TargetAtomRealization` authority).
+- SG-CANDIDATE-1 only reduces **source verbosity** at the `.dag` author level.
+
+Rewriting source `.dag` files to use `symbol X` while leaving type/value emit disagreement untouched would create the illusion of progress without fixing the modeling gap. The two work items are independent and must not be bundled.
 
 ### §10.6 Omni-ingestion — the bidirectional substrate
 
