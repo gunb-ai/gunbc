@@ -35,7 +35,6 @@ import v4.std.leaf_model_verification {
   LeafModelClaim
 }
 import v4.std.node { Symbol }
-import v4.std.text { String }
 import v4.std.verdict { Deferred, Verdict }
 
 data rust_leaf_claim_corpus_file: Symbol = rust_leaf_claim_corpus_file
