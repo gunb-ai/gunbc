@@ -173,12 +173,14 @@ fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<Ru
   }
 }
 
-// Dissolution trigger (W3): invoke tools/emit_host_runner here; remove transport_not_wired on Rust row.
+// Dissolution trigger (W3): invoke tools/emit_host_runner with typed fixture_inputs (claim_input_root
+// vs expected_eval_root pins); remove transport_not_wired on Rust row.
 fn run_emit_host_rust(
   target: TargetModel,
   source: TargetSource,
-  _fixture_inputs: Inputs
+  fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
+  // W3: fixture_inputs.root is claim_input_root; expected eval uses separate pin at call site.
   Rejected {
     diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
   }

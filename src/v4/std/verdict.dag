@@ -2,6 +2,8 @@
 // Scope: test-run verdict algebra.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + T-22 eval runner.
 // Status: AI-10 substrate; Verdict<S,T> + Fail.falsification per verdict-surface-contract (#3961).
+// Migration (#3961 §3.1 / Runtime/TestClaim mgr): #3958 merges `Fail { actual, falsification }`;
+// bounded follow-up collapses to `Fail { receipt: FalsificationReceipt<Subj,T> }` (no dual-actual).
 //
 // ALGEBRA: (Verdict<S,T>, verdict_combine, Pass) forms a Monoid where:
 //   Pass is the identity (bottom element of the join order).
@@ -27,7 +29,11 @@ import v4.std.test_claim_falsification { FalsificationReceipt }
 // 🟢 coproduct dissolution — CP-AI10-VERDICT-TERMINAL.
 // Subj: eval-subject carrier for Fail.falsification (compiler binds TestClaimEvalSubject<S>).
 // Pass: all expected behaviors confirmed.
-// Fail: a claim did not hold; actual outcome and optional falsification receipt attached.
+// Fail: a claim did not hold; actual outcome plus optional structured falsification receipt.
+// W2 single-absence rule: `falsification: Absent` means no receipt (eval-path / verdict_fail).
+// `Present { receipt }` is only for callers that populate FalsificationReceipt (e.g. emit-vs-eval
+// Host evidence). Do not encode “no receipt” as `Present { …, evidence: EvidenceNone }` on this
+// branch — EvidenceNone is a receipt-internal arm for W3 structural rows (#3961 follow-up).
 // Deferred: the evaluator could not decide (e.g. eval not yet realized);
 //           a diagnostic explains why, and the actual outcome is preserved.
 type Verdict<Subj, T>
@@ -35,8 +41,7 @@ type Verdict<Subj, T>
   | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<Subj, T>> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
-// Eval-path Fail without structured receipt. Structural rejects (#3961 §2.2/§2.3):
-// Present { FalsificationReceipt { ..., evidence: EvidenceNone } }, not Absent.
+// Eval-path Fail without structured receipt — sole W2 encoding of missing falsification.
 fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
   Fail { actual: actual, falsification: Absent }
 }

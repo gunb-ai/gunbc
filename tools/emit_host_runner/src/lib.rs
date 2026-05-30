@@ -40,6 +40,15 @@ pub struct BuildLog {
     pub lines: Vec<String>,
 }
 
+/// Host fixture input pins — mirrors `.dag` split of `claim_input_root` (evaluator input /
+/// `Inputs.root` for `run_emit_host`) vs `expected_eval_root` (rhs / `expected_value` for eval).
+/// W2 MVP fixture ignores pin semantics; W3 wires Node→host ABI and rejects mismatched pins.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmitHostFixtureInputs {
+    pub claim_input_root: String,
+    pub expected_eval_root: String,
+}
+
 // W3 reconciliation: modeled `EmitHostRunReceipt` in `host_run.dag` uses
 // `HostExit { outcome: Outcome<Witness<ExitOk>> }` and `logical_run: Outcome<HostLogicalRun>`
 // (stdout only when exit outcome Holds). This Rust transport row keeps a flat
@@ -208,8 +217,24 @@ fn host_exit_from_bounded(output: &BoundedChildOutput, ok_label: &str) -> HostEx
     }
 }
 
+/// Fail-closed when fixture pins are absent (W3 will require typed Node pins).
+pub fn validate_emit_host_fixture_inputs(inputs: &EmitHostFixtureInputs) -> Result<(), String> {
+    if inputs.claim_input_root.is_empty() {
+        return Err("claim_input_root pin must be non-empty".to_string());
+    }
+    if inputs.expected_eval_root.is_empty() {
+        return Err("expected_eval_root pin must be non-empty".to_string());
+    }
+    Ok(())
+}
+
 /// Compile `source` as a Rust binary crate in `work_dir`, run it, capture stdout/stderr.
-pub fn run_emit_host_rust(source: &str, work_dir: &Path) -> Result<EmitHostRunReceipt, String> {
+pub fn run_emit_host_rust(
+    source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, String> {
+    validate_emit_host_fixture_inputs(inputs)?;
     fs::create_dir_all(work_dir).map_err(|e| format!("create work_dir: {e}"))?;
     let src_dir = work_dir.join("src");
     fs::create_dir_all(&src_dir).map_err(|e| format!("create src: {e}"))?;
@@ -267,6 +292,15 @@ mod tests {
     fn runtime_value_parse_rust_accepts_five_bytes() {
         assert!(runtime_value_parse_rust(&[0, 0, 0, 0, 0]).is_ok());
         assert!(runtime_value_parse_rust(&[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn validate_emit_host_fixture_inputs_rejects_empty_pins() {
+        assert!(validate_emit_host_fixture_inputs(&EmitHostFixtureInputs {
+            claim_input_root: String::new(),
+            expected_eval_root: "x".into(),
+        })
+        .is_err());
     }
 
     #[test]

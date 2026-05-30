@@ -35,8 +35,13 @@ fn emit_host_runner_rust_row_builds_runs_and_parses_stdout() {
         "gunbc_v4_emit_host_harness_{}",
         std::process::id()
     ));
-    let receipt = emit_host_runner::run_emit_host_rust(EMIT_HOST_FIXTURE_SOURCE, &work_dir)
-        .expect("run_emit_host_rust");
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "w2_harness_claim_input".to_string(),
+        expected_eval_root: "w2_harness_expected_eval".to_string(),
+    };
+    let receipt =
+        emit_host_runner::run_emit_host_rust(EMIT_HOST_FIXTURE_SOURCE, &inputs, &work_dir)
+            .expect("run_emit_host_rust");
     assert!(
         matches!(receipt.exit, emit_host_runner::HostExit::Ok(_)),
         "expected successful host exit, got {:?}",
