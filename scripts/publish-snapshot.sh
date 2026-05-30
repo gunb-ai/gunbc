@@ -74,6 +74,11 @@ fi
 # Strip-list per RELEASE_TODO §2. Paths are relative to the export worktree
 # root. Adding to this list is the normal way to extend the snapshot policy.
 STRIP_PATHS=(
+  # Maintainer-facing planning docs (not for public).
+  "RELEASE_TODO.md"
+  "WISHLIST.md"
+  "docs/RELEASE_v0.1.0.md"
+
   # Internal docs (agent briefs, history, debt, audits, proposals, perf, decisions)
   "docs/briefs"
   "docs/history"
