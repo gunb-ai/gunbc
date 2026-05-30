@@ -88,16 +88,9 @@ pub enum HostSetupFailure {
 /// Logical child ran but did not satisfy the exit witness (timeout, nonzero, missing status).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostLogicalFailure {
-    TimedOut {
-        phase: HostPhase,
-    },
-    NoExitStatus {
-        phase: HostPhase,
-    },
-    ExitedNonzero {
-        phase: HostPhase,
-        code: Option<i32>,
-    },
+    TimedOut { phase: HostPhase },
+    NoExitStatus { phase: HostPhase },
+    ExitedNonzero { phase: HostPhase, code: Option<i32> },
 }
 
 /// Mirrors `.dag` `Witness<ExitOk>` at the Rust transport row.
@@ -154,7 +147,10 @@ pub struct HostLogicalRun {
 }
 
 /// Project exit + captured stdout into logical-run carrier (mirrors `host_logical_run_from_exit`).
-pub fn host_logical_run_from_exit(exit: &HostExit, stdout_bytes: Vec<u8>) -> Option<HostLogicalRun> {
+pub fn host_logical_run_from_exit(
+    exit: &HostExit,
+    stdout_bytes: Vec<u8>,
+) -> Option<HostLogicalRun> {
     match &exit.outcome {
         HostExitOutcome::Accepted(ExitWitness::Holds(_)) => Some(HostLogicalRun { stdout_bytes }),
         HostExitOutcome::Accepted(ExitWitness::Violates(_)) | HostExitOutcome::Rejected(_) => None,
@@ -264,12 +260,14 @@ fn run_command_bounded(
         phase,
         source: e.to_string(),
     })?;
-    let stdout_pipe = child.stdout.take().ok_or(HostSetupFailure::StdoutPipeMissing {
-        phase,
-    })?;
-    let stderr_pipe = child.stderr.take().ok_or(HostSetupFailure::StderrPipeMissing {
-        phase,
-    })?;
+    let stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or(HostSetupFailure::StdoutPipeMissing { phase })?;
+    let stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or(HostSetupFailure::StderrPipeMissing { phase })?;
 
     let cap = HOST_STREAM_BYTE_CAP;
     let (tx_out, rx_out) = mpsc::channel();
@@ -288,10 +286,12 @@ fn run_command_bounded(
     let deadline = Instant::now() + timeout;
     let mut timed_out = false;
     let status = loop {
-        match child.try_wait().map_err(|e| HostSetupFailure::TryWaitFailed {
-            phase,
-            source: e.to_string(),
-        })? {
+        match child
+            .try_wait()
+            .map_err(|e| HostSetupFailure::TryWaitFailed {
+                phase,
+                source: e.to_string(),
+            })? {
             Some(status) => break Some(status),
             None if Instant::now() >= deadline => {
                 let _ = child.kill();
@@ -304,20 +304,22 @@ fn run_command_bounded(
     };
 
     let recv_timeout = Duration::from_secs(5);
-    let (stdout, stdout_truncated) = rx_out
-        .recv_timeout(recv_timeout)
-        .map_err(|e| HostSetupFailure::StreamReadFailed {
-            phase,
-            stream: HostStream::Stdout,
-            source: format!("recv: {e}"),
-        })??;
-    let (stderr, stderr_truncated) = rx_err
-        .recv_timeout(recv_timeout)
-        .map_err(|e| HostSetupFailure::StreamReadFailed {
-            phase,
-            stream: HostStream::Stderr,
-            source: format!("recv: {e}"),
-        })??;
+    let (stdout, stdout_truncated) =
+        rx_out
+            .recv_timeout(recv_timeout)
+            .map_err(|e| HostSetupFailure::StreamReadFailed {
+                phase,
+                stream: HostStream::Stdout,
+                source: format!("recv: {e}"),
+            })??;
+    let (stderr, stderr_truncated) =
+        rx_err
+            .recv_timeout(recv_timeout)
+            .map_err(|e| HostSetupFailure::StreamReadFailed {
+                phase,
+                stream: HostStream::Stderr,
+                source: format!("recv: {e}"),
+            })??;
 
     Ok(BoundedChildOutput {
         stdout,
@@ -413,9 +415,10 @@ pub fn run_emit_host_rust(
     let cargo_toml = work_dir.join("Cargo.toml");
     let target_dir = work_dir.join("target");
     let manifest = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\"\n";
-    let mut f = fs::File::create(&cargo_toml).map_err(|e| HostSetupFailure::ManifestWriteFailed {
-        source: e.to_string(),
-    })?;
+    let mut f =
+        fs::File::create(&cargo_toml).map_err(|e| HostSetupFailure::ManifestWriteFailed {
+            source: e.to_string(),
+        })?;
     f.write_all(manifest.as_bytes())
         .map_err(|e| HostSetupFailure::ManifestWriteFailed {
             source: e.to_string(),
