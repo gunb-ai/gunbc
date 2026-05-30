@@ -24,7 +24,7 @@ No probe is marked PROVEN. The common blocker is executable close evidence, not 
 | §1.5 User-defined dimensions | 7 | 0 | 3 | 4 | 0 | 0 | 0 | 0 |
 | §1.6 Tier 1 mechanics (coercion = emission / ownership / grounding completeness) | 13 | 0 | 13 | 0 | 0 | 0 | 0 | 0 |
 | §1.7 Tier 2 runtime safety (proven safe or total) | 8 | 0 | 6 | 0 | 2 | 0 | 0 | 0 |
-| §2.1 Pure Bootstrap (zero hand-Rust) | 5 | 0 | 4 | 1 | 0 | 0 | 0 | 0 |
+| §2.1 Pure Bootstrap (zero hand-Rust) | 5 | 0 | 1 | 3 | 1 | 0 | 0 | 0 |
 | §2.2 Closed system / no escape hatches | 5 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
 | §2.3 Single authority / cost-of-change = 1 | 5 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
 | §2.4 Fail-closed discipline | 4 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |
@@ -42,8 +42,8 @@ No probe is marked PROVEN. The common blocker is executable close evidence, not 
 | §4.1 Lens self-application | 4 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
 | §4.2 Self-host fixed point | 4 | 0 | 4 | 0 | 0 | 0 | 0 | 0 |
 | §4.3 Concept unifications | 10 | 0 | 10 | 0 | 0 | 0 | 0 | 0 |
-| §5.1 5 substrate-gap classes closed | 6 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
-| §5.2 v2 fully retired | 3 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
+| §5.1 5 substrate-gap classes closed | 6 | 0 | 1 | 4 | 1 | 0 | 0 | 0 |
+| §5.2 v2 fully retired | 3 | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
 | §5.3 BridgeLedgerZero | 3 | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
 | §5.4 Compiler-as-data residual — "is the compiler pure data yet?" | 19 | 0 | 0 | 9 | 10 | 0 | 0 | 0 |
 | §5.5 Free consequences (when Tiers 1-2 close) | 11 | 0 | 5 | 6 | 0 | 0 | 0 | 0 |
@@ -60,7 +60,7 @@ No probe is marked PROVEN. The common blocker is executable close evidence, not 
 | §17.1 C4 — Additional MachineConstraint axes | 3 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
 | §17.2 C5 — Rounding-mode product-shape extension | 2 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
 | §17.3 C6 — Aspect-axis (PointKind) for instant/duration/rate | 2 | 0 | 1 | 1 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **346** | **0** | **244** | **59** | **43** | **0** | **0** | **0** |
+| **TOTAL** | **346** | **0** | **233** | **68** | **45** | **0** | **0** | **0** |
 
 ## Ledger
 
@@ -168,15 +168,15 @@ Section total: 8 probes — 6 WEAK-EVIDENCE, 2 NOT-CHECKED.
 | `docs/v4-close-interrogation.md:203` | **NOT-CHECKED** | If a partial primitive lands in `dsl/std/` post-R3, what catches it? (Should be a §1.8 ratchet or anti-pattern; cite.) | Requires a complete partial-primitive census across `src/v4/std`; not completed in this redo window. |
 ### §2.1 Pure Bootstrap (zero hand-Rust)
 
-Section total: 5 probes — 4 WEAK-EVIDENCE, 1 GAP.
+Section total: 5 probes — 1 WEAK-EVIDENCE, 3 GAP, 1 NOT-CHECKED.
 
 | Source | Disposition | Probe | Evidence |
 |---|---|---|---|
-| `docs/v4-close-interrogation.md:217` | **WEAK-EVIDENCE** | Run the PB-0 census predicate. What's the count? Should be 0. | PB/self-host substrate and task tracking exist (`src/v4/compiler/self_host.dag:1`, `src/v4/TASKS.md:815`), but close status remains partial/open. Missing for PROVEN: fresh PB-0 census SHA and self-host reference-build comparison. |
-| `docs/v4-close-interrogation.md:218` | **WEAK-EVIDENCE** | If non-zero: enumerate each survivor. Justify each as named-retirement-schedule. | PB/self-host substrate and task tracking exist (`src/v4/compiler/self_host.dag:1`, `src/v4/TASKS.md:815`), but close status remains partial/open. Missing for PROVEN: fresh PB-0 census SHA and self-host reference-build comparison. |
-| `docs/v4-close-interrogation.md:219` | **WEAK-EVIDENCE** | If zero: when was census last run? Cite SHA. | PB/self-host substrate and task tracking exist (`src/v4/compiler/self_host.dag:1`, `src/v4/TASKS.md:815`), but close status remains partial/open. Missing for PROVEN: fresh PB-0 census SHA and self-host reference-build comparison. |
+| `docs/v4-close-interrogation.md:217` | **GAP** | Run the PB-0 census predicate. What's the count? Should be 0. | Local PB-0 census proxy found 242 apparent hand-authored `.rs` files under `src/v3` (`find src/v3 -name '*.rs' ! -name '*_generated.rs' | wc -l`), so the zero target is not met. |
+| `docs/v4-close-interrogation.md:218` | **GAP** | If non-zero: enumerate each survivor. Justify each as named-retirement-schedule. | The survivor set is non-zero (242); first examples include `src/v3/grounding_cross_target_meta/src/closure_ledger_gate.rs`, `src/v3/grounding_cross_target_meta/src/cells.rs`, and `src/v3/grounding_tests/src/lib.rs`. This audit did not find a complete per-survivor retirement schedule. |
+| `docs/v4-close-interrogation.md:219` | **NOT-CHECKED** | If zero: when was census last run? Cite SHA. | The zero condition is false under the local census (242 hand-authored `.rs` files); no zero-census SHA was applicable in this pass. |
 | `docs/v4-close-interrogation.md:220` | **GAP** | Compile gunbc with itself end-to-end. Does the output match a reference build? Bit-for-bit, or just behavioral? | Searched workflow and self-host claims: `self_host.dag` has witness-body scaffold (`src/v4/compiler/self_host.dag:51`) but no bit-for-bit self-host run artifact at current HEAD. |
-| `docs/v4-close-interrogation.md:221` | **WEAK-EVIDENCE** | **Falsification probe**: write a new compiler feature in pure `.dag` (no Rust). Does it self-host? | PB/self-host substrate and task tracking exist (`src/v4/compiler/self_host.dag:1`, `src/v4/TASKS.md:815`), but close status remains partial/open. Missing for PROVEN: fresh PB-0 census SHA and self-host reference-build comparison. |
+| `docs/v4-close-interrogation.md:221` | **WEAK-EVIDENCE** | **Falsification probe**: write a new compiler feature in pure `.dag` (no Rust). Does it self-host? | PB/self-host substrate and task tracking exist (`src/v4/compiler/self_host.dag:1`, `src/v4/TASKS.md:815`), but this audit did not author a new pure-`.dag` compiler feature or produce a self-host result for it. |
 ### §2.2 Closed system / no escape hatches
 
 Section total: 5 probes — 5 NOT-CHECKED.
@@ -447,25 +447,25 @@ Section total: 10 probes — 10 WEAK-EVIDENCE.
 | `docs/v4-close-interrogation.md:832` | **WEAK-EVIDENCE** | **Falsification probe**: write a `.dag` program with an obviously-redundant operation (e.g., reading the same key twice with no intervening write). Does the idempotency lens, cancellation lens, AND redundancy lens all catch it? Same diagnostic, or three different paths? | Bootstrap/self-host workflow data exists (`src/v4/workflow/bootstrap.dag:1`, `src/v4/compiler/self_host.dag:1`) with runner closure still tracked open. Missing for PROVEN: executed self-application/fixed-point proof. |
 ### §5.1 5 substrate-gap classes closed
 
-Section total: 6 probes — 6 WEAK-EVIDENCE.
+Section total: 6 probes — 1 WEAK-EVIDENCE, 4 GAP, 1 NOT-CHECKED.
 
 | Source | Disposition | Probe | Evidence |
 |---|---|---|---|
-| `docs/v4-close-interrogation.md:846` | **WEAK-EVIDENCE** | Class 1 (parser/grammar #60): show concept-faithful `Int<64>`, `Real<64>`, `Nat<8>` lower without v2-fallback. Where? Demo. | Compiler stages are represented as `.dag` files (`src/v4/compiler/02_parse.dag`, `src/v4/compiler/04_infer.dag`, `src/v4/compiler/05_eval.dag`, `src/v4/compiler/06_translate.dag`) and T-38 tracks modeled runner closure (`src/v4/TASKS.md:274`). Missing for PROVEN: the exact program-analyzes-compiler demo and falsification output. |
-| `docs/v4-close-interrogation.md:847` | **WEAK-EVIDENCE** | Class 2 (function-valued #61): show a function-valued data flow program working end-to-end. Demo. | Compiler stages are represented as `.dag` files (`src/v4/compiler/02_parse.dag`, `src/v4/compiler/04_infer.dag`, `src/v4/compiler/05_eval.dag`, `src/v4/compiler/06_translate.dag`) and T-38 tracks modeled runner closure (`src/v4/TASKS.md:274`). Missing for PROVEN: the exact program-analyzes-compiler demo and falsification output. |
-| `docs/v4-close-interrogation.md:848` | **WEAK-EVIDENCE** | Class 3 (file-ingestion #62): show `.dag` program reading an external file via `FileAttachment` carrier (per Director ratification 2026-05-13). Demo. | Compiler stages are represented as `.dag` files (`src/v4/compiler/02_parse.dag`, `src/v4/compiler/04_infer.dag`, `src/v4/compiler/05_eval.dag`, `src/v4/compiler/06_translate.dag`) and T-38 tracks modeled runner closure (`src/v4/TASKS.md:274`). Missing for PROVEN: the exact program-analyzes-compiler demo and falsification output. |
-| `docs/v4-close-interrogation.md:849` | **WEAK-EVIDENCE** | Class 4 (workflow/scheduling #63): show CI workflow scheduling executing via `.dag`. Demo. | Compiler stages are represented as `.dag` files (`src/v4/compiler/02_parse.dag`, `src/v4/compiler/04_infer.dag`, `src/v4/compiler/05_eval.dag`, `src/v4/compiler/06_translate.dag`) and T-38 tracks modeled runner closure (`src/v4/TASKS.md:274`). Missing for PROVEN: the exact program-analyzes-compiler demo and falsification output. |
-| `docs/v4-close-interrogation.md:850` | **WEAK-EVIDENCE** | Class 5 (reflection-closure #64): show `lens_apply.rs` reflection via PB-Runtime, end-to-end. Demo. | Compiler stages are represented as `.dag` files (`src/v4/compiler/02_parse.dag`, `src/v4/compiler/04_infer.dag`, `src/v4/compiler/05_eval.dag`, `src/v4/compiler/06_translate.dag`) and T-38 tracks modeled runner closure (`src/v4/TASKS.md:274`). Missing for PROVEN: the exact program-analyzes-compiler demo and falsification output. |
-| `docs/v4-close-interrogation.md:851` | **WEAK-EVIDENCE** | **Falsification probe**: write a new substrate-gap (a 6th class). Could the framework absorb it without changes to the closure criteria? Or would §1.4 need re-authoring? | Compiler stages are represented as `.dag` files (`src/v4/compiler/02_parse.dag`, `src/v4/compiler/04_infer.dag`, `src/v4/compiler/05_eval.dag`, `src/v4/compiler/06_translate.dag`) and T-38 tracks modeled runner closure (`src/v4/TASKS.md:274`). Missing for PROVEN: the exact program-analyzes-compiler demo and falsification output. |
+| `docs/v4-close-interrogation.md:846` | **GAP** | Class 1 (parser/grammar #60): show concept-faithful `Int<64>`, `Real<64>`, `Nat<8>` lower without v2-fallback. Where? Demo. | Searched `src/v4`/`docs` for `Int<64>`, `Real<64>`, `Nat<8>`, and `v2-fallback`; found design/history mentions such as `docs/briefs/r3-substrate-s8-approximate-field-float-migration-worker.md:72`, but no current v4 demo proving concept-faithful lowering without fallback. |
+| `docs/v4-close-interrogation.md:847` | **GAP** | Class 2 (function-valued #61): show a function-valued data flow program working end-to-end. Demo. | Searched `src/v4`/`docs` for `function-valued`/`FunctionValue`; no current end-to-end v4 function-valued data-flow demo was found. |
+| `docs/v4-close-interrogation.md:848` | **GAP** | Class 3 (file-ingestion #62): show `.dag` program reading an external file via `FileAttachment` carrier (per Director ratification 2026-05-13). Demo. | Searched `src/v4`/`docs` for `FileAttachment`, `file attachment`, and `Attachment`; no v4 `FileAttachment` carrier demo or external-file ingestion receipt was found. |
+| `docs/v4-close-interrogation.md:849` | **WEAK-EVIDENCE** | Class 4 (workflow/scheduling #63): show CI workflow scheduling executing via `.dag`. Demo. | Workflow-as-data substrate exists (`src/v4/workflow/ci.dag:1`) and T-38 tracks modeled workflow/claim-runner closure (`src/v4/TASKS.md:274`), but this pass found no clean execution transcript for CI workflow scheduling via `.dag`. |
+| `docs/v4-close-interrogation.md:850` | **GAP** | Class 5 (reflection-closure #64): show `lens_apply.rs` reflection via PB-Runtime, end-to-end. Demo. | Searched for `lens_apply`/`reflection`; docs describe staged or in-flight reflection (`docs/r2-closure-ledger.md:264`, `docs/lens-library-design.md:141`), but no current v4 PB-Runtime `lens_apply.rs` end-to-end receipt was found. |
+| `docs/v4-close-interrogation.md:851` | **NOT-CHECKED** | **Falsification probe**: write a new substrate-gap (a 6th class). Could the framework absorb it without changes to the closure criteria? Or would §1.4 need re-authoring? | Requires authoring and evaluating a new substrate-gap class; not attempted in this audit pass. |
 ### §5.2 v2 fully retired
 
-Section total: 3 probes — 3 WEAK-EVIDENCE.
+Section total: 3 probes — 3 GAP.
 
 | Source | Disposition | Probe | Evidence |
 |---|---|---|---|
-| `docs/v4-close-interrogation.md:859` | **WEAK-EVIDENCE** | grep for `src/v2/` imports in `src/v3/`. Should be zero. | Affected-set/incremental substrate exists (`src/v4/lens/affected_set.dag:1`, `src/v4/TASKS.md:1102`), but no measured O(1) edit transcript was found. Missing for PROVEN: measured before/after re-exec set for a concrete edit. |
-| `docs/v4-close-interrogation.md:860` | **WEAK-EVIDENCE** | grep for v2-oracle fixtures in v3 tests. Survivors must be frozen-snapshot consumption only, not live. | Affected-set/incremental substrate exists (`src/v4/lens/affected_set.dag:1`, `src/v4/TASKS.md:1102`), but no measured O(1) edit transcript was found. Missing for PROVEN: measured before/after re-exec set for a concrete edit. |
-| `docs/v4-close-interrogation.md:861` | **WEAK-EVIDENCE** | **Falsification probe**: delete `src/v2/`. Does the test suite still pass? | Affected-set/incremental substrate exists (`src/v4/lens/affected_set.dag:1`, `src/v4/TASKS.md:1102`), but no measured O(1) edit transcript was found. Missing for PROVEN: measured before/after re-exec set for a concrete edit. |
+| `docs/v4-close-interrogation.md:859` | **GAP** | grep for `src/v2/` imports in `src/v3/`. Should be zero. | Targeted grep found live `src/v2/` path references in `src/v3`, including `src/v3/compiler/tests/integration/v4_workflow_release_dag_smoke_test.rs:25` and `src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs:53`; the zero target is not met. |
+| `docs/v4-close-interrogation.md:860` | **GAP** | grep for v2-oracle fixtures in v3 tests. Survivors must be frozen-snapshot consumption only, not live. | Targeted grep found v2-oracle/v2-compiler references in v3 tests and fixtures (`src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs:9`, `src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs:9`, `src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs:17`); this audit did not prove all survivors are frozen-snapshot-only. |
+| `docs/v4-close-interrogation.md:861` | **GAP** | **Falsification probe**: delete `src/v2/`. Does the test suite still pass? | Delete-suite falsification was not run, and existing include/path references to `src/v2/stage0/Cargo.toml` (`src/v3/compiler/tests/integration/v4_workflow_release_dag_smoke_test.rs:24`, `src/v3/compiler/tests/integration/v4_workflow_release_dag_smoke_test.rs:25`) indicate the suite is not proven independent of `src/v2`. |
 ### §5.3 BridgeLedgerZero
 
 Section total: 3 probes — 3 GAP.
