@@ -171,7 +171,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }],
       needs: [],
       env: none,
-      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}" },
+      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}", "release_distribution": "${{ steps.detect.outputs.release_distribution }}" },
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 15 },
@@ -220,6 +220,25 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "github.event_name == 'pull_request'" },
           continue_on_error: false,
           timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Rust (discipline gates via gunbc-ci)" },
+          id: none,
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          with: { "components": "rustfmt", "cache": "false", "rustflags": "" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
         }, RunStep {
           name: Some { value: "SG-0 net-shrink PR-body discipline (self-test)" },
           id: none,
@@ -263,7 +282,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Fabrication sentinel ratchet (P0-C)" },
           id: none,
-          run: "bash scripts/check-fabrication-sentinels.sh",
+          run: "cargo run -p v3-compiler --bin gunbc-ci -- discipline fabrication-sentinels",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -343,26 +362,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Rust toolchain single-authority check (P2)" },
           id: none,
-          run: "bash scripts/check-rust-toolchain-single-authority.sh",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, UsesStep {
-          name: Some { value: "Setup Rust" },
-          id: none,
-          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
-          with: { "components": "rustfmt", "cache": "false", "rustflags": "" },
-          env: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
-          id: none,
-          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          run: "cargo run -p v3-compiler --bin gunbc-ci -- discipline rust-toolchain-single-authority",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -446,6 +446,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           env: none,
           working_directory: none,
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "RELEASE §5 v4 workflow release model/YAML binding smoke" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_workflow_release_dag_smoke_test -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
         }, UsesStep {
@@ -860,7 +870,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Banked-dissolutions ratchet" },
           id: none,
-          run: "scripts/check-banked-dissolutions.sh",
+          run: "cargo run -p v3-compiler --bin gunbc-ci -- discipline banked-dissolutions",
           shell: Bash,
           env: none,
           working_directory: none,

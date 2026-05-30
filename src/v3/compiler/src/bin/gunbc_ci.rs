@@ -13,6 +13,8 @@
 //!   `dsl/gunbc/test_node_wall_clock_ratchet.dag` (**interim bridge** toward gate
 //!   **#102**; canonical pass target is policy from `TestNodeCostDimension` timing
 //!   facts — not a parallel warn-token table).
+//! - `discipline <name>` — Rust discipline gates (workflow shell elimination);
+//!   replaces `scripts/check-*.sh` for migrated checks.
 //!
 //! **`--workflow` / `--event` dispatch:** not implemented yet (BinaryShim gate-matrix
 //! wiring is pending). That path exits **2** fail-closed unless
@@ -22,6 +24,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use v3_compiler::ci_discipline;
 use v3_compiler::compile_to_dag;
 use v3_compiler::wall_clock_ratchet_manifest::{
     emit_warn_policy_jsonl_lines, RATCHET_DAG_REL_PATH,
@@ -29,7 +32,17 @@ use v3_compiler::wall_clock_ratchet_manifest::{
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  gunbc-ci wall-clock-warn-manifest\n  gunbc-ci --workflow <name> --event <github_event.json>"
+        "usage:\n  \
+         gunbc-ci wall-clock-warn-manifest\n  \
+         gunbc-ci discipline <fabrication-sentinels|banked-dissolutions|rust-toolchain-single-authority>\n  \
+         gunbc-ci --workflow <name> --event <github_event.json>"
+    );
+    std::process::exit(2);
+}
+
+fn discipline_usage() -> ! {
+    eprintln!(
+        "usage: gunbc-ci discipline <fabrication-sentinels|banked-dissolutions|rust-toolchain-single-authority>"
     );
     std::process::exit(2);
 }
@@ -42,6 +55,22 @@ fn repo_root() -> PathBuf {
         eprintln!("cwd: {e}");
         std::process::exit(2);
     })
+}
+
+fn run_discipline(name: &str) -> ExitCode {
+    let result = match name {
+        "fabrication-sentinels" => ci_discipline::check_fabrication_sentinels(),
+        "banked-dissolutions" => ci_discipline::check_banked_dissolutions(),
+        "rust-toolchain-single-authority" => ci_discipline::check_rust_toolchain_single_authority(),
+        _ => discipline_usage(),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(detail) => {
+            eprintln!("gunbc-ci discipline {name}: {detail}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -83,6 +112,13 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         };
+    }
+
+    if args[0] == "discipline" {
+        if args.len() != 2 {
+            discipline_usage();
+        }
+        return run_discipline(args[1].as_str());
     }
 
     if args.len() == 4 && args[0] == "--workflow" && args[2] == "--event" {

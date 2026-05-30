@@ -10,6 +10,9 @@ pub use banked_dissolutions::check_banked_dissolutions;
 pub use fabrication_sentinels::check_fabrication_sentinels;
 pub use rust_toolchain_single_authority::check_rust_toolchain_single_authority;
 
+#[cfg(test)]
+mod tests;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

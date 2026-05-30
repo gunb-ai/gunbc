@@ -67,7 +67,7 @@ pub fn check_banked_dissolutions() -> Result<(), String> {
     Ok(())
 }
 
-fn parse_forbidden_array(text: &str) -> Result<Vec<String>, String> {
+pub(crate) fn parse_forbidden_array(text: &str) -> Result<Vec<String>, String> {
     let mut in_block = false;
     let mut entries = Vec::new();
     for line in text.lines() {
@@ -79,11 +79,17 @@ fn parse_forbidden_array(text: &str) -> Result<Vec<String>, String> {
             if line.starts_with(')') {
                 break;
             }
-            let trimmed = line.trim();
-            if let Some(inner) = trimmed.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+            let mut rest = line;
+            while let Some(start) = rest.find('"') {
+                let after = &rest[start + 1..];
+                let Some(end) = after.find('"') else {
+                    break;
+                };
+                let inner = &after[..end];
                 if !inner.is_empty() {
                     entries.push(inner.to_string());
                 }
+                rest = &after[end + 1..];
             }
         }
     }
@@ -121,4 +127,21 @@ fn collect_lane_phase_docs(root: &Path) -> Result<Vec<std::path::PathBuf>, Strin
     }
     files.sort();
     Ok(files)
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::parse_forbidden_array;
+
+    #[test]
+    fn reads_quoted_entries_per_line() {
+        let sample = r#"
+FORBIDDEN=(
+  "port_by_id" "node_by_id"
+  "MutualLoop"
+)
+"#;
+        let got = parse_forbidden_array(sample).unwrap();
+        assert_eq!(got, vec!["port_by_id", "node_by_id", "MutualLoop"]);
+    }
 }

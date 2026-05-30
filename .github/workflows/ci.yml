@@ -116,6 +116,14 @@ jobs:
     - name: Fetch main for PR discipline diffs
       if: github.event_name == 'pull_request'
       run: git fetch origin main:refs/remotes/origin/main
+    - name: Setup Rust (discipline gates via gunbc-ci)
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        components: rustfmt
+        cache: false
+        rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: SG-0 net-shrink PR-body discipline (self-test)
       run: bash scripts/check-pr-sg0-net-shrink-discipline.sh --self-test
     - name: SG-0 net-shrink PR-body discipline
@@ -139,7 +147,7 @@ jobs:
     - name: R4-carve dissolution discipline
       run: bash scripts/check-r4-carve-dissolution-discipline.sh
     - name: Fabrication sentinel ratchet (P0-C)
-      run: bash scripts/check-fabrication-sentinels.sh
+      run: cargo run -p v3-compiler --bin gunbc-ci -- discipline fabrication-sentinels
     - name: T-19 testgen activation self-test (Python)
       run: python3 scripts/test_check_t19_testgen_activation.py
     - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
@@ -158,15 +166,7 @@ jobs:
     - name: Test-timeout ratchet self-test (consumer not ceremonial)
       run: bash scripts/test-check-test-timeout.sh
     - name: Rust toolchain single-authority check (P2)
-      run: bash scripts/check-rust-toolchain-single-authority.sh
-    - name: Setup Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-      with:
-        components: rustfmt
-        cache: false
-        rustflags: ''
-    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
-      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+      run: cargo run -p v3-compiler --bin gunbc-ci -- discipline rust-toolchain-single-authority
     - name: Cache Cargo (ci bootstrap gate)
       uses: actions/cache@v4
       with:
@@ -520,7 +520,7 @@ jobs:
     - name: Compiler-std consolidation ratchet
       run: scripts/check-compiler-std-ratchet.sh
     - name: Banked-dissolutions ratchet
-      run: scripts/check-banked-dissolutions.sh
+      run: cargo run -p v3-compiler --bin gunbc-ci -- discipline banked-dissolutions
   self_host_ratchet:
     if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     runs-on: [self-hosted, linux, arm64]
