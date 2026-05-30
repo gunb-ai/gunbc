@@ -3,7 +3,7 @@
 > **Status:** PLANNING — first artifact for Self-host/Release Manager (`nimble-crane-490`).  
 > **Authority:** `src/v4/TASKS.md:805-817` (v4-done definition + six bullets); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map). Line anchors are to current `main` (post-#3938).  
 > **Session:** `nimble-crane-490` · **Parent:** `nimble-dove-733` (PM May 29)  
-> **Tree HEAD spot-check:** `55ad5f3d3` (2026-05-30, post-#3938 `b129ce3f2` on main) — rebased `session/nimble-crane-490-predicate-tracker`.
+> **Tree HEAD spot-check:** refresh from live `main` after material lane landings (initial pass 2026-05-30, post-#3938 / #3948). Line-anchor table: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md) (Close/Receipt, PR [#3973](https://github.com/gunb-ai/gunbc/pull/3973)).
 
 ## Non-negotiables
 
@@ -16,7 +16,7 @@
 | # | Predicate (`TASKS.md:806-817`) | `ship_disposition` | `engineering_state` | Primary TASKS anchors | Blocking receipt (close) | Resolving manager lane |
 | - | ------------------------------ | ------------------ | --------------------- | --------------------- | ------------------------ | ---------------------- |
 | 1 | Every other scheduled task complete (whole plan minus T-15) | `GAP` | `CENSUS_NOT_RUN` (drift-proof; no mechanical census) | Plan graph `src/v4/TASKS.md:7-265`; Summary `src/v4/TASKS.md:1233-1239` | Per-task `DONE` / dissolution receipts against live plan at close time — not a frozen list | **Close/Receipt** (ledger) + **all lanes** (implementation) |
-| 2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | `GAP` | `PARTIAL_GATE_PRESENT` | `T-6`…`T-10`, `T-37` `src/v4/TASKS.md:474-686`, `:2246-2271` | v4 compiler-of-record executes full `src/v4/compiler/*.dag` pipeline without v2 OOM/SIGTERM mask; P5 resolve-posture bridge deleted | **Compiler Spine** |
+| 2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | `GAP` | `PARTIAL_GATE_PRESENT` | `T-6`…`T-10`, `T-37` `src/v4/TASKS.md:474-686`, `:2246-2271` | v4 compiler-of-record executes full `src/v4/compiler/*.dag` pipeline without v2 OOM/SIGTERM mask; resolve-posture bridge deleted | **Compiler Spine** |
 | 3 | v4 emits Rust that compiles to a binary | `GAP` | `PARTIAL_GATE_PRESENT` | `T-10`, `T-11`, `T-20`, `T-32` `src/v4/TASKS.md:612-686`, `:1057-1078`, `:2155-2216` | Emitted Rust is `cargo`-clean for release binary; bootstrap `compiled:` under v4 emit (not v2-only structural compile) | **Compiler Spine** + **Target Realization** |
 | 4 | Binary on `src/v4/compiler/*.dag` → bit-identical output (stage1==stage2) | `GAP` | `SCAFFOLD_PRESENT` | `T-15` `src/v4/TASKS.md:768-819`; `T-20`, `T-32`, `T-36` | B1 merkle `content_hash` pins replace digest placeholders; `self_host.dag` runner realized; `claim_t15` + `t_15_self_host_fixed_point` execute real fixpt (not structural-only) | **Self-host/Release** (this lane) + **Compiler Spine** |
 | 5 | TestClaim suite passes | `GAP` | `PARTIAL_GATE_PRESENT` | `T-14`, `T-22`, `T-38` `src/v4/TASKS.md:734-766`, `:1130-1151`, `:2277-2309` | Modeled T-22 eval over manual corpus + structured `TestClaimRun` verdicts in CI; delete `scripts/v4-testclaim-corpus-gate.sh` | **Runtime/TestClaim** (pending spawn) + **Compiler Spine** |
