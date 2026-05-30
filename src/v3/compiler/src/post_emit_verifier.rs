@@ -228,10 +228,12 @@ pub fn run_post_emit_verifier(
     {
         command.current_dir(parent);
     }
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    bounded_host_command::prepare_host_command(&mut command);
     let label = format!("post_emit_verifier `{}`", binding.command);
-    let output = bounded_host_command::host_command_output(&label, DEFAULT_WALL_TIMEOUT, command)
+    let output = bounded_host_command::host_command_output(
+        &label,
+        DEFAULT_WALL_TIMEOUT,
+        bounded_host_command::prepare_host_command(command),
+    )
         .map_err(|err| VerifierRunError::InvocationFailed {
         command: binding.command.clone(),
         io_error: err,

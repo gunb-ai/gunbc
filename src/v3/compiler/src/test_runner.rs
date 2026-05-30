@@ -395,13 +395,10 @@ fn w1_rust_emit_output_int(
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    crate::bounded_host_command::prepare_host_command(&mut rustc);
     let compile_out = crate::bounded_host_command::host_command_output(
         "W1 rust_emit_output: rustc",
         EXECUTE_COMMAND_WALL_TIMEOUT,
-        rustc,
+        crate::bounded_host_command::prepare_host_command(rustc),
     )?;
     if !compile_out.status.success() {
         let stderr = String::from_utf8_lossy(&compile_out.stderr);
@@ -414,13 +411,10 @@ fn w1_rust_emit_output_int(
             stderr.trim_end(),
         ));
     }
-    let mut run_cmd = Command::new(&bin_path);
-    run_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    crate::bounded_host_command::prepare_host_command(&mut run_cmd);
     let run = crate::bounded_host_command::host_command_output(
         "W1 rust_emit_output: emitted binary",
         EXECUTE_COMMAND_WALL_TIMEOUT,
-        run_cmd,
+        crate::bounded_host_command::prepare_host_command(Command::new(&bin_path)),
     )?;
     if !run.status.success() {
         let stderr = String::from_utf8_lossy(&run.stderr);
@@ -546,14 +540,11 @@ fn l5_rust_emit_output_int(program_dag: &Dag, claim_file: &str) -> Result<i64, S
         .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")
-        .arg(&bin_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    crate::bounded_host_command::prepare_host_command(&mut rustc);
+        .arg(&bin_path);
     let compile_out = crate::bounded_host_command::host_command_output(
         "L5 rust_emit_output: rustc",
         EXECUTE_COMMAND_WALL_TIMEOUT,
-        rustc,
+        crate::bounded_host_command::prepare_host_command(rustc),
     )?;
     if !compile_out.status.success() {
         return Err(format!(
@@ -563,13 +554,10 @@ fn l5_rust_emit_output_int(program_dag: &Dag, claim_file: &str) -> Result<i64, S
             String::from_utf8_lossy(&compile_out.stderr).trim_end()
         ));
     }
-    let mut run_cmd = Command::new(&bin_path);
-    run_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    crate::bounded_host_command::prepare_host_command(&mut run_cmd);
     let run = crate::bounded_host_command::host_command_output(
         "L5 rust_emit_output: emitted binary",
         EXECUTE_COMMAND_WALL_TIMEOUT,
-        run_cmd,
+        crate::bounded_host_command::prepare_host_command(Command::new(&bin_path)),
     )?;
     if !run.status.success() {
         return Err(format!(
@@ -598,15 +586,11 @@ fn l5_python_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
     )
     .map_err(|e| format!("L5 python_emit_output: {e}"))?;
     let mut run_cmd = Command::new("python3");
-    run_cmd
-        .arg(&src_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    crate::bounded_host_command::prepare_host_command(&mut run_cmd);
+    run_cmd.arg(&src_path);
     let run = crate::bounded_host_command::host_command_output(
         "L5 python_emit_output: python3",
         EXECUTE_COMMAND_WALL_TIMEOUT,
-        run_cmd,
+        crate::bounded_host_command::prepare_host_command(run_cmd),
     )?;
     if !run.status.success() {
         return Err(format!(
@@ -635,16 +619,11 @@ fn l5_go_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
     )
     .map_err(|e| format!("L5 go_emit_output: {e}"))?;
     let mut run_cmd = Command::new("go");
-    run_cmd
-        .arg("run")
-        .arg(&src_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    crate::bounded_host_command::prepare_host_command(&mut run_cmd);
+    run_cmd.arg("run").arg(&src_path);
     let run = crate::bounded_host_command::host_command_output(
         "L5 go_emit_output: go run",
         EXECUTE_COMMAND_WALL_TIMEOUT,
-        run_cmd,
+        crate::bounded_host_command::prepare_host_command(run_cmd),
     )?;
     if !run.status.success() {
         return Err(format!(

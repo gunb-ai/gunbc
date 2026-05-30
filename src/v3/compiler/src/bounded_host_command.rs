@@ -9,7 +9,7 @@
 //! after the group is killed or the overall deadline trips.
 
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -28,6 +28,13 @@ pub const CAPTURE_MAX_STDOUT_BYTES: usize = 16 * 1024;
 
 /// Max bytes retained from a host child's **stderr**; drain to EOF after the cap.
 pub const CAPTURE_MAX_STDERR_BYTES: usize = 256 * 1024;
+
+/// Host child ready to spawn: stdin null, stdout/stderr piped, process group on Unix.
+///
+/// Construct only via [`prepare_host_command`]; [`host_command_output`] rejects plain
+/// [`Command`] so P2 boundary shape cannot depend on caller call-order convention.
+#[must_use]
+pub struct PreparedHostCommand(Command);
 
 #[derive(Debug)]
 struct BoundedPipeCapture {
@@ -65,9 +72,10 @@ fn drain_reader_bounded(
     })
 }
 
-/// New process group for the host child so timeout teardown can signal the group.
-pub fn prepare_host_command(cmd: &mut Command) {
-    cmd.stdin(Stdio::null());
+fn apply_host_process_boundary(cmd: &mut Command) {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -80,6 +88,13 @@ pub fn prepare_host_command(cmd: &mut Command) {
             });
         }
     }
+}
+
+/// Apply P2/P4 host-child boundary (null stdin, piped stdout/stderr, process group).
+pub fn prepare_host_command(cmd: Command) -> PreparedHostCommand {
+    let mut cmd = cmd;
+    apply_host_process_boundary(&mut cmd);
+    PreparedHostCommand(cmd)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,8 +114,14 @@ fn kill_process_group(pgid: i32) {
 #[cfg(not(unix))]
 fn kill_process_group(_pgid: i32) {}
 
+fn reap_host_child(child: &mut Child, pgid: i32) {
+    kill_process_group(pgid);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 fn child_wait_until(
-    child: &mut std::process::Child,
+    child: &mut Child,
     deadline: Instant,
     wall_time: Duration,
 ) -> Result<std::process::ExitStatus, ChildWaitFail> {
@@ -109,9 +130,7 @@ fn child_wait_until(
             Ok(Some(status)) => return Ok(status),
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    kill_process_group(child.id() as i32);
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    reap_host_child(child, child.id() as i32);
                     return Err(ChildWaitFail::WallTimeout { wall_time });
                 }
                 std::thread::sleep(WAIT_POLL);
@@ -155,8 +174,9 @@ fn join_pipe_capture(
 pub fn host_command_output(
     label: &str,
     wall: Duration,
-    mut cmd: Command,
-) -> Result<std::process::Output, String> {
+    prepared: PreparedHostCommand,
+) -> Result<Output, String> {
+    let PreparedHostCommand(mut cmd) = prepared;
     let started = Instant::now();
     let deadline = started + wall;
 
@@ -164,14 +184,19 @@ pub fn host_command_output(
         .spawn()
         .map_err(|e| format!("{label}: failed to spawn host child: {e}"))?;
     let pgid = child.id() as i32;
-    let mut stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| format!("{label}: internal error: stdout not piped"))?;
-    let mut stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| format!("{label}: internal error: stderr not piped"))?;
+
+    let Some(mut stdout) = child.stdout.take() else {
+        reap_host_child(&mut child, pgid);
+        return Err(format!(
+            "{label}: internal error: stdout not piped after prepare_host_command"
+        ));
+    };
+    let Some(mut stderr) = child.stderr.take() else {
+        reap_host_child(&mut child, pgid);
+        return Err(format!(
+            "{label}: internal error: stderr not piped after prepare_host_command"
+        ));
+    };
 
     let stdout_handle =
         std::thread::spawn(move || drain_reader_bounded(&mut stdout, CAPTURE_MAX_STDOUT_BYTES));
@@ -189,7 +214,7 @@ pub fn host_command_output(
             ));
         }
         Err(ChildWaitFail::Io(err)) => {
-            kill_process_group(pgid);
+            reap_host_child(&mut child, pgid);
             let _ = join_pipe_capture(stdout_handle, deadline, pgid, "stdout", label);
             let _ = join_pipe_capture(stderr_handle, deadline, pgid, "stderr", label);
             return Err(format!("{label}: wait on host child failed: {err}"));
@@ -210,7 +235,7 @@ pub fn host_command_output(
         ));
     }
 
-    Ok(std::process::Output {
+    Ok(Output {
         status,
         stdout: stdout_cap.bytes,
         stderr: stderr_cap.bytes,
