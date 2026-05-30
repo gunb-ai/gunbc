@@ -1542,13 +1542,25 @@ fn ci_pipeline_step_ids_shadow(p: CiPipeline) -> List<CiStepId> {
 
 
 fn ci_step_selection_shadow_row(step_id: CiStepId) -> CiStepSelection {
-  CiStepSelection {
-    step_id: step_id,
-    inputs_consulted: [],
-    affected_intersection: [],
-    decision: Run,
-    cache_digest: content_hash(n: ci_step_id_projection_node(step_id: step_id)),
-    reason: ci_selection_shadow_reason
+  match ci_upsert_step_row_lookup(step_id: step_id, rows: ci_upsert_steps) {
+    Present { value: row } =>
+      CiStepSelection {
+        step_id: step_id,
+        inputs_consulted: row.step.inputs,
+        affected_intersection: [],
+        decision: Run,
+        cache_digest: ci_upsert_step_cache_digest(step: row.step),
+        reason: ci_selection_shadow_reason
+      }
+    Absent =>
+      CiStepSelection {
+        step_id: step_id,
+        inputs_consulted: [],
+        affected_intersection: [],
+        decision: Run,
+        cache_digest: content_hash(n: ci_step_id_projection_node(step_id: step_id)),
+        reason: ci_selection_shadow_reason
+      }
   }
 }
 
@@ -1664,6 +1676,54 @@ data ci_selection_receipt_shadow_heartbeat_mode: CiSelectionReceipt = match ci_p
       pipe: CiPipeline { jobs: [], gates: [] }
     )
 }
+
+
+fn ci_selection_receipt_shadow_well_formed_for_pipeline(p: CiPipeline) -> Bool {
+  ci_selection_receipt_well_formed(
+    receipt: ci_selection_receipt_shadow_heartbeat(
+      pr: ci_selection_receipt_shadow_empty_pr,
+      affected: ci_selection_receipt_shadow_fail_closed_affected,
+      pipe: p
+    ),
+    pipeline: p
+  )
+}
+
+
+data ci_selection_receipt_shadow_well_formed_ok: Bool = match ci_pipeline {
+  Accepted { value: pl, diagnostics: _ } =>
+    ci_selection_receipt_shadow_well_formed_for_pipeline(p: pl)
+  Rejected { diagnostics: _ } => false
+}
+
+
+data ci_upsert_steps_slice_bijection_ok: Bool = ci_upsert_steps_slice_bijection_holds(rows: ci_upsert_steps)
+
+
+// W2.3 falsification §10.0 #3 — identical inputs, different create → distinct cache digests.
+data ci_upsert_cache_digest_create_sensitivity_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v4/workflow/ci.dag")
+]
+
+data ci_upsert_cache_digest_create_sensitivity_a: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
+  inputs: ci_upsert_cache_digest_create_sensitivity_inputs
+  verify: ci_atom(sym: ci_selection_shadow_reason)
+  create: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+  resolve: ci_atom(sym: ci_selection_shadow_reason)
+  payload_type: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+}
+
+data ci_upsert_cache_digest_create_sensitivity_b: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
+  inputs: ci_upsert_cache_digest_create_sensitivity_inputs
+  verify: ci_atom(sym: ci_selection_shadow_reason)
+  create: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+  resolve: ci_atom(sym: ci_selection_shadow_reason)
+  payload_type: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+}
+
+data ci_upsert_cache_digest_create_sensitivity_witness: Bool =
+  ci_upsert_step_cache_digest(step: ci_upsert_cache_digest_create_sensitivity_a)
+    != ci_upsert_step_cache_digest(step: ci_upsert_cache_digest_create_sensitivity_b)
 
 
 fn test_claim_typed_input_ci_pipeline(
