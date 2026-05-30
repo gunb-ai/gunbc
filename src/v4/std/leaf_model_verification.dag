@@ -26,8 +26,7 @@ data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_typ
 type LeafModelClaimId = Symbol
 
 
-data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId =
-  leaf_model_claim_rust_r1_i32_surface_spelling
+data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId = leaf_model_claim_rust_r1_i32_surface_spelling
 
 
 // Rust fixture crate kind — Symbol anchor until bin/exe arms land.
