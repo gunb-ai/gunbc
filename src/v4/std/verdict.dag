@@ -2,6 +2,18 @@
 // Scope: test-run verdict algebra.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + T-22 eval runner.
 // Status: AI-10 substrate; Verdict<S,T> + Fail.falsification per verdict-surface-contract (#3961).
+//
+// ALGEBRA: (Verdict<S,T>, verdict_combine, Pass) forms a Monoid where:
+//   Pass is the identity (bottom element of the join order).
+//   Fail absorbs (join: worst outcome wins); falsification on Fail is preserved from the left.
+//   Deferred is sticky: once Deferred, only Fail can promote.
+// Ordering: Pass < Deferred < Fail (verdict_combine is the join operation).
+// BoundedLattice top (Fail) is not representable as a concrete data constant because
+//   Fail carries actual: Outcome<T> — no payload-free top exists for general T.
+//   The ordering is structurally sound but the lattice inhabitant requires a concrete T.
+// verdict_monoid<S,T> declares the Monoid<Verdict<S,T>> inhabitant as a function (not data)
+//   because Verdict<S,T> is polymorphic and Monoid fields must resolve at S and T.
+// verdict_fold fails-closed on empty list: caller supplies the empty-case verdict.
 
 module v4.std.verdict
 
@@ -12,7 +24,12 @@ import v4.std.diagnostic { Diagnostic, Outcome }
 import v4.std.nat { Nat, Succ, Zero, nat_add }
 import v4.std.test_claim_falsification { FalsificationReceipt }
 
+// 🟢 coproduct dissolution — CP-AI10-VERDICT-TERMINAL.
 // S threads TestClaimEvalSubject<S> into Fail.falsification (phantom on Pass / Deferred).
+// Pass: all expected behaviors confirmed.
+// Fail: a claim did not hold; actual outcome and optional falsification receipt attached.
+// Deferred: the evaluator could not decide (e.g. eval not yet realized);
+//           a diagnostic explains why, and the actual outcome is preserved.
 type Verdict<S, T>
   = Pass
   | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<S, T>> }
@@ -22,6 +39,12 @@ fn verdict_fail<S, T>(actual: Outcome<T>) -> Verdict<S, T> {
   Fail { actual: actual, falsification: Absent }
 }
 
+// Binary combining operation for verdicts (join of the Pass < Deferred < Fail order).
+// Laws:
+//   verdict_combine(Pass, v) = v                (Pass is identity)
+//   verdict_combine(Fail{a,ff}, _) = Fail{a,ff} (Fail absorbs; left falsification kept)
+//   verdict_combine(Deferred{d,diag}, Fail{b,bf}) = Fail{b,bf}   (Fail promotes Deferred)
+//   verdict_combine(Deferred{d,diag}, _) = Deferred{d,diag} (Deferred sticky otherwise)
 fn verdict_combine<S, T>(a: Verdict<S, T>, b: Verdict<S, T>) -> Verdict<S, T> {
   match a {
     Pass => b
@@ -34,6 +57,9 @@ fn verdict_combine<S, T>(a: Verdict<S, T>, b: Verdict<S, T>) -> Verdict<S, T> {
   }
 }
 
+// Monoid<Verdict<S,T>> inhabitant: op = verdict_combine, identity = Pass.
+// Declared as a fn (not data) because Verdict<S,T> is polymorphic.
+// Mirrors the nat_additive_commutative_monoid pattern in nat.dag:57.
 fn verdict_monoid<S, T>() -> Monoid<Verdict<S, T>> {
   Monoid {
     semigroup: Semigroup { magma: Magma { op: verdict_combine } },
@@ -41,6 +67,14 @@ fn verdict_monoid<S, T>() -> Monoid<Verdict<S, T>> {
   }
 }
 
+// Tally of Verdict<S,T> populations by variant. Carries genuinely distinct
+// per-variant work (different field increments in `verdict_tally_add`),
+// so it is the canonical surface for "how many Pass / Fail / Deferred"
+// over a list — NOT per-variant `is_*` Bool predicates (which would be
+// unconditional predicate-dissolution triggers in std/ per
+// docs/modeling-discipline.md). Populations are `Nat` so negative counts
+// are unrepresentable in the substrate (count invariant lives in the type,
+// not in a hand-checked predicate).
 type VerdictTally {
   pass: Nat
   fail: Nat
@@ -69,6 +103,9 @@ fn verdict_tally_total(t: VerdictTally) -> Nat {
   nat_add(a: nat_add(a: t.pass, b: t.fail), b: t.deferred)
 }
 
+// Fold a list of verdicts with the monoid identity (Pass) and verdict_combine.
+// Fail-closed on empty list: the caller supplies the empty_verdict to enforce
+// the desired policy (typically Fail with a context-specific diagnostic).
 fn verdict_fold<S, T>(
   rs: List<Verdict<S, T>>,
   empty_verdict: Verdict<S, T>
