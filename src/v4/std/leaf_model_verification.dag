@@ -2,7 +2,7 @@
 // Scope: Leaf-model verification carriers — claim / falsification / fixture / report.
 // Status: Phase 1 substrate (docs/planning/v4-leaf-model-verification-2026-05-30.md §5).
 // Authority: leaf model owns FACTS (stable fact_id in extdeps); this module owns OBLIGA shape.
-// Co-authored with Modeling DFS (proud-pike-680) — consume Verdict<T> from verdict.dag (PR #3961).
+// Co-authored with Modeling DFS (proud-pike-680) — consume Verdict<Subj,T> from verdict.dag (PR #3961).
 
 module v4.std.leaf_model_verification
 
@@ -49,15 +49,15 @@ type LeafModelFixture<C> {
   claim: C
   artifact: TargetArtifact
   invocation: TargetInvocation
-  expected_verdict: Verdict<Symbol>
+  expected_verdict: Verdict<Symbol, Symbol>
   falsification_artifact: TargetArtifact
-  expected_falsification_verdict: Verdict<Symbol>
+  expected_falsification_verdict: Verdict<Symbol, Symbol>
 }
 
 type LeafModelClaimVerdictRow {
   claim_id: Symbol
-  verdict: Verdict<Symbol>
-  falsification_verdict: Verdict<Symbol>
+  verdict: Verdict<Symbol, Symbol>
+  falsification_verdict: Verdict<Symbol, Symbol>
 }
 
 // Populations are Nat so negative totals are unrepresentable (same discipline as verdict.dag VerdictTally).
