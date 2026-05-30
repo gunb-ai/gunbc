@@ -15,7 +15,7 @@ import v4.compiler.eval {
   test_claim_cache_receipt,
   test_claim_typed_input_node
 }
-import v4.std.verdict { Verdict, Fail, Pass }
+import v4.std.verdict { Verdict, Pass, verdict_fail }
 import v4.compiler.infer {
   infer,
   infer_descent_not_derived_diagnostic,
