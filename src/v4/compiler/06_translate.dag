@@ -100,7 +100,22 @@ import v4.std.target_model {
   target_model_edge_type_expression_projection,
   target_model_edge_collection_realization,
   TargetCollectionRealization,
-  target_collection_rust_set_realization_row,
+  TargetRepresentation,
+  TargetRepresentationChoice,
+  RequiredTraitWitness,
+  target_collection_repr_field_kind,
+  target_collection_repr_field_apply,
+  target_collection_choice_field_form,
+  target_collection_choice_field_constraints,
+  target_collection_witness_field_trait_name,
+  target_collection_witness_field_type_param,
+  target_collection_row_field_source_carrier,
+  target_collection_row_field_primary,
+  target_collection_row_field_alternatives,
+  target_collection_row_field_fallback,
+  target_collection_repr_kind_from_atom,
+  target_collection_set_no_representation,
+  target_collection_set_no_representation_diagnostic,
   target_collection_select_choice,
   target_collection_set_element_type_node,
   target_collection_type_node_is_set_carrier,
@@ -127,7 +142,21 @@ import v4.std.target_model {
   target_type_expr_sum_emitted
 }
 import v4.std.collection { List, Map, Optional, empty_map, list_at_optional, optional_absent, optional_present }
-import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, is_empty, length, list_append, list_snoc_item, list_tail, zip_eq }
+import v4.std.algebra {
+  Cons,
+  Empty,
+  TailAbsent,
+  TailFound,
+  fold_list,
+  fold_list_node_head,
+  fold_list_node_tail,
+  is_empty,
+  length,
+  list_append,
+  list_snoc_item,
+  list_tail,
+  zip_eq
+}
 import v4.std.logic { Bool }
 import v4.std.text { String }
 type TargetNodeTree = Node
@@ -1271,15 +1300,216 @@ fn type_expression_projection_from_target(target: TargetModel) -> Outcome<Target
   )
 }
 
+fn target_collection_repr_from_node(node: Node) -> Outcome<TargetRepresentation> {
+  bind_outcome(
+    o: conj_named_child(parent: node, edge_name: target_collection_repr_field_kind),
+    f: fn(kind_node) {
+      bind_outcome(
+        o: node_atom_identity(node: kind_node),
+        f: fn(kind_sym) {
+          match target_collection_repr_kind_from_atom(id: kind_sym) {
+            Present { value: kind } =>
+              bind_outcome(
+                o: conj_named_child(parent: node, edge_name: target_collection_repr_field_apply),
+                f: fn(apply_node) {
+                  bind_outcome(
+                    o: type_expr_generic_apply_shape_from_node(node: apply_node),
+                    f: fn(apply) {
+                      Accepted {
+                        value: TargetRepresentation { kind: kind, apply: apply },
+                        diagnostics: None
+                      }
+                    }
+                  )
+                }
+              )
+            Absent =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+          }
+        }
+      )
+    }
+  )
+}
+
+fn target_collection_witness_from_node(node: Node) -> Outcome<RequiredTraitWitness> {
+  bind_outcome(
+    o: conj_named_child(parent: node, edge_name: target_collection_witness_field_trait_name),
+    f: fn(trait_node) {
+      bind_outcome(
+        o: node_atom_identity(node: trait_node),
+        f: fn(trait_name) {
+          bind_outcome(
+            o: conj_named_child(parent: node, edge_name: target_collection_witness_field_type_param),
+            f: fn(param_node) {
+              bind_outcome(
+                o: node_atom_identity(node: param_node),
+                f: fn(type_param) {
+                  Accepted {
+                    value: RequiredTraitWitness {
+                      trait_name: trait_name,
+                      type_param: type_param
+                    },
+                    diagnostics: None
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_collection_fold_list_from_node<T>(
+  node: Node,
+  decode_item: fn(Node) -> Outcome<T>
+) -> Outcome<List<T>> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if is_empty(xs: node.children) {
+        Accepted { value: Empty, diagnostics: None }
+      } else {
+        bind_outcome(
+          o: conj_named_child(parent: node, edge_name: fold_list_node_head),
+          f: fn(head_node) {
+            bind_outcome(
+              o: decode_item(node: head_node),
+              f: fn(head_item) {
+                bind_outcome(
+                  o: conj_named_child(parent: node, edge_name: fold_list_node_tail),
+                  f: fn(tail_node) {
+                    bind_outcome(
+                      o: target_collection_fold_list_from_node(
+                        node: tail_node,
+                        decode_item: decode_item
+                      ),
+                      f: fn(tail_items) {
+                        Accepted {
+                          value: Cons { head: head_item, tail: tail_items },
+                          diagnostics: None
+                        }
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
+}
+
+fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
+  bind_outcome(
+    o: conj_named_child(parent: node, edge_name: target_collection_choice_field_form),
+    f: fn(form_node) {
+      bind_outcome(
+        o: target_collection_repr_from_node(node: form_node),
+        f: fn(form) {
+          bind_outcome(
+            o: conj_named_child(parent: node, edge_name: target_collection_choice_field_constraints),
+            f: fn(constraints_node) {
+              bind_outcome(
+                o: target_collection_fold_list_from_node(
+                  node: constraints_node,
+                  decode_item: target_collection_witness_from_node
+                ),
+                f: fn(constraints) {
+                  Accepted {
+                    value: TargetRepresentationChoice {
+                      form: form,
+                      constraints: constraints
+                    },
+                    diagnostics: None
+                  }
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
+  bind_outcome(
+    o: node_atom_identity(node: node),
+    f: fn(reason) {
+      if reason == target_collection_set_no_representation {
+        Accepted {
+          value: target_collection_set_no_representation_diagnostic(),
+          diagnostics: None
+        }
+      } else {
+        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+      }
+    }
+  )
+}
+
+fn target_collection_realization_from_bundle(
+  bundle: Node,
+  target: TargetModel
+) -> Outcome<TargetCollectionRealization> {
+  bind_outcome(
+    o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_source_carrier),
+    f: fn(source_carrier) {
+      bind_outcome(
+        o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_primary),
+        f: fn(primary_node) {
+          bind_outcome(
+            o: target_collection_choice_from_node(node: primary_node),
+            f: fn(primary) {
+              bind_outcome(
+                o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_alternatives),
+                f: fn(alternatives_node) {
+                  bind_outcome(
+                    o: target_collection_fold_list_from_node(
+                      node: alternatives_node,
+                      decode_item: target_collection_choice_from_node
+                    ),
+                    f: fn(alternatives) {
+                      bind_outcome(
+                        o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_fallback),
+                        f: fn(fallback_node) {
+                          bind_outcome(
+                            o: target_collection_fallback_from_node(node: fallback_node),
+                            f: fn(fallback_diagnostic) {
+                              Accepted {
+                                value: TargetCollectionRealization {
+                                  source_carrier: source_carrier,
+                                  target_model: target,
+                                  primary: primary,
+                                  alternatives: alternatives,
+                                  fallback_diagnostic: fallback_diagnostic
+                                },
+                                diagnostics: None
+                              }
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetCollectionRealization> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_collection_realization),
-    f: fn(_) {
-      Accepted {
-        value: target_collection_rust_set_realization_row(),
-        diagnostics: None
-      }
-    }
+    f: fn(bundle) { target_collection_realization_from_bundle(bundle: bundle, target: target) }
   )
 }
 

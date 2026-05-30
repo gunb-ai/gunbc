@@ -1477,12 +1477,162 @@ fn rust_mvp1_translation_rules_node() -> Node {
   }
 }
 
-fn rust_set_collection_realization_bundle_node() -> Node {
-  let row = target_collection_rust_set_realization_row()
+data rust_collection_surface_btree_set: Symbol = rust_collection_surface_btree_set
+data rust_collection_surface_hash_set: Symbol = rust_collection_surface_hash_set
+
+fn rust_set_collection_apply_btree() -> TargetGenericApply {
+  TargetGenericApply {
+    surface: rust_collection_surface_btree_set,
+    open: rust_token_lt,
+    separator: rust_token_comma,
+    close: rust_token_gt
+  }
+}
+
+fn rust_set_collection_apply_hash() -> TargetGenericApply {
+  TargetGenericApply {
+    surface: rust_collection_surface_hash_set,
+    open: rust_token_lt,
+    separator: rust_token_comma,
+    close: rust_token_gt
+  }
+}
+
+fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
+  TargetRepresentationChoice {
+    form: TargetRepresentation {
+      kind: TargetCollectionReprBTreeSet,
+      apply: rust_set_collection_apply_btree()
+    },
+    constraints: [
+      RequiredTraitWitness {
+        trait_name: target_collection_trait_ord,
+        type_param: target_collection_type_param_t
+      }
+    ]
+  }
+}
+
+fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
+  TargetRepresentationChoice {
+    form: TargetRepresentation {
+      kind: TargetCollectionReprHashSet,
+      apply: rust_set_collection_apply_hash()
+    },
+    constraints: [
+      RequiredTraitWitness {
+        trait_name: target_collection_trait_hash,
+        type_param: target_collection_type_param_t
+      },
+      RequiredTraitWitness {
+        trait_name: target_collection_trait_eq,
+        type_param: target_collection_type_param_t
+      }
+    ]
+  }
+}
+
+fn rust_set_collection_alternative_choices() -> List<TargetRepresentationChoice> {
+  Cons {
+    head: rust_set_collection_hash_choice(),
+    tail: Empty
+  }
+}
+
+fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: target_collection_row_field_source_carrier, target: row.source_carrier)
+      rust_named_edge(
+        name: target_collection_repr_field_kind,
+        target: rust_inhabitant_atom(id: target_collection_repr_kind_atom(kind: form.kind))
+      ),
+      rust_named_edge(
+        name: target_collection_repr_field_apply,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            rust_named_edge(
+              name: target_type_expr_field_surface,
+              target: rust_inhabitant_atom(id: form.apply.surface)
+            ),
+            rust_named_edge(
+              name: target_type_expr_field_open,
+              target: rust_inhabitant_atom(id: form.apply.open)
+            ),
+            rust_named_edge(
+              name: target_type_expr_field_separator,
+              target: rust_inhabitant_atom(id: form.apply.separator)
+            ),
+            rust_named_edge(
+              name: target_type_expr_field_close,
+              target: rust_inhabitant_atom(id: form.apply.close)
+            )
+          ]
+        }
+      )
+    ]
+  }
+}
+
+fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_collection_witness_field_trait_name,
+        target: rust_inhabitant_atom(id: witness.trait_name)
+      ),
+      rust_named_edge(
+        name: target_collection_witness_field_type_param,
+        target: rust_inhabitant_atom(id: witness.type_param)
+      )
+    ]
+  }
+}
+
+fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_collection_choice_field_form,
+        target: rust_collection_repr_bundle_node(form: choice.form)
+      ),
+      rust_named_edge(
+        name: target_collection_choice_field_constraints,
+        target: fold_list_node(
+          xs: choice.constraints,
+          item_node: rust_collection_witness_bundle_node
+        )
+      )
+    ]
+  }
+}
+
+fn rust_set_collection_realization_bundle_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_collection_row_field_source_carrier,
+        target: target_collection_set_carrier_node()
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_primary,
+        target: rust_collection_choice_bundle_node(choice: rust_set_collection_primary_choice())
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_alternatives,
+        target: fold_list_node(
+          xs: rust_set_collection_alternative_choices(),
+          item_node: rust_collection_choice_bundle_node
+        )
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_fallback,
+        target: rust_inhabitant_atom(id: target_collection_set_no_representation)
+      )
     ]
   }
 }
@@ -1528,11 +1678,11 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
           rust_binding_param_y,
           "y"
         ),
-        target_collection_rust_surface_btree_set,
+        rust_collection_surface_btree_set,
         "std::collections::BTreeSet"
       ),
-      target_collection_rust_surface_hash_set,
-      "std::collections::HashSet"
+      rust_collection_surface_hash_set,
+        "std::collections::HashSet"
     ),
     target_collection_set_carrier,
     "Set"
@@ -2954,11 +3104,11 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
           rust_binding_sg2_rc,
           "Rc"
         ),
-        target_collection_rust_surface_btree_set,
+        rust_collection_surface_btree_set,
         "std::collections::BTreeSet"
       ),
-      target_collection_rust_surface_hash_set,
-      "std::collections::HashSet"
+      rust_collection_surface_hash_set,
+        "std::collections::HashSet"
     ),
     target_collection_set_carrier,
     "Set"
