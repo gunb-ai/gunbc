@@ -3528,6 +3528,33 @@ fn same_source_emits_to_rust_and_python() {
     );
 }
 
+#[test]
+fn weather_python_emit_match_is_statement_not_return_match() {
+    let ws = crate::helpers::workspace_root();
+    let weather_src =
+        std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag")).expect("weather.dag");
+    let result = crate::helpers::compile_dag_named(
+        "dsl/examples/weather/weather.dag",
+        &weather_src,
+        v2_compiler::v2_compiler_artifact::RenderTarget::Python,
+    );
+    assert_no_diagnostics(&result);
+    let py: String = result
+        .files
+        .iter()
+        .filter(|f| f.path.ends_with(".py") && !f.path.contains("_test"))
+        .map(|f| f.content.as_str())
+        .collect();
+    assert!(
+        !py.contains("return match "),
+        "match must be a statement at function body, not return match (invalid Python)"
+    );
+    assert!(
+        py.contains("match ") && py.contains("case "),
+        "weather coproduct should still emit Python match/case"
+    );
+}
+
 // ── Duplicate module detection ───────────────────────────────────────────
 
 #[test]
