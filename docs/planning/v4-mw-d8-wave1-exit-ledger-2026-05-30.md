@@ -17,7 +17,7 @@ Each row's `Condition` column quotes MW-D8 **verbatim** from PR #3983 `docs/plan
 | C1 | "Step 4 R1 produces an actual leaf-model verdict (`rust.dag` R1 → `rustc` → `Verdict<R1>`)." | `PROVEN` | n/a (closure reached) | #3972 merged 2026-05-30 18:24Z | 2026-05-30 19:55Z | n/a — closed |
 | C2 | "SG-7 `ci.dag` recursion is dissolved OR replaced by a modeled authority (`ByteOffsetCacheDigestAuthority` + `byte_offset_cache_key` consumed)." | `PROVEN` (both arms hold) | n/a (closure reached) | #3977 worksheet + #4014 impl merged 2026-05-30 21:01:11Z; falsification receipt `docs/audit/v4-mw-d8-c2-falsification-receipt-2026-05-30.md` (this update) verifies both arms on `origin/main` | 2026-05-30 22:55Z | n/a — closed |
 | C3 | "`Upsert<T>` is either landed as usable substrate primitive OR explicitly blocked with a Modeling DFS worksheet naming the parser/substrate gap." | `PROVEN` (via OR-arm: explicit block with worksheet) | `SUBSTRATE_PRESENT` (skeleton landed; not full usable substrate per #3981 self-assessment) | #3981 + #3989 merged + `docs/planning/v4-upsert-t-substrate-worksheet-2026-05-30.md` (Modeling DFS worksheet naming SG-2b parser/substrate gap) | 2026-05-30 19:55Z | 2026-05-31 12:00Z (revisit if SG-2b dissolution path changes) |
-| C4 | "`ci_selection_receipt_shadow` exists and can be generated for at least one PR/change fixture (shadow mode, not active gating yet)." | `GAP` | `NO_ARTIFACT_FOUND` | none — `smart-stag-871` queued post-SG-7 (C2 prerequisite) | 2026-05-30 19:55Z | 2026-06-02 12:00Z (≤72h; blocked on C2) |
+| C4 | "`ci_selection_receipt_shadow` exists and can be generated for at least one PR/change fixture (shadow mode, not active gating yet)." | `GAP` | `NO_ARTIFACT_FOUND` | none yet — `smart-stag-871` next-up post-#4014 (C2 prereq now closed) | 2026-05-30 22:55Z | 2026-06-01 12:00Z (24h now that C2 prereq is closed) |
 | C5 | "R2a/R2b/R3-external/R3-internal claim authoring has ready-to-run OR explicitly-blocked status (each claim authored or its blocker named)." | `PROVEN` (mixed-arm: 3 ready-to-run + 1 explicitly-blocked-and-named) | n/a (closure reached) | #4000 merged 2026-05-30 19:55Z (`sharp-swift-715` via `quick-tern-735`) | 2026-05-30 20:25Z | n/a — closed |
 
 **Headline:** **4 of 5** conditions `PROVEN` (C1; C2 via both arms post-#4014 + falsification receipt; C3 via OR-arm; C5 via mixed-arm). 1 remaining (C4). C4 is unblocked structurally now that C2 is closed.
@@ -32,13 +32,18 @@ Each row's `Condition` column quotes MW-D8 **verbatim** from PR #3983 `docs/plan
 
 **Evidence:** PR #3972 merged 2026-05-30 18:24Z produces the first R1 leaf-model verdict via the `rust.dag` R1 → `rustc` → `Verdict<R1>` chain. The MW-D8 phrasing "**actual** leaf-model verdict" rules out structural-only presence — the merged PR carries the executed verdict surface. `ship_disposition: PROVEN`. **Watch condition:** if a follow-on audit finds the verdict is structurally-only-present-but-not-executed, this row reopens.
 
-### §2.2 C2 — SG-7 recursion dissolved OR replaced by modeled authority (GAP / SCAFFOLD_PRESENT)
+### §2.2 C2 — SG-7 recursion dissolved AND replaced by modeled authority (PROVEN via both arms)
 
 **MW-D8 verbatim:** "SG-7 `ci.dag` recursion is dissolved OR replaced by a modeled authority (`ByteOffsetCacheDigestAuthority` + `byte_offset_cache_key` consumed)."
 
-**Neither arm satisfied yet.** PR #3977 merged the SG-7 **worksheet** only; per PR #3949 §2.1, a worksheet landing is `SUBSTRATE_CLOSED` at best, **not** `RECEIPT_CLOSED` or `PROVEN`. Neither MW-D8 arm asks for a worksheet — they ask for (a) dissolution of the recursion or (b) replacement by the named modeled authority with `byte_offset_cache_key` actively consumed. Lane adjudication: **worksheet ≠ either MW-D8 arm**. Row stays `GAP / SCAFFOLD_PRESENT` until either: the impl PR lands AND a per-PR census shows the recursion eliminated (arm 1), OR `ByteOffsetCacheDigestAuthority` substrate lands with `byte_offset_cache_key` consumed at recursion sites (arm 2).
+**Both arms hold post-#4014.** The falsification receipt at `docs/audit/v4-mw-d8-c2-falsification-receipt-2026-05-30.md` (landed in this same PR) verifies the four probes on `origin/main`:
 
-**Falsification check the impl PR should carry:** an executable receipt that the recursive shape is structurally impossible by construction (or at minimum, an audit that the recursive call sites are gone from `ci.dag` HEAD). Without that, the impl PR landing flips engineering_state to `EXECUTION_NOT_WIRED` but ship_disposition remains `GAP`.
+- §2.1 audit-by-grep on `src/` confirms `ci_int_offset_authority_projection_node`, `ci_byte_limb_projection_node`, and `ci_int_offset_authority_projection_bounded` are absent (arm 1 — dissolved).
+- §2.2 confirms `byte_offset_cache_key_projection_node` lands in `src/v4/std/node.dag` as the modeled authority and is consumed at the `ci.dag` projection site (arm 2 — modeled authority + consumed).
+- §2.3 confirms in-tree structural-impossibility comment authority on `ci_char_projection_node`.
+- §2.4 confirms executable injective-witness probe `ci_char_projection_out_of_range_injective_witness` in `ci.dag` — runtime falsification gate.
+
+Lane adjudication: closure invariant (PR #3949 §1) honored — executable receipt is §2.4's witness probe; falsification receipt is §2.1's audit-by-grep. Both on `main`. Row flips to `PROVEN`. Both arms holding strengthens the receipt: a future regression has to defeat both the dissolution audit and the modeled-authority routing to reopen.
 
 ### §2.3 C3 — `Upsert<T>` either landed-as-usable OR explicit-block-with-worksheet (PROVEN via OR-arm)
 
