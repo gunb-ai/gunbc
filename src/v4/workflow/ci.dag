@@ -1542,6 +1542,7 @@ fn ci_selection_receipt_shadow_heartbeat(
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:ci-upsert-step-migration — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — dissolve-on-arrival: replace `ci_step_id_eq` call sites with substrate closed-sum equality for `CiStepId` and delete this helper; forbidden: permanent per-variant equality table drift from `CiStepId`.
 fn ci_step_id_eq(left: CiStepId, right: CiStepId) -> Bool {
   match left {
     JobStep { job: left_job, step: left_step } =>
