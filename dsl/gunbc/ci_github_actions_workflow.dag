@@ -171,7 +171,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }],
       needs: [],
       env: none,
-      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}" },
+      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}", "release_distribution": "${{ steps.detect.outputs.release_distribution }}" },
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 15 },
@@ -448,6 +448,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "RELEASE §5 v4 workflow release model/YAML binding smoke" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_workflow_release_dag_smoke_test -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
+          continue_on_error: false,
+          timeout_minutes: none
         }, UsesStep {
           name: Some { value: "Cache gunbc binary (v4 bootstrap / host eval gate)" },
           id: Some { value: "v4-v2-bin" },
@@ -497,6 +507,15 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: true,
           timeout_minutes: Some { value: 20 }
+        }, UsesStep {
+          name: Some { value: "Setup Go (phase1/nat_semiring rung gate prerequisite)" },
+          id: none,
+          uses: { owner: "actions", repo: "setup-go", ref: "v5" },
+          with: { "go-version": "stable", "cache": "false" },
+          env: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
         }, RunStep {
           name: Some { value: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)" },
           id: none,
