@@ -628,6 +628,7 @@ data ci_projection_upsert_input_file_set_selector_edge: Symbol = ci_projection_u
 data ci_projection_upsert_input_substrate_selector_edge: Symbol = ci_projection_upsert_input_substrate_selector_edge
 data ci_projection_upsert_input_lens_ports_edge: Symbol = ci_projection_upsert_input_lens_ports_edge
 data ci_projection_node_query_connective_edge: Symbol = ci_projection_node_query_connective_edge
+data ci_projection_connective_atom_identity_edge: Symbol = ci_projection_connective_atom_identity_edge
 data ci_projection_node_query_identity_edge: Symbol = ci_projection_node_query_identity_edge
 data ci_projection_node_query_path_edge: Symbol = ci_projection_node_query_path_edge
 data ci_projection_file_set_root_edge: Symbol = ci_projection_file_set_root_edge
@@ -1259,6 +1260,25 @@ fn ci_file_set_selector_projection_node(selector: FileSetSelector) -> Node {
 }
 
 
+fn ci_connective_projection_node(c: Connective) -> Node {
+  match c {
+    Atom { identity: atom_id } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(name: ci_projection_node_query_connective_edge, target: ci_atom(sym: ci_cache_connective_atom_tag)),
+          ci_named_edge(name: ci_projection_connective_atom_identity_edge, target: ci_atom(sym: atom_id))
+        ]
+      }
+    Conj => ci_atom(sym: ci_cache_connective_conj_tag)
+    Disj => ci_atom(sym: ci_cache_connective_disj_tag)
+    Arrow => ci_atom(sym: ci_cache_connective_arrow_tag)
+    Cardinality => ci_atom(sym: ci_cache_connective_cardinality_tag)
+    Instantiation => ci_atom(sym: ci_cache_connective_instantiation_tag)
+  }
+}
+
+
 fn ci_node_query_projection_node(query: NodeQuery) -> Node {
   match query {
     NodeQueryByConnective { connective: c, identity: id } =>
@@ -1267,9 +1287,13 @@ fn ci_node_query_projection_node(query: NodeQuery) -> Node {
         children: [
           ci_named_edge(
             name: ci_projection_upsert_input_substrate_edge,
-            target: ci_atom(sym: ci_cache_upsert_input_substrate_tag)
+            target: ci_atom(sym: ci_cache_node_query_by_connective_tag)
           ),
-          ci_named_edge(name: ci_projection_step_id_job_edge, target: ci_atom(sym: id))
+          ci_named_edge(
+            name: ci_projection_node_query_connective_edge,
+            target: ci_connective_projection_node(c: c)
+          ),
+          ci_named_edge(name: ci_projection_node_query_identity_edge, target: ci_atom(sym: id))
         ]
       }
     NodeQueryByPath { at: path } =>
@@ -1278,6 +1302,10 @@ fn ci_node_query_projection_node(query: NodeQuery) -> Node {
         children: [
           ci_named_edge(
             name: ci_projection_upsert_input_substrate_edge,
+            target: ci_atom(sym: ci_cache_node_query_by_path_tag)
+          ),
+          ci_named_edge(
+            name: ci_projection_node_query_path_edge,
             target: ci_symbol_list_projection_node(xs: path.steps)
           )
         ]
@@ -1319,7 +1347,7 @@ fn ci_upsert_input_ref_projection_node(input_ref: UpsertInputRef) -> Node {
             target: ci_atom(sym: ci_cache_upsert_input_file_set_tag)
           ),
           ci_named_edge(
-            name: ci_projection_file_set_pattern_edge,
+            name: ci_projection_upsert_input_file_set_selector_edge,
             target: ci_file_set_selector_projection_node(selector: selector)
           )
         ]
@@ -1333,7 +1361,7 @@ fn ci_upsert_input_ref_projection_node(input_ref: UpsertInputRef) -> Node {
             target: ci_atom(sym: ci_cache_upsert_input_substrate_tag)
           ),
           ci_named_edge(
-            name: ci_projection_file_set_pattern_edge,
+            name: ci_projection_upsert_input_substrate_selector_edge,
             target: ci_node_query_projection_node(query: selector)
           )
         ]
@@ -1351,7 +1379,7 @@ fn ci_upsert_input_ref_projection_node(input_ref: UpsertInputRef) -> Node {
             target: ci_lens_id_projection_node(lens: lens)
           ),
           ci_named_edge(
-            name: ci_projection_upsert_input_upstream_edge,
+            name: ci_projection_upsert_input_lens_ports_edge,
             target: ci_symbol_list_projection_node(xs: ports)
           )
         ]
