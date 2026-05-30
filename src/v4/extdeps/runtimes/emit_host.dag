@@ -1,0 +1,154 @@
+// src/v4/extdeps/runtimes/emit_host.dag
+// Scope: T-38 / rung-4 host harness — compile + execute emitted artifacts; parse stdout to RuntimeValue.
+// Status: W2 substrate — Rust host row wired via tools/emit_host_runner; Python/Go rows pre-allocated (Phase 3).
+// Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
+
+module v4.extdeps.runtimes.emit_host
+
+
+import v4.compiler.eval { Inputs }
+import v4.compiler.target_carriers { TargetSource }
+import v4.std.collection { List }
+import v4.std.diagnostic {
+  Diagnostic,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  diagnostics_singleton,
+  port_locus
+}
+import v4.std.machine { Byte }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.runtime { RuntimeValue, RuntimePrimitive }
+import v4.std.target_model { TargetModel }
+import v4.std.text { String }
+import v4.std.witness { Witness }
+
+
+// Host stdout/stderr/build log carriers (A1: bytes separate from typed parse).
+type ByteString = List<Byte>
+
+type BuildLog {
+  lines: List<String>
+}
+
+type ExitOk {
+  code: Int
+}
+
+type HostExit = Outcome<Witness<ExitOk>>
+
+type EmitHostRunReceipt {
+  target: TargetModel
+  source: TargetSource
+  exit: HostExit
+  stdout_bytes: ByteString
+  stderr_bytes: ByteString
+  build_log: BuildLog
+}
+
+type ValueDiff<A> {
+  expected: A
+  actual: A
+}
+
+// Runtime/TestClaim authority (A4): structured falsification artifact for rung-4 non-Pass verdicts.
+type FalsificationReceipt<A> {
+  subject_label: String
+  expected: A
+  actual: A
+  host_receipt: EmitHostRunReceipt
+  divergence: ValueDiff<A>
+}
+
+data emit_host_transport_not_wired: Symbol = emit_host_transport_not_wired
+data emit_host_transport_port: Symbol = emit_host_transport_port
+data emit_host_parse_unsupported_target: Symbol = emit_host_parse_unsupported_target
+data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
+data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
+data emit_host_rust_authority_pin: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
+
+fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_transport_not_wired,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn emit_host_parse_unsupported_target_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_parse_unsupported_target,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_run_unsupported_target,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn emit_host_rust_i64_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
+    children: []
+  }
+}
+
+// Per-target parse rows — Rust row is modeled for MVP-2 five-byte layout; others fail-closed until Phase 3.
+fn runtime_value_parse_rust(bytes: ByteString) -> Outcome<RuntimeValue> {
+  if count(bytes) == 5 {
+    Accepted {
+      value: RuntimePrimitive {
+        value: {
+          primitive_type: emit_host_rust_i64_node(),
+          bytes: bytes
+        }
+      },
+      diagnostics: None
+    }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
+    }
+  }
+}
+
+fn runtime_value_parse(target: TargetModel, bytes: ByteString) -> Outcome<RuntimeValue> {
+  if target.authority_source_text == emit_host_rust_authority_pin {
+    runtime_value_parse_rust(bytes: bytes)
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
+    }
+  }
+}
+
+// Host transport: compile + execute emitted artifact. Modeled eval returns Rejected until host runner invokes.
+fn run_emit_host_rust(
+  _source: TargetSource,
+  _fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
+  }
+}
+
+fn run_emit_host(
+  target: TargetModel,
+  source: TargetSource,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  if target.authority_source_text == emit_host_rust_authority_pin {
+    run_emit_host_rust(source: source, fixture_inputs: fixture_inputs)
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: emit_host_run_unsupported_target_diagnostic())
+    }
+  }
+}

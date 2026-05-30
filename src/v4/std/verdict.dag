@@ -20,7 +20,7 @@ module v4.std.verdict
 
 
 import v4.std.algebra { Magma, Monoid, Semigroup, is_empty }
-import v4.std.collection { List }
+import v4.std.collection { List, Optional, Absent }
 import v4.std.diagnostic { Diagnostic, Outcome }
 import v4.std.nat { Nat, Succ, Zero, nat_add }
 // 🟢 coproduct dissolution — CP-AI10-VERDICT-TERMINAL.
@@ -30,8 +30,13 @@ import v4.std.nat { Nat, Succ, Zero, nat_add }
 //           a diagnostic explains why, and the actual outcome is preserved.
 type Verdict<T>
   = Pass
-  | Fail { actual: Outcome<T> }
+  | Fail { actual: Outcome<T>, falsification: Optional<FalsificationAttachment<T>> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
+
+// W2 default (PR #3938 §11.1 / rung-4 min runner): optional structured falsification beside Fail.actual.
+type FalsificationAttachment<T> {
+  receipt: T
+}
 // Binary combining operation for verdicts (join of the Pass < Deferred < Fail order).
 // Laws:
 //   verdict_combine(Pass, v) = v                (Pass is identity)
@@ -41,9 +46,9 @@ type Verdict<T>
 fn verdict_combine<T>(a: Verdict<T>, b: Verdict<T>) -> Verdict<T> {
   match a {
     Pass => b
-    Fail { actual: fa } => Fail { actual: fa }
+    Fail { actual: fa, falsification: ff } => Fail { actual: fa, falsification: ff }
     Deferred { actual: da, diagnostic: diag } => match b {
-      Fail { actual: fb } => Fail { actual: fb }
+      Fail { actual: fb, falsification: _ } => Fail { actual: fb, falsification: ff }
       Deferred { actual: _, diagnostic: _ } => Deferred { actual: da, diagnostic: diag }
       Pass => Deferred { actual: da, diagnostic: diag }
     }
