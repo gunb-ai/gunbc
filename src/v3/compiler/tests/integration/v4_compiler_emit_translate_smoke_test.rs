@@ -845,7 +845,6 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
-#[test]
 fn v4_wasm_wave2a_label_funcidx_claim_tokenizes_and_wires_parse_receipt() {
     let claim = parse_module(WASM_WAVE2A_IDX_CLAIM_DAG, WASM_WAVE2A_IDX_CLAIM_PATH);
     for name in [
@@ -893,6 +892,7 @@ fn v4_wasm_wave2a_label_funcidx_claim_tokenizes_and_wires_parse_receipt() {
     );
 }
 
+#[test]
 fn v4_wasm_wat_lex_boundary_uses_trivia_and_numeric_literal_authority() {
     let module = parse_module(WASM_LANGUAGE_DAG, WASM_LANGUAGE_PATH);
     for stale in [
