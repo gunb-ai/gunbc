@@ -1963,12 +1963,7 @@ fn translate_node(
     Accepted { value: ProjectionPresent, diagnostics: _ } =>
       translate_node_with_projection(node: node, tree: tree, target: target)
     Accepted { value: ProjectionAbsent, diagnostics: _ } =>
-      match node.kind {
-        TypeNode { connective: _ } =>
-          outcome_rejected(translate_type_expression_projection_missing_diagnostic(node: node))
-        ComputationNode { behavior: _ } =>
-          translate_node_computation(node: node, tree: tree, target: target)
-      }
+      translate_node_computation(node: node, tree: tree, target: target)
     Rejected { diagnostics: r } =>
       Rejected { diagnostics: r }
   }
