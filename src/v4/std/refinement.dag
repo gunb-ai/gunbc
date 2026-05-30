@@ -1,6 +1,6 @@
 // src/v4/std/refinement.dag
 // Scope: value-predicate refinement substrate — base type plus fail-closed validation obligation discharged at a named constructor boundary.
-// Status: T-25-core modeled.
+// Status: T-25-core modeled. Determinism lane PR-3: structural ordered/unordered iteration refinement added (companion to PR-1 src/v4/std/determinism.dag carrier; PR-2 lens enforcement is separate).
 // Anchor: https://en.wikipedia.org/wiki/Refinement_type
 
 
@@ -160,6 +160,7 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
 fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
+<<<<<<< HEAD
 
 
 fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
@@ -265,3 +266,44 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 // Refined<Int> intent) — bind T-25-tail / refinement-opaque-carrier for Outcome→Carrier once the
 // substrate supports closed proof or discharge without stripping the receipt.
 // Witnesses: refinement_formatter_literals_accept.dag; runtime/user input: make_* + Outcome.
+
+
+// 🟢 coproduct dissolution — TERMINAL at the substrate scope.
+// Structural marker classifying whether a collection carrier's iteration order is
+// reproducible from its identity (the determinism-axis refinement, NOT a value
+// predicate — orderedness is a type-level property of the carrier: List/BTreeMap/
+// BTreeSet are StructurallyOrdered; HashSet/HashMap/FiniteSet leak insertion-order
+// and are StructurallyUnordered). The unordered arm carries no payload: today the
+// only iteration-shaped `NonDetSource` (v4.std.determinism, PR-1) is `HashIteration`
+// and a payload typed over the full `NonDetSource` would admit nonsensical
+// constructions like `StructurallyUnordered { source: TimeRead }`. If a second
+// iteration-leak source emerges, carve a sub-coproduct (e.g. `NonDetIterationSource`)
+// rather than widening this arm to all `NonDetSource` variants.
+type IterationOrdering
+  = StructurallyOrdered
+  | StructurallyUnordered
+data naming_the_leak: Symbol = naming_the_leak
+// Refinement constructor: admits a base collection for iteration inside a
+// Deterministic context (PR-1 `DeterminismClass::Deterministic`) only when its
+// ordering marker is `StructurallyOrdered`. The unordered arm fails closed with
+// the `naming_the_leak` diagnostic — the refinement-level companion to PR-2's
+// import-time lens, catching the case where an unordered collection reaches an
+// iteration site through a deferred-origin or third-party carrier the lens
+// couldn't reject at import. Shape matches `refine` above.
+fn refine_ordered_iteration<B>(base: B, ordering: IterationOrdering, at: Locus) -> Outcome<Refined<B>> {
+  match ordering {
+    StructurallyOrdered =>
+      Accepted { value: Refined { base: base }, diagnostics: None }
+    StructurallyUnordered =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: naming_the_leak,
+            at: at,
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
+}
+>>>>>>> e00167f01 (v4(determinism PR-3): IterationOrdering refinement + naming_the_leak diagnostic in std/refinement.dag)
