@@ -184,8 +184,8 @@ fn eq(a: String, b: String) -> Bool {
 // filesystem idempotency — `written` is a compile stub only; tools.bootstrap/readme
 // must not treat outcomes as real upsert semantics until the pattern body lands.
 fn content_upsert(content: String, path: String) -> { written: Bool } {
-  let matches = content == ""
-  { written: !matches }
+  let empty = content == ""
+  return { written: empty != true }
 }
 
 // --- Transaction (begin -> body -> commit/rollback) --------------------
