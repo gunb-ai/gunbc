@@ -3,7 +3,7 @@
 > **Status:** PLANNING — first artifact for Self-host/Release Manager (`nimble-crane-490`).  
 > **Authority:** `src/v4/TASKS.md:805-817` (v4-done definition + six bullets); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map). Line anchors are to current `main` (post-#3938).  
 > **Session:** `nimble-crane-490` · **Parent:** `nimble-dove-733` (PM May 29)  
-> **Tree HEAD spot-check:** post–merge-wave baseline 2026-05-30 (`main` after [#3983](https://github.com/gunb-ai/gunbc/pull/3983); tracker refresh [#3975](https://github.com/gunb-ai/gunbc/pull/3975); mapping [#3973](https://github.com/gunb-ai/gunbc/pull/3973)). Line-anchor table: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md). Wave posture: [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §7 (MW-D1–D8).
+> **Tree HEAD spot-check:** post–merge-wave baseline 2026-05-30 (`main` after [#3983](https://github.com/gunb-ai/gunbc/pull/3983); tracker refresh [#3975](https://github.com/gunb-ai/gunbc/pull/3975); mapping [#3973](https://github.com/gunb-ai/gunbc/pull/3973)). Line-anchor table: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md). Wave posture: [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §7 (MW-D1–D8). **Operator burn-down:** [`v4-done-predicate-burn-down-2026-05-30.md`](v4-done-predicate-burn-down-2026-05-30.md) (GREEN/YELLOW/RED/GRAY; 0/6 proven).
 
 ## Non-negotiables
 
@@ -259,7 +259,7 @@ Claims checked against tree at `e332fc27b`:
 
 ## Next actions (this manager — post-§8)
 
-1. **Idle (PM 2026-05-30):** not a Wave 1 primary owner (W1.1–W1.5 → Compiler Spine / Modeling DFS / Runtime/TestClaim / TR). Refresh tracker rows only when material landings shift predicate evidence.
+1. **Burn-down active (PM re-task 2026-05-30):** maintain [`v4-done-predicate-burn-down-2026-05-30.md`](v4-done-predicate-burn-down-2026-05-30.md); not a Wave 1 primary owner for implementation (W1.1–W1.5 → other lanes).
 2. **Lane standing:** `t_15_self_host_fixed_point` on T-15-affecting merges; coordinate Runtime/TestClaim when predicate P5 (TestClaim) evidence moves (expedited W1.3 Step 4 R1 is upstream lever per MW-D2).
 3. **MW-D3 note:** Rust + Python + Go is v4 release-minimum cross-target set for L5/L6 proof — does not narrow the six-predicate bar; rows stay `GAP` until executable receipts.
 

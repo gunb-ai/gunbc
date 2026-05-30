@@ -256,6 +256,46 @@ When written, it will enumerate:
   silently no-op'ing. This is the central reviewer ask: unsupported ≠
   undefined behavior.
 
+## v4 alpha readiness — Rust × TypeScript (per `keen-heron`, 2026-05-30)
+
+This snapshot is the authoritative input to `SUPPORTED.md`'s v4-alpha
+section. It will be **updated as Wave 2 / Wave 3 work lands**; the rows
+are intentionally per-axis so progress is legible turn over turn.
+
+| Axis | Rust | TypeScript |
+|------|------|------------|
+| Substrate (lines / decls) | 3,359 lines, 467 model decls | 2,737 lines (TS) + 1,732 (ECMAScript), 317 `ts_` decls |
+| Realization carriers | SG-2 ✓ landed; SG-1 + SG-5 in flight | None landed (Wave 3 territory) |
+| Test claims | 17 (`parse` / `manual` / `language_model`) | 6 (`parse` / `MVP1` / `manual` / `anchor`) |
+| Toolchain runner | R1 + R2a + R2b + R3-external against `rustc` | None — no `tsc` invocation path |
+| Verification | 4 leaf-model claim files exercise `rustc` | Structural-only (parse + grammar round-trip) |
+| Known emit gap | ~7,951 `rustc` errors full-tree | **Unmeasured — no `tsc`-on-emit pipeline** |
+
+**Critical honesty caveat (must propagate to `SUPPORTED.md`):**
+
+> "TypeScript output is not currently checked against `tsc`;
+> report-and-track basis only." — `keen-heron`
+
+Without this, users who run v4 → TypeScript expecting clean `tsc` emit
+hit surprise failures we have no count for. `SUPPORTED.md` must include
+this caveat verbatim in the TypeScript-alpha section.
+
+**Path to GREEN (informational, not gating):**
+
+- *Rust (Wave 2, in progress):* SG-1 lands → closes ~2,978 E0423 errors
+  (dominant Pareto); SG-5 lands → closes collection-realization errors.
+- *TypeScript (Wave 3, not dispatched):* needs (a) SG-1/2/5
+  generalization to TS, (b) `LeafModelClaim M=typescript` spec + R1
+  runner, (c) `tsc`-on-emit verification pipeline. Three separate work
+  items, none currently in flight.
+
+**Net for v0.1.0 alpha labeling:**
+
+- **Rust** → "alpha with verification framework + measured gap count"
+  (~7,951 errors, falling as SG-1/SG-5 land).
+- **TypeScript** → "alpha substrate-only, no verification path,
+  exploratory" (must say this honestly per `keen-heron`).
+
 ## Item E — Acceptance gates (replaces prior acceptance criteria)
 
 The acceptance criteria from earlier revisions of this doc are superseded

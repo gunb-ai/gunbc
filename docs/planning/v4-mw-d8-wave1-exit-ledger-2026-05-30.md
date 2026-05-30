@@ -15,12 +15,12 @@ Each row's `Condition` column quotes MW-D8 **verbatim** from PR #3983 `docs/plan
 | # | Condition (MW-D8 verbatim) | `ship_disposition` | `engineering_state` | Evidence | Last update | Revisit-by |
 | - | -------------------------- | ------------------ | ------------------- | -------- | ----------- | ---------- |
 | C1 | "Step 4 R1 produces an actual leaf-model verdict (`rust.dag` R1 → `rustc` → `Verdict<R1>`)." | `PROVEN` | n/a (closure reached) | #3972 merged 2026-05-30 18:24Z | 2026-05-30 19:55Z | n/a — closed |
-| C2 | "SG-7 `ci.dag` recursion is dissolved OR replaced by a modeled authority (`ByteOffsetCacheDigestAuthority` + `byte_offset_cache_key` consumed)." | `GAP` | `SCAFFOLD_PRESENT` (worksheet only) | #3977 worksheet merged; impl PR in flight by `smart-stag-871` (ETA ~22:50Z) | 2026-05-30 19:55Z | 2026-05-31 12:00Z (24h if impl PR not landed) |
+| C2 | "SG-7 `ci.dag` recursion is dissolved OR replaced by a modeled authority (`ByteOffsetCacheDigestAuthority` + `byte_offset_cache_key` consumed)." | `GAP` | `SCAFFOLD_PRESENT` (worksheet only) | #3977 worksheet merged; impl PR #4014 open (`smart-stag-871`) — anticipated-imminent but **not yet landed**; row stays GAP per closure invariant | 2026-05-30 20:25Z | 2026-05-31 12:00Z (24h if #4014 not merged) |
 | C3 | "`Upsert<T>` is either landed as usable substrate primitive OR explicitly blocked with a Modeling DFS worksheet naming the parser/substrate gap." | `PROVEN` (via OR-arm: explicit block with worksheet) | `SUBSTRATE_PRESENT` (skeleton landed; not full usable substrate per #3981 self-assessment) | #3981 + #3989 merged + `docs/planning/v4-upsert-t-substrate-worksheet-2026-05-30.md` (Modeling DFS worksheet naming SG-2b parser/substrate gap) | 2026-05-30 19:55Z | 2026-05-31 12:00Z (revisit if SG-2b dissolution path changes) |
 | C4 | "`ci_selection_receipt_shadow` exists and can be generated for at least one PR/change fixture (shadow mode, not active gating yet)." | `GAP` | `NO_ARTIFACT_FOUND` | none — `smart-stag-871` queued post-SG-7 (C2 prerequisite) | 2026-05-30 19:55Z | 2026-06-02 12:00Z (≤72h; blocked on C2) |
-| C5 | "R2a/R2b/R3-external/R3-internal claim authoring has ready-to-run OR explicitly-blocked status (each claim authored or its blocker named)." | `GAP` | `PARTIAL_GATE_PRESENT` | #4000 open (`sharp-swift-715` via `quick-tern-735`) | 2026-05-30 19:55Z | 2026-05-31 12:00Z (24h if not landed) |
+| C5 | "R2a/R2b/R3-external/R3-internal claim authoring has ready-to-run OR explicitly-blocked status (each claim authored or its blocker named)." | `PROVEN` (mixed-arm: 3 ready-to-run + 1 explicitly-blocked-and-named) | n/a (closure reached) | #4000 merged 2026-05-30 19:55Z (`sharp-swift-715` via `quick-tern-735`) | 2026-05-30 20:25Z | n/a — closed |
 
-**Headline:** 2 of 5 conditions `PROVEN` (C1; C3 via OR-arm). 3 remaining (C2, C4, C5). C4 depends on C2 closing first.
+**Headline:** 3 of 5 conditions `PROVEN` (C1; C3 via OR-arm; C5 via mixed-arm). 2 remaining (C2, C4). C2 impl in flight via #4014 (smart-stag-871, not merged at update time); C4 still depends on C2.
 
 ---
 
@@ -63,13 +63,26 @@ Each row's `Condition` column quotes MW-D8 **verbatim** from PR #3983 `docs/plan
 
 **Dependency note:** C4's revisit-by is set 72h out because C2 is its prerequisite. If C2 slips, C4's window extends pari-passu via this lane's per-PR revisit-by update — not a separate operator extension.
 
-### §2.5 C5 — R2a/R2b/R3-external/R3-internal ready-to-run OR explicitly-blocked (GAP / PARTIAL_GATE_PRESENT)
+### §2.5 C5 — R2a/R2b/R3-external/R3-internal ready-to-run OR explicitly-blocked (PROVEN via mixed-arm)
 
 **MW-D8 verbatim:** "R2a/R2b/R3-external/R3-internal claim authoring has ready-to-run OR explicitly-blocked status (each claim authored or its blocker named)."
 
-**Evidence:** PR #4000 open (`sharp-swift-715` via `quick-tern-735`). The condition is a four-element predicate (R2a, R2b, R3-external, R3-internal), each with its own OR-arm (ready-to-run **or** explicitly-blocked-with-named-blocker). The C5 row flips to `PROVEN` only when **all four** elements individually satisfy at least one arm: every claim either authored as ready-to-run OR a named blocker landed for it. Mixed states are allowed within the four elements (e.g., two ready-to-run + two explicitly-blocked = PROVEN).
+**Evidence:** PR #4000 merged 2026-05-30 19:55Z. The four MW-D8 elements are each individually satisfied:
 
-**Lane adjudication:** until PR #4000 lands and the lane can audit the four-element receipt, row stays `GAP / PARTIAL_GATE_PRESENT`. Partial element coverage (e.g., R2a + R2b authored but R3-external/R3-internal blockers not named) keeps the row `GAP`.
+| Element | Arm | Receipt |
+| ------- | --- | ------- |
+| R2a (i32 algebra inhabitance — rustc accepts ordered ring ops) | **ready-to-run** | `src/v4/test/claim/language_model/rust_r2a.dag` + runner `scripts/v4-leaf-model-rust-r2a-verify.sh` + rustc test `src/v3/compiler/tests/boundary/v4_leaf_model_rust_r2_r3_external_rustc_test.rs` |
+| R2b (i32 overflow runtime behavior — debug panic vs release wrap, ×4 mode rows) | **ready-to-run** | `src/v4/test/claim/language_model/rust_r2b.dag` + runner `scripts/v4-leaf-model-rust-r2b-verify.sh` |
+| R3-external (Symbol projection to Rust) | **ready-to-run** | `src/v4/test/claim/language_model/rust_r3_external.dag` + runner `scripts/v4-leaf-model-rust-r3-external-verify.sh` |
+| R3-internal (Symbol emit coupling) | **explicitly-blocked-and-named** | `claim_rust_leaf_r3_internal_symbol_coupling` authored at `src/v4/test/claim/language_model/rust.dag`; named blocker per inline comment: *"R3-internal — emit coupling receipt; exercisable post-SG-1 (§4)."* |
+
+**Lane adjudication:** all four elements individually satisfy at least one MW-D8 arm; the row is PROVEN under the MW-D8 disjunction. Three ready-to-run + one explicitly-blocked-and-named is exactly the mixed-arm shape MW-D8 anticipates ("each claim authored **or** its blocker named"). `engineering_state: n/a` because every per-element receipt is on main; the row has no engineering remainder.
+
+**Closure invariant (PR #3949 §1) respected:** every PROVEN per-element claim is an executable receipt with falsification (e.g., `falsification_case` rows on each `LeafModelClaim`) or, for R3-internal, an explicit named-blocker receipt. The MW-D8 OR-arm carries closure-equivalent weight to ready-to-run for this condition, by operator design.
+
+**Watch conditions for reopen:**
+- If SG-1 dissolution unwinds before R3-internal is exercisable, the named blocker still exists but the path forward becomes unclear; the lane re-adjudicates whether the named blocker still qualifies as MW-D8 "blocker named".
+- If a per-element runner breaks against future main (regression), the affected element's ready-to-run claim no longer holds; lane reopens C5 at that point.
 
 ---
 
