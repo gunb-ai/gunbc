@@ -189,8 +189,13 @@ Other files under `dsl/examples/` are **not** on the §1 contract unless listed 
 | ------- | ------------------------- |
 | `gunbc compile` | `--source-root` (repeatable), `--output-dir`, `--target` ∈ {`rust`, `python`, `go`} for §1; `--source-dir` legacy mode. |
 | `gunbc run` | `--source-root` (repeatable), `--function` (default `main`). |
-| Global | `--dry-run`. |
 | `gunbc --help` | Usage for the above. |
+
+**Not on the §1 CLI contract:** `--dry-run` appears in `gunbc --help` as a global flag,
+but v0.1.0 does **not** implement it — `src/v2/stage0/src/main.rs` parses the flag and
+`gunbc run` calls `cli_run::handle_run` without passing it; `cli_run.rs` always forwards
+`dry_run: false`. Treat `--dry-run` as **unsupported behavior** until a future revision
+documents wiring; do not rely on mock service I/O from this flag in v0.1.0.
 
 ### Installing gunbc
 
