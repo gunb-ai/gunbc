@@ -30,7 +30,6 @@ import v4.lens.edit_locus { GitDiffNameOnly, RepoPath }
 import v4.std.change {
   AffectedDependency,
   AffectedSet,
-  AffectedSetEvidence,
   AffectedSetFailClosed,
   AffectedSetReason,
   ChangeSet
@@ -158,11 +157,22 @@ type CiPipeline {
 // verify-first inputs; cache authority is `content_hash` of the full step projection — never a
 // `cache_key` payload on the step type (Practice 10 row 5 / P2).
 
-type CiUpsertStep<T> = Upsert<T> {
+// Fields mirror §1.2 `CiUpsertStep<T> = Upsert<T> { inputs, verify, create, resolve }`.
+// Parser does not yet accept generic base-type extension (`= Upsert<T> { … }`); consume via
+// `ci_upsert_step_upsert` until ROADMAP generic record extension lands (Phase 1.4 probe 4).
+type CiUpsertStep<T> {
   inputs: List<UpsertInputRef>
   verify: VerifyCheck
   create: CreateAction
   resolve: ResolveExpr<T>
+}
+
+fn ci_upsert_step_upsert<T>(step: CiUpsertStep<T>) -> Upsert<T> {
+  Upsert<T> {
+    verify: step.verify,
+    create: step.create,
+    resolve: step.resolve
+  }
 }
 
 type UpsertInputRef
