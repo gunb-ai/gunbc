@@ -142,6 +142,7 @@ data translate_concrete_token_class_missing: Symbol = translate_concrete_token_c
 data translate_concrete_token_kind_invalid: Symbol = translate_concrete_token_kind_invalid
 data translate_serialize_recursion_limit_exhausted: Symbol = translate_serialize_recursion_limit_exhausted
 data translate_type_expression_shape_missing: Symbol = translate_type_expression_shape_missing
+data translate_type_expr_kind_authority_invalid: Symbol = translate_type_expr_kind_authority_invalid
 // node_subtree_count + translation_rules subtree — initial measure for grammar-inverse serialize.
 fn node_subtree_count(n: Node) -> Int {
   fold_node(
@@ -921,7 +922,7 @@ fn target_serialize_source_from_model_bounded(
     )
   } else {
     match target_type_expr_emitted_kind(node: emitted) {
-      Present { value: _ } =>
+      TypeExprKindAuthority { value: _ } =>
         bind_outcome(
           o: type_expression_projection_from_target(target: target),
           f: fn(projection) {
@@ -933,12 +934,16 @@ fn target_serialize_source_from_model_bounded(
             )
           }
         )
-      Absent =>
+      TypeExprKindNotEmitted =>
         bind_outcome(
           o: grammar_inverse_source_validated(target: target, emitted: emitted),
           f: fn(_) {
             target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
           }
+        )
+      TypeExprKindAuthorityInvalid =>
+        outcome_rejected(
+          translate_type_expr_kind_authority_invalid_diagnostic(node: emitted)
         )
     }
   }
@@ -1065,6 +1070,13 @@ fn coerce_grounded_node(
 fn translate_type_expression_shape_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: translate_type_expression_shape_missing,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_type_expr_kind_authority_invalid,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -2199,9 +2211,9 @@ fn serialize_type_expr_emitted_bounded(
     )
   } else {
   match target_type_expr_emitted_kind(node: emitted) {
-    Present { value: TargetTypeExprAtom } =>
+    TypeExprKindAuthority { value: TargetTypeExprAtom } =>
       type_expr_spelling_for_atom(target: target, node: emitted)
-    Present { value: TargetTypeExprInstantiation } =>
+    TypeExprKindAuthority { value: TargetTypeExprInstantiation } =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2209,7 +2221,7 @@ fn serialize_type_expr_emitted_bounded(
         form: projection.instantiation_form,
         node: emitted
       )
-    Present { value: TargetTypeExprCardinality } =>
+    TypeExprKindAuthority { value: TargetTypeExprCardinality } =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2217,7 +2229,7 @@ fn serialize_type_expr_emitted_bounded(
         form: projection.cardinality_form,
         node: emitted
       )
-    Present { value: TargetTypeExprRecord } =>
+    TypeExprKindAuthority { value: TargetTypeExprRecord } =>
       serialize_type_expr_record_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2225,7 +2237,7 @@ fn serialize_type_expr_emitted_bounded(
         form: projection.conj_form,
         node: emitted
       )
-    Present { value: TargetTypeExprSum } =>
+    TypeExprKindAuthority { value: TargetTypeExprSum } =>
       serialize_type_expr_sum_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2233,7 +2245,7 @@ fn serialize_type_expr_emitted_bounded(
         form: projection.disj_form,
         node: emitted
       )
-    Present { value: TargetTypeExprArrow } =>
+    TypeExprKindAuthority { value: TargetTypeExprArrow } =>
       serialize_type_expr_arrow_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2241,8 +2253,10 @@ fn serialize_type_expr_emitted_bounded(
         form: projection.arrow_form,
         node: emitted
       )
-    Absent =>
+    TypeExprKindNotEmitted =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: emitted))
+    TypeExprKindAuthorityInvalid =>
+      outcome_rejected(translate_type_expr_kind_authority_invalid_diagnostic(node: emitted))
   }
   }
 }

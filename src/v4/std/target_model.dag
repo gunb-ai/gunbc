@@ -201,6 +201,71 @@ fn target_type_expr_kind_from_atom(id: Symbol) -> Optional<TargetTypeExprKind> {
   }
 }
 
+// Emitted-wire kind authority probe — exactly-one decodable kind marker, or fail-closed invalid.
+type TargetTypeExprKindProbe
+  = TypeExprKindAuthority { value: TargetTypeExprKind }
+  | TypeExprKindNotEmitted
+  | TypeExprKindAuthorityInvalid
+
+type TargetTypeExprKindAuthorityFold
+  = KindAuthorityFoldNone
+  | KindAuthorityFoldUnique { value: TargetTypeExprKind }
+  | KindAuthorityFoldConflict
+
+type TargetTypeExprKindEdgeDecode
+  = KindEdgeNotKindField
+  | KindEdgeAuthority { value: TargetTypeExprKind }
+  | KindEdgeAuthorityMalformed
+
+fn target_type_expr_decode_kind_edge(edge: Edge) -> TargetTypeExprKindEdgeDecode {
+  match edge.label {
+    Named { name: n } =>
+      if n == target_type_expr_field_kind {
+        match edge.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            match target_type_expr_kind_from_atom(id: id) {
+              Present { value: kind } => KindEdgeAuthority { value: kind }
+              Absent => KindEdgeAuthorityMalformed
+            }
+          _ => KindEdgeAuthorityMalformed
+        }
+      } else {
+        KindEdgeNotKindField
+      }
+    Positional => KindEdgeNotKindField
+  }
+}
+
+fn target_type_expr_emitted_kind(node: Node) -> TargetTypeExprKindProbe {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match fold(node.children, init: KindAuthorityFoldNone, f: fn(acc, e) {
+        match acc {
+          KindAuthorityFoldConflict => acc
+          KindAuthorityFoldNone =>
+            match target_type_expr_decode_kind_edge(edge: e) {
+              KindEdgeNotKindField => acc
+              KindEdgeAuthorityMalformed => KindAuthorityFoldConflict
+              KindEdgeAuthority { value: kind } =>
+                KindAuthorityFoldUnique { value: kind }
+            }
+          KindAuthorityFoldUnique { value: _ } =>
+            match target_type_expr_decode_kind_edge(edge: e) {
+              KindEdgeNotKindField => acc
+              KindEdgeAuthorityMalformed => KindAuthorityFoldConflict
+              KindEdgeAuthority { value: _ } => KindAuthorityFoldConflict
+            }
+        }
+      }) {
+        KindAuthorityFoldNone => TypeExprKindNotEmitted
+        KindAuthorityFoldUnique { value: kind } =>
+          TypeExprKindAuthority { value: kind }
+        KindAuthorityFoldConflict => TypeExprKindAuthorityInvalid
+      }
+    _ => TypeExprKindNotEmitted
+  }
+}
+
 fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
   Edge {
     label: Named { name: target_type_expr_field_kind },

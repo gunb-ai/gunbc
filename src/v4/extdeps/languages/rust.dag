@@ -3032,7 +3032,7 @@ fn rust_sg2_type_expr_target_model() -> TargetModel {
   }
 }
 
-// SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Instantiation(Rc, FooBar), X, Y) positional chain.
+// SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Rc, Instantiation(FooBar, X, Y)).
 fn rust_sg2_rc_foobar_xy_emitted() -> Node {
   target_type_expr_instantiation_emitted(
     form: rust_type_expression_projection().instantiation_form,
@@ -3069,37 +3069,37 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
       Edge {
         label: Positional,
         target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_rc } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
           kind: TypeNode { connective: Instantiation },
           children: [
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_rc } },
-                children: []
-              }
-            },
             Edge {
               label: Positional,
               target: Node {
                 kind: TypeNode { connective: Atom { identity: rust_binding_sg2_foobar } },
                 children: []
               }
+            },
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
+                children: []
+              }
+            },
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
+                children: []
+              }
             }
           ]
-        }
-      },
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
-          children: []
-        }
-      },
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
-          children: []
         }
       }
     ]
