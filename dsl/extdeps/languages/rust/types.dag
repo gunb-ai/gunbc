@@ -35,14 +35,13 @@ import std.coercion {
 // the emitter uses this (via ValueContext) to decide Rc wrapping.
 // =========================================================================
 
-// Kernel-ambient atoms: type_form + value_ctor_template are authoritative for emit (SG-1).
+// Kernel-ambient atoms: type_form + type_decl_kind + storage_type are authoritative (SG-1).
 data rust_atom_realizations: List<TargetAtomRealization> = [
   {
     dag_name: "Symbol",
     type_form: "Symbol",
     storage_type: "String",
     type_decl_kind: NominalNewtype,
-    value_ctor_template: "Symbol(\"\{ident\}\".to_string())",
     default_expr: "Symbol(String::new())",
     is_copy: false,
     literal_suffix: ".to_string()"
@@ -52,7 +51,6 @@ data rust_atom_realizations: List<TargetAtomRealization> = [
     type_form: "bool",
     storage_type: "bool",
     type_decl_kind: TransparentAlias,
-    value_ctor_template: none,
     default_expr: "false",
     is_copy: true,
     literal_suffix: none
@@ -62,7 +60,6 @@ data rust_atom_realizations: List<TargetAtomRealization> = [
     type_form: "char",
     storage_type: "char",
     type_decl_kind: TransparentAlias,
-    value_ctor_template: none,
     default_expr: "'\\0'",
     is_copy: true,
     literal_suffix: none

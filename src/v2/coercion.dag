@@ -120,10 +120,6 @@ fn lookup_atom_realization(target: RenderTarget, dag_name: String) -> TargetAtom
   target_atom_realizations(target: target) |> filter(row => row.dag_name == dag_name) |> first
 }
 
-fn apply_atom_value_ctor_template(template: String, ident: String) -> String {
-  replace(template, "\{ident\}", ident)
-}
-
 // Transitional: fail-open (returns dag_name on miss). M5-full should
 // fail-closed once all surface types have checkpoint declarations.
 fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {

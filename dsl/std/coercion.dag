@@ -52,15 +52,14 @@ type TargetAtomTypeDeclKind
   | NominalNewtype
 
 // TargetAtomRealization: single authority for kernel-ambient atom type + value lowering.
-// Per-language rows live in extdeps/languages/<lang>/types.dag. Both type-emit and
-// value-emit consume the same row (SG-1); do not duplicate Symbol/Bool/Char in
-// TypeCheckpoint when a row exists here.
+// Per-language rows live in extdeps/languages/<lang>/types.dag. Type-emit reads
+// type_form, storage_type, type_decl_kind; value-emit for NominalNewtype derives
+// constructor shape from those fields in the target emitter (no string templates).
 type TargetAtomRealization {
   dag_name: String
   type_form: String
   storage_type: String
   type_decl_kind: TargetAtomTypeDeclKind
-  value_ctor_template: String?
   default_expr: String?
   is_copy: Bool?
   literal_suffix: String?
