@@ -34,14 +34,14 @@ small-`dsl` examples only** — not for arbitrary `src/v4/` programs.
 | Target | Confidence | §1 contract summary |
 | ------ | ------------ | ------------------- |
 | **rust** | **HIGH** | Full compile target for documented examples; see verification bar below. |
-| **python** | **MEDIUM** | Small `dsl/` examples only; **v4-substrate Python NOT supported.** |
-| **go** | **MEDIUM-LOW** | Small smoke only; **v4-fixture Go build is open.** |
+| **python** | **MEDIUM** | Small `dsl/` examples only; **v4-substrate Python NOT supported.** Weather-demo `--target python` not yet end-to-end clean (emit fix in flight). |
+| **go** | **MEDIUM-LOW** | Small smoke only; **v4-fixture Go build is open.** Weather-demo `--target go` not yet end-to-end clean (emit fix in flight). Operator-confirmed **§1** target; ratings may rise in v0.1.1 after Compiler Spine emit fixes land. |
 
 **Rust = HIGH confidence for v0.1.0 supported.** Verified via scripts/v4-mvp1-e2e-gate.sh on main CI + cargo test -p v2-compiler-tests pipeline/bootstrap emit tests. Works for fixtures/v4-mvp1/add.dag + small in-tree modules. **Limit:** full src/v4 emit produces ~7951 rustc errors (SG-1 Symbol/E0423 + SG-2 generic arity/E0107 dominate) — this is v4 substrate, NOT v0.1.0 supported.
 
-**Python = MEDIUM confidence.** Verified via v2-compiler-tests unit tests (same_source_emits_to_rust_and_python, scrambled_name_emit_python). **NOT** a dedicated add.dag → python CI gate. **Known open bug:** emit_python TCO bug on complex modules (emit_tco_unified path); phase1/nat_semiring v4-scoped emit often fails py_compile. **#3996 did NOT fix this.** Honest for small dsl examples. DO NOT label v4-substrate Python 'supported'.
+**Python = MEDIUM confidence.** Verified via v2-compiler-tests unit tests (`same_source_emits_to_rust_and_python`, `scrambled_name_emit_python`). **NOT** a dedicated add.dag → python CI gate. **Known open bug:** emit_python TCO bug on complex modules (`emit_tco_unified` path); phase1/nat_semiring v4-scoped emit often fails `py_compile` (#3996 did not fix). **Weather-demo gap:** swapping `--target python` on `weather.dag` today can emit syntactically invalid Python (match-as-expression / `:=` leaks) — small-smoke verified via v2-compiler-tests only; weather swap target not yet end-to-end clean (Compiler Spine emit fix in flight). DO NOT label v4-substrate Python 'supported'.
 
-**Go = MEDIUM-LOW confidence.** Verified via v2-compiler-tests only. **Known open bug:** phase1/nat_semiring go build still substrate-red (multi-file package/module-path mismatches reported as missing-package); #4015 in flight is gate-alignment honesty, NOT emitter fix. Small smoke OK; v4 fixture build still open; lagging Rust/Python.
+**Go = MEDIUM-LOW confidence.** Verified via v2-compiler-tests only. **Known open bug:** phase1/nat_semiring `go build` still substrate-red (multi-file package/module-path mismatches); #4015 in flight is gate-alignment honesty, NOT emitter fix. **Weather-demo gap:** swapping `--target go` on `weather.dag` is not yet end-to-end clean (same emit-class issues as Python). Small smoke OK; v4-fixture Go build still open. **Stays in §1** per operator decision; Compiler Spine is fixing emit bugs in parallel — expect v0.1.1 narrative upgrade when landed.
 
 **What “supports” means.** For the [supported daglang subset](#supported-daglang-subset) and [shipped examples](#shipped-examples), `gunbc compile --target <name>` succeeds and the external toolchain check for that target passes at the confidence level above. It does **not** mean every `.dag` file in the repository compiles to that target.
 
@@ -59,16 +59,54 @@ explicit error (fail-closed).
 | Target | Open issue | Impact on §1 |
 | ------ | ---------- | ------------- |
 | **rust** | Full-tree `src/v4` emit → ~7,951 `rustc` errors (SG-1 `E0423`, SG-2 `E0107` dominate) | Does **not** reduce §1 confidence for small `dsl/` examples; **do not** treat full v4-tree Rust emit as supported. |
-| **python** | `emit_tco_unified` TCO bug on complex modules; `phase1/nat_semiring` v4-scoped emit often fails `py_compile` (#3996 did not fix) | §1 limited to **small `dsl/` examples**; v4-substrate Python is **not** supported. |
-| **go** | `phase1/nat_semiring` `go build` still substrate-red (multi-file package / module-path mismatches); #4015 is gate-alignment honesty, not an emitter fix | §1 **small smoke** only; v4-fixture Go build remains **open**. |
+| **python** | `emit_tco_unified` TCO bug; v4-scoped emit `py_compile` failures; **weather.dag `--target python`** emits invalid syntax today | §1 **small `dsl/` smoke** via unit tests only; **do not** claim weather multi-target swap is clean. |
+| **go** | `phase1/nat_semiring` `go build` substrate-red; #4015 is gate honesty not emitter fix; **weather.dag `--target go`** not e2e clean today | §1 **small smoke** only; v4-fixture Go build **open**; weather swap **not** advertised as working. |
 
 #### Verification bar (§1 examples)
 
 | Target | Toolchain check on documented examples |
 | ------ | -------------------------------------- |
 | **rust** | Emitted crate passes `cargo check`. |
-| **python** | Emitted `.py` passes `python3 -m py_compile`; `gunbc run` works for `interp_test`. |
-| **go** | Emitted tree passes `go build` and `go vet` on the weather example layout. |
+| **python** | `gunbc run` on `interp_test` (see [Demonstrated v2 capabilities](#demonstrated-v2-capabilities)); `py_compile` on small smoke fixtures in v2-compiler-tests. **Not** weather.dag `--target python` until emit fix lands. |
+| **go** | Small-smoke cases in v2-compiler-tests. **Not** weather.dag `--target go` until emit fix lands. |
+
+### Demonstrated v2 capabilities
+
+Beyond the per-target table, v0.1.0 surfaces three **working v2 demonstrations**
+worth trying after `cargo build --release -p v2-compiler --bin gunbc`:
+
+1. **[`dsl/examples/weather/weather.dag`](../dsl/examples/weather/weather.dag)** —
+   Multi-target **emit** hero: types, enums, match, list pipelines.
+   **Rust:** compile-verified (`cargo check` on emitted crate — see [Weather hero demo](#weather-hero-demo)).
+   **Python / Go:** swap-target on this demo is **not** end-to-end clean today
+   (invalid emit for weather.dag; Compiler Spine emit fix in flight); do not treat
+   README “swap `--target`” as true for weather until a public transcript lands.
+
+2. **[`src/v2/complexity.dag`](../src/v2/complexity.dag)** — Termination and
+   **complexity analysis** in the v2 pipeline: symbolic cost terms, structural
+   descent / recursion classification, and complexity reports during
+   `compile_to_resolved` / full compile (see
+   [`v2_compiler_compile.rs`](../src/v2/stage0/src/v2_compiler_compile.rs)
+   calling `build_complexity_report`).
+   **Evidence:** `cargo test -p v2-compiler-tests` — e.g.
+   `complexity_match_arms_are_mutually_exclusive`,
+   `complexity_collection_iteration_bounded`,
+   `complexity_linear_recursion_bounded` in
+   [`src/v2/tests/src/pipeline.rs`](../src/v2/tests/src/pipeline.rs); parity gate
+   `complexity_source_and_stage0_stay_in_parity_on_classifier_hooks` in
+   [`src/v2/tests/src/source_audit.rs`](../src/v2/tests/src/source_audit.rs).
+
+3. **Interpreter (v2 eval)** — Direct `.dag` evaluation without emit: `gunbc run`
+   resolves sources then executes via
+   [`src/v2/stage0/src/cli_run.rs`](../src/v2/stage0/src/cli_run.rs) →
+   [`src/v2/stage0/src/v2_interpreter.rs`](../src/v2/stage0/src/v2_interpreter.rs)
+   (`compile_to_resolved` + `v2_interpreter::run`). This is the v2 eval path
+   (program track **T-22** names the broader eval substrate; v2 ships it today for
+   supported examples).
+   **Evidence:** `cargo test -p v2-compiler-tests repeat_string_and_indent_text_semantics_via_interpreter`
+   ([`src/v2/tests/src/render_repeat_test.rs`](../src/v2/tests/src/render_repeat_test.rs));
+   user demo [`dsl/examples/interp_test/interp_test.dag`](../dsl/examples/interp_test/interp_test.dag)
+   via the `gunbc run` command in [Shipped examples](#shipped-examples).
 
 ### Weather hero demo
 
@@ -93,7 +131,9 @@ transcript when that gate is recorded.
 cargo check --manifest-path /tmp/weather-out/Cargo.toml
 ```
 
-Swap `--target rust` for `python` or `go` only within the confidence limits above.
+**Do not** swap `--target` to `python` or `go` on `weather.dag` until the emit fixes
+called out in the [per-target confidence](#v2-per-target-confidence) section land;
+use `interp_test` for `gunbc run`, and v2-compiler-tests smoke for Python/Go emit.
 
 ### Supported daglang subset
 
@@ -122,7 +162,7 @@ plus the **`dsl/std/`** vocabulary those programs import transitively.
 
 | Example | Role | §1 commands |
 | ------- | ---- | ----------- |
-| **Weather** | Hero **compile** demo | `gunbc compile` → rust / python / go per confidence table; Rust path: `cargo check` on output (run verification pending — see [Weather hero demo](#weather-hero-demo)). |
+| **Weather** | Hero **compile** demo (Rust only today) | `gunbc compile --target rust` + `cargo check` (see [Weather hero demo](#weather-hero-demo)); Python/Go swap on weather **not** e2e clean yet. |
 | **Interpreter test** | Execution demo | `gunbc run` with `--source-root dsl/examples/interp_test` and `--source-root dsl/std`. |
 
 ```bash
