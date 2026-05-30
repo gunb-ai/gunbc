@@ -105,6 +105,7 @@ STRIP_PATHS=(
   # Work-in-progress and internal tooling.
   "wip"
   "scripts/session-dashboard"
+  "scripts/_internal"
   "tools/gen_gunbc_ci_workflow_dag"
 
   # Editor/agent metadata.

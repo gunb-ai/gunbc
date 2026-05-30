@@ -241,6 +241,9 @@ jobs:
     - name: Phase 1 leaf-model R1 rustc boundary (gunbc#846 bypass)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: cargo test -p v3-compiler --test integration v4_leaf_model_rust_r1_rustc_test -- --quiet
+    - name: Phase 1 leaf-model R2a/R2b/R3-external rustc boundary (gunbc#846 bypass)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: cargo test -p v3-compiler --test integration v4_leaf_model_rust_r2_r3_external_rustc_test -- --quiet
   # v4 compile gates — parallel with ci_integration. Standalone `v4` jobs hit a ~5m Ubicloud
   # shutdown mid-emit; per-job budgets keep one runner lifecycle per concern. The `v4` job is a
   # receipt-only stub so required check names stay stable. MVP-1 + v4 bootstrap share the
