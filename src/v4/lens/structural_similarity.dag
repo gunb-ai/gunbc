@@ -9,7 +9,7 @@
 module v4.lens.structural_similarity
 
 import v4.std.collection { List, Map }
-import v4.std.nat { Nat }
+import v4.std.nat { Nat, Zero }
 import v4.std.node { Symbol }
 
 // 🟡 gated — feature:structural-similarity-decl-identity — bind: §10.2 DeclId —
