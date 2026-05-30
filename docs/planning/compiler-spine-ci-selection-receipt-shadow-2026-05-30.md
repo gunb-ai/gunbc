@@ -132,7 +132,7 @@ Honest seed list for operator review (expand only with `reason_code` + `reason_d
 { step_id: m1_rust_emit_probe_signal,
   reason_code: integrity_always_run_interim,
   reason_detail: "interim Always gate policy; non-blocking probe",
-  dissolution_target: ModelMissingSubschema { what: ci_gate_run_policy_dissolved_to_receipt }
+  dissolution_target: ModelMissingSubstrate { what: ci_gate_run_policy_dissolved_to_receipt }
 }
 ```
 
