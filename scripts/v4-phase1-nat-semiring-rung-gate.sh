@@ -233,13 +233,8 @@ if [[ "${verdict[R1-rust-typecheck]}" == "PASS" ]]; then
   verdict[R2-rust-compile]=PASS
 else
   verdict[R2-rust-compile]=SKIP
-  # Attribute via the same upstream chain — note_blocking is first-wins so this is a
-  # no-op when R1 / R0 already set blocking_receipt.
-  if [[ "${verdict[R1-rust-typecheck]}" == "SKIP" ]]; then
-    note_blocking "upstream_blocked:R1-rust-typecheck"
-  else
-    note_blocking "upstream_blocked:R1-rust-typecheck"
-  fi
+  # note_blocking is first-wins; this is a no-op when R1 / R0 already set blocking_receipt.
+  note_blocking "upstream_blocked:R1-rust-typecheck"
 fi
 
 # --- Python target ---
