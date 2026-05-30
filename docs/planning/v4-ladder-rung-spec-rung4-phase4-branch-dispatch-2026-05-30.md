@@ -91,7 +91,7 @@ Do not dispatch an SG/modeling worker from this doc. Dispatch runner/roster work
 
 | Field | Value |
 | ----- | ----- |
-| `branch_dispatch_rung34_eval` module | **Absent** — W3 follow-up |
+| `branch_dispatch_rung34_eval` module | **Absent** — fixture activation follow-up |
 | Expected rung 4 | `FAIL` blocked aggregate (all cells `SKIP`); headline `upstream_blocked:emit_host_transport_not_wired` |
 
 ---

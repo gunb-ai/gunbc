@@ -79,6 +79,8 @@ Do not dispatch an SG/modeling worker from this doc for Loop-bound Symbol-tag wo
 
 ## 5. Baseline (post-#4018 main)
 
+| Field | Value |
+| ----- | ----- |
 | `loop_linear_bound_rung34_eval` module | **Absent** — fixture activation follow-up |
 | Expected rung 4 | `FAIL` blocked aggregate (all cells `SKIP`); headline `upstream_blocked:emit_host_transport_not_wired` |
 
