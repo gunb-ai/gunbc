@@ -126,7 +126,7 @@ fn run_pipeline_assert(
           verdict_fail(actual: actual)
       }
     Rejected { diagnostics: _ } =>
-      Fail { actual: actual }
+      verdict_fail(actual: actual)
   }
 }
 

@@ -323,7 +323,7 @@ fn infer_add_mvp_receipt_run(
             ) {
               Pass
             } else {
-              Fail { actual: actual }
+              verdict_fail(actual: actual)
             }
           Rejected { diagnostics: _ } =>
             if outcome_node_eq(
@@ -332,10 +332,10 @@ fn infer_add_mvp_receipt_run(
             ) {
               Pass
             } else {
-              Fail { actual: actual }
+              verdict_fail(actual: actual)
             }
         }
-      Rejected { diagnostics: _ } => Fail { actual: actual }
+      Rejected { diagnostics: _ } => verdict_fail(actual: actual)
     }
   }
 }
@@ -352,9 +352,9 @@ fn infer_descent_witness_receipt_run(
         if outcome_node_eq(a: actual, b: expected) {
           Pass
         } else {
-          Fail { actual: actual }
+          verdict_fail(actual: actual)
         }
-      Rejected { diagnostics: _ } => Fail { actual: actual }
+      Rejected { diagnostics: _ } => verdict_fail(actual: actual)
     }
   }
 }
