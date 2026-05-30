@@ -87,7 +87,70 @@ The acceptance contract from `docs/planning/v4-leaf-model-verification-2026-05-3
 > The leaf model owns FACTS (stable, claimable fact IDs declared in the model itself).
 > The claim corpus owns VERIFICATION OBLIGATIONS (LeafModelClaim rows in sibling files referencing those fact IDs).
 >
-> Operationalized: for every `fact_id` declared by M, the claim corpus C(M) contains one-or-more `LeafModelClaim` rows referencing `fact_id`.
+> Operationalized: for every claimable `fact_id` declared by M, the claim corpus C(M) contains one-or-more `LeafModelClaim` rows referencing `fact_id`.
+
+### §3.0 Claimability — model-owned predicate (closes the 232-Symbol gap)
+
+`rust.dag` at main HEAD `edc8cba73` declares ~232 top-level Symbols. NOT all are claimable facts; some are field-name tags (e.g., `rust_facts_field_surface_spelling`), edge-label discriminators (e.g., `target_model_edge_*`), token-class identifiers (e.g., `rust_token_kw_fn`), or structural sentinels with no verification angle. Treating all 232 as Phase-1 obligations would generate ~227 `not_checked` rows for non-claimable scaffolding, drowning the actual signal in noise — AND would leave the "which Symbols are claimable" question silently in the report-author's hands (P2 violation: claimability is a model-level fact, not a report-author decision).
+
+**Model-owned claimability predicate** (declared in `src/v4/extdeps/languages/rust.dag` per Layer A authority):
+
+```dag
+// Step 4 deliverable (quick-tern-735): model-owned predicate enumerating
+// the claimable fact_id subset for verification corpus generation.
+fn rust_dag_claimable_fact_ids() -> List<Node> {
+  // Returns the Node identities (per the §3.1 projection-fn discipline) of
+  // every fact in rust.dag that BOTH (a) has a verification angle the runner
+  // can exercise and (b) is not a scaffolding/tag-only declaration.
+  //
+  // Each entry maps 1:1 to a LeafModelClaim row in C(rust.dag) per the
+  // Layer A contract.
+  //
+  // Concrete contents — enumerated in §3.2 below.
+  [ ... ]
+}
+```
+
+**Status:** the predicate function is a **Step 4 deliverable** (Runtime/TestClaim Mgr `quick-tern-735`); this spec defines its contract and the Phase-1 contents. Authoring the function moves the boundary into substrate authority where it belongs, instead of leaving it as docs-only narrative.
+
+### §3.1 Three classes of claimable fact_id in rust.dag
+
+Per the Node-typed `fact_id` discipline ratified by Modeling DFS msg_d5181972 and PR #3970 (`src/v4/extdeps/languages/rust.dag` projection fns `rust_leaf_model_fact_id_node_*`), claimable facts split into three structural classes:
+
+1. **Top-level `data <name>: <RecordType>` declarations** — facts carried as full Conj-bundle records that the runner can introspect. Example: `rust_facts_i32: RustIntegerPrimitiveFacts` (rust.dag:574). Projection-fn: `rust_integer_facts_node(facts: rust_facts_i32)`.
+2. **Derived facts via model-owned functions** — facts computed by a rust.dag function from other facts. Example: `rust_integer_algebra_inhabitance(rust_facts_i32)` returns an `AlgebraInhabitanceDecl` (rust.dag:1768). Projection-fn: `rust_integer_algebra_inhabitance(facts: rust_facts_i32).algebra`.
+3. **Realization-row facts (planned)** — facts to be declared by SG-1 (`TargetAtomRealization`) and SG-5 (`TargetCollectionRealization`) per PR #3938 §10.1/§10.3. Example: `rust_atom_realization_symbol` (currently a placeholder Symbol on rust.dag; SG-1 will land the actual row).
+
+**Explicitly NOT claimable** (structural-tag-only / scaffolding; not in the predicate's return list):
+
+- Field-name tag Symbols (`rust_facts_field_*` at rust.dag:433-441) — used as edge-name discriminators on Conj-bundle records; carry no independent verification angle.
+- Edge-label tag Symbols (`target_model_edge_*`) — same as above for TargetModelBundle edges.
+- Token-class identifiers (`rust_token_*` at rust.dag:366+) — owned by grammar/lex blocks; verified via `RustGrammarProductionSubject` + `RustLexRuleSubject` at the production/rule level, not per-token.
+- Connective discriminators (`rust_int_kind_*`, `rust_int_width_*`) — used as enum-style discriminators in derived facts; verified via the parent derived fact.
+- Local binding Symbols inside `RustConcreteSyntaxToken` examples (`rust_binding_*`) — example-data, not model facts.
+
+### §3.2 Phase-1 enumeration — exact fact_id list
+
+The Phase-1 claimable subset is **4 fact_ids, 5 LeafModelClaim rows**. The full Phase-1 contents of `rust_dag_claimable_fact_ids()` for the Step 4 implementation:
+
+```dag
+// Phase 1 of rust_dag_claimable_fact_ids() — exhaustively enumerated.
+// Phase 2 widens this list per §6 deferral.
+
+[
+  rust_leaf_model_fact_id_node_rust_facts_i32(),                                  // R1 — Class 1 fact
+  rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),              // R2a + R2b share this fact (two angles)
+  rust_leaf_model_fact_id_node_atom_realization_symbol()                          // R3-external + R3-internal share this fact (two angles)
+]
+```
+
+Three fact_ids in the Phase-1 list; 4th fact_id (R3) is named in §5 sketches via shared identity with the algebra Symbol. Per the Layer A contract this list, when iterated, MUST produce the 5 Phase-1 LeafModelClaim rows in C(rust.dag) — and only those.
+
+### §3.3 Phase-2+ widening — exhaustive enumeration of remaining claimable facts
+
+Every other claimable fact in rust.dag (estimated per the §3 inventory table: integer facts excluding i32 = 11 entries, float facts = 2, non-integer facts excluding planned realization rows = 5, T-4.17 grammar productions, lex rules, planned TargetCollectionRealization rows for SG-5) enters `rust_dag_claimable_fact_ids()` in Phase 2 with corresponding `LeafModelClaim` rows at `not_checked` verdict until Phase-2 fixtures land. The "238 declared facts vs ~5 verified" gap concern raised in PR #3971 review is closed by this enumeration discipline: Phase 2 widens the list to every claimable fact, and every entry has a row in C(rust.dag).
+
+**Non-claimable Symbols (the ~227 scaffolding entries) NEVER enter the predicate's return list,** so they don't generate spurious `not_checked` rows. The §3.0 predicate is the load-bearing single authority that distinguishes "fact that needs a claim" from "tag Symbol that doesn't."
 
 For M = rust.dag, the fact_id space at main HEAD comprises **all** facts the model declares, whether as top-level `data Symbol` lines OR as derived facts computed by model-owned functions (e.g., `rust_integer_algebra_inhabitance(facts)` at rust.dag:1768 derives an `AlgebraInhabitanceDecl` from a `RustIntegerPrimitiveFacts` record). The fact_id discipline accepts both shapes; verification claims reference the canonical form the model exposes (the Symbol for `data`-declared facts; the derived-value key for function-computed facts).
 
@@ -125,19 +188,49 @@ Per DFS msg_badac9f3 answer (4):
 
 **Do NOT block Step 4 on SG-1 landing.** Step 4 can ship with R3-internal scaffolded-but-not-exercising; the GAP is honest progress, not failure.
 
-## §5. Per-claim sketches (Phase 1 only — 5 fixtures, 4 claim IDs)
+## §4.1 FalsificationCase shape — substrate gap surfaced (PR #3970 follow-up)
 
-Schematic — full fixture content is Step 4 deliverable.
+PR #3970 (silent-cat-599) authored `FalsificationCase<Subject, Expectation> { subject_variant: Subject; expected_failure_mode: Verdict<Subject> }`. That shape captures wrongness **only when the falsification is in the subject** — but for many Phase-1 claims the wrongness lives in the **artifact** (e.g., R1 emits a string where i32 is expected; the Subject `RustPrimitiveTypeSubject { primitive: Rust_I32 }` is unchanged) or in the **expectation** (R2b varies the expected `OverflowAction` field, not the Subject).
+
+The current shape forces every falsification probe to be expressible as a "deliberately wrong subject," which contradicts the §5 sketches that mutate artifact or expectation while keeping the subject identical. Per the codex blocking review on this PR (sha 39ac95c6, root-cause #3 + inline :123), this is a real shape gap.
+
+**Proposed substrate extension** (forwarded to silent-cat-599 / Modeling DFS for PR #3970 follow-up — NOT a unilateral TR-side change to a DFS-owned carrier):
+
+```dag
+// Proposed extension (await PR #3970 follow-up + DFS ratification):
+type FalsificationCase<Subject, Expectation> {
+  variant: FalsificationVariant<Subject, Expectation>
+  expected_failure_mode: Verdict<Subject>
+}
+
+type FalsificationVariant<Subject, Expectation> =
+  | SubjectVariant     { subject_variant: Subject }                    // current shape — wrongness in subject
+  | ArtifactVariant    { artifact_variant: TargetArtifact }            // wrongness in emitted artifact only
+  | ExpectationVariant { expectation_variant: Expectation }            // wrongness in expectation only
+  | CompoundVariant    { subject_variant: Optional<Subject>, artifact_variant: Optional<TargetArtifact>, expectation_variant: Optional<Expectation> }
+```
+
+This widens `FalsificationCase` to carry the actual locus of wrongness without forcing it into the subject slot. Every Phase-1 §5 sketch then types cleanly: R1 uses `ArtifactVariant`, R2b uses `ExpectationVariant` (per-field overflow-disposition probe), R3-external uses `SubjectVariant` (the Symbol carrier IS the wrong subject when its realization row is mismatched), R3-internal uses `ExpectationVariant` (vary the `RustEmitProjectionEqualityExpectation.type_emit_must_change` / `value_emit_must_change` flags).
+
+**Pending the substrate extension**, §5 sketches below use a hybrid notation that names the actual locus of wrongness even though the current generic carrier types only `subject_variant`. Step 4 (quick-tern-735) is the right consumer to surface the shape gap concretely when building the runner; expect a substrate change request to silent-cat-599's follow-up PR before Phase-1 runner fully lands.
+
+## §5. Per-claim sketches (Phase 1 — 4 fact_ids, 6 LeafModelClaim rows post-R2b split)
+
+Schematic — full fixture content is Step 4 deliverable. R2b is split into per-OverflowAction-field sub-claims per the codex review (root-cause #4 + inline :142); Phase 1 row count grows from 5 to 6 (R1 + R2a + R2b-debug-default + R2b-release-default + R3-external + R3-internal). The R2b split closes the gap where a wrong release/wrap fact could pass Phase 1 under a debug-only check.
+
+**Note on falsification-locus notation:** each sketch below names the wrongness locus explicitly (`subject_variant:`, `artifact_variant:`, `expectation_variant:`). Until the §4.1 substrate extension lands, the current `FalsificationCase` carrier types only `subject_variant`; the other forms are documented intent that Step 4 will need substrate to express cleanly.
 
 ### R1 — Rust i32 primitive declaration
 ```text
 fact_id:    rust_facts_i32                  // rust.dag:574 (top-level data Symbol; RustIntegerPrimitiveFacts record for i32)
 subject:    RustPrimitiveTypeSubject { primitive: Rust_I32 }
 expectation: RustcAcceptsExpectation { invocation_form: rustc("pub fn r1_test() -> i32 { 0i32 }") }
-falsification:
-  subject_variant: RustPrimitiveTypeSubject { primitive: Rust_I32 }    // same subject
+falsification (locus: artifact — pending §4.1 ArtifactVariant substrate):
+  artifact_variant: rustc("pub fn r1_test() -> i32 { \"string\" }")
   expected_failure_mode: RustcRejectsExpectation { ..., expected_error_code: E0308 }
-  // emit: pub fn r1_test() -> i32 { "string" }
+  // Wrongness lives in the emitted artifact (string in i32-typed position), not the subject.
+  // The subject "RustPrimitiveTypeSubject { primitive: Rust_I32 }" is correct on both paths;
+  // what's varied is what gets emitted into the i32-typed slot.
 ```
 
 ### R2a — i32 supports algebra ops
@@ -150,24 +243,65 @@ falsification:
   expected_failure_mode: RustcRejectsExpectation { ..., expected_error_code: E0599 }
 ```
 
-### R2b — i32 overflow semantics declared
-```text
-fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)    // same derived fact as R2a; overflow-semantics verification angle (distinct angle, distinct LeafModelClaim row)
-subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
-expectation: RustRuntimeBehaviorExpectation { invocation_form: rustc-then-run("debug: i32::MAX + 1"), expected_outcome: Panic { panic_classification: arithmetic_overflow } }
-falsification:
-  subject_variant: claim i32 is unbounded OrderedRing<Int> (no width)
-  expected_failure_mode: RustRuntimeBehaviorExpectation predicting unbounded behavior diverges from actual i32::MAX result
+### R2b — i32 overflow semantics declared (SPLIT per OverflowDisposition field)
+
+`rust.dag:235-241` declares `OverflowDisposition<IRCarrier>` with **four** OverflowAction fields:
+
+```dag
+type OverflowDisposition<IRCarrier> {
+  ir_carrier: IRCarrier
+  checked_arithmetic_debug_default: OverflowAction              // i32: PanicOnOverflow
+  checked_arithmetic_release_default: OverflowAction            // i32: TwoComplementWrap
+  checked_arithmetic_overflow_checks_enabled: OverflowAction    // i32: PanicOnOverflow
+  checked_arithmetic_overflow_checks_disabled: OverflowAction   // i32: TwoComplementWrap
+}
 ```
+
+A single R2b claim that only exercises debug-default would let a wrong release-default fact pass Phase 1 silently. R2b therefore splits into **one sub-claim per OverflowAction field** — all four — sharing the `rust_integer_algebra_inhabitance(rust_facts_i32)` fact_id. Phase-1 count: R2b becomes 4 LeafModelClaim rows on one fact_id at distinct verification angles.
+
+For Phase-1 fixture economy: implement the two distinct-value sub-claims as live fixtures (debug-default `PanicOnOverflow` + release-default `TwoComplementWrap` — they cover both `OverflowAction` cases the model declares for i32); the two overflow-checks-enabled/disabled sub-claims author at `not_checked` since they duplicate the action values of debug/release-default. The 4-row enumeration still lands; only 2 carry runner-exercising fixtures.
+
+```text
+// R2b sub-claim 1 of 4 — debug-default
+fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)
+subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
+expectation: RustRuntimeBehaviorExpectation {
+              invocation_form: rustc-then-run("[debug build] i32::MAX + 1"),
+              expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic }
+            }
+falsification (locus: expectation — pending §4.1 ExpectationVariant substrate):
+  expectation_variant: RustRuntimeBehaviorExpectation { ..., expected_outcome: Wrap }
+  expected_failure_mode: observed actual outcome is Panic (not Wrap), so the mutated
+                         expectation diverges → the original Panic claim PROVEN, the
+                         Wrap variant correctly REJECTED.
+
+// R2b sub-claim 2 of 4 — release-default
+fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)
+subject:    RustAlgebraInhabitanceSubject { algebra: OrderedRingCarrier, on: Rust_I32 }
+expectation: RustRuntimeBehaviorExpectation {
+              invocation_form: rustc-then-run("[release build] i32::MAX + 1"),
+              expected_outcome: Wrap
+            }
+falsification (locus: expectation):
+  expectation_variant: RustRuntimeBehaviorExpectation { ..., expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic } }
+  expected_failure_mode: observed actual outcome is Wrap (not Panic) under release
+
+// R2b sub-claim 3 of 4 — overflow_checks_enabled  (Phase 1: not_checked stub; same expected_outcome as debug-default)
+// R2b sub-claim 4 of 4 — overflow_checks_disabled (Phase 1: not_checked stub; same expected_outcome as release-default)
+```
+
+The 4-row R2b structure makes the OverflowDisposition coverage gap explicit: a wrong release-default fact in rust.dag now requires its dedicated row to be `PROVEN`, not just R2b-debug. The two `not_checked` stubs surface the overflow-checks-enabled/disabled fields as known verification debt even though their values are model-derived-from debug/release.
 
 ### R3-external — Symbol projection to Rust shape accepted by rustc
 ```text
 fact_id:    rust_atom_realization_symbol    // PLANNED — to be declared by SG-1 dispatch (Step 5); not on main yet. Step 4 authors this row at not_checked/GAP per §4. Shared with R3-internal — two verification angles on one fact
 subject:    RustAtomRealizationSubject { atom: <Symbol carrier Node> }
 expectation: RustcAcceptsExpectation { invocation_form: rustc(emitted-from-TargetAtomRealization-row) }
-falsification:
-  subject_variant: deliberately mismatched projection (Symbol declared as String alias + value-constructor call)
+falsification (locus: subject — the deliberately-wrong Subject IS the real change here):
+  subject_variant: RustAtomRealizationSubject { atom: <Symbol carrier Node with mismatched TargetAtomRealization row — type alias + value-constructor call> }
   expected_failure_mode: RustcRejectsExpectation { ..., expected_error_code: E0423 }    // the SG-1 root-cause error
+  // Wrongness lives in the Subject's atom Node identity (different realization row); current
+  // FalsificationCase.subject_variant slot types this cleanly without §4.1 extension.
 ```
 
 ### R3-internal — TargetAtomRealization row mutation receipt
@@ -179,10 +313,16 @@ expectation: RustEmitProjectionEqualityExpectation {
               type_emit_must_change: true,
               value_emit_must_change: true
             }
-falsification:
-  subject_variant: same row, but flip BOTH type_emit_must_change AND value_emit_must_change to false
+falsification (locus: expectation — pending §4.1 ExpectationVariant substrate):
+  expectation_variant: RustEmitProjectionEqualityExpectation {
+                         atom_realization_row: <same Symbol carrier Node>,
+                         type_emit_must_change: false,
+                         value_emit_must_change: false
+                       }
   expected_failure_mode: structural-equality oracle observes one-or-both emit outputs DID change after row mutation
-                         (i.e., the model's claim "row mutation has no effect" is rejected by observed reality)
+                         (i.e., the wrong-expectation claim "row mutation has no effect" is REJECTED by observed reality,
+                          which proves the original Expectation "both must change" is PROVEN).
+  // Wrongness is in the Expectation's must-change flags, not in the Subject (same atom Node both paths).
 ```
 
 ## §6. Out-of-scope (deferred to other Steps / Phase 2)
