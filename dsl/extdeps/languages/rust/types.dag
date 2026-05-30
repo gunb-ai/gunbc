@@ -22,7 +22,8 @@
 module extdeps.languages.rust.types
 
 import std.coercion {
-  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
+  TypeCheckpoint, TargetAtomRealization, TargetAtomTypeDeclKind,
+  InhabitantDecl, CallableRepr, CastSyntax, CastRule
 }
 
 
