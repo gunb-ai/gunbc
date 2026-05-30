@@ -6,6 +6,7 @@ module v4.test.claim.workflow.nat_semiring_rung34_eval
 
 
 import v4.compiler.eval { TestClaimRun }
+import v4.std.algebra { is_empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat, Zero }

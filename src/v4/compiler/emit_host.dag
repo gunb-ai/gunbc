@@ -275,9 +275,9 @@ fn run_test_claim_emit_vs_eval_for_claim(
             _ =>
               verdict_fail(actual: host_exit_failure_outcome(exit: host_receipt.exit))
           }
-        Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: ds } =>
           Deferred {
-            actual: expected,
+            actual: outcome_rejected(d: ds),
             diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
           }
       }
