@@ -252,13 +252,30 @@ jobs:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_CARGO_CHECK_JOBS: "4"
       run: bash scripts/v4-m1-rust-emit-probe.sh
+    # Fixture-scoped gate: only when the PR diff touches the ratified phase1/nat_semiring
+    # module, its roster, or the host transport — not on every src/v4/ change (e.g. leaf-model
+    # Wave 1 PRs). Substrate gaps remain expected when the gate runs (ladder §6 appendix).
+    - name: Detect phase1/nat_semiring fixture scope (PR diff)
+      id: phase1_nat_semiring_fixture_scope
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: |
+        set -euo pipefail
+        range="origin/main...HEAD"
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+          range="HEAD~1..HEAD"
+        fi
+        if git diff --name-only "$range" | grep -qE '^(src/v4/test/claim/(algebra_laws/nat_semiring|nat_semiring/)|scripts/v4-phase1-nat-semiring)'; then
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+        fi
     # Phase 1 rung gate setup: provision Go on the self-hosted runner. The gate
     # invokes `go build` for R0-go-parse / R2-go-compile; without this step the
     # script's host-toolchain guard would fail-closed with
     # phase1/nat_semiring/setup/host_toolchain_missing (setup gap, not fixture
     # gap). Python3 is pre-installed on srv1/srv2. setup-go@v5 is cached.
     - name: Setup Go (phase1/nat_semiring rung gate prerequisite)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true'
       uses: actions/setup-go@v5
       with:
         go-version: 'stable'
@@ -270,7 +287,7 @@ jobs:
     # (V4_PHASE1_NAT_SEMIRING_STRICT=1) — operator directive 2026-05-30; gate
     # is BLOCKING per ladder rung specs §2 (no rustc-clean headline; fixture×rung shape).
     - name: phase1/nat_semiring rungs 0-2 gate (dag rust python go)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true'
       timeout-minutes: 20
       env:
         V2_COMPILER: target/release/gunbc
