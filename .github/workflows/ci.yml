@@ -69,7 +69,14 @@ jobs:
   discipline:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 10
+    # 30m matches `ci` and `v2`. The `Manager-brief authority self-test` makes
+    # multiple `gh api` calls per case (~5 cases) and intermittently runs slow
+    # under runner load — seen at 12m+ on this PR's first CI run when the prior
+    # 10m budget cancelled it mid-case. Same script previously fit in seconds
+    # inside `ci`; this is not a regression introduced by the discipline split,
+    # but the new job needs its own budget headroom. Investigation of the gh-API
+    # slowdown is a follow-up (not blocking this PR).
+    timeout-minutes: 30
     steps:
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true

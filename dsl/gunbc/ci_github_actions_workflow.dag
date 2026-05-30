@@ -255,7 +255,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
-      timeout_minutes: Some { value: 10 },
+      timeout_minutes: Some { value: 30 },
       continue_on_error: false,
       concurrency: none
     }, {
