@@ -47,15 +47,17 @@ engineering_state:
 | `NOT-IN-V4` | `NOT_IN_V4` | n/a |
 | `NOT-PROMISED` | `NOT_PROMISED` | n/a |
 
-The most important consequence: **`WEAK-EVIDENCE` does not survive the migration as a ship axis value.** Substrate-present-but-not-gated rows become `ship_disposition: GAP, engineering_state: SUBSTRATE_PRESENT`. This makes the substrate-rich / activation-poor pattern (PR #3938 §3, confirmed by #3941's 267/346 rows) impossible to misread as "partially close-ready."
+The most important consequence: **`WEAK-EVIDENCE` does not survive the migration as a ship axis value.** Substrate-present-but-not-gated rows become `ship_disposition: GAP, engineering_state: SUBSTRATE_PRESENT`. This makes the substrate-rich / activation-poor pattern (PR #3938 §3, confirmed by #3941's headline of `0 PROVEN / 346 GAP` with `233 SUBSTRATE_PRESENT / 68 NO_ARTIFACT_FOUND / 45 CENSUS_NOT_RUN`) impossible to misread as "partially close-ready."
 
-**Effective:** all artifacts authored after this receipt lands. PR #3941 stays as a historical record under its original vocabulary; the next questionnaire validation run will re-emit under the two-axis vocabulary directly.
+**Effective:** all artifacts authored after this receipt lands. PR #3941 already emits under the two-axis vocabulary (see its summary table at `docs/audit/v4-close-interrogation-validation-2026-05-30.md:18` and per-row tables from `:71`); this receipt formalizes that vocabulary as the canonical close-readiness surface for every subsequent artifact rather than overwriting #3941.
 
 ---
 
 ## §2. Close predicates — RATIFIED
 
-The Close/Receipt lane is the authority for what "closed" means at the receipt boundary. The lane recognizes three distinct close grades; mixing them is the documented failure mode (`DONE` recorded against substrate-only work):
+The Close/Receipt lane is the authority for what "closed" means at the receipt boundary. The lane recognizes three distinct close grades; mixing them is the documented failure mode (`DONE` recorded against substrate-only work).
+
+**Axis disambiguation (load-bearing).** The grades `SUBSTRATE_CLOSED` / `GATE_CLOSED` / `RECEIPT_CLOSED` are **lane-level grades** — what a manager reports for a lane of work. They are NOT probe-level `ship_disposition` values. A `GATE_CLOSED` lane grade does NOT promote any probe to `ship_disposition: PROVEN`; the §1 closure invariant (executable receipt + falsification when requested) is the only path to probe-level `PROVEN`. The §2.4 mechanical rule below uses the grades; per-probe rows (e.g. the §1 migration table and the per-probe ledger) use `ship_disposition` × `engineering_state`. The two axes never collapse.
 
 ### §2.1 `SUBSTRATE_CLOSED`
 
@@ -65,7 +67,7 @@ A modeling-only close. Substrate types, marks, and worksheets exist; no executab
 
 ### §2.2 `GATE_CLOSED`
 
-A ladder-rung-style close: a gate fires on PRs against a defined fixture (or fixture set), and the gate has produced at least one passing receipt and at least one falsification receipt (negative-case rejection demonstrated). Disposition: `ship_disposition: PROVEN, engineering_state: PARTIAL_GATE_PRESENT` (for fixture-only) or unmarked `engineering_state` (for full corpus).
+A ladder-rung-style close: a gate fires on PRs against a defined fixture (or fixture set), and the gate has produced at least one passing receipt and at least one falsification receipt (negative-case rejection demonstrated). **Effect on covered probes:** their `engineering_state` advances to `PARTIAL_GATE_PRESENT` (fixture-only) or unmarked (corpus-wide); `ship_disposition` stays `GAP` until corpus widening AND falsification both land per the §1 closure invariant. `GATE_CLOSED` is therefore a lane-progress signal, not a probe-close signal.
 
 ### §2.3 `RECEIPT_CLOSED`
 
@@ -94,7 +96,7 @@ Worker briefs and manager passes use these grades verbatim; PR descriptions cite
 | D4 | Rung 7 / TASKS.md v4-done definition | **Operator** (TASKS.md is operational authority) | **Manager-recommendation: Option A** (all six TASKS.md:801-815 predicates remain release gate; §7 extends with phases 5+ rather than narrowing the v4-done definition). The Close/Receipt lane cannot ratify a change to operational authority. **Posture: recommendation-pending-operator.** |
 | D5 | Anti-shelfware deadline policy | Close/Receipt | **Manager-recommendation; see §4 below.** This lane authors the policy; operator ratifies the deadline-shape. **Posture: recommendation-pending-operator.** |
 | D6 | §7 fixture-first phases | Ladder/Fixture (primary) | **Deferred** to the Ladder/Fixture manager. |
-| D7 | Phase 0 retrospective ratification | **Operator** (Phase 0 was operator-dispatched) | **Manager-recommendation: ratify.** Phase 0 (PR #3941) produced the predicted realistic distribution (0 PROVEN / 267 WEAK-EVIDENCE / 42 GAP / 37 NOT-CHECKED), confirming substrate-rich / activation-poor at probe granularity; redo brief landed within target window. **Posture: recommendation-pending-operator.** |
+| D7 | Phase 0 retrospective ratification | **Operator** (Phase 0 was operator-dispatched) | **Manager-recommendation: ratify.** Phase 0 (PR #3941, merged) produced the realistic distribution under the two-axis vocabulary: `0 PROVEN / 346 GAP`, engineering split `233 SUBSTRATE_PRESENT / 68 NO_ARTIFACT_FOUND / 45 CENSUS_NOT_RUN` (`docs/audit/v4-close-interrogation-validation-2026-05-30.md:63`), confirming substrate-rich / activation-poor at probe granularity; redo brief landed within target window. (An earlier PR #3938 §8.D7 draft cited an obsolete first-pass split of `267 WEAK-EVIDENCE / 42 GAP / 37 NOT-CHECKED` before the redo landed; this receipt supersedes those counts with the merged headline.) **Posture: recommendation-pending-operator (operator merge of #3938 implicitly ratifies).** |
 
 D4, D5, D7 are explicitly recorded as recommendation-pending so that operator sign-off remains the closing act, not this manager pass.
 
