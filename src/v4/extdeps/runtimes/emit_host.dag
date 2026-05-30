@@ -6,9 +6,19 @@
 module v4.extdeps.runtimes.emit_host
 
 
-import v4.compiler.eval { Inputs }
+import v4.compiler.emit { emit }
+import v4.compiler.eval {
+  Inputs,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  accepted_runtime_value_outcome_eq,
+  eval,
+  eval_context_interpretation,
+  run_test_claim,
+  test_claim_cache_receipt_node
+}
 import v4.compiler.target_carriers { TargetSource }
-import v4.std.collection { List }
+import v4.std.collection { List, Optional, Absent, Present }
 import v4.std.diagnostic {
   Diagnostic,
   Outcome,
@@ -16,56 +26,36 @@ import v4.std.diagnostic {
   Rejected,
   None,
   diagnostics_singleton,
-  port_locus
+  port_locus,
+  outcome_rejected
+}
+import v4.std.host_run {
+  BuildLog,
+  ByteString,
+  EmitHostRunReceipt,
+  FalsificationReceipt,
+  HostExit,
+  ValueDiff
 }
 import v4.std.machine { Byte }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.runtime { RuntimeValue, RuntimePrimitive }
 import v4.std.target_model { TargetModel }
 import v4.std.text { String }
-import v4.std.witness { Witness }
-
-
-// Host stdout/stderr/build log carriers (A1: bytes separate from typed parse).
-type ByteString = List<Byte>
-
-type BuildLog {
-  lines: List<String>
+import v4.std.verdict { Verdict, Pass, Fail, Deferred, verdict_fail }
+import v4.std.verification {
+  test_claim_input,
+  test_claim_label,
+  EqualsClaim,
+  CompilesClaim
 }
 
-type ExitOk {
-  code: Int
-}
-
-type HostExit = Outcome<Witness<ExitOk>>
-
-type EmitHostRunReceipt {
-  target: TargetModel
-  source: TargetSource
-  exit: HostExit
-  stdout_bytes: ByteString
-  stderr_bytes: ByteString
-  build_log: BuildLog
-}
-
-type ValueDiff<A> {
-  expected: A
-  actual: A
-}
-
-// Runtime/TestClaim authority (A4): structured falsification artifact for rung-4 non-Pass verdicts.
-type FalsificationReceipt<A> {
-  subject_label: String
-  expected: A
-  actual: A
-  host_receipt: EmitHostRunReceipt
-  divergence: ValueDiff<A>
-}
 
 data emit_host_transport_not_wired: Symbol = emit_host_transport_not_wired
 data emit_host_transport_port: Symbol = emit_host_transport_port
 data emit_host_parse_unsupported_target: Symbol = emit_host_parse_unsupported_target
 data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
+data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
 data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
 data emit_host_rust_authority_pin: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
@@ -93,6 +83,14 @@ fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   }
 }
 
+fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: emit_host_emit_vs_eval_deferred,
+    at: port_locus(port: emit_host_transport_port),
+    correction: None
+  }
+}
+
 fn emit_host_rust_i64_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
@@ -100,7 +98,24 @@ fn emit_host_rust_i64_node() -> Node {
   }
 }
 
-// Per-target parse rows — Rust row is modeled for MVP-2 five-byte layout; others fail-closed until Phase 3.
+fn emit_host_receipt_from_source(
+  target: TargetModel,
+  source: TargetSource,
+  exit: HostExit,
+  stdout_bytes: ByteString,
+  stderr_bytes: ByteString,
+  build_log: BuildLog
+) -> EmitHostRunReceipt {
+  EmitHostRunReceipt {
+    target: target,
+    source_text: source,
+    exit: exit,
+    stdout_bytes: stdout_bytes,
+    stderr_bytes: stderr_bytes,
+    build_log: build_log
+  }
+}
+
 fn runtime_value_parse_rust(bytes: ByteString) -> Outcome<RuntimeValue> {
   if count(bytes) == 5 {
     Accepted {
@@ -129,9 +144,9 @@ fn runtime_value_parse(target: TargetModel, bytes: ByteString) -> Outcome<Runtim
   }
 }
 
-// Host transport: compile + execute emitted artifact. Modeled eval returns Rejected until host runner invokes.
 fn run_emit_host_rust(
-  _source: TargetSource,
+  target: TargetModel,
+  source: TargetSource,
   _fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
   Rejected {
@@ -145,10 +160,140 @@ fn run_emit_host(
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
   if target.authority_source_text == emit_host_rust_authority_pin {
-    run_emit_host_rust(source: source, fixture_inputs: fixture_inputs)
+    run_emit_host_rust(target: target, source: source, fixture_inputs: fixture_inputs)
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(d: emit_host_run_unsupported_target_diagnostic())
     }
+  }
+}
+
+fn run_test_claim_emit_vs_eval_verdict(
+  subject: TestClaimEvalSubject<Node>,
+  target: TargetModel,
+  host_receipt: EmitHostRunReceipt,
+  host_actual: RuntimeValue,
+  expected: Outcome<RuntimeValue>
+) -> Verdict<RuntimeValue> {
+  let label = test_claim_label(c: subject.claim)
+  match expected {
+    Accepted { value: exp_val, diagnostics: None } =>
+      if accepted_runtime_value_outcome_eq(
+        a: Accepted { value: host_actual, diagnostics: None },
+        b: expected
+      ) {
+        Pass
+      } else {
+        Fail {
+          actual: Accepted { value: host_actual, diagnostics: None },
+          falsification: Present {
+            value: FalsificationReceipt {
+              subject_label: label,
+              expected: exp_val,
+              actual: host_actual,
+              host_receipt: host_receipt,
+              divergence: ValueDiff { expected: exp_val, actual: host_actual }
+            }
+          }
+        }
+      }
+    _ =>
+      verdict_fail(actual: expected)
+  }
+}
+
+fn run_test_claim_emit_vs_eval(
+  subject: TestClaimEvalSubject<Node>,
+  target: TargetModel
+) -> TestClaimRun<Node, RuntimeValue> {
+  let at = test_claim_input(c: subject.claim)
+  let interpretation = eval_context_interpretation(context: subject.context)
+  let verdict = match subject.claim {
+    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
+      let expected = eval(
+        tree: subject.tree,
+        interpretation: interpretation,
+        inputs: Inputs { root: rhs }
+      )
+      match emit(tree: subject.tree, target: target) {
+        Accepted { value: source, diagnostics: _ } =>
+          match run_emit_host(
+            target: target,
+            source: source,
+            fixture_inputs: Inputs { root: rhs }
+          ) {
+            Accepted { value: host_receipt, diagnostics: _ } =>
+              match runtime_value_parse(target: target, bytes: host_receipt.stdout_bytes) {
+                Accepted { value: host_actual, diagnostics: _ } =>
+                  run_test_claim_emit_vs_eval_verdict(
+                    subject: subject,
+                    target: target,
+                    host_receipt: host_receipt,
+                    host_actual: host_actual,
+                    expected: expected
+                  )
+                Rejected { diagnostics: ds } =>
+                  verdict_fail(actual: outcome_rejected(d: ds))
+              }
+            Rejected { diagnostics: _ } =>
+              Deferred {
+                actual: expected,
+                diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
+              }
+          }
+        Rejected { diagnostics: ds } =>
+          verdict_fail(actual: outcome_rejected(d: ds))
+      }
+    }
+    CompilesClaim { expected_value: expected_value, label: _, anchor: _, input: _, classification: _ } => {
+      let expected = eval(
+        tree: subject.tree,
+        interpretation: interpretation,
+        inputs: Inputs { root: expected_value }
+      )
+      match emit(tree: subject.tree, target: target) {
+        Accepted { value: source, diagnostics: _ } =>
+          match run_emit_host(
+            target: target,
+            source: source,
+            fixture_inputs: Inputs { root: expected_value }
+          ) {
+            Accepted { value: host_receipt, diagnostics: _ } =>
+              match runtime_value_parse(target: target, bytes: host_receipt.stdout_bytes) {
+                Accepted { value: host_actual, diagnostics: _ } =>
+                  run_test_claim_emit_vs_eval_verdict(
+                    subject: subject,
+                    target: target,
+                    host_receipt: host_receipt,
+                    host_actual: host_actual,
+                    expected: expected
+                  )
+                Rejected { diagnostics: ds } =>
+                  verdict_fail(actual: outcome_rejected(d: ds))
+              }
+            Rejected { diagnostics: _ } =>
+              Deferred {
+                actual: expected,
+                diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
+              }
+          }
+        Rejected { diagnostics: ds } =>
+          verdict_fail(actual: outcome_rejected(d: ds))
+      }
+    }
+    _ => run_test_claim(subject: subject).verdict
+  }
+  match subject.claim {
+    EqualsClaim { rhs: _, label: _, anchor: _, lhs: _, classification: _ } =>
+      TestClaimRun {
+        cache: test_claim_cache_receipt_node(subject: subject),
+        verdict: verdict
+      }
+    CompilesClaim { expected_value: _, label: _, anchor: _, input: _, classification: _ } =>
+      TestClaimRun {
+        cache: test_claim_cache_receipt_node(subject: subject),
+        verdict: verdict
+      }
+    _ => run_test_claim(subject: subject)
   }
 }

@@ -1,0 +1,48 @@
+// src/v4/std/host_run.dag
+// Scope: spine carriers for emit-host run receipts and rung-4 falsification (W2).
+// Status: shared by std/verdict Fail.falsification and extdeps/runtimes/emit_host.
+
+module v4.std.host_run
+
+
+import v4.std.collection { List }
+import v4.std.diagnostic { Outcome }
+import v4.std.machine { Byte }
+import v4.std.target_model { TargetModel }
+import v4.std.text { String }
+import v4.std.witness { Witness }
+
+
+type ByteString = List<Byte>
+
+type BuildLog {
+  lines: List<String>
+}
+
+type ExitOk {
+  code: Int
+}
+
+type HostExit = Outcome<Witness<ExitOk>>
+
+type EmitHostRunReceipt {
+  target: TargetModel
+  source_text: String
+  exit: HostExit
+  stdout_bytes: ByteString
+  stderr_bytes: ByteString
+  build_log: BuildLog
+}
+
+type ValueDiff<A> {
+  expected: A
+  actual: A
+}
+
+type FalsificationReceipt<A> {
+  subject_label: String
+  expected: A
+  actual: A
+  host_receipt: EmitHostRunReceipt
+  divergence: ValueDiff<A>
+}

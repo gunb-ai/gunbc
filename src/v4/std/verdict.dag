@@ -22,6 +22,7 @@ module v4.std.verdict
 import v4.std.algebra { Magma, Monoid, Semigroup, is_empty }
 import v4.std.collection { List, Optional, Absent }
 import v4.std.diagnostic { Diagnostic, Outcome }
+import v4.std.host_run { FalsificationReceipt }
 import v4.std.nat { Nat, Succ, Zero, nat_add }
 // 🟢 coproduct dissolution — CP-AI10-VERDICT-TERMINAL.
 // Pass: all expected behaviors confirmed.
@@ -30,12 +31,11 @@ import v4.std.nat { Nat, Succ, Zero, nat_add }
 //           a diagnostic explains why, and the actual outcome is preserved.
 type Verdict<T>
   = Pass
-  | Fail { actual: Outcome<T>, falsification: Optional<FalsificationAttachment<T>> }
+  | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<T>> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
-// W2 default (PR #3938 §11.1 / rung-4 min runner): optional structured falsification beside Fail.actual.
-type FalsificationAttachment<T> {
-  receipt: T
+fn verdict_fail<T>(actual: Outcome<T>) -> Verdict<T> {
+  Fail { actual: actual, falsification: Absent }
 }
 // Binary combining operation for verdicts (join of the Pass < Deferred < Fail order).
 // Laws:
@@ -48,7 +48,7 @@ fn verdict_combine<T>(a: Verdict<T>, b: Verdict<T>) -> Verdict<T> {
     Pass => b
     Fail { actual: fa, falsification: ff } => Fail { actual: fa, falsification: ff }
     Deferred { actual: da, diagnostic: diag } => match b {
-      Fail { actual: fb, falsification: _ } => Fail { actual: fb, falsification: ff }
+      Fail { actual: fb, falsification: bf } => Fail { actual: fb, falsification: bf }
       Deferred { actual: _, diagnostic: _ } => Deferred { actual: da, diagnostic: diag }
       Pass => Deferred { actual: da, diagnostic: diag }
     }
@@ -80,7 +80,7 @@ data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, 
 fn verdict_tally_add<T>(t: VerdictTally, v: Verdict<T>) -> VerdictTally {
   match v {
     Pass => VerdictTally { pass: Succ { prev: t.pass }, fail: t.fail, deferred: t.deferred }
-    Fail { actual: _ } => VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+    Fail { actual: _, falsification: _ } => VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
     Deferred { actual: _, diagnostic: _ } => VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
   }
 }
