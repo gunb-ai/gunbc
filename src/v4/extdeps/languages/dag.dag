@@ -3154,6 +3154,7 @@ fn dag_round_trip_grammar_ready(lm: DagLanguageModel) -> Bool {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t36-roundtrip-c5-fidelity-readiness — bind TASKS.md T-36 / dag.dag C5 DagTriviaNormalization — dissolve-on-arrival: substrate FidelityDisposition projection over DagTriviaNormalization replaces hand DeclaredNormalized arm equality; forbidden: parallel per-trivia Bool classifiers outside fidelity.dag / dag_whitespace_fidelity producers.
 fn dag_round_trip_normalization_declared() -> Bool {
   dag_whitespace_fidelity() == DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
   dag_line_comment_fidelity() == DeclaredNormalized { feature: DagLineCommentDeclaredNormalized } &&
