@@ -40,7 +40,8 @@ type Validation<B> {
 
 // Placeholder stubs only: binds VacuousValidation at oracle-terminal call sites so
 // real predicates cannot be wired into refined_vacuous_oracle_terminal without the marker.
-data VacuousAdmits = VacuousAdmits
+type VacuousAdmits
+  = VacuousAdmitsMarker
 
 
 type VacuousValidation<B> {

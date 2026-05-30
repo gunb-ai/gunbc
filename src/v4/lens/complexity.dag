@@ -65,7 +65,7 @@ import v4.std.diagnostic {
 import v4.std.node { Node, Symbol }
 import v4.std.refinement {
   Refined,
-  VacuousAdmits,
+  VacuousAdmitsMarker,
   VacuousValidation,
   Validation,
   refine,
@@ -95,7 +95,7 @@ data complexity_variables_validation: Validation<List<SizeVariable>> = Validatio
 
 data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
   reason: complexity_variables_invalid,
-  vacuous: VacuousAdmits
+  vacuous: VacuousAdmitsMarker
 }
 
 

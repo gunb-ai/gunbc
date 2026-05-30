@@ -58,7 +58,7 @@ import v4.std.verification {
 import v4.std.diagnostic { Accepted, port_locus, Locus, Rejected }
 import v4.std.refinement {
   Refined,
-  VacuousAdmits,
+  VacuousAdmitsMarker,
   VacuousValidation,
   Validation,
   refine,
@@ -91,7 +91,7 @@ data refinement_preservation_stub_validation: Validation<List<Node>> = Validatio
 
 data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
   reason: refinement_preservation_stub_invalid,
-  vacuous: VacuousAdmits
+  vacuous: VacuousAdmitsMarker
 }
 
 
