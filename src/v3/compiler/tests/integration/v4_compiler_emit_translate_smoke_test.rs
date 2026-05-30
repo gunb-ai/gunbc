@@ -869,8 +869,9 @@ fn v4_wasm_wave2a_label_funcidx_claim_tokenizes_and_wires_parse_receipt() {
         "{WASM_WAVE2A_IDX_CLAIM_PATH}: must import wave-2a lex + grammar from wasm.dag"
     );
     assert!(
-        WASM_WAVE2A_IDX_CLAIM_DAG.contains("wasm_wave2a_tokenize_and_parse_source")
-            && WASM_WAVE2A_IDX_CLAIM_DAG.contains("parse(tokens: tokens, grammar: wasm_wave2a_grammar())"),
+        WASM_WAVE2A_IDX_CLAIM_DAG.contains("wasm_wave2a_idx_tokenize_and_parse_source")
+            && WASM_WAVE2A_IDX_CLAIM_DAG.contains("parse(tokens: tokens")
+            && WASM_WAVE2A_IDX_CLAIM_DAG.contains("grammar: wasm_wave2a_grammar()"),
         "{WASM_WAVE2A_IDX_CLAIM_PATH}: claims must exercise tokenize + parse against wasm_wave2a_grammar()"
     );
     for fixture in ["br_if 0", "call $add", "br_if -1", "call -1"] {
