@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `bd23b5e5f` (`main` 2026-05-30T23:10Z) — post #4051 maintenance; MW-D8 C2 **PROVEN** via Close/Receipt [#4050](https://github.com/gunb-ai/gunbc/pull/4050) (4/5 formal).  
+> **Tree HEAD:** `b1ba7b8f0` (`main` 2026-05-30T23:21Z) — post #4053 burn-down sync (MW-D8 **4/5** after [#4050](https://github.com/gunb-ai/gunbc/pull/4050) C2 receipt).  
 > **Wave posture:** MW-D8 **4/5 PROVEN** (C1, C2, C3, C5). **Remaining:** C4 `ci_selection_receipt_shadow` (`smart-stag-871`). Wave 2 active.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -172,7 +172,7 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 
 | PR | Merged (UTC) | Wave item | Predicate touch | Burn-down effect |
 | -- | ------------ | --------- | --------------- | ---------------- |
-| [#4014](https://github.com/gunb-ai/gunbc/pull/4014) | 21:01 | W1.1 SG-7 | **P2**, **P5** | YELLOW stronger — ci.dag offset projection dissolved; MW-D8 C2 impl landed (Close/Receipt pending) |
+| [#4014](https://github.com/gunb-ai/gunbc/pull/4014) | 21:01 | W1.1 SG-7 | **P2**, **P5** | YELLOW stronger — ci.dag offset projection dissolved; C2 closed [#4050](https://github.com/gunb-ai/gunbc/pull/4050) |
 | [#4022](https://github.com/gunb-ai/gunbc/pull/4022) | 21:05 | W2.6 python.dag | **P3**, **P5** | YELLOW stronger — cross-target R1 leaf-model path; not GREEN |
 | [#4015](https://github.com/gunb-ai/gunbc/pull/4015) | 21:06 | W2.5 rung gate | **P4**, **P5** (ladder-adj) | YELLOW — nat_semiring rung gate parse-only alignment |
 | [#4023](https://github.com/gunb-ai/gunbc/pull/4023) | 20:54 | Release coord | *(public tier)* | flavor (iv) ship-disposition supplement — feeds SUPPORTED.md |
@@ -189,6 +189,7 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4048](https://github.com/gunb-ai/gunbc/pull/4048) | ~22:52 | W2.5 planning | **P4**, **P5** (ladder-adj) | YELLOW — rung-4 branch/loop fixture spec tightening |
 | [#4050](https://github.com/gunb-ai/gunbc/pull/4050) | ~23:05 | MW-D8 C2 receipt | **P2**, **P5** | MW-D8 **4/5** — C2 falsification receipt + ledger flip (Close/Receipt authority) |
 | [#4051](https://github.com/gunb-ai/gunbc/pull/4051) | 23:10 | Maintenance | *(tracker)* | Post-#4049 W2.3 worksheet + landing log refresh |
+| [#4053](https://github.com/gunb-ai/gunbc/pull/4053) | 23:21 | Maintenance | *(tracker)* | MW-D8 4/5 sync — operator burn-down aligned to #4050 ledger |
 
 ---
 
