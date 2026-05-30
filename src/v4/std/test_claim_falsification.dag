@@ -1,6 +1,7 @@
 // src/v4/std/test_claim_falsification.dag
 // Scope: falsification receipts + execution evidence (PR #3961 verdict-surface-contract).
 // Authority: docs/planning/verdict-surface-contract-2026-05-30.md
+// Layering: no v4.compiler imports — Subj is bound to TestClaimEvalSubject at compiler call sites.
 
 module v4.std.test_claim_falsification
 

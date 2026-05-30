@@ -59,6 +59,8 @@ fn v4_host_run_logical_run_carrier_present() {
 #[test]
 fn v4_falsification_execution_evidence_sum_present() {
     for needle in [
+        "type FalsificationReceipt",
+        "subject: Subj",
         "type ExecutionEvidence",
         "Host { receipt: EmitHostRunReceipt }",
         "Interpreter { trace: InterpreterTrace }",

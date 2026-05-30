@@ -13,6 +13,7 @@ import v4.compiler.eval {
   run_test_claim_assert
 }
 import v4.std.verdict { Verdict, Pass, Fail, Deferred }
+import v4.std.node { Node }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
