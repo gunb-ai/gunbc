@@ -276,7 +276,7 @@ expectation: RustRuntimeBehaviorExpectation {
                 build_profile: debug,  // -C overflow-checks=on by default
                 runtime_inputs: [i32::MAX, 1]
               ),
-              expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic }
+              expected_outcome: Panic { panic_classification: rust_tag_panic_on_overflow }
             }
 falsification (locus: expectation — pending §4.1 ExpectationVariant substrate):
   expectation_variant: RustRuntimeBehaviorExpectation { ..., expected_outcome: Wrap }
@@ -297,7 +297,7 @@ expectation: RustRuntimeBehaviorExpectation {
               expected_outcome: Wrap
             }
 falsification (locus: expectation):
-  expectation_variant: RustRuntimeBehaviorExpectation { ..., expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic } }
+  expectation_variant: RustRuntimeBehaviorExpectation { ..., expected_outcome: Panic { panic_classification: rust_tag_panic_on_overflow } }
   expected_failure_mode: observed actual outcome is Wrap (not Panic) under release
 
 // R2b sub-claim 3 of 4 — overflow_checks_enabled  (Phase 1: not_checked stub; see dissolution trigger below)
