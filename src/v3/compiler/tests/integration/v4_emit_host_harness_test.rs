@@ -17,6 +17,10 @@ fn v4_host_run_carriers_present() {
     for needle in [
         "type EmitHostRunReceipt",
         "type HostExit",
+        "type HostRunStdout",
+        "type HostLogicalRun",
+        "logical_run: Outcome<HostLogicalRun>",
+        "fn host_logical_run_from_exit",
         "type ByteString",
         "type ValueDiff",
     ] {
@@ -69,8 +73,11 @@ fn v4_emit_host_harness_surface_present() {
         "fn run_emit_host",
         "fn run_emit_host_rust",
         "fn run_test_claim_emit_vs_eval",
+        "fn run_test_claim_emit_vs_eval_for_claim",
+        "claim_input_root: Node",
+        "expected_eval_root: Node",
         "evidence: Host { receipt: host_receipt }",
-        "stdout_bytes: ByteString",
+        "match host_receipt.logical_run",
     ] {
         assert!(
             EMIT_HOST_DAG.contains(needle),
