@@ -723,7 +723,7 @@ fn rust_leaf_model_fact_id_node_rust_facts_i32() -> Node {
 }
 
 fn rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32() -> Node {
-  rust_integer_algebra_inhabitance(facts: rust_facts_i32).algebra
+  rust_integer_algebra_inhabitance_rust_facts_i32.algebra
 }
 
 fn rust_leaf_model_fact_id_node_atom_realization_symbol() -> Node {

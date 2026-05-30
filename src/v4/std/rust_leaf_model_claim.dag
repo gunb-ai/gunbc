@@ -33,7 +33,8 @@ type RustClaimSubject
       inhabitance_decl: AlgebraInhabitanceDecl
     }
   | RustAtomRealizationSubject { atom: Node }
-  // Phase-1 R3-external: type_form/value_form are a closed Symbol pair (not yet a coproduct); Phase-2 extension should replace with AtomRealizationForm.
+  // 🟡 gated — feature:rust-atom-realization-form-phase1 — bind docs/planning/v4-leaf-model-verification-2026-05-30.md §7 R3-external —
+  // dissolve-on-arrival: AtomRealizationForm coproduct replaces declared_type_form/exercised_value_form Symbol pair; forbidden: closed Symbol pairs without a bounded dissolution receipt on this sub-shape.
   | RustAtomRealizationProjectionMismatchSubject {
       atom: Node
       declared_type_form: Symbol
