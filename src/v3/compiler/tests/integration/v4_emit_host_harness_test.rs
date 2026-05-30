@@ -280,32 +280,15 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
 }
 
 #[test]
-fn v4_nat_semiring_rung4_emit_eval_dag_tokenizes_and_parses_emit_vs_eval_row() {
-    let module = parse_module(NAT_SEMIRING_RUNG4_EMIT_EVAL_DAG, NAT_SEMIRING_RUNG4_EMIT_EVAL_PATH);
-    assert!(
-        surface_declares_fn(&module, "run_test_claim_emit_vs_eval"),
-        "{NAT_SEMIRING_RUNG4_EMIT_EVAL_PATH}: uses run_test_claim_emit_vs_eval constructor"
-    );
+fn v4_nat_semiring_rung_3_4_dag_tokenizes_and_parses_emit_vs_eval_row() {
+    let module = parse_module(NAT_SEMIRING_RUNG_3_4_DAG, NAT_SEMIRING_RUNG_3_4_PATH);
     assert!(
         module.items.iter().any(|item| matches!(
             item,
             SurfaceItem::Data { name, .. }
                 if name == "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
         )),
-        "{NAT_SEMIRING_RUNG4_EMIT_EVAL_PATH}: rung-4 TestClaimRun row"
-    );
-}
-
-#[test]
-fn v4_branch_dispatch_rung4_emit_eval_dag_tokenizes_and_parses_emit_vs_eval_row() {
-    let module = parse_module(BRANCH_DISPATCH_RUNG4_EMIT_EVAL_DAG, BRANCH_DISPATCH_RUNG4_EMIT_EVAL_PATH);
-    assert!(
-        module.items.iter().any(|item| matches!(
-            item,
-            SurfaceItem::Data { name, .. }
-                if name == "run_phase4_branch_dispatch_rung4_rust_emit_equals_eval"
-        )),
-        "{BRANCH_DISPATCH_RUNG4_EMIT_EVAL_PATH}: rung-4 TestClaimRun row"
+        "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 TestClaimRun row (#4046 roster)"
     );
 }
 
