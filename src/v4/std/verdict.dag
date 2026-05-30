@@ -35,6 +35,8 @@ type Verdict<S, T>
   | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<S, T>> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
+// Eval-path Fail without structured receipt. Structural rejects (#3961 §2.2/§2.3):
+// Present { FalsificationReceipt { ..., evidence: EvidenceNone } }, not Absent.
 fn verdict_fail<S, T>(actual: Outcome<T>) -> Verdict<S, T> {
   Fail { actual: actual, falsification: Absent }
 }
