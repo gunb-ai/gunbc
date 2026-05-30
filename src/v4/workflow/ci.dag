@@ -515,6 +515,16 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
   }
 ]
 
+// W2.3 Bucket A slice authority — explicit `CiStepId`s (must ⊆ `ci_pipeline_step_ids_shadow`).
+data ci_upsert_steps_bucket_a_slice_step_ids: List<CiStepId> = [
+  JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
+  JobStep { job: m1_rust_emit_probe_execution, step: m1_rust_emit_probe_execution },
+  JobStep {
+    job: phase1_nat_semiring_rung_gate_execution,
+    step: phase1_nat_semiring_rung_gate_execution
+  }
+]
+
 
 data ci_duplicate_job_id: Symbol = ci_duplicate_job_id
 data ci_duplicate_gate_id: Symbol = ci_duplicate_gate_id
@@ -1501,13 +1511,6 @@ fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId>
 }
 
 
-fn ci_upsert_steps_slice_bijection_holds(rows: List<CiUpsertStepRow>) -> Bool {
-  let ids = ci_upsert_steps_slice_step_ids(rows: rows)
-  length(xs: ids) == length(xs: rows)
-    && length(xs: ids) == length(xs: unique(xs: ids, eq: ci_step_id_eq))
-}
-
-
 fn ci_job_shadow_step_id(ci_job: CiJob) -> CiStepId {
   JobStep { job: ci_job.id, step: ci_job.id }
 }
@@ -1632,6 +1635,80 @@ fn ci_step_id_in_list(id: CiStepId, ids: List<CiStepId>) -> Bool {
 }
 
 
+fn ci_step_ids_subset_of(xs: List<CiStepId>, universe: List<CiStepId>) -> Bool {
+  for_all(xs: xs, predicate: fn(id) {
+    ci_step_id_in_list(id: id, ids: universe)
+  })
+}
+
+
+fn ci_step_id_lists_biject(left: List<CiStepId>, right: List<CiStepId>) -> Bool {
+  length(xs: left) == length(xs: right)
+    && ci_step_ids_subset_of(xs: left, universe: right)
+    && ci_step_ids_subset_of(xs: right, universe: left)
+}
+
+
+fn ci_upsert_steps_registry_ids_unique(rows: List<CiUpsertStepRow>) -> Bool {
+  let ids = ci_upsert_steps_slice_step_ids(rows: rows)
+  length(xs: ids) == length(xs: rows)
+    && length(xs: ids) == length(xs: unique(xs: ids, eq: ci_step_id_eq))
+}
+
+
+fn ci_upsert_steps_registry_matches_declared_slice(
+  rows: List<CiUpsertStepRow>,
+  slice: List<CiStepId>
+) -> Bool {
+  ci_step_id_lists_biject(
+    left: ci_upsert_steps_slice_step_ids(rows: rows),
+    right: slice
+  )
+}
+
+
+fn ci_upsert_steps_slice_subset_of_pipeline_shadow(p: CiPipeline, slice: List<CiStepId>) -> Bool {
+  ci_step_ids_subset_of(xs: slice, universe: ci_pipeline_step_ids_shadow(p: p))
+}
+
+
+// Out-of-scope steps remain in shadow universe but not in the Bucket A registry (§2.1 partial close).
+fn ci_upsert_steps_slice_strict_subset_of_pipeline_shadow(p: CiPipeline, slice: List<CiStepId>) -> Bool {
+  let shadow = ci_pipeline_step_ids_shadow(p: p)
+  ci_step_ids_subset_of(xs: slice, universe: shadow)
+    && length(xs: slice) < length(xs: shadow)
+}
+
+
+fn ci_upsert_step_row_job_shadow_step_id_ok_for_job(row: CiUpsertStepRow, ci_job: CiJob) -> Bool {
+  ci_step_id_eq(left: row.step_id, right: ci_job_shadow_step_id(ci_job: ci_job))
+}
+
+
+fn ci_upsert_step_row_matches_some_job_shadow(row: CiUpsertStepRow, jobs: List<CiJob>) -> Bool {
+  count_where(xs: jobs, predicate: fn(j) {
+    ci_upsert_step_row_job_shadow_step_id_ok_for_job(row: row, ci_job: j)
+  }) != 0
+}
+
+
+fn ci_upsert_rows_match_job_shadow_ids(rows: List<CiUpsertStepRow>, jobs: List<CiJob>) -> Bool {
+  for_all(xs: rows, predicate: fn(row) {
+    ci_upsert_step_row_matches_some_job_shadow(row: row, jobs: jobs)
+  })
+}
+
+
+fn ci_upsert_steps_slice_bijection_for_pipeline(p: CiPipeline, rows: List<CiUpsertStepRow>) -> Bool {
+  let slice = ci_upsert_steps_bucket_a_slice_step_ids
+  ci_upsert_steps_registry_ids_unique(rows: rows)
+    && ci_upsert_steps_registry_matches_declared_slice(rows: rows, slice: slice)
+    && ci_upsert_steps_slice_subset_of_pipeline_shadow(p: p, slice: slice)
+    && ci_upsert_steps_slice_strict_subset_of_pipeline_shadow(p: p, slice: slice)
+    && ci_upsert_rows_match_job_shadow_ids(rows: rows, jobs: p.jobs)
+}
+
+
 fn ci_selection_decision_step_ids_unique(decisions: List<CiStepSelection>) -> Bool {
   let ids = ci_step_selections_step_ids(decisions: decisions)
   length(xs: ids) == length(xs: unique(xs: ids, eq: ci_step_id_eq))
@@ -1697,7 +1774,11 @@ data ci_selection_receipt_shadow_well_formed_ok: Bool = match ci_pipeline {
 }
 
 
-data ci_upsert_steps_slice_bijection_ok: Bool = ci_upsert_steps_slice_bijection_holds(rows: ci_upsert_steps)
+data ci_upsert_steps_slice_bijection_ok: Bool = match ci_pipeline {
+  Accepted { value: pl, diagnostics: _ } =>
+    ci_upsert_steps_slice_bijection_for_pipeline(p: pl, rows: ci_upsert_steps)
+  Rejected { diagnostics: _ } => false
+}
 
 
 // W2.3 falsification §10.0 #3 — identical inputs, different create → distinct cache digests.
