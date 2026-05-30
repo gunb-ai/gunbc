@@ -9,8 +9,9 @@ import v4.compiler.translate {
   target_serialize_source_from_model
 }
 import v4.extdeps.languages.rust {
+  rust_sg2_arrow_malformed_source_type_node,
   rust_sg2_arrow_source_type_node,
-  rust_sg2_arrow_ternary_source_type_node,
+  rust_sg2_binary_fn_source_type_node,
   rust_sg2_arrow_xy_emitted,
   rust_sg2_conj_source_type_node,
   rust_sg2_conj_xy_emitted,

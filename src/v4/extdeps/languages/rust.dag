@@ -111,6 +111,7 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_generic_apply_emitted,
   target_type_expr_record_emitted,
+  TargetTypeExprFieldSlot,
   TargetTypeExprInstantiation
 }
 import v4.std.node {
@@ -128,6 +129,7 @@ import v4.std.node {
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,
+  algebra_binary_fn_node,
   approximate_field_node,
   approximate_field_type_node,
   boolean_algebra_node,
@@ -3115,11 +3117,14 @@ fn rust_sg2_atom_node(binding: Symbol) -> Node {
 fn rust_sg2_arrow_xy_emitted() -> Node {
   target_type_expr_arrow_emitted(
     form: rust_type_expression_projection().arrow_form,
-    domain: target_type_expr_atom_emitted(
-      form: rust_type_expression_projection().atom_form,
-      identity: rust_binding_sg2_x
-    ),
-    codomain: target_type_expr_atom_emitted(
+    inputs: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: rust_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    output: target_type_expr_atom_emitted(
       form: rust_type_expression_projection().atom_form,
       identity: rust_binding_sg2_y
     )
@@ -3136,13 +3141,18 @@ fn rust_sg2_arrow_source_type_node() -> Node {
   }
 }
 
-fn rust_sg2_arrow_ternary_source_type_node() -> Node {
+fn rust_sg2_binary_fn_source_type_node() -> Node {
+  algebra_binary_fn_node(
+    domain: rust_sg2_atom_node(binding: rust_binding_sg2_x),
+    codomain: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+  )
+}
+
+fn rust_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_y) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_foobar) }
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) }
     ]
   }
 }
@@ -3151,14 +3161,20 @@ fn rust_sg2_conj_xy_emitted() -> Node {
   target_type_expr_record_emitted(
     form: rust_type_expression_projection().conj_form,
     fields: [
-      target_type_expr_atom_emitted(
-        form: rust_type_expression_projection().atom_form,
-        identity: rust_binding_sg2_x
-      ),
-      target_type_expr_atom_emitted(
-        form: rust_type_expression_projection().atom_form,
-        identity: rust_binding_sg2_y
-      )
+      TargetTypeExprFieldSlot {
+        label: rust_binding_sg2_x,
+        type_expr: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_x
+        )
+      },
+      TargetTypeExprFieldSlot {
+        label: rust_binding_sg2_y,
+        type_expr: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_y
+        )
+      }
     ]
   )
 }
@@ -3167,8 +3183,8 @@ fn rust_sg2_conj_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_y) }
+      rust_named_edge(name: rust_binding_sg2_x, target: rust_sg2_atom_node(binding: rust_binding_sg2_x)),
+      rust_named_edge(name: rust_binding_sg2_y, target: rust_sg2_atom_node(binding: rust_binding_sg2_y))
     ]
   }
 }
