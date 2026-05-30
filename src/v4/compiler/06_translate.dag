@@ -2767,6 +2767,7 @@ fn project_type_expression_subtree(
 fn project_type_expression_children_in_node_go(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection,
   edges: List<Edge>,
   acc: List<Edge>
