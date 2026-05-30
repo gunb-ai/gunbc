@@ -44,6 +44,10 @@ type VacuousAdmits
   = VacuousAdmitsMarker
 
 
+// Exported sentinel (single-variant sums do not export the ctor for cross-module import).
+data vacuous_admits_marker: VacuousAdmits = VacuousAdmitsMarker
+
+
 type VacuousValidation<B> {
   reason: Symbol
   vacuous: VacuousAdmits
