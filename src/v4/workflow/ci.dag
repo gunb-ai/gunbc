@@ -71,13 +71,8 @@ import v4.std.node {
   ByteOffsetCacheEligible,
   ByteOffsetCacheIneligible,
   byte_offset_cache_key,
-  byte_offset_cache_digest_max_limbs,
-  canonical_tag_byte_limb_out_of_range,
-  canonical_tag_scalar_int_one,
-  canonical_tag_scalar_int_succ,
-  canonical_tag_scalar_int_zero,
-  canonical_tag_byte_offset_out_of_ceiling,
-  canonical_tag_scalar_int_neg
+  byte_offset_cache_key_projection_node,
+  canonical_tag_byte_limb_out_of_range
 }
 import v4.std.integer { int_add, int_negate }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
@@ -876,102 +871,7 @@ fn ci_gate_run_policy_projection_node(policy: CiGateRunPolicy) -> Node {
 }
 
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — dissolve-on: std/node canonical `byte_offset_cache_key` Node projection replaces this tree. Live consumer: `content_hash(ci_pipeline_evaluator_input_node)` (not `ci_char_cache_digest`).
-fn ci_byte_limb_projection_node(limb: Int) -> Node {
-  if limb == 0 {
-    ci_atom(sym: canonical_tag_scalar_int_zero)
-  } else if limb == 1 {
-    ci_atom(sym: canonical_tag_scalar_int_one)
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(name: ci_projection_char_succ_edge, target: ci_atom(sym: canonical_tag_scalar_int_succ)),
-        ci_named_edge(name: ci_projection_char_pred_edge, target: ci_byte_limb_projection_node(limb: limb - 1))
-      ]
-    }
-  }
-}
-
-
-// P4 bounded peel — mirrors std/node `byte_offset_cache_digest_nonneg_bounded_authority` limb budget;
-// dissolves same-argument recursion on `i` alone (SG-7 / T-22 zero-diagnostic gate).
-fn ci_int_offset_authority_projection_bounded(i: Int, limbs_remaining: Int) -> Node {
-  if limbs_remaining <= 0 {
-    if i == 0 {
-      ci_atom(sym: canonical_tag_scalar_int_zero)
-    } else {
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          ci_named_edge(
-            name: ci_projection_char_offset_quotient_edge,
-            target: ci_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
-          ),
-          ci_named_edge(
-            name: ci_projection_char_offset_authority_edge,
-            target: ci_atom(sym: canonical_tag_scalar_int_zero)
-          ),
-          ci_named_edge(
-            name: ci_projection_char_offset_byte_edge,
-            target: ci_byte_limb_projection_node(limb: i - (i / 256) * 256)
-          )
-        ]
-      }
-    }
-  } else if i == 0 {
-    ci_atom(sym: canonical_tag_scalar_int_zero)
-  } else if i <= 255 {
-    ci_byte_limb_projection_node(limb: i)
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(
-          name: ci_projection_char_offset_quotient_edge,
-          target: ci_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
-        ),
-        ci_named_edge(
-          name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_bounded(
-            i: i / 256,
-            limbs_remaining: limbs_remaining - 1
-          )
-        ),
-        ci_named_edge(
-          name: ci_projection_char_offset_byte_edge,
-          target: ci_byte_limb_projection_node(limb: i - (i / 256) * 256)
-        )
-      ]
-    }
-  }
-}
-
-
-fn ci_int_offset_authority_projection_node(i: Int) -> Node {
-  if i < 0 {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(name: ci_projection_char_offset_neg_edge, target: ci_atom(sym: canonical_tag_scalar_int_neg)),
-        ci_named_edge(
-          name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_bounded(
-            i: int_negate(i: i),
-            limbs_remaining: byte_offset_cache_digest_max_limbs
-          )
-        )
-      ]
-    }
-  } else {
-    ci_int_offset_authority_projection_bounded(
-      i: i,
-      limbs_remaining: byte_offset_cache_digest_max_limbs
-    )
-  }
-}
-
-
+// SG-7 dissolved: offset projection authority is v4.std.node `byte_offset_cache_key_projection_node` only.
 fn ci_char_projection_node(c: Char) -> Node {
   if c < 0 || c > 255 {
     Node {
@@ -983,12 +883,12 @@ fn ci_char_projection_node(c: Char) -> Node {
         ),
         ci_named_edge(
           name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_node(i: c)
+          target: byte_offset_cache_key_projection_node(i: c)
         )
       ]
     }
   } else {
-    ci_byte_limb_projection_node(limb: c)
+    byte_offset_cache_key_projection_node(i: c)
   }
 }
 

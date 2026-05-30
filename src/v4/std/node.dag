@@ -1024,6 +1024,112 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
 }
 
 
+// SG-7: structural Node projection for CI / T-22 cache-hash consumers — single authority (no ci.dag parallel tree).
+data byte_offset_proj_key_eligible_edge: Symbol = byte_offset_proj_key_eligible_edge
+data byte_offset_proj_key_ineligible_edge: Symbol = byte_offset_proj_key_ineligible_edge
+data byte_offset_proj_authority_edge: Symbol = byte_offset_proj_authority_edge
+data byte_offset_proj_boundary_edge: Symbol = byte_offset_proj_boundary_edge
+data byte_offset_proj_within_ceiling_edge: Symbol = byte_offset_proj_within_ceiling_edge
+data byte_offset_proj_over_ceiling_edge: Symbol = byte_offset_proj_over_ceiling_edge
+data byte_offset_proj_ineligible_authority_edge: Symbol = byte_offset_proj_ineligible_authority_edge
+data byte_offset_proj_out_of_ceiling_edge: Symbol = byte_offset_proj_out_of_ceiling_edge
+data byte_offset_proj_byte_limb_edge: Symbol = byte_offset_proj_byte_limb_edge
+
+
+fn node_offset_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  }
+}
+
+
+fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+
+fn node_offset_conj(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children
+  }
+}
+
+
+fn byte_offset_cache_key_projection_node(i: Int) -> Node {
+  match byte_offset_cache_key(i: i) {
+    ByteOffsetCacheEligible { digest: _ } =>
+      match byte_offset_cache_digest_authority(i: i) {
+        ByteOffsetWithinCeiling { digest: _ } =>
+          node_offset_conj(children: [
+            node_offset_named_edge(
+              name: byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_within_ceiling_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_zero)
+            )
+          ])
+        ByteOffsetOverCeiling { within_ceiling_digest: _, quotient: _ } =>
+          node_offset_conj(children: [
+            node_offset_named_edge(
+              name: byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_over_ceiling_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_authority_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_zero)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_byte_limb_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_byte)
+            )
+          ])
+        ByteOffsetCacheDigestIneligible {
+          within_ceiling_digest: _,
+          boundary_tag: boundary_tag,
+          residual_quotient: _
+        } =>
+          node_offset_conj(children: [
+            node_offset_named_edge(
+              name: byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_ineligible_authority_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_digest_ineligible)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_boundary_edge,
+              target: node_offset_atom(sym: boundary_tag)
+            )
+          ])
+      }
+    ByteOffsetCacheIneligible { boundary_tag: boundary_tag, witness: _ } =>
+      node_offset_conj(children: [
+        node_offset_named_edge(
+          name: byte_offset_proj_key_ineligible_edge,
+          target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_ineligible)
+        ),
+        node_offset_named_edge(
+          name: byte_offset_proj_boundary_edge,
+          target: node_offset_atom(sym: boundary_tag)
+        ),
+        node_offset_named_edge(
+          name: byte_offset_proj_ineligible_authority_edge,
+          target: node_offset_atom(sym: canonical_tag_byte_offset_cache_digest_ineligible)
+        )
+      ])
+  }
+}
+
+
 fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
   byte_offset_cache_key_from_authority(auth: byte_offset_cache_digest_authority(i: i))
 }
