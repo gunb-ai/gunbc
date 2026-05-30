@@ -11,7 +11,7 @@
 
 Produce a **per-PR `CiSelectionReceipt`** that records, for every modeled CI step, a **justified** `Run | Skip | CarvedOut` decision from structural facts (`ChangeSet`, `AffectedSet`, carve-out list). In **shadow mode** the existing workflow **still executes all steps**; the receipt is emitted first (or alongside) for human and manager review. Transition to **active** minimal CI gates on `receipt.selected` once receipts are stable (Phase 2.5 per `docs/planning/v4-ci-overhaul-2026-05-30.md`).
 
-**Structural success criterion** (operator 2026-05-30): correct iff every step's `decision` is justified by (a) non-empty `inputs ∩ affected_set` evidence (`Run`), (b) empty intersection plus valid projected `cache_digest` (`Skip`), or (c) explicit `ci_always_run_carveouts` match (`CarvedOut`). Wall-clock reduction is downstream, not the gate.
+**Structural success criterion** (operator 2026-05-30): correct iff every step's `decision` is justified by (a) non-empty `inputs ∩ affected_set` evidence (`Run`), (b) empty intersection plus `cache_digest` projection `Accepted { value: … }` (`Skip`), or (c) explicit `ci_always_run_carveouts` match (`CarvedOut`). Wall-clock reduction is downstream, not the gate.
 
 ---
 
@@ -45,7 +45,7 @@ type CiStepSelection {
   inputs_consulted: List<UpsertInputRef>    // shadow: bridge rows until CiUpsertStep lands
   affected_intersection: List<AffectedNode>
   decision: SelectionDecision
-  cache_digest: ContentHash                 // content_hash(step projection); interim: ci_job_cache_digest
+  cache_digest: Outcome<ContentHash>      // Accepted = projected hash; Rejected = diagnostics — no sentinel (P3)
   reason: Symbol
 }
 
@@ -68,7 +68,7 @@ type SelectionDecision
 
 **Fail-closed on receipt construction:** if `ChangeSet` read is `Rejected` or `AffectedSet` is fail-closed, every step is `Run` in the receipt **and** `reason` documents superset selection (mirrors `ci_component_affected_fail_closed` today). Receipt must not claim `Skip` unless intersection is empty **and** the projected `cache_digest` is valid (§5); invalid projection → `Run` with `cache_digest_projection_fail_closed`.
 
-**Valid projected `cache_digest` (Phase 2.1).** For a registry row, `project_cache_digest(row, pipeline) -> Outcome<ContentHash>` projects the **complete step subgraph** (interim: `ci_job_cache_digest` / `ci_gate_cache_digest` on the modeled `CiJob`/`CiGate` projection node — B1 / T-21 discipline, not inputs-only). **Valid** iff the outcome is `Accepted { value: digest }` with a non-sentinel hash; `Rejected` diagnostics or an empty/sentinel digest is **invalid** and must not justify `Skip`.
+**Cache projection carrier (Phase 2.1).** `project_cache_digest(row, pipeline) -> Outcome<ContentHash>` projects the **complete step subgraph** (interim: `ci_job_cache_digest` / `ci_gate_cache_digest` on the modeled `CiJob`/`CiGate` projection node — B1 / T-21 discipline, not inputs-only). `CiStepSelection.cache_digest` stores that **full `Outcome`** — never a fabricated hash when projection fails. **Valid for `Skip`** iff `cache_digest` is `Accepted { value: digest }`; `Rejected { diagnostics }` forces `Run` (fail-closed). Close/Receipt consumers must not treat `Rejected` as a hash-shaped fact.
 
 ---
 
@@ -89,8 +89,7 @@ ci_selection_receipt_shadow(
     return superset_run_receipt(pr, affected, registry, reason: receipt_inputs_fail_closed)
 
   for each row in registry:
-    projected := project_cache_digest(row, pipeline)
-    valid_digest := cache_digest_projection_valid(projected)
+    projected := project_cache_digest(row, pipeline)   // Outcome<ContentHash>
 
     if row.step_id ∈ carveouts.step_ids:
       decision := CarvedOut { carveout_reason := matching.reason_code }
@@ -98,15 +97,16 @@ ci_selection_receipt_shadow(
     else if intersect(row.inputs, affected) ≠ ∅:
       decision := Run
       reason := affected_intersection_nonempty
-    else if valid_digest:
-      decision := Skip
-      reason := affected_intersection_empty_cache_valid
-    else:
-      decision := Run                                    // P3 fail-closed — cannot skip safely
-      reason := cache_digest_projection_fail_closed
+    else match projected {
+      Accepted { value: digest, diagnostics: _ } =>
+        decision := Skip
+        reason := affected_intersection_empty_cache_valid
+      Rejected { diagnostics: _ } =>
+        decision := Run                                // P3 fail-closed — cannot skip safely
+        reason := cache_digest_projection_fail_closed
+    }
 
-    digest := projected.value when valid_digest else sentinel_for_audit
-    append CiStepSelection { ..., decision, cache_digest := digest, reason }
+    append CiStepSelection { ..., decision, cache_digest := projected, reason }
     partition into selected | skipped | carved_out per decision
 ```
 
