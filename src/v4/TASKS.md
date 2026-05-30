@@ -178,7 +178,7 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         Structural authority that replaces scripts/detect-affected-
         components.sh. Consumed by T-24 (ci) + eval (skip pure
         unchanged subgraphs).
-  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23 — T-21 (#3747) + T-23 (#3702) + T-10 done; T-20 structurally filled (#3788 bootstrap_footprint; bootstrap.dag header: "Status: filled") and consumed by ci.dag (`bootstrap_plan` / `bootstrap_stage_output`). Remaining yellow marks in bootstrap.dag dissolve on T-15 (B1 content_hash pins) and T-32 (footprint constructs walk) — NOT on a separate T-20-fill gate. T-24's own close gates are the CI/YAML authority bridge (emitter wired, hand-authored YAML deleted, v3 string ratchets → TestClaims) per task body below.]
+  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23 — T-21 (#3747) + T-23 (#3702) + T-10 done; T-20 structurally filled (#3788 bootstrap_footprint; bootstrap.dag header: "Status: filled") and consumed by ci.dag (`bootstrap_plan` / `bootstrap_stage_output`). Remaining yellow mark in bootstrap.dag: T-15 (B1 content_hash pins) — NOT on a separate T-20-fill gate. T-24's own close gates are the CI/YAML authority bridge (emitter wired, hand-authored YAML deleted, v3 string ratchets → TestClaims) per task body below.]
         CI pipeline AS DATA; .github/workflows/ci.yml derived. Closes
         v3's gate-#98 gap (hand-authored CI YAML). Consumes T-21 for
         job selection — the shell bridge dissolves once both land.
@@ -291,8 +291,12 @@ filled (#3788): B1 `closure_hash` over projection closure + fail-closed
 placeholder remains before T-15 can consume it as a real fixed-point proof:
 `bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
 aliases dissolve on T-15 B1 content_hash supplying computed merkle digests.
-Construct-list snapshot walk is separately tracked on `bootstrap_footprint_constructs`
-(🟡 `feature:bootstrap-footprint-constructs-walk`, owner T-32 §).
+Construct-list walk landed in T-32 Phase 2 (#3907): footprint derives via
+per-input construct inventory queries (`bootstrap_snapshot_construct_inventory`,
+`bootstrap_target_model_construct_inventory` over `target.bundle` named edges,
+`bootstrap_runtime_model_construct_inventory` over `runtime_model`); declared
+`seed_capability` inventory is separate (`bootstrap_seed_capability_inventory_root`)
+(dissolves `feature:bootstrap-footprint-constructs-walk`).
 
 ---
 
