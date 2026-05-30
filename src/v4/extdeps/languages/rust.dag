@@ -716,9 +716,6 @@ data rust_integer_algebra_inhabitance_rust_facts_i32: AlgebraInhabitanceDecl = r
 // dissolve-on: TargetAtomRealization row for Symbol lands; fact_id names that row.
 data rust_atom_realization_symbol: Symbol = rust_atom_realization_symbol
 data rust_atom_realization_symbol_node: Node = rust_inhabitant_atom(id: rust_atom_realization_symbol)
-data rust_symbol_connective_atom: Symbol = rust_symbol_connective_atom
-
-data rust_symbol_connective_atom_node: Node = rust_inhabitant_atom(id: rust_symbol_connective_atom)
 
 // Structural fact_id projections for C(rust.dag) — Node cites declared bindings, not sibling Symbol handles.
 fn rust_leaf_model_fact_id_node_rust_facts_i32() -> Node {

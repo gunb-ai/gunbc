@@ -33,6 +33,7 @@ type RustClaimSubject
       inhabitance_decl: AlgebraInhabitanceDecl
     }
   | RustAtomRealizationSubject { atom: Node }
+  // Phase-1 R3-external: type_form/value_form are a closed Symbol pair (not yet a coproduct); Phase-2 extension should replace with AtomRealizationForm.
   | RustAtomRealizationProjectionMismatchSubject {
       atom: Node
       declared_type_form: Symbol
@@ -45,8 +46,7 @@ type RustClaimSubject
 // 🟡 gated — feature:rustc-error-code-leaf-model-phase1 — bind docs/planning/v4-leaf-model-verification-2026-05-30.md Phase 2 —
 // dissolve-on-arrival: full RustcErrorCode coproduct owned by rust.dag leaf-model authority; forbidden: string-keyed parallel error tables.
 type Rustc_ErrorCode_Phase1
-  = E0107
-  | E0308
+  = E0308
   | E0423
   | E0599
 
