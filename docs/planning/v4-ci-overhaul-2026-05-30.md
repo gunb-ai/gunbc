@@ -156,9 +156,9 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 
 *Proposed: accept.* Aligns with THESIS §"Two shapes of omni-emission" (ci.yml is Shape-B emit), INVARIANTS P2 single-authority, T-24 ratified phases.
 
-**D-CI-2.** Accept the **Phase 1.5 addition** (per-CiCommand dependency_set declaration) to the ratified T-24 plan?
+**D-CI-2.** Accept the **Phase 1.5 addition** (**every CI step becomes an Upsert<T> Node** per operator directive 2026-05-29 + dsl/std/patterns.dag UPSERT<T> canon) to the ratified T-24 plan?
 
-*Proposed: accept.* Without per-step declaration, affected-set lens can't project minimal CI. The ratified plan implicitly assumes it but doesn't name it as a phase.
+*Proposed: accept.* Without per-step Upsert<T>, affected-set lens can't project minimal CI. The ratified plan implicitly assumes some step-shape but doesn't name Upsert<T> as the unit. Adopting Upsert<T> aligns with the existing canon (no new vocabulary) and coordinates with clever-cat-115's existing-shell retirement (each shell script ports to a `content_upsert` or `ensure<Check, Action>` row).
 
 **D-CI-3.** Confirm **Compiler Spine + Modeling DFS** as the primary owner pair for this overhaul?
 
@@ -202,6 +202,10 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 ## §11. Related artifacts
 
 - `src/v4/TASKS.md §T-24` — the ratified phase plan (Phase 1a / 1b / 2)
+- **`dsl/std/patterns.dag` UPSERT<T> section** — the canonical Upsert<T> vocabulary (operator-ratified 2026-05-29): verify-first / satisfy-dependencies-recursively / create-if-missing / cache-outcome
+- **`docs/audit/upsert-pattern-compiler-stray-2026-05-29.md`** — the canon doc + stray-audit
+- **`docs/audit/v4-upsert-stray-scan-receipt-2026-05-30.md`** — the v4 stray scan receipt
+- **clever-cat-115** — owns existing-shell-in-CI retirement per `project_no_new_shell` directive; coordinates with Phase 1.5
 - `docs/design-ci-dag-overhaul.md` (#3886) — the design canvas
 - `docs/design-ci-bankruptcy-rebuild.md` — the Tier-0 rebuild + bucket dissolution
 - `docs/audit/ci-anatomy-and-redundancy-2026-05-29.md` — current CI shape vs target
