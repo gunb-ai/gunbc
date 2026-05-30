@@ -15,13 +15,10 @@ fn v4_lens_identical_variant_payload_dag_tokenizes_and_parses() {
         IDENTICAL_VARIANT_PAYLOAD_PATH,
     )
     .unwrap_or_else(|diag| {
-        panic!(
-            "{IDENTICAL_VARIANT_PAYLOAD_PATH}: tokenization failed: {diag:?}"
-        )
+        panic!("{IDENTICAL_VARIANT_PAYLOAD_PATH}: tokenization failed: {diag:?}")
     });
-    v3_compiler::parse_for_test(&tokens, IDENTICAL_VARIANT_PAYLOAD_PATH).unwrap_or_else(
-        |diag| panic!("{IDENTICAL_VARIANT_PAYLOAD_PATH}: parse failed: {diag:?}"),
-    );
+    v3_compiler::parse_for_test(&tokens, IDENTICAL_VARIANT_PAYLOAD_PATH)
+        .unwrap_or_else(|diag| panic!("{IDENTICAL_VARIANT_PAYLOAD_PATH}: parse failed: {diag:?}"));
 }
 
 #[test]
