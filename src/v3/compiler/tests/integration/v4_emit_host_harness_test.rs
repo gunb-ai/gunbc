@@ -13,14 +13,14 @@
 //! `HostExit` Holds witness + five-byte stdout parse) plus **tokenize/parse** surface receipts
 //! for W2 `.dag` modules (not `str::contains` source probes per TESTING.md).
 //!
-//! **Dissolution trigger:** W3 populates `nat_semiring_rung34_runtime_value_rows`
-//! and wires `run_emit_host_rust` in `emit_host.dag` to invoke `tools/emit_host_runner` (removes
-//! `emit_host_transport_not_wired` on the Rust row); delete this file when rung-3/4 claims +
-//! generated harness replace hand-Rust probes (see `nat_semiring_rung34_eval.dag` roster comment).
+//! **W3 landed:** `run_emit_host_rust` substrate row + `nat_semiring_rung34_runtime_value_rows`
+//! populated (`rung_4_emit_eval.dag`); executable host via `emit_host_bridge` / `emit_host_runner`.
+//! Dissolution: delete when T-22 generated harness replaces hand-Rust probes.
 //!
-//! **TESTING.md:** substrate `.dag` eval remains hermetic (`run_emit_host_rust` → `Rejected` until
-//! W3/CI wiring); this test exercises the Rust transport the `.dag` row models, not substrate eval.
+//! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
+//! `tools/emit_host_runner` / `emit_host_bridge` (real cargo + run).
 
+use v3_compiler::emit_host_bridge;
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceVariant};
 use v3_compiler::tokenize_for_test;
@@ -35,6 +35,14 @@ const NAT_SEMIRING_RUNG34_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung34_eval.dag");
 const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
     "src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag";
+const NAT_SEMIRING_RUNG4_EMIT_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_4_emit_eval.dag");
+const NAT_SEMIRING_RUNG4_EMIT_EVAL_PATH: &str =
+    "src/v4/test/claim/nat_semiring/rung_4_emit_eval.dag";
+const BRANCH_DISPATCH_RUNG4_EMIT_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/branch_dispatch/rung_4_emit_eval.dag");
+const BRANCH_DISPATCH_RUNG4_EMIT_EVAL_PATH: &str =
+    "src/v4/test/claim/branch_dispatch/rung_4_emit_eval.dag";
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
@@ -105,6 +113,32 @@ fn type_sum_variant<'a>(
             _ => None,
         })
         .unwrap_or_else(|| panic!("missing `{type_name}.{variant_name}` variant"))
+}
+
+#[test]
+fn emit_host_bridge_rust_transport_builds_runs_and_parses_stdout() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_emit_host_bridge_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "w3_bridge_claim_input".to_string(),
+        expected_eval_root: "w3_bridge_expected_eval".to_string(),
+    };
+    let receipt = emit_host_bridge::run_emit_host_rust_transport(
+        EMIT_HOST_FIXTURE_SOURCE,
+        &inputs,
+        &work_dir,
+    )
+    .expect("run_emit_host_rust_transport");
+    assert!(
+        emit_host_bridge::host_exit_holds(&receipt.exit),
+        "expected Holds exit, got {:?}",
+        receipt.exit
+    );
+    let stdout = emit_host_bridge::host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone())
+        .expect("logical stdout");
+    emit_host_runner::runtime_value_parse_rust(&stdout).expect("parse five-byte stdout");
 }
 
 #[test]
@@ -189,16 +223,57 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
         );
     }
     assert!(
-        module.items.iter().any(|item| matches!(
-            item,
-            SurfaceItem::Data { name, .. } if name == "emit_host_transport_not_wired"
-        )),
-        "{EMIT_HOST_PATH}: transport_not_wired symbol"
+        surface_declares_fn(&module, "emit_host_w3_host_exit_holds"),
+        "{EMIT_HOST_PATH}: W3 transport helpers landed"
+    );
+    assert!(
+        !EMIT_HOST_DAG.contains("emit_host_transport_not_wired_diagnostic()"),
+        "{EMIT_HOST_PATH}: run_emit_host_rust must not call transport_not_wired"
     );
 }
 
 #[test]
-fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_empty_roster_gates() {
+fn v4_nat_semiring_rung4_emit_eval_dag_tokenizes_and_parses_emit_vs_eval_row() {
+    let module = parse_module(NAT_SEMIRING_RUNG4_EMIT_EVAL_DAG, NAT_SEMIRING_RUNG4_EMIT_EVAL_PATH);
+    assert!(
+        surface_declares_fn(&module, "run_test_claim_emit_vs_eval"),
+        "{NAT_SEMIRING_RUNG4_EMIT_EVAL_PATH}: uses run_test_claim_emit_vs_eval constructor"
+    );
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::Data { name, .. }
+                if name == "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
+        )),
+        "{NAT_SEMIRING_RUNG4_EMIT_EVAL_PATH}: rung-4 TestClaimRun row"
+    );
+}
+
+#[test]
+fn v4_branch_dispatch_rung4_emit_eval_dag_tokenizes_and_parses_emit_vs_eval_row() {
+    let module = parse_module(BRANCH_DISPATCH_RUNG4_EMIT_EVAL_DAG, BRANCH_DISPATCH_RUNG4_EMIT_EVAL_PATH);
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::Data { name, .. }
+                if name == "run_phase4_branch_dispatch_rung4_rust_emit_equals_eval"
+        )),
+        "{BRANCH_DISPATCH_RUNG4_EMIT_EVAL_PATH}: rung-4 TestClaimRun row"
+    );
+}
+
+#[test]
+fn emit_host_runtime_value_parse_rust_falsification_on_wrong_stdout_len() {
+    let err = emit_host_runner::runtime_value_parse_rust(&[0u8; 3])
+        .expect_err("three-byte stdout must fail parse");
+    assert!(
+        err.to_string().contains("expected 5"),
+        "structured parse failure: {err}"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
     let module = parse_module(NAT_SEMIRING_RUNG34_EVAL_DAG, NAT_SEMIRING_RUNG34_EVAL_PATH);
     for name in [
         "nat_semiring_rung34_report_has_evidence",
@@ -212,10 +287,7 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_empty_roster_gates() {
         );
     }
     assert!(
-        module.items.iter().any(|item| matches!(
-            item,
-            SurfaceItem::Data { name, .. } if name == "nat_semiring_rung34_runtime_value_rows"
-        )),
-        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: empty runtime roster"
+        NAT_SEMIRING_RUNG34_EVAL_DAG.contains("run_phase1_nat_semiring_rung4_rust_emit_equals_eval"),
+        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: W3 roster imports rung-4 row"
     );
 }
