@@ -5,14 +5,26 @@
 
 module v4.workflow.bootstrap
 
-import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, content_hash }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node }
 import v4.std.algebra {
-  bag_eq
+  bag_eq,
+  contains,
+  fold_list,
+  list_snoc_item,
+  unique
 }
 import v4.compiler.target_carriers { LanguageModel }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model {
+  TargetModel,
+  target_model_edge_selection_policy,
+  target_model_edge_translation_rules
+}
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
-import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime, v4_evaluator_runtime_wave1 }
+import v4.extdeps.runtimes.v4_evaluator {
+  V4EvaluatorRuntime,
+  v4_evaluator_runtime_id,
+  v4_evaluator_runtime_wave1
+}
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -21,7 +33,6 @@ data v4_stage0_binary: Symbol = v4_stage0_binary
 data v4_stage1_binary: Symbol = v4_stage1_binary
 data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
-data v4_live_compiler_source_snapshot_root: Symbol = v4_live_compiler_source_snapshot_root
 data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
@@ -170,6 +181,28 @@ fn bootstrap_construct_eq(left: BootstrapConstruct, right: BootstrapConstruct) -
   left.identity == right.identity
 }
 
+// §4: construct inventory is a finite set of identities — dedupe on accumulation, not only at bag_eq gate.
+fn bootstrap_construct_snoc_dedup(
+  acc: List<BootstrapConstruct>,
+  item: BootstrapConstruct
+) -> List<BootstrapConstruct> {
+  match contains(xs: acc, item: item, eq: bootstrap_construct_eq) {
+    true => acc
+    false => list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn bootstrap_construct_list_append_unique(
+  left: List<BootstrapConstruct>,
+  right: List<BootstrapConstruct>
+) -> List<BootstrapConstruct> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, item) { bootstrap_construct_snoc_dedup(acc: acc, item: item) }
+  )
+}
+
 fn seed_capability_language_model() -> LanguageModel {
   Node {
     kind: TypeNode { connective: Atom { identity: bootstrap_seed_language_model_identity } },
@@ -177,11 +210,154 @@ fn seed_capability_language_model() -> LanguageModel {
   }
 }
 
-fn bootstrap_source_snapshot_root() -> Node {
+fn bootstrap_construct_subset_node(identity: Symbol) -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: v4_live_compiler_source_snapshot_root } },
+    kind: TypeNode { connective: Atom { identity: identity } },
     children: []
   }
+}
+
+// Live snapshot root: source-language facet only (target/runtime/lowering ride projection inputs).
+fn bootstrap_source_snapshot_root() -> Node {
+  bootstrap_construct_subset_node(identity: bootstrap_construct_source_language_subset)
+}
+
+// Declared frozen sub-model inventory (seed_capability authority — not derived from footprint).
+fn bootstrap_seed_capability_inventory_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: bootstrap_construct_source_language_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_source_language_subset)
+      },
+      Edge {
+        label: Named { name: bootstrap_construct_target_model_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_target_model_subset)
+      },
+      Edge {
+        label: Named { name: bootstrap_construct_runtime_model_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_runtime_model_subset)
+      },
+      Edge {
+        label: Named { name: bootstrap_construct_lowering_subset },
+        target: bootstrap_construct_subset_node(identity: bootstrap_construct_lowering_subset)
+      }
+    ]
+  }
+}
+
+type BootstrapConstructFoldState {
+  constructs: List<BootstrapConstruct>
+}
+
+fn bootstrap_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
+  match n.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      BootstrapConstructFoldState {
+        constructs: [BootstrapConstruct { identity: sym }]
+      }
+    _ => BootstrapConstructFoldState { constructs: [] }
+  }
+}
+
+fn bootstrap_construct_fold_step(
+  acc: BootstrapConstructFoldState,
+  edge: Edge,
+  child: BootstrapConstructFoldState
+) -> BootstrapConstructFoldState {
+  BootstrapConstructFoldState {
+    constructs: bootstrap_construct_list_append_unique(left: acc.constructs, right: child.constructs)
+  }
+}
+
+fn bootstrap_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
+  NodeFold {
+    init: bootstrap_construct_fold_init,
+    step: bootstrap_construct_fold_step
+  }
+}
+
+fn bootstrap_construct_fold_state(root: Node) -> BootstrapConstructFoldState {
+  fold_node(n: root, algebra: bootstrap_construct_fold_algebra())
+}
+
+fn bootstrap_footprint_constructs_from_node(root: Node) -> List<BootstrapConstruct> {
+  bootstrap_construct_fold_state(root: root).constructs
+}
+
+fn bootstrap_target_model_bundle_construct_facet(label: Symbol) -> List<BootstrapConstruct> {
+  if label == target_model_edge_selection_policy {
+    [BootstrapConstruct { identity: bootstrap_construct_target_model_subset }]
+  } else if label == target_model_edge_translation_rules {
+    [BootstrapConstruct { identity: bootstrap_construct_lowering_subset }]
+  } else {
+    []
+  }
+}
+
+fn bootstrap_target_model_bundle_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
+  BootstrapConstructFoldState { constructs: [] }
+}
+
+fn bootstrap_target_model_bundle_construct_fold_step(
+  acc: BootstrapConstructFoldState,
+  edge: Edge,
+  child: BootstrapConstructFoldState
+) -> BootstrapConstructFoldState {
+  let facet_constructs = match edge.label {
+    Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
+    Positional => []
+  }
+  // Facet labels only — do not merge child.constructs: target.bundle subtrees carry
+  // rust/inhabitant Atoms; §4 footprint inventories subset symbols, not grammar atoms.
+  BootstrapConstructFoldState {
+    constructs: bootstrap_construct_list_append_unique(left: acc.constructs, right: facet_constructs)
+  }
+}
+
+fn bootstrap_target_model_bundle_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
+  NodeFold {
+    init: bootstrap_target_model_bundle_construct_fold_init,
+    step: bootstrap_target_model_bundle_construct_fold_step
+  }
+}
+
+fn bootstrap_target_model_bundle_construct_fold_state(root: Node) -> BootstrapConstructFoldState {
+  fold_node(n: root, algebra: bootstrap_target_model_bundle_construct_fold_algebra())
+}
+
+fn bootstrap_target_model_construct_inventory(target: TargetModel) -> List<BootstrapConstruct> {
+  bootstrap_target_model_bundle_construct_fold_state(root: target.bundle).constructs
+}
+
+fn bootstrap_runtime_model_construct_inventory(runtime: V4EvaluatorRuntime) -> List<BootstrapConstruct> {
+  if runtime.runtime_identity == v4_evaluator_runtime_id {
+    [BootstrapConstruct { identity: bootstrap_construct_runtime_model_subset }]
+  } else {
+    [BootstrapConstruct { identity: runtime.runtime_identity }]
+  }
+}
+
+fn bootstrap_snapshot_construct_inventory(snapshot: BootstrapSourceSnapshot) -> List<BootstrapConstruct> {
+  bootstrap_footprint_constructs_from_node(root: snapshot.root)
+}
+
+// §4: construct inventory queries derived from each projection-input facet.
+fn bootstrap_footprint_constructs_from_projection_inputs(
+  inputs: BootstrapProjectionInputs
+) -> List<BootstrapConstruct> {
+  bootstrap_construct_list_append_unique(
+    left: bootstrap_construct_list_append_unique(
+      left: bootstrap_snapshot_construct_inventory(snapshot: inputs.snapshot),
+      right: bootstrap_target_model_construct_inventory(target: inputs.target_model)
+    ),
+    right: bootstrap_runtime_model_construct_inventory(runtime: inputs.runtime_model)
+  )
+}
+
+fn bootstrap_construct_inventory_unique(constructs: List<BootstrapConstruct>) -> Bool {
+  unique(xs: constructs, eq: bootstrap_construct_eq)
 }
 
 fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
@@ -385,16 +561,6 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
   }
 }
 
-// 🟡 needs-more-work — feature:bootstrap-footprint-constructs-walk — scaffold:T-32 · dissolve-on: T-32 seed-reduction Phase-2+ replaces this hand-list with a snapshot-root Node walk that derives BootstrapConstruct identities per docs/design-bootstrap-fact-model.md §4 footprint fold; delete the four bootstrap_construct_* subset carriers here (ledger: src/v4/TASKS.md § T-32 — minimum never-hand-edited bootstrap seed; Phase-1 definition gates reduction — do not dispatch until operator ratifies).
-fn bootstrap_footprint_constructs() -> List<BootstrapConstruct> {
-  [
-    BootstrapConstruct { identity: bootstrap_construct_source_language_subset },
-    BootstrapConstruct { identity: bootstrap_construct_target_model_subset },
-    BootstrapConstruct { identity: bootstrap_construct_runtime_model_subset },
-    BootstrapConstruct { identity: bootstrap_construct_lowering_subset }
-  ]
-}
-
 fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
     && (inputs.snapshot.language_model == seed_capability_language_model())
@@ -405,12 +571,14 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
 
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
   let closure_hash = content_hash(n: bootstrap_projection_closure_node(inputs: inputs))
-  if bootstrap_projection_inputs_well_formed(inputs: inputs) {
+  let constructs = bootstrap_footprint_constructs_from_projection_inputs(inputs: inputs)
+  if bootstrap_projection_inputs_well_formed(inputs: inputs)
+       && bootstrap_construct_inventory_unique(constructs: constructs) {
     Holds {
       value: BootstrapFootprint {
         inputs: inputs,
         closure_hash: closure_hash,
-        constructs: bootstrap_footprint_constructs()
+        constructs: constructs
       }
     }
   } else {
@@ -424,7 +592,8 @@ fn bootstrap_seed_capability_matches_footprint(
 ) -> Witness<BootstrapCapabilityExact> {
   match footprint {
     Holds { value: fp } =>
-      if bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
+      if bootstrap_construct_inventory_unique(constructs: capability.constructs)
+           && bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
         Holds { value: BootstrapCapabilityExact { footprint: fp, capability: capability } }
       } else {
         Violates { diagnostic: bs_diagnostic(reason: bootstrap_capability_not_minimal) }
@@ -522,12 +691,7 @@ fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> Witness<FixptStage1Stage2> {
 
 data seed_capability: SeedCapability = SeedCapability {
   language_model: seed_capability_language_model(),
-  constructs: [
-    BootstrapConstruct { identity: bootstrap_construct_source_language_subset },
-    BootstrapConstruct { identity: bootstrap_construct_target_model_subset },
-    BootstrapConstruct { identity: bootstrap_construct_runtime_model_subset },
-    BootstrapConstruct { identity: bootstrap_construct_lowering_subset }
-  ],
+  constructs: bootstrap_footprint_constructs_from_node(root: bootstrap_seed_capability_inventory_root()),
   frozen_at: bootstrap_phase1_frozen_submodel
 }
 
