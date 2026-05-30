@@ -1,4 +1,5 @@
 // src/v4/std/leaf_model_verification.dag
+<<<<<<< HEAD
 // Scope: Per-leaf-model verification carriers (docs/planning/v4-leaf-model-verification-2026-05-30.md §5).
 // Status: Phase 1 — R1 rustc compile verdict surface only; widen with TargetInvocation rows per language.
 
@@ -88,4 +89,81 @@ fn leaf_model_verification_combine_runs(
       verdict_combine(a: acc, b: leaf_model_verification_claim_passes(receipt: r))
     }
   )
+=======
+// Scope: Leaf-model verification carriers — claim / falsification / fixture / report.
+// Status: Phase 1 substrate (docs/planning/v4-leaf-model-verification-2026-05-30.md §5).
+// Authority: leaf model owns FACTS (stable fact_id in extdeps); this module owns OBLIGA shape.
+// Co-authored with Modeling DFS (proud-pike-680) — consume Verdict<T> from verdict.dag (PR #3961).
+
+module v4.std.leaf_model_verification
+
+import v4.std.collection { List }
+import v4.std.nat { Nat }
+import v4.std.node { Node, Symbol }
+import v4.std.text { String }
+import v4.std.verdict { Verdict }
+
+// Layer A boundary: OBLIGA rows reference model facts structurally (Node projection of declared bindings).
+type LeafModelClaim<M, Subject, Expectation> {
+  model: M
+  fact_id: Node
+  subject: Subject
+  expectation: Expectation
+  falsification_case: FalsificationCase<Subject, Expectation>
+}
+
+// REQUIRED paired probe — claim without falsification is not verifiable (planning doc §5).
+// expected_failure_mode is Expectation-shaped per M=rust.dag instantiation (PR #3971 §5 sketches).
+type FalsificationCase<Subject, Expectation> {
+  subject_variant: Subject
+  expected_failure_mode: Expectation
+}
+
+// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
+// dissolve-on: testgen emits LeafModelFixture rows and runner exercises target toolchain;
+// forbidden: parallel fixture vocabulary outside this carrier.
+type TargetArtifact {
+  source_text: String
+}
+
+// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
+// dissolve-on: TargetToolchain / TargetEdition / TargetBuildProfile / TargetOverflowDispositionField coproducts replace these Symbol scaffolds; forbidden: parallel invocation vocab outside this carrier.
+// Edition, build profile, and OverflowDisposition field pin are independent coordinates (not a single edition_or_profile union).
+type TargetInvocation {
+  toolchain: Symbol
+  edition: Symbol
+  build_profile: Symbol
+  overflow_disposition_field: Symbol
+}
+
+type LeafModelFixture<C> {
+  claim: C
+  artifact: TargetArtifact
+  invocation: TargetInvocation
+  expected_verdict: Verdict<Symbol>
+  falsification_artifact: TargetArtifact
+  expected_falsification_verdict: Verdict<Symbol>
+}
+
+type LeafModelClaimVerdictRow {
+  claim_id: Symbol
+  verdict: Verdict<Symbol>
+  falsification_verdict: Verdict<Symbol>
+}
+
+// Populations are Nat so negative totals are unrepresentable (same discipline as verdict.dag VerdictTally).
+type LeafModelVerificationTotals {
+  proven: Nat
+  model_failed: Nat
+  falsification_caught: Nat
+  falsification_missed: Nat
+  not_checked: Nat
+}
+
+// Report rows are authoritative; LeafModelVerificationTotals is derived at runner emission only (not stored here).
+// 🟡 gated — feature:leaf-model-verification-report — dissolve-on: runner returns (report, totals) where totals is a fold over report.claims with bucket classification; forbidden: parallel stored totals beside source rows.
+type LeafModelVerificationReport<M> {
+  model: M
+  claims: List<LeafModelClaimVerdictRow>
+>>>>>>> origin/main
 }

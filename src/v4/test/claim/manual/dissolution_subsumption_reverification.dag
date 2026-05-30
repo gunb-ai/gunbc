@@ -243,7 +243,7 @@ fn completed_lens_ci_execution() -> MechanicalReverificationExecution {
 fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeValue>) -> MechanicalReverificationExecution {
   match run.verdict {
     Pass => completed_lens_ci_execution()
-    Fail { actual: _ } => Failed
+    Fail { actual: _, falsification: _ } => Failed
     Deferred { actual: _, diagnostic: _ } => ReportUnavailable
   }
 }

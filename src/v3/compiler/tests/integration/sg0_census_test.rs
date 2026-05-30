@@ -862,8 +862,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
     "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
-    // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
-    "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // Wave-5-A / P3 commitment 6: validate_then_compile public terminal on 00_compile.dag.
     "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
@@ -876,21 +874,24 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
+    // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
+    // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
+    // SG-0 + INVARIANTS §P5(b) receipt (+1 census path). Dissolves when W3 wires transport
+    // into `run_emit_host_rust` and rung-3/4 TestClaim rows replace hand-Rust probes.
+    "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
+    // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
+    // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
+    "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
     // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
     "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
     // T-4.16: `ConfigPatchRecord` / `config_patch_layer` consumer smoke on `black.dag`
     // (zero diagnostics; `BlackConfigPatch` materializes `FieldPatch<T>` fields).
     // SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_extdeps_formatters_black_dag_smoke_test.rs",
-    // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
-    // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
-    "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-    // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
-    "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",
     // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
     // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
@@ -909,22 +910,26 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`; `src/v4/std/verification.dag`
     // for closed `TestClaim` schema only (no std present-key helper).
     "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",
+    // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
+    // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
+    "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
     // T-33: parse ratchet on `src/v4/std/model_core.dag` — Ratified Q1 ModelCore carrier.
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
+    // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
+    "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage.
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
+    // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
+    "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",
     // T-21/T-24: `workflow/ci.dag` Wave-0 selection consumes `RerunNodeSet` for TestClaim roster narrowing.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim harness replaces probe.
     "src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs",
     // RELEASE_TODO §5 Phase 1a: `workflow/release.dag` + hand-synced release.yml (install.dag Phase 1b).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when YamlStatic emission replaces host probes.
     "src/v3/compiler/tests/integration/v4_workflow_release_dag_smoke_test.rs",
-    // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
-    // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
