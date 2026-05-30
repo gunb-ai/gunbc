@@ -140,7 +140,6 @@ import v4.std.algebra {
   boolean_algebra_node,
   boolean_algebra_type_node,
   Empty,
-  fold,
   fold_list,
   list_append,
   list_snoc_item,
