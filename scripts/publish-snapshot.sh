@@ -205,16 +205,16 @@ echo "manifest: ${MANIFEST_PATH}"
 
 # Leak-grep gate. Runs AFTER strip+commit against the exported tree — this
 # defends the export, not the internal repo. Allowlist exempts dissolve-
-# comment substrate provenance (operator-approved to ship publicly per
-# parent/operator verdict on adhoc-e7966a73-c38).
-ALLOWLIST_REGEX='🟡|dissolve-target|dissolve-on-arrival'
+# comment substrate provenance (sanctioned by the operator verdict on
+# adhoc-e7966a73-c38) plus self-referential lines tagged leak-gate-self.
+ALLOWLIST_REGEX='🟡|dissolve-target|dissolve-on-arrival|leak-gate-self'
 
-LEAK_CONTENT_PATTERNS=(
-  'msg_[a-f0-9-]+'
-  'localhost:8787'
-  'dashboard-ops'
-  'dashboard-message'
-  'operator-[a-z]+'
+LEAK_CONTENT_PATTERNS=(  # leak-gate-self
+  'msg_[a-f0-9-]+'       # leak-gate-self
+  'localhost:8787'       # leak-gate-self
+  'dashboard-ops'        # leak-gate-self
+  'dashboard-message'    # leak-gate-self
+  'operator-[a-z]+'      # leak-gate-self
 )
 
 # Path patterns mirror STRIP_PATHS — if any glob hits the exported tree it

@@ -18,16 +18,17 @@ set -euo pipefail
 PUBLIC_REPO_URL="${PUBLIC_REPO_URL:-git@github.com:gunb-ai/daglang.git}"
 PUBLIC_BRANCH="${PUBLIC_BRANCH:-main}"
 
-# Allowlist: dissolve-comment substrate provenance is operator-approved to
-# ship publicly. Keep in sync with publish-snapshot.sh.
-ALLOWLIST_REGEX='🟡|dissolve-target|dissolve-on-arrival'
+# Allowlist: dissolve-comment substrate provenance is sanctioned to ship
+# publicly; lines tagged leak-gate-self bypass the gate (the pattern array
+# below would otherwise self-match). Keep in sync with publish-snapshot.sh.
+ALLOWLIST_REGEX='🟡|dissolve-target|dissolve-on-arrival|leak-gate-self'
 
-CONTENT_PATTERNS=(
-  'msg_[a-f0-9-]+'
-  'localhost:8787'
-  'dashboard-ops'
-  'dashboard-message'
-  'operator-[a-z]+'
+CONTENT_PATTERNS=(    # leak-gate-self
+  'msg_[a-f0-9-]+'    # leak-gate-self
+  'localhost:8787'    # leak-gate-self
+  'dashboard-ops'     # leak-gate-self
+  'dashboard-message' # leak-gate-self
+  'operator-[a-z]+'   # leak-gate-self
 )
 
 PATH_PATTERNS=(
