@@ -710,19 +710,24 @@ data rust_noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts> = [
   rust_facts_never
 ]
 
-// Leaf-model Layer-A fact_id identities (PR #3971 §3 — cite existing model facts, not parallel verification handles).
-data rust_facts_i32_fact_id: Symbol = rust_facts_i32_fact_id
-data rust_integer_algebra_inhabitance_rust_facts_i32_fact_id: Symbol =
-  rust_integer_algebra_inhabitance_rust_facts_i32_fact_id
+// Leaf-model Layer-A — derived fact exposure + PLANNED SG-1 slot (PR #3971 §3; no parallel *_fact_id Symbol wrappers).
+data rust_integer_algebra_inhabitance_rust_facts_i32: AlgebraInhabitanceDecl =
+  rust_integer_algebra_inhabitance(facts: rust_facts_i32)
 // 🟡 gated — feature:sg-1-target-atom-realization — bind PR #3938 §10.1 / design-target-realization-canonical-home.md —
 // dissolve-on: TargetAtomRealization row for Symbol lands; fact_id names that row.
 data rust_atom_realization_symbol: Symbol = rust_atom_realization_symbol
 data rust_symbol_connective_atom: Symbol = rust_symbol_connective_atom
 
-data rust_integer_algebra_inhabitance_rust_facts_i32: AlgebraInhabitanceDecl =
-  rust_integer_algebra_inhabitance(facts: rust_facts_i32)
-
 data rust_symbol_connective_atom_node: Node = rust_inhabitant_atom(id: rust_symbol_connective_atom)
+
+// Structural fact_id projections for C(rust.dag) — Node cites declared bindings, not sibling Symbol handles.
+fn rust_leaf_model_fact_id_node_rust_facts_i32() -> Node {
+  rust_integer_facts_node(facts: rust_facts_i32)
+}
+
+fn rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32() -> Node {
+  rust_integer_algebra_inhabitance(facts: rust_facts_i32).algebra
+}
 
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

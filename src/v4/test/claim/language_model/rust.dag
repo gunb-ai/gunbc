@@ -1,15 +1,16 @@
 // src/v4/test/claim/language_model/rust.dag
 // Scope: C(rust.dag) — verification OBLIGA per PR #3971 / design-rust-dag-leafmodel-instantiation.md.
-// Status: Phase-1 rows (R1, R2a, R2b, R3-external, R3-internal); runner deferred (Deferred expectations).
+// Status: Phase-1 rows (R1, R2a, R2b, R3-external, R3-internal); runner deferred.
 
 module v4.test.claim.language_model.rust
 
 import v4.extdeps.languages.rust {
   RustLanguageModel,
   rust_atom_realization_symbol,
-  rust_facts_i32_fact_id,
-  rust_integer_algebra_inhabitance_rust_facts_i32_fact_id,
+  rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_language_model_wave2,
+  rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32,
+  rust_leaf_model_fact_id_node_rust_facts_i32,
   rust_symbol_connective_atom_node
 }
 import v4.std.collection { List }
@@ -63,10 +64,18 @@ fn rust_leaf_rustc_rejects(code: Rustc_ErrorCode_Phase1) -> RustClaimExpectation
   }
 }
 
-// R1 — rust_facts_i32 primitive bundle (PR #3971 §5).
+fn rust_leaf_algebra_inhabitance_i32_subject() -> RustClaimSubject {
+  RustAlgebraInhabitanceSubject {
+    algebra: AlgebraCarrierOrderedRing,
+    on: RustPrimitiveI32,
+    inhabitance_decl: rust_integer_algebra_inhabitance_rust_facts_i32
+  }
+}
+
+// R1 — fact_id projects data rust_facts_i32 (PR #3971 §5 PATTERN-1 structural).
 data claim_rust_leaf_r1_i32_type: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
-  fact_id: rust_facts_i32_fact_id,
+  fact_id: rust_leaf_model_fact_id_node_rust_facts_i32(),
   subject: RustPrimitiveTypeSubject { primitive: RustPrimitiveI32 },
   expectation: rust_leaf_rustc_accepts(),
   falsification_case: FalsificationCase {
@@ -75,41 +84,29 @@ data claim_rust_leaf_r1_i32_type: RustLeafModelClaim = LeafModelClaim {
   }
 }
 
-// R2a — algebra operations angle on derived inhabitance for rust_facts_i32.
+// R2a — derived inhabitance; Subject pins rust_integer_algebra_inhabitance(rust_facts_i32).
 data claim_rust_leaf_r2a_i32_algebra_operations: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
-  fact_id: rust_integer_algebra_inhabitance_rust_facts_i32_fact_id,
-  subject: RustAlgebraInhabitanceSubject {
-    algebra: AlgebraCarrierOrderedRing,
-    on: RustPrimitiveI32
-  },
+  fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
+  subject: rust_leaf_algebra_inhabitance_i32_subject(),
   expectation: rust_leaf_rustc_accepts(),
   falsification_case: FalsificationCase {
-    subject_variant: RustAlgebraInhabitanceSubject {
-      algebra: AlgebraCarrierOrderedRing,
-      on: RustPrimitiveI32
-    },
+    subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
     expected_failure_mode: rust_leaf_rustc_rejects(code: E0599)
   }
 }
 
-// R2b — overflow-semantics angle on same derived inhabitance (distinct row per §3).
+// R2b — same derived fact, overflow-semantics verification angle.
 data claim_rust_leaf_r2b_i32_overflow_semantics: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
-  fact_id: rust_integer_algebra_inhabitance_rust_facts_i32_fact_id,
-  subject: RustAlgebraInhabitanceSubject {
-    algebra: AlgebraCarrierOrderedRing,
-    on: RustPrimitiveI32
-  },
+  fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
+  subject: rust_leaf_algebra_inhabitance_i32_subject(),
   expectation: RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_rustc_invocation(),
     expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic }
   },
   falsification_case: FalsificationCase {
-    subject_variant: RustAlgebraInhabitanceSubject {
-      algebra: AlgebraCarrierOrderedRing,
-      on: RustPrimitiveI32
-    },
+    subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
     expected_failure_mode: RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_rustc_invocation(),
       expected_outcome: Wrap
@@ -120,7 +117,7 @@ data claim_rust_leaf_r2b_i32_overflow_semantics: RustLeafModelClaim = LeafModelC
 // R3-external — PLANNED until SG-1 lands TargetAtomRealization row (§4).
 data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
-  fact_id: rust_atom_realization_symbol,
+  fact_id: rust_symbol_connective_atom_node,
   subject: RustAtomRealizationSubject { atom: rust_symbol_connective_atom_node },
   expectation: rust_leaf_rustc_accepts(),
   falsification_case: FalsificationCase {
@@ -132,7 +129,7 @@ data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafMod
 // R3-internal — emit coupling receipt; exercisable post-SG-1 (§4).
 data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave2(),
-  fact_id: rust_atom_realization_symbol,
+  fact_id: rust_symbol_connective_atom_node,
   subject: RustAtomRealizationSubject { atom: rust_symbol_connective_atom_node },
   expectation: RustEmitProjectionEqualityExpectation {
     atom_realization_row: rust_symbol_connective_atom_node,

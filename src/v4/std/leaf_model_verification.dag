@@ -8,14 +8,14 @@ module v4.std.leaf_model_verification
 
 import v4.std.collection { List }
 import v4.std.integer { Int }
-import v4.std.node { Symbol }
+import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 import v4.std.verdict { Verdict }
 
-// Layer A boundary: OBLIGA rows reference fact_id Symbols declared in the leaf model.
+// Layer A boundary: OBLIGA rows reference model facts structurally (Node projection of declared bindings).
 type LeafModelClaim<M, Subject, Expectation> {
   model: M
-  fact_id: Symbol
+  fact_id: Node
   subject: Subject
   expectation: Expectation
   falsification_case: FalsificationCase<Subject, Expectation>
