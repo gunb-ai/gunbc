@@ -32,7 +32,7 @@ def trigger_path_lines(path: Path) -> list[tuple[int, str]]:
         indent = len(raw) - len(raw.lstrip(" "))
         content = raw.strip()
         if indent == 0:
-            in_on = content == "on:"
+            in_on = re.match(r"^on:", content) is not None
             in_trigger = False
             continue
         if not in_on:

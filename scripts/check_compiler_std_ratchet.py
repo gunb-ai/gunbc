@@ -9,10 +9,27 @@ import sys
 from ci_process import repo_root
 
 
+def inventory_bucket_duplicates() -> list[tuple[str, str, str]]:
+    seen: dict[str, str] = {}
+    duplicates: list[tuple[str, str, str]] = []
+    for label, inventory in (
+        ("tracked", TRACKED_ROWS),
+        ("positive", POSITIVE_ROWS),
+        ("exempt", EXEMPT_ROWS),
+    ):
+        for row in inventory:
+            previous = seen.get(row)
+            if previous is not None:
+                duplicates.append((row, previous, label))
+            else:
+                seen[row] = label
+    return duplicates
+
+
 BASELINE_TRACKED_TOTAL = 4
 SURFACES = ["src/v3/compiler/*.dag", "src/v3/lenses/*.dag"]
 
-POSITIVE_ROWS = {
+POSITIVE_ROWS = [
     "src/v3/compiler/pipeline.dag:CompilerHostRealization",
     "src/v3/compiler/pipeline.dag:PipelineSnapshotKind",
     "src/v3/compiler/pipeline.dag:PipelineStageBinding",
@@ -41,9 +58,9 @@ POSITIVE_ROWS = {
     "src/v3/lenses/unused_parameters.dag:UnusedParameter",
     "src/v3/lenses/variant_payload.dag:VariantPayloadShape",
     "src/v3/lenses/variant_payload.dag:VariantPayloadShapeLookup",
-}
+]
 
-EXEMPT_ROWS = {
+EXEMPT_ROWS = [
     "src/v3/compiler/parse_tables.dag:BinaryOpLevel",
     "src/v3/compiler/parse_tables.dag:BinaryOpRow",
     "src/v3/compiler/parse_tables.dag:TopLevelItemKwRow",
@@ -51,14 +68,14 @@ EXEMPT_ROWS = {
     "src/v3/compiler/parse_tables.dag:BracketRow",
     "src/v3/compiler/parse_tables.dag:PrimaryPrefixRow",
     "src/v3/compiler/parse_tables.dag:PrimaryAtomRow",
-}
+]
 
-TRACKED_ROWS = {
+TRACKED_ROWS = [
     "src/v3/lenses/infer_helpers.dag:TemplateArgumentsMatch",
     "src/v3/lenses/infer_helpers.dag:TemplateArgumentCursor",
     "src/v3/lenses/infer_helpers.dag:NormalizedInstantiationArgs",
     "src/v3/lenses/parallelism.dag:NonCommutingPairLookup",
-}
+]
 
 
 def type_rows(root) -> list[str]:
@@ -80,27 +97,47 @@ def main() -> int:
         print("compiler-std ratchet: no type rows found on the configured surfaces", file=sys.stderr)
         return 1
 
-    classified = TRACKED_ROWS | POSITIVE_ROWS | EXEMPT_ROWS
+    classified = [*TRACKED_ROWS, *POSITIVE_ROWS, *EXEMPT_ROWS]
     unknown = sorted(row for row in rows if row not in classified)
-    missing_tracked = sorted(row for row in TRACKED_ROWS if row not in rows)
-    missing_positive = sorted(row for row in POSITIVE_ROWS if row not in rows)
-    missing_exempt = sorted(row for row in EXEMPT_ROWS if row not in rows)
+    row_counts = {row: rows.count(row) for row in rows}
     violations = False
+
+    duplicate_inventory_rows = inventory_bucket_duplicates()
+
+    missing_or_duplicate_live: list[tuple[str, str, int]] = []
+    for label, inventory in (
+        ("tracked", TRACKED_ROWS),
+        ("positive", POSITIVE_ROWS),
+        ("exempt", EXEMPT_ROWS),
+    ):
+        for row in inventory:
+            count = row_counts.get(row, 0)
+            if count != 1:
+                missing_or_duplicate_live.append((label, row, count))
 
     if unknown:
         print("compiler-std ratchet: unclassified compiler/lens type rows:", file=sys.stderr)
         for row in unknown:
             print(f"  {row}", file=sys.stderr)
         violations = True
-    if missing_tracked or missing_positive or missing_exempt:
-        print("compiler-std ratchet: classified rows missing from source:", file=sys.stderr)
-        for label, missing in (
-            ("tracked", missing_tracked),
-            ("positive", missing_positive),
-            ("exempt", missing_exempt),
-        ):
-            for row in missing:
-                print(f"  {label}: {row}", file=sys.stderr)
+    if duplicate_inventory_rows:
+        print("compiler-std ratchet: inventory rows classified in multiple buckets:", file=sys.stderr)
+        for row, previous, current in duplicate_inventory_rows:
+            print(f"  {row} ({previous}, {current})", file=sys.stderr)
+        violations = True
+    if missing_or_duplicate_live:
+        print("compiler-std ratchet: inventory drift.", file=sys.stderr)
+        print("Each classified declaration must exist exactly once in the live counted set.", file=sys.stderr)
+        for label, row, count in missing_or_duplicate_live:
+            print(f"  {label}: {row} (matches in live set: {count})", file=sys.stderr)
+        violations = True
+    if len(classified) != len(rows):
+        print("compiler-std ratchet: row classification drift.", file=sys.stderr)
+        print(f"Counted rows: {len(rows)}", file=sys.stderr)
+        print(f"Tracked rows: {len(TRACKED_ROWS)}", file=sys.stderr)
+        print(f"Positive-def rows: {len(POSITIVE_ROWS)}", file=sys.stderr)
+        print(f"Exempt rows: {len(EXEMPT_ROWS)}", file=sys.stderr)
+        print("The explicit row inventory must cover the full counted surface.", file=sys.stderr)
         violations = True
     if len(TRACKED_ROWS) != BASELINE_TRACKED_TOTAL:
         print(
