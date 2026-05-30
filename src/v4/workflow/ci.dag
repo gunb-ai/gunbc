@@ -243,9 +243,9 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   timeout_minutes: 20
 }
 
-// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.5 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding. Strict mode (V4_PHASE1_NAT_SEMIRING_STRICT=1) is operator-required per manager directive — non_blocking: false.
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind docs/planning/v4-ladder-rung-specs-2026-05-30.md §2.5 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding. Strict mode (V4_PHASE1_NAT_SEMIRING_STRICT=1) is operator-required per manager directive — non_blocking: false. binding_smoke_step_name is deliberately the empty string (no cargo-test binding harness wired yet for this signal); a follow-up PR will mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml integration test for this gate. Until then, P2 single-authority for ci.dag↔ci.yml is enforced by the operator-review of step_name/script_path/non_blocking/timeout_minutes parity (manager review checkpoint), not by a CI binding test.
 data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
-  binding_smoke_step_name: "phase1/nat_semiring rung gate model/YAML binding smoke"
+  binding_smoke_step_name: ""
   step_name: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)"
   script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
   non_blocking: false
