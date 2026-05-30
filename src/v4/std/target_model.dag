@@ -1,12 +1,23 @@
 // src/v4/std/target_model.dag
-// Scope: TargetModel carrier + Conj-bundle edge keys + grammar-relation protocol symbols.
+// Scope: TargetModel carrier + Conj-bundle edge keys + grammar-relation protocol symbols
+//   + target-realization carriers (SG-1/SG-2/SG-3 canonical home per design-target-realization-canonical-home.md).
 // Status: single authority per INVARIANTS P2 — consumers import; do not redeclare.
 
 module v4.std.target_model
 
-import v4.std.collection { Map }
+import v4.std.algebra { Cons, Empty, fold_list, list_snoc_item, length, list_append }
+import v4.std.collection { Map, Optional, optional_absent, optional_present }
 import v4.std.lexing { LexRules }
-import v4.std.node { Node, Symbol }
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
 import v4.std.text { String }
 
 type TargetModelBundle {
@@ -35,3 +46,200 @@ data concrete_syntax_token_kind_fixed: Symbol = concrete_syntax_token_kind_fixed
 data concrete_syntax_token_kind_bound: Symbol = concrete_syntax_token_kind_bound
 data serialize_source_field_source_text: Symbol = serialize_source_field_source_text
 data serialize_source_field_source_grammar: Symbol = serialize_source_field_source_grammar
+
+// TargetModel bundle edge — per-language TargetTypeExpressionProjection row (SG-2).
+data target_model_edge_type_expression_projection: Symbol = target_model_edge_type_expression_projection
+
+// Emitted type-expression Conj fields — bidirectional surface tag + positional slots.
+data target_type_expr_field_surface: Symbol = target_type_expr_field_surface
+
+// TargetTypeExpressionProjection bundle edge keys (row stored on TargetModel bundle).
+data target_type_expr_field_atom: Symbol = target_type_expr_field_atom
+data target_type_expr_field_conj: Symbol = target_type_expr_field_conj
+data target_type_expr_field_disj: Symbol = target_type_expr_field_disj
+data target_type_expr_field_arrow: Symbol = target_type_expr_field_arrow
+data target_type_expr_field_cardinality: Symbol = target_type_expr_field_cardinality
+data target_type_expr_field_instantiation: Symbol = target_type_expr_field_instantiation
+data target_type_expr_field_ident_token: Symbol = target_type_expr_field_ident_token
+data target_type_expr_field_open: Symbol = target_type_expr_field_open
+data target_type_expr_field_close: Symbol = target_type_expr_field_close
+data target_type_expr_field_separator: Symbol = target_type_expr_field_separator
+data target_type_expr_field_variant_separator: Symbol = target_type_expr_field_variant_separator
+
+// SG-2 — per-connective delimiter vocabulary (token classes, not free text).
+type TargetDelimiterPair {
+  open: Symbol
+  close: Symbol
+}
+
+// SG-2 — atom type name: bound ident from source Atom identity via binding_spellings.
+type TargetAtomTypeShape {
+  surface: Symbol
+  ident_token: Symbol
+}
+
+// SG-2 — generic application F<A,B> / List<T> (shared shape for Instantiation + Cardinality).
+type TargetGenericApply {
+  surface: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+}
+
+// SG-2 — record / conj product type { f: T, ... }.
+type TargetRecordTypeShape {
+  surface: Symbol
+  open: Symbol
+  separator: Symbol
+  close: Symbol
+}
+
+// SG-2 — sum / disj coproduct type.
+type TargetSumTypeShape {
+  surface: Symbol
+  variant_separator: Symbol
+}
+
+// SG-2 — function / arrow type (domain -> codomain).
+type TargetFunctionTypeShape {
+  surface: Symbol
+  open: Symbol
+  close: Symbol
+  arrow: Symbol
+}
+
+// SG-2 — projected target-side type-expression node (emitted graph fragment).
+type TargetTypeExpression = Node
+
+// SG-2 — canonical per-connective type-expression projection (one row per target language).
+type TargetTypeExpressionProjection {
+  atom_form: TargetAtomTypeShape
+  conj_form: TargetRecordTypeShape
+  disj_form: TargetSumTypeShape
+  arrow_form: TargetFunctionTypeShape
+  cardinality_form: TargetGenericApply
+  instantiation_form: TargetGenericApply
+}
+
+fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
+  Edge {
+    label: Named { name: target_type_expr_field_surface },
+    target: Node {
+      kind: TypeNode { connective: Atom { identity: surface } },
+      children: []
+    }
+  }
+}
+
+fn target_type_expr_positional_edges(children: List<Node>) -> List<Edge> {
+  fold_list(
+    xs: children,
+    empty: Empty,
+    cons: fn(acc, child) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge { label: Positional, target: child }
+      )
+    }
+  )
+}
+
+fn target_type_expr_wrapped_emitted(surface: Symbol, children: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_snoc_item(
+      xs: target_type_expr_positional_edges(children: children),
+      item: target_type_expr_surface_edge(surface: surface)
+    )
+  }
+}
+
+fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) -> Node {
+  target_type_expr_wrapped_emitted(
+    surface: form.surface,
+    children: [
+      Node {
+        kind: TypeNode { connective: Atom { identity: identity } },
+        children: []
+      }
+    ]
+  )
+}
+
+fn target_type_expr_generic_apply_emitted(
+  form: TargetGenericApply,
+  head: Node,
+  args: List<Node>
+) -> Node {
+  target_type_expr_wrapped_emitted(
+    surface: form.surface,
+    children: list_append(
+      left: Cons { head: head, tail: Empty },
+      right: args
+    )
+  )
+}
+
+fn target_type_expr_record_emitted(
+  form: TargetRecordTypeShape,
+  fields: List<Node>
+) -> Node {
+  target_type_expr_wrapped_emitted(surface: form.surface, children: fields)
+}
+
+fn target_type_expr_sum_emitted(form: TargetSumTypeShape, variants: List<Node>) -> Node {
+  target_type_expr_wrapped_emitted(surface: form.surface, children: variants)
+}
+
+fn target_type_expr_arrow_emitted(
+  form: TargetFunctionTypeShape,
+  domain: Node,
+  codomain: Node
+) -> Node {
+  target_type_expr_wrapped_emitted(
+    surface: form.surface,
+    children: [domain, codomain]
+  )
+}
+
+fn target_type_expr_positional_children(node: Node) -> List<Node> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold_list(
+        xs: node.children,
+        empty: Empty,
+        cons: fn(acc, e) {
+          match e.label {
+            Positional => list_snoc_item(xs: acc, item: e.target)
+            Named { name: _ } => acc
+          }
+        }
+      )
+    _ => Empty
+  }
+}
+
+fn target_type_expr_positional_child_at(node: Node, index: Int) -> Optional<Node> {
+  match fold_list(
+    xs: target_type_expr_positional_children(node: node),
+    init: ChildAtMissing { remaining: index },
+    f: fn(acc, child) {
+      match acc {
+        ChildAtFound { value: _ } => acc
+        ChildAtMissing { remaining: r } =>
+          if r == 0 {
+            ChildAtFound { value: child }
+          } else {
+            ChildAtMissing { remaining: r - 1 }
+          }
+      }
+    }
+  ) {
+    ChildAtFound { value: v } => optional_present(value: v)
+    ChildAtMissing { remaining: _ } => optional_absent()
+  }
+}
+
+type ChildAtLookup
+  = ChildAtMissing { remaining: Int }
+  | ChildAtFound { value: Node }

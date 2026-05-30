@@ -74,6 +74,12 @@ import v4.std.model_core {
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
+  TargetAtomTypeShape,
+  TargetFunctionTypeShape,
+  TargetGenericApply,
+  TargetRecordTypeShape,
+  TargetSumTypeShape,
+  TargetTypeExpressionProjection,
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
@@ -87,7 +93,24 @@ import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_source
+  target_model_edge_serialize_source,
+  target_model_edge_type_expression_projection,
+  target_type_expr_atom_emitted,
+  target_type_expr_field_atom,
+  target_type_expr_field_arrow,
+  target_type_expr_field_cardinality,
+  target_type_expr_field_close,
+  target_type_expr_field_conj,
+  target_type_expr_field_disj,
+  target_type_expr_field_ident_token,
+  target_type_expr_field_instantiation,
+  target_type_expr_field_open,
+  target_type_expr_field_separator,
+  target_type_expr_field_variant_separator,
+  target_type_expr_field_surface,
+  target_type_expr_generic_apply_emitted,
+  target_type_expr_positional_child_at,
+  target_type_expr_positional_children
 }
 import v4.std.node {
   Arrow,
@@ -98,7 +121,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Instantiation
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
@@ -131,6 +155,7 @@ import v4.std.integer {
   uint128_interval_spec,
   uint_platform_interval_spec
 }
+import v4.std.foobar { foobar_carrier }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -373,6 +398,7 @@ data rust_token_rbrace: Symbol = rust_token_rbrace
 data rust_token_lparen: Symbol = rust_token_lparen
 data rust_token_rparen: Symbol = rust_token_rparen
 data rust_token_comma: Symbol = rust_token_comma
+data rust_token_pipe: Symbol = rust_token_pipe
 data rust_token_colon: Symbol = rust_token_colon
 data rust_token_kw_let: Symbol = rust_token_kw_let
 data rust_token_kw_if: Symbol = rust_token_kw_if
@@ -380,6 +406,7 @@ data rust_token_kw_else: Symbol = rust_token_kw_else
 data rust_token_kw_return: Symbol = rust_token_kw_return
 data rust_token_equal: Symbol = rust_token_equal
 data rust_token_gt: Symbol = rust_token_gt
+data rust_token_lt: Symbol = rust_token_lt
 data rust_token_semicolon: Symbol = rust_token_semicolon
 data rust_token_int_literal: Symbol = rust_token_int_literal
 
@@ -420,10 +447,21 @@ data rust_surface_comparison_expr: Symbol = rust_surface_comparison_expr
 data rust_surface_additive_expr: Symbol = rust_surface_additive_expr
 data rust_surface_primary_expr: Symbol = rust_surface_primary_expr
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
+data rust_surface_type_atom: Symbol = rust_surface_type_atom
+data rust_surface_type_generic_apply: Symbol = rust_surface_type_generic_apply
+data rust_surface_type_record: Symbol = rust_surface_type_record
+data rust_surface_type_sum: Symbol = rust_surface_type_sum
+data rust_surface_type_arrow: Symbol = rust_surface_type_arrow
 data rust_surface_bin_add: Symbol = rust_surface_bin_add
 data rust_binding_fn_add: Symbol = rust_binding_fn_add
 data rust_binding_param_x: Symbol = rust_binding_param_x
 data rust_binding_param_y: Symbol = rust_binding_param_y
+
+// SG-2 falsification probe bindings — Node-keyed spellings, not name-keyed emitter branches.
+data rust_binding_sg2_foobar: Symbol = rust_binding_sg2_foobar
+data rust_binding_sg2_x: Symbol = rust_binding_sg2_x
+data rust_binding_sg2_y: Symbol = rust_binding_sg2_y
+data rust_binding_sg2_rc: Symbol = rust_binding_sg2_rc
 
 data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
 
@@ -2790,5 +2828,277 @@ fn rust_language_model_wave2() -> RustLanguageModel {
     language_identity: rust_language_model_surface_id,
     canonical_symbols: rust_language_model_wave2_canonical_symbols(),
     core: rust_model_core_wave1()
+  }
+}
+
+// SG-2 — Rust TargetTypeExpressionProjection row (per-connective; uniform carrier for all targets).
+fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
+  TargetTypeExpressionProjection {
+    atom_form: TargetAtomTypeShape {
+      surface: rust_surface_type_atom,
+      ident_token: rust_token_ident
+    },
+    conj_form: TargetRecordTypeShape {
+      surface: rust_surface_type_record,
+      open: rust_token_lbrace,
+      separator: rust_token_comma,
+      close: rust_token_rbrace
+    },
+    disj_form: TargetSumTypeShape {
+      surface: rust_surface_type_sum,
+      variant_separator: rust_token_pipe
+    },
+    arrow_form: TargetFunctionTypeShape {
+      surface: rust_surface_type_arrow,
+      open: rust_token_lparen,
+      close: rust_token_rparen,
+      arrow: rust_token_arrow
+    },
+    cardinality_form: TargetGenericApply {
+      surface: rust_surface_type_generic_apply,
+      open: rust_token_lt,
+      separator: rust_token_comma,
+      close: rust_token_gt
+    },
+    instantiation_form: TargetGenericApply {
+      surface: rust_surface_type_generic_apply,
+      open: rust_token_lt,
+      separator: rust_token_comma,
+      close: rust_token_gt
+    }
+  }
+}
+
+data rust_sg2_type_alias_literal: Symbol = rust_sg2_type_alias_literal
+data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"
+
+fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
+        rust_binding_sg2_x,
+        "X"
+      ),
+      rust_binding_sg2_y,
+      "Y"
+    ),
+    rust_binding_sg2_rc,
+    "Rc"
+  )
+}
+
+fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      rust_ident_lex_rule(),
+      rust_lex_rule(token_class: rust_token_lt, text: "<"),
+      rust_lex_rule(token_class: rust_token_gt, text: ">"),
+      rust_lex_rule(token_class: rust_token_comma, text: ", ")
+    ]
+  }
+}
+
+fn rust_sg2_type_expr_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: rust_type_expression_projection_bundle_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_serialize_source,
+        target: rust_sg2_serialize_source_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_translation_rules,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: Empty
+        }
+      ),
+      rust_named_edge(
+        name: target_model_edge_selection_policy,
+        target: rust_mvp1_selection_policy_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: rust_declared_inhabitants_root()
+      )
+    ]
+  }
+}
+
+fn rust_type_expression_projection_bundle_node() -> Node {
+  let row = rust_type_expression_projection()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_atom, target: rust_type_expr_atom_shape_node(form: row.atom_form)),
+      rust_named_edge(name: target_type_expr_field_conj, target: rust_type_expr_record_shape_node(form: row.conj_form)),
+      rust_named_edge(name: target_type_expr_field_disj, target: rust_type_expr_sum_shape_node(form: row.disj_form)),
+      rust_named_edge(name: target_type_expr_field_arrow, target: rust_type_expr_arrow_shape_node(form: row.arrow_form)),
+      rust_named_edge(name: target_type_expr_field_cardinality, target: rust_type_expr_generic_apply_shape_node(form: row.cardinality_form)),
+      rust_named_edge(name: target_type_expr_field_instantiation, target: rust_type_expr_generic_apply_shape_node(form: row.instantiation_form))
+    ]
+  }
+}
+
+fn rust_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_ident_token, target: rust_inhabitant_atom(id: form.ident_token))
+    ]
+  }
+}
+
+fn rust_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
+      rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
+      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
+    ]
+  }
+}
+
+fn rust_type_expr_record_shape_node(form: TargetRecordTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
+      rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
+      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
+    ]
+  }
+}
+
+fn rust_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_variant_separator, target: rust_inhabitant_atom(id: form.variant_separator))
+    ]
+  }
+}
+
+fn rust_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
+      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close)),
+      rust_named_edge(name: target_type_expr_field_arrow, target: rust_inhabitant_atom(id: form.arrow))
+    ]
+  }
+}
+
+fn rust_sg2_serialize_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: serialize_source_field_source_text,
+        target: rust_inhabitant_atom(id: rust_sg2_type_alias_literal)
+      )
+    ]
+  }
+}
+
+fn rust_sg2_type_expr_target_model() -> TargetModel {
+  TargetModel {
+    bundle: rust_sg2_type_expr_target_model_node(),
+    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    binding_spellings: rust_sg2_binding_spellings(),
+    authority_source_text: rust_sg2_type_alias_text
+  }
+}
+
+// SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Instantiation(Rc, FooBar), X, Y) positional chain.
+fn rust_sg2_foobar_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: foobar_carrier } },
+    children: []
+  }
+}
+
+fn rust_sg2_rc_foobar_xy_emitted() -> Node {
+  target_type_expr_generic_apply_emitted(
+    form: rust_type_expression_projection().instantiation_form,
+    head: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_rc
+    ),
+    args: [
+      target_type_expr_generic_apply_emitted(
+        form: rust_type_expression_projection().instantiation_form,
+        head: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_foobar
+        ),
+        args: [
+          target_type_expr_atom_emitted(
+            form: rust_type_expression_projection().atom_form,
+            identity: rust_binding_sg2_x
+          ),
+          target_type_expr_atom_emitted(
+            form: rust_type_expression_projection().atom_form,
+            identity: rust_binding_sg2_y
+          )
+        ]
+      )
+    ]
+  )
+}
+
+fn rust_sg2_instantiation_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Instantiation },
+          children: [
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_rc } },
+                children: []
+              }
+            },
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: foobar_carrier } },
+                children: []
+              }
+            }
+          ]
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
+          children: []
+        }
+      }
+    ]
   }
 }
