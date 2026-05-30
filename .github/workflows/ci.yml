@@ -59,6 +59,62 @@ jobs:
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
+  # Rust-free discipline gates extracted from the `ci` job so they run in
+  # parallel with `fmt` / `affected` instead of paying serial cost on the
+  # critical path. These are bash/python single-authority checks that don't
+  # need cargo/rustup, so this job skips Setup Rust entirely (no toolchain
+  # cache to warm, no isolation step needed beyond the standard auth-header
+  # clear). Step names are preserved verbatim — modeled bindings in
+  # src/v4/workflow/ci.dag reference step names, not job names.
+  discipline:
+    if: github.event.pull_request.draft != true
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 10
+    steps:
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Fetch main for PR discipline diffs
+      if: github.event_name == 'pull_request'
+      run: git fetch origin main:refs/remotes/origin/main
+    - name: SG-0 net-shrink PR-body discipline (self-test)
+      run: bash scripts/check-pr-sg0-net-shrink-discipline.sh --self-test
+    - name: SG-0 net-shrink PR-body discipline
+      if: github.event_name == 'pull_request'
+      env:
+        PR_BODY: ${{ github.event.pull_request.body }}
+      run: |
+        body="${PR_BODY}"
+        append_file="scripts/ci-merge/sg0-pr-body-append.${{ github.event.pull_request.number }}.txt"
+        if [ -f "${append_file}" ]; then
+          body="$(cat "${append_file}")"$'\n\n'"${body}"
+        fi
+        PR_BODY="${body}" bash scripts/check-pr-sg0-net-shrink-discipline.sh
+    - name: R4-carve dissolution discipline (self-test)
+      run: bash scripts/check-r4-carve-dissolution-discipline.sh --self-test
+    - name: R4-carve dissolution discipline
+      run: bash scripts/check-r4-carve-dissolution-discipline.sh
+    - name: Fabrication sentinel ratchet (P0-C)
+      run: bash scripts/check-fabrication-sentinels.sh
+    - name: T-19 testgen activation self-test (Python)
+      run: python3 scripts/test_check_t19_testgen_activation.py
+    - name: Release-doc authority check (P2 single-authority discipline)
+      run: bash scripts/check-release-doc-authority.sh
+    - name: Release-doc authority self-test (consumer not ceremonial)
+      run: bash scripts/test-check-release-doc-authority.sh
+    - name: Manager-brief authority check (P2 single-authority discipline)
+      run: bash scripts/check-manager-brief-authority.sh
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Manager-brief authority self-test (consumer not ceremonial)
+      run: bash scripts/test-check-manager-brief-authority.sh
+    - name: Test-timeout ratchet self-test (consumer not ceremonial)
+      run: bash scripts/test-check-test-timeout.sh
+    - name: Rust toolchain single-authority check (P2)
+      run: bash scripts/check-rust-toolchain-single-authority.sh
   # Affected-set detection — drives gating of v2/v3/v4 jobs (path buckets modeled in
   # `src/v4/workflow/ci.dag`; host transport `detect-ci-affected-components` in
   # `tools/ci_affected_components`, outside v3-compiler so v3=false can emit without
