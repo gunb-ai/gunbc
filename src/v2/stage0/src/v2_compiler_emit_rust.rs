@@ -11550,6 +11550,24 @@ pub fn is_optional_struct_field(
     }
 }
 
+pub fn record_field_needs_some_wrap(
+    emit_info: Rc<EmitGraphInfo>,
+    scope: Rc<InferScope>,
+    struct_name: String,
+    field_name: String,
+) -> bool {
+    if is_optional_struct_field(emit_info.clone(), struct_name.clone(), field_name.clone()) {
+        true
+    } else {
+        match rust_struct_field_type_node(scope, struct_name, field_name) {
+            Some(field_type) => {
+                field_type.return_cardinality.clone() == Cardinality::CardOptional
+            }
+            None => false,
+        }
+    }
+}
+
 pub fn rust_struct_field_type_node(
     scope: Rc<InferScope>,
     struct_name: String,
@@ -12071,8 +12089,9 @@ pub fn emit_typed_record_lit(
                                                     f.clone(),
                                                     scope.type_env.clone().source_indices.clone(),
                                                 );
+                                                let f_value = field_init_node_value(f.clone());
                                                 let fval = emit_typed_expr(
-                                                    field_init_node_value(f.clone()),
+                                                    f_value.clone(),
                                                     registry.clone(),
                                                     scope.clone(),
                                                     depth.clone(),
@@ -12080,6 +12099,27 @@ pub fn emit_typed_record_lit(
                                                     emit_info.clone(),
                                                     1024,
                                                 );
+                                                let needs_wrap = record_field_needs_some_wrap(
+                                                    emit_info.clone(),
+                                                    scope.clone(),
+                                                    resolved_sn.clone(),
+                                                    fname.clone(),
+                                                ) && !is_already_optional(
+                                                    f_value.clone(),
+                                                    emit_info.clone(),
+                                                    scope.clone(),
+                                                );
+                                                let field_val = if needs_wrap {
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(
+                                                            "Some(".to_string(),
+                                                            fval.clone(),
+                                                        ),
+                                                        ")".to_string(),
+                                                    )
+                                                } else {
+                                                    fval.clone()
+                                                };
                                                 v2_rt::concat(
                                                     v2_rt::concat(
                                                         v2_rt::concat(
@@ -12092,7 +12132,7 @@ pub fn emit_typed_record_lit(
                                                             ),
                                                             ": ".to_string(),
                                                         ),
-                                                        fval.clone(),
+                                                        field_val.clone(),
                                                     ),
                                                     ",".to_string(),
                                                 )
