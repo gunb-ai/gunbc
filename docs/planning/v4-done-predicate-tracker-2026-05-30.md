@@ -37,7 +37,7 @@ Re-expresses legacy `src/v4/TASKS.md:819` prose (`main@678bb8bbd`, 2026-05-28) i
 | P5 (TestClaim suite passes) | **PARTIAL** | #3803 structural corpus bridge; T-38 runner bar open |
 | P6 (hand-Rust reproduction authority) | **Not reported** | Absent from `:819`; tracker holds `GAP` |
 
-**INVARIANTS A3/P5 resolve-posture bridge** (separate from predicate P5): **OPEN** — `scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml:249` until script + CI step deleted per header.
+**INVARIANTS A3/P5 resolve-posture bridge** (separate from predicate P5): **OPEN** — `scripts/v4-bootstrap-resolve-posture-gate.sh` + `.github/workflows/ci.yml:266-273` (`v2 → v4 bootstrap resolve-posture gate` step) until script + paired CI step deleted per header. *(Legacy `TASKS.md:819` still cites `ci.yml:249` — that line is the unrelated M1 rust-emit probe; tracker uses live wiring.)*
 
 ---
 
