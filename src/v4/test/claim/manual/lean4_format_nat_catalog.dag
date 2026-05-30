@@ -1,0 +1,75 @@
+// src/v4/test/claim/manual/lean4_format_nat_catalog.dag
+// Scope: Lean4 formatter Nat catalog literal witnesses (T-4.16 / P4 bounded materialization).
+// Status: behavior-driven claims for lean4_nat_authoritative_literal catalog paths.
+
+
+module v4.test.claim.manual.lean4_format_nat_catalog
+
+
+import v4.extdeps.formatters.lean4_format {
+  lean4_format_authoritative_locus,
+  lean4_nat_authoritative_literal,
+  lean4_nat_catalog_format_width,
+  lean4_nat_exceeds_ceiling,
+  make_lean4_nat_value
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.nat { Equal, nat_compare }
+import v4.std.node { Node }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v4.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj
+}
+
+
+fn lean4_format_nat_claim_input(ok: Bool) -> Node {
+  if ok {
+    stub_empty_conj
+  } else {
+    stub_empty_disj
+  }
+}
+
+
+fn witness_lean4_nat_authoritative_literal_120_matches_catalog() -> Bool {
+  match lean4_nat_authoritative_literal(value: 120) {
+    Accepted { value: literal, diagnostics: _ } =>
+      nat_compare(a: literal, b: lean4_nat_catalog_format_width()) == Equal
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn witness_lean4_nat_exceeds_ceiling_rejects() -> Bool {
+  match make_lean4_nat_value(value: 4097, at: lean4_format_authoritative_locus()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == lean4_nat_exceeds_ceiling
+  }
+}
+
+
+data claim_lean4_nat_authoritative_literal_120_matches_catalog: TestClaim = EqualsClaim {
+  label: "manual/lean4_format: lean4_nat_authoritative_literal(120) matches catalog width Nat",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lean4_format_nat_claim_input(ok: witness_lean4_nat_authoritative_literal_120_matches_catalog()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_lean4_nat_exceeds_ceiling_rejects: TestClaim = EqualsClaim {
+  label: "manual/lean4_format: make_lean4_nat_value rejects above materialization ceiling",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lean4_format_nat_claim_input(ok: witness_lean4_nat_exceeds_ceiling_rejects()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

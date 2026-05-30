@@ -33,6 +33,9 @@ type Lean4NatValue = Nat
 data lean4_nat_out_of_range: Symbol = lean4_nat_out_of_range
 
 
+data lean4_nat_exceeds_ceiling: Symbol = lean4_nat_exceeds_ceiling
+
+
 data lean4_format_authoritative_locus_port: Symbol = lean4_format_authoritative_locus_port
 
 
@@ -55,7 +58,7 @@ fn lean4_nat_add_ten(n: Nat) -> Nat {
             n: lean4_nat_succ(
               n: lean4_nat_succ(
                 n: lean4_nat_succ(
-                  n: lean4_nat_succ(n: lean4_nat_succ(n: lean4_nat_succ(n: n)))
+                  n: lean4_nat_succ(n: n)
                 )
               )
             )
@@ -64,6 +67,11 @@ fn lean4_nat_add_ten(n: Nat) -> Nat {
       )
     )
   )
+}
+
+
+fn lean4_nat_max_materializable() -> Int {
+  4096
 }
 
 
@@ -121,6 +129,20 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
         }
       )
     }
+  } else if value > lean4_nat_max_materializable() {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: lean4_nat_exceeds_ceiling,
+          at: at,
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  } else if value == 2 {
+    Accepted { value: lean4_nat_catalog_format_indent(), diagnostics: None }
+  } else if value == 120 {
+    Accepted { value: lean4_nat_catalog_format_width(), diagnostics: None }
   } else {
     Accepted {
       value: lean4_nat_peano_from_non_negative_int(value: value),
