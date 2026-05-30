@@ -26,14 +26,34 @@ verified surface either stays private or is documented as unsupported with a
 fail-closed runtime behavior. The previously broad "ship daglang + gunbc"
 scope from earlier drafts is narrowed by the D-REL decisions below.
 
+**Working framing (project maintainer, 2026-05-30):**
+
+> A small public daglang/gunbc release with a verified subset, verified
+> docs, verified install path, and exactly **two advertised target
+> surfaces: Rust and TypeScript**. Everything else is private,
+> unsupported, or post-v0.1.0.
+
+Rust and TypeScript are framed as two **verified target/artifact surfaces**,
+not as "the compiler supports two languages". `SUPPORTED.md` says exactly
+what each surface means (full compile-and-check vs artifact/interface
+emission); see D-REL-3b below.
+
+The release sentence the tag must make true:
+
+> A fresh public user can install/build `gunbc`, run the documented
+> examples, get verified Rust and TypeScript outputs for the supported
+> subset, and every unsupported path either is absent from the docs or
+> fails closed.
+
 ## Goals / Non-goals (under the revised scope)
 
 **Goals.**
 
 1. First public tag of **daglang** on `gunb-ai/daglang`, scoped to the
-   verified language subset and example surface (see D-REL-3).
-2. **gunbc** v2 self-hosted compiler binary distributed via GitHub Releases
-   on targets that pass a verified release dry-run (see D-REL-2).
+   verified `.dag` subset and example surface (see D-REL-3a).
+2. **gunbc** v2 self-hosted compiler binary, distributed only on
+   per-target-verified build targets (D-REL-2), with **Rust + TypeScript
+   as the two advertised target/artifact surfaces** (D-REL-3b).
 3. User-facing public docs only — `README`, `LICENSE`, `CHANGELOG`,
    `GETTING_STARTED`, `LANGUAGE`/`SYNTAX`, `CLI`, `EXAMPLES`, `SUPPORTED`,
    and (optionally) `CONTRIBUTING` — per D-REL-4.
@@ -46,8 +66,8 @@ scope from earlier drafts is narrowed by the D-REL decisions below.
 
 **Non-goals.**
 
-1. v4 substrate in the public v0.1.0 snapshot (D-REL-1; reviewer
-   recommendation = strip).
+1. v4 substrate in the public v0.1.0 snapshot. **D-REL-1 = CONFIRMED:
+   strip `src/v4` from public v0.1.0** (project maintainer 2026-05-30).
 2. Comprehensive `.dag` comment-stripping pass — load-bearing markers
    (`🟡 dissolve-on-arrival`, `🟢`/`🔴` coproduct tags, `// Anchor:`,
    dissolve-target session-slug attribution, `adhoc-<UUID>` work-item refs)
@@ -61,10 +81,15 @@ scope from earlier drafts is narrowed by the D-REL decisions below.
 7. Any binary target (of the six in `release.dag`) that does not pass the
    `release.yml` dry-run end-to-end — D-REL-2 drops it from the matrix
    rather than shipping as "supported".
-8. Homebrew, `.deb`, and APT distribution channels — modeled with 🟡
-   markers in `install.dag` as v0.2.0+ emission intent; the actual
-   Formula / deb-control / apt-repo content is **not yet emitted** and
-   does not ship at v0.1.0. See the "Already-decided rulings" above.
+8. Homebrew, `.deb`, and APT distribution channels — **allowed only if
+   the install flow is verified before tag; otherwise omitted from public
+   docs and tracked for v0.1.1+**. They are modeled with 🟡 markers in
+   `install.dag` as v0.2.0+ emission intent, and the realistic default for
+   v0.1.0 is "not shipped" because the Formula / deb-control / apt-repo
+   content is not yet emitted. See "Distribution ruling" below.
+9. Any source language, target, or artifact surface beyond Rust +
+   TypeScript. Python/Go/C++/LLVM/etc. are **not** v0.1.0 public support
+   (D-REL-3b).
 
 ## D-REL decisions
 
@@ -73,40 +98,53 @@ recommendation as the default until the project maintainer rules otherwise.
 
 | ID | Topic | Reviewer recommendation | Status |
 |----|-------|-------------------------|--------|
-| D-REL-1 | v4 in public v0.1.0 | **Strip `src/v4` from public snapshot.** | PENDING maintainer confirmation. Working default: strip. |
-| D-REL-2 | Binary distribution scope | **Ship only verified targets; drop any that fail dry-run.** | PENDING maintainer confirmation. Prior call was "all 6 are blockers" — reconciliation needed. |
-| D-REL-3 | Day-one supported language subset | **Small example-backed subset, anchored to `weather.dag` + `interp_test.dag` and the `dsl/std` vocabulary they use; unsupported features fail-closed.** | PENDING maintainer confirmation. `docs/SUPPORTED.md` authoring is downstream. |
-| D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | PENDING maintainer confirmation. |
-| D-REL-5 | Release before v4 confidence | **YES, conditional on D-REL-1 = strip-v4.** | PENDING maintainer confirmation. |
+| D-REL-1 | v4 in public v0.1.0 | **Strip `src/v4` from public snapshot.** | **CONFIRMED 2026-05-30.** v4 stays private for v0.1.0; correctness ladder is not at public confidence (diagnosis lane still ~7,951 rustc errors for full-tree v4 Rust emit). |
+| D-REL-2 | Binary distribution scope | **Advertised target = passed dry-run. No dry-run = not advertised. Source build is acceptable if binaries are flaky.** | **CONFIRMED 2026-05-30** (project maintainer). |
+| D-REL-3a | Day-one daglang subset (source) | Small example-backed `.dag` subset anchored to `weather.dag` + `interp_test.dag` and the `dsl/std` vocabulary those examples exercise. Anything outside this subset is unsupported and must fail closed. | **CONFIRMED 2026-05-30.** Exact list enumerated in `docs/SUPPORTED.md` (downstream). |
+| D-REL-3b | Day-one target/artifact matrix | **Rust + TypeScript only.** Rust must pass `rustc`/`cargo` checks for shipped examples; TypeScript must pass `tsc --noEmit` for shipped TS artifacts. Python/Go/C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED 2026-05-30.** Per-surface support level (full compile vs artifact/interface) declared explicitly in `SUPPORTED.md`. |
+| D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | **CONFIRMED 2026-05-30.** |
+| D-REL-5 | Release before v4 confidence | **YES**, because D-REL-1 strips v4 and v0.1.0 is scoped to the verified v2 / product slice. | **CONFIRMED 2026-05-30.** |
 
 ## Already-decided rulings (apply throughout the doc)
 
 - **GitHub plan migration:** DONE 2026-05-30, Enterprise → Teams (org).
   Post-migration CI smoke still to confirm.
-- **Install paths at v0.1.0:** `curl install.sh` (if B1's PR #3992 lands
-  the `install.sh` resurrection) and/or build-from-source (always works).
-  **Homebrew, `.deb`, and APT do NOT ship at v0.1.0** — see "Long-term
-  distribution scope" below.
+- **Distribution ruling (v0.1.0):**
+  - GitHub Release artifacts and source build are the v0.1.0 install path.
+  - `curl install.sh` ships only if B1's PR #3992 (`install.sh`
+    resurrection) lands and verifies before tag.
+  - Homebrew, `.deb`, and APT may ship **only if** their install flows
+    are verified before tag. If any package-manager path is not verified,
+    it is **omitted from public docs** and tracked for v0.1.1+.
+  - The realistic default is "package managers ship in v0.1.1+" because
+    the Formula / deb-control / apt-repo content is not yet emitted.
 - **Long-term distribution scope (v0.2.0+):** Homebrew Formula,
   `deb-control`, and APT repo are modeled in `src/v4/install/install.dag`
-  with 🟡 markers (the project maintainer reversed the earlier defer on
-  2026-05-30, marking these as active emission intent). The actual
-  artifact content is **not yet emitted** — it ships in v0.2.0+ as the
-  `ShellStatic` / `Formula-Static` / `deb-control` / `apt-repo` lenses
-  actually land. Modeled ≠ shipped.
+  with 🟡 markers as active emission intent. They ship as the
+  `ShellStatic` / `Formula-Static` / `deb-control` / `apt-repo`
+  projections actually land. Modeled ≠ shipped.
 - **Public website:** GitHub Pages from `gunb-ai/daglang`, served at
   <https://gunb.ai>. The `daglang` PR #1 (session `fierce-dove-549`) is
   ready; the visibility/Pages flip is a launch-day maintainer action.
+  The website **must obey the support matrix in `SUPPORTED.md`**: no
+  claim of broad language/compiler support; CTA points to supported
+  examples and the verified install path only; if Rust + TypeScript are
+  the v0.1.0 advertised surfaces, the website says exactly that.
 - **Private ↔ public sync model:** public `gunb-ai/daglang` is the source
   of truth post-launch; private `gunb-ai/gunbc` is a scratchpad whose sole
   purpose is to keep internal session traffic off the public repo. The
   sync direction inverts at the v0.1.0 tag: one-shot force-push seed +
   visibility flip at tag time, then v0.2.0+ flows reverse (public PRs
   primary, private pulls from public).
-- **Dissolution comments stay.** `🟡 dissolve-on-arrival` markers,
-  dissolve-target session-slug attribution, and `adhoc-<UUID>` work-item
-  refs are all load-bearing model marks and are NOT cleanup targets. They
-  ship in the public snapshot as-is.
+- **Dissolution comments — split rule.**
+  - **In source files (`.dag`, `.rs`, etc.):** `🟡 dissolve-on-arrival`
+    markers, dissolve-target session-slug attribution, and
+    `adhoc-<UUID>` work-item refs are load-bearing model marks. They
+    are NOT cleanup targets and ship in the public snapshot as-is.
+  - **In user-facing docs (the D-REL-4 list):** session slugs and
+    `adhoc-<UUID>` refs look like internal process residue to a public
+    user and must be stripped or neutralized. Gate D's grep enforces
+    this scoping.
 - **No PM jargon in published artifacts.** Phrasings like
   "operator-ratified", "operator directive", "operator decided", "per the
   operator", and any `T-##` / session-ID / dashboard / audit / scratchpad
@@ -118,13 +156,27 @@ recommendation as the default until the project maintainer rules otherwise.
 ## Item D — `SUPPORTED.md` (the heart of v0.1.0)
 
 `docs/SUPPORTED.md` is a **separate-file deliverable**, authored downstream
-of D-REL-3. When written, it will enumerate the verified product surface as
-the single normative answer to "what does v0.1.0 support":
+of D-REL-3a/3b. It is the **single normative answer** to "what does v0.1.0
+support" — public `README`, website, and release notes all derive from it.
+When written, it will enumerate:
 
-- **Supported language subset** — the exact set of `.dag` constructs that
-  v0.1.0 compiles and runs end-to-end. Anchored to the examples that ship
-  (`weather.dag`, `interp_test.dag`) and the `dsl/std` vocabulary those
-  examples exercise. Anything not on this list is unsupported.
+- **Supported source-language subset (D-REL-3a)** — the exact set of
+  `.dag` constructs that v0.1.0 compiles and runs end-to-end. Anchored to
+  the examples that ship (`weather.dag`, `interp_test.dag`) and the
+  `dsl/std` vocabulary those examples exercise. Anything not on this list
+  is unsupported.
+- **Target/artifact matrix (D-REL-3b)** — **Rust and TypeScript only.**
+  For each surface, `SUPPORTED.md` declares the support level explicitly:
+  - *Full compile target* — `.dag` → emitted source → `rustc`/`cargo`
+    or `tsc` checks pass for the documented examples.
+  - *Artifact / interface target* — declarations, API types, client
+    stubs, or schema only (no runtime equivalence claim).
+  - The doc states which level applies to Rust and which to TypeScript;
+    "v0.1.0 supports X" is never used without saying what "supports"
+    means.
+  - **Out of scope (call out explicitly):** Python, Go, C++, LLVM,
+    arbitrary corpus emit, v4 full-tree Rust emit, React app generation,
+    TypeScript runtime equivalence unless tested, self-host fixed point.
 - **Verified install targets** — every OS/arch combination that passed the
   release dry-run (per D-REL-2). Targets that did not pass are absent;
   they are not listed as "experimental".
@@ -151,6 +203,14 @@ green.
   output, no silent no-op).
 - No public command is documented as supported without an end-to-end test
   backing it.
+- **Rust surface (D-REL-3b):** every documented example emits Rust and
+  the generated Rust passes `rustc` / `cargo check` (or `cargo run` where
+  the example is runnable).
+- **TypeScript surface (D-REL-3b):** every documented TypeScript
+  artifact / example passes `tsc --noEmit`. If an example is not supposed
+  to support TypeScript, that absence is listed in `SUPPORTED.md`.
+- **Negative tests:** unsupported-feature examples fail closed with
+  named diagnostics.
 
 **Gate B — Scope hygiene.**
 
@@ -166,8 +226,9 @@ green.
 - Build/install instructions are verified on each advertised target.
 - Unverified targets are removed from `release.yml`'s matrix, not shipped
   as "best effort".
-- Package-manager installs (Homebrew, `.deb`, APT) are either present and
-  verified, or explicitly labeled post-v0.1.0 in the public docs.
+- Package-manager installs (Homebrew, `.deb`, APT) are either present
+  and verified before tag, or **omitted from public docs and tracked for
+  v0.1.1+**. They are never shipped "best-effort".
 
 **Gate D — Export sanitation.**
 
@@ -196,6 +257,9 @@ green.
 - The release notes (in `docs/release/v0.1.0-release-notes.md`) match the
   support matrix in `SUPPORTED.md` — no claim ships that's not in
   `SUPPORTED.md`.
+- Release notes claim **only Rust + TypeScript** support. Any mention of
+  Python / Go / C++ / LLVM / etc. is either clearly labeled "not
+  supported in v0.1.0" or omitted entirely.
 
 ## Item F — Rollback plan
 
@@ -227,9 +291,11 @@ PM/session jargon, any unintended path):
 
 The text the project maintainer pastes into the GitHub Release form at tag
 time lives at `docs/release/v0.1.0-release-notes.md` (in flight as
-`adhoc-a9231edc-66e`). That file is user-facing and is shaped by
-`SUPPORTED.md`. This doc (`RELEASE_v0.1.0.md`) is maintainer-facing and is
-out of the public snapshot.
+`adhoc-a9231edc-66e`). That file is user-facing and **derives directly
+from `SUPPORTED.md`** — not from internal release goals, not from
+maintainer planning state. If a claim is not in `SUPPORTED.md`, it does
+not belong in the release notes. This doc (`RELEASE_v0.1.0.md`) is
+maintainer-facing and is out of the public snapshot.
 
 ## Section-by-section status (against `RELEASE_TODO.md`)
 
@@ -302,13 +368,14 @@ channels are a separate axis from the binary target matrix:
 
 - *v0.1.0 install paths:* `curl install.sh` (pending B1's PR #3992
   `install.sh` resurrection) and/or build-from-source (always works).
-  **No Homebrew, no `.deb`, no APT at v0.1.0** — even though
-  `src/v4/install/install.dag` carries 🟡 markers for them, the actual
-  Formula / deb-control / apt-repo content is not yet emitted.
+  Homebrew, `.deb`, and APT ship **only if** their install flows verify
+  before tag (see "Distribution ruling" above). Realistic default: they
+  do not ship at v0.1.0 because the Formula / deb-control / apt-repo
+  content is not yet emitted.
 - *v0.2.0+ scope:* Homebrew Formula, deb-control, and APT repo ship as
   the corresponding `ShellStatic` / `Formula-Static` / `deb-control` /
-  `apt-repo` projections actually land. This is independent of the
-  per-target binary matrix outcome.
+  `apt-repo` projections actually land. Independent of the per-target
+  binary matrix outcome.
 
 ### §6 — Housecleaning
 
