@@ -100,9 +100,28 @@ type UpsertInputRef
   | LensOutputRef { lens: LensId, ports: List<Port> }
   | TestClaimRef { claim_id: Symbol }
   | UpstreamUpsert { step_id: Symbol }   // dependency-resolution: upstream upsert must succeed first
-  | Always                                // unconditional (integrity-class)
 ```
-CI generation MUST reject any step that isn't an Upsert<T> Node (fail-closed per INVARIANTS P3). This eliminates the "blind run every step" failure mode by construction.
+
+**Every step is AffectedOnly by construction** — there is NO per-step `Always` policy variant. Per operator directive 2026-05-30 ("I'm really not a fan of introducing heuristics this early on — this is a closed system; if we're missing something, I'd rather add it now instead of adding these heuristics/coproducts"): no `CiRunPolicy` / `CiRunMode` enum. The closed-system reasoning (INVARIANTS P1) says heuristics are recoverable to missing structural facts.
+
+**Carve-out list (NOT a mode/heuristic).** A small explicit data declaration enumerates steps that always run, each with a literal reason (including "superstition? not sure why exactly?" as a valid honest entry):
+```dag
+data ci_always_run_carveouts: List<CiCarveout> = [
+  { step_id: ci_step_v2_compile_src_v4, reason: "v2-compiler integrity gate; affected-set lens itself imports v2 substrate — circular dependency unmodeled" },
+  { step_id: ci_step_<integrity_X>, reason: "superstition — not sure why exactly" },
+  // ... small list with explicit reasons
+]
+type CiCarveout { step_id: CiStepId, reason: Symbol }
+```
+
+Each carve-out entry is a **dissolution target**: as we figure out the actual missing dependency, we model it (add the substrate fact), and the entry comes off the list. The list itself is data — small, honest, reviewable. Adding an entry is a deliberate decision with a reason; removing one is a substrate-modeling deliverable.
+
+CI generation MUST reject any step that isn't an Upsert<T> Node (fail-closed per INVARIANTS P3). Step selection rule:
+```
+step_runs ⟺ step ∈ ci_always_run_carveouts
+           OR ∩(step.inputs, affected_set(PR)) ≠ ∅
+```
+This eliminates both "blind run every step" and "policy-variant heuristic enumeration" by construction.
 
 **Cache-key boundary (T-21 alignment):** the cache key for a `CiUpsertStep<T>` is the content-hash of the COMPLETE step subgraph — same discipline as T-21's TestClaim cache-key authority (`test_claim_interpretation_cache_digest`, `inferred_tree_digest`). Hashing only inputs would lose the verify/create/resolve identity and let two structurally-different steps with the same inputs share a cache entry — a P2 violation in cache scope. The B1 content_hash of the complete subgraph is the existing pattern.
 
@@ -115,7 +134,7 @@ verify(step, PR) =
 ```
 
 **Minimal CI per PR** falls out of Upsert<T> semantics. By construction:
-- `Always` (integrity-class) upserts run (their inputs are never satisfied-by-affected-set).
+- Steps in `ci_always_run_carveouts` always run (carve-out override).
 - All other upserts short-circuit to cached when affected_set doesn't intersect — no action, no compute, no time.
 - Dependency resolution is recursive per UPSERT canon: if step X depends on step Y, X's verify-first triggers Y's verify-first.
 
@@ -131,7 +150,7 @@ Per the ratified T-24 phase plan, with THREE additions (Phase 1.4 prerequisite, 
 |-------|-------|-------------------|
 | **1a** (already in scope) | ci.dag sole policy authority for I0–I8 integrity; T-22 interpreter on ci_pipeline; coarse bucket `if:` dissolved | OPEN |
 | **1.4** (**NEW** prerequisite — substrate-extension scope) | **Land Upsert<T> as usable substrate primitive in `dsl/std/patterns.dag`** (currently header + commented stubs per upsert-pattern audit; blocked on parser-declaration generics per ROADMAP). Modeling DFS worksheet must cover the parser/substrate prerequisites. | n/a (substrate landing) |
-| **1.5** (**NEW** — needed for affected-set-driven minimal-CI; **Upsert<T>-shaped per operator directive 2026-05-29**, DEPENDS on Phase 1.4) | Every CI step becomes an Upsert<T> Node (`CiUpsertStep<T>`) with `inputs` / `verify` / `create` / `resolve` fields. Cache key is **derived** as `content_hash(CiUpsertStep<T>)` per T-24 / B1 discipline (Merkle catamorphism, not a payload field). `inputs: List<UpsertInputRef>` is the typed carrier (FileGlob / SubstrateNodeSet / LensOutputRef / TestClaimRef / UpstreamUpsert / Always). CI generation rejects any step not Upsert<T>-shaped. Existing-shell retirement under clever-cat-115 per `project_no_new_shell` directive. | OPEN |
+| **1.5** (**NEW** — needed for affected-set-driven minimal-CI; **Upsert<T>-shaped per operator directive 2026-05-29**, DEPENDS on Phase 1.4) | Every CI step becomes an Upsert<T> Node (`CiUpsertStep<T>`) with `inputs` / `verify` / `create` / `resolve` fields. Cache key is **derived** as `content_hash(CiUpsertStep<T>)` per T-24 / B1 discipline (Merkle catamorphism, not a payload field). `inputs: List<UpsertInputRef>` is the typed carrier (FileGlob / SubstrateNodeSet / LensOutputRef / TestClaimRef / UpstreamUpsert) — **no `Always` variant**; always-run steps are listed in `ci_always_run_carveouts` with explicit reasons. CI generation rejects any step not Upsert<T>-shaped. Existing-shell retirement under clever-cat-115 per `project_no_new_shell` directive. | OPEN |
 | **1b** | Atoms A3–A14 promoted opt-in; A6–A8 delete `scripts/check-*` | OPEN |
 | **2** (A15) | Shape-B `ci.yml` emitted from CiPipeline; all hand-authored YAML deleted (C4) | **[DONE]** |
 | **2.5** (NEW — minimal-CI activation) | Each step's gate consumes Layer C's intersection predicate; minimal CI fires per PR | **[DONE+]** |
@@ -162,7 +181,7 @@ Per the ratified T-24 phase plan, with THREE additions (Phase 1.4 prerequisite, 
 
 Does NOT need a new manager lane — fits within the existing §11 architecture from PR #3938.
 
-**Critical DFS gate (Modeling DFS Manager):** Phase 1.5's `CiUpsertStep<T>` + `UpsertInputRef` substrate is substrate work. A DFS worksheet is REQUIRED before workers touch it. Spot-fix risk: workers could add `inputs: List<Symbol>` (string-keyed file globs) and miss the structural authority. The worksheet must establish that `UpsertInputRef` is a *typed* coproduct (FileGlob / SubstrateNodeSet / LensOutputRef / TestClaimRef / UpstreamUpsert / Always) consuming `NodeQuery` / `LensId` etc., not a stringly-typed list. **Any worker brief still using the prior "dependency_set" / "DependencySource" terminology is wrong-spec** — those names came from an earlier draft superseded by the Upsert<T> reframe; the carrier is `UpsertInputRef`.
+**Critical DFS gate (Modeling DFS Manager):** Phase 1.5's `CiUpsertStep<T>` + `UpsertInputRef` substrate is substrate work. A DFS worksheet is REQUIRED before workers touch it. Spot-fix risks: (1) workers add `inputs: List<Symbol>` (string-keyed file globs) and miss the structural authority — must be typed coproduct (FileGlob / SubstrateNodeSet / LensOutputRef / TestClaimRef / UpstreamUpsert) consuming `NodeQuery` / `LensId`; (2) workers introduce a `CiRunPolicy` / `CiRunMode` enum (heuristic — forbidden per operator directive 2026-05-30) instead of the literal `ci_always_run_carveouts` list with explicit reasons. **Any worker brief still using the prior "dependency_set" / "DependencySource" terminology OR any `Always` policy variant on UpsertInputRef is wrong-spec.**
 
 ---
 
@@ -187,12 +206,9 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 - **Phase 1.4** (Upsert<T> substrate landing) dispatches in parallel with Phase 1a once Modeling DFS Manager's substrate-extension worksheet is approved (D-CI-7 ratifies this scope).
 - **Phase 1.5** dispatch is BLOCKED on Phase 1.4 completion (per §6 sequencing); cannot start until Upsert<T> is a usable substrate primitive. Phase 1.5 DFS worksheet can be authored in parallel with Phase 1.4 implementation, but worker briefs cannot dispatch.
 
-**D-CI-5.** Scope of "minimal for highest confidence":
-- (a) Strictly affected-set-intersect (every step runs iff its deps are touched; integrity-class is `Always`)
-- (b) Affected-set-intersect PLUS confidence-boost extras (e.g., always-run smoke gates regardless of touched files)
-- (c) Affected-set-intersect with operator-tunable confidence-floor (some lanes can override "minimal" to always-run during sensitive periods)
+**D-CI-5.** Scope of "minimal for highest confidence" — per operator directive 2026-05-30 ("I would minimize it to 'run affected only' — and then we can have a separate carve-out (not a mode/heuristic), just a literal list of 'things we always run regardless (superstition? not sure why exactly?)'"):
 
-*Proposed: (a) by default, with explicit `Always` variant in `UpsertInputRef` for integrity-class steps.* (c) can be layered later by adding a `RunPolicy` field if needed; doesn't change the core architecture.
+*Proposed:* **Every step is AffectedOnly by construction.** No `CiRunPolicy` / `CiRunMode` enum (heuristic — forbidden in a closed system per INVARIANTS P1). Always-run exceptions live in an explicit `ci_always_run_carveouts: List<CiCarveout>` data declaration; each entry carries a literal `reason: Symbol` (including "superstition? not sure why exactly?" as a valid honest entry). Each carve-out entry is a dissolution target: as we figure out the actual missing dependency, we model the substrate fact and remove the entry. Adding entries is a deliberate documented decision; removing entries is a substrate-modeling deliverable.
 
 **D-CI-7.** Accept the **Phase 1.4 prerequisite** (land Upsert<T> as a usable substrate primitive — parser/substrate prerequisites in `dsl/std/patterns.dag`)?
 
@@ -206,9 +222,9 @@ Does NOT need a new manager lane — fits within the existing §11 architecture 
 
 ## §9. Sub-questions worth surfacing (not blocking sign-off)
 
-- **CI today runs `scripts/check-*`** that aren't yet typed `DisciplinePolicyCommand`. The bankruptcy doc plans A6–A8 to delete these in Phase 1b. Are there checks the operator wants preserved at integrity-class (`Always`) even after their script form is deleted?
+- **CI today runs `scripts/check-*`** that aren't yet typed `DisciplinePolicyCommand`. The bankruptcy doc plans A6–A8 to delete these in Phase 1b. If any need to always run even after their script form is deleted, they go in `ci_always_run_carveouts` with explicit reason — not a policy variant.
 - **Self-hosted runners** (srv1/srv2 per `SelfHostedRunnerPool`): should runner allocation also be affected-set-driven (e.g., smaller affected-set → cheaper runner)? Out of scope for first pass; flag for later.
-- **CI determinism** (per memory `project_determinism_as_effect`): determinism gates are orthogonal — they apply to each step regardless of affected-set. Phase 1.5's `UpsertInputRef = Always` handles this.
+- **CI determinism** (per memory `project_determinism_as_effect`): determinism gates are orthogonal — they apply to each step regardless of affected-set. Determinism-as-effect modeling means determinism is checked at the substrate level for ALL steps; the carve-out list handles the small set of gates that must run regardless of affected-set, but determinism itself doesn't need carve-out treatment.
 - **CI per-step timeouts**: per memory item from forwarded info, T-22 TestClaim corpus timeout (exit 143 SIGTERM at 240s) is a pre-existing infra blocker. Phase 1.5's modeling could include per-step `timeout: Duration` declaration to make this declarative, not script-bound.
 
 ---
