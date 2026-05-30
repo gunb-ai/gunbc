@@ -203,6 +203,57 @@ MANIFEST_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$MANIFEST_PATH"
 echo "manifest: ${MANIFEST_PATH}"
 
+# Leak-grep gate. Runs AFTER strip+commit against the exported tree — this
+# defends the export, not the internal repo. Allowlist exempts dissolve-
+# comment substrate provenance (operator-approved to ship publicly per
+# parent/operator verdict on adhoc-e7966a73-c38).
+ALLOWLIST_REGEX='🟡|dissolve-target|dissolve-on-arrival'
+
+LEAK_CONTENT_PATTERNS=(
+  'msg_[a-f0-9-]+'
+  'localhost:8787'
+  'dashboard-ops'
+  'dashboard-message'
+  'operator-[a-z]+'
+)
+
+# Path patterns mirror STRIP_PATHS — if any glob hits the exported tree it
+# means strip-list failed to remove an internal-only path.
+LEAK_PATH_PATTERNS=(
+  '_internal/'
+  'docs/briefs/'
+  'docs/audit/'
+  'scripts/session-dashboard/'
+  '\.cursor/'
+)
+
+echo "leak-grep gate: scanning export..."
+leak_fail=0
+for pat in "${LEAK_CONTENT_PATTERNS[@]}"; do
+  hits="$(git -C "$EXPORT_DIR" grep -E -n -e "$pat" 2>/dev/null || true)"
+  if [[ -n "$hits" ]]; then
+    real_hits="$(echo "$hits" | grep -E -v "$ALLOWLIST_REGEX" || true)"
+    if [[ -n "$real_hits" ]]; then
+      echo "LEAK: content pattern /$pat/ matched (after allowlist):" >&2
+      echo "$real_hits" | head -20 >&2
+      leak_fail=1
+    fi
+  fi
+done
+for glob in "${LEAK_PATH_PATTERNS[@]}"; do
+  hits="$(git -C "$EXPORT_DIR" ls-files | grep -E -- "$glob" || true)"
+  if [[ -n "$hits" ]]; then
+    echo "LEAK: path pattern /${glob}/ matched (strip-list missed it):" >&2
+    echo "$hits" | head -20 >&2
+    leak_fail=1
+  fi
+done
+if [[ "$leak_fail" -ne 0 ]]; then
+  echo "ERROR: leak-grep gate failed; refusing to publish." >&2
+  exit 1
+fi
+echo "leak-grep gate: PASS"
+
 if [[ "$PUBLISH" -eq 1 ]]; then
   echo "force-pushing snapshot to ${REMOTE}/${BRANCH}..."
   git -C "$EXPORT_DIR" push --force "$REMOTE" "${SNAPSHOT_BRANCH}:${BRANCH}"
@@ -212,6 +263,19 @@ else
   echo "DRY RUN: snapshot built at ${EXPORT_DIR} (branch ${SNAPSHOT_BRANCH})."
   echo "  Inspect with:   git -C ${EXPORT_DIR} log -1 --stat"
   echo "  Publish with:   PUBLISH_CONFIRM=yes $0 --publish"
+fi
+
+# Post-export defense-in-depth: re-grep the actually-shipped tree and verify
+# it builds. Runs on both dry-run and real publish per the brief — on dry-run
+# it validates whatever is currently published (the operator's pre-flight
+# check against drift); on publish it validates what we just pushed.
+SMOKE_SCRIPT="${REPO_ROOT}/_internal/scripts/public-clone-smoke.sh"
+if [[ -x "$SMOKE_SCRIPT" ]]; then
+  echo "running public-clone-smoke..."
+  if ! "$SMOKE_SCRIPT"; then
+    echo "ERROR: public-clone-smoke failed" >&2
+    exit 1
+  fi
 fi
 
 # Auto-remove the export only after a real publish. On dry-run we leave it
