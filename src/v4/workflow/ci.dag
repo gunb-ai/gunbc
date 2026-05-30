@@ -1476,16 +1476,23 @@ fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash {
 }
 
 
+fn ci_job_shadow_step_id(ci_job: CiJob) -> CiStepId {
+  JobStep { job: ci_job.id, step: ci_job.id }
+}
+
+
+fn ci_gate_shadow_step_id(ci_gate: CiGate) -> CiStepId {
+  GateStep { job: ci_gate.job, gate: ci_gate.id }
+}
+
+
 // 🟡 shadow-only — one `JobStep` per `CiJob` (`job.id` as step placeholder) until command-level `CiStepId` migration.
 fn ci_job_step_ids_shadow(jobs: List<CiJob>) -> List<CiStepId> {
   fold_list(
     xs: jobs,
     empty: Empty,
-    cons: fn(acc, j) {
-      list_snoc_item(
-        xs: acc,
-        item: JobStep { job: j.id, step: j.id }
-      )
+    cons: fn(acc, ci_job) {
+      list_snoc_item(xs: acc, item: ci_job_shadow_step_id(ci_job: ci_job))
     }
   )
 }
@@ -1495,11 +1502,8 @@ fn ci_pipeline_step_ids_shadow(p: CiPipeline) -> List<CiStepId> {
   fold(
     p.gates,
     init: ci_job_step_ids_shadow(jobs: p.jobs),
-    f: fn(acc, g) {
-      list_snoc_item(
-        xs: acc,
-        item: GateStep { job: g.job, gate: g.id }
-      )
+    f: fn(acc, ci_gate) {
+      list_snoc_item(xs: acc, item: ci_gate_shadow_step_id(ci_gate: ci_gate))
     }
   )
 }
@@ -1560,12 +1564,17 @@ fn ci_step_id_eq(left: CiStepId, right: CiStepId) -> Bool {
 }
 
 
+fn ci_step_selection_step_id(row: CiStepSelection) -> CiStepId {
+  row.step_id
+}
+
+
 fn ci_step_selections_step_ids(decisions: List<CiStepSelection>) -> List<CiStepId> {
   fold_list(
     xs: decisions,
     empty: Empty,
-    cons: fn(acc, decision) {
-      list_snoc_item(xs: acc, item: decision.step_id)
+    cons: fn(acc, row) {
+      list_snoc_item(xs: acc, item: ci_step_selection_step_id(row: row))
     }
   )
 }
