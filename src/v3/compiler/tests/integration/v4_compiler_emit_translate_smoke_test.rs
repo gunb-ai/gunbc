@@ -861,6 +861,7 @@ fn v4_wasm_wat_lex_boundary_uses_trivia_and_numeric_literal_authority() {
         "wasm_token_kw_result",
         "wasm_token_local_get",
         "wasm_token_int_numeric_literal",
+        "wasm_token_u32_numeric_literal",
         "wasm_token_float_numeric_literal",
         "wasm_token_localidx_literal",
         "wasm_token_labelidx_literal",
