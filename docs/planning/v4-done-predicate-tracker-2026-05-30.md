@@ -2,8 +2,8 @@
 
 > **Status:** PLANNING — first artifact for Self-host/Release Manager (`nimble-crane-490`).  
 > **Authority:** `src/v4/TASKS.md:805-817` (v4-done definition + six bullets); PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 + §10.0 + §11.1 (disposition vocabulary + lane map). Line anchors are to current `main` (post-#3938).  
-> **Session:** `nimble-crane-490` · **Parent:** `nimble-dove-733` (PM May 29)  
-> **Tree HEAD spot-check:** post–merge-wave baseline 2026-05-30 (`main` after [#3983](https://github.com/gunb-ai/gunbc/pull/3983); tracker refresh [#3975](https://github.com/gunb-ai/gunbc/pull/3975); mapping [#3973](https://github.com/gunb-ai/gunbc/pull/3973)). Line-anchor table: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md). Wave posture: [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §7 (MW-D1–D8). **Operator burn-down:** [`v4-done-predicate-burn-down-2026-05-30.md`](v4-done-predicate-burn-down-2026-05-30.md) (GREEN/YELLOW/RED/GRAY; 0/6 proven).
+> **Session:** `merry-badger-222` · **Parent:** `nimble-dove-733` (PM May 29)  
+> **Tree HEAD spot-check:** `907936852` (`main` 2026-05-30T20:18Z). Burn-down + Jun 1 forecast: [`v4-done-predicate-burn-down-2026-05-30.md`](v4-done-predicate-burn-down-2026-05-30.md) §Jun 1 forecast + §Wave 2 dispatch.
 
 ## Non-negotiables
 
