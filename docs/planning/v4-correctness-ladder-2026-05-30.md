@@ -20,7 +20,7 @@ This doc:
 2. Audits which of them gate PRs today vs which are substrate-only or aspirational (§3).
 3. Critiques "0 rustc errors" as a singular target (§4).
 4. Proposes a 9-rung correctness ladder that operationalizes the 17 standards (§6).
-5. Proposes a 30-day fixture-first sequencing (§7).
+5. Proposes a fixture-first sequencing (§7) (no timelines per TASKS.md discipline; phases sequence-not-schedule).
 6. Surfaces 6 operator decisions that must be answered before §7 dispatches (§8).
 
 This doc invents no new standards. The 17 are pre-existing in `THESIS.md`. The audit, ladder, and sequencing are the contribution.
@@ -208,32 +208,34 @@ Each rung addresses a specific question the operator can ask of any PR:
 
 ---
 
-## §7. Proposed 30-day sequencing — fixture-first
+## §7. Proposed fixture-first sequencing
+
+(No durations per TASKS.md "no timelines" discipline — phases sequence by precedence, not by calendar.)
 
 **Strategy.** Pick ONE small fixture with high algebraic content. Drive emit through every rung that has substrate. Each ungated rung gets a `TestClaim` + activation in the same PR (the 4-tuple unit-of-work from the prior dispatch contract: claim authored + substrate fix if needed + lens activation + demonstrated error-class collapse).
 
 **Proposed fixture:** `src/v4/test/claim/algebra_laws/nat_semiring.dag` — already in the corpus; exercises Node + Atom + Conj + Arrow + algebra inhabitance + nat-add-associativity / nat-mul-associativity. Small surface, rich properties.
 
-### Phase 1 (week 1): rungs 0–2 on the fixture
+### Phase 1: rungs 0–2 on the fixture
 
 - Confirm rung 0/1 (parse + Rust type-check) pass for the fixture specifically.
 - Add rungs 2 for **three** targets only: Rust + Python + Go. Not all seven.
   - If silent-boar-535's multi-target checker work (currently WIP, branch `session/silent-boar-535`) is recoverable, salvage it. Otherwise build a narrow 3-target gate scaffold.
 - Output: `src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag` + matching CI step.
 
-### Phase 2 (week 2): rungs 3–4 on the fixture
+### Phase 2: rungs 3–4 on the fixture
 
 - Rung 3: round-trip `TestClaim` against the fixture, **executed**, not deferred. Requires T-38-PR2 progress.
 - Rung 4: `TestClaim` that compiles the fixture's Rust emit, runs it, and asserts the output equals the `.dag` interpreter's eval for the same fixture.
 - Output: rung 3/4 claims + execution wiring; first gate of the operator's "how do we know it's correct?" question.
 
-### Phase 3 (week 3): rungs 5 + 6 on the fixture
+### Phase 3: rungs 5 + 6 on the fixture
 
 - Rung 5: emit_rust(fixture) + emit_python(fixture) both run; outputs compared for observable equivalence. First L5 gate ever to fire on this project.
 - Rung 6: `claim_nat_add_associativity` re-evaluated against emitted Rust AND emitted Python — not just the Node model. First L7-post-emit gate.
 - Output: cross-target equivalence + algebraic preservation proven end-to-end on one fixture.
 
-### Phase 4 (week 4): widen, not deepen
+### Phase 4: widen, not deepen
 
 - Add 2 more fixtures targeting Node shapes the first fixture doesn't cover (proposal: one Branch-using, one Loop-using).
 - Re-run rungs 0–6 against all 3 fixtures. (Rungs 7–9 stay phase-5+.)
@@ -301,7 +303,7 @@ So the release gate per operational authority is **predicates 1-6 collectively, 
 **Proposed:** Every substrate that lands without a same-PR activation gets a tracked dissolution deadline (≤30 days from substrate landing). After the deadline, blocks PRs in the same lens family until activated. This codifies a structural fix for the substrate-rich/activation-poor pattern that both this audit and the deferral audit (`docs/audit/v4-deferral-audit-2026-05-29.md`) diagnose.
 **Operator decides:** confirm policy, OR propose a different anti-shelfware mechanism, OR rule that no policy is needed.
 
-### D6. Sequencing — accept §7 as the next 30 days?
+### D6. Sequencing — accept §7 fixture-first phases?
 
 **Proposed:** §7 as drafted. Phase 1 dispatches immediately on sign-off; Phase 2/3/4 dispatched after preceding phase closes.
 **Operator decides:** accept Phase 1 dispatch, OR sequence differently.
@@ -422,7 +424,38 @@ Metric allowed only as secondary:          // error count is evidence, not goal
 
 **Two load-bearing fields.** `Immediate local patch` and `Why that patch is forbidden` force the worker to name the tempting count-reduction fix and explicitly reject it when it would create a new parallel authority.
 
-SG-1, SG-2, and SG-5/SG-6 are worked through below using this template.
+**Two-axis disposition vocabulary (operator-ratified 2026-05-30).** The single-axis `PROVEN / WEAK-EVIDENCE / GAP / NOT-CHECKED` vocabulary collapses two distinct questions. Going forward, all close-related artifacts (PR #3941 validation included) adopt two axes:
+
+```text
+ship_disposition:
+  PROVEN | GAP | NOT_IN_V4 | NOT_PROMISED | OPERATOR_DECISION_REQUIRED
+
+engineering_state:
+  SUBSTRATE_PRESENT
+  SCAFFOLD_PRESENT
+  PARTIAL_GATE_PRESENT
+  CENSUS_NOT_RUN
+  EXECUTION_NOT_WIRED
+  NO_ARTIFACT_FOUND
+```
+
+A row example:
+```text
+ship_disposition: GAP
+engineering_state: SUBSTRATE_PRESENT
+blocking_receipt: T-38 executable runner + adversarial falsification transcript
+owner_manager: Runtime/TestClaim + Lens Activation
+```
+
+**Closure invariant (mechanical):**
+
+> **A probe cannot move to `PROVEN` by adding more substrate declarations. It moves to `PROVEN` only by adding an executable receipt that answers the exact probe and includes the falsification case when requested.**
+
+This prevents `WEAK-EVIDENCE` (and engineering_state=SUBSTRATE_PRESENT) from being read as "partially close-ready." Substrate presence is planning value; close-readiness is `PROVEN` only.
+
+**The worksheet is a formal dispatch gate, not optional reviewer prose.** No worker brief may be issued from an SG class (or any close-blocker class) until the worksheet is complete and manager-approved. The worksheet is part of the manager/worker protocol — see §11 manager lanes for which manager owns approval per class.
+
+SG-1, SG-2, and SG-5/SG-6 are worked through below using this template. SG-CANDIDATE-1 (frontend sugar) is worked through in §10.5 as a non-error candidate that uses the same discipline.
 
 ### §10.1 SG-1 — Symbol / Atom value emission (2978 errors)
 
@@ -726,7 +759,7 @@ Total new work items if all three are dispatched: **4** (SG-1: 1; SG-2: 1; SG-5/
 ## §11. What this doc is NOT
 
 - **Not a redefinition of correctness.** The 17 standards are pre-existing in `THESIS.md`. This doc maps them to gating reality and proposes operationalization, nothing more.
-- **Not a complete 30-day plan.** Operator sign-off on §6 ladder + §7 Phase 1 unblocks the first dispatch. Phases 2/3/4 are dispatched after their predecessor closes — sequenced, not pre-committed.
+- **Not a complete pre-committed plan.** Operator sign-off on §6 ladder + §7 Phase 1 unblocks the first dispatch. Phases 2/3/4 are dispatched after their predecessor closes — sequenced, not pre-committed. No timelines per TASKS.md discipline.
 - **Not a substitute for per-rung detailed briefs.** Each rung at dispatch time will likely need its own brief naming the fixture, the substrate touchpoints, the activation lane, and the success predicate.
 - **Not a critique of the existing tree.** The substrate-rich state of v4 is genuine progress — without the substrate, none of the rungs would even be authorable. The critique is *only* the activation gap.
 
