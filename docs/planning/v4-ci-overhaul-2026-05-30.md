@@ -117,15 +117,23 @@ type UpsertInputRef
 ```dag
 type CiCarveout {
   step_id: CiStepId
-  reason: Symbol                              // honest reason, including "superstition? not sure why exactly"
+  reason_code: Symbol                         // stable machine reason (e.g., v2_substrate_circular_dep)
+  reason_detail: String                       // operator-readable prose
+                                                // (per operator review 2026-05-30: bare Symbol is fine for
+                                                //  stable machine keys, NOT for prose explanations like
+                                                //  "superstition? not sure why exactly")
   dissolution_target: DissolutionTarget       // explicit path to remove this entry
                                                 // (what substrate fact, when modeled, removes the need for the carveout)
 }
 
 type DissolutionTarget
   = ModelMissingSubstrate { what: Symbol }    // "affected-set lens circular-dep on v2" etc.
-  | UnknownYet                                  // we genuinely don't know what would dissolve it
-                                                // (forces explicit acknowledgment that we don't know)
+  | UnknownYet { investigation_owner: ManagerSessionId, review_due_by: Symbol }
+                                                // we genuinely don't know what would dissolve it,
+                                                // BUT (per operator review 2026-05-30) UnknownYet
+                                                // cannot be permanent: requires a named investigation
+                                                // owner (manager) + a review cadence. Without these,
+                                                // UnknownYet becomes the new "Always because vibes."
 
 data ci_always_run_carveouts: List<CiCarveout> = [
   { step_id: ci_step_v2_compile_src_v4,
