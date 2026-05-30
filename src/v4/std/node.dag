@@ -1034,6 +1034,9 @@ data byte_offset_proj_over_ceiling_edge: Symbol = byte_offset_proj_over_ceiling_
 data byte_offset_proj_ineligible_authority_edge: Symbol = byte_offset_proj_ineligible_authority_edge
 data byte_offset_proj_out_of_ceiling_edge: Symbol = byte_offset_proj_out_of_ceiling_edge
 data byte_offset_proj_byte_limb_edge: Symbol = byte_offset_proj_byte_limb_edge
+data byte_offset_proj_neg_edge: Symbol = byte_offset_proj_neg_edge
+data byte_offset_proj_succ_edge: Symbol = byte_offset_proj_succ_edge
+data byte_offset_proj_pred_edge: Symbol = byte_offset_proj_pred_edge
 
 
 fn node_offset_atom(sym: Symbol) -> Node {
@@ -1057,6 +1060,100 @@ fn node_offset_conj(children: List<Edge>) -> Node {
 }
 
 
+// P4 bounded Peano limb tree — mirrors `byte_limb_hash_peano_digest` for B1 content_hash (no digest aliasing).
+fn byte_offset_byte_limb_projection_node(limb: Int) -> Node {
+  if limb < 0 || limb > 255 {
+    node_offset_atom(sym: canonical_tag_byte_limb_out_of_range)
+  } else if limb == 0 {
+    node_offset_atom(sym: canonical_tag_scalar_int_zero)
+  } else if limb == 1 {
+    node_offset_atom(sym: canonical_tag_scalar_int_one)
+  } else {
+    node_offset_conj(children: [
+      node_offset_named_edge(
+        name: byte_offset_proj_succ_edge,
+        target: node_offset_atom(sym: canonical_tag_scalar_int_succ)
+      ),
+      node_offset_named_edge(
+        name: byte_offset_proj_pred_edge,
+        target: byte_offset_byte_limb_projection_node(limb: limb - 1)
+      )
+    ])
+  }
+}
+
+
+// P4 bounded peel — mirrors `byte_offset_cache_digest_nonneg_bounded_authority` (limbs_remaining, not same-arg on `i`).
+fn byte_offset_digest_nonneg_projection_bounded(i: Int, limbs_remaining: Int) -> Node {
+  if limbs_remaining <= 0 {
+    if i == 0 {
+      node_offset_atom(sym: canonical_tag_byte_offset_zero)
+    } else {
+      node_offset_conj(children: [
+        node_offset_named_edge(
+          name: byte_offset_proj_out_of_ceiling_edge,
+          target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+        ),
+        node_offset_named_edge(
+          name: byte_offset_proj_authority_edge,
+          target: node_offset_atom(sym: canonical_tag_byte_offset_zero)
+        ),
+        node_offset_named_edge(
+          name: byte_offset_proj_byte_limb_edge,
+          target: byte_offset_byte_limb_projection_node(limb: i - (i / 256) * 256)
+        )
+      ])
+    }
+  } else if i == 0 {
+    node_offset_atom(sym: canonical_tag_byte_offset_zero)
+  } else if i <= 255 {
+    byte_offset_byte_limb_projection_node(limb: i)
+  } else {
+    node_offset_conj(children: [
+      node_offset_named_edge(
+        name: byte_offset_proj_out_of_ceiling_edge,
+        target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+      ),
+      node_offset_named_edge(
+        name: byte_offset_proj_authority_edge,
+        target: byte_offset_digest_nonneg_projection_bounded(
+          i: i / 256,
+          limbs_remaining: limbs_remaining - 1
+        )
+      ),
+      node_offset_named_edge(
+        name: byte_offset_proj_byte_limb_edge,
+        target: byte_offset_byte_limb_projection_node(limb: i - (i / 256) * 256)
+      )
+    ])
+  }
+}
+
+
+fn byte_offset_cache_digest_authority_projection_node(i: Int) -> Node {
+  if i < 0 {
+    node_offset_conj(children: [
+      node_offset_named_edge(
+        name: byte_offset_proj_neg_edge,
+        target: node_offset_atom(sym: canonical_tag_byte_offset_neg)
+      ),
+      node_offset_named_edge(
+        name: byte_offset_proj_authority_edge,
+        target: byte_offset_digest_nonneg_projection_bounded(
+          i: 0 - i,
+          limbs_remaining: byte_offset_cache_digest_max_limbs
+        )
+      )
+    ])
+  } else {
+    byte_offset_digest_nonneg_projection_bounded(
+      i: i,
+      limbs_remaining: byte_offset_cache_digest_max_limbs
+    )
+  }
+}
+
+
 fn byte_offset_cache_key_projection_node(i: Int) -> Node {
   match byte_offset_cache_key(i: i) {
     ByteOffsetCacheEligible { digest: _ } =>
@@ -1069,7 +1166,7 @@ fn byte_offset_cache_key_projection_node(i: Int) -> Node {
             ),
             node_offset_named_edge(
               name: byte_offset_proj_within_ceiling_edge,
-              target: node_offset_atom(sym: canonical_tag_byte_offset_zero)
+              target: byte_offset_cache_digest_authority_projection_node(i: i)
             )
           ])
         ByteOffsetOverCeiling { within_ceiling_digest: _, quotient: _ } =>
@@ -1084,11 +1181,7 @@ fn byte_offset_cache_key_projection_node(i: Int) -> Node {
             ),
             node_offset_named_edge(
               name: byte_offset_proj_authority_edge,
-              target: node_offset_atom(sym: canonical_tag_byte_offset_zero)
-            ),
-            node_offset_named_edge(
-              name: byte_offset_proj_byte_limb_edge,
-              target: node_offset_atom(sym: canonical_tag_byte_offset_byte)
+              target: byte_offset_cache_digest_authority_projection_node(i: i)
             )
           ])
         ByteOffsetCacheDigestIneligible {
