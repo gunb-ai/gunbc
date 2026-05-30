@@ -307,13 +307,19 @@ jobs:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_CARGO_CHECK_JOBS: "4"
       run: bash scripts/v4-m1-rust-emit-probe.sh
-    # Fixture-scoped gate: run when the PR touches the ratified fixture/roster/transport, or
-    # when workflow-policy files change the gate wiring itself — not on every src/v4/ change
-    # (e.g. leaf-model Wave 1). Unrelated ci.yml edits (bootstrap timeouts only) stay out of scope.
+    # Fixture-scoped gate: full rung gate only for fixture/transport or gate *execution*
+    # edits; scope-detector / if-routing narrowing uses policy_check (Gate #103 ratchet).
     - name: Detect phase1/nat_semiring fixture scope (PR diff)
       id: phase1_nat_semiring_fixture_scope
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: bash scripts/detect-phase1-nat-semiring-gate-scope.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
+    - name: phase1/nat_semiring gate policy ratchet (workflow-policy edits)
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.policy_check == 'true'
+      run: |
+        set -euo pipefail
+        bash scripts/check-workflow-path-regex-inventory.sh
+        bash scripts/detect-phase1-nat-semiring-gate-scope.sh "${{ github.event_name }}" "${RUNNER_TEMP}/phase1-gate-scope-smoke.out"
+        grep -q '^should_run=' "${RUNNER_TEMP}/phase1-gate-scope-smoke.out"
     # Phase 1 rung gate setup: provision Go on the self-hosted runner. The gate
     # invokes `go build` for R0-go-parse / R2-go-compile; without this step the
     # script's host-toolchain guard would fail-closed with
