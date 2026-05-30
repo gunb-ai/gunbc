@@ -1708,7 +1708,7 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
         "std::collections::BTreeSet"
       ),
       rust_collection_surface_hash_set,
-        "std::collections::HashSet"
+      "std::collections::HashSet"
     ),
     target_collection_set_carrier,
     "Set"
@@ -3134,7 +3134,7 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
         "std::collections::BTreeSet"
       ),
       rust_collection_surface_hash_set,
-        "std::collections::HashSet"
+      "std::collections::HashSet"
     ),
     target_collection_set_carrier,
     "Set"

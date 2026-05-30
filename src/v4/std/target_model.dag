@@ -876,7 +876,7 @@ fn target_collection_set_carrier_head(node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
 }
 
-// 🟢 coproduct dissolution — SG-5 Set carrier recognition on Cardinality type-expression nodes.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:SG-5-set-carrier-recognition — bind docs/planning/v4-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: 06_translate Cardinality arm matches set_carrier structurally without Bool predicate over Node.kind.
 fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Cardinality } =>
