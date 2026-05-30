@@ -403,6 +403,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolution: delete when modeled runner exercises
     // `src/v4/test/claim/language_model/rust_r1.dag` without this hand-Rust bridge.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r1_rustc_test.rs",
+    // Phase 1 leaf-model R2a/R2b(1–2)/R3-external (W1.7): boundary rustc for algebra inhabitance,
+    // overflow runtime behavior, Symbol projection; host runners v4-leaf-model-rust-r2{,a,b}-verify.sh
+    // and v4-leaf-model-rust-r3-external-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r2_r3_external_rustc_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
@@ -899,6 +903,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
+    // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
+    // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_identical_variant_payload_dag_smoke_test.rs",
     // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
     // `src/v4/lens/registry.dag` registry query rows, `src/v4/workflow/ci.dag`
     // consumer wiring, and the live `.github/workflows/ci.yml` Lens-CI signal binding.

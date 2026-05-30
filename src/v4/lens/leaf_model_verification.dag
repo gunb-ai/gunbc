@@ -1,12 +1,14 @@
 // src/v4/lens/leaf_model_verification.dag
-// Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1).
-// Status: R1 happy + falsification rustc source fixtures for rust.dag i32 surface spelling.
+// Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1–R3-external).
+// Status: R1 + R2a + R2b (debug/release live) + R3-external rustc source fixtures for rust.dag claims.
 
 module v4.lens.leaf_model_verification
 
 
 import v4.extdeps.languages.rust {
+  rust_atom_realization_symbol,
   rust_coercion_field_i32_spelling,
+  rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_surface_spelling_i32
 }
 import v4.std.leaf_model_verification {
@@ -14,10 +16,17 @@ import v4.std.leaf_model_verification {
   LeafModelFalsificationCase,
   LeafModelRustFixture,
   leaf_model_claim_rust_r1_i32_surface_spelling,
+  leaf_model_claim_rust_r2a_i32_algebra_operations,
+  leaf_model_claim_rust_r2b_debug_default_overflow,
+  leaf_model_claim_rust_r2b_release_default_overflow,
+  leaf_model_claim_rust_r3_external_symbol_projection,
+  leaf_model_rust_crate_type_bin,
   leaf_model_rust_crate_type_lib,
   TargetCompileAccepted,
   TargetCompileRejected,
-  target_diagnostic_e0308_type_mismatch
+  target_diagnostic_e0308_type_mismatch,
+  target_diagnostic_e0423_expected_value_found_type,
+  target_diagnostic_e0599_method_not_found
 }
 import v4.std.node { Symbol }
 import v4.std.text { String }
@@ -69,4 +78,134 @@ fn rust_r1_fixture_pair() -> LeafModelFixturePair {
 // Testgen port: `rust_r1_fixture` (docs/planning/v4-leaf-model-verification-2026-05-30.md §8).
 fn rust_r1_fixture() -> LeafModelFixturePair {
   rust_r1_fixture_pair()
+}
+
+// R2a — algebra inhabitance: ordered-ring ops on i32 (design-rust-dag-leafmodel-instantiation.md §5).
+data rust_r2a_claim_algebra_inhabitance_fact: Symbol = rust_integer_algebra_inhabitance_rust_facts_i32
+
+data rust_r2a_happy_fixture_source: String = "pub fn r2a_test(a: i32, b: i32) -> (i32, bool) { (a + b, a < b) }\n"
+
+data rust_r2a_falsification_fixture_source: String = "pub fn r2a_test(a: i32) -> i32 { a.log2_exact() }\n"
+
+fn rust_r2a_happy_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r2a_happy_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r2a_falsification_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r2a_falsification_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r2a_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r2a_i32_algebra_operations,
+    surface_spelling_fact: rust_r2a_claim_algebra_inhabitance_fact,
+    coercion_spelling_fact: rust_r2a_claim_algebra_inhabitance_fact,
+    happy: rust_r2a_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r2a_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_e0599_method_not_found
+      }
+    }
+  }
+}
+
+fn rust_r2a_fixture() -> LeafModelFixturePair {
+  rust_r2a_fixture_pair()
+}
+
+// R2b — overflow semantics via runtime-parameterized add (§5: no compile-time literal overflow).
+data rust_r2b_claim_algebra_inhabitance_fact: Symbol = rust_integer_algebra_inhabitance_rust_facts_i32
+
+data rust_r2b_runtime_fixture_source: String = "pub fn r2b_test(a: i32, b: i32) -> i32 { a + b }\npub fn main() { let _ = r2b_test(i32::MAX, 1); }\n"
+
+fn rust_r2b_runtime_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r2b_runtime_fixture_source,
+    crate_type: leaf_model_rust_crate_type_bin
+  }
+}
+
+fn rust_r2b_debug_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r2b_debug_default_overflow,
+    surface_spelling_fact: rust_r2b_claim_algebra_inhabitance_fact,
+    coercion_spelling_fact: rust_r2b_claim_algebra_inhabitance_fact,
+    happy: rust_r2b_runtime_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r2b_runtime_fixture(),
+      expected_verdict: TargetCompileAccepted
+    }
+  }
+}
+
+fn rust_r2b_release_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r2b_release_default_overflow,
+    surface_spelling_fact: rust_r2b_claim_algebra_inhabitance_fact,
+    coercion_spelling_fact: rust_r2b_claim_algebra_inhabitance_fact,
+    happy: rust_r2b_runtime_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r2b_runtime_fixture(),
+      expected_verdict: TargetCompileAccepted
+    }
+  }
+}
+
+fn rust_r2b_debug_fixture() -> LeafModelFixturePair {
+  rust_r2b_debug_fixture_pair()
+}
+
+fn rust_r2b_release_fixture() -> LeafModelFixturePair {
+  rust_r2b_release_fixture_pair()
+}
+
+// R3-external — Symbol atom realization: nominal carrier (happy) vs alias+ctor mismatch (SG-1 E0423 class).
+data rust_r3_external_claim_atom_realization_fact: Symbol = rust_atom_realization_symbol
+
+data rust_r3_external_happy_fixture_source: String = "pub struct Symbol(pub String);\npub fn r3_test() -> Symbol { Symbol(\"x\".to_string()) }\n"
+
+data rust_r3_external_falsification_fixture_source: String = "pub type Symbol = String;\npub fn r3_test() -> Symbol { Symbol(\"x\") }\n"
+
+fn rust_r3_external_happy_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r3_external_happy_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r3_external_falsification_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r3_external_falsification_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r3_external_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r3_external_symbol_projection,
+    surface_spelling_fact: rust_r3_external_claim_atom_realization_fact,
+    coercion_spelling_fact: rust_r3_external_claim_atom_realization_fact,
+    happy: rust_r3_external_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r3_external_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_e0423_expected_value_found_type
+      }
+    }
+  }
+}
+
+fn rust_r3_external_fixture() -> LeafModelFixturePair {
+  rust_r3_external_fixture_pair()
 }
