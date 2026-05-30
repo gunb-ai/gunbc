@@ -859,12 +859,15 @@ fn v4_wasm_wave2a_label_funcidx_claim_tokenizes_and_wires_parse_receipt() {
         );
     }
     assert!(
-        import_includes_name(&claim, &["v4", "extdeps", "languages", "wasm"], "wasm_wave2a_lex")
-            && import_includes_name(
-                &claim,
-                &["v4", "extdeps", "languages", "wasm"],
-                "wasm_wave2a_grammar"
-            ),
+        import_includes_name(
+            &claim,
+            &["v4", "extdeps", "languages", "wasm"],
+            "wasm_wave2a_lex"
+        ) && import_includes_name(
+            &claim,
+            &["v4", "extdeps", "languages", "wasm"],
+            "wasm_wave2a_grammar"
+        ),
         "{WASM_WAVE2A_IDX_CLAIM_PATH}: must import wave-2a lex + grammar from wasm.dag"
     );
     assert!(
