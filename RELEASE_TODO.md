@@ -254,7 +254,7 @@ The sed above is a **first-pass draft only** — do not run it without an allowl
 
 - [x] `src/v4/install/install.dag` — `InstallTarget` / OS-arch detection / env policy;
       references `release.dag` `release_published_target_triples` (no duplicate triple literals)
-- [x] Emit/project `install.sh` + helper scripts from model (hand-synced interim until ShellStatic)
+- [x] Hand-sync `install.sh` + `release-target-triples.sh` to install.dag (ShellStatic emit deferred)
 - [x] Re-enable install assets in GH Release bundle after install.dag lands
 
 ### Phase 2 — Homebrew tap (good for macOS users, do week of June 1)
