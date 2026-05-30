@@ -718,6 +718,23 @@ fn formal_production_rhs_matches_emitted_conj(
   productions: List<FormalProduction>,
   emitted: Node
 ) -> Bool {
+  match emitted.kind {
+    TypeNode { connective: Conj } =>
+      formal_production_rhs_matches_emitted_conj_conj(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      )
+    _ => false
+  }
+}
+
+
+fn formal_production_rhs_matches_emitted_conj_conj(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Bool {
   let children = conj_positional_children(parent: emitted)
   let child_count = conj_positional_child_count(children: children)
   match fold_list(
