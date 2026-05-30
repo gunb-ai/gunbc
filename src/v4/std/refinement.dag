@@ -8,15 +8,137 @@ module v4.std.refinement
 
 
 import v4.std.logic { Bool }
-import v4.std.diagnostic {Diagnostic, Locus, Outcome, Accepted, Rejected, None, Unavailable, UserInputBoundary, diagnostics_singleton}
+import v4.std.diagnostic {
+  Diagnostic,
+  Locus,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_singleton,
+  port_locus
+}
 import v4.std.node { Symbol }
+
+
+data refinement_authoritative_locus_port: Symbol = refinement_authoritative_locus
+
+
+fn refinement_authoritative_locus() -> Locus {
+  port_locus(port: refinement_authoritative_locus_port)
+}
+
+
 type Validation<B> {
   reason: Symbol
   admits: fn(B) -> Bool
 }
+
+
 type Refined<B> {
   base: B
 }
+
+
+fn positive_int_admits(value: Int) -> Bool {
+  value >= 1
+}
+
+
+fn non_negative_int_admits(value: Int) -> Bool {
+  value >= 0
+}
+
+
+fn at_least_minus_one_int_admits(value: Int) -> Bool {
+  value >= -1
+}
+
+
+fn at_least_minus_two_int_admits(value: Int) -> Bool {
+  value >= -2
+}
+
+
+fn exact_one_int_admits(value: Int) -> Bool {
+  value == 1
+}
+
+
+data positive_int_out_of_range: Symbol = positive_int_out_of_range
+data non_negative_int_out_of_range: Symbol = non_negative_int_out_of_range
+data at_least_minus_one_int_out_of_range: Symbol = at_least_minus_one_int_out_of_range
+data at_least_minus_two_int_out_of_range: Symbol = at_least_minus_two_int_out_of_range
+data exact_one_int_out_of_range: Symbol = exact_one_int_out_of_range
+data positive_int_validation: Validation<Int> = Validation {
+  reason: positive_int_out_of_range,
+  admits: positive_int_admits
+}
+
+
+data non_negative_int_validation: Validation<Int> = Validation {
+  reason: non_negative_int_out_of_range,
+  admits: non_negative_int_admits
+}
+
+
+data at_least_minus_one_int_validation: Validation<Int> = Validation {
+  reason: at_least_minus_one_int_out_of_range,
+  admits: at_least_minus_one_int_admits
+}
+
+
+data at_least_minus_two_int_validation: Validation<Int> = Validation {
+  reason: at_least_minus_two_int_out_of_range,
+  admits: at_least_minus_two_int_admits
+}
+
+
+data exact_one_int_validation: Validation<Int> = Validation {
+  reason: exact_one_int_out_of_range,
+  admits: exact_one_int_admits
+}
+
+
+// Nominal external-spec carriers — distinct record types so ≥1 / ≥0 / ≥-1 / ≥-2 / ==1
+// obligations are not interchangeable Refined<Int> aliases (posix.dag pattern).
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare PositiveInt { refined: Refined { base } }.
+type PositiveInt {
+  refined: Refined<Int>
+}
+
+
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare NonNegativeInt { refined: Refined { base } }.
+type NonNegativeInt {
+  refined: Refined<Int>
+}
+
+
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare AtLeastMinusOneInt { refined: Refined { base } }.
+type AtLeastMinusOneInt {
+  refined: Refined<Int>
+}
+
+
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare AtLeastMinusTwoInt { refined: Refined { base } }.
+type AtLeastMinusTwoInt {
+  refined: Refined<Int>
+}
+
+
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via make_*; forbidden: bare ExactOneInt { refined: Refined { base } }.
+type ExactOneInt {
+  refined: Refined<Int>
+}
+
+
 fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
   let admits = by.admits
   if admits(base) {
@@ -33,6 +155,113 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
     }
   }
 }
+
+
 fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
+
+
+fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
+  match refine(base: value, by: positive_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: PositiveInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
+  match refine(base: value, by: non_negative_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: NonNegativeInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOneInt> {
+  match refine(base: value, by: at_least_minus_one_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: AtLeastMinusOneInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwoInt> {
+  match refine(base: value, by: at_least_minus_two_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: AtLeastMinusTwoInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
+  match refine(base: value, by: exact_one_int_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: ExactOneInt { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_positive_int_at_authoritative(value: Int) -> Outcome<PositiveInt> {
+  make_positive_int(value: value, at: refinement_authoritative_locus())
+}
+
+
+fn make_non_negative_int_at_authoritative(value: Int) -> Outcome<NonNegativeInt> {
+  make_non_negative_int(value: value, at: refinement_authoritative_locus())
+}
+
+
+fn make_at_least_minus_one_int_at_authoritative(value: Int) -> Outcome<AtLeastMinusOneInt> {
+  make_at_least_minus_one_int(value: value, at: refinement_authoritative_locus())
+}
+
+
+fn make_at_least_minus_two_int_at_authoritative(value: Int) -> Outcome<AtLeastMinusTwoInt> {
+  make_at_least_minus_two_int(value: value, at: refinement_authoritative_locus())
+}
+
+
+fn make_exact_one_int_at_authoritative(value: Int) -> Outcome<ExactOneInt> {
+  make_exact_one_int(value: value, at: refinement_authoritative_locus())
+}
+
+
+// Authoritative catalog literal boundary — partial; returns Outcome (fail-closed).
+fn positive_int_authoritative_literal(value: Int) -> Outcome<PositiveInt> {
+  make_positive_int_at_authoritative(value: value)
+}
+
+
+fn non_negative_int_authoritative_literal(value: Int) -> Outcome<NonNegativeInt> {
+  make_non_negative_int_at_authoritative(value: value)
+}
+
+
+fn at_least_minus_one_int_authoritative_literal(value: Int) -> Outcome<AtLeastMinusOneInt> {
+  make_at_least_minus_one_int_at_authoritative(value: value)
+}
+
+
+fn at_least_minus_two_int_authoritative_literal(value: Int) -> Outcome<AtLeastMinusTwoInt> {
+  make_at_least_minus_two_int_at_authoritative(value: value)
+}
+
+
+fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
+  make_exact_one_int_at_authoritative(value: value)
+}
+
+
+// Formatter config fields use Outcome<Carrier> (not bare Carrier): *_authoritative_literal and refine
+// return Outcome; .dag data literals cannot unwrap Rejected at assignment. Rejected defaults are
+// type-inhabitable but witness-proved Accepted for upstream catalog values; emit/runtime match or
+// call make_*. Steady-state target is bare Carrier on fields (former formatter-int-refinement
+// Refined<Int> intent) — bind T-25-tail / refinement-opaque-carrier for Outcome→Carrier once the
+// substrate supports closed proof or discharge without stripping the receipt.
+// Witnesses: refinement_formatter_literals_accept.dag; runtime/user input: make_* + Outcome.
