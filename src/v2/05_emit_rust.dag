@@ -80,7 +80,11 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
-import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
+import std.coercion { TargetAtomRealization }
+import v2.compiler.coercion {
+  coerce_primitive_type, is_copy, default_expr,
+  lookup_atom_realization, apply_atom_value_ctor_template
+}
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name }
@@ -288,20 +292,30 @@ fn rust_ord_derives_copy_text() -> String {
   "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
 }
 
-fn rust_nominal_identity_carrier_def(name: String) -> String {
-  concat(rust_ord_derives_text(), "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, "(pub String);")
+fn rust_atom_nominal_newtype_def(row: TargetAtomRealization) -> String {
+  concat(
+    rust_ord_derives_text(), "\n",
+    rust_visibility_prefix(), rust_items().struct_keyword, " ", row.type_form, "(pub ", row.storage_type, ");")
 }
 
-// 🟡 gated — nominal Ord carrier whitelist for M3 Symbol/DiffId only.
-// Next nominal carrier must move this to a declared type property instead of
-// extending the string predicates below.
-fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
-  type_name == "Symbol"
+fn rust_type_alias_decl(item_text: String, item: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  concat(
+    rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ",
+    render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: source_indices), ";")
 }
 
-fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: n) == "Symbol"
-    && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
+fn rust_atom_nominal_newtype_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if (n.children |> count) != 0 || (n.params |> count) != 0 || n.connective != NoConnective {
+    false
+  } else {
+    match lookup_atom_realization(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: n)) {
+      Some { value: row } => match row.type_decl_kind {
+        NominalNewtype => true
+        TransparentAlias => false
+      }
+      None => false
+    }
+  }
 }
 
 fn rust_diff_id_ord_carrier_shape_eligible(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -310,7 +324,7 @@ fn rust_diff_id_ord_carrier_shape_eligible(name: String, children: List<Node>, s
   } else {
     match children |> first {
       Some { value: child } =>
-        rust_nominal_identity_carrier_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
+        rust_atom_nominal_newtype_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
       None => false
     }
   }
@@ -325,7 +339,7 @@ fn rust_nominal_ord_derives_for_shape(name: String, children: List<Node>, source
 }
 
 fn rust_nominal_ord_type_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  rust_nominal_identity_carrier_shape_eligible(n: elem_node, source_indices: source_indices)
+  rust_atom_nominal_newtype_shape_eligible(n: elem_node, source_indices: source_indices)
     || rust_diff_id_ord_carrier_shape_eligible(name: authored_name_at(source_indices: source_indices, node: elem_node), children: elem_node.children, source_indices: source_indices)
 }
 
@@ -1404,6 +1418,37 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
+fn emit_rust_type_alias_item(item: Node, item_text: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let alias_decl = rust_type_alias_decl(item_text: item_text, item: item, shared_types: shared_types, source_indices: source_indices)
+  if (item.params |> count) == 0 {
+    match lookup_atom_realization(target: Rust, dag_name: item_text) {
+      Some { value: row } =>
+        match row.type_decl_kind {
+          NominalNewtype => rust_atom_nominal_newtype_def(row: row)
+          TransparentAlias => alias_decl
+        }
+      None => alias_decl
+    }
+  } else {
+    alias_decl
+  }
+}
+
+fn emit_rust_type_decl_item(item: Node, item_text: String) -> String {
+  if (item.params |> count) == 0 {
+    match lookup_atom_realization(target: Rust, dag_name: item_text) {
+      Some { value: row } =>
+        match row.type_decl_kind {
+          NominalNewtype => rust_atom_nominal_newtype_def(row: row)
+          TransparentAlias => ""
+        }
+      None => ""
+    }
+  } else {
+    ""
+  }
+}
+
 fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
@@ -1411,19 +1456,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-    // Bare `type Symbol` is classified as a type alias (resolved name != Unit) but must
-    // emit the Ord identity carrier struct so data literals can use Symbol("…") (E0423).
-    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
-      rust_nominal_identity_carrier_def(name: item_text)
-    } else {
-      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
-    }
+    emit_rust_type_alias_item(item: item, item_text: item_text, shared_types: shared_types, source_indices: env.source_indices)
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
-      rust_nominal_identity_carrier_def(name: item_text)
-    } else {
-      ""
-    }
+    emit_rust_type_decl_item(item: item, item_text: item_text)
   } else if is_function_item(item: item) {
     let fn_movable = match map_get(emit_info.ownership_index, qualified_name) {
       Some { value: m } => m
