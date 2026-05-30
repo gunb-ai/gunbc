@@ -70,13 +70,13 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **W2.3** Phase 1.5 `CiUpsertStep<T>` | Modeling DFS + Compiler Spine | Follow-on to merged #3989; consumer wiring TBD | **P2**, **P5** (ci.dag authority) | Partial — substrate extension only |
 | **W2.4** Phase 1b A3–A14 + `check-*` deletion | Compiler Spine | *(dispatch TBD post-W2.3)* | **P2**, **P5** | No — post-Jun 1 |
 | **W2.5** Phase 4 fixture widening | Ladder/Fixture | *(dispatch TBD; rung specs #3990, #4003 on main)* | **P4**, **P5** | Partial — ladder path, not T-15 fixpt |
-| **W2.6** Cross-target leaf-model (python.dag) | Modeling DFS + TR + TestClaim | *(dispatch TBD post-W1.3 stable)* | **P3**, **P5** | Possible late Jun 1 if W1 exits early |
+| **W2.6** Cross-target leaf-model (python.dag) | Modeling DFS + TR + TestClaim | [#4022](https://github.com/gunb-ai/gunbc/pull/4022) **MERGED** 21:05Z | **P3**, **P5** | Landed — python R1 mirror of rust.dag |
 
 **Wave 1 → Wave 2 bridge (still Wave 1, predicates-adjacent):**
 
 | Item | Named PR | MW-D8 | Predicate touch |
 | ---- | -------- | ----- | --------------- |
-| W1.1 SG-7 impl | [#4014](https://github.com/gunb-ai/gunbc/pull/4014) OPEN | C2 | **P2**, **P5** |
+| W1.1 SG-7 impl | [#4014](https://github.com/gunb-ai/gunbc/pull/4014) **MERGED** 21:01Z | C2 (pending Close/Receipt) | **P2**, **P5** |
 | W1.7 R2a/R2b/R3 | [#4000](https://github.com/gunb-ai/gunbc/pull/4000) MERGED | C5 | **P5** |
 
 ---
@@ -113,7 +113,7 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **Owner** | **Compiler Spine** (`smart-stag-871`) |
 | **Blocking receipt** | v4 compiler-of-record full pipeline; **no** resolve-posture bridge masking failure |
 | **Evidence today** | T-37 landed (#3791); bridge **OPEN** (`ci.yml:293-300`, `v4-bootstrap-resolve-posture-gate.sh`) |
-| **Today’s PRs** | **#4014** (W1.1 / MW-D8 C2) — SG-7 ci.dag dissolve, **Wave 2 enabler** for ci.dag authority, not compile-of-record. **#3981**, **#3989** — Upsert substrate (W1.2/W2.3 path). |
+| **Today’s PRs** | **#4014** SG-7 ci.dag dissolve **MERGED** 21:01Z (MW-D8 C2 impl). **#3981**, **#3989** Upsert substrate. |
 | **Wave 2 PR** | W2.3 consumer PR TBD; W2.4 `check-*` deletion TBD |
 | **Re-check** | **2026-06-02** — bridge + SG-7 dissolution (W1.1) status |
 
@@ -148,9 +148,9 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **Burn-down** | **YELLOW** (strongest movement today) |
 | **Owner** | **Runtime/TestClaim** (`quick-lark` / spawn) + **Compiler Spine** |
 | **Blocking receipt** | Modeled T-22 eval + structured `TestClaimRun` verdicts in CI; delete `scripts/v4-testclaim-corpus-gate.sh` |
-| **Evidence today** | Structural corpus bridge still live (`ci.yml:315-319`); **#3972** R1 PROVEN; **#4000** R2a/R2b/R3-external merged |
-| **Today’s PRs** | **#3972** R1 verdict (MW-D8 C1). **#4000** W1.7 widening (MW-D8 C5). **#3961** verdict contract. **#3958** rung-4 harness. Does **not** delete structural bridge or close T-38. |
-| **Wave 2 PR** | W2.6 python.dag cross-target (dispatch TBD); T-38 modeled runner dispatch is Runtime/TestClaim lane |
+| **Evidence today** | Structural corpus bridge still live; **#3972** R1 PROVEN; **#4000** R2/R3 merged; **#4022** python.dag R1 landed |
+| **Today’s PRs** | **#4022** W2.6 python R1 mirror (P3/P5). **#4015** rung gate (P4/P5-adj). Does **not** delete structural bridge or close T-38. |
+| **Wave 2 PR** | W2.6 **landed** (#4022); T-38 modeled runner dispatch is Runtime/TestClaim lane |
 | **Re-check** | **2026-06-01** — W1.3 / Step 4 R1 stable + T-38 runner dispatch (MW-D2 expedite) |
 
 ### P6 — Hand-authored Rust not editable authority (reproduction-proven)
@@ -166,13 +166,42 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 
 ---
 
-## Today’s landing map (PM spot-check)
+## Wave 2 landing log (maintenance cadence)
+
+Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 gate):
+
+| PR | Merged (UTC) | Wave item | Predicate touch | Burn-down effect |
+| -- | ------------ | --------- | --------------- | ---------------- |
+| [#4014](https://github.com/gunb-ai/gunbc/pull/4014) | 21:01 | W1.1 SG-7 | **P2**, **P5** | YELLOW stronger — ci.dag offset projection dissolved; MW-D8 C2 impl landed (Close/Receipt pending) |
+| [#4022](https://github.com/gunb-ai/gunbc/pull/4022) | 21:05 | W2.6 python.dag | **P3**, **P5** | YELLOW stronger — cross-target R1 leaf-model path; not GREEN |
+| [#4015](https://github.com/gunb-ai/gunbc/pull/4015) | 21:06 | W2.5 rung gate | **P4**, **P5** (ladder-adj) | YELLOW — nat_semiring rung gate parse-only alignment |
+| [#4023](https://github.com/gunb-ai/gunbc/pull/4023) | 20:54 | Release coord | *(public tier)* | flavor (iv) ship-disposition supplement — feeds SUPPORTED.md |
+
+---
+
+## State at tag time (Jun 1 courtesy note)
+
+For release-notes / `snappy-bee-513` — honest snapshot at v0.1.0 tag under flavor (iv):
+
+```text
+v4-done predicates: 0/6 PROVEN | 5 YELLOW | 1 GRAY (P6)
+MW-D8 Wave 1 exit:  3/5 PROVEN (C2 impl #4014 landed; Close/Receipt pending)
+Wave 2 landed:      W2.6 #4022 (python R1), W1.1 #4014 (SG-7), W2.5 #4015 (rung gate)
+Wave 2 in flight:   W2.1 #3956/#3964 (SG-1), W2.2 #3957 (SG-5), C4 receipt shadow
+Public tier:        alpha/WIP — no compile-clean guarantee on v4 surfaces
+Strongest mover:    P5 (TestClaim / leaf-model path)
+No predicate GREEN flips forecast at tag time.
+```
+
+---
+
+## Today’s landing map (PM spot-check — 2026-05-30 evening baseline)
 
 | PR | Merged (UTC) | Primary predicate touch | Burn-down effect |
 | -- | ------------ | ----------------------- | ---------------- |
 | [#4000](https://github.com/gunb-ai/gunbc/pull/4000) | 2026-05-30 ~19:55 | **P5** | YELLOW → stronger P5 (R2a/R2b/R3-external); MW-D8 C5; not GREEN |
 | [#4012](https://github.com/gunb-ai/gunbc/pull/4012) | ~15:50 | *(coordination)* | MW-D8 ledger — no predicate flip |
-| [#4014](https://github.com/gunb-ai/gunbc/pull/4014) | OPEN | **P2/P5** | Wave 1 C2 — SG-7 impl in flight |
+| [#4014](https://github.com/gunb-ai/gunbc/pull/4014) | 21:01 | **P2/P5** | Wave 1 C2 — SG-7 impl **MERGED** |
 | [#3972](https://github.com/gunb-ai/gunbc/pull/3972) | ~18:24 | **P5** | YELLOW → stronger P5 (first R1 verdict path); MW-D8 C1; not GREEN |
 | [#3981](https://github.com/gunb-ai/gunbc/pull/3981) | ~15:58 | **P2/P5** (CI substrate) | YELLOW P2/P5 — Upsert primitive for W1.2; not compile-of-record |
 | [#3989](https://github.com/gunb-ai/gunbc/pull/3989) | ~18:10 | **P2/P5** (ci.dag types) | YELLOW — Phase 1.5 shape; not active gating / not full migration |
@@ -214,7 +243,7 @@ High-signal buckets for predicate burn-down (full inventory: `docs/planning/v4-m
 - Detailed evidence rows: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md)  
 - Line anchors: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md)  
 - Wave posture: [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §7 (MW-D1–D8)  
-- Wave 1 exit ledger: [`v4-mw-d8-wave1-exit-ledger-2026-05-30.md`](v4-mw-d8-wave1-exit-ledger-2026-05-30.md) (3/5 PROVEN at last spot-check; C5 #4000 pending Close/Receipt re-adjudication)  
+- Wave 1 exit ledger: [`v4-mw-d8-wave1-exit-ledger-2026-05-30.md`](v4-mw-d8-wave1-exit-ledger-2026-05-30.md) (3/5 PROVEN; #4014 merged — C2 re-adjudication pending)  
 - Close ledger: `docs/audit/v4-close-ledger-2026-05-30.md` (346 probes; 0/346 `PROVEN` on last spot-check)  
 - Public ship disposition: `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407` — SUPPORTED.md substrate)  
 - Release maintainer snapshot: `docs/RELEASE_v0.1.0.md` ([#3991](https://github.com/gunb-ai/gunbc/pull/3991) — needs D-REL-1 flavor-iv refresh)
