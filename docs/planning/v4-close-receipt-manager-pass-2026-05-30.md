@@ -173,7 +173,7 @@ This lane formally adopts the §9 framing:
 
 - TASKS.md:801-815 — the v4-done definition is **untouched**; D4 is recommendation-pending.
 - The §6 ladder itself — D1 is ratified with Option C for the rung-#6 gap, but no rung definitions are altered here.
-- PR #3941's existing vocabulary — historical record stays in the §0 single-axis form; future runs adopt §1.
+- PR #3941's existing rows — they already emit under the two-axis vocabulary (per §1 above); this receipt does not retro-edit them, it ratifies the vocabulary they use as the canonical surface going forward.
 - Any worker-dispatch decisions — those remain with the per-lane managers (Modeling DFS, Ladder/Fixture, Compiler Spine, Target Realization, Runtime/TestClaim, Self-host/Release).
 
 ---
@@ -190,6 +190,6 @@ This lane formally adopts the §9 framing:
 
 - `docs/planning/v4-correctness-ladder-2026-05-30.md` (PR #3938) — parent planning doc; this receipt depends on it.
 - `docs/v4-close-interrogation.md` — 346-probe questionnaire; future runs use §1 vocabulary.
-- `docs/audit/v4-close-interrogation-validation-2026-05-30.md` (PR #3941) — Phase 0 validation; historical single-axis vocabulary preserved.
+- `docs/audit/v4-close-interrogation-validation-2026-05-30.md` (PR #3941, merged) — Phase 0 validation; already emits two-axis vocabulary (`ship_disposition` × `engineering_state`).
 - `docs/audit/v4-deferral-audit-2026-05-29.md` — names the substrate-rich / activation-poor pattern this receipt's policy targets.
 - `src/v4/TASKS.md:801-815` — operational v4-done definition; D4 recommendation-pending here.
