@@ -4,10 +4,10 @@
 //! `src/v4/extdeps/runtimes/emit_host.dag`. Substrate eval returns `Rejected` until this
 //! transport is invoked from CI/scripts; this crate is the executable boundary.
 
+use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::fs;
 
 /// Typed exit: success only when the child process exited 0.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,10 +50,16 @@ pub fn runtime_value_parse_rust(bytes: &[u8]) -> Result<(), String> {
 fn output_to_log(output: &Output) -> BuildLog {
     let mut lines = Vec::new();
     if !output.stdout.is_empty() {
-        lines.push(format!("stdout: {}", String::from_utf8_lossy(&output.stdout)));
+        lines.push(format!(
+            "stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        ));
     }
     if !output.stderr.is_empty() {
-        lines.push(format!("stderr: {}", String::from_utf8_lossy(&output.stderr)));
+        lines.push(format!(
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
     lines.push(format!("status: {}", output.status));
     BuildLog { lines }
