@@ -25,19 +25,19 @@ import v4.std.nat { Nat, Succ, Zero, nat_add }
 import v4.std.test_claim_falsification { FalsificationReceipt }
 
 // 🟢 coproduct dissolution — CP-AI10-VERDICT-TERMINAL.
-// S threads TestClaimEvalSubject<S> into Fail.falsification (phantom on Pass / Deferred).
+// Subj: eval-subject carrier for Fail.falsification (compiler binds TestClaimEvalSubject<S>).
 // Pass: all expected behaviors confirmed.
 // Fail: a claim did not hold; actual outcome and optional falsification receipt attached.
 // Deferred: the evaluator could not decide (e.g. eval not yet realized);
 //           a diagnostic explains why, and the actual outcome is preserved.
-type Verdict<S, T>
+type Verdict<Subj, T>
   = Pass
-  | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<S, T>> }
+  | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<Subj, T>> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
 // Eval-path Fail without structured receipt. Structural rejects (#3961 §2.2/§2.3):
 // Present { FalsificationReceipt { ..., evidence: EvidenceNone } }, not Absent.
-fn verdict_fail<S, T>(actual: Outcome<T>) -> Verdict<S, T> {
+fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
   Fail { actual: actual, falsification: Absent }
 }
 
@@ -47,7 +47,7 @@ fn verdict_fail<S, T>(actual: Outcome<T>) -> Verdict<S, T> {
 //   verdict_combine(Fail{a,ff}, _) = Fail{a,ff} (Fail absorbs; left falsification kept)
 //   verdict_combine(Deferred{d,diag}, Fail{b,bf}) = Fail{b,bf}   (Fail promotes Deferred)
 //   verdict_combine(Deferred{d,diag}, _) = Deferred{d,diag} (Deferred sticky otherwise)
-fn verdict_combine<S, T>(a: Verdict<S, T>, b: Verdict<S, T>) -> Verdict<S, T> {
+fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict<Subj, T> {
   match a {
     Pass => b
     Fail { actual: fa, falsification: ff } => Fail { actual: fa, falsification: ff }
@@ -62,7 +62,7 @@ fn verdict_combine<S, T>(a: Verdict<S, T>, b: Verdict<S, T>) -> Verdict<S, T> {
 // Monoid<Verdict<S,T>> inhabitant: op = verdict_combine, identity = Pass.
 // Declared as a fn (not data) because Verdict<S,T> is polymorphic.
 // Mirrors the nat_additive_commutative_monoid pattern in nat.dag:57.
-fn verdict_monoid<S, T>() -> Monoid<Verdict<S, T>> {
+fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
   Monoid {
     semigroup: Semigroup { magma: Magma { op: verdict_combine } },
     identity: Pass
@@ -85,7 +85,7 @@ type VerdictTally {
 
 data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, deferred: Zero }
 
-fn verdict_tally_add<S, T>(t: VerdictTally, v: Verdict<S, T>) -> VerdictTally {
+fn verdict_tally_add<Subj, T>(t: VerdictTally, v: Verdict<Subj, T>) -> VerdictTally {
   match v {
     Pass => VerdictTally { pass: Succ { prev: t.pass }, fail: t.fail, deferred: t.deferred }
     Fail { actual: _, falsification: _ } =>
@@ -95,7 +95,7 @@ fn verdict_tally_add<S, T>(t: VerdictTally, v: Verdict<S, T>) -> VerdictTally {
   }
 }
 
-fn verdict_tally<S, T>(vs: List<Verdict<S, T>>) -> VerdictTally {
+fn verdict_tally<Subj, T>(vs: List<Verdict<Subj, T>>) -> VerdictTally {
   fold(vs, init: verdict_tally_empty, f: fn(acc, v) {
     verdict_tally_add(t: acc, v: v)
   })
@@ -108,10 +108,10 @@ fn verdict_tally_total(t: VerdictTally) -> Nat {
 // Fold a list of verdicts with the monoid identity (Pass) and verdict_combine.
 // Fail-closed on empty list: the caller supplies the empty_verdict to enforce
 // the desired policy (typically Fail with a context-specific diagnostic).
-fn verdict_fold<S, T>(
-  rs: List<Verdict<S, T>>,
-  empty_verdict: Verdict<S, T>
-) -> Verdict<S, T> {
+fn verdict_fold<Subj, T>(
+  rs: List<Verdict<Subj, T>>,
+  empty_verdict: Verdict<Subj, T>
+) -> Verdict<Subj, T> {
   match is_empty(xs: rs) {
     true => empty_verdict
     false => fold(rs, init: Pass, f: fn(acc, v) {

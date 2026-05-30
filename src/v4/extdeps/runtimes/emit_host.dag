@@ -202,7 +202,7 @@ fn run_test_claim_emit_vs_eval_verdict(
   host_receipt: EmitHostRunReceipt,
   host_actual: RuntimeValue,
   expected: Outcome<RuntimeValue>
-) -> Verdict<Node, RuntimeValue> {
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match expected {
     Accepted { value: exp_val, diagnostics: None } =>
       if accepted_runtime_value_outcome_eq(
@@ -236,7 +236,7 @@ fn run_test_claim_emit_vs_eval_for_claim(
   target: TargetModel,
   claim_input_root: Node,
   expected_eval_root: Node
-) -> Verdict<Node, RuntimeValue> {
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   let at = test_claim_input(c: subject.claim)
   let interpretation = eval_context_interpretation(context: subject.context)
   let expected = eval(
@@ -283,7 +283,7 @@ fn run_test_claim_emit_vs_eval_for_claim(
 fn run_test_claim_emit_vs_eval_run(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,
-  verdict: Verdict<Node, RuntimeValue>
+  verdict: Verdict<TestClaimEvalSubject<Node>, RuntimeValue>
 ) -> TestClaimRun<Node, RuntimeValue> {
   TestClaimRun {
     cache: test_claim_cache_receipt_node(subject: subject),

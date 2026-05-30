@@ -5,7 +5,6 @@
 module v4.std.test_claim_falsification
 
 
-import v4.compiler.eval { TestClaimEvalSubject }
 import v4.std.collection { List }
 import v4.std.diagnostic { Diagnostic }
 import v4.std.host_run { EmitHostRunReceipt, ValueDiff }
@@ -22,8 +21,10 @@ type ExecutionEvidence
   | Interpreter { trace: InterpreterTrace }
   | EvidenceNone
 
-type FalsificationReceipt<S, A> {
-  subject: TestClaimEvalSubject<S>
+// Subj: eval subject carrier (compiler binds TestClaimEvalSubject<S> at TestClaimRun boundary).
+// Keeps std/ free of v4.compiler imports (P2 layering; breaks verdict→falsification→eval cycle).
+type FalsificationReceipt<Subj, A> {
+  subject: Subj
   expected: A
   actual: A
   divergence: ValueDiff<A>
