@@ -213,32 +213,6 @@ fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
   }
 }
 
-fn target_type_expr_emitted_kind(node: Node) -> Optional<TargetTypeExprKind> {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      fold(node.children, init: optional_absent(), f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            match e.label {
-              Named { name: n } =>
-                if n == target_type_expr_field_kind {
-                  match e.target.kind {
-                    TypeNode { connective: Atom { identity: id } } =>
-                      target_type_expr_kind_from_atom(id: id)
-                    _ => optional_absent()
-                  }
-                } else {
-                  acc
-                }
-              Positional => acc
-            }
-        }
-      })
-    _ => optional_absent()
-  }
-}
-
 fn target_type_expr_positional_edges(children: List<Node>) -> List<Edge> {
   fold_list(
     xs: children,
