@@ -44,6 +44,7 @@ import v4.std.node {
   Arrow,
   Atom,
   Cardinality,
+  ComputationNode,
   Conj,
   Disj,
   Edge,
@@ -914,12 +915,27 @@ fn target_serialize_source_from_model_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else {
-    bind_outcome(
-      o: grammar_inverse_source_validated(target: target, emitted: emitted),
-      f: fn(_) {
-          target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
-      }
-    )
+    match type_expr_emitted_surface(node: emitted) {
+      Present { value: _ } =>
+        bind_outcome(
+          o: type_expression_projection_from_target(target: target),
+          f: fn(projection) {
+            serialize_type_expr_emitted_bounded(
+              remaining: remaining,
+              target: target,
+              projection: projection,
+              emitted: emitted
+            )
+          }
+        )
+      Absent =>
+        bind_outcome(
+          o: grammar_inverse_source_validated(target: target, emitted: emitted),
+          f: fn(_) {
+            target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
+          }
+        )
+    }
   }
 }
 fn target_serialize_source_from_model(
@@ -1620,19 +1636,16 @@ fn translate_type_expression_tree(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) { translate_type_fold_init(node: n0) },
-      step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
-    }
+  bind_outcome(
+    o: fold_node(
+      n: node,
+      algebra: NodeFold {
+        init: fn(n0) { translate_type_fold_init(node: n0) },
+        step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+      }
+    ),
+    f: fn(n) { project_type_expression_node(node: n, projection: projection) }
   )
-  |> fn(folded) {
-    bind_outcome(
-      o: folded,
-      f: fn(n) { project_type_expression_node(node: n, projection: projection) }
-    )
-  }
 }
 fn translate_node_with_projection(
   node: Node,
@@ -1754,6 +1767,7 @@ fn target_bundle_child_optional_type_expr_projection(
     Rejected { diagnostics: _ } => ProjectionAbsent
   }
 }
+fn translate_fold_step(
   acc: Outcome<Node>,
   edge: Edge,
   child: Outcome<Node>
@@ -1776,23 +1790,6 @@ fn target_bundle_child_optional_type_expr_projection(
           }
       }
   }
-}
-fn translate_node(
-  node: Node,
-  tree: InferredTree,
-  target: TargetModel
-) -> Outcome<Node> {
-  fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) {
-        translate_fold_init(node: n0, tree: tree, target: target)
-      },
-      step: fn(acc, e, child) {
-        translate_fold_step(acc: acc, edge: e, child: child)
-      }
-    }
-  )
 }
 fn translate(
   tree: InferredTree,
