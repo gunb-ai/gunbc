@@ -114,7 +114,7 @@ Seven other targets (cpp, ts, lean, swift, …) are **deferred** to Phase 4+ wid
 | Predicate id | Target | Pass condition | Fail blocking receipt |
 | ------------ | ------ | -------------- | --------------------- |
 | `R2-rust-compile` | `rust` | Same as `R1-rust-typecheck` (rung 2 Rust ⊇ rung 1). | `phase1/nat_semiring/rung2/rust_compile_failed` |
-| `R2-python-compile` | `python` | Emitted Python compiles / type-checks per project Go/Python gate policy. | `phase1/nat_semiring/rung2/python_compile_failed` |
+| `R2-python-compile` | `python` | Emitted Python compiles / type-checks per project Python gate policy (`python3 -m py_compile` or equivalent). | `phase1/nat_semiring/rung2/python_compile_failed` |
 | `R2-go-compile` | `go` | Emitted Go builds without compile errors. | `phase1/nat_semiring/rung2/go_compile_failed` |
 
 **Explicit non-goals for rung 2 Phase 1:**
