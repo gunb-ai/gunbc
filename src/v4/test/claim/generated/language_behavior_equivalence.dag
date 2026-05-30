@@ -327,7 +327,7 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_conj_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -338,7 +338,7 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_disj_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -349,7 +349,7 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
   mock: lbe_io_mock_transform_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
