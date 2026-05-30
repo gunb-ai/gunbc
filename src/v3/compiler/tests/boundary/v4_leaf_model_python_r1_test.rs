@@ -87,9 +87,8 @@ fn v4_leaf_model_python_r1_fixture_strings_match_dag_authority() {
     let happy = extract_fixture_source(FIXTURE_DAG, "python_r1_happy_fixture_source")
         .expect("python_r1_happy_fixture_source in lens/leaf_model_verification.dag");
     let falsification =
-        extract_fixture_source(FIXTURE_DAG, "python_r1_falsification_fixture_source").expect(
-            "python_r1_falsification_fixture_source in lens/leaf_model_verification.dag",
-        );
+        extract_fixture_source(FIXTURE_DAG, "python_r1_falsification_fixture_source")
+            .expect("python_r1_falsification_fixture_source in lens/leaf_model_verification.dag");
     assert_eq!(happy, HAPPY_FIXTURE);
     assert_eq!(falsification, FALSIFICATION_FIXTURE);
     assert!(
