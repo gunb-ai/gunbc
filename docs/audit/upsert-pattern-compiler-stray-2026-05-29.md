@@ -115,3 +115,6 @@ tracked lens/reflection boundaries.
 - `docs/modeling/other-strong-models.md` — `std/patterns.dag` as strong model
 - `docs/substrate-reflection-design.md` — `content_upsert` parser-gap blocker
 - `INVARIANTS.md` P1 worked example — `UpsertEffect` lattice meet grounding
+- `docs/audit/v4-upsert-stray-catalog-2026-05-30.md` — scoped
+  `src/v4/compiler|std|lens` STRAY-FROM-UPSERT catalog with
+  `v4-deferral-audit` cross-references
