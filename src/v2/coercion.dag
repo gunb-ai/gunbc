@@ -265,6 +265,19 @@ fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
   }
 }
 
+fn atom_realization_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+  let label = target_label(target: target)
+  let atoms = target_atom_realizations(target: target)
+  if atoms |> count == 0 { [] }
+  else {
+    [CoercionTestEntry {
+      test_name: concat("coercion_", label, "_atom_realization_resolves_type_form"),
+      assertions: atoms |> map(row =>
+        CheckpointAssertion { target: target, dag_name: row.dag_name, expected_type: row.type_form })
+    }]
+  }
+}
+
 fn copy_tests() -> List<CoercionTestEntry> {
   let cps = target_checkpoints(target: Rust)
   let checkpoint_copy = cps |> flat_map(cp =>
@@ -315,6 +328,7 @@ fn extract_coercion_tests() -> List<CoercionTestEntry> {
     checkpoint_tests(target: Rust),
     checkpoint_tests(target: Python),
     checkpoint_tests(target: Go),
+    atom_realization_tests(target: Rust),
     inhabitant_tests(target: Rust),
     inhabitant_tests(target: Python),
     inhabitant_tests(target: Go),
