@@ -1081,13 +1081,13 @@ fn content_hash(n: Node) -> Hash {
 }
 
 
-// RULING-1: 🟢 authority boundary — canonical repo root (v4-ci-schema-worksheet §2).
-// Ingress path literals use `v4.lens.edit_locus.RepoPath`; normalize to `RepoRoot` at authority.
+// 🟡 staged — feature:repository-root-brand — bind std.types brand / singleton substrate — dissolve-on-arrival: branded `RepoRoot` or data authority; ingress `RepoPath` normalizes here; forbidden: arbitrary String at authority boundary.
 type RepoRoot = String
 
 // RULING-1: 🟢 structural substrate node-set selector (v4-ci-schema-worksheet §2; concept home v4.std.node).
+// `Connective` is sole authority for ByConnective (`Atom { identity }` carries symbol identity).
 type NodeQuery
-  = NodeQueryByConnective { connective: Connective, identity: Symbol }
+  = NodeQueryByConnective { connective: Connective }
   | NodeQueryByPath { at: Path }
 
 type Path {
