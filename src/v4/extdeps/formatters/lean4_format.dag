@@ -58,7 +58,9 @@ fn lean4_nat_add_ten(n: Nat) -> Nat {
             n: lean4_nat_succ(
               n: lean4_nat_succ(
                 n: lean4_nat_succ(
-                  n: lean4_nat_succ(n: n)
+                  n: lean4_nat_succ(
+                    n: lean4_nat_succ(n: n)
+                  )
                 )
               )
             )
@@ -108,12 +110,42 @@ fn lean4_nat_catalog_format_indent() -> Nat {
 }
 
 
-// Runtime/user Int→Nat (may recurse on value); not used for catalog defaults.
+// Caller must ensure 0 <= value <= lean4_nat_max_materializable(); use make_lean4_nat_value.
 fn lean4_nat_peano_from_non_negative_int(value: Int) -> Nat {
   if value == 0 {
     Zero
   } else {
     Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
+  }
+}
+
+
+fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<Nat> {
+  if value < 0 {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: lean4_nat_out_of_range,
+          at: at,
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  } else if value > lean4_nat_max_materializable() {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: lean4_nat_exceeds_ceiling,
+          at: at,
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  } else {
+    Accepted {
+      value: lean4_nat_peano_from_non_negative_int(value: value),
+      diagnostics: None
+    }
   }
 }
 
@@ -144,10 +176,7 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
   } else if value == 120 {
     Accepted { value: lean4_nat_catalog_format_width(), diagnostics: None }
   } else {
-    Accepted {
-      value: lean4_nat_peano_from_non_negative_int(value: value),
-      diagnostics: None
-    }
+    lean4_nat_materialize_non_negative_int(value: value, at: at)
   }
 }
 

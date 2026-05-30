@@ -9,12 +9,11 @@ module v4.test.claim.manual.lean4_format_nat_catalog
 import v4.extdeps.formatters.lean4_format {
   lean4_format_authoritative_locus,
   lean4_nat_authoritative_literal,
-  lean4_nat_catalog_format_width,
   lean4_nat_exceeds_ceiling,
   make_lean4_nat_value
 }
 import v4.std.diagnostic { Accepted, Rejected }
-import v4.std.nat { Equal, nat_compare }
+import v4.std.nat { Nat, Succ, Zero, Equal, nat_compare }
 import v4.std.node { Node }
 import v4.std.verification {
   EqualsClaim,
@@ -40,10 +39,60 @@ fn lean4_format_nat_claim_input(ok: Bool) -> Node {
 }
 
 
-fn witness_lean4_nat_authoritative_literal_120_matches_catalog() -> Bool {
+// Independent test oracle: ten Succ on n (not imported from lean4_format).
+fn witness_nat_add_ten(n: Nat) -> Nat {
+  Succ {
+    prev: Succ {
+      prev: Succ {
+        prev: Succ {
+          prev: Succ {
+            prev: Succ {
+              prev: Succ {
+                prev: Succ {
+                  prev: Succ {
+                    prev: Succ { prev: Succ { prev: n } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
+// Independent reference for catalog width 120 = 12 × add_ten(Zero).
+fn witness_nat_catalog_width_120() -> Nat {
+  witness_nat_add_ten(
+    n: witness_nat_add_ten(
+      n: witness_nat_add_ten(
+        n: witness_nat_add_ten(
+          n: witness_nat_add_ten(
+            n: witness_nat_add_ten(
+              n: witness_nat_add_ten(
+                n: witness_nat_add_ten(
+                  n: witness_nat_add_ten(
+                    n: witness_nat_add_ten(
+                      n: witness_nat_add_ten(n: witness_nat_add_ten(n: Zero))
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn witness_lean4_nat_authoritative_literal_120_matches_reference() -> Bool {
   match lean4_nat_authoritative_literal(value: 120) {
     Accepted { value: literal, diagnostics: _ } =>
-      nat_compare(a: literal, b: lean4_nat_catalog_format_width()) == Equal
+      nat_compare(a: literal, b: witness_nat_catalog_width_120()) == Equal
     Rejected { diagnostics: _ } => false
   }
 }
@@ -57,10 +106,20 @@ fn witness_lean4_nat_exceeds_ceiling_rejects() -> Bool {
 }
 
 
-data claim_lean4_nat_authoritative_literal_120_matches_catalog: TestClaim = EqualsClaim {
-  label: "manual/lean4_format: lean4_nat_authoritative_literal(120) matches catalog width Nat",
+fn witness_lean4_nat_negative_rejects() -> Bool {
+  match make_lean4_nat_value(value: -1, at: lean4_format_authoritative_locus()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == lean4_nat_out_of_range
+  }
+}
+
+
+data claim_lean4_nat_authoritative_literal_120_matches_reference: TestClaim = EqualsClaim {
+  label: "manual/lean4_format: lean4_nat_authoritative_literal(120) matches independent width-120 Nat",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: lean4_format_nat_claim_input(ok: witness_lean4_nat_authoritative_literal_120_matches_catalog()),
+  lhs: lean4_format_nat_claim_input(
+    ok: witness_lean4_nat_authoritative_literal_120_matches_reference()
+  ),
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -70,6 +129,15 @@ data claim_lean4_nat_exceeds_ceiling_rejects: TestClaim = EqualsClaim {
   label: "manual/lean4_format: make_lean4_nat_value rejects above materialization ceiling",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: lean4_format_nat_claim_input(ok: witness_lean4_nat_exceeds_ceiling_rejects()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_lean4_nat_negative_rejects: TestClaim = EqualsClaim {
+  label: "manual/lean4_format: make_lean4_nat_value rejects negative Int before Peano",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lean4_format_nat_claim_input(ok: witness_lean4_nat_negative_rejects()),
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

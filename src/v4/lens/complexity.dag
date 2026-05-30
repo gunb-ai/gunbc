@@ -105,10 +105,18 @@ fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<Complexit
 
 
 // Exported helpers return ComplexityVariables (main API); refine Witness stays internal.
-fn complexity_variables_from_witness(witness: Witness<ComplexityVariables>) -> ComplexityVariables {
-  match witness {
+fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVariables {
+  match complexity_variables_from_refine(xs: xs) {
     Holds { value: variables } => variables
-    Violates { diagnostic: _ } => empty_complexity_variables()
+    // 🟡 gated — feature:complexity-variables-vacuous-oracle-fallback — bind T-12-COMPLEXITY-PROJECTION —
+    // dissolve-on-arrival: propagate Violates at exported boundary (Witness) when admits is real;
+    // forbidden: silent empty-list fabrication that drops diagnostics.
+    Violates { diagnostic: _ } =>
+      refined_vacuous_oracle_terminal(
+        base: xs,
+        by: complexity_variables_validation,
+        at: complexity_projection_locus()
+      )
   }
 }
 
@@ -140,31 +148,19 @@ fn unknown_complexity() -> ComplexityBound {
 }
 
 fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
-  complexity_variables_from_witness(
-    witness: complexity_variables_from_refine(xs: [size_var])
-  )
+  complexity_variables_unwrap_refine(xs: [size_var])
 }
 
 fn empty_complexity_variables() -> ComplexityVariables {
-  match complexity_variables_from_refine(xs: Empty) {
-    Holds { value: variables } => variables
-    Violates { diagnostic: _ } =>
-      refined_vacuous_oracle_terminal(
-        base: Empty,
-        by: complexity_variables_validation,
-        at: complexity_projection_locus()
-      )
-  }
+  complexity_variables_unwrap_refine(xs: Empty)
 }
 
 fn composite_complexity_variables(
   lhs: ComplexityVariables,
   rhs: ComplexityVariables
 ) -> ComplexityVariables {
-  complexity_variables_from_witness(
-    witness: complexity_variables_from_refine(
-      xs: concat(refined_base(r: lhs), refined_base(r: rhs))
-    )
+  complexity_variables_unwrap_refine(
+    xs: concat(refined_base(r: lhs), refined_base(r: rhs))
   )
 }
 
