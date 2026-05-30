@@ -2,9 +2,9 @@
 
 > **Status:** DRAFT — Ladder/Fixture Manager (`zesty-bat-510`, successor to `keen-crab-361`), 2026-05-30.
 > **Authority:** PR #3938 §11.1 lane 2 (acceptance predicates per rung); joint runner spec [`compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md`](compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md) §3 row "rung 4" + §4.2 A1–A4 (host-run + falsification receipts).
-> **Companion spec:** [`v4-ladder-rung-specs-2026-05-30.md`](v4-ladder-rung-specs-2026-05-30.md) — rungs 0–2 on the same fixture. **This file is additive**: it does not restate the 9-rung table, fixture ratification (§1 there), §2.4 cell vocabulary, §3 acceptance rule, or §4 headline rule — those apply verbatim and are cited in-place below.
+> **Companion specs:** [`v4-ladder-rung-specs-2026-05-30.md`](v4-ladder-rung-specs-2026-05-30.md) — rungs 0–2 on the same fixture; [`v4-ladder-rung-spec-rung3-2026-05-30.md`](v4-ladder-rung-spec-rung3-2026-05-30.md) — rung 3 (W1 / W1b staged) on the same fixture (landed via PR #4003). **This file is additive**: it does not restate the 9-rung table, fixture ratification (§1 there), §2.4 cell vocabulary, §3 acceptance rule, or §4 headline rule — those apply verbatim and are cited in-place below.
 > **Line-number authority:** `origin/main` at `7facb1934` (2026-05-30, post-#3958). Re-verify with `git show origin/main:<path>` if `main` advances.
-> **Scope:** Acceptance predicate for **rung 4 only** on `phase1/nat_semiring`. **Rung 3 is out of scope** here — gated on R1 verdict shape from PR #3972 (Compiler Spine, W1 `RoundTripClaim` eval path). Rung 4 is independently closable per joint spec §4.4 (rung-split gates).
+> **Scope:** Acceptance predicate for **rung 4 only** on `phase1/nat_semiring`. **Rung 3 is out of scope** here — see the rung-3 companion spec for the `RoundTripClaim`-based predicate (cites PR #3960 substrate, NOT PR #3972 leaf-model verification — those are orthogonal lanes). Rung 4 is independently closable per joint spec §4.4 (rung-split gates).
 
 ---
 
