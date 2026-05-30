@@ -1738,6 +1738,10 @@ fn run_test_claim_round_trip_runtime_verdict(actual: Outcome<RuntimeValue>, at: 
                   d: eval_diagnostic(reason: eval_rejected_roundtrip_precondition, node: at)
                 )
               }
+            Deferred { actual: _, diagnostic: diag } =>
+              Fail {
+                actual: outcome_rejected(d: diag)
+              }
           }
         RuntimeValueNodeUnrepresentable =>
           Fail {
