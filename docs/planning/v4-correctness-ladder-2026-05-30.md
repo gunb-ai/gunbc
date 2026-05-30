@@ -614,6 +614,23 @@ DFS path:
   existing scaffold/dissolution notes:
     - std/node.dag:84-85 — Symbol-as-edge-tag dissolution gated under T-12
       (loop_bound_edge specifically named "forbidden" for new consumers).
+    - extdeps/languages/rust.dag:263-364 (added 2026-05-30 by keen-heron-687
+      pre-dispatch verification): 94 Symbol-tagged catalog entries
+      (rust_std_projection_*, rust_surface_spelling_*, rust_repr_*,
+      rust_inhabitant_*, rust_coercion_field_*) are INERT name-keyed
+      sentinels with no consuming fact-bundle. They do NOT carry the
+      realization fact (confirmed: no TargetAtomRealization exists). The
+      worker brief MUST include a scaffold-reconciliation clause naming
+      these families (per proud-pike-680 disposition: ABSORB bool/char
+      sentinels into new rows; GREENFIELD Symbol; OUT-OF-SCOPE
+      numeric/str/unit/never). Without this clause, the lane creates a
+      third authority instead of eliminating the first two — exact P2
+      violation the lane is supposed to eliminate.
+  v4 stage names (addendum 2026-05-30 by proud-pike-680):
+    On the current v4 tree, the consumer stage is the translate path
+    (v4.compiler.emit → 06_translate.dag), not 05_emit. References to
+    "05_emit" elsewhere in this worksheet are from the original catalog
+    terminology and refer to the same logical stage.
 Deepest unsound boundary:
   Missing TargetAtomRealization fact-bundle. CARRIER TYPE definition lives
   ONCE in the target-realization substrate (canonical home, sibling to SG-2's
@@ -683,8 +700,10 @@ DFS path:
       generic-application syntax.
   compiler stage consuming it:
     - grep for "Instantiation" in src/v4/compiler/ returns NO hits.
-    - The stage that should consume Instantiation (likely 05_emit's
-      type-expression projection) does not explicitly process Instantiation today.
+    - The stage that should consume Instantiation is the v4 translate path
+      (v4.compiler.emit → 06_translate.dag per proud-pike-680 2026-05-30
+      addendum, NOT 05_emit which is v3 terminology). It does not explicitly
+      process Instantiation today.
   existing scaffold/dissolution notes:
     - none surfaced; this is a foundational missing-substrate gap.
 Deepest unsound boundary:
@@ -762,14 +781,21 @@ DFS path:
     - Set<T> = PointwisePower<T> at std/collection.dag:52
     - FiniteSet<T> at std/collection.dag:107 (separate concept)
     - Set<T> declares NO Ord-eligibility constraint on T
-    - BoundedLattice<T> at std/algebra.dag:66 with meet: fn(T,T)->T + join: fn(T,T)->T
-    - BoundedLattice instances may not populate these fields; no required-witness check
+    - BoundedLattice<T> at std/algebra.dag:66-70 has structure
+      BoundedLattice<T>{ lattice: Lattice<T>{meet, join}, top, bottom }
+      (per proud-pike-680 2026-05-30 addendum — NOT flat meet/join on
+      BoundedLattice arm). Lattice<T> instances may not populate meet/join
+      witnesses; no required-witness check.
   extdeps/language authority:
     - extdeps/languages/rust.dag has NO Set Rust realization (verified — only
       unrelated lex_rule_set match); no representation choice declared.
+    - Map<K,V> realization: substrate Map is Witness-based fn lookup (NOT
+      BTreeMap; proud-pike-680 2026-05-30 addendum). May need separate row
+      in TargetCollectionRealization or explicit non-goal.
     - No constraint-propagation fact for collection target realization.
   compiler stage consuming it:
-    - 05_emit derives "use BTreeSet, add T: Ord" without substrate authority.
+    - 05_emit (v3 catalog terminology) derives "use BTreeSet, add T: Ord"
+      without substrate authority. v4 stage = translate path (06_translate.dag).
   existing scaffold/dissolution notes:
     - none directly; missing-substrate situation, not tracked debt.
 Deepest unsound boundary:
