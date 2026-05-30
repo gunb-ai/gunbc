@@ -118,9 +118,9 @@ Seven other targets (cpp, ts, lean, swift, …) are **deferred** to Phase 4+ wid
 
 | Predicate id | Target | Pass condition | Fail blocking receipt |
 | ------------ | ------ | -------------- | --------------------- |
-| `R2-rust-compile` | `rust` | Same as `R1-rust-typecheck` (rung 2 Rust ⊇ rung 1). | `phase1/nat_semiring/rung2/rust_compile_failed` |
-| `R2-python-compile` | `python` | Emitted Python compiles / type-checks per project Python gate policy (`python3 -m py_compile` or equivalent). | `phase1/nat_semiring/rung2/python_compile_failed` |
-| `R2-go-compile` | `go` | Emitted Go builds without compile errors. | `phase1/nat_semiring/rung2/go_compile_failed` |
+| `R2-rust-compile` | `rust` | Same as `R1-rust-typecheck` (rung 2 Rust ⊇ rung 1). **Executed only when `R1-rust-typecheck` is `PASS`.** If `R1` or `R0-rust-parse` is not `PASS`, `R2-rust` is **`SKIP`** (`upstream_blocked:<prerequisite-id>`). | `phase1/nat_semiring/rung2/rust_compile_failed` |
+| `R2-python-compile` | `python` | Emitted Python compiles per project Python gate policy (`python3 -m py_compile` or equivalent). **Executed only when `R0-python-parse` is `PASS`.** Phase 1 uses the same `py_compile` surface for R0 and R2; R2 still requires R0 **PASS** so compile cannot run before parse is proven. | `phase1/nat_semiring/rung2/python_compile_failed` |
+| `R2-go-compile` | `go` | Emitted Go builds without compile errors (`go build`). **Executed only when `R0-go-parse` is `PASS`.** R0 (`gofmt -e`) and R2 (`go build`) are different probes — if `R0-go-parse` is `FAIL` or `SKIP`, `R2-go` is **`SKIP`**, never **`FAIL`**. | `phase1/nat_semiring/rung2/go_compile_failed` |
 
 **Explicit non-goals for rung 2 Phase 1:**
 
@@ -148,14 +148,16 @@ blocking_receipt: <predicate id> | none
 | `FAIL` | Predicate executed; pass condition not met (use matching `R*-*` blocking receipt). |
 | `SKIP` | Predicate **not executed** — emit artifact unavailable (`*_emit_unavailable`) or prerequisite not met (`upstream_blocked:<predicate-id>`). **Forbidden:** label `FAIL` when the predicate did not run or when the only evidence is a later rung’s toolchain failure. |
 
-**Prerequisite execution (rust chain — same target):**
+**Prerequisite execution (per-target — same target, increasing rung):**
 
 | Predicate | Runs only when |
 | --------- | -------------- |
 | `R1-rust-typecheck` | `R0-rust-parse` = **`PASS`** |
 | `R2-rust-compile` | `R1-rust-typecheck` = **`PASS`** (rung 2 Rust ⊇ rung 1) |
+| `R2-python-compile` | `R0-python-parse` = **`PASS`** |
+| `R2-go-compile` | `R0-go-parse` = **`PASS`** |
 
-If prerequisite is not `PASS`, the dependent cell is **`SKIP`** (`upstream_blocked:<prerequisite-id>`), never **`FAIL`**.
+If prerequisite is not `PASS`, the dependent cell is **`SKIP`** (`upstream_blocked:<prerequisite-id>`), never **`FAIL`**. **Forbidden:** `R2-go-compile` **FAIL** (or `R2-python-compile` **FAIL**) when the matching `R0-*-parse` cell was not **PASS**.
 
 `blocking_receipt` names the **lowest rung, earliest predicate** that was **executed** and **failed**, the first `*_emit_unavailable`, or — when later predicates were not run — `upstream_blocked:<predicate-id>` (must **not** use a `*_parse_rejected` / `*_failed` id for a predicate that was **not executed**). Example: rust parse passes, typecheck fails → `rung0 rust=PASS`, `rung1 rust=FAIL`, `blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed`. Example: rust parse not executed (`R0-rust-parse` **SKIP**) → `rung0 rust=SKIP`, `rung1 rust=SKIP`, `blocking_receipt: upstream_blocked:R0-rust-parse` (or `phase1/nat_semiring/rung0/rust_emit_unavailable` when no emit artifact exists) — **not** `rust_emit_parse_rejected` and **not** `R1-rust-typecheck` **FAIL** when R1 did not run.
 
