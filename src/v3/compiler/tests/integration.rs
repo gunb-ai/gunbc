@@ -145,8 +145,6 @@ mod m1_lens_structural_resolution_test;
 mod m1_substrate_test;
 #[path = "boundary/m2_emit_multi_field_struct_variant_test.rs"]
 mod m2_emit_multi_field_struct_variant_test;
-#[path = "boundary/v4_leaf_model_rust_r1_rustc_test.rs"]
-mod v4_leaf_model_rust_r1_rustc_test;
 #[path = "integration/m2_feature_parity_test.rs"]
 mod m2_feature_parity_test;
 #[path = "integration/m2_field_access_binding_test.rs"]
@@ -295,6 +293,8 @@ mod v4_extdeps_file_system_dag_smoke_test;
 mod v4_extdeps_formatters_black_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
+#[path = "boundary/v4_leaf_model_rust_r1_rustc_test.rs"]
+mod v4_leaf_model_rust_r1_rustc_test;
 #[path = "integration/v4_lens_affected_set_dag_smoke_test.rs"]
 mod v4_lens_affected_set_dag_smoke_test;
 #[path = "integration/v4_lens_application_dag_smoke_test.rs"]

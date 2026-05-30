@@ -74,10 +74,8 @@ fn compile_lib(harness: &RustcHarness, label: &str, source: &str) -> (bool, Stri
 fn v4_leaf_model_rust_r1_fixture_strings_match_dag_authority() {
     let happy = extract_fixture_source(FIXTURE_DAG, "rust_r1_happy_fixture_source")
         .expect("rust_r1_happy_fixture_source in lens/leaf_model_verification.dag");
-    let falsification =
-        extract_fixture_source(FIXTURE_DAG, "rust_r1_falsification_fixture_source").expect(
-            "rust_r1_falsification_fixture_source in lens/leaf_model_verification.dag",
-        );
+    let falsification = extract_fixture_source(FIXTURE_DAG, "rust_r1_falsification_fixture_source")
+        .expect("rust_r1_falsification_fixture_source in lens/leaf_model_verification.dag");
     assert_eq!(happy, HAPPY_FIXTURE);
     assert_eq!(falsification, FALSIFICATION_FIXTURE);
     assert!(
@@ -91,7 +89,10 @@ fn v4_leaf_model_rust_r1_fixture_strings_match_dag_authority() {
 fn v4_leaf_model_rust_r1_happy_fixture_rustc_accepts() {
     let harness = RustcHarness::new("v4_leaf_model_rust_r1");
     let (ok, stderr) = compile_lib(&harness, "happy", HAPPY_FIXTURE);
-    assert!(ok, "rustc should accept R1 happy fixture; stderr:\n{stderr}");
+    assert!(
+        ok,
+        "rustc should accept R1 happy fixture; stderr:\n{stderr}"
+    );
 }
 
 #[test]
