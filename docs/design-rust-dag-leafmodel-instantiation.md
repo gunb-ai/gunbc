@@ -73,16 +73,17 @@ Expanding past these four requires a modeling-escalation justification. The diss
 
 Per DFS msg_badac9f3 answer (3): the runtime-outcome taxonomy is generic; Python/Go/etc. have analogous outcomes (panic, wrap, checked-return, exception-raise, …). Carrier lives in `src/v4/std/runtime.dag` (existing file). `rust.dag` references the std carrier; the per-target invocation_form remains rust.dag-specific.
 
-Sketch (proposed addition to `std/runtime.dag` — Modeling DFS to ratify exact naming separately):
+Landed on main at `src/v4/std/runtime.dag:66-70` (via PR #3970 merge):
 
 ```dag
-type RuntimeOutcome =
-  | Panic            { panic_classification: Symbol }
-  | Wrap             // wrapping arithmetic
-  | CheckedReturn    { wrapped_value: Node }
-  | ExceptionRaise   { exception_node: Node }
-  // …extension via modeling escalation only
+type RuntimeOutcome
+  = Panic { panic_classification: Symbol }
+  | Wrap
+  | CheckedReturn { wrapped_value: Node }
+  | ExceptionRaise { exception_node: Node }
 ```
+
+A `🟡 coproduct dissolution` note follows at `runtime.dag:71` (consumer:runtime-value-node-reification; fail-closed until RuntimeValue payloads have faithful Node representation). The Phase-1 R2b sketches in §5 consume `Panic` and `Wrap`; the other two arms cover Python/Go etc. and are not Phase-1 rust.dag-exercised.
 
 ## §3. fact_id discipline — C(rust.dag) corpus per §5 Layer A
 
@@ -119,11 +120,11 @@ fn rust_dag_claimable_fact_ids() -> List<Node> {
 
 ### §3.1 Three classes of claimable fact_id in rust.dag
 
-Per the Node-typed `fact_id` discipline ratified by Modeling DFS msg_d5181972 and PR #3970 (proposed projection fns `rust_leaf_model_fact_id_node_*` — currently in PR #3970, NOT yet on `origin/main`; will land in `src/v4/extdeps/languages/rust.dag` when #3970 merges), claimable facts split into three structural classes:
+Per the Node-typed `fact_id` discipline ratified by Modeling DFS msg_d5181972 and PR #3970 (now merged; projection fns `rust_leaf_model_fact_id_node_*` live on main at `src/v4/extdeps/languages/rust.dag:721-731`), claimable facts split into three structural classes:
 
-1. **Top-level `data <name>: <RecordType>` declarations** — facts carried as full Conj-bundle records that the runner can introspect. Example: `rust_facts_i32: RustIntegerPrimitiveFacts` (rust.dag:574). Projection-fn: `rust_integer_facts_node(facts: rust_facts_i32)`.
-2. **Derived facts via model-owned functions** — facts computed by a rust.dag function from other facts. Example: `rust_integer_algebra_inhabitance(rust_facts_i32)` returns an `AlgebraInhabitanceDecl` (rust.dag:1768). Projection-fn: `rust_integer_algebra_inhabitance(facts: rust_facts_i32).algebra`.
-3. **Realization-row facts (planned)** — facts to be declared by SG-1 (`TargetAtomRealization`) and SG-5 (`TargetCollectionRealization`) per PR #3938 §10.1/§10.3. Example: `rust_atom_realization_symbol` (currently a placeholder Symbol on rust.dag; SG-1 will land the actual row).
+1. **Top-level `data <name>: <RecordType>` declarations** — facts carried as full Conj-bundle records that the runner can introspect. Example: `rust_facts_i32: RustIntegerPrimitiveFacts` (rust.dag:574). Projection-fn: `rust_leaf_model_fact_id_node_rust_facts_i32()` at rust.dag:721, which wraps `rust_integer_facts_node(facts: rust_facts_i32)`.
+2. **Derived facts via model-owned data bindings + functions** — facts computed by a rust.dag function from other facts AND bound as a top-level `data` for re-use. Example: `data rust_integer_algebra_inhabitance_rust_facts_i32: AlgebraInhabitanceDecl = rust_integer_algebra_inhabitance(facts: rust_facts_i32)` (rust.dag:714, derived via `rust_integer_algebra_inhabitance` fn at rust.dag:1788). Projection-fn: `rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32()` at rust.dag:725.
+3. **Realization-row facts (planned)** — facts to be declared by SG-1 (`TargetAtomRealization`) and SG-5 (`TargetCollectionRealization`) per PR #3938 §10.1/§10.3. Example: `rust_atom_realization_symbol` (placeholder Symbol on main; SG-1 will land the actual row). Projection-fn on main: `rust_leaf_model_fact_id_node_atom_realization_symbol()` at rust.dag:729.
 
 **Explicitly NOT claimable** (structural-tag-only / scaffolding; not in the predicate's return list):
 
@@ -135,17 +136,17 @@ Per the Node-typed `fact_id` discipline ratified by Modeling DFS msg_d5181972 an
 
 ### §3.2 Phase-1 enumeration — exact fact_id list
 
-The Phase-1 claimable subset is **3 fact_id Node identities, 8 LeafModelClaim rows** (post the R2b 4-way split per §5). The full Phase-1 contents of `rust_dag_claimable_fact_ids()` for the Step 4 implementation (projection-fn names are proposed; live in PR #3970, NOT yet on `origin/main`):
+The Phase-1 claimable subset is **3 fact_id Node identities, 8 LeafModelClaim rows** (post the R2b 4-way split per §5). The full Phase-1 contents of `rust_dag_claimable_fact_ids()` for the Step 4 implementation (projection-fn names are now landed on main at rust.dag:721-731):
 
 ```dag
 // Phase 1 of rust_dag_claimable_fact_ids() — exhaustively enumerated.
 // Phase 2 widens this list per §3.3.
-// Projection-fn names are proposed in PR #3970; not yet on origin/main.
+// Projection-fn declarations live on main at src/v4/extdeps/languages/rust.dag:721-731.
 
 [
-  rust_leaf_model_fact_id_node_rust_facts_i32(),                                  // R1 — 1 LeafModelClaim row
-  rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),              // R2a + R2b(×4) share this fact — 5 LeafModelClaim rows total
-  rust_leaf_model_fact_id_node_atom_realization_symbol()                          // R3-external + R3-internal share this fact — 2 LeafModelClaim rows
+  rust_leaf_model_fact_id_node_rust_facts_i32(),                                  // R1 — 1 LeafModelClaim row (rust.dag:721)
+  rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),              // R2a + R2b(×4) share this fact — 5 LeafModelClaim rows total (rust.dag:725)
+  rust_leaf_model_fact_id_node_atom_realization_symbol()                          // R3-external + R3-internal share this fact — 2 LeafModelClaim rows (rust.dag:729)
 ]
 ```
 
@@ -159,14 +160,14 @@ Every other claimable fact in rust.dag (estimated per the §3 inventory table: i
 
 **Non-claimable Symbols (the ~227 scaffolding entries) NEVER enter the predicate's return list,** so they don't generate spurious `not_checked` rows. The §3.0 predicate is the load-bearing single authority that distinguishes "fact that needs a claim" from "tag Symbol that doesn't."
 
-For M = rust.dag, the fact_id space at main HEAD comprises **all** facts the model declares, whether as top-level `data Symbol` lines OR as derived facts computed by model-owned functions (e.g., `rust_integer_algebra_inhabitance(facts)` at rust.dag:1768 derives an `AlgebraInhabitanceDecl` from a `RustIntegerPrimitiveFacts` record). The fact_id discipline accepts both shapes; verification claims reference the canonical form the model exposes (the Symbol for `data`-declared facts; the derived-value key for function-computed facts).
+For M = rust.dag, the fact_id space at main HEAD comprises **all** facts the model declares, whether as top-level `data Symbol` lines OR as derived facts computed by model-owned functions (e.g., `rust_integer_algebra_inhabitance(facts)` at rust.dag:1788 derives an `AlgebraInhabitanceDecl` from a `RustIntegerPrimitiveFacts` record). The fact_id discipline accepts both shapes; verification claims reference the canonical form the model exposes (the Symbol for `data`-declared facts; the derived-value key for function-computed facts).
 
 Inventory at main HEAD `edc8cba73` (approximate counts; row counts verified against rust.dag line ranges):
 
 | fact_id family | count | Source location | Phase 1? |
 | -------------- | ----- | --------------- | -------- |
 | Primitive type facts (`rust_facts_*` records) | 19 total | Integer (`RustIntegerPrimitiveFacts`, 12 entries): rust.dag:562-633 covering `i8`/`i16`/`i32`/`i64`/`i128`/`u8`/`u16`/`u32`/`u64`/`u128`/`isize`/`usize`. Float (`RustFloatPrimitiveFacts`, 2 entries): rust.dag:634-647 covering `f32`/`f64`. Non-integer (`RustNonIntegerPrimitiveFacts`, 5 entries): rust.dag:648-700 covering `bool`/`char`/`str`/`unit`/`never`. | R1 covers `rust_facts_i32` (rust.dag:574) only |
-| Algebra inhabitance (function-derived from primitive facts) | per-primitive | rust.dag:1768 `rust_integer_algebra_inhabitance(facts)` derives `AlgebraInhabitanceDecl` per `rust_facts_*` row | R2a/R2b cover the derived inhabitance for `rust_facts_i32` only |
+| Algebra inhabitance (function-derived from primitive facts) | per-primitive | rust.dag:1788 `rust_integer_algebra_inhabitance(facts)` derives `AlgebraInhabitanceDecl` per `rust_facts_*` row | R2a/R2b cover the derived inhabitance for `rust_facts_i32` only |
 | `rust_std_projection_*` | 19 | rust.dag:265-283 | none in Phase 1 |
 | `rust_surface_spelling_*` | 19 | rust.dag:285-303 | none in Phase 1 |
 | `rust_repr_*` / `rust_ieee754_*` / `rust_str_*` / `rust_char_*` | 7 | rust.dag:305-312 | none in Phase 1 |
@@ -178,7 +179,7 @@ Inventory at main HEAD `edc8cba73` (approximate counts; row counts verified agai
 | TargetAtomRealization rows (Symbol/Bool/Char) | 3 (planned) | **Not on main yet — to be declared by SG-1 dispatch (Step 5).** R3-internal claim row authored at Step 4 references this fact_id (cited as `rust_atom_realization_symbol` for the Symbol carrier specifically) and stays `not_checked`/`GAP` until SG-1 lands. | R3 (Symbol only — fact_id `rust_atom_realization_symbol` covered by TWO LeafModelClaim rows: R3-external + R3-internal verification angles) |
 | TargetCollectionRealization rows (Set/…) | varies (planned) | **Not on main yet — to be declared by SG-5 dispatch.** | none in Phase 1 |
 
-**Every claimable fact above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 3 fact_id Node identities (R3 PLANNED counts as one in the §3.2 list) with the following row distribution: (a) `rust_facts_i32` (rust.dag:574 — top-level data Symbol declaring `RustIntegerPrimitiveFacts` for i32) → 1 row (R1); (b) `rust_integer_algebra_inhabitance(rust_facts_i32)` derived-fact key (rust.dag:1768) → 5 rows (R2a + R2b×4 — see §5 split); (c) `rust_atom_realization_symbol` (PLANNED — Symbol-carrier TargetAtomRealization row, to be declared by SG-1 dispatch in Step 5) → 2 rows (R3-external + R3-internal). **8 LeafModelClaim rows total on 3 fact_ids.** Per the §5 Layer A contract above, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every claimable fact has at least one claim," not "every fact has exactly one claim." Per §3.0, the model-owned `rust_dag_claimable_fact_ids()` predicate (Step 4 deliverable) is the single authority for which facts enter C(rust.dag) at all; the remaining claimable facts that are not in Phase-1 scope enter C(rust.dag) with at least one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
+**Every claimable fact above MUST be present in C(rust.dag) as one-or-more LeafModelClaim rows** — Phase 1 covers 3 fact_id Node identities (R3 PLANNED counts as one in the §3.2 list) with the following row distribution: (a) `rust_facts_i32` (rust.dag:574 — top-level data Symbol declaring `RustIntegerPrimitiveFacts` for i32) → 1 row (R1); (b) `rust_integer_algebra_inhabitance_rust_facts_i32` data binding (rust.dag:714, derived via fn at rust.dag:1788) → 5 rows (R2a + R2b×4 — see §5 split); (c) `rust_atom_realization_symbol` (PLANNED — Symbol-carrier TargetAtomRealization row, to be declared by SG-1 dispatch in Step 5) → 2 rows (R3-external + R3-internal). **8 LeafModelClaim rows total on 3 fact_ids.** Per the §5 Layer A contract above, a fact_id may carry multiple `LeafModelClaim` rows (one per verification angle); the contract is "every claimable fact has at least one claim," not "every fact has exactly one claim." Per §3.0, the model-owned `rust_dag_claimable_fact_ids()` predicate (Step 4 deliverable) is the single authority for which facts enter C(rust.dag) at all; the remaining claimable facts that are not in Phase-1 scope enter C(rust.dag) with at least one `not_checked` row each until Phase 2 drains them. They are NOT invisible debt — they appear explicitly in `LeafModelVerificationReport<rust.dag>.totals.not_checked`.
 
 The 94 catalog sentinels (count per `docs/planning/v4-leaf-model-verification-2026-05-30.md` §7 line 198; the canonical-home spec PR #3952 first surfaced this scaffold during pre-dispatch verification, and §7 of the planning doc records the count) all land here. None are dropped; none are "implicit." This is the operator's framing made operational: every model fact has a verification obligation in C(M).
 
@@ -243,7 +244,7 @@ falsification (locus: artifact — pending §4.1 ArtifactVariant substrate):
 
 ### R2a — i32 supports algebra ops
 ```text
-fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)    // derived-fact key per rust.dag:1768 function applied to rust.dag:574 facts; algebra-operations verification angle
+fact_id:    rust_integer_algebra_inhabitance_rust_facts_i32 (rust.dag:714 data binding) — projected via rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32() (rust.dag:725)    // derived-fact key per rust.dag:1788 function applied to rust.dag:574 facts; algebra-operations verification angle
 subject:    RustAlgebraInhabitanceSubject { inhabitance_decl: rust_integer_algebra_inhabitance(rust_facts_i32) }
 expectation: RustcAcceptsExpectation { invocation_form: rustc("pub fn r2a_test(a: i32, b: i32) -> (i32, bool) { (a + b, a < b) }") }
 falsification (locus: artifact — pending §4.1 ArtifactVariant substrate):
@@ -269,13 +270,13 @@ type OverflowDisposition<IRCarrier> {
 }
 ```
 
-A single R2b claim that only exercises debug-default would let a wrong release-default fact pass Phase 1 silently. R2b therefore splits into **one sub-claim per OverflowAction field** — all four — sharing the `rust_integer_algebra_inhabitance(rust_facts_i32)` fact_id. Phase-1 count: R2b becomes 4 LeafModelClaim rows on one fact_id at distinct verification angles.
+A single R2b claim that only exercises debug-default would let a wrong release-default fact pass Phase 1 silently. R2b therefore splits into **one sub-claim per OverflowAction field** — all four — sharing the `rust_integer_algebra_inhabitance_rust_facts_i32` data-binding fact_id (rust.dag:714). Phase-1 count: R2b becomes 4 LeafModelClaim rows on one fact_id at distinct verification angles.
 
 For Phase-1 fixture economy: implement the two distinct-value sub-claims as live fixtures (debug-default `PanicOnOverflow` + release-default `TwoComplementWrap` — they cover both `OverflowAction` cases the model declares for i32); the two overflow-checks-enabled/disabled sub-claims author at `not_checked` since they duplicate the action values of debug/release-default. The 4-row enumeration still lands; only 2 carry runner-exercising fixtures.
 
 ```text
 // R2b sub-claim 1 of 4 — debug-default
-fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)
+fact_id:    rust_integer_algebra_inhabitance_rust_facts_i32 (rust.dag:714 data binding) — projected via rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32() (rust.dag:725)
 subject:    RustAlgebraInhabitanceSubject { inhabitance_decl: rust_integer_algebra_inhabitance(rust_facts_i32) }
 expectation: RustRuntimeBehaviorExpectation {
               invocation_form: rustc-then-run(
@@ -293,7 +294,7 @@ falsification (locus: expectation — pending §4.1 ExpectationVariant substrate
                          Wrap variant correctly REJECTED.
 
 // R2b sub-claim 2 of 4 — release-default
-fact_id:    rust_integer_algebra_inhabitance(rust_facts_i32)
+fact_id:    rust_integer_algebra_inhabitance_rust_facts_i32 (rust.dag:714 data binding) — projected via rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32() (rust.dag:725)
 subject:    RustAlgebraInhabitanceSubject { inhabitance_decl: rust_integer_algebra_inhabitance(rust_facts_i32) }
 expectation: RustRuntimeBehaviorExpectation {
               invocation_form: rustc-then-run(
