@@ -13,8 +13,8 @@
 //! `HostExit` Holds witness + five-byte stdout parse) plus **tokenize/parse** surface receipts
 //! for W2 `.dag` modules (not `str::contains` source probes per TESTING.md).
 //!
-//! **W3 landed:** `run_emit_host_rust` substrate row + `nat_semiring_rung34_runtime_value_rows`
-//! populated (`rung_4_emit_eval.dag`); executable host via `emit_host_bridge` / `emit_host_runner`.
+//! **W3 landed:** `run_emit_host_rust` substrate row wired; rosters authored in #4046 (`rung_3_4`).
+//! Executable host via `emit_host_bridge` / `emit_host_runner`.
 //! Behavior receipts: real cargo compile+run transport, MVP-2 emit-vs-eval `Pass`/`Fail` verdicts
 //! (host `FalsificationReceipt` path on value mismatch / parse reject). Dissolution: delete when
 //! T-22 generated harness replaces hand-Rust probes.
@@ -37,14 +37,9 @@ const NAT_SEMIRING_RUNG34_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung34_eval.dag");
 const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
     "src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag";
-const NAT_SEMIRING_RUNG4_EMIT_EVAL_DAG: &str =
-    include_str!("../../../../v4/test/claim/nat_semiring/rung_4_emit_eval.dag");
-const NAT_SEMIRING_RUNG4_EMIT_EVAL_PATH: &str =
-    "src/v4/test/claim/nat_semiring/rung_4_emit_eval.dag";
-const BRANCH_DISPATCH_RUNG4_EMIT_EVAL_DAG: &str =
-    include_str!("../../../../v4/test/claim/branch_dispatch/rung_4_emit_eval.dag");
-const BRANCH_DISPATCH_RUNG4_EMIT_EVAL_PATH: &str =
-    "src/v4/test/claim/branch_dispatch/rung_4_emit_eval.dag";
+const NAT_SEMIRING_RUNG_3_4_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
+const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =

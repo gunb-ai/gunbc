@@ -1,23 +1,21 @@
 // src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag
 // Scope: W2 rung 3–4 corpus eval + rung-split gates (§4.4) for phase1/nat_semiring.
-// Status: W3 roster — rung-3 RoundTrip (rung_3_4) + rung-4 emit-vs-eval (rung_4_emit_eval).
+// Status: W3 roster populated (#4046); emit_host transport wired (#4047).
 
 module v4.test.claim.workflow.nat_semiring_rung34_eval
 
 
 import v4.compiler.eval { TestClaimRun }
-import v4.test.claim.nat_semiring.rung_3_4 {
-  run_phase1_nat_semiring_rung3_module_roundtrip
-}
-import v4.test.claim.nat_semiring.rung_4_emit_eval {
-  run_phase1_nat_semiring_rung4_rust_emit_equals_eval
-}
 import v4.std.algebra { is_empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Zero }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
+import v4.test.claim.nat_semiring.rung_3_4 {
+  run_phase1_nat_semiring_rung3_module_roundtrip,
+  run_phase1_nat_semiring_rung4_rust_emit_equals_eval
+}
 import v4.test.claim.workflow.testclaim_corpus_runner {
   CorpusEvalReport,
   corpus_entries_from_node_runtime_value_runs,
