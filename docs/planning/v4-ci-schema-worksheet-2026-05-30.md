@@ -1,6 +1,6 @@
 # v4 CI Schema Worksheet — Phase 1.5 (`CiUpsertStep<T>` + `UpsertInputRef`)
 
-> **Status:** WORKSHEET DRAFT — Modeling DFS Manager approval required before any substrate worker dispatch.
+> **Status:** WORKSHEET APPROVED — Modeling DFS Manager §8 sign-off 2026-05-30 (proud-pike-680). Operator pre-dispatch tightenings below incorporated. Phase 1.5 substrate workers remain **BLOCKED** until Phase 1.4 `Upsert<T>` lands.
 > **Date:** 2026-05-30
 > **Author:** smart-seal-842 (worker under proud-pike-680)
 > **Dispatch anchor:** PR #3959 Phase 1 dispatch — **step 1** (author schema worksheet) + **step 3a** (typed carrier catalog / coproduct inhabitants)
@@ -128,20 +128,25 @@ type FileSetSelector {
   pattern: GlobPattern      // dsl/std/types.dag — NOT bare Symbol
 }
 
-type RepositoryRoot = RepoRoot | AbsolutePath { path: FilePath }
-// Proposal: prefer single data authority `repo_root: RepositoryRoot = RepoRoot`
-// and reuse v4.lens.edit_locus.RepoPath for path literals — manager may collapse to RepoRoot only.
+// Manager §8: RepoRoot only at authority boundary; v4.lens.edit_locus.RepoPath for ingress literals only.
+type RepositoryRoot = RepoRoot
 
-type CiStepId {
-  job: Symbol
-  gate: Symbol              // optional gate arm when step maps 1:1 to CiGate; manager confirms mapping
-}
-// Alternative (if gate-less jobs only): newtype wrapper over Symbol with brand — still NOT bare Symbol on UpsertInputRef.
+type CiJobId = Symbol       // brands land with ci.dag job id symbols — not bare on UpsertInputRef
+type CiGateId = Symbol
+type CiCommandId = Symbol
+
+// Closed step identity (no optional-by-comment gate field). Manager §8 + operator tighten.
+type CiStepId
+  = JobStep { job: CiJobId, step: CiCommandId }
+  | GateStep { job: CiJobId, gate: CiGateId }
 
 // Dashboard session identity for carveout accountability (v4-ci-overhaul §5 operator-ratified).
 // NOT bare Symbol — a Symbol owner would let UnknownYet carveouts behave like undifferentiated
 // "Always because vibes" (P1 closed-system / P2 single authority).
 type ManagerSessionId = String where brand("ManagerSessionId")
+
+// Forces a future Modeling DFS worksheet artifact — not calendar review (no timelines discipline).
+type DfsWorksheetRef = String where brand("DfsWorksheetRef")
 
 type CiCarveout {
   step_id: CiStepId
@@ -152,17 +157,21 @@ type CiCarveout {
 
 type DissolutionTarget
   = ModelMissingSubstrate { what: Symbol }
-  | UnknownYet { investigation_owner: ManagerSessionId, review_due_by: Symbol }
+  | UnknownYet {
+      investigation_owner: ManagerSessionId
+      required_dfs_receipt: DfsWorksheetRef
+    }
 
 data ci_always_run_carveouts: List<CiCarveout> = [ /* small honest list */ ]
 
 type CiSelectionReceipt {
   pr: ChangeSet
   affected: AffectedSet
-  selected: List<CiStepSelection>
-  skipped: List<CiStepSelection>
-  carved_out: List<CiCarveout>
+  decisions: List<CiStepSelection>   // sole list — partition enforced below
 }
+
+// Fail-closed well-formedness: every pipeline step appears exactly once; decisions partition Run|Skip|CarvedOut.
+fn ci_selection_receipt_well_formed(receipt: CiSelectionReceipt, pipeline: CiPipeline) -> Bool
 
 type CiStepSelection {
   step_id: CiStepId
@@ -214,13 +223,13 @@ CI pipeline shell            | v4.workflow.ci CiPipeline           | Host CiUpse
 Step cache projection        | v4.std.node content_hash            | Derive digest fns
 ```
 
-**New concepts requiring explicit home (manager must pick before implementation):**
+**New concepts — concept homes (manager §8 closed):**
 
-1. `NodeQuery` — substrate node set selector (for `SubstrateNodeSet`).
-2. `RepositoryRoot` / `RepoRoot` — repo boundary for file sets (or justify `RepoPath` only).
-3. `CiStepId` — step identity (replaces raw `Symbol` in upstream refs and receipts).
-4. `ManagerSessionId` — dashboard manager session binding for `UnknownYet.investigation_owner` (lands with `CiCarveout` in `v4.workflow.ci` or sibling workflow module).
-5. `AffectedNode` (receipt field) — projection of intersection evidence; likely alias/subset of `AffectedDependency` or `Change.subject`.
+1. `NodeQuery` — **`v4.std.node`** (structural substrate selector; lenses consume, do not author a third path table).
+2. `RepositoryRoot` — **`RepoRoot` only** at authority boundary; `v4.lens.edit_locus.RepoPath` for ingress literals.
+3. `CiStepId` — `v4.workflow.ci` (`JobStep` | `GateStep` closed coproduct).
+4. `ManagerSessionId`, `DfsWorksheetRef` — `v4.workflow.ci` (carveout accountability).
+5. `AffectedNode` (receipt field) — alias/subset of `AffectedDependency` or `Change.subject` (manager ties at landing).
 
 ---
 
@@ -248,6 +257,9 @@ Step cache projection        | v4.std.node content_hash            | Derive dige
 | `dependency_set` / `DependencySource` | Retired vocabulary (PR #3959) |
 | Reusing `CiGateRunPolicy` for step selection | GHA interim projection only (🟡) |
 | `UnknownYet { investigation_owner: Symbol, ... }` | Supersedes operator-ratified `ManagerSessionId` (v4-ci-overhaul §5) |
+| `UnknownYet { review_due_by: ... }` | Calendar obligation — use `required_dfs_receipt: DfsWorksheetRef` |
+| `CiStepId { job, gate }` with optional gate by comment | Use `JobStep` \| `GateStep` closed coproduct |
+| `CiSelectionReceipt` triple lists without partition proof | Use single `decisions` + `ci_selection_receipt_well_formed` |
 
 ---
 
@@ -255,7 +267,7 @@ Step cache projection        | v4.std.node content_hash            | Derive dige
 
 1. **Cache sensitivity:** For fixed `inputs`, mutate only `verify` → `content_hash(step)` changes (manual claim or TestClaim in `v4/test/claim/workflow/`).
 2. **Collision rejection:** Two `CiUpsertStep` values with identical `inputs` and different `create` → different cache digests; cache lookup must not merge.
-3. **Receipt shadow mode:** Pipeline emits `CiSelectionReceipt` with `decision` per step before CI active-skip; carved-out steps cite `ci_always_run_carveouts` entry.
+3. **Receipt shadow mode:** Pipeline emits `CiSelectionReceipt` with one `decisions` row per step; `ci_selection_receipt_well_formed` holds; carved-out rows use `CarvedOut` and cite `ci_always_run_carveouts`.
 4. **Forbidden-pattern grep:** Implementation PR must not introduce §4 patterns.
 5. **Ingress normalization:** Raw GitHub path string in transport only; persisted model rows use `FileSetSelector` + `GlobPattern`.
 
@@ -297,15 +309,34 @@ Escalate (do not spot-fix):
 
 ---
 
-## §8 Manager approval checklist (proud-pike-680)
+## §8 Manager approval checklist (proud-pike-680) — CLOSED 2026-05-30
 
-- [ ] §1.3 `UpsertInputRef` coproduct approved as sole input authority
-- [ ] `NodeQuery` concept home selected
-- [ ] `CiStepId` shape approved (job+gate vs branded Symbol)
-- [ ] `RepositoryRoot` / `RepoRoot` resolution approved
-- [ ] Cache derived-only rule accepted (no payload field)
-- [ ] `ManagerSessionId` + carveout `UnknownYet` owner/cadence accepted (matches v4-ci-overhaul §5)
-- [ ] Worker dispatch authorized (still blocked on Phase 1.4 completion)
+- [x] §1.3 `UpsertInputRef` coproduct approved as sole input authority
+- [x] `NodeQuery` concept home: **`v4.std.node`**
+- [x] `CiStepId`: **`JobStep` | `GateStep`** (operator tighten post-§8; supersedes optional gate comment)
+- [x] `RepositoryRoot`: **`RepoRoot` only**
+- [x] Cache derived-only via `content_hash(full step subgraph)`; no `cache_key` payload
+- [x] `ManagerSessionId` + `UnknownYet.required_dfs_receipt` (operator tighten: no `review_due_by`)
+- [ ] Worker dispatch — **still blocked** on Phase 1.4 (`adhoc-4155bd37-f57`, manager-owned)
+
+## §9 Operator pre-dispatch tightenings (2026-05-30)
+
+Incorporated into §1.4 above. **Out of scope for this worksheet** (manager lands on PR #3959 sibling docs):
+
+- `v4-ci-overhaul`: typed `GlobPattern { ... }` in examples (no raw string patterns in templates).
+- `v4-leaf-model-verification`: report `totals` rename (`model_failed` vs `falsification_caught`); `TargetInvocation` toolchain facts; R3 split external + single-authority receipts.
+
+Suggested implementation sequence (manager dispatch):
+
+```text
+1. Phase 1.4 Upsert<T> substrate worksheet
+2. CI schema landing (this worksheet)
+3. Shadow-mode CiSelectionReceipt only
+4. LeafModelClaim + rust.dag R1/R2a/R2b/R3 claim files
+5. Fixture generator + runner (R1)
+6. Wire R1 as CiUpsertStep<LeafModelVerificationReport>
+7. SG-1 TargetAtomRealization worker (R3 receipt)
+```
 
 ---
 
