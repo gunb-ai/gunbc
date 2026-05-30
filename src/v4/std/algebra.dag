@@ -127,6 +127,18 @@ fn node_positional_child_targets(node: Node) -> FreeMonoid<Node> {
     }
   )
 }
+fn node_labeled_child_edges(node: Node) -> FreeMonoid<Edge> {
+  fold_list(
+    xs: node.children,
+    empty: Empty,
+    cons: fn(acc, e) {
+      match e.label {
+        Named { name: _ } => list_snoc_item(xs: acc, item: e)
+        Positional => acc
+      }
+    }
+  )
+}
 fn fold_list_node<T>(
   xs: FreeMonoid<T>,
   item_node: fn(T) -> Node

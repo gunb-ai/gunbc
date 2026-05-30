@@ -119,6 +119,18 @@ type TargetSumTypeShape {
   variant_separator: Symbol
 }
 
+// SG-2 — labeled Conj field slot (substrate LabeledEdges preserved through projection).
+type TargetTypeExprFieldSlot {
+  label: Symbol
+  type_expr: Node
+}
+
+// SG-2 — labeled Disj variant slot (substrate LabeledEdges preserved through projection).
+type TargetTypeExprVariantSlot {
+  label: Symbol
+  type_expr: Node
+}
+
 // SG-2 — function / arrow type (domain -> codomain).
 type TargetFunctionTypeShape {
   surface: Symbol
@@ -290,33 +302,56 @@ fn target_type_expr_generic_apply_emitted(
   )
 }
 
+fn target_type_expr_field_slot_type_nodes(fields: List<TargetTypeExprFieldSlot>) -> List<Node> {
+  fold_list(
+    xs: fields,
+    empty: Empty,
+    cons: fn(acc, field) {
+      list_snoc_item(xs: acc, item: field.type_expr)
+    }
+  )
+}
+
+fn target_type_expr_variant_slot_type_nodes(variants: List<TargetTypeExprVariantSlot>) -> List<Node> {
+  fold_list(
+    xs: variants,
+    empty: Empty,
+    cons: fn(acc, variant) {
+      list_snoc_item(xs: acc, item: variant.type_expr)
+    }
+  )
+}
+
 fn target_type_expr_record_emitted(
   form: TargetRecordTypeShape,
-  fields: List<Node>
+  fields: List<TargetTypeExprFieldSlot>
 ) -> Node {
   target_type_expr_wrapped_emitted(
     kind: TargetTypeExprRecord,
     surface: form.surface,
-    children: fields
+    children: target_type_expr_field_slot_type_nodes(fields: fields)
   )
 }
 
-fn target_type_expr_sum_emitted(form: TargetSumTypeShape, variants: List<Node>) -> Node {
+fn target_type_expr_sum_emitted(
+  form: TargetSumTypeShape,
+  variants: List<TargetTypeExprVariantSlot>
+) -> Node {
   target_type_expr_wrapped_emitted(
     kind: TargetTypeExprSum,
     surface: form.surface,
-    children: variants
+    children: target_type_expr_variant_slot_type_nodes(variants: variants)
   )
 }
 
 fn target_type_expr_arrow_emitted(
   form: TargetFunctionTypeShape,
-  domain: Node,
-  codomain: Node
+  inputs: List<Node>,
+  output: Node
 ) -> Node {
   target_type_expr_wrapped_emitted(
     kind: TargetTypeExprArrow,
     surface: form.surface,
-    children: [domain, codomain]
+    children: list_append(left: inputs, right: Cons { head: output, tail: Empty })
   )
 }
