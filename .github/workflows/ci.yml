@@ -232,6 +232,12 @@ jobs:
     - name: RELEASE §5 v4 workflow release model/YAML binding smoke
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_workflow_release_dag_smoke_test -- --quiet
+    # Phase 1 leaf-model R1 — gunbc#846 bypass: v3 job skips integration execution; run boundary
+    # rustc receipt here (docs/planning/v4-leaf-model-verification-2026-05-30.md §7; pairs with
+    # scripts/v4-leaf-model-rust-r1-verify.sh). Dissolution: modeled run_target_verification.
+    - name: Phase 1 leaf-model R1 rustc boundary (gunbc#846 bypass)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: cargo test -p v3-compiler --test integration v4_leaf_model_rust_r1_rustc_test -- --quiet
   # v4 compile gates — parallel with ci_integration. Standalone `v4` jobs hit a ~5m Ubicloud
   # shutdown mid-emit; per-job budgets keep one runner lifecycle per concern. The `v4` job is a
   # receipt-only stub so required check names stay stable. MVP-1 + v4 bootstrap share the
