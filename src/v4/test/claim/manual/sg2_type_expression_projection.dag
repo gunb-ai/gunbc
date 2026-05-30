@@ -173,6 +173,30 @@ fn sg2_conj_serialize_matches_expected() -> Bool {
   sg2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == sg2_expected_conj_text
 }
 
+fn sg2_wire_decode_accepts(emitted: Node) -> Bool {
+  match target_type_expr_emitted_wire_decode(
+    node: emitted,
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_mvp1_projection_absent() -> Bool {
+  match target_bundle_child_optional_type_expr_projection(target: rust_mvp1_target_model()) {
+    Accepted { value: ProjectionAbsent, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+fn sg2_mvp1_translate_fallback_accepts() -> Bool {
+  match translate(tree: mvp1_rust_inferred_tree, target: mvp1_rust_target_model) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // §10.6 bidirectional readability: ingest/emission share the same delimiter token-class row.
 fn sg2_instantiation_delimiters_bidirectional() -> Bool {
   let row = rust_type_expression_projection()
