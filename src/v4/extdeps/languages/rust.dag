@@ -111,7 +111,6 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_generic_apply_emitted,
   target_type_expr_record_emitted,
-  target_type_expr_arrow_emitted,
   TargetTypeExprInstantiation
 }
 import v4.std.node {
@@ -3033,6 +3032,7 @@ fn rust_sg2_type_expr_target_model() -> TargetModel {
 // SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Instantiation(Rc, FooBar), X, Y) positional chain.
 fn rust_sg2_rc_foobar_xy_emitted() -> Node {
   target_type_expr_generic_apply_emitted(
+    kind: TargetTypeExprInstantiation,
     form: rust_type_expression_projection().instantiation_form,
     head: target_type_expr_atom_emitted(
       form: rust_type_expression_projection().atom_form,
@@ -3040,6 +3040,7 @@ fn rust_sg2_rc_foobar_xy_emitted() -> Node {
     ),
     args: [
       target_type_expr_generic_apply_emitted(
+        kind: TargetTypeExprInstantiation,
         form: rust_type_expression_projection().instantiation_form,
         head: target_type_expr_atom_emitted(
           form: rust_type_expression_projection().atom_form,
