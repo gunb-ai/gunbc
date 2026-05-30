@@ -182,7 +182,7 @@ fn combine_complexity_variables(
     Holds { value: lv } =>
       match rhs {
         Holds { value: rv } =>
-          Holds { value: composite_complexity_variables(lhs: lv, rhs: rv) }
+          composite_complexity_variables(lhs: lv, rhs: rv)
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
