@@ -803,13 +803,11 @@ fn formal_production_for_lhs_exact(
 }
 
 
-type DeriveGrammarRelationTokensState
-  = DeriveGrammarRelationTokensOk {
-      edges: List<Edge>
-      conj_index: Int
-      conj_children: List<Node>
-    }
-  | DeriveGrammarRelationTokensFailed { diagnostic: Diagnostic }
+type DeriveGrammarRelationTokensProgress {
+  edges: List<Edge>
+  conj_index: Int
+  conj_children: List<Node>
+}
 
 
 fn emitted_node_slot_count(emitted: Node) -> Int {
@@ -824,33 +822,37 @@ fn emitted_node_slot_count(emitted: Node) -> Int {
 
 
 fn derive_grammar_relation_token_edges_recursive_step(
-  state: DeriveGrammarRelationTokensState,
+  progress: Witness<DeriveGrammarRelationTokensProgress>,
   productions: List<FormalProduction>,
   symbol: FormalGrammarSymbol
-) -> DeriveGrammarRelationTokensState {
-  match state {
-    DeriveGrammarRelationTokensFailed { diagnostic: _ } => state
-    DeriveGrammarRelationTokensOk { edges: edges, conj_index: conj_index, conj_children: conj_children } =>
+) -> Witness<DeriveGrammarRelationTokensProgress> {
+  match progress {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: edges, conj_index: conj_index, conj_children: conj_children } } =>
       match symbol {
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: _ } =>
-              DeriveGrammarRelationTokensOk {
-                edges: list_snoc_item(
-                  xs: edges,
-                  item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
-                ),
-                conj_index: conj_index + 1,
-                conj_children: conj_children
+              Holds {
+                value: DeriveGrammarRelationTokensProgress {
+                  edges: list_snoc_item(
+                    xs: edges,
+                    item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+                  ),
+                  conj_index: conj_index + 1,
+                  conj_children: conj_children
+                }
               }
             Absent =>
-              DeriveGrammarRelationTokensOk {
-                edges: list_snoc_item(
-                  xs: edges,
-                  item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
-                ),
-                conj_index: conj_index,
-                conj_children: conj_children
+              Holds {
+                value: DeriveGrammarRelationTokensProgress {
+                  edges: list_snoc_item(
+                    xs: edges,
+                    item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+                  ),
+                  conj_index: conj_index,
+                  conj_children: conj_children
+                }
               }
           }
         FormalNonterminalOccurrence { nonterminal: nonterminal } =>
@@ -881,19 +883,18 @@ fn derive_grammar_relation_token_edges_recursive_step(
                     emitted: child
                   ) {
                     Holds { value: nested_edges } =>
-                      DeriveGrammarRelationTokensOk {
-                        edges: list_append(left: edges, right: nested_edges),
-                        conj_index: conj_index + 1,
-                        conj_children: conj_children
+                      Holds {
+                        value: DeriveGrammarRelationTokensProgress {
+                          edges: list_append(left: edges, right: nested_edges),
+                          conj_index: conj_index + 1,
+                          conj_children: conj_children
+                        }
                       }
-                    Violates { diagnostic: d } =>
-                      DeriveGrammarRelationTokensFailed { diagnostic: d }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
                   }
-                Violates { diagnostic: d } =>
-                  DeriveGrammarRelationTokensFailed { diagnostic: d }
+                Violates { diagnostic: d } => Violates { diagnostic: d }
               }
-            Violates { diagnostic: d } =>
-              DeriveGrammarRelationTokensFailed { diagnostic: d }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
           }
       }
   }
@@ -908,23 +909,24 @@ fn derive_grammar_relation_token_edges_recursive(
   let conj_children = conj_positional_children(parent: emitted)
   match fold_list(
     xs: production.rhs,
-    empty: DeriveGrammarRelationTokensOk {
-      edges: Empty,
-      conj_index: 0,
-      conj_children: conj_children
+    empty: Holds {
+      value: DeriveGrammarRelationTokensProgress {
+        edges: Empty,
+        conj_index: 0,
+        conj_children: conj_children
+      }
     },
-    cons: fn(state, symbol) {
+    cons: fn(progress, symbol) {
       derive_grammar_relation_token_edges_recursive_step(
-        state: state,
+        progress: progress,
         productions: productions,
         symbol: symbol
       )
     }
   ) {
-    DeriveGrammarRelationTokensOk { edges: result, conj_index: _, conj_children: _ } =>
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: _, conj_children: _ } } =>
       Holds { value: result }
-    DeriveGrammarRelationTokensFailed { diagnostic: d } =>
-      Violates { diagnostic: d }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
