@@ -430,9 +430,13 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
     );
     assert!(
         EVAL_DAG.contains("RoundTripClaim { input: input")
-            && EVAL_DAG.contains("Deferred {")
-            && EVAL_DAG.contains("eval_rejected_roundtrip_deferred"),
-        "RoundTripClaim eval authority must stay Deferred (single authority; verification must not synthesize expected Outcome<Node>)"
+            && EVAL_DAG.contains("run_test_claim_round_trip_verdict")
+            && EVAL_DAG.contains("dag_round_trip_wave1_readiness_passes"),
+        "RoundTripClaim eval authority must decide via wave-1 readiness receipt (not Deferred; verification must not synthesize expected Outcome<Node>)"
+    );
+    assert!(
+        !EVAL_DAG.contains("eval_rejected_roundtrip_deferred"),
+        "removed RoundTripClaim Deferred scaffold must not return"
     );
     assert!(
         !EVAL_DAG.contains("Accepted { value: inputs.root"),
