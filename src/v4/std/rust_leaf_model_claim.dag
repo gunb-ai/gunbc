@@ -13,7 +13,7 @@ import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeOutcome }
 
 // Phase-1 primitive subject axis (extension via modeling escalation only).
-// Unit-variant `{}` form required so v2 export surface includes constructors (not type-alias).
+// `{}` on unit variants required so v2 export surface includes constructors (not type-alias).
 type RustPrimitive
   = RustPrimitiveI32 {}
 
@@ -45,10 +45,10 @@ type RustClaimSubject
 // 🟡 gated — feature:rustc-error-code-leaf-model-phase1 — bind docs/planning/v4-leaf-model-verification-2026-05-30.md Phase 2 —
 // dissolve-on-arrival: full RustcErrorCode coproduct owned by rust.dag leaf-model authority; forbidden: string-keyed parallel error tables.
 type Rustc_ErrorCode_Phase1
-  = E0107
-  | E0308
-  | E0423
-  | E0599
+  = E0107 {}
+  | E0308 {}
+  | E0423 {}
+  | E0599 {}
 
 // 🟡 gated — feature:rust-leaf-model-claim-expectation — bind docs/planning/v4-leaf-model-verification-2026-05-30.md §7 Phase-1 —
 // dissolve-on-arrival: modeling-escalation-only extension arms beyond Phase-1 inventory; forbidden: parallel expectation vocab outside this coproduct.
