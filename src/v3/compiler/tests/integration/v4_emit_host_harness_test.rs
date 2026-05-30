@@ -21,7 +21,7 @@
 //! The transport uses bounded child I/O (`HOST_BUILD_TIMEOUT`, `HOST_RUN_TIMEOUT`,
 //! `HOST_STREAM_BYTE_CAP` in `emit_host_runner`) and isolates `CARGO_TARGET_DIR` under `work_dir`.
 
-const EMIT_HOST_DAG: &str = include_str!("../../../../v4/extdeps/runtimes/emit_host.dag");
+const EMIT_HOST_DAG: &str = include_str!("../../../../v4/compiler/emit_host.dag");
 const HOST_RUN_DAG: &str = include_str!("../../../../v4/std/host_run.dag");
 const FALSIFICATION_DAG: &str = include_str!("../../../../v4/std/test_claim_falsification.dag");
 

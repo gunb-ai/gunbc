@@ -1,7 +1,7 @@
-//! v4 `extdeps/runtimes/emit_host.dag` Rust host row — compile + execute emitted artifacts.
+//! v4 `compiler/emit_host.dag` Rust host row — compile + execute emitted artifacts.
 //!
 //! **Modeled authority:** `run_emit_host_rust`, `runtime_value_parse_rust` in
-//! `src/v4/extdeps/runtimes/emit_host.dag`. Substrate `.dag` dispatch is fail-closed
+//! `src/v4/compiler/emit_host.dag`. Substrate `.dag` dispatch is fail-closed
 //! (`transport_not_wired`) until W3 wires this crate into `run_emit_host_rust`; this crate is
 //! the executable host-process boundary exercised by `v4_emit_host_harness_test.rs`.
 //!
