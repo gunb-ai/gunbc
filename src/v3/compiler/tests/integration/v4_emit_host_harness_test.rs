@@ -44,7 +44,7 @@ fn v4_emit_host_harness_surface_present() {
         "fn run_emit_host",
         "fn run_emit_host_rust",
         "fn run_test_claim_emit_vs_eval",
-        "type FalsificationReceipt",
+        "import v4.std.host_run",
         "stdout_bytes: ByteString",
     ] {
         assert!(
