@@ -113,8 +113,21 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # RELEASE_TODO §5 Phase 1b — hand-synced from install.dag until ShellStatic emit lands.
+      - name: Stage install assets
+        run: |
+          set -eux
+          cp install.sh dist/install.sh
+          cp scripts/release-target-triples.sh dist/release-target-triples.sh
+          mkdir -p dist/scripts
+          cp scripts/release-target-triples.sh dist/scripts/release-target-triples.sh
+          chmod +x dist/install.sh dist/release-target-triples.sh dist/scripts/release-target-triples.sh
+          ls -la dist dist/scripts
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          # `dist/*` does not match nested paths; list flat + scripts/ explicitly.
+          files: |
+            dist/*
+            dist/scripts/*
           generate_release_notes: true

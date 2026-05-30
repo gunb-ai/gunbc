@@ -252,10 +252,10 @@ The sed above is a **first-pass draft only** — do not run it without an allowl
 
 ### Phase 1b — install (blocks public `curl | sh` / install UX; follow-on PR)
 
-- [ ] `src/v4/install/install.dag` — `InstallTarget` / OS-arch detection / env policy;
+- [x] `src/v4/install/install.dag` — `InstallTarget` / OS-arch detection / env policy;
       references `release.dag` `release_published_target_triples` (no duplicate triple literals)
-- [ ] Emit/project `install.sh` + helper scripts from model (hand-synced interim until ShellStatic)
-- [ ] Re-enable install assets in GH Release bundle after install.dag lands
+- [x] Emit/project `install.sh` + helper scripts from model (hand-synced interim until ShellStatic)
+- [x] Re-enable install assets in GH Release bundle after install.dag lands
 
 ### Phase 2 — Homebrew tap (good for macOS users, do week of June 1)
 
