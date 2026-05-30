@@ -56,6 +56,9 @@ const SWIFT_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/
 const SWIFT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/swift.dag";
 const WASM_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/wasm.dag");
 const WASM_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/wasm.dag";
+const WASM_WAVE2A_IDX_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/parse/wasm_wave2a_label_funcidx.dag");
+const WASM_WAVE2A_IDX_CLAIM_PATH: &str = "src/v4/test/claim/parse/wasm_wave2a_label_funcidx.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const KOTLIN_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/kotlin.dag");
@@ -842,6 +845,53 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+#[test]
+fn v4_wasm_wave2a_label_funcidx_claim_tokenizes_and_wires_parse_receipt() {
+    let claim = parse_module(WASM_WAVE2A_IDX_CLAIM_DAG, WASM_WAVE2A_IDX_CLAIM_PATH);
+    for name in [
+        "claim_wasm_wave2a_br_if_numeric_parses",
+        "claim_wasm_wave2a_call_named_parses",
+        "claim_wasm_wave2a_br_if_negative_rejected",
+        "claim_wasm_wave2a_call_negative_rejected",
+    ] {
+        assert!(
+            surface_declares_test_claim_data(&claim, name),
+            "{WASM_WAVE2A_IDX_CLAIM_PATH}: must declare merge-visible TestClaim `{name}`"
+        );
+    }
+    assert!(
+        import_includes_name(&claim, &["v4", "extdeps", "languages", "wasm"], "wasm_wave2a_lex")
+            && import_includes_name(
+                &claim,
+                &["v4", "extdeps", "languages", "wasm"],
+                "wasm_wave2a_grammar"
+            ),
+        "{WASM_WAVE2A_IDX_CLAIM_PATH}: must import wave-2a lex + grammar from wasm.dag"
+    );
+    assert!(
+        WASM_WAVE2A_IDX_CLAIM_DAG.contains("wasm_wave2a_tokenize_and_parse_source")
+            && WASM_WAVE2A_IDX_CLAIM_DAG.contains("parse(tokens: tokens, grammar: wasm_wave2a_grammar())"),
+        "{WASM_WAVE2A_IDX_CLAIM_PATH}: claims must exercise tokenize + parse against wasm_wave2a_grammar()"
+    );
+    for fixture in ["br_if 0", "call $add", "br_if -1", "call -1"] {
+        assert!(
+            WASM_WAVE2A_IDX_CLAIM_DAG.contains(fixture),
+            "{WASM_WAVE2A_IDX_CLAIM_PATH}: must anchor accept/reject fixture `{fixture}`"
+        );
+    }
+    assert!(
+        WASM_WAVE2A_IDX_CLAIM_DAG.contains("feature:std-outcome-accepted-predicate"),
+        "{WASM_WAVE2A_IDX_CLAIM_PATH}: Outcome→Bool projection must carry tracked 🟡 gate (Practice 10)"
+    );
+    assert!(
+        WASM_LANGUAGE_DAG.contains("fn wasm_grammar_production_labelidx_numeric()")
+            && WASM_LANGUAGE_DAG.contains("fn wasm_grammar_production_funcidx_numeric()")
+            && count_substr(WASM_LANGUAGE_DAG, "token_class: wasm_token_u32_numeric_literal")
+                >= 3,
+        "{WASM_LANGUAGE_PATH}: numeric idx productions must consume unsigned u32 lex (labelidx/funcidx/localidx)"
+    );
+}
+
 fn v4_wasm_wat_lex_boundary_uses_trivia_and_numeric_literal_authority() {
     let module = parse_module(WASM_LANGUAGE_DAG, WASM_LANGUAGE_PATH);
     for stale in [
@@ -1334,6 +1384,24 @@ impl SurfaceExprSpan for SurfaceExpr {
             | SurfaceExpr::Map { span, .. } => span.clone(),
         }
     }
+}
+
+fn surface_declares_test_claim_data(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Data {
+            name: item_name,
+            ty: SurfaceType::Named { name: ty_name, .. },
+            ..
+        } => item_name == name && ty_name == "TestClaim",
+        _ => false,
+    })
+}
+
+fn count_substr(haystack: &str, needle: &str) -> usize {
+    haystack.match_indices(needle).count()
 }
 
 fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {

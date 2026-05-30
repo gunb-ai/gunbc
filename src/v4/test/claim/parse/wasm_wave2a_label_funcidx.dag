@@ -1,6 +1,6 @@
 // src/v4/test/claim/parse/wasm_wave2a_label_funcidx.dag
 // Scope: TestClaim rows for Wasm Wave 2a idx-kinds (labelidx + funcidx) via wasm_language_model_wave2a().
-// Status: T-22 runner deferred — execution pending T-22 complexity fix.
+// Status: T-22 runner deferred — execution pending T-22 complexity fix; M1(2.7) Rust receipt in v4_compiler_emit_translate_smoke_test.rs until runner live.
 
 module v4.test.claim.parse.wasm_wave2a_label_funcidx
 
@@ -41,6 +41,7 @@ fn wasm_wave2a_idx_bool_atom(b: Bool) -> Node {
   }
 }
 
+// 🟡 feature:std-outcome-accepted-predicate owner:sharp-wolf-870 lane:node://adhoc-2900c8f6-a66 tracker:#3900 dissolve-on: std/diagnostic.dag exports canonical outcome_accepted_predicate (one-pass replace across wave2a parse-claim files).
 fn wasm_wave2a_idx_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
