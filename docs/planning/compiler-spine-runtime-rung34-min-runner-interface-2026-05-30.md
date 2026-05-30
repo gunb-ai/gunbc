@@ -97,9 +97,21 @@ Corpus aggregation reuses `src/v4/test/claim/workflow/testclaim_corpus_runner.da
 - **A1 (stdout typing).** Spine draft typed `EmitHostRunReceipt.stdout: RuntimeValue`, which silently embeds a deserialization step. Splitting `stdout_bytes` from a `RuntimeValueParse` function makes the parser a named symbol with per-target rows owned by Target Realization, and prevents fabricating typed values from raw bytes.
 - **A2 (typed exit, POSIX facts).** `HostExit` as `Outcome<Termination>` (`posix.dag`) — nonzero exit codes and signal termination remain structured `ExitCode` / `SignalNum` facts (P2 facts-flow-forward); only zero exit is `Exited`. Do **not** collapse to `Outcome<Witness<ExitOk>>` or bare `Int` — that drops signaled/nonzero semantics at the host boundary.
 - **A3 (Rust-only W2 scope).** §4.3 places rustc/cargo invocation in Runtime, but the rung 5 cross-target gate is Phase 3, not Phase 2. W2 ships Rust only; Python/Go `run_emit_host` rows are pre-allocated symbols, not implementations, until Phase 3 dispatches.
-- **A4 (falsification receipt).** PR #3938 §11.1 row 6 names "falsification verdict receipts" as Runtime/TestClaim authority. A bare `Fail` verdict is not a receipt — `FalsificationReceipt<A>` makes the wrong emit auditable post-hoc and is the artifact Self-host/Release will demand at rung 4 close.
+- **A4 (falsification receipt).** PR #3938 §11.1 row 6 names "falsification verdict receipts" as Runtime/TestClaim authority. A bare `Fail` verdict is not a receipt — `FalsificationReceipt<Node, RuntimeValue>` (subject inside the receipt) makes the wrong emit auditable post-hoc and is the artifact Self-host/Release will demand at rung 4 close.
 
-**A4 attachment (W2-kickoff default, both managers; see verdict-surface-contract #3961).** Extend **landed** `Verdict<A>.Fail` in `std/verdict.dag` (today `Fail { actual: Outcome<A> }` only) to `Fail { actual: Outcome<A>, falsification: FalsificationReceipt<S, A> }` — **required** on rung-4 paths (not `Option` / `Absent`). For emit-vs-eval, `A = RuntimeValue` and `S = Node`. P2: a rung-4 `Fail` without a receipt is unrepresentable; structural / interpreter rejects use the same carrier with `evidence: EvidenceNone` (or `Interpreter { … }`). `verdict_fail` helpers that lack host context supply the minimal `EvidenceNone` shell. `run_test_claim_emit_vs_eval` is the API gate for rung 4. **Do not** introduce `Verdict<S, T>` — that duplicates authority vs `TestClaimRun<S, A>` + `Verdict<A>`. Runtime owns `FalsificationReceipt` + `ExecutionEvidence`; Spine owns `Verdict<A>` extension.
+**A4 attachment (W2-kickoff default, both managers; see verdict-surface-contract #3961).** Extend **landed** `Verdict<A>.Fail` in `std/verdict.dag` (today `Fail { actual: Outcome<A> }` only) on the **rung-4 surface only** as:
+
+```dag
+// W2 substrate row for emit-vs-eval (this doc's scope) — both type params are concrete:
+Verdict<RuntimeValue>.Fail {
+  actual: Outcome<RuntimeValue>
+  falsification: FalsificationReceipt<Node, RuntimeValue>   // required; not Option
+}
+```
+
+`Verdict<A>` has a **single** type parameter (`verdict.dag:31-34`); an unbound `S` on `Fail` is not implementable and must not reintroduce `Verdict<S, T>`. When `TestClaimRun<S, A>` has `S ≠ A` (general claims), subject typing stays on `FalsificationReceipt<S, A>` at the **`TestClaimRun` / constructor** boundary — not as a second parameter on `Verdict<A>`. This doc's W2 change is the concrete `Node` / `RuntimeValue` row above; broader `S` variance is a separate `#3961` generalization via `TestClaimRun` pairing, not `Verdict<S, A>`.
+
+P2: a rung-4 `Fail` without a receipt is unrepresentable; structural / interpreter rejects use the same carrier with `evidence: EvidenceNone` (or `Interpreter { … }`). `verdict_fail` helpers that lack host context supply the minimal `EvidenceNone` shell. `run_test_claim_emit_vs_eval` is the API gate for rung 4. Runtime owns `FalsificationReceipt` + `ExecutionEvidence`; Spine owns the `Verdict<RuntimeValue>.Fail` extension for this surface.
 
 ### 4.3 Explicit split (no authority bleed)
 
