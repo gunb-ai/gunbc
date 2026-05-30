@@ -7,7 +7,6 @@ module v4.test.claim.lens_determinism.effect_leak_undecorated_callee
 import v4.compiler.infer { InferredTree }
 import v4.lens.determinism {
   determinism_effect_leak,
-  determinism_invoke_edge,
   determinism_witness_from_facts
 }
 import v4.std.determinism { DeterminismFact, Deterministic }
@@ -16,8 +15,8 @@ import v4.std.node {
   Atom,
   ComputationNode,
   Edge,
-  Named,
   Node,
+  Positional,
   Symbol,
   Transform,
   TypeNode
@@ -41,7 +40,7 @@ data det_leak_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
     Edge {
-      label: Named { name: determinism_invoke_edge },
+      label: Positional,
       target: det_leak_callee_target
     }
   ]
