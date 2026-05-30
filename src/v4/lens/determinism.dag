@@ -14,11 +14,6 @@ import v4.std.collection {
   optional_prefer_first_present,
   optional_present
 }
-import v4.std.dependency {
-  DependencyView,
-  ModuleDependsOn,
-  dependency_lens
-}
 import v4.std.determinism {
   DeterminismClass,
   DeterminismFact,
@@ -141,26 +136,6 @@ fn first_forbidden_in_body(body: Node) -> Optional<DeterminismViolation> {
       step: forbidden_scan_step
     }
   ).violation
-}
-
-fn forbidden_source_at_dependent(dependent: Node) -> Optional<DeterminismViolation> {
-  forbidden_source_at_node(node: dependent)
-}
-
-fn module_import_forbidden(view: DependencyView) -> Optional<DeterminismViolation> {
-  match view.kind {
-    ModuleDependsOn => forbidden_source_at_dependent(dependent: view.dependent)
-    _ => optional_absent()
-  }
-}
-
-fn first_forbidden_module_import(body: Node) -> Optional<DeterminismViolation> {
-  fold(dependency_lens(root: body), init: optional_absent(), f: fn(acc, view) {
-    optional_prefer_first_present(
-      left: acc,
-      right: module_import_forbidden(view: view)
-    )
-  })
 }
 
 fn reason_for_non_det_source(source: NonDetSource) -> Symbol {
@@ -294,10 +269,7 @@ fn first_violation_in_body(
 ) -> Optional<DeterminismViolation> {
   optional_prefer_first_present(
     left: first_forbidden_in_body(body: body),
-    right: optional_prefer_first_present(
-      left: first_forbidden_module_import(body: body),
-      right: first_effect_leak_in_body(body: body, registry: registry)
-    )
+    right: first_effect_leak_in_body(body: body, registry: registry)
   )
 }
 
