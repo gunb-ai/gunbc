@@ -508,20 +508,22 @@ fn conj_positional_children(parent: Node) -> List<Node> {
 }
 
 
+fn formal_production_emitted_slot_count_step(count: Int, symbol: FormalGrammarSymbol) -> Int {
+  match symbol {
+    FormalTerminalOccurrence { terminal: _, binding: binding } =>
+      match binding {
+        Present { value: _ } => count + 1
+        Absent => count
+      }
+    FormalNonterminalOccurrence { nonterminal: _ } => count + 1
+  }
+}
+
 fn formal_production_emitted_slot_count(production: FormalProduction) -> Int {
   fold_list(
     xs: production.rhs,
     empty: 0,
-    cons: fn(count, symbol) {
-      match symbol {
-        FormalTerminalOccurrence { terminal: _, binding: binding } =>
-          match binding {
-            Present { value: _ } => count + 1
-            Absent => count
-          }
-        FormalNonterminalOccurrence { nonterminal: _ } => count + 1
-      }
-    }
+    cons: formal_production_emitted_slot_count_step
   )
 }
 
