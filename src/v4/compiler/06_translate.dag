@@ -1352,34 +1352,96 @@ fn list_head_and_tail(xs: List<Node>, node: Node) -> Outcome<TypeExprHeadTail> {
       }
   }
 }
+fn project_type_expression_children_go(
+  remaining: Int,
+  anchor: Node,
+  children: List<Node>,
+  projection: TargetTypeExpressionProjection,
+  acc: List<Node>
+) -> Outcome<List<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+  } else {
+    match children {
+      Empty => Accepted { value: acc, diagnostics: None }
+      Cons { head: child, tail: rest } =>
+        match project_type_expression_node_bounded(
+          remaining: remaining - 1,
+          node: child,
+          projection: projection
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: projected, diagnostics: cd } =>
+            match project_type_expression_children_go(
+              remaining: remaining - 1,
+              anchor: anchor,
+              children: rest,
+              projection: projection,
+              acc: list_snoc_item(xs: acc, item: projected)
+            ) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: done, diagnostics: rd } =>
+                Accepted {
+                  value: done,
+                  diagnostics: diagnostics_merge(outer: cd, inner: rd)
+                }
+            }
+        }
+    }
+  }
+}
 fn project_type_expression_children(
   remaining: Int,
   anchor: Node,
   children: List<Node>,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<Node>> {
+  project_type_expression_children_go(
+    remaining: remaining,
+    anchor: anchor,
+    children: children,
+    projection: projection,
+    acc: Empty
+  )
+}
+fn project_type_expression_field_slots_go(
+  remaining: Int,
+  node: Node,
+  projection: TargetTypeExpressionProjection,
+  edges: List<Edge>,
+  acc: List<TargetTypeExprFieldSlot>
+) -> Outcome<List<TargetTypeExprFieldSlot>> {
   if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
   } else {
-    fold(children, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, child) {
-      match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: partial, diagnostics: ad } =>
-          match project_type_expression_node_bounded(
-            remaining: remaining - 1,
-            node: child,
-            projection: projection
-          ) {
-            Accepted { value: projected, diagnostics: cd } =>
-              Accepted {
-                value: list_snoc_item(xs: partial, item: projected),
-                diagnostics: diagnostics_merge(outer: ad, inner: cd)
+    match edges {
+      Empty => Accepted { value: acc, diagnostics: None }
+      Cons { head: e, tail: rest } =>
+        match e.label {
+          Named { name: label } =>
+            bind_outcome(
+              o: project_type_expression_node_bounded(
+                remaining: remaining - 1,
+                node: e.target,
+                projection: projection
+              ),
+              f: fn(projected) {
+                project_type_expression_field_slots_go(
+                  remaining: remaining - 1,
+                  node: node,
+                  projection: projection,
+                  edges: rest,
+                  acc: list_snoc_item(
+                    xs: acc,
+                    item: TargetTypeExprFieldSlot { label: label, type_expr: projected }
+                  )
+                )
               }
-            Rejected { diagnostics: r } =>
-              Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
-          }
-      }
-    })
+            )
+          Positional =>
+            outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        }
+    }
   }
 }
 fn project_type_expression_field_slots(
@@ -1387,36 +1449,52 @@ fn project_type_expression_field_slots(
   node: Node,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprFieldSlot>> {
+  project_type_expression_field_slots_go(
+    remaining: remaining,
+    node: node,
+    projection: projection,
+    edges: node.children,
+    acc: Empty
+  )
+}
+fn project_type_expression_variant_slots_go(
+  remaining: Int,
+  node: Node,
+  projection: TargetTypeExpressionProjection,
+  edges: List<Edge>,
+  acc: List<TargetTypeExprVariantSlot>
+) -> Outcome<List<TargetTypeExprVariantSlot>> {
   if remaining <= 0 {
     outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
   } else {
-    fold(node.children, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, e) {
-      match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: partial, diagnostics: ad } =>
-          match e.label {
-            Named { name: label } =>
-              bind_outcome(
-                o: project_type_expression_node_bounded(
+    match edges {
+      Empty => Accepted { value: acc, diagnostics: None }
+      Cons { head: e, tail: rest } =>
+        match e.label {
+          Named { name: label } =>
+            bind_outcome(
+              o: project_type_expression_node_bounded(
+                remaining: remaining - 1,
+                node: e.target,
+                projection: projection
+              ),
+              f: fn(projected) {
+                project_type_expression_variant_slots_go(
                   remaining: remaining - 1,
-                  node: e.target,
-                  projection: projection
-                ),
-                f: fn(projected) {
-                  Accepted {
-                    value: list_snoc_item(
-                      xs: partial,
-                      item: TargetTypeExprFieldSlot { label: label, type_expr: projected }
-                    ),
-                    diagnostics: ad
-                  }
-                }
-              )
-            Positional =>
-              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-          }
-      }
-    })
+                  node: node,
+                  projection: projection,
+                  edges: rest,
+                  acc: list_snoc_item(
+                    xs: acc,
+                    item: TargetTypeExprVariantSlot { label: label, type_expr: projected }
+                  )
+                )
+              }
+            )
+          Positional =>
+            outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        }
+    }
   }
 }
 fn project_type_expression_variant_slots(
@@ -1424,37 +1502,13 @@ fn project_type_expression_variant_slots(
   node: Node,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprVariantSlot>> {
-  if remaining <= 0 {
-    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-  } else {
-    fold(node.children, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, e) {
-      match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: partial, diagnostics: ad } =>
-          match e.label {
-            Named { name: label } =>
-              bind_outcome(
-                o: project_type_expression_node_bounded(
-                  remaining: remaining - 1,
-                  node: e.target,
-                  projection: projection
-                ),
-                f: fn(projected) {
-                  Accepted {
-                    value: list_snoc_item(
-                      xs: partial,
-                      item: TargetTypeExprVariantSlot { label: label, type_expr: projected }
-                    ),
-                    diagnostics: ad
-                  }
-                }
-              )
-            Positional =>
-              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-          }
-      }
-    })
-  }
+  project_type_expression_variant_slots_go(
+    remaining: remaining,
+    node: node,
+    projection: projection,
+    edges: node.children,
+    acc: Empty
+  )
 }
 fn project_type_expression_conj_fields(
   remaining: Int,
