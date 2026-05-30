@@ -255,8 +255,13 @@ The following questions need answers before §7 Phase 1 dispatches. Proposed ans
 
 ### D1. Is §6 (the 9-rung ladder) the right correctness ontology?
 
-**Proposed:** Yes. The 9 rungs collectively cover all 17 articulated standards from §2.
-**Operator decides:** confirm ontology, OR name standards missing from the ladder.
+**Proposed:** Yes, with one acknowledged gap. The 9 rungs cover **16 of 17** standards from §2. Standard **#6** (Tier 2 runtime safety — division-by-zero / overflow / OOB / force-unwrap / partial functions) is **not assigned to any rung**. Per THESIS Tier 2 framing, this work is partially substrate and partially gated as post-R1; no current rung gates it. Three options for the operator:
+- **Option A**: add **rung 10** ("Tier 2 partial-function elimination") to the ladder, gated separately.
+- **Option B**: extend rung 9 to include #6 once Tier 2 substrate matures.
+- **Option C**: ratify the gap explicitly as "out of v4 ladder scope, separately tracked under T-25 refinement substrate."
+
+**Also confirm** (per §9.5) that the ladder is the correct *complement* to `docs/v4-close-interrogation.md` (questionnaire stays as granular probe surface; ladder stays as gate-sequencing surface; both adopt §0 disposition vocabulary).
+**Operator decides:** confirm ontology + pick a #6 option, OR name additional standards missing from the ladder.
 
 ### D2. Is "small fixture first, widen later" (§7) the right strategy vs "broad rustc-fix first, ladder second"?
 
