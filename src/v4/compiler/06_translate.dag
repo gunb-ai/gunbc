@@ -2691,7 +2691,7 @@ fn translate_type_expression_tree(
         step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
       }
     ),
-    f: fn(n) { project_type_expression_node(node: n, projection: projection) }
+    f: fn(n) { project_type_expression_node(node: n, target: target, projection: projection) }
   )
 }
 fn translate_node_with_projection(
@@ -2718,6 +2718,7 @@ fn translate_node_with_projection(
                 o: project_type_expression_subtree(
                   remaining: node_subtree_count(n: translated),
                   node: translated,
+                  target: target,
                   projection: projection
                 ),
                 f: fn(projected) { Accepted { value: projected, diagnostics: None } }
@@ -2731,6 +2732,7 @@ fn translate_node_with_projection(
 fn project_type_expression_subtree(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   if remaining <= 0 {
@@ -2741,6 +2743,7 @@ fn project_type_expression_subtree(
         project_type_expression_node_bounded(
           remaining: remaining - 1,
           node: node,
+          target: target,
           projection: projection
         )
       ComputationNode { behavior: b } =>
@@ -2748,6 +2751,7 @@ fn project_type_expression_subtree(
           o: project_type_expression_children_in_node(
             remaining: remaining - 1,
             node: node,
+            target: target,
             projection: projection
           ),
           f: fn(children) {
