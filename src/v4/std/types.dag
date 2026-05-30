@@ -6,7 +6,6 @@
 module v4.std.types
 
 import v4.std.collection { List }
-import v4.std.node { Node }
 import v4.std.text { String }
 
 // 🟡 staged — dissolve-on: `dsl/std/types.dag` `GlobSegment` / `GlobPattern` brand substrate.

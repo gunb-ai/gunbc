@@ -184,6 +184,7 @@ type CiUpsertStep<T> {
 type UpsertInputRef
   = FileSet { selector: FileSetSelector }
   | SubstrateNodeSet { selector: NodeQuery }
+  // 🟡 staged — `ports: List<Symbol>` until canonical lens port carrier (`LensPortId` / `Port`) lands.
   | LensOutputRef { lens: LensIdV0, ports: List<Symbol> }
   | TestClaimRef { claim_id: Symbol }
   | UpstreamUpsert { step_id: CiStepId }
@@ -192,8 +193,6 @@ type FileSetSelector {
   root: RepositoryRoot
   pattern: GlobPattern
 }
-
-type RepositoryRoot = RepoRoot
 
 type CiJobId = Symbol
 type CiGateId = Symbol
@@ -628,7 +627,7 @@ data ci_projection_upsert_input_upstream_edge: Symbol = ci_projection_upsert_inp
 data ci_projection_upsert_input_upstream_step_edge: Symbol = ci_projection_upsert_input_upstream_step_edge
 data ci_projection_upsert_input_lens_id_edge: Symbol = ci_projection_upsert_input_lens_id_edge
 data ci_projection_upsert_input_test_claim_id_edge: Symbol = ci_projection_upsert_input_test_claim_id_edge
-data ci_projection_upsert_payload_brand_edge: Symbol = ci_projection_upsert_payload_brand_edge
+data ci_projection_upsert_payload_type_edge: Symbol = ci_projection_upsert_payload_type_edge
 data ci_projection_upsert_input_file_set_selector_edge: Symbol = ci_projection_upsert_input_file_set_selector_edge
 data ci_projection_upsert_input_substrate_selector_edge: Symbol = ci_projection_upsert_input_substrate_selector_edge
 data ci_projection_upsert_input_lens_ports_edge: Symbol = ci_projection_upsert_input_lens_ports_edge
@@ -1462,10 +1461,7 @@ fn ci_upsert_step_projection_node<T>(step: CiUpsertStep<T>) -> Node {
       ci_named_edge(name: ci_projection_upsert_verify_edge, target: step.verify),
       ci_named_edge(name: ci_projection_upsert_create_edge, target: step.create),
       ci_named_edge(name: ci_projection_upsert_resolve_edge, target: step.resolve),
-      ci_named_edge(
-        name: ci_projection_upsert_payload_brand_edge,
-        target: ci_atom(sym: step.payload_brand)
-      )
+      ci_named_edge(name: ci_projection_upsert_payload_type_edge, target: step.payload_type)
     ]
   }
 }
