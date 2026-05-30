@@ -97,7 +97,7 @@ Corpus aggregation reuses `src/v4/test/claim/workflow/testclaim_corpus_runner.da
 - **A3 (Rust-only W2 scope).** §4.3 places rustc/cargo invocation in Runtime, but the rung 5 cross-target gate is Phase 3, not Phase 2. W2 ships Rust only; Python/Go `run_emit_host` rows are pre-allocated symbols, not implementations, until Phase 3 dispatches.
 - **A4 (falsification receipt).** PR #3938 §11.1 row 6 names "falsification verdict receipts" as Runtime/TestClaim authority. A bare `Fail` verdict is not a receipt — `FalsificationReceipt<A>` makes the wrong emit auditable post-hoc and is the artifact Self-host/Release will demand at rung 4 close.
 
-**Spine coordination note (A4, not a counter).** Today's `Verdict<T>` is `Fail { actual: Outcome<T> }` only (`std/verdict.dag:33`). Satisfying A4 requires a spine-approved carrier extension at W2 kickoff — either an added optional field on `Fail`, or attachment via `TestClaimCacheReceipt` beside `verdict`. Runtime owns `FalsificationReceipt` typing; Compiler Spine owns the attachment point. Pick one before W2 lands substrate.
+**A4 attachment (W2-kickoff default, both managers).** Extend `Verdict.Fail` with an optional `falsification: FalsificationReceipt<A>` beside `actual` (`std/verdict.dag` — spine lands the carrier; Runtime owns `FalsificationReceipt` typing). Rationale: verdict and receipt stay co-located; `TestClaimCacheReceipt` stays IRT-4/cache-only and avoids coupling host artifacts into the cache layer. Revisit only if `verdict_combine` monoid constraints block the extension at implementation time.
 
 ### 4.3 Explicit split (no authority bleed)
 
