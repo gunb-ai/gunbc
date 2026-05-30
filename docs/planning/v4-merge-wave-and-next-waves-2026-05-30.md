@@ -108,7 +108,7 @@ These are bounded, gated on the current wave landing, and have named owner manag
 
 ---
 
-## §5. Wave 2 (mid-term, gated on Wave 1)
+## §5. Wave 2 (gated on Wave 1 maturity)
 
 | # | Item | Owner manager | Gated on |
 |---|------|---------------|----------|
@@ -121,7 +121,7 @@ These are bounded, gated on the current wave landing, and have named owner manag
 
 ---
 
-## §6. Wave 3 (longer horizon, decision-loaded)
+## §6. Wave 3 (decision-loaded after Wave 2 maturity)
 
 These are where the project's bigger choices live. None are dispatch-ready until Wave 1-2 mature.
 
@@ -137,53 +137,101 @@ These are where the project's bigger choices live. None are dispatch-ready until
 
 ---
 
-## §7. Open decisions for the next conversation
+## §7. Decisions (operator-ratified 2026-05-30)
 
-These are the questions worth answering before each wave dispatches. Operator engages with whichever subset is timely.
+All decisions in this section are namespaced **MW-D*** (Merge-Wave Decision) to avoid collision with the D1-D7 sets in PR #3938 (correctness ladder §8) and PR #3959 (CI overhaul §8 + leaf-model verification §10).
 
-### D1. Wave 1 parallelism
+### MW-D1. Wave 1 parallelism
 
-W1.1 (SG-7 impl) + W1.2 (Phase 1.4 Upsert<T>) + W1.3 (Step 4 R1) + W1.4 (Phase 1a) + W1.5 (Phase 2.1) all touch different lanes. Can dispatch all in parallel under existing manager coverage. Recommended: yes, parallel — managers self-coordinate. *Operator: confirm or constrain.*
+W1.1 (SG-7 impl) + W1.2 (Phase 1.4 Upsert<T>) + W1.3 (Step 4 R1) + W1.4 (Phase 1a) + W1.5 (Phase 2.1) all touch different lanes.
 
-### D2. Wave 1 ordering pressure
+**Operator decision 2026-05-30:** Dispatch W1.1–W1.5 in parallel after baseline verification (see §7.1). PM coordinates the launch and cross-lane interface checks; managers self-coordinate execution.
 
-Three items have downstream cascades:
-- W1.1 (SG-7 impl) unblocks every PR whose affected-set hits ci.dag (broad)
-- W1.3 (Step 4 R1) produces the first leaf-model verdict (load-bearing for SG-1)
-- W1.2 (Phase 1.4 Upsert<T>) gates Phase 1.5 → 2 → 2.5 (deep chain)
+### MW-D2. Wave 1 ordering pressure
 
-*Operator: pick a priority for resource focus if any of these slow down — they're not strictly ordered but knowing the "if you must pick one to expedite" answer helps.*
+Three items have downstream cascades; if forced to expedite only two:
 
-### D3. Cross-target widening
+**Operator decision 2026-05-30:** Expedite **W1.3** (Step 4 R1 first leaf-model verdict — highest signal; first "model fact verified against external target" receipt) and **W1.1** (SG-7 impl — highest unblocker; clears ci.dag-affected PRs). Keep **W1.2** (Phase 1.4 Upsert<T>) running in parallel since it gates the deeper CI chain, but do NOT let it block the first external verdict.
 
-Wave 2.6 starts python.dag verification. Wave 3.3 widens to substantial cross-target fixture set. *Operator: minimum target set for v4 release (per THESIS L5 + L6)? Just Rust + Python + Go (per the §7 Phase 1 sequencing in #3959)? Or more?*
+### MW-D3. Cross-target widening (v4 release minimum)
 
-### D4. Phase 2 (T-24 close) trigger
+**Operator decision 2026-05-30:** **Rust + Python + Go** is the v4 release-minimum cross-target set for fixture-level L5/L6 proof. C++ / TypeScript / LLVM / others are modeled and planned but **not required** for the first L5/L6 release proof unless TASKS explicitly makes them part of v4-done.
 
-T-24 [DONE] requires Phase 2 (ci.yml emitted from ci.dag + all hand-authored YAML deleted) per TASKS.md. *Operator: do we want Phase 2 in scope for v4-done OR can T-24 close with Phase 1.4/1.5/2.5 alone (CI overhaul amendment)? Per PR #3959 §8.D-CI-6 you proposed Phase 2.5 in T-24; Phase 2 itself is separate.*
+### MW-D4. Phase 2 (T-24 close) trigger
 
-### D5. Manager succession policy
+**Operator decision 2026-05-30:** Keep Phase 2 in T-24 done. Phase 1.4/1.5/2.5 can be major progress, but closing T-24 without generated YAML + deletion of hand-authored workflow YAML would require an explicit TASKS amendment. Per PR #3959 D-CI-4 + this MW-D4: full Phase 2 stays mandatory for T-24 [DONE].
 
-cool-ibex-692 appeared as Modeling DFS successor (proud-pike-680 may have archived or be parallel). Pattern: managers may succeed/respawn as needed. *Operator: explicit policy on whether to permit parallel manager sessions on same role-node OR require single-active per role?*
+### MW-D5. Manager succession policy (NEW substantive policy)
 
-### D6. Dashboard-tooling patterns (5 surfaced)
+**Operator decision 2026-05-30:** **Single active accountable manager per role-node.** A successor may replace the prior manager only with an explicit succession receipt:
+```text
+- previous manager / session
+- new manager / session
+- carried open decisions
+- carried blocked PRs
+- carried worker handles
+```
+Parallel helper sessions are allowed only as **delegated workers/deputies**, not as co-equal managers for the same role-node. The cool-ibex-692 / proud-pike-680 overlap (Modeling DFS) is the trigger for this policy — going forward, the PM (or operator) ratifies succession explicitly; the dashboard should not silently spawn parallel co-equal managers.
 
-- closeout-leaf-placeholder auto-spawns rogue authors (recurred with wise-bear-350 despite no-op marker)
-- nudge-flips-held PRs
-- auto-open-on-undeleted-branch after merge
-- title-truncation-blocks-spawn
-- spawned-worker-not-in-messaging-table
+### MW-D6. Dashboard-tooling patterns (5 surfaced)
 
-*Operator: do you want me to dispatch ANY work item to capture / address these systematically, or are they purely operator-side / dashboard-team responsibility?*
+**Operator decision 2026-05-30:** Dispatch ONE bounded "dashboard-control-plane incidents" audit under Close/Receipt or PM. It produces a small incident ledger + recommended dashboard fixes — **not compiler work**. Operator/tooling responsibility unless it directly affects merge authority. NOT on the compiler critical path.
 
-### D7. Operator engagement model
+### MW-D7. Operator engagement model through Wave 1
 
-Through Wave 1, do you want:
-- (a) PM coordinates every dispatch + surfaces every decision (current pattern)
-- (b) Managers self-coordinate; PM only intervenes on cross-lane conflicts
-- (c) Hybrid: PM coordinates Wave 1 dispatch (since multiple lanes engaging simultaneously); managers self-coordinate within Wave 1 once started
+**Operator decision 2026-05-30:** **Hybrid.** PM coordinates Wave 1 launch, resolves interface/baseline questions; managers self-coordinate within their lanes after kickoff. PM re-enters only for cross-lane conflict or scope change.
 
-*Recommended: (c).* PM stays engaged through Wave 1 launch to ensure cross-lane consistency; managers carry it from there.
+### MW-D8. Wave 1 exit receipt (NEW)
+
+**Operator decision 2026-05-30:** Wave 1 is complete only when ALL of:
+
+```text
+1. Step 4 R1 produces an actual leaf-model verdict (rust.dag R1 → rustc → Verdict<R1>).
+2. SG-7 ci.dag recursion is dissolved OR replaced by a modeled authority
+   (ByteOffsetCacheDigestAuthority + byte_offset_cache_key consumed).
+3. Upsert<T> is either landed as usable substrate primitive OR explicitly
+   blocked with a Modeling DFS worksheet naming the parser/substrate gap.
+4. ci_selection_receipt_shadow exists and can be generated for at least
+   one PR/change fixture (shadow mode, not active gating yet).
+5. R2a/R2b/R3-external/R3-internal claim authoring has ready-to-run OR
+   explicitly-blocked status (each claim authored or its blocker named).
+```
+
+Without all 5, Wave 1 is not complete regardless of how many PRs landed. Prevents "seven PRs merged, unclear whether the wave achieved anything."
+
+---
+
+## §7.1. Post-clear baseline verification (gates Wave 1 dispatch)
+
+Before W1.1–W1.5 dispatch, PM (or designated manager) verifies the merge wave actually landed the expected baselines:
+
+```text
+- SG-7 worksheet (#3977) on main + Compiler Spine has main SHA pinned
+- rung 3-4 runner interface (#3947) on main + branch-base for Phase 2.1 ready
+- Verdict<A> surface (#3961) on main + downstream consumers can import
+- R1 fixture+runner (#3972) on main OR explicitly in-progress with named PR
+- SG-2 substrate (#3962) on main + held SG-1 (#3956) still draft
+- Held drafts: #3956, #3957, #3960 remain held per TR sequencing
+- Wave 1 launch waits on this baseline being green
+```
+
+Failure to verify before dispatch = Wave 1 starts on inconsistent baseline; managers may produce divergent work. This is the launch barrier, not the execution barrier.
+
+---
+
+## §7.2. Wave 1 is NOT v4-close
+
+Important framing clarification per operator review:
+
+**Wave 1 produces first verdicts and unblocks CI/target-realization chains. It does NOT close v4.** v4-done remains governed by all six predicates of `TASKS.md:805-817`:
+1. Every other scheduled task in this plan complete (whole plan minus T-15)
+2. v4 compiles `src/v4/compiler/*.dag` end-to-end
+3. v4 emits Rust source that compiles to a binary
+4. Binary, run on `src/v4/compiler/*.dag`, produces bit-identical output (rung 7)
+5. TestClaim suite passes (rung 8)
+6. Hand-authored Rust is not editable authority (reproduction-proven)
+
+Wave 1 + Wave 2 + most of Wave 3 are the work-on-the-path toward these six. Wave 1 alone closes none of them — it produces the first leaf-model verdict (predicate-4-adjacent), unblocks ci.dag (predicate-1-adjacent), and lands Upsert<T> substrate (predicate-2/3-adjacent). The narrowed "rung 7 = v4-done" framing was retracted in PR #3938 §8 D4 and remains retracted here.
 
 ---
 
