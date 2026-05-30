@@ -6,7 +6,7 @@
 module v4.std.target_model
 
 import v4.std.algebra { Cons, Empty, fold_list, list_snoc_item, length, list_append }
-import v4.std.collection { List, Map, Optional, optional_absent, optional_present }
+import v4.std.collection { List, Map }
 import v4.std.lexing { LexRules }
 import v4.std.node {
   Atom,
