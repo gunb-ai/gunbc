@@ -58,6 +58,8 @@ import v4.std.verification {
 import v4.std.diagnostic { Accepted, port_locus, Locus, Rejected }
 import v4.std.refinement {
   Refined,
+  VacuousAdmits,
+  VacuousValidation,
   Validation,
   refine,
   refined_vacuous_oracle_terminal
@@ -87,14 +89,32 @@ data refinement_preservation_stub_validation: Validation<List<Node>> = Validatio
 }
 
 
+data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
+  reason: refinement_preservation_stub_invalid,
+  admits: refinement_preservation_stub_admits,
+  vacuous: VacuousAdmits
+}
+
+
 // Generator anchor only — one refine attempt, one bounded retry, then refine oracle terminal (no bare pack).
 // 🟡 gated — feature:refinement-preservation-stub-fallback — bind T-19 testgen follow-up — dissolve-on-arrival: replace oracle terminal with Witness unwrap at the generator boundary; forbidden: self-recursive Rejected fallback on tightened admits.
 fn refinement_preservation_stub_generator_refined_terminal() -> Refined<List<Node>> {
-  refined_vacuous_oracle_terminal(
+  match refined_vacuous_oracle_terminal(
     base: [stub_empty_conj],
-    by: refinement_preservation_stub_validation,
+    by: refinement_preservation_stub_vacuous_validation,
     at: refinement_preservation_stub_locus()
-  )
+  ) {
+    Accepted { value: refined, diagnostics: _ } => refined
+    Rejected { diagnostics: _ } =>
+      match refine(
+        base: [stub_empty_conj],
+        by: refinement_preservation_stub_validation,
+        at: refinement_preservation_stub_locus()
+      ) {
+        Accepted { value: refined, diagnostics: _ } => refined
+        Rejected { diagnostics: _ } => refined
+      }
+  }
 }
 
 

@@ -38,6 +38,23 @@ type Validation<B> {
 }
 
 
+// Placeholder stubs only: binds VacuousValidation at oracle-terminal call sites so
+// real predicates cannot be wired into refined_vacuous_oracle_terminal without the marker.
+data VacuousAdmits = VacuousAdmits
+
+
+type VacuousValidation<B> {
+  reason: Symbol
+  admits: fn(B) -> Bool
+  vacuous: VacuousAdmits
+}
+
+
+fn validation_from_vacuous<B>(by: VacuousValidation<B>) -> Validation<B> {
+  Validation { reason: by.reason, admits: by.admits }
+}
+
+
 // Inhabit via refine (fail-closed) or make_* packing an Accepted refine receipt.
 // 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
 // compiler-enforced construction only via refine / make_* at consumer call sites;
@@ -76,10 +93,19 @@ fn refined_base<B>(r: Refined<B>) -> B {
 // 🟡 gated — feature:refinement-vacuous-oracle-terminal — bind T-12/T-19 placeholder stubs —
 // dissolve-on-arrival: delete when vacuous admits placeholders are replaced; forbidden: consumer
 // bare Refined packs — use refine once, then this single sanctioned fallback (refine is pure).
-fn refined_vacuous_oracle_terminal<B>(base: B, by: Validation<B>, at: Locus) -> Refined<B> {
-  match refine(base: base, by: by, at: at) {
-    Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => Refined { base: base }
+// Rejected fallback packs only when by.admits(base) (vacuous stubs); otherwise returns
+// Rejected with diagnostics preserved (fail-closed). VacuousValidation.vacuous blocks wiring
+// real predicates at call sites.
+fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Outcome<Refined<B>> {
+  let validation = validation_from_vacuous(by: by)
+  match refine(base: base, by: validation, at: at) {
+    Accepted { value: refined, diagnostics: _ } => Accepted { value: refined, diagnostics: None }
+    Rejected { diagnostics: rejected } =>
+      if by.admits(base) {
+        Accepted { value: Refined { base: base }, diagnostics: None }
+      } else {
+        Rejected { diagnostics: rejected }
+      }
   }
 }
 
@@ -311,7 +337,9 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 // .dag data literals cannot unwrap Rejected at assignment. Witness-proved Accepted for catalog
 // values; runtime/user input uses make_* + Outcome. Bare-carrier catalog helpers that stripped
 // Rejected were removed (P3); T-25-tail adds structural opacity for bare Refined/PositiveInt.
-// Witnesses: refinement_authoritative_constants.dag (reject paths); catalog accept witnesses land in §A1 follow-on (T-22 compile budget).
+// Witnesses: refinement_authoritative_constants.dag (reject paths + one positive_int accept);
+// formatter catalog accept table deferred to docs/audit/v4-deferral-audit-2026-05-29.md §A1 /
+// TASKS.md T-4.16 (T-22 manual-corpus compile budget; not a separate filed PR).
 
 
 // 🟢 coproduct dissolution — TERMINAL. The ordered/unordered distinction is the irreducible

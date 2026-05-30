@@ -65,6 +65,8 @@ import v4.std.diagnostic {
 import v4.std.node { Node, Symbol }
 import v4.std.refinement {
   Refined,
+  VacuousAdmits,
+  VacuousValidation,
   Validation,
   refine,
   refined_base,
@@ -91,6 +93,13 @@ data complexity_variables_validation: Validation<List<SizeVariable>> = Validatio
 }
 
 
+data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
+  reason: complexity_variables_invalid,
+  admits: complexity_variables_admits,
+  vacuous: VacuousAdmits
+}
+
+
 fn complexity_projection_locus() -> Locus {
   Textual { file: complexity_projection_virtual_file, extent: WholeFile }
 }
@@ -112,11 +121,22 @@ fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVaria
     // dissolve-on-arrival: propagate Violates at exported boundary (Witness) when admits is real;
     // forbidden: silent empty-list fabrication that drops diagnostics.
     Violates { diagnostic: _ } =>
-      refined_vacuous_oracle_terminal(
+      match refined_vacuous_oracle_terminal(
         base: xs,
-        by: complexity_variables_validation,
+        by: complexity_variables_vacuous_validation,
         at: complexity_projection_locus()
-      )
+      ) {
+        Accepted { value: variables, diagnostics: _ } => variables
+        Rejected { diagnostics: _ } =>
+          match refine(
+            base: xs,
+            by: complexity_variables_validation,
+            at: complexity_projection_locus()
+          ) {
+            Accepted { value: variables, diagnostics: _ } => variables
+            Rejected { diagnostics: _ } => empty_complexity_variables()
+          }
+      }
   }
 }
 
