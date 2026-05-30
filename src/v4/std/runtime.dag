@@ -61,6 +61,14 @@ type RuntimeValue
   | RuntimeClosure { value: RuntimeClosureValue }
   | RuntimeUnit { value: RuntimeUnitValue }
 
+// Leaf-model verification runtime outcomes (PR #3971 §2.2 — generic across targets).
+// 🟡 dissolve-on-arrival: per-target outcome refinements as additional leaf models land.
+type RuntimeOutcome
+  = Panic { panic_classification: Symbol }
+  | Wrap
+  | CheckedReturn { wrapped_value: Node }
+  | ExceptionRaise { exception_node: Node }
+
 // 🟡 coproduct dissolution — consumer:runtime-value-node-reification; fail-closed until RuntimeValue payloads have faithful Node representation.
 type RuntimeValueNodeProjection
   = RuntimeValueNodeProjected { node: Node }

@@ -22,9 +22,10 @@ type LeafModelClaim<M, Subject, Expectation> {
 }
 
 // REQUIRED paired probe — claim without falsification is not verifiable (planning doc §5).
+// expected_failure_mode is Expectation-shaped per M=rust.dag instantiation (PR #3971 §5 sketches).
 type FalsificationCase<Subject, Expectation> {
   subject_variant: Subject
-  expected_failure_mode: Verdict<Subject>
+  expected_failure_mode: Expectation
 }
 
 // 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —

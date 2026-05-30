@@ -1,0 +1,54 @@
+// src/v4/std/rust_leaf_model_claim.dag
+// Scope: M=rust.dag instantiation of LeafModelClaim (PR #3971 design-rust-dag-leafmodel-instantiation.md).
+// Status: substrate implementation of DFS-ratified §1–§2 closed coproducts.
+
+module v4.std.rust_leaf_model_claim
+
+import v4.std.grammar { GrammarProduction }
+import v4.std.leaf_model_verification { TargetInvocation }
+import v4.std.lexing { LexRule }
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.std.runtime { RuntimeOutcome }
+
+// Phase-1 primitive subject axis (extension via modeling escalation only).
+type RustPrimitive
+  = RustPrimitiveI32
+
+type AlgebraCarrier
+  = AlgebraCarrierOrderedRing
+
+// §1 — CLOSED coproduct (modeling-escalation-only extension).
+type RustClaimSubject
+  = RustPrimitiveTypeSubject { primitive: RustPrimitive }
+  | RustAlgebraInhabitanceSubject { algebra: AlgebraCarrier, on: RustPrimitive }
+  | RustAtomRealizationSubject { atom: Node }
+  | RustCollectionRealizationSubject { collection: Node }
+  | RustGrammarProductionSubject { production: GrammarProduction }
+  | RustLexRuleSubject { rule: LexRule }
+
+// §2.1 — Phase-1 closed rustc error-code subset.
+// 🟡 dissolve-on-arrival: full RustcErrorCode coproduct — Phase 2.
+type Rustc_ErrorCode_Phase1
+  = E0107
+  | E0308
+  | E0423
+  | E0599
+
+// §2 — CLOSED expectation coproduct.
+type RustClaimExpectation
+  = RustcAcceptsExpectation { invocation_form: TargetInvocation }
+  | RustcRejectsExpectation {
+      invocation_form: TargetInvocation
+      expected_error_code: Rustc_ErrorCode_Phase1
+    }
+  | RustRuntimeBehaviorExpectation {
+      invocation_form: TargetInvocation
+      expected_outcome: RuntimeOutcome
+    }
+  | RustEmitProjectionEqualityExpectation {
+      atom_realization_row: Node
+      type_emit_must_change: Bool
+      value_emit_must_change: Bool
+    }
+  | RustGrammarRoundTripExpectation { production: GrammarProduction }
