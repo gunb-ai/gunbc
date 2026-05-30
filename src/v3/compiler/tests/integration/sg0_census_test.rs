@@ -286,6 +286,12 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
+    // E-5 / P2–P4: wall-bounded host subprocess I/O shared by `post_emit_verifier` and
+    // W1/L5 `test_runner` (fail-closed vs unbounded `Command::output`).
+    // **P5 receipt (Mechanism (b)):** matching row in `_internal/INVARIANTS_OPS.md`.
+    // Dissolution: delete when PB-Runtime owns bounded host-child policy for all
+    // post-emit / ExecuteCommand paths without this hand module.
+    "src/v3/compiler/src/bounded_host_command.rs",
     // R3 gate #87 / T-Tests-As-Data-Completeness: `CementingDispatchMatchesProjection` host
     // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
     // predicate substrate owns the walk without host FS coupling).
@@ -488,6 +494,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `e6_g1a_option3_static_lens_test` precedent for fixture-bound lens
     // instances).
     "src/v3/compiler/tests/integration/emission_provenance_lens_test.rs",
+    // Operator-directive 2026-05-29 / PR #3913 — E-5 multi-target emit verification:
+    // `PROGRAM_FIXTURES` must pass each Shape-A `post_emit_verifier` (not only M1
+    // self-host `src/v4` cargo-check). **P5 receipt (Mechanism (b)):** matching row
+    // in `_internal/INVARIANTS_OPS.md` § SG-0 hand-authored integration test receipts.
+    // Dissolution: remove when obligations run as `.dag` `TestClaim` rows / T-38 runner
+    // without this host harness (`src/v4/test/claim/manual/multi_target_emit_verification_gate.dag`).
+    "src/v3/compiler/tests/integration/emit_verification_gates_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
     // Path 2): hand-Rust integration test pinning
     // `Dag::rust_pilot_primitives()` type-structure walk + the

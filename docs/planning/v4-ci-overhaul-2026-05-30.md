@@ -187,7 +187,7 @@ type CiStepSelection {
   inputs_consulted: List<UpsertInputRef>
   affected_intersection: List<AffectedNode>   // what specifically intersected
   decision: SelectionDecision                  // Run | Skip | CarvedOut
-  cache_digest: ContentHash                    // projected from complete step subgraph
+  cache_digest: Outcome<ContentHash>           // full projection outcome (Accepted = hash; Rejected = fail-closed — no sentinel)
   reason: Symbol
 }
 
@@ -204,7 +204,7 @@ The receipt is the **first thing CI should produce, before active skipping is tr
 - All other upserts short-circuit to cached when affected_set doesn't intersect — no action, no compute, no time.
 - Dependency resolution is recursive per UPSERT canon: if step X depends on step Y, X's verify-first triggers Y's verify-first.
 
-**Structural success criterion** (operator review 2026-05-30: avoid making elapsed runtime the primary acceptance metric): the receipt is correct iff every step's `decision` is justified by either (a) `inputs ∩ affected_set ≠ ∅` evidence (selected), (b) `inputs ∩ affected_set = ∅` evidence plus valid cache digest (skipped safely), or (c) explicit `ci_always_run_carveouts` match (carved out). Wall-clock reduction is a downstream consequence, not the gate. Elapsed-time wins are visible but secondary to "every decision is justified by structural facts."
+**Structural success criterion** (operator review 2026-05-30: avoid making elapsed runtime the primary acceptance metric): the receipt is correct iff every step's `decision` is justified by either (a) `inputs ∩ affected_set ≠ ∅` evidence (selected), (b) `inputs ∩ affected_set = ∅` evidence plus `cache_digest` is `Accepted { value: … }` (skipped safely — `Rejected` forces `Run`), or (c) explicit `ci_always_run_carveouts` match (carved out). Wall-clock reduction is a downstream consequence, not the gate. Elapsed-time wins are visible but secondary to "every decision is justified by structural facts."
 
 ---
 
