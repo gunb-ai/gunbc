@@ -411,7 +411,7 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
 }
 
 // Projects declared expected outcomes only. RoundTripClaim has no expected-outcome field;
-// eval authority (05_eval.dag) routes it to Deferred — do not synthesize an Outcome<Node> here.
+// eval authority (05_eval.dag) decides Pass/Fail via dag_round_trip_wave1_authorities_ready — do not synthesize an Outcome<Node> here.
 fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
   match c {
     CompilesClaim { expected_value: e, label: _, anchor: _, input: _, classification: _ } =>

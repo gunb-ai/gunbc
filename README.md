@@ -31,22 +31,34 @@ API contracts).
 
 ## Quick start
 
+Build the compiler, compile the hero `.dag` to Rust, and check the emitted
+crate — end-to-end in four commands:
+
 ```bash
 git clone https://github.com/gunb-ai/daglang.git && cd daglang
 cargo build --release -p v2-compiler --bin gunbc
-cargo test -p v2-compiler-tests    # compiler tests
-cargo clippy --all-targets -- -D warnings  # lint
+
+./target/release/gunbc compile \
+  --source-root dsl/examples/weather \
+  --source-root dsl/std \
+  --output-dir /tmp/weather-out \
+  --target rust
+
+cargo check --manifest-path /tmp/weather-out/Cargo.toml
 ```
 
-The release binary is `target/release/gunbc` (crate `v2-compiler`, bin `gunbc` in
-`src/v2/stage0/Cargo.toml`). Use it to compile v4 trees, for example:
+The source is [`dsl/examples/weather/weather.dag`](dsl/examples/weather/weather.dag):
+domain types, a coproduct (`Condition = Sunny | Cloudy | Rainy | Snowy`), pattern
+matching, and list pipelines. gunbc emits a self-contained Rust crate; `cargo
+check` succeeding is proof the emitted code is well-typed with zero hand glue.
+
+Swap `--target rust` for `python`, `go`, or `dag` to retarget the same source.
+The release binary is `target/release/gunbc` (crate `v2-compiler`, bin defined
+in `src/v2/stage0/Cargo.toml`).
 
 ```bash
-mkdir -p /tmp/gunbc-out
-./target/release/gunbc compile \
-  --source-root src/v4 \
-  --output-dir /tmp/gunbc-out \
-  --target dag
+cargo test -p v2-compiler-tests             # compiler tests
+cargo clippy --all-targets -- -D warnings   # lint
 ```
 
 ## gunbc: v2 and v4
