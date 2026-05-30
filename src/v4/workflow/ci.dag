@@ -1525,8 +1525,8 @@ fn ci_step_selection_shadow_rows(step_ids: List<CiStepId>) -> List<CiStepSelecti
   fold_list(
     xs: step_ids,
     empty: Empty,
-    cons: fn(acc, step_id) {
-      list_snoc_item(xs: acc, item: ci_step_selection_shadow_row(step_id: step_id))
+    cons: fn(acc, sid) {
+      list_snoc_item(xs: acc, item: ci_step_selection_shadow_row(step_id: sid))
     }
   )
 }
