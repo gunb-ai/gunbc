@@ -116,6 +116,14 @@ Both lanes converge on `VerdictTally` (`pass`, `fail`, `deferred` counts). Close
 
 ---
 
+## 3.1 Migration note (PR #3958 transitional shape)
+
+W2 worker PR [#3958](https://github.com/gunb-ai/gunbc/pull/3958) (`keen-raven-290`) shipped against the prior Draft B shape: `Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<S, T>> }`. That implementation was at full review criteria when codex flagged the dual-`actual` authority on this PR's `086d6a91`. Per operator manual-merge policy, the worker's branch may merge as-is — but the collapse to receipt-as-payload (this contract's §2.2) is the **target shape** and lands in a follow-up tightening PR. The follow-up touches `std/verdict.dag` + the `EXPECTED_HAND_AUTHORED_TEST` census row + any `Fail.actual` / `Fail.falsification` reads that need to walk through `receipt.actual` / `receipt` instead. Estimated diff: small (mechanical field rename plus removal of the `Option` wrap).
+
+There is **no live consumer** of `Fail.actual` or `Fail.falsification` outside the W2 substrate + tests, so the follow-up is bounded.
+
+---
+
 ## 4. Lane responsibility table
 
 | Symbol / change | Spine | Runtime/TestClaim | Notes |
