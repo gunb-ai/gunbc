@@ -394,7 +394,7 @@ fn w1_rust_emit_output_int(
         .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")
-        .arg(&bin_path)
+        .arg(&bin_path);
     let compile_out = crate::bounded_host_command::host_command_output(
         "W1 rust_emit_output: rustc",
         EXECUTE_COMMAND_WALL_TIMEOUT,

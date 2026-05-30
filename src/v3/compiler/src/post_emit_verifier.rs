@@ -39,7 +39,7 @@
 use std::fmt;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use crate::bounded_host_command::{self, DEFAULT_WALL_TIMEOUT};
 
