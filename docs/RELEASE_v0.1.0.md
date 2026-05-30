@@ -7,6 +7,59 @@ is ready without re-deriving status from git log.
 
 Snapshot date: 2026-05-30.
 
+## Goals / Non-goals / Acceptance criteria
+
+**Goals (what v0.1.0 ships).**
+
+1. First public tag of **daglang** — the language surface plus `dsl/std`
+   and `extdeps` vocabulary — on `gunb-ai/daglang`.
+2. **gunbc** v2 self-hosted compiler binary distributed via GitHub Releases
+   for the six-target matrix in [`src/v4/workflow/release.dag`](../src/v4/workflow/release.dag).
+3. External-reader root docs (`README`, `THESIS`, `INVARIANTS`, `MODELING`,
+   `CODING`, `TESTING`) published as the public-facing surface.
+4. Public/private split landed: `gunb-ai/daglang` public, `gunb-ai/gunbc`
+   private scratchpad; one-shot seed via `scripts/publish-snapshot.sh`.
+
+**Non-goals (explicitly NOT in v0.1.0).**
+
+1. v4 substrate as the production pipeline — v4 ships as published source
+   for transparency only; v2 remains the active compiler.
+2. Homebrew tap, `.deb`/APT, `cargo install` distribution paths (Phases 2–4,
+   post-tag).
+3. Comprehensive `.dag` comment-stripping pass (§4 deferred; load-bearing
+   markers make a blind pass unsafe).
+4. Inverted-sync tooling (private → public PR flow); v0.2.0+ concern.
+5. External community surface (Issues/Discussions wiring on `daglang`).
+6. Removal of `src/v3/` from the internal workspace (stripped from snapshot
+   only).
+
+**Acceptance criteria (testable conditions for `git tag v0.1.0`).**
+
+- [x] PR #3826 (`v2-compiler` → `gunbc` rename) merged.
+- [x] GitHub plan audit complete — no Enterprise-only feature in use.
+- [x] GitHub plan downgraded Enterprise → org (Teams) by operator.
+- [x] `public` git remote points at `git@github.com:gunb-ai/daglang.git`.
+- [x] `scripts/publish-snapshot.sh` implements strip-list + dry-run default
+      + `PUBLISH_CONFIRM=yes` guard.
+- [x] Public/private sync model decided and documented (§2).
+- [x] Root docs rewritten with external-reader framing; internal session
+      IDs and operator-ratified provenance removed from public bodies.
+- [x] `src/v4/workflow/release.dag`, `src/v4/install/install.dag`,
+      `.github/workflows/release.yml` all present.
+- [ ] Clean-checkout build of `target/release/gunbc` succeeds.
+- [ ] `release.yml` dry-run on a throwaway pre-tag produces all six target
+      artifacts.
+- [ ] Final `scripts/publish-snapshot.sh` dry-run inspected: no stripped
+      paths, internal session IDs, or operator-ratified provenance leak
+      into the export commit.
+- [ ] Reviewer sign-off that §4 comment-stripping and §6 PR-template /
+      workflow-trim items are acceptable as v0.1.1 follow-ups (or a focused
+      PR addresses them first).
+- [ ] Operator ready to flip `gunb-ai/daglang` PRIVATE → PUBLIC immediately
+      after the seed push.
+- [ ] `v0.1.0` tagged on internal `main`, seed `--publish` run, visibility
+      flipped, public HEAD verified to match export.
+
 ## What v0.1.0 is
 
 The first public tag of **daglang** (language + `dsl/std`/`extdeps` vocabulary)
@@ -33,9 +86,10 @@ against the `public` remote (`gunb-ai/daglang`).
 All pre-flight audits complete 2026-05-29; receipt
 [`docs/admin/github-enterprise-to-teams-audit-2026-05-29.md`](admin/github-enterprise-to-teams-audit-2026-05-29.md).
 No Enterprise-only feature in use (SAML, audit-log API, IP allowlist, required-2FA,
-Enterprise runner groups, `enterprise:` workflow keys all clear). Plan downgrade
-itself (billing action) and post-migration CI smoke remain outstanding — these
-are operator-driven, not code changes.
+Enterprise runner groups, `enterprise:` workflow keys all clear). Plan
+downgrade Enterprise → org (Teams) executed by operator 2026-05-30.
+Post-migration CI smoke remains outstanding (operator-driven, not a code
+change).
 
 ### §2 — Public/private repo model
 
@@ -133,8 +187,8 @@ is at issue.
 
 ## Gating items before `git tag v0.1.0`
 
-1. GitHub plan downgrade executed (or explicit reviewer decision to tag on
-   Enterprise and downgrade after).
+1. ~~GitHub plan downgrade executed.~~ Done 2026-05-30 (Enterprise → org/Teams);
+   post-migration CI smoke still to confirm.
 2. `release.yml` dry-run produces all six target artifacts on a throwaway tag.
 3. Reviewer sign-off that §4 (comment stripping) and the §6 PR-template /
    workflow-trim items are acceptable as v0.1.1 follow-ups, OR a focused PR
