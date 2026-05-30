@@ -7,12 +7,16 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, HigherOrderMethodSpec,
 };
 pub use crate::generated_method_template_projection::rust_method_template_emit;
+use crate::std_coercion::TargetAtomTypeDeclKind::*;
+pub use crate::std_coercion::{TargetAtomRealization, TargetAtomTypeDeclKind};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_types::is_container_type;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
+pub use crate::v2_compiler_coercion::{
+    coerce_primitive_type, default_expr, is_copy, lookup_atom_realization,
+};
 pub use crate::v2_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v2_compiler_emit::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -16757,17 +16761,8 @@ pub fn emit_rust_default_value(
 ) -> String {
     {
         let type_name = authored_name_at(source_indices, param_node_type_expr(param));
-        match lookup_checkpoint(RenderTarget::Rust, type_name.clone()) {
-            Some(cp) => match cp.default_expr.clone() {
-                Some(expr) => expr.clone(),
-                None => v2_rt::concat(
-                    v2_rt::concat(
-                        "compile_error!(\"no test default for type: ".to_string(),
-                        type_name.clone(),
-                    ),
-                    "\")".to_string(),
-                ),
-            },
+        match default_expr(RenderTarget::Rust, type_name.clone()) {
+            Some(expr) => expr.clone(),
             None => v2_rt::concat(
                 v2_rt::concat(
                     "compile_error!(\"no test default for type: ".to_string(),
