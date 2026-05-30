@@ -10,7 +10,7 @@
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` land in the same PR. **This PR (+1 census path):**
 //! `v4_emit_host_harness_test.rs` — behavior-driven `run_emit_host_rust` (compile + run fixture,
-//! `HostExit::Ok`, five-byte stdout parse) plus minimal `.dag` surface needles for carriers wired
+//! `HostExit` Holds witness + five-byte stdout parse) plus minimal `.dag` surface needles for carriers wired
 //! in this PR. **Dissolution trigger:** W3 populates `nat_semiring_rung34_runtime_value_rows`
 //! and wires `run_emit_host_rust` in `emit_host.dag` to invoke `tools/emit_host_runner` (removes
 //! `emit_host_transport_not_wired` on the Rust row); delete this file when rung-3/4 claims +
@@ -45,9 +45,14 @@ fn emit_host_runner_rust_row_builds_runs_and_parses_stdout() {
         emit_host_runner::run_emit_host_rust(EMIT_HOST_FIXTURE_SOURCE, &inputs, &work_dir)
             .expect("run_emit_host_rust");
     assert!(
-        matches!(receipt.exit, emit_host_runner::HostExit::Ok(_)),
-        "expected successful host exit, got {:?}",
+        receipt.exit.exit_holds(),
+        "expected successful host exit (Holds witness), got {:?}",
         receipt.exit
+    );
+    assert!(
+        emit_host_runner::host_logical_run_from_exit(&receipt.exit, receipt.stdout_bytes.clone())
+            .is_some(),
+        "logical_run projection requires Holds exit"
     );
     emit_host_runner::runtime_value_parse_rust(&receipt.stdout_bytes)
         .expect("runtime_value_parse_rust on fixture stdout");
