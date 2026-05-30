@@ -1411,7 +1411,13 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-    concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+    // Bare `type Symbol` is classified as a type alias (resolved name != Unit) but must
+    // emit the Ord identity carrier struct so data literals can use Symbol("…") (E0423).
+    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+      rust_nominal_identity_carrier_def(name: item_text)
+    } else {
+      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+    }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
