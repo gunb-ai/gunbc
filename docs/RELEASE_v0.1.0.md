@@ -108,9 +108,29 @@ recommendation as the default until the project maintainer rules otherwise.
 | D-REL-1 | v4 in public v0.1.0 | **Strip `src/v4` from public snapshot.** | **CONFIRMED 2026-05-30.** v4 stays private for v0.1.0; correctness ladder is not at public confidence (diagnosis lane still ~7,951 rustc errors for full-tree v4 Rust emit). **Supersedes** the older `RELEASE_TODO.md` §6 "Keep" list for `src/v4/std`, `compiler/`, etc. — that list pre-dates the scope revision and `RELEASE_TODO.md` is itself stripped from the public export. `scripts/publish-snapshot.sh` `STRIP_PATHS` now strips `src/v4` wholesale. |
 | D-REL-2 | Binary distribution scope | **Advertised target = passed dry-run. No dry-run = not advertised. Source build is acceptable if binaries are flaky.** | **CONFIRMED 2026-05-30** (project maintainer). |
 | D-REL-3a | Day-one daglang subset (source) | Small example-backed `.dag` subset anchored to `weather.dag` + `interp_test.dag` and the `dsl/std` vocabulary those examples exercise. Anything outside this subset is unsupported and must fail closed. | **CONFIRMED 2026-05-30.** Exact list enumerated in `docs/SUPPORTED.md` (downstream). |
-| D-REL-3b | Day-one target/artifact matrix | **Rust + TypeScript only.** Rust must pass `rustc`/`cargo` checks for shipped examples; TypeScript must pass `tsc --noEmit` for shipped TS artifacts. Python/Go/C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED 2026-05-30.** Per-surface support level (full compile vs artifact/interface) declared explicitly in `SUPPORTED.md`. |
+| D-REL-3b | Day-one target/artifact matrix | **Rust + TypeScript only.** Rust must pass `rustc`/`cargo` checks for shipped examples; TypeScript must pass `tsc --noEmit` for shipped TS artifacts. Python/Go/C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED 2026-05-30 (intent); ⚠ NEEDS RECONCILIATION (substrate).** v2 ships `05_emit_rust.dag`, `05_emit_go.dag`, `05_emit_python.dag` — **no `05_emit_typescript.dag` exists**. TypeScript appears only in `dsl/std/languages.dag` catalog entries and v4 test claims, not as a v2 emit path. Either an `emit_typescript.dag` lens lands before tag (owner + ETA needed) or D-REL-3b drops to Rust-only. See "Pre-tag verification gaps" below. |
 | D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | **DECIDED 2026-05-30; enforcement PENDING.** The user-facing docs above do not all exist yet (downstream authoring work). `scripts/publish-snapshot.sh` `STRIP_PATHS` currently strips only the agent/process subtrees (`docs/briefs`, `docs/debt`, etc.) and v3/v4 — root `THESIS`/`INVARIANTS`/`MODELING`/`CODING`/`TESTING` and the large `docs/thesis/`, `docs/invariants/`, `docs/planning/`, `docs/design-*` trees are **not yet stripped**. A follow-up pass before tag must (a) land the user docs and (b) extend `STRIP_PATHS` to remove everything outside the D-REL-4 keep list. Gate B and Gate D catch the gap if this slips. |
 | D-REL-5 | Release before v4 confidence | **YES**, because D-REL-1 strips v4 and v0.1.0 is scoped to the verified v2 / product slice. | **CONFIRMED 2026-05-30.** |
+
+## Pre-tag verification gaps (open)
+
+A release-readiness audit on 2026-05-30 (`nimble-dove-733`, routed via
+PM `still-fox-289`) surfaced five gaps that the gates aspire to close
+but that no evidence currently backs. Each is a hard block on tag until
+resolved.
+
+| # | Gap | Resolution path | Owner / ETA |
+|---|-----|-----------------|-------------|
+| V1 | **TypeScript surface unsubstantiated.** D-REL-3b names Rust + TypeScript as the two advertised surfaces, but no v2 `05_emit_typescript.dag` exists; TS appears only in the language catalog and v4 test claims. | Land `emit_typescript.dag` lens in v2 with `tsc --noEmit` round-trip on at least one shipped example, **or** amend D-REL-3b to Rust-only and update Goals/Non-goals + Gates A/E accordingly. | **PENDING maintainer decision.** |
+| V2 | **`docs/SUPPORTED.md` does not exist.** Item D names it as the single normative authority; README, website, and release notes all derive from it. No file, no owner, no ETA. | Author `docs/SUPPORTED.md` enumerating the D-REL-3a `.dag` subset, the D-REL-3b verified surfaces with per-surface support level, the verified install/target matrix, CLI commands, OS matrix, and fail-closed guarantee. | **PENDING owner.** Likely lane: `nimble-crane-490` (the v4-done/release-sign-off worker who already cross-checked this doc). |
+| V3 | **`install.sh` PR #3992 STALLED.** Open, mergeable=MERGEABLE, 0 reviews, 0 CI checks completed; no shepherd. The doc says `curl install.sh` ships only if #3992 lands and verifies before tag. | Route a shepherd to #3992, OR drop `curl install.sh` from the v0.1.0 install path and rely solely on build-from-source. Decision needed before Gate C can pass. | **PENDING owner.** |
+| V4 | **Weather demo end-to-end UNVERIFIED.** Gate A requires every example to run end-to-end; the hero `dsl/examples/weather/` path against `--target rust` has not been exercised against a `target/release/gunbc` built from a clean checkout. The README hero invocation uses `--target dag` rather than the verified emit path. | Build `gunbc` from clean checkout; run the weather example with `--target rust`; verify generated Rust passes `cargo check`; record commit SHA + run timestamp in the Evidence column on Gate A. | **PENDING.** Can be done by any worker with a green build slot. |
+| V5 | **No verification log.** Gates A–E are aspirational checklists with no "actual run result + evidence link + verification date" column. A reviewer cannot today distinguish "pre-checked" from "untested". | Add an Evidence column to each gate bullet (✓ verified with commit/run link / ⏳ in flight / ✗ not run). This doc's job is reviewer-readable readiness — Evidence is the only way to fulfil it. | **PENDING.** This doc maintained by current author. |
+
+The five gaps map onto the five gates: V1+V4 → Gate A (product
+confidence); V2 → Gate B (scope hygiene, the `SUPPORTED.md` line);
+V3 → Gate C (install); V5 → all gates (evidence column on every gate).
+Gate D and Gate E are unaffected by this audit.
 
 ## Already-decided rulings (apply throughout the doc)
 
@@ -119,7 +139,10 @@ recommendation as the default until the project maintainer rules otherwise.
 - **Distribution ruling (v0.1.0):**
   - GitHub Release artifacts and source build are the v0.1.0 install path.
   - `curl install.sh` ships only if B1's PR #3992 (`install.sh`
-    resurrection) lands and verifies before tag.
+    resurrection) lands and verifies before tag. **Status: STALLED**
+    (open, mergeable, 0 reviews, 0 completed CI checks as of 2026-05-30).
+    Needs a shepherd or drop from the v0.1.0 install path (see
+    verification gap V3 above).
   - Homebrew, `.deb`, and APT may ship **only if** their install flows
     are verified before tag. If any package-manager path is not verified,
     it is **omitted from public docs** and tracked for v0.1.1+.
@@ -200,6 +223,12 @@ When written, it will enumerate:
 The acceptance criteria from earlier revisions of this doc are superseded
 by the reviewer's Gates A–E. The tag does not happen until all five are
 green.
+
+**Evidence convention.** Each bullet below should be annotated as it is
+verified: `✓ <commit-sha> <YYYY-MM-DD>` when checked end-to-end,
+`⏳ <owner>` when in flight, `✗` when not yet attempted. As of
+2026-05-30 the gates are aspirational — no bullet has an evidence tag
+yet. See "Pre-tag verification gaps" above (V5) for the open work.
 
 **Gate A — Product confidence.**
 
