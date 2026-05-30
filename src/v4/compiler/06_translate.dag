@@ -1556,6 +1556,7 @@ fn project_set_collection_type_node(
                 o: project_type_expression_node_bounded(
                   remaining: node_subtree_count(n: elem),
                   node: elem,
+                  target: target,
                   projection: projection
                 ),
                 f: fn(elem_projected) {
@@ -1682,6 +1683,7 @@ fn project_type_expression_children_go(
   remaining: Int,
   anchor: Node,
   children: List<Node>,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection,
   acc: List<Node>
 ) -> Outcome<List<Node>> {
@@ -1696,6 +1698,7 @@ fn project_type_expression_children_go(
         match project_type_expression_node_bounded(
           remaining: node_subtree_count(n: split.head),
           node: split.head,
+          target: target,
           projection: projection
         ) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1704,6 +1707,7 @@ fn project_type_expression_children_go(
               remaining: remaining - 1,
               anchor: anchor,
               children: split.tail,
+              target: target,
               projection: projection,
               acc: list_snoc_item(xs: acc, item: projected)
             ) {
@@ -1723,12 +1727,14 @@ fn project_type_expression_children(
   remaining: Int,
   anchor: Node,
   children: List<Node>,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<Node>> {
   project_type_expression_children_go(
     remaining: remaining,
     anchor: anchor,
     children: children,
+    target: target,
     projection: projection,
     acc: Empty
   )
@@ -1736,6 +1742,7 @@ fn project_type_expression_children(
 fn project_type_expression_field_slots_go(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection,
   edges: List<Edge>,
   acc: List<TargetTypeExprFieldSlot>
@@ -1754,12 +1761,14 @@ fn project_type_expression_field_slots_go(
               o: project_type_expression_node_bounded(
                 remaining: node_subtree_count(n: split.head.target),
                 node: split.head.target,
+                target: target,
                 projection: projection
               ),
               f: fn(projected) {
                 project_type_expression_field_slots_go(
                   remaining: remaining - 1,
                   node: node,
+                  target: target,
                   projection: projection,
                   edges: split.tail,
                   acc: list_snoc_item(
@@ -1779,11 +1788,13 @@ fn project_type_expression_field_slots_go(
 fn project_type_expression_field_slots(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprFieldSlot>> {
   project_type_expression_field_slots_go(
     remaining: remaining,
     node: node,
+    target: target,
     projection: projection,
     edges: node.children,
     acc: Empty
@@ -1792,6 +1803,7 @@ fn project_type_expression_field_slots(
 fn project_type_expression_variant_slots_go(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection,
   edges: List<Edge>,
   acc: List<TargetTypeExprVariantSlot>
@@ -1810,12 +1822,14 @@ fn project_type_expression_variant_slots_go(
               o: project_type_expression_node_bounded(
                 remaining: node_subtree_count(n: split.head.target),
                 node: split.head.target,
+                target: target,
                 projection: projection
               ),
               f: fn(projected) {
                 project_type_expression_variant_slots_go(
                   remaining: remaining - 1,
                   node: node,
+                  target: target,
                   projection: projection,
                   edges: split.tail,
                   acc: list_snoc_item(
@@ -1835,11 +1849,13 @@ fn project_type_expression_variant_slots_go(
 fn project_type_expression_variant_slots(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprVariantSlot>> {
   project_type_expression_variant_slots_go(
     remaining: remaining,
     node: node,
+    target: target,
     projection: projection,
     edges: node.children,
     acc: Empty
@@ -1848,12 +1864,14 @@ fn project_type_expression_variant_slots(
 fn project_type_expression_conj_fields(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprFieldSlot>> {
   bind_outcome(
     o: project_type_expression_field_slots(
       remaining: remaining - 1,
       node: node,
+      target: target,
       projection: projection
     ),
     f: fn(fields) {
@@ -1868,12 +1886,14 @@ fn project_type_expression_conj_fields(
 fn project_type_expression_disj_variants(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<List<TargetTypeExprVariantSlot>> {
   bind_outcome(
     o: project_type_expression_variant_slots(
       remaining: remaining - 1,
       node: node,
+      target: target,
       projection: projection
     ),
     f: fn(variants) {
@@ -1887,17 +1907,20 @@ fn project_type_expression_disj_variants(
 }
 fn project_type_expression_node(
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   project_type_expression_node_bounded(
     remaining: node_subtree_count(n: node),
     node: node,
+    target: target,
     projection: projection
   )
 }
 fn project_type_expression_node_bounded(
   remaining: Int,
   node: Node,
+  target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   if remaining <= 0 {
@@ -1915,6 +1938,7 @@ fn project_type_expression_node_bounded(
           remaining: remaining - 1,
           anchor: node,
           children: node_positional_child_targets(node: node),
+          target: target,
           projection: projection
         ),
         f: fn(projected) {
