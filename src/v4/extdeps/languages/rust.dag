@@ -152,6 +152,7 @@ import v4.std.target_model {
 import v4.std.node {
   Arrow,
   Atom,
+  Cardinality,
   Conj,
   Edge,
   Named,
@@ -3269,6 +3270,26 @@ fn rust_sg2_type_expr_target_model() -> TargetModel {
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
     authority_source_text: rust_sg2_type_alias_text
+  }
+}
+
+data rust_binding_sg5_non_ordable: Symbol = rust_binding_sg5_non_ordable
+
+fn rust_sg5_non_ordable_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: rust_binding_sg5_non_ordable } },
+    children: []
+  }
+}
+
+// SG-5 probe: Set<NonOrdable> as Cardinality(set_carrier, NonOrdable).
+fn rust_sg5_set_non_ordable_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      Edge { label: Positional, target: target_collection_set_carrier_node() },
+      Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }
+    ]
   }
 }
 
