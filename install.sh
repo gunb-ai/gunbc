@@ -24,44 +24,52 @@ REPO="${GUNBC_INSTALL_REPO:-gunb-ai/gunbc}"
 INSTALL_DIR="${GUNBC_INSTALL_DIR:-/usr/local/bin}"
 VERSION="${GUNBC_VERSION:-}"
 
+# Piped when argv[0] names an interpreter, not a path to this script (covers zsh/ksh/etc.).
+gunbc_install_is_piped() {
+  case "${0:-}" in
+    */*) return 1 ;;
+  esac
+  case "$(basename "${0:-}")" in
+    install.sh) return 1 ;;
+  esac
+  return 0
+}
+
 load_release_target_authority() {
   if [ -n "${GUNBC_RELEASE_TARGET_AUTHORITY_LOADED:-}" ]; then
     return 0
   fi
-  case "$(basename "${0:-}")" in
-    '' | sh | bash | dash | -sh)
-      # Piped install (`curl … | sh`): do not source cwd-local ./scripts — keeps target
-      # authority on the same GH Release channel as the binary (INVARIANTS P2/P3).
-      if [ "${GUNBC_INSTALL_USE_LOCAL_TARGETS:-}" = "1" ] \
-        && [ -f "./scripts/release-target-triples.sh" ]; then
-        # shellcheck source=scripts/release-target-triples.sh
-        . "./scripts/release-target-triples.sh"
-        GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
-        return 0
-      fi
-      ;;
-    *)
-      _install_dir=$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd || true)
-      if [ -n "$_install_dir" ] && [ -f "$_install_dir/scripts/release-target-triples.sh" ]; then
-        # shellcheck source=scripts/release-target-triples.sh
-        . "$_install_dir/scripts/release-target-triples.sh"
-        GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
-        return 0
-      fi
-      if [ -n "$_install_dir" ] && [ -f "$_install_dir/release-target-triples.sh" ]; then
-        # shellcheck source=release-target-triples.sh
-        . "$_install_dir/release-target-triples.sh"
-        GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
-        return 0
-      fi
-      if [ -f "./scripts/release-target-triples.sh" ]; then
-        # shellcheck source=scripts/release-target-triples.sh
-        . "./scripts/release-target-triples.sh"
-        GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
-        return 0
-      fi
-      ;;
-  esac
+  if gunbc_install_is_piped; then
+    # `curl … | sh` (any POSIX shell): do not source cwd-local ./scripts — keeps target
+    # authority on the same GH Release channel as the binary (INVARIANTS P2/P3).
+    if [ "${GUNBC_INSTALL_USE_LOCAL_TARGETS:-}" = "1" ] \
+      && [ -f "./scripts/release-target-triples.sh" ]; then
+      # shellcheck source=scripts/release-target-triples.sh
+      . "./scripts/release-target-triples.sh"
+      GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+      return 0
+    fi
+  else
+    _install_dir=$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd || true)
+    if [ -n "$_install_dir" ] && [ -f "$_install_dir/scripts/release-target-triples.sh" ]; then
+      # shellcheck source=scripts/release-target-triples.sh
+      . "$_install_dir/scripts/release-target-triples.sh"
+      GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+      return 0
+    fi
+    if [ -n "$_install_dir" ] && [ -f "$_install_dir/release-target-triples.sh" ]; then
+      # shellcheck source=release-target-triples.sh
+      . "$_install_dir/release-target-triples.sh"
+      GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+      return 0
+    fi
+    if [ -f "./scripts/release-target-triples.sh" ]; then
+      # shellcheck source=scripts/release-target-triples.sh
+      . "./scripts/release-target-triples.sh"
+      GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
+      return 0
+    fi
+  fi
   _authority=$(mktemp "${TMPDIR:-/tmp}/gunbc-release-targets.XXXXXX")
   trap 'rm -f "$_authority"' EXIT INT HUP TERM
   _targets_asset="release-target-triples.sh"

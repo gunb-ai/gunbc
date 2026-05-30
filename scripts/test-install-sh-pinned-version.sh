@@ -105,6 +105,13 @@ assert_log_contains 'releases/download/v0.1.0/gunbc-'
 assert_log_lacks 'releases/latest/download/gunbc-'
 assert_log_lacks 'releases/latest/download/release-target-triples.sh'
 
+# Non-sh piped interpreter must not pick up cwd ./scripts/ from a checkout.
+if command -v zsh >/dev/null 2>&1; then
+  run_install env -u GUNBC_VERSION zsh -c 'cat ./install.sh | GUNBC_VERSION=v0.1.0 zsh'
+  assert_log_contains 'releases/download/v0.1.0/release-target-triples.sh'
+  assert_log_contains 'releases/download/v0.1.0/gunbc-'
+fi
+
 # Direct invocation (install.sh header Usage) may use checkout-local scripts (no targets curl).
 run_install env GUNBC_VERSION=v0.1.0 sh ./install.sh
 assert_log_contains 'releases/download/v0.1.0/gunbc-'
