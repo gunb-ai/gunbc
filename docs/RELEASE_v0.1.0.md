@@ -109,7 +109,7 @@ recommendation as the default until the project maintainer rules otherwise.
 | D-REL-2 | Binary distribution scope | **Advertised target = passed dry-run. No dry-run = not advertised. Source build is acceptable if binaries are flaky.** | **CONFIRMED 2026-05-30** (project maintainer). |
 | D-REL-3a | Day-one daglang subset (source) | Small example-backed `.dag` subset anchored to `weather.dag` + `interp_test.dag` and the `dsl/std` vocabulary those examples exercise. Anything outside this subset is unsupported and must fail closed. | **CONFIRMED 2026-05-30.** Exact list enumerated in `docs/SUPPORTED.md` (downstream). |
 | D-REL-3b | Day-one target/artifact matrix | **Rust + TypeScript only.** Rust must pass `rustc`/`cargo` checks for shipped examples; TypeScript must pass `tsc --noEmit` for shipped TS artifacts. Python/Go/C++/LLVM/etc. are not public v0.1.0 support. | **CONFIRMED 2026-05-30.** Per-surface support level (full compile vs artifact/interface) declared explicitly in `SUPPORTED.md`. |
-| D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | **CONFIRMED 2026-05-30.** |
+| D-REL-4 | Public docs list | **Ship only user docs: `README`, `LICENSE`, `CHANGELOG`, `docs/GETTING_STARTED.md`, `docs/LANGUAGE.md` (or `SYNTAX.md`), `docs/CLI.md`, `docs/EXAMPLES.md`, `docs/SUPPORTED.md`, `docs/CONTRIBUTING.md` (only if public PRs are wanted); strip all other docs.** | **DECIDED 2026-05-30; enforcement PENDING.** The user-facing docs above do not all exist yet (downstream authoring work). `scripts/publish-snapshot.sh` `STRIP_PATHS` currently strips only the agent/process subtrees (`docs/briefs`, `docs/debt`, etc.) and v3/v4 — root `THESIS`/`INVARIANTS`/`MODELING`/`CODING`/`TESTING` and the large `docs/thesis/`, `docs/invariants/`, `docs/planning/`, `docs/design-*` trees are **not yet stripped**. A follow-up pass before tag must (a) land the user docs and (b) extend `STRIP_PATHS` to remove everything outside the D-REL-4 keep list. Gate B and Gate D catch the gap if this slips. |
 | D-REL-5 | Release before v4 confidence | **YES**, because D-REL-1 strips v4 and v0.1.0 is scoped to the verified v2 / product slice. | **CONFIRMED 2026-05-30.** |
 
 ## Already-decided rulings (apply throughout the doc)
@@ -342,7 +342,10 @@ ROADMAP/INVARIANTS material lives in `_internal/ROADMAP_OPS.md` and
 
 Note: under D-REL-4 the public docs list narrows further; root docs
 beyond the user-facing set (`THESIS`, `INVARIANTS`, `MODELING`, `CODING`,
-`TESTING`) are stripped from the public export.
+`TESTING`) **are intended to be stripped** from the public export, but
+`scripts/publish-snapshot.sh` does not yet enforce that — the strip-list
+extension is queued as a pre-tag follow-up alongside the user-doc
+authoring work (see D-REL-4 status above).
 
 ### §4 — Comment stripping from code files
 
