@@ -33,6 +33,7 @@ import v4.std.grammar {
   grammar_empty_sync_tokens,
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
+  formal_production_for_lhs_exact,
   grammar_formal_terminal_bound,
   grammar_production_to_node,
   grammar_relation_row_to_node
@@ -56,7 +57,17 @@ import v4.std.lexing {
   StringTextChar,
   TokenRule
 }
-import v4.std.collection { List, Map, Set, empty_map, map_insert }
+import v4.std.collection {
+  List,
+  Map,
+  None,
+  Optional,
+  Present,
+  Set,
+  Some,
+  empty_map,
+  map_insert
+}
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -702,7 +713,7 @@ fn ts_wave2a_field_type_string_emitted() -> Node {
   ts_grammar_atom(id: ts_surface_type_string)
 }
 
-fn ts_wave2a_field_type_name_emitted(binding: Symbol) -> Node {
+fn ts_wave2a_type_annotation_name_emitted(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -711,10 +722,11 @@ fn ts_wave2a_field_type_name_emitted(binding: Symbol) -> Node {
   }
 }
 
-fn ts_wave2a_record_field_emitted(type_child: Node) -> Node {
+fn ts_wave2a_record_field_emitted(field_binding: Symbol, type_child: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding) },
       Edge { label: Positional, target: type_child }
     ]
   }
@@ -749,15 +761,18 @@ fn ts_wave2a_record_type_task_emitted() -> Node {
           left: ts_wave2a_record_fields_pair_emitted(
             left: ts_wave2a_record_fields_single_emitted(
               field: ts_wave2a_record_field_emitted(
-                type_child: ts_wave2a_field_type_name_emitted(binding: ts_binding_type_task_id)
+                field_binding: ts_binding_field_id,
+                type_child: ts_wave2a_type_annotation_name_emitted(binding: ts_binding_type_task_id)
               )
             ),
             right: ts_wave2a_record_field_emitted(
+              field_binding: ts_binding_field_title,
               type_child: ts_wave2a_field_type_string_emitted()
             )
           ),
           right: ts_wave2a_record_field_emitted(
-            type_child: ts_wave2a_field_type_name_emitted(binding: ts_binding_type_task_status)
+            field_binding: ts_binding_field_status,
+            type_child: ts_wave2a_type_annotation_name_emitted(binding: ts_binding_type_task_status)
           )
         )
       }
@@ -798,20 +813,16 @@ fn ts_wave2a_task_formal_productions() -> List<FormalProduction> {
       rhs: [grammar_formal_terminal(identity: ts_token_ty_string)]
     ),
     grammar_formal_production(
-      lhs: ts_production_wave2a_type_name,
+      lhs: ts_production_wave2a_type_annotation,
+      rhs: [grammar_formal_terminal(identity: ts_token_ty_string)]
+    ),
+    grammar_formal_production(
+      lhs: ts_production_wave2a_type_annotation,
       rhs: [grammar_formal_terminal_bound(identity: ts_token_ident, binding: ts_binding_type_task_id)]
     ),
     grammar_formal_production(
-      lhs: ts_production_wave2a_type_name,
+      lhs: ts_production_wave2a_type_annotation,
       rhs: [grammar_formal_terminal_bound(identity: ts_token_ident, binding: ts_binding_type_task_status)]
-    ),
-    grammar_formal_production(
-      lhs: ts_production_wave2a_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_string)]
-    ),
-    grammar_formal_production(
-      lhs: ts_production_wave2a_type_annotation,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_name)]
     ),
     grammar_formal_production(
       lhs: ts_production_wave2a_type_annotation,
@@ -899,15 +910,47 @@ fn ts_wave2a_task_serialize_source_children() -> List<Edge> {
   ]
 }
 
+fn ts_grammar_relation_row_token_edges(row: Node) -> List<Edge> {
+  match row.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        row.children,
+        init: None,
+        f: fn(found, edge) {
+          match found {
+            Some { value: edges } => found
+            None =>
+              match edge.label {
+                Named { name: n } =>
+                  if n == grammar_relation_field_tokens {
+                    match edge.target.kind {
+                      TypeNode { connective: Conj } =>
+                        Some { value: edge.target.children }
+                      _ => None
+                    }
+                  } else {
+                    None
+                  }
+                Positional => None
+              }
+          }
+        }
+      ) {
+        Some { value: edges } => edges
+        None => Empty
+      }
+    _ => Empty
+  }
+}
+
 fn ts_wave2a_task_serialize_source_node() -> Node {
   let _authority = ts_task_type_alias_source_text
+  let row = ts_wave2a_task_type_alias_relation_row_node()
   Node {
     kind: TypeNode { connective: Conj },
     children: list_append(
       left: ts_wave2a_task_serialize_source_children(),
-      right: conj_positional_targets_from_row(
-        row: ts_wave2a_task_type_alias_relation_row_node()
-      )
+      right: ts_grammar_relation_row_token_edges(row: row)
     )
   }
 }
@@ -929,6 +972,10 @@ fn ts_mvp1_translation_rules_node() -> Node {
       ts_named_edge(
         name: ts_relation_rule_mvp1_fn_add,
         target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+      ),
+      ts_named_edge(
+        name: ts_relation_rule_type_alias_task,
+        target: ts_wave2a_task_type_alias_relation_row_node()
       )
     ]
   }
@@ -961,12 +1008,36 @@ fn ts_mvp1_target_model_node() -> Node {
 fn ts_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), ts_binding_fn_add, "add"),
-      ts_binding_param_x,
-      "x"
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              map_insert(
+                map_insert(
+                  map_insert(empty_map(), ts_binding_fn_add, "add"),
+                  ts_binding_param_x,
+                  "x"
+                ),
+                ts_binding_param_y,
+                "y"
+              ),
+              ts_binding_task,
+              "Task"
+            ),
+            ts_binding_field_id,
+            "id"
+          ),
+          ts_binding_field_title,
+          "title"
+        ),
+        ts_binding_field_status,
+        "status"
+      ),
+      ts_binding_type_task_id,
+      "TaskId"
     ),
-    ts_binding_param_y,
-    "y"
+    ts_binding_type_task_status,
+    "TaskStatus"
   )
 }
 
@@ -1827,7 +1898,10 @@ fn ts_grammar_production_wave2a_type_alias_decl() -> GrammarProduction {
         }
       }
     },
-    emitted: ts_grammar_atom(id: ts_surface_type_alias_decl)
+    emitted: ts_wave2a_type_alias_decl_emitted(
+      name_binding: ts_binding_task,
+      type_child: ts_wave2a_type_annotation_task_record_emitted()
+    )
   }
 }
 

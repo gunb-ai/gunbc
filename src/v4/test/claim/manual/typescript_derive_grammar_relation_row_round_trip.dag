@@ -11,7 +11,10 @@ import v4.extdeps.languages.typescript {
   ts_mvp1_emitted_add_fn_node,
   ts_mvp1_grammar_relation_row,
   ts_mvp1_concrete_tokens,
-  ts_relation_token_edges
+  ts_relation_token_edges,
+  ts_wave2a_task_formal_productions,
+  ts_wave2a_task_type_alias_emitted,
+  ts_wave2a_task_type_alias_relation_row_node
 }
 import v4.std.grammar {
   derive_grammar_relation_row,
@@ -70,8 +73,24 @@ fn ts_mvp1_grammar_relation_row_std_node() -> Node {
 // (terminal-only rhs — no multi-LHS production list).
 data ts_mvp1_derive_row_node_receipt: Node = derive_grammar_relation_row_node(
   production: ts_formal_production_mvp1_fn_add(),
+  productions: [ts_formal_production_mvp1_fn_add()],
   emitted: ts_mvp1_emitted_add_fn_node()
 )
+
+fn ts_wave2a_task_derive_row_round_trip_holds() -> Bool {
+  content_hash(n: ts_wave2a_task_type_alias_relation_row_node()) ==
+    content_hash(
+      n: derive_grammar_relation_row_node(
+        production: formal_production_for_lhs_exact(
+          productions: ts_wave2a_task_formal_productions(),
+          lhs: ts_production_wave2a_type_alias_decl,
+          emitted_slot_count: 2
+        ),
+        productions: ts_wave2a_task_formal_productions(),
+        emitted: ts_wave2a_task_type_alias_emitted()
+      )
+    )
+}
 
 fn ts_derive_grammar_relation_row_round_trip_holds() -> Bool {
   content_hash(n: ts_mvp1_grammar_relation_row_std_node()) ==

@@ -6,7 +6,16 @@
 module v4.std.grammar
 
 import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
-import v4.std.collection { List, Optional, Set, list_nth, optional_absent, optional_present }
+import v4.std.collection {
+  List,
+  Optional,
+  Present,
+  Set,
+  Some,
+  list_nth,
+  optional_absent,
+  optional_present
+}
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -538,12 +547,82 @@ fn formal_production_matches_lhs_and_slot_count(
 }
 
 
-// Exact lhs + emitted-slot arity (PR-1.5b DESIGN-2): disambiguates multi-rule lhs without scan heuristics.
+fn formal_production_rhs_singleton_terminal_identity(production: FormalProduction) -> Symbol? {
+  match production.rhs {
+    Cons { head: symbol, tail: t } =>
+      match t {
+        Empty =>
+          match symbol {
+            FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+              match binding {
+                Absent => Some { value: terminal.identity }
+                Present { value: _ } => None
+              }
+            FormalNonterminalOccurrence { nonterminal: _ } => None
+          }
+        _ => None
+      }
+    Empty => None
+  }
+}
+
+
+fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symbol? {
+  match production.rhs {
+    Cons { head: symbol, tail: t } =>
+      match t {
+        Empty =>
+          match symbol {
+            FormalTerminalOccurrence { terminal: _, binding: binding } =>
+              match binding {
+                Present { value: b } => Some { value: b }
+                Absent => None
+              }
+            FormalNonterminalOccurrence { nonterminal: _ } => None
+          }
+        _ => None
+      }
+    Empty => None
+  }
+}
+
+
+fn node_atom_identity_optional(node: Node) -> Symbol? {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => Some { value: id }
+    _ => None
+  }
+}
+
+
+fn formal_production_matches_emitted_child(
+  production: FormalProduction,
+  child: Node
+) -> Bool {
+  match node_atom_identity_optional(node: child) {
+    Some { value: atom_id } =>
+      match formal_production_rhs_singleton_terminal_identity(production: production) {
+        Some { value: terminal_id } => atom_id == terminal_id
+        None =>
+          match formal_production_rhs_singleton_binding(production: production) {
+            Some { value: binding } => atom_id == binding
+            None => false
+          }
+      }
+    None =>
+      emitted_node_slot_count(emitted: child) ==
+        formal_production_emitted_slot_count(production: production)
+  }
+}
+
+
+// Exact lhs + emitted-child shape (PR-1.5b DESIGN-2): arity first, then terminal/binding atom match.
 fn formal_production_for_lhs_exact(
   productions: List<FormalProduction>,
   lhs: Symbol,
-  emitted_slot_count: Int
+  child: Node
 ) -> FormalProduction {
+  let emitted_slot_count = emitted_node_slot_count(emitted: child)
   match fold_list(
     xs: productions,
     empty: grammar_formal_production(lhs: lhs, rhs: []),
@@ -552,7 +631,8 @@ fn formal_production_for_lhs_exact(
         production: candidate,
         lhs: lhs,
         emitted_slot_count: emitted_slot_count
-      ) {
+      ) &&
+        formal_production_matches_emitted_child(production: candidate, child: child) {
         candidate
       } else {
         found
