@@ -48,7 +48,8 @@ import std.filesystem { partition_entries, is_text_readable }
 // inputs belong on specializations such as CiUpsertStep<T> (Phase 1.5 — v4-ci-schema
 // worksheet §1.2), not on generic Upsert<T>.
 //
-// 🟡 staged: T is a payload brand until ResolveExpr<T> makes T load-bearing (E-P).
+// 🟡 gated — feature:upsert-phase-substrate — staged: T is a payload brand until
+// ResolveExpr<T> makes T load-bearing (E-P dedicated carriers).
 // Phase bodies are typed nodes/expressions, not Symbol strings (P2).
 // Dissolution: replace VerifyCheck/CreateAction/ResolveExpr Node aliases with dedicated
 // phase carriers; P1.4-PARSER (A1) uncomments generic pattern bodies below.
@@ -183,11 +184,11 @@ fn eq(a: String, b: String) -> Bool {
 // Named stub result — handwritten parser rejects anonymous `{ written: Bool }` in fn sig.
 type ContentUpsertStubResult { written: Bool }
 
-// 🟡 dissolve-on-arrival — audit S1 (docs/audit/upsert-pattern-compiler-stray-2026-05-29.md):
-// replace this fn with commented `pattern content_upsert` when P1.4-PARSER (A1) +
-// P1.4-RESOURCES (`uses fs:` binding) land. Non-authoritative: no verify-first /
-// filesystem idempotency — `written` is a compile stub only; tools.bootstrap/readme
-// must not treat outcomes as real upsert semantics until the pattern body lands.
+// 🟡 gated — feature:upsert-phase-substrate consumer:content_upsert — dissolve-on-arrival
+// (audit S1 docs/audit/upsert-pattern-compiler-stray-2026-05-29.md): replace fn with
+// commented `pattern content_upsert` when P1.4-PARSER (A1) + P1.4-RESOURCES (`uses fs:`)
+// land. Non-authoritative stub — tools.bootstrap/readme must not treat `written` as
+// real filesystem idempotency until the pattern body lands.
 fn content_upsert(content: String, path: String) -> ContentUpsertStubResult {
   // Fail-closed stub: never report a real write (tools must not treat as idempotent I/O).
   return { written: false }
