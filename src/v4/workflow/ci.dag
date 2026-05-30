@@ -50,9 +50,13 @@ import v4.compiler.eval {
 }
 import v4.std.node {
   Atom,
+  Cardinality,
   Conj,
+  Connective,
+  Disj,
   Edge,
   Hash,
+  Instantiation,
   Named,
   Node,
   NodeQuery,
@@ -60,6 +64,7 @@ import v4.std.node {
   RepoRoot,
   Symbol,
   TypeNode,
+  Arrow,
   combine_hash,
   content_hash,
   ByteOffsetCacheEligible,
@@ -175,6 +180,7 @@ fn ci_upsert_step_upsert<T>(step: CiUpsertStep<T>) -> Upsert<T> {
   }
 }
 
+// 🟡 coproduct dissolution — feature:ci-upsert-step-migration — bind v4-ci-schema-worksheet Phase 2 — dissolve-on-arrival: per-step `UpsertInputRef` rows replace coarse component gates; forbidden: `List<Symbol>` / `FileGlob` inputs.
 type UpsertInputRef
   = FileSet { selector: FileSetSelector }
   | SubstrateNodeSet { selector: NodeQuery }
@@ -193,6 +199,7 @@ type CiJobId = Symbol
 type CiGateId = Symbol
 type CiCommandId = Symbol
 
+// 🟡 coproduct dissolution — feature:ci-upsert-step-migration — bind v4-ci-schema-worksheet Phase 2 — dissolve-on-arrival: closed `JobStep` | `GateStep` identity on every pipeline row; forbidden: optional gate by comment.
 type CiStepId
   = JobStep { job: CiJobId, step: CiCommandId }
   | GateStep { job: CiJobId, gate: CiGateId }
@@ -208,6 +215,7 @@ type CiCarveout {
   dissolution_target: DissolutionTarget
 }
 
+// 🟡 coproduct dissolution — feature:ci-always-run-carveouts — bind v4-ci-schema-worksheet §1.4 — dissolve-on-arrival: carveout rows cite structural `DissolutionTarget` only; forbidden: calendar `review_due_by` / bare `Symbol` owner.
 type DissolutionTarget
   = ModelMissingSubstrate { what: Symbol }
   | UnknownYet {
@@ -232,6 +240,7 @@ type CiStepSelection {
   reason: Symbol
 }
 
+// 🟡 coproduct dissolution — feature:ci-selection-receipt-active-skip — bind v4-ci-schema-worksheet Phase 2.5 — dissolve-on-arrival: `CiSelectionReceipt.decisions` drives GHA `if:` from receipt partition; forbidden: heuristic run-mode enums.
 type SelectionDecision
   = Run
   | Skip
@@ -615,10 +624,24 @@ data ci_projection_upsert_input_substrate_edge: Symbol = ci_projection_upsert_in
 data ci_projection_upsert_input_lens_edge: Symbol = ci_projection_upsert_input_lens_edge
 data ci_projection_upsert_input_test_claim_edge: Symbol = ci_projection_upsert_input_test_claim_edge
 data ci_projection_upsert_input_upstream_edge: Symbol = ci_projection_upsert_input_upstream_edge
+data ci_projection_upsert_input_file_set_selector_edge: Symbol = ci_projection_upsert_input_file_set_selector_edge
+data ci_projection_upsert_input_substrate_selector_edge: Symbol = ci_projection_upsert_input_substrate_selector_edge
+data ci_projection_upsert_input_lens_ports_edge: Symbol = ci_projection_upsert_input_lens_ports_edge
+data ci_projection_node_query_connective_edge: Symbol = ci_projection_node_query_connective_edge
+data ci_projection_node_query_identity_edge: Symbol = ci_projection_node_query_identity_edge
+data ci_projection_node_query_path_edge: Symbol = ci_projection_node_query_path_edge
 data ci_projection_file_set_root_edge: Symbol = ci_projection_file_set_root_edge
 data ci_projection_file_set_pattern_edge: Symbol = ci_projection_file_set_pattern_edge
 data ci_projection_step_id_job_edge: Symbol = ci_projection_step_id_job_edge
 data ci_projection_step_id_gate_edge: Symbol = ci_projection_step_id_gate_edge
+data ci_cache_connective_atom_tag: Symbol = ci_cache_connective_atom_tag
+data ci_cache_connective_conj_tag: Symbol = ci_cache_connective_conj_tag
+data ci_cache_connective_disj_tag: Symbol = ci_cache_connective_disj_tag
+data ci_cache_connective_arrow_tag: Symbol = ci_cache_connective_arrow_tag
+data ci_cache_connective_cardinality_tag: Symbol = ci_cache_connective_cardinality_tag
+data ci_cache_connective_instantiation_tag: Symbol = ci_cache_connective_instantiation_tag
+data ci_cache_node_query_by_connective_tag: Symbol = ci_cache_node_query_by_connective_tag
+data ci_cache_node_query_by_path_tag: Symbol = ci_cache_node_query_by_path_tag
 data ci_cache_upsert_input_file_set_tag: Symbol = ci_cache_upsert_input_file_set_tag
 data ci_cache_upsert_input_substrate_tag: Symbol = ci_cache_upsert_input_substrate_tag
 data ci_cache_upsert_input_lens_tag: Symbol = ci_cache_upsert_input_lens_tag
