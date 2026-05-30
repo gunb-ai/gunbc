@@ -15,8 +15,7 @@ pub use crate::std_types::is_container_type;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
 pub use crate::v2_compiler_coercion::{
-    atom_realization_is_nominal_newtype, coerce_primitive_type, default_expr, is_copy,
-    lookup_atom_realization,
+    coerce_primitive_type, default_expr, is_copy, lookup_atom_realization,
 };
 pub use crate::v2_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v2_compiler_emit::{
@@ -462,7 +461,13 @@ pub fn rust_nominal_identity_carrier_def(name: String) -> String {
 }
 
 pub fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> bool {
-    atom_realization_is_nominal_newtype(RenderTarget::Rust, type_name)
+    match lookup_atom_realization(RenderTarget::Rust, type_name) {
+        Some(row) => match row.type_decl_kind.clone() {
+            TargetAtomTypeDeclKind::NominalNewtype => true,
+            TargetAtomTypeDeclKind::TransparentAlias => false,
+        },
+        None => false,
+    }
 }
 
 pub fn rust_nominal_identity_carrier_shape_eligible(
@@ -471,10 +476,16 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
 ) -> bool {
     (((((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0))
         && (n.connective.clone() == Connective::NoConnective))
-        && atom_realization_is_nominal_newtype(
+        && match lookup_atom_realization(
             RenderTarget::Rust,
             authored_name_at(source_indices, n.clone()),
-        ))
+        ) {
+            Some(row) => match row.type_decl_kind.clone() {
+                TargetAtomTypeDeclKind::NominalNewtype => true,
+                TargetAtomTypeDeclKind::TransparentAlias => false,
+            },
+            None => false,
+        })
 }
 
 pub fn rust_diff_id_ord_carrier_shape_eligible(
@@ -11556,11 +11567,13 @@ pub fn record_field_needs_some_wrap(
     struct_name: String,
     field_name: String,
 ) -> bool {
-    if is_optional_struct_field(emit_info.clone(), struct_name.clone(), field_name.clone()) {
+    if is_optional_struct_field(emit_info, struct_name.clone(), field_name.clone()) {
         true
     } else {
-        match rust_struct_field_type_node(scope, struct_name, field_name) {
-            Some(field_type) => field_type.return_cardinality.clone() == Cardinality::CardOptional,
+        match rust_struct_field_type_node(scope, struct_name.clone(), field_name.clone()) {
+            Some(field_type) => {
+                (field_type.return_cardinality.clone() == Cardinality::CardOptional)
+            }
             None => false,
         }
     }
@@ -12097,17 +12110,17 @@ pub fn emit_typed_record_lit(
                                                     emit_info.clone(),
                                                     1024,
                                                 );
-                                                let needs_wrap = record_field_needs_some_wrap(
+                                                let needs_wrap = (record_field_needs_some_wrap(
                                                     emit_info.clone(),
                                                     scope.clone(),
                                                     resolved_sn.clone(),
                                                     fname.clone(),
-                                                ) && !is_already_optional(
+                                                ) && (is_already_optional(
                                                     f_value.clone(),
                                                     emit_info.clone(),
                                                     scope.clone(),
-                                                );
-                                                let field_val = if needs_wrap {
+                                                ) == false));
+                                                let field_val = if needs_wrap.clone() {
                                                     v2_rt::concat(
                                                         v2_rt::concat(
                                                             "Some(".to_string(),
@@ -16439,16 +16452,28 @@ pub fn rust_nominal_identity_data_expr(
                 Some(row) => match (*value.expr_data.clone()).clone() {
                     ExprData::ExprVar {
                         binding_kind: _, ..
-                    } => Some(v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(row.type_form.clone(), "(\"".to_string()),
-                            escape_string_literal_body(expr_var_name_at(
-                                value.clone(),
-                                source_indices.clone(),
-                            )),
-                        ),
-                        "\".to_string())".to_string(),
-                    )),
+                    } => {
+                        let suffix = match row.literal_suffix.clone() {
+                            Some(s) => s.clone(),
+                            None => "".to_string(),
+                        };
+                        Some(v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(row.type_form.clone(), "(\"".to_string()),
+                                        escape_string_literal_body(expr_var_name_at(
+                                            value.clone(),
+                                            source_indices.clone(),
+                                        )),
+                                    ),
+                                    "\"".to_string(),
+                                ),
+                                suffix,
+                            ),
+                            ")".to_string(),
+                        ))
+                    }
                     _ => None,
                 },
                 None => None,
