@@ -1,6 +1,6 @@
 // src/v4/test/claim/language_model/rust.dag
 // Scope: C(rust.dag) — verification OBLIGA per PR #3971 / design-rust-dag-leafmodel-instantiation.md.
-// Status: Phase-1 rows (R1, R2a, R2b, R3-external, R3-internal); runner deferred.
+// Status: Phase-1 rows (R1, R2a, R2b×4, R3-external, R3-internal) — 8 LeafModelClaim rows per PR #3971 §5; runner deferred.
 
 module v4.test.claim.language_model.rust
 
@@ -9,6 +9,10 @@ import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_language_model_wave1,
+  rust_overflow_field_checked_arithmetic_checks_disabled,
+  rust_overflow_field_checked_arithmetic_checks_enabled,
+  rust_overflow_field_checked_arithmetic_debug_default,
+  rust_overflow_field_checked_arithmetic_release_default,
   rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32,
   rust_atom_realization_symbol_node,
   rust_leaf_model_fact_id_node_atom_realization_symbol,
@@ -44,6 +48,8 @@ import v4.std.rust_leaf_model_claim {
 
 data rust_leaf_rustc_toolchain: Symbol = rust_leaf_rustc_toolchain
 data rust_leaf_rustc_edition_2024: Symbol = rust_leaf_rustc_edition_2024
+data rust_leaf_rustc_build_debug: Symbol = rust_leaf_rustc_build_debug
+data rust_leaf_rustc_build_release: Symbol = rust_leaf_rustc_build_release
 data rust_leaf_arithmetic_overflow_panic: Symbol = rust_leaf_arithmetic_overflow_panic
 // R3-external falsification: type_form vs value_form mismatch (planning §7).
 data rust_leaf_falsify_atom_type_string_alias: Symbol = rust_leaf_falsify_atom_type_string_alias
@@ -55,6 +61,14 @@ fn rust_leaf_rustc_invocation() -> TargetInvocation {
   TargetInvocation {
     toolchain: rust_leaf_rustc_toolchain,
     edition_or_profile: rust_leaf_rustc_edition_2024
+  }
+}
+
+
+fn rust_leaf_r2b_invocation(profile_tag: Symbol) -> TargetInvocation {
+  TargetInvocation {
+    toolchain: rust_leaf_rustc_toolchain,
+    edition_or_profile: profile_tag
   }
 }
 
@@ -101,20 +115,87 @@ data claim_rust_leaf_r2a_i32_algebra_operations: RustLeafModelClaim = LeafModelC
   }
 }
 
-// R2b — same derived fact, overflow-semantics verification angle.
-data claim_rust_leaf_r2b_i32_overflow_semantics: RustLeafModelClaim = LeafModelClaim {
+// R2b sub-claim 1/4 — checked_arithmetic_debug_default (live; PanicOnOverflow per rust.dag:530).
+data claim_rust_leaf_r2b_debug_default_overflow: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
   subject: rust_leaf_algebra_inhabitance_i32_subject(),
   expectation: RustRuntimeBehaviorExpectation {
-    invocation_form: rust_leaf_rustc_invocation(),
+    invocation_form: rust_leaf_r2b_invocation(profile_tag: rust_leaf_rustc_build_debug),
     expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic }
   },
   falsification_case: FalsificationCase {
     subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
     expected_failure_mode: RustRuntimeBehaviorExpectation {
-      invocation_form: rust_leaf_rustc_invocation(),
+      invocation_form: rust_leaf_r2b_invocation(profile_tag: rust_leaf_rustc_build_debug),
       expected_outcome: Wrap
+    }
+  }
+}
+
+
+// R2b sub-claim 2/4 — checked_arithmetic_release_default (live; TwoComplementWrap per rust.dag:531).
+data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave1(),
+  fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
+  subject: rust_leaf_algebra_inhabitance_i32_subject(),
+  expectation: RustRuntimeBehaviorExpectation {
+    invocation_form: rust_leaf_r2b_invocation(profile_tag: rust_leaf_rustc_build_release),
+    expected_outcome: Wrap
+  },
+  falsification_case: FalsificationCase {
+    subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
+    expected_failure_mode: RustRuntimeBehaviorExpectation {
+      invocation_form: rust_leaf_r2b_invocation(profile_tag: rust_leaf_rustc_build_release),
+      expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic }
+    }
+  }
+}
+
+
+// 🟡 gated — feature:leaf-model-r2b-overflow-checks-runner — bind PR #3971 §5 R2b sub-claims 3–4 / design-rust-dag-leafmodel-instantiation.md —
+// dissolve-on-arrival: fixture runner supports explicit `-C overflow-checks=on|off` independent of debug/release profile (owner: quick-tern-735 Step 4.x); until then runner reports not_checked for these rows.
+// R2b sub-claim 3/4 — checked_arithmetic_overflow_checks_enabled (not_checked stub; action duplicates debug-default).
+data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave1(),
+  fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
+  subject: rust_leaf_algebra_inhabitance_i32_subject(),
+  expectation: RustRuntimeBehaviorExpectation {
+    invocation_form: rust_leaf_r2b_invocation(
+      profile_tag: rust_overflow_field_checked_arithmetic_checks_enabled
+    ),
+    expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic }
+  },
+  falsification_case: FalsificationCase {
+    subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
+    expected_failure_mode: RustRuntimeBehaviorExpectation {
+      invocation_form: rust_leaf_r2b_invocation(
+        profile_tag: rust_overflow_field_checked_arithmetic_checks_enabled
+      ),
+      expected_outcome: Wrap
+    }
+  }
+}
+
+
+// R2b sub-claim 4/4 — checked_arithmetic_overflow_checks_disabled (not_checked stub; action duplicates release-default).
+data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave1(),
+  fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
+  subject: rust_leaf_algebra_inhabitance_i32_subject(),
+  expectation: RustRuntimeBehaviorExpectation {
+    invocation_form: rust_leaf_r2b_invocation(
+      profile_tag: rust_overflow_field_checked_arithmetic_checks_disabled
+    ),
+    expected_outcome: Wrap
+  },
+  falsification_case: FalsificationCase {
+    subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
+    expected_failure_mode: RustRuntimeBehaviorExpectation {
+      invocation_form: rust_leaf_r2b_invocation(
+        profile_tag: rust_overflow_field_checked_arithmetic_checks_disabled
+      ),
+      expected_outcome: Panic { panic_classification: rust_leaf_arithmetic_overflow_panic }
     }
   }
 }
@@ -158,7 +239,10 @@ data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModel
 data rust_leaf_model_claim_corpus_phase1: List<RustLeafModelClaim> = [
   claim_rust_leaf_r1_i32_type,
   claim_rust_leaf_r2a_i32_algebra_operations,
-  claim_rust_leaf_r2b_i32_overflow_semantics,
+  claim_rust_leaf_r2b_debug_default_overflow,
+  claim_rust_leaf_r2b_release_default_overflow,
+  claim_rust_leaf_r2b_overflow_checks_enabled_overflow,
+  claim_rust_leaf_r2b_overflow_checks_disabled_overflow,
   claim_rust_leaf_r3_external_symbol_projection,
   claim_rust_leaf_r3_internal_symbol_coupling
 ]
