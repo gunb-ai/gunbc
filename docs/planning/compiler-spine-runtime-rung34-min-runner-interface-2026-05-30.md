@@ -157,8 +157,8 @@ W2 and W3 may proceed in parallel with W1 thanks to the §4.4 rung split; the co
 
 | Party | Status |
 | ----- | ------ |
-| Compiler Spine (`smart-stag-871`) | **Ack** §4.2 A1–A4 + §4.4 rung-split (2026-05-30); A4 attachment point per spine note above |
-| Runtime/TestClaim (`quick-tern-735`) | **Ack** with amendments A1–A4 and §4.4 rung split |
+| Compiler Spine (`smart-stag-871`) | **Ack** §4.2 A1–A4 + §4.4 rung-split (2026-05-30); A4 W2 default: `Verdict.Fail` extension |
+| Runtime/TestClaim (`quick-tern-735`) | **Ack** with amendments A1–A4 and §4.4 rung split; A4 W2 default agreed |
 | Ladder/Fixture (`keen-crab-361`) | Consumes §3 predicates + §4.4 gates when ratifying Phase 2 |
 
 Amendments: spine carrier freeze (§2) requires both manager acks (**met**); acceptance predicates (§3) require Ladder/Fixture ack; Runtime-owned surface (§4.2, §4.4) requires Runtime/TestClaim ack (**met**).
