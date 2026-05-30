@@ -144,14 +144,23 @@ data mvp1_ts_task_inferred_tree: InferredTree = InferredTree {
 }
 
 fn anchor_mvp1_ts_task_emit_accepts() -> Outcome<TargetSource> {
-  emit(tree: mvp1_ts_task_inferred_tree, target: mvp1_ts_task_target_model)
+  match mvp1_ts_task_target_model_for_emit() {
+    Holds { value: target } => emit(tree: mvp1_ts_task_inferred_tree, target: target)
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
 }
 
 fn anchor_mvp1_ts_task_compile_inferred_accepts() -> Outcome<CompileOutput> {
-  compile_inferred(
-    inferred: mvp1_ts_task_inferred_tree,
-    mode: TranslateTo { target: mvp1_ts_task_target_model }
-  )
+  match mvp1_ts_task_target_model_for_emit() {
+    Holds { value: target } =>
+      compile_inferred(
+        inferred: mvp1_ts_task_inferred_tree,
+        mode: TranslateTo { target: target }
+      )
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
 }
 
 data mvp1_ts_task_emit_receipt: Outcome<TargetSource> = anchor_mvp1_ts_task_emit_accepts()
