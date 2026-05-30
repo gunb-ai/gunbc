@@ -1,6 +1,6 @@
 // src/v4/std/refinement.dag
 // Scope: value-predicate refinement substrate — base type plus fail-closed validation obligation discharged at a named constructor boundary.
-// Status: T-25-core modeled; hoisted int refinement factories (§A1 substrate). Structural opacity for bare construction: T-25-tail.
+// Status: T-25-core modeled; hoisted int refinement factories (§A1 substrate); structural ordered/unordered iteration refinement (IterationOrdering / IterationClassifier<B> / refine_ordered_iteration). Structural opacity for bare construction: T-25-tail.
 // Anchor: https://en.wikipedia.org/wiki/Refinement_type
 
 
@@ -300,3 +300,42 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 // values; runtime/user input uses make_* + Outcome. Bare-carrier catalog helpers that stripped
 // Rejected were removed (P3); T-25-tail adds structural opacity for bare Refined/PositiveInt.
 // Witnesses: refinement_formatter_literals_accept.dag (one per hoisted int type).
+
+
+// 🟢 coproduct dissolution — TERMINAL. The ordered/unordered distinction is the irreducible
+// substrate fact; the gated debt below applies to the *classifier* (how the variant is
+// discharged from a carrier), not to this sum.
+type IterationOrdering
+  = StructurallyOrdered
+  | StructurallyUnordered
+data naming_the_leak: Symbol = naming_the_leak
+// 🟡 gated — feature:iteration-ordering-carrier-keyed-witness-lookup — bind T-25-tail —
+// dissolve-on-arrival: substrate exports a carrier-keyed witness lookup so
+// IterationClassifier<B> is replaced by non-forgeable per-carrier
+// `Witness<StructurallyOrdered, B>`; forbidden: caller-supplied classifier function that
+// can return StructurallyOrdered for a hash-bucket carrier. Today the obligation is
+// discharged at the same caller-discipline boundary as `Validation<B>.admits` above; see
+// PR #3928 review thread.
+type IterationClassifier<B> {
+  classify: fn(B) -> IterationOrdering
+}
+// Refinement constructor: admits a base collection for deterministic iteration only when
+// the supplied classifier derives `StructurallyOrdered` from `base`; unordered fails closed
+// with the `naming_the_leak` diagnostic. Shape mirrors `refine` above.
+fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: Locus) -> Outcome<Refined<B>> {
+  let classify = by.classify
+  match classify(base) {
+    StructurallyOrdered =>
+      Accepted { value: Refined { base: base }, diagnostics: None }
+    StructurallyUnordered =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: naming_the_leak,
+            at: at,
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
+}
