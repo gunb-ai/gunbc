@@ -98,6 +98,49 @@ Verification conducted 2026-05-30 against `main` HEAD `4baef9551`. For each stan
 
 ---
 
+### §3.1 Where "honest task completion" actually lives today
+
+Asked during PR review: *"what doc tracks what tasks have actually been completed/closed?"* Honest answer: **no single doc does that today.** The closest is `src/v4/TASKS.md` (2310 lines, 38 T-tasks), but its status vocabulary conflates "substrate landed" with "PR-gated and activated":
+
+| Marker in TASKS.md          | What it actually means                                |
+| --------------------------- | ----------------------------------------------------- |
+| `[DONE]`                    | usually substrate complete; activation often unstated |
+| `[SUBSTRATE LANDED]`        | explicit: substrate only, activation pending          |
+| `[ENFORCEMENT GATE LANDED]` | explicit: activation confirmed                        |
+| `[CORPUS FILLED]`           | substrate exists; execution unstated                  |
+| `[CLOSABLE]`                | predicate satisfied but task not yet closed           |
+| `[DISSOLVED]` / `[DROPPED]` | removed from scope                                    |
+| `[SCHEDULED]` / `[MODELED]` | partial                                               |
+
+The ambiguity is real and load-bearing:
+- T-19 `lens/testgen.dag` is marked `[DONE]` per `TASKS.md:1015` — but is not activated against PRs (operator's own overview earlier in this conversation said so explicitly).
+- T-17 `lens/synthesis.dag` is marked `[DONE #3768]` per `TASKS.md:990` — but the §3 audit in this doc dispositions it as *partial* (substrate landed, not generalized to a PR gate).
+
+**Partial reality-side coverage exists across multiple docs (no consolidation):**
+
+- `docs/audit/v4-rustc-error-catalog-2026-05-29.md` — 7951-error catalog = ground truth on T-15 P1 trigger (b)
+- `docs/audit/v4-deferral-audit-2026-05-29.md` — 75-row deferral inventory (honesty on the annotation surface)
+- `docs/audit/ci-anatomy-and-redundancy-2026-05-29.md` — CI ground truth
+- **§3 of this doc** — gating reality for the 17 thesis standards (does not cover all 38 T-tasks)
+- `docs/audit/r3-close-interrogation-validation-2026-05-13.md` — **17 days stale** (0/152 probes answered)
+
+**Phase 0 (dispatched 2026-05-30 to child session `silent-raven-384`, work item `adhoc-7020540d-622`) is producing the missing single-source receipt-honesty doc:**
+- Path: `docs/audit/v4-close-interrogation-validation-2026-05-30.md`
+- Scope: all 346 probes in `docs/v4-close-interrogation.md`
+- Output: per-section disposition (PROVEN / WEAK-EVIDENCE / GAP / NOT-CHECKED) with file:line evidence
+- Visibility: separate PR with incremental commits; summary comment posted to PR #3938 on completion
+- Budget: 6–10 hours; partial results visible mid-execution
+
+**For in-progress review of PR #3938, the operative reading trio:**
+
+1. **`src/v4/TASKS.md`** — claim side. Read the status markers as labeled in the table above, not as uniform "DONE."
+2. **§3 of this doc** — gating reality for the 17 thesis standards (1 of 17 fires today; 13 are substrate-without-activation).
+3. **`docs/audit/v4-close-interrogation-validation-2026-05-30.md`** — receipt reality (incremental commits visible on Phase 0 PR as `silent-raven-384` works through the 346 probes).
+
+If a fourth source matters: PR list on GitHub (`gh pr list --state merged --limit 100`) shows what *actually merged*, which is the lowest-ambiguity record of work-landed (orthogonal to whether what landed is gated).
+
+---
+
 ## §4. Why "0 rustc errors" is not the right goal
 
 If T-15 closes against rustc-clean alone:
