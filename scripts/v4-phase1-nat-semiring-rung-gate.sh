@@ -305,7 +305,7 @@ else
   go_parse_log="$out/logs/go_parse.log"
   set +e
   find "$out/go" -name '*.go' -print0 2>/dev/null \
-    | xargs -0 "$gofmt_bin" -e -l >"$go_parse_log" 2>&1
+    | xargs -0 "$gofmt_bin" -e >/dev/null 2>"$go_parse_log"
   go_parse_status=$?
   set -e
   if [[ "$go_parse_status" -eq 0 ]]; then
