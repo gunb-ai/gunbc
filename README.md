@@ -31,6 +31,27 @@ API contracts).
 
 ## Quick start
 
+### Install a release binary (Linux musl or macOS)
+
+After a tagged release (`v0.1.0` or later) is published on GitHub Releases:
+
+```bash
+curl -fsSL https://github.com/gunb-ai/gunbc/releases/latest/download/install.sh | sh
+```
+
+Pin a version (assign on the **shell** side of the pipe — not on `curl`):
+
+```bash
+curl -fsSL https://github.com/gunb-ai/gunbc/releases/latest/download/install.sh | GUNBC_VERSION=v0.1.0 sh
+```
+
+Or run a local copy: `GUNBC_VERSION=v0.1.0 sh install.sh`
+
+Windows hosts are not covered by `install.sh` (POSIX only). Download the matching
+`gunbc-*-pc-windows-msvc.exe` asset from the release page, or build from source below.
+
+### Build from source
+
 Build the compiler, compile the hero `.dag` to Rust, and check the emitted
 crate — end-to-end in four commands:
 

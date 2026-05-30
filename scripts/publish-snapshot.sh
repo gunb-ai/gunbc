@@ -88,6 +88,15 @@ STRIP_PATHS=(
   "docs/perf"
   "docs/decisions"
 
+  # Internal process docs at docs/ root (design DBs, planning, rung specs, modeling).
+  "docs/design-*.md"
+  "docs/planning/"
+  "docs/r3-*.md"
+  "docs/r4-*.md"
+  "docs/regroup-*.md"
+  "docs/v4-*.md"
+  "docs/modeling/"
+
   # v3 is frozen and not part of the public story.
   "src/v3"
 
@@ -106,6 +115,7 @@ STRIP_PATHS=(
   "wip"
   "RELEASE_TODO.md"
   "scripts/session-dashboard"
+  "scripts/_internal"
   "tools/gen_gunbc_ci_workflow_dag"
 
   # Editor/agent metadata.
@@ -137,13 +147,15 @@ git worktree add --detach "$EXPORT_DIR" "$SNAPSHOT_REF"
 
 pushd "$EXPORT_DIR" >/dev/null
 
-# Apply strip-list. Missing paths are tolerated — the list is forward-looking.
-for path in "${STRIP_PATHS[@]}"; do
-  if [[ -e "$path" ]]; then
+# Apply strip-list. Entries may be literal paths or globs; missing paths are ok.
+shopt -s nullglob
+for pattern in "${STRIP_PATHS[@]}"; do
+  for path in $pattern; do
     rm -rf "$path"
     echo "stripped: $path"
-  fi
+  done
 done
+shopt -u nullglob
 
 # Workspace members must match the stripped tree — otherwise `cargo fmt` and
 # other metadata commands fail on missing manifests (public snapshot CI).
@@ -177,7 +189,80 @@ SNAPSHOT_LABEL="$(date -u +%Y-%m-%d)"
 git -c user.name="gunbc-release" -c user.email="release@gunb.ai" \
     commit -m "snapshot ${SNAPSHOT_LABEL}"
 
+EXPORT_SHA="$(git rev-parse HEAD)"
+
 popd >/dev/null
+
+# Release receipt: emit public-export-manifest.txt as a sibling of the export
+# dir so it doesn't get committed into the public snapshot or matched by the
+# leak-grep gate. Operators paste this into release notes / audit trails to
+# record what shipped, what was stripped, and the SHA correspondence.
+MANIFEST_PATH="$(dirname "$EXPORT_DIR")/public-export-manifest.txt"
+MANIFEST_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+{
+  echo "# public-export-manifest"
+  echo "timestamp_utc: ${MANIFEST_TIMESTAMP}"
+  echo "snapshot_source_sha: ${SNAPSHOT_REF}"
+  echo "export_sha: ${EXPORT_SHA}"
+  echo "snapshot_branch: ${SNAPSHOT_BRANCH}"
+  echo
+  echo "## stripped_paths"
+  for p in "${STRIP_PATHS[@]}"; do
+    echo "${p}"
+  done
+  echo
+  echo "## included_paths"
+  git -C "$EXPORT_DIR" ls-files
+} > "$MANIFEST_PATH"
+echo "manifest: ${MANIFEST_PATH}"
+
+# Leak-grep gate. Runs AFTER strip+commit against the exported tree — this
+# defends the export, not the internal repo. Allowlist exempts dissolve-
+# comment substrate provenance (sanctioned by the operator verdict on
+# adhoc-e7966a73-c38) plus self-referential lines tagged leak-gate-self.
+ALLOWLIST_REGEX='🟡|dissolve-target|dissolve-on-arrival|leak-gate-self'
+
+LEAK_CONTENT_PATTERNS=(  # leak-gate-self
+  'msg_[a-f0-9-]+'       # leak-gate-self
+  'localhost:8787'       # leak-gate-self
+  'dashboard-ops'        # leak-gate-self
+  'dashboard-message'    # leak-gate-self
+  'operator-[a-z]+'      # leak-gate-self
+)
+
+# Path patterns mirror STRIP_PATHS — any stripped path present in the export
+# means strip-list failed to remove an internal-only path. Derived directly
+# from STRIP_PATHS so the two stay in sync as the strip-list grows.
+
+echo "leak-grep gate: scanning export..."
+leak_fail=0
+for pat in "${LEAK_CONTENT_PATTERNS[@]}"; do
+  hits="$(git -C "$EXPORT_DIR" grep -E -n -e "$pat" 2>/dev/null || true)"
+  if [[ -n "$hits" ]]; then
+    real_hits="$(echo "$hits" | grep -E -v "$ALLOWLIST_REGEX" || true)"
+    if [[ -n "$real_hits" ]]; then
+      echo "LEAK: content pattern /$pat/ matched (after allowlist):" >&2
+      echo "$real_hits" | head -20 >&2
+      leak_fail=1
+    fi
+  fi
+done
+EXPORT_FILES="$(git -C "$EXPORT_DIR" ls-files)"
+for p in "${STRIP_PATHS[@]}"; do
+  # Match exact file or anything under the stripped prefix.
+  pat_escaped="${p//./\\.}"
+  hits="$(echo "$EXPORT_FILES" | grep -E "^${pat_escaped}(/|$)" || true)"
+  if [[ -n "$hits" ]]; then
+    echo "LEAK: stripped path '${p}' present in export (strip-list missed it):" >&2
+    echo "$hits" | head -20 >&2
+    leak_fail=1
+  fi
+done
+if [[ "$leak_fail" -ne 0 ]]; then
+  echo "ERROR: leak-grep gate failed; refusing to publish." >&2
+  exit 1
+fi
+echo "leak-grep gate: PASS"
 
 if [[ "$PUBLISH" -eq 1 ]]; then
   echo "force-pushing snapshot to ${REMOTE}/${BRANCH}..."
@@ -188,6 +273,19 @@ else
   echo "DRY RUN: snapshot built at ${EXPORT_DIR} (branch ${SNAPSHOT_BRANCH})."
   echo "  Inspect with:   git -C ${EXPORT_DIR} log -1 --stat"
   echo "  Publish with:   PUBLISH_CONFIRM=yes $0 --publish"
+fi
+
+# Post-export defense-in-depth: re-grep the actually-shipped tree and verify
+# it builds. Runs on both dry-run and real publish per the brief — on dry-run
+# it validates whatever is currently published (the operator's pre-flight
+# check against drift); on publish it validates what we just pushed.
+SMOKE_SCRIPT="${REPO_ROOT}/_internal/scripts/public-clone-smoke.sh"
+if [[ -x "$SMOKE_SCRIPT" ]]; then
+  echo "running public-clone-smoke..."
+  if ! "$SMOKE_SCRIPT"; then
+    echo "ERROR: public-clone-smoke failed" >&2
+    exit 1
+  fi
 fi
 
 # Auto-remove the export only after a real publish. On dry-run we leave it

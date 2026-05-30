@@ -1,9 +1,9 @@
 //! **Layer:** integration
 //!
-//! RELEASE_TODO.md §5 Phase 1a: `src/v4/workflow/release.dag` is semantic authority;
+//! RELEASE_TODO.md §5 Phase 1a–1b: `src/v4/workflow/release.dag` is semantic authority;
 //! `.github/workflows/release.yml` is a hand-synced projection until YamlStatic emission lands
-//! (same deferral posture as `v4.workflow.ci` / T-24). Install surfaces live in `install.dag`
-//! (Phase 1b).
+//! (same deferral posture as `v4.workflow.ci` / T-24). Install scripts (`install.sh`,
+//! `scripts/release-target-triples.sh`) are hand-synced from `install.dag` (Phase 1b).
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge deferred.
 //!
@@ -21,6 +21,11 @@ const RELEASE_DAG: &str = include_str!("../../../../v4/workflow/release.dag");
 const RELEASE_DAG_PATH: &str = "src/v4/workflow/release.dag";
 const RELEASE_YML: &str = include_str!("../../../../../.github/workflows/release.yml");
 const RELEASE_YML_PATH: &str = ".github/workflows/release.yml";
+const INSTALL_SH: &str = include_str!("../../../../../install.sh");
+const INSTALL_SH_PATH: &str = "install.sh";
+const RELEASE_TARGET_TRIPLES_SH: &str =
+    include_str!("../../../../../scripts/release-target-triples.sh");
+const RELEASE_TARGET_TRIPLES_SH_PATH: &str = "scripts/release-target-triples.sh";
 const V2_COMPILER_CARGO_TOML: &str = include_str!("../../../../v2/stage0/Cargo.toml");
 const V2_COMPILER_CARGO_TOML_PATH: &str = "src/v2/stage0/Cargo.toml";
 
@@ -140,7 +145,7 @@ fn v4_workflow_release_semantics_modeled() {
     );
     assert!(
         !RELEASE_DAG.contains("bundle_install_sh"),
-        "{RELEASE_DAG_PATH}: Phase 1a must not bundle install.sh (install.dag Phase 1b)"
+        "{RELEASE_DAG_PATH}: install bundling is modeled in install.dag, not release.dag"
     );
     assert!(
         RELEASE_DAG.contains("YamlStatic `release_pipeline →"),
@@ -235,8 +240,49 @@ fn v4_workflow_release_published_authority_single_writer() {
         "{RELEASE_YML_PATH}: build/upload must use modeled artifact_basename (not hardcoded .exe branch)"
     );
     assert!(
-        !RELEASE_YML.contains("install.sh"),
-        "{RELEASE_YML_PATH}: Phase 1a must not bundle install.sh"
+        RELEASE_YML.contains("install.sh"),
+        "{RELEASE_YML_PATH}: Phase 1b must bundle install.sh on GitHub Releases"
+    );
+    assert!(
+        RELEASE_YML.contains("dist/release-target-triples.sh"),
+        "{RELEASE_YML_PATH}: Phase 1b must stage flat release-target-triples.sh (no duplicate basename under dist/scripts/)"
+    );
+    assert!(
+        !RELEASE_YML.contains("dist/scripts/"),
+        "{RELEASE_YML_PATH}: must not upload duplicate release-target-triples.sh basename via dist/scripts/"
+    );
+}
+
+#[test]
+fn v4_install_scripts_hand_synced_to_release_authority() {
+    for target in &RELEASE_PUBLISHED_TARGETS[..4] {
+        assert!(
+            RELEASE_TARGET_TRIPLES_SH.contains(target),
+            "{RELEASE_TARGET_TRIPLES_SH_PATH}: POSIX install must list `{target}`"
+        );
+        assert!(
+            INSTALL_SH.contains(target) || RELEASE_TARGET_TRIPLES_SH.contains(target),
+            "{INSTALL_SH_PATH}: install path must cover release triple `{target}`"
+        );
+    }
+    assert!(
+        INSTALL_SH.contains("asset=\"gunbc-${target}\""),
+        "{INSTALL_SH_PATH}: asset naming must project release artifact basename gunbc-{{triple}} at runtime"
+    );
+    for artifact in &RELEASE_PUBLISHED_ARTIFACTS[..4] {
+        let triple = artifact.strip_prefix("gunbc-").unwrap_or(artifact);
+        assert!(
+            RELEASE_TARGET_TRIPLES_SH.contains(triple),
+            "{RELEASE_TARGET_TRIPLES_SH_PATH}: POSIX targets must include triple `{triple}` for artifact `{artifact}`"
+        );
+    }
+    assert!(
+        INSTALL_SH.contains("scripts/release-target-triples.sh"),
+        "{INSTALL_SH_PATH}: must source hand-synced target authority script"
+    );
+    assert!(
+        RELEASE_TARGET_TRIPLES_SH.contains("detect_release_target"),
+        "{RELEASE_TARGET_TRIPLES_SH_PATH}: must export detect_release_target"
     );
 }
 

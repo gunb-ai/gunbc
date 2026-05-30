@@ -161,7 +161,7 @@ they are not interchangeable:
 | L1.1 Discriminant-predicate | derive |
 | L1.2 Degenerate-type | witness |
 | L1.3 Hollow-type | witness |
-| L1.4 Carrier-clone *(lens family — see §5.0 exception)*: parent (whole-carrier clone), L1.4.b `VariantParameterClone` (intra-carrier variant-level type-only differences) | canonical-home / witness |
+| L1.4 Carrier-clone *(lens family — see §5.0 exception)*: parent (whole-carrier clone), **IdenticalVariantPayload** (intra-carrier arms with identical canonical payload signatures), L1.4.b `VariantParameterClone` (intra-carrier variant-level type-only differences) | canonical-home / witness |
 | L1.5 Catamorphism *(lens family — see §5.0 exception)*: parent (data-scope walker dissolution), L1.5.b `GeneratedForestCollapse` (emission-scope meta-walk that emits per-variant target artifacts collapsing to K skeletons) | derive |
 | L1.6 *(merged into L1.10 — Textual-bypass)* | — |
 | L1.7 Off-substrate-fact | witness |
@@ -209,6 +209,7 @@ Substrate-driven projection, not doc-rebase-driven.
 | L1.2 Degenerate-type | `coverage_defect_degenerate_type` |
 | L1.3 Hollow-type | `coverage_defect_hollow_type` |
 | L1.4 Carrier-clone | `coverage_defect_carrier_clone` |
+| **IdenticalVariantPayload** (sub-signature of Carrier-clone family) | `coverage_defect_carrier_clone` *(shared with parent + L1.4.b — `CarrierCloneTrigger::IdenticalVariantPayload` distinguishes duplicate-payload arms from whole-carrier-clone and variant-parameter-clone)* |
 | **L1.4.b** `VariantParameterClone` (sub-signature of Carrier-clone family) | `coverage_defect_carrier_clone` *(shared with parent — sub-signature contributes findings into the same acceptance key; diagnostic payload carries a `CarrierCloneTrigger` discriminator distinguishing whole-carrier-clone from variant-clone)* |
 | **L1.5.b** `GeneratedForestCollapse` (sub-signature of Catamorphism family) | `coverage_defect_catamorphism` *(shared with parent — diagnostic payload carries a `CatamorphismScopeTrigger` discriminator distinguishing data-scope walker (parent) from emission-scope meta-walk (this sub-signature))* |
 | **L1.10.c** `NameDiscriminantBypass` (sub-signature of Textual-bypass family) | `coverage_defect_template_hole` *(shared with the textual-bypass family — diagnostic payload carries a `TextualBypassKind` discriminator distinguishing the four sub-signatures a/b/c/d)* |
