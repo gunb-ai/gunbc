@@ -3,13 +3,10 @@
 module v2.compiler.coercion
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
-import std.coercion {
-  TypeCheckpoint, TargetAtomRealization, TargetAtomTypeDeclKind,
-  InhabitantDecl, CallableRepr, CastSyntax
-}
+import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
 import std.types { container_template_algebra, canonical_container_names }
 import extdeps.languages.rust.types {
-  rust_type_checkpoints, rust_atom_realizations, rust_algebra_inhabitants, rust_callable,
+  rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
   rust_optional_template, rust_cast_syntax
 }
 import extdeps.languages.python.types {
@@ -103,76 +100,29 @@ fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> TypeCheckpoint? 
   target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
 }
 
-// =========================================================================
-// Level 1b: Kernel-ambient atom realization (SG-1 single authority)
-// =========================================================================
-
-fn target_atom_realizations(target: RenderTarget) -> List<TargetAtomRealization> {
-  match target {
-    Rust => rust_atom_realizations
-    Python => []
-    Go => []
-    Dag => []
-  }
-}
-
-fn lookup_atom_realization(target: RenderTarget, dag_name: String) -> TargetAtomRealization? {
-  target_atom_realizations(target: target) |> filter(row => row.dag_name == dag_name) |> first
-}
-
-fn apply_atom_value_ctor_template(template: String, ident: String) -> String {
-  replace(template, "\{ident\}", ident)
-}
-
 // Transitional: fail-open (returns dag_name on miss). M5-full should
 // fail-closed once all surface types have checkpoint declarations.
 fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
-  match lookup_atom_realization(target: target, dag_name: dag_name) {
-    Some { value: row } => row.type_form
-    None =>
-      match lookup_checkpoint(target: target, dag_name: dag_name) {
-        Some { value: cp } => cp.target_type
-        None => dag_name
-      }
+  match lookup_checkpoint(target: target, dag_name: dag_name) {
+    Some { value: cp } => cp.target_type
+    None => dag_name
   }
 }
 
 fn is_copy(target: RenderTarget, dag_name: String) -> Bool? {
-  match lookup_atom_realization(target: target, dag_name: dag_name) {
-    Some { value: row } => row.is_copy
-    None =>
-      match lookup_checkpoint(target: target, dag_name: dag_name) {
-        Some { value: cp } => cp.is_copy
-        None => none
-      }
+  match lookup_checkpoint(target: target, dag_name: dag_name) {
+    Some { value: cp } => cp.is_copy
+    None => none
   }
 }
 
 fn literal_suffix(target: RenderTarget, dag_name: String) -> String? {
-  match lookup_atom_realization(target: target, dag_name: dag_name) {
-    Some { value: row } => match row.literal_suffix {
+  match lookup_checkpoint(target: target, dag_name: dag_name) {
+    Some { value: cp } => match cp.literal_suffix {
       Some { value: s } => Some { value: s }
       None => Some { value: "" }
     }
-    None =>
-      match lookup_checkpoint(target: target, dag_name: dag_name) {
-        Some { value: cp } => match cp.literal_suffix {
-          Some { value: s } => Some { value: s }
-          None => Some { value: "" }
-        }
-        None => none
-      }
-  }
-}
-
-fn default_expr(target: RenderTarget, dag_name: String) -> String? {
-  match lookup_atom_realization(target: target, dag_name: dag_name) {
-    Some { value: row } => row.default_expr
-    None =>
-      match lookup_checkpoint(target: target, dag_name: dag_name) {
-        Some { value: cp } => cp.default_expr
-        None => none
-      }
+    None => none
   }
 }
 
@@ -267,17 +217,11 @@ fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
 
 fn copy_tests() -> List<CoercionTestEntry> {
   let cps = target_checkpoints(target: Rust)
-  let checkpoint_copy = cps |> flat_map(cp =>
+  let copy_assertions = cps |> flat_map(cp =>
     match cp.is_copy {
       Some { value: v } => [CopyAssertion { target: Rust, dag_name: cp.dag_name, expected_copy: v }]
       None => []
     })
-  let atom_copy = target_atom_realizations(target: Rust) |> flat_map(row =>
-    match row.is_copy {
-      Some { value: v } => [CopyAssertion { target: Rust, dag_name: row.dag_name, expected_copy: v }]
-      None => []
-    })
-  let copy_assertions = concat(checkpoint_copy, atom_copy)
   if copy_assertions |> count == 0 { [] }
   else {
     [CoercionTestEntry {
