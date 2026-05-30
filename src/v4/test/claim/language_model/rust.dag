@@ -41,6 +41,9 @@ data rust_leaf_claim_corpus_file: Symbol = rust_leaf_claim_corpus_file
 data rust_leaf_claim_runner_not_wired: Symbol = rust_leaf_claim_runner_not_wired
 data rust_leaf_r3_source_atom_symbol: Symbol = rust_leaf_r3_source_atom_symbol
 data rust_leaf_falsify_nonexistent_method: Symbol = rust_leaf_falsify_nonexistent_method
+// R3-external falsification: type_form/value_form mismatch (planning §7 — String alias + value ctor on atom).
+data rust_leaf_falsify_atom_type_string_alias: Symbol = rust_leaf_falsify_atom_type_string_alias
+data rust_leaf_falsify_atom_value_constructor_on_atom: Symbol = rust_leaf_falsify_atom_value_constructor_on_atom
 
 // Subject / expectation vocabulary for rust.dag Phase-1 claims (fixture generator binds these per claim_id).
 type RustLeafClaimSubject
@@ -49,6 +52,11 @@ type RustLeafClaimSubject
   | RustLeafSubjectNonexistentMethod { inhabitant_id: Symbol, method: Symbol }
   | RustLeafSubjectUnboundedInt { inhabitant_id: Symbol }
   | RustLeafSubjectAtom { atom_id: Symbol }
+  | RustLeafSubjectMismatchedProjection {
+      atom_id: Symbol
+      declared_type_form: Symbol
+      exercised_value_form: Symbol
+    }
   | RustLeafSubjectMutatedAtomRow { atom_id: Symbol }
 
 type RustLeafClaimExpectation
@@ -137,7 +145,11 @@ data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafMod
   subject: RustLeafSubjectAtom { atom_id: rust_leaf_r3_source_atom_symbol },
   expectation: RustLeafExpectAtomTargetProjection { atom_id: rust_leaf_r3_source_atom_symbol },
   falsification_case: FalsificationCase {
-    subject_variant: RustLeafSubjectWrongValue { inhabitant_id: rust_leaf_r3_source_atom_symbol },
+    subject_variant: RustLeafSubjectMismatchedProjection {
+      atom_id: rust_leaf_r3_source_atom_symbol,
+      declared_type_form: rust_leaf_falsify_atom_type_string_alias,
+      exercised_value_form: rust_leaf_falsify_atom_value_constructor_on_atom
+    },
     expected_failure_mode: rust_leaf_claim_deferred_verdict()
   }
 }
