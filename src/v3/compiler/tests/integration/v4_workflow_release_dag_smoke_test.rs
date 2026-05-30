@@ -244,8 +244,12 @@ fn v4_workflow_release_published_authority_single_writer() {
         "{RELEASE_YML_PATH}: Phase 1b must bundle install.sh on GitHub Releases"
     );
     assert!(
-        RELEASE_YML.contains("release-target-triples.sh"),
-        "{RELEASE_YML_PATH}: Phase 1b must bundle release-target-triples.sh (flat + dist/scripts/)"
+        RELEASE_YML.contains("dist/release-target-triples.sh"),
+        "{RELEASE_YML_PATH}: Phase 1b must stage flat release-target-triples.sh (no duplicate basename under dist/scripts/)"
+    );
+    assert!(
+        !RELEASE_YML.contains("dist/scripts/"),
+        "{RELEASE_YML_PATH}: must not upload duplicate release-target-triples.sh basename via dist/scripts/"
     );
 }
 

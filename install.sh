@@ -26,7 +26,9 @@ load_release_target_authority() {
   if [ -n "${GUNBC_RELEASE_TARGET_AUTHORITY_LOADED:-}" ]; then
     return 0
   fi
-  if [ -n "${0:-}" ] && [ "$0" != sh ] && [ "$0" != bash ] && [ "$0" != dash ]; then
+  case "$(basename "${0:-}")" in
+    '' | sh | bash | dash | -sh) ;;
+    *)
     _install_dir=$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd || true)
     if [ -n "$_install_dir" ] && [ -f "$_install_dir/scripts/release-target-triples.sh" ]; then
       # shellcheck source=scripts/release-target-triples.sh
@@ -40,7 +42,8 @@ load_release_target_authority() {
       GUNBC_RELEASE_TARGET_AUTHORITY_LOADED=1
       return 0
     fi
-  fi
+    ;;
+  esac
   if [ -f "./scripts/release-target-triples.sh" ]; then
     # shellcheck source=scripts/release-target-triples.sh
     . "./scripts/release-target-triples.sh"
