@@ -297,6 +297,8 @@ mod v4_extdeps_file_system_dag_smoke_test;
 mod v4_extdeps_formatters_black_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
+#[path = "boundary/v4_leaf_model_rust_r1_rustc_test.rs"]
+mod v4_leaf_model_rust_r1_rustc_test;
 #[path = "integration/v4_lens_affected_set_dag_smoke_test.rs"]
 mod v4_lens_affected_set_dag_smoke_test;
 #[path = "integration/v4_lens_application_dag_smoke_test.rs"]
@@ -1111,6 +1113,14 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/types.dag"),
             "dsl/std/types.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_patterns_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/patterns.dag"),
+            "dsl/std/patterns.dag",
         );
     }
 
