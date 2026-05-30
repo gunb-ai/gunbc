@@ -977,6 +977,34 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
   }
 }
+fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node?> {
+  match target.bundle.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        target.bundle.children,
+        init: BundleChildMissing,
+        f: fn(acc, e) {
+          target_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
+        }
+      ) {
+        BundleChildFound { value: child } =>
+          Accepted { value: Some { value: child }, diagnostics: None }
+        BundleChildMissing =>
+          Accepted { value: None, diagnostics: None }
+        BundleChildDuplicate =>
+          outcome_rejected(
+            translate_target_bundle_duplicate_edge_diagnostic(
+              target: target,
+              edge_name: edge_name
+            )
+          )
+        BundleChildInvalidEdge =>
+          outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
+      }
+    _ =>
+      outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
+  }
+}
 fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_selection_policy),
@@ -1742,15 +1770,17 @@ fn translate_node(
   target: TargetModel
 ) -> Outcome<Node> {
   match target_bundle_child_optional_type_expr_projection(target: target) {
-    ProjectionPresent =>
+    Accepted { value: ProjectionPresent, diagnostics: _ } =>
       translate_node_with_projection(node: node, tree: tree, target: target)
-    ProjectionAbsent =>
+    Accepted { value: ProjectionAbsent, diagnostics: _ } =>
       match node.kind {
         TypeNode { connective: _ } =>
           outcome_rejected(translate_type_expression_projection_missing_diagnostic(node: node))
         ComputationNode { behavior: _ } =>
           translate_node_computation(node: node, tree: tree, target: target)
       }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
   }
 }
 type TypeExprProjectionPresence
@@ -1758,13 +1788,17 @@ type TypeExprProjectionPresence
   | ProjectionAbsent
 fn target_bundle_child_optional_type_expr_projection(
   target: TargetModel
-) -> TypeExprProjectionPresence {
-  match target_bundle_child(
+) -> Outcome<TypeExprProjectionPresence> {
+  match target_bundle_optional_child(
     target: target,
     edge_name: target_model_edge_type_expression_projection
   ) {
-    Accepted { value: _, diagnostics: _ } => ProjectionPresent
-    Rejected { diagnostics: _ } => ProjectionAbsent
+    Accepted { value: Some { value: _ }, diagnostics: d } =>
+      Accepted { value: ProjectionPresent, diagnostics: d }
+    Accepted { value: None, diagnostics: d } =>
+      Accepted { value: ProjectionAbsent, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
   }
 }
 fn translate_fold_step(

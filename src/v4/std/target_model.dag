@@ -222,8 +222,8 @@ fn target_type_expr_positional_children(node: Node) -> List<Node> {
 fn target_type_expr_positional_child_at(node: Node, index: Int) -> Optional<Node> {
   match fold_list(
     xs: target_type_expr_positional_children(node: node),
-    init: ChildAtMissing { remaining: index },
-    f: fn(acc, child) {
+    empty: ChildAtMissing { remaining: index },
+    cons: fn(acc, child) {
       match acc {
         ChildAtFound { value: _ } => acc
         ChildAtMissing { remaining: r } =>
