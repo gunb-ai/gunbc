@@ -61,7 +61,8 @@ import v4.std.node {
   canonical_tag_scalar_int_succ,
   canonical_tag_scalar_int_zero,
   canonical_tag_byte_offset_out_of_ceiling,
-  canonical_tag_scalar_int_neg
+  canonical_tag_scalar_int_neg,
+  byte_offset_cache_digest_max_limbs
 }
 import v4.std.integer { int_add, int_negate }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
