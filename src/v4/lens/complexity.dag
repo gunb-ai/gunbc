@@ -53,19 +53,84 @@ import v4.lens.cost {
 import v4.std.algebra { Empty }
 import v4.std.collection { List }
 import v4.std.diagnostic {
+  Accepted,
   AmbiguousIntent,
   Diagnostic,
+  Locus,
+  Rejected,
   Textual,
   WholeFile,
   Unavailable
 }
 import v4.std.node { Node, Symbol }
-import v4.std.refinement { Refined, refined_base }
+import v4.std.refinement {
+  Refined,
+  VacuousValidation,
+  vacuous_admits_marker,
+  Validation,
+  refine,
+  refined_base,
+  refined_vacuous_stub_pack
+}
 import v4.std.witness { Holds, Violates, Witness }
 
 
 data complexity_reason_unmodeled_cost_projection: Symbol = complexity_reason_unmodeled_cost_projection
 data complexity_projection_virtual_file: Symbol = complexity_projection_virtual_file
+data complexity_variables_invalid: Symbol = complexity_variables_invalid
+
+
+// Intentionally trivial: routes lens-internal SizeVariable lists through refine (T-12 placeholder).
+// 🟡 gated — feature:complexity-variables-refine-placeholder — bind T-12-COMPLEXITY-PROJECTION — dissolve-on-arrival: replace admits=true with a real SizeVariable-list predicate or remove the refine wrapper once complexity projection no longer needs a Refined carrier; forbidden: permanent vacuous refinement without a dissolution receipt.
+fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
+  true
+}
+
+
+data complexity_variables_validation: Validation<List<SizeVariable>> = Validation {
+  reason: complexity_variables_invalid,
+  admits: complexity_variables_admits
+}
+
+
+// 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-12-COMPLEXITY-PROJECTION
+// with testgen (T-19); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
+data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
+  reason: complexity_variables_invalid,
+  vacuous: vacuous_admits_marker
+}
+
+
+fn complexity_projection_locus() -> Locus {
+  Textual { file: complexity_projection_virtual_file, extent: WholeFile }
+}
+
+
+fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<ComplexityVariables> {
+  match refine(base: xs, by: complexity_variables_validation, at: complexity_projection_locus()) {
+    Accepted { value: refined, diagnostics: _ } => Holds { value: refined }
+    Rejected { diagnostics } => Violates { diagnostic: diagnostics.head }
+  }
+}
+
+
+// Exported helpers return ComplexityVariables (main API); refine Witness stays internal.
+fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVariables {
+  match complexity_variables_from_refine(xs: xs) {
+    Holds { value: variables } => variables
+    // 🟡 gated — feature:complexity-variables-vacuous-oracle-fallback — bind T-12-COMPLEXITY-PROJECTION —
+    // dissolve-on-arrival: propagate Violates at exported boundary when admits is real (delete
+    // refined_vacuous_stub_pack path). Today complexity_variables_admits is constantly true, so
+    // Violates is unreachable; this arm ignores the Violates diagnostic (placeholder only).
+    Violates { diagnostic: _ } =>
+      refined_vacuous_stub_pack(
+        base: xs,
+        by: complexity_variables_vacuous_validation,
+        at: complexity_projection_locus()
+      )
+  }
+}
+
 
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type ComplexityVariables = Refined<List<SizeVariable>>
@@ -94,18 +159,20 @@ fn unknown_complexity() -> ComplexityBound {
 }
 
 fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
-  Refined { base: [size_var] }
+  complexity_variables_unwrap_refine(xs: [size_var])
 }
 
 fn empty_complexity_variables() -> ComplexityVariables {
-  Refined { base: Empty }
+  complexity_variables_unwrap_refine(xs: Empty)
 }
 
 fn composite_complexity_variables(
   lhs: ComplexityVariables,
   rhs: ComplexityVariables
 ) -> ComplexityVariables {
-  Refined { base: concat(refined_base(r: lhs), refined_base(r: rhs)) }
+  complexity_variables_unwrap_refine(
+    xs: concat(refined_base(r: lhs), refined_base(r: rhs))
+  )
 }
 
 fn sized_complexity(
