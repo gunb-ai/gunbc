@@ -144,8 +144,14 @@ type TargetFunctionTypeShape {
   arrow: Symbol
 }
 
-// 🟡 coproduct dissolution — feature:sg1-target-atom-type-form — dissolve-on: TargetAtomRealization.type_form consumes TargetTypeExpression per design-target-realization-canonical-home.md §cross-section invariant.
-type TargetTypeExpression = Node
+// 🟢 coproduct dissolution — SG-2 declared emitted type-expression wire authority (Node payload is wire projection, not authority).
+type TargetTypeExpression
+  = TargetTypeExprEmittedAtom { node: Node }
+  | TargetTypeExprEmittedInstantiation { node: Node }
+  | TargetTypeExprEmittedCardinality { node: Node }
+  | TargetTypeExprEmittedRecord { node: Node }
+  | TargetTypeExprEmittedSum { node: Node }
+  | TargetTypeExprEmittedArrow { node: Node }
 
 // SG-2 — canonical per-connective type-expression projection (one row per target language).
 type TargetTypeExpressionProjection {
@@ -585,6 +591,47 @@ fn target_type_expr_emitted_validate_wire_shape(
         kind: kind,
         projection: projection
       )
+  }
+}
+
+fn target_type_expr_emitted_wire_decode(
+  node: Node,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<TargetTypeExpression> {
+  match target_type_expr_emitted_kind(node: node) {
+    TypeExprKindAuthority { value: kind } =>
+      match target_type_expr_emitted_validate_wire_shape(
+        node: node,
+        kind: kind,
+        projection: projection
+      ) {
+        Accepted { value: _, diagnostics: d } =>
+          match kind {
+            TargetTypeExprAtom =>
+              Accepted { value: TargetTypeExprEmittedAtom { node: node }, diagnostics: d }
+            TargetTypeExprInstantiation =>
+              Accepted {
+                value: TargetTypeExprEmittedInstantiation { node: node },
+                diagnostics: d
+              }
+            TargetTypeExprCardinality =>
+              Accepted {
+                value: TargetTypeExprEmittedCardinality { node: node },
+                diagnostics: d
+              }
+            TargetTypeExprRecord =>
+              Accepted { value: TargetTypeExprEmittedRecord { node: node }, diagnostics: d }
+            TargetTypeExprSum =>
+              Accepted { value: TargetTypeExprEmittedSum { node: node }, diagnostics: d }
+            TargetTypeExprArrow =>
+              Accepted { value: TargetTypeExprEmittedArrow { node: node }, diagnostics: d }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    TypeExprKindNotEmitted =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    TypeExprKindAuthorityInvalid =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
   }
 }
 

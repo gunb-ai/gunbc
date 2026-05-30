@@ -77,11 +77,18 @@ import v4.std.target_model {
   TargetRecordTypeShape,
   TargetSumTypeShape,
   TargetTypeExprFieldSlot,
+  TargetTypeExpression,
   TargetTypeExpressionProjection,
   TargetTypeExprVariantSlot,
   TargetTypeExprAtom,
   TargetTypeExprArrow,
   TargetTypeExprCardinality,
+  TargetTypeExprEmittedArrow,
+  TargetTypeExprEmittedAtom,
+  TargetTypeExprEmittedCardinality,
+  TargetTypeExprEmittedInstantiation,
+  TargetTypeExprEmittedRecord,
+  TargetTypeExprEmittedSum,
   TargetTypeExprInstantiation,
   TargetTypeExprKind,
   TargetTypeExprRecord,
@@ -114,7 +121,7 @@ import v4.std.target_model {
   target_type_expr_field_variant_separator,
   target_type_expr_cardinality_emitted,
   target_type_expr_emitted_labeled_slot_nodes,
-  target_type_expr_emitted_validate_wire_shape,
+  target_type_expr_emitted_wire_decode,
   target_type_expr_instantiation_emitted,
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
@@ -1394,7 +1401,7 @@ fn project_type_expression_children_go(
       o: list_head_and_tail(xs: children, node: anchor),
       f: fn(split) {
         match project_type_expression_node_bounded(
-          remaining: remaining - 1,
+          remaining: node_subtree_count(n: split.head),
           node: split.head,
           projection: projection
         ) {
@@ -1452,7 +1459,7 @@ fn project_type_expression_field_slots_go(
           Named { name: label } =>
             bind_outcome(
               o: project_type_expression_node_bounded(
-                remaining: remaining - 1,
+                remaining: node_subtree_count(n: split.head.target),
                 node: split.head.target,
                 projection: projection
               ),
@@ -1508,7 +1515,7 @@ fn project_type_expression_variant_slots_go(
           Named { name: label } =>
             bind_outcome(
               o: project_type_expression_node_bounded(
-                remaining: remaining - 1,
+                remaining: node_subtree_count(n: split.head.target),
                 node: split.head.target,
                 projection: projection
               ),
@@ -2214,66 +2221,56 @@ fn serialize_type_expr_arrow_bounded(
     }
   )
 }
-fn serialize_type_expr_emitted_kind_bounded(
+fn serialize_type_expr_emitted_wire_bounded(
   remaining: Int,
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
-  emitted: Node,
-  kind: TargetTypeExprKind
+  wire: TargetTypeExpression
 ) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: target_type_expr_emitted_validate_wire_shape(
-      node: emitted,
-      kind: kind,
-      projection: projection
-    ),
-    f: fn(_) {
-      match kind {
-        TargetTypeExprAtom =>
-          type_expr_spelling_for_atom(target: target, node: emitted)
-        TargetTypeExprInstantiation =>
-          serialize_type_expr_generic_apply_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: projection.instantiation_form,
-            node: emitted
-          )
-        TargetTypeExprCardinality =>
-          serialize_type_expr_generic_apply_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: projection.cardinality_form,
-            node: emitted
-          )
-        TargetTypeExprRecord =>
-          serialize_type_expr_record_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: projection.conj_form,
-            node: emitted
-          )
-        TargetTypeExprSum =>
-          serialize_type_expr_sum_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: projection.disj_form,
-            node: emitted
-          )
-        TargetTypeExprArrow =>
-          serialize_type_expr_arrow_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: projection.arrow_form,
-            node: emitted
-          )
-      }
-    }
-  )
+  match wire {
+    TargetTypeExprEmittedAtom { node: emitted } =>
+      type_expr_spelling_for_atom(target: target, node: emitted)
+    TargetTypeExprEmittedInstantiation { node: emitted } =>
+      serialize_type_expr_generic_apply_bounded(
+        remaining: remaining - 1,
+        target: target,
+        projection: projection,
+        form: projection.instantiation_form,
+        node: emitted
+      )
+    TargetTypeExprEmittedCardinality { node: emitted } =>
+      serialize_type_expr_generic_apply_bounded(
+        remaining: remaining - 1,
+        target: target,
+        projection: projection,
+        form: projection.cardinality_form,
+        node: emitted
+      )
+    TargetTypeExprEmittedRecord { node: emitted } =>
+      serialize_type_expr_record_bounded(
+        remaining: remaining - 1,
+        target: target,
+        projection: projection,
+        form: projection.conj_form,
+        node: emitted
+      )
+    TargetTypeExprEmittedSum { node: emitted } =>
+      serialize_type_expr_sum_bounded(
+        remaining: remaining - 1,
+        target: target,
+        projection: projection,
+        form: projection.disj_form,
+        node: emitted
+      )
+    TargetTypeExprEmittedArrow { node: emitted } =>
+      serialize_type_expr_arrow_bounded(
+        remaining: remaining - 1,
+        target: target,
+        projection: projection,
+        form: projection.arrow_form,
+        node: emitted
+      )
+  }
 }
 fn serialize_type_expr_emitted_bounded(
   remaining: Int,
@@ -2286,20 +2283,17 @@ fn serialize_type_expr_emitted_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else {
-  match target_type_expr_emitted_kind(node: emitted) {
-    TypeExprKindAuthority { value: kind } =>
-      serialize_type_expr_emitted_kind_bounded(
-        remaining: remaining,
-        target: target,
-        projection: projection,
-        emitted: emitted,
-        kind: kind
-      )
-    TypeExprKindNotEmitted =>
-      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: emitted))
-    TypeExprKindAuthorityInvalid =>
-      outcome_rejected(translate_type_expr_kind_authority_invalid_diagnostic(node: emitted))
-  }
+    bind_outcome(
+      o: target_type_expr_emitted_wire_decode(node: emitted, projection: projection),
+      f: fn(wire) {
+        serialize_type_expr_emitted_wire_bounded(
+          remaining: remaining,
+          target: target,
+          projection: projection,
+          wire: wire
+        )
+      }
+    )
   }
 }
 fn translate_coerced_shell(coerced: Node) -> Node {
@@ -2432,7 +2426,7 @@ fn project_type_expression_children_in_node_go(
       f: fn(split) {
         bind_outcome(
           o: project_type_expression_subtree(
-            remaining: remaining - 1,
+            remaining: node_subtree_count(n: split.head.target),
             node: split.head.target,
             projection: projection
           ),
