@@ -267,47 +267,24 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 // Witnesses: refinement_formatter_literals_accept.dag; runtime/user input: make_* + Outcome.
 
 
-// 🟢 coproduct dissolution — TERMINAL at the substrate scope.
-// Structural marker classifying whether a collection carrier's iteration order is
-// reproducible from its identity. Orderedness is a type-level property of the
-// carrier (cons-list shapes such as `v4.std.collection.List` and tree-keyed map
-// / set carriers are StructurallyOrdered; hash-bucket carriers such as
-// `HashMap` / `HashSet` leak insertion-order and are StructurallyUnordered) —
-// NOT a value
-// predicate — so the existing `Validation<B>.admits: fn(B) -> Bool` shape cannot
-// express it. The unordered arm carries no payload: hash-iteration is the only
-// iteration-shaped non-determinism source at this substrate scope, and typing the
-// arm over a broader set of non-determinism sources would admit nonsensical
-// constructions. If a second iteration-leak source emerges, carve a sub-coproduct
-// rather than widening this arm.
+// 🟡 gated — feature:iteration-ordering-carrier-keyed-witness-lookup — dissolve-on-arrival:
+// substrate exports a carrier-keyed witness lookup so IterationClassifier<B> is replaced by
+// non-forgeable per-carrier `Witness<StructurallyOrdered, B>`; forbidden: caller-supplied
+// classifier function that can return StructurallyOrdered for a hash-bucket carrier.
+// Today the obligation is discharged at the same caller-discipline boundary as
+// `Validation<B>.admits` above; forgery is representable and the rule against it is
+// convention, not type-enforced — see PR #3928 review thread.
 type IterationOrdering
   = StructurallyOrdered
   | StructurallyUnordered
 data naming_the_leak: Symbol = naming_the_leak
-// Ordering classifier — mirrors `Validation<B>` above. The classifier is
-// parametric on the carrier `B`; concrete `IterationClassifier<HashMap<K,V>>` /
-// `IterationClassifier<BTreeMap<K,V>>` instances are authored *per carrier* at
-// the layer that owns each carrier's type identity (substrate `v4.std.collection`
-// for stdlib carriers; lens / compiler layers for downstream carriers), and ALWAYS
-// return `StructurallyUnordered` for hash carriers and `StructurallyOrdered` for
-// ordered carriers — there is no caller choice at the authoring layer. The
-// refinement consumes the classifier; passing a forged `fn(B) -> StructurallyOrdered`
-// for an unordered B is the same caller-discipline boundary as forging
-// `Validation<B>.admits` to always return `true` (already accepted in this file
-// for `refine`). INVARIANTS P2 (named-edge derivation, no parallel caller-
-// supplied facts beside `base`) is preserved because the classification is
-// derived from `base` by the obligation discharger, not declared alongside it.
-// True structural derivation — making forgery unrepresentable rather than merely
-// disciplined — requires a carrier-keyed witness lookup beyond this substrate
-// scope and lands at downstream lens / compiler retrofit layers.
+// 🟡 gated — feature:iteration-ordering-carrier-keyed-witness-lookup — see IterationOrdering above.
 type IterationClassifier<B> {
   classify: fn(B) -> IterationOrdering
 }
-// Refinement constructor: admits a base collection for deterministic iteration
-// only when the supplied classifier derives `StructurallyOrdered` from `base`.
-// The unordered arm fails closed with the `naming_the_leak` diagnostic. Shape
-// mirrors `refine` above: caller passes `base` and a B-parametric obligation; the
-// constructor matches on the discharged classification.
+// Refinement constructor: admits a base collection for deterministic iteration only when
+// the supplied classifier derives `StructurallyOrdered` from `base`; unordered fails closed
+// with the `naming_the_leak` diagnostic. Shape mirrors `refine` above.
 fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: Locus) -> Outcome<Refined<B>> {
   let classify = by.classify
   match classify(base) {
