@@ -5,8 +5,17 @@
 
 module v4.std.grammar
 
-import v4.std.algebra { Empty, fold_list, list_snoc_item }
-import v4.std.collection { List, Optional, Set, optional_absent, optional_present }
+import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.collection {
+  Absent,
+  List,
+  Optional,
+  Present,
+  Set,
+  list_nth,
+  optional_absent,
+  optional_present
+}
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -15,6 +24,7 @@ import v4.std.diagnostic {
 }
 import v4.std.lexing { LexRules }
 import v4.std.logic { Bool }
+import v4.std.witness { Holds, Violates, Witness }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -177,6 +187,11 @@ data grammar_repeat_element_node_projection: Symbol = grammar_repeat_element_nod
 data grammar_production_name_node_projection: Symbol = grammar_production_name_node_projection
 data grammar_production_expression_node_projection: Symbol = grammar_production_expression_node_projection
 data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
+data grammar_relation_production_not_found: Symbol = grammar_relation_production_not_found
+data grammar_relation_emitted_conj_slot_missing: Symbol = grammar_relation_emitted_conj_slot_missing
+data grammar_relation_emitted_conj_slot_surplus: Symbol = grammar_relation_emitted_conj_slot_surplus
+data grammar_relation_emitted_not_conj: Symbol = grammar_relation_emitted_not_conj
+data grammar_relation_row_tokens_not_conj: Symbol = grammar_relation_row_tokens_not_conj
 data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
 data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
@@ -477,22 +492,551 @@ fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) ->
 }
 
 
-// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind TASKS.md T-11 — derive production+emitted+bindings
-// into the grammar_relation_row Node shape consumed by 06_translate.dag (via target_model fields).
-// 🟡 gated — feature:grammar-relation-derived-token-edges — bind TASKS.md T-11 PR-1.5b — dissolve-on-arrival:
-//   Conj positional emitted children + lhs-disambiguated production selection replace this
-//   terminal-only slice; forbidden: multi-LHS production-list recursion or fail-soft empty-node
-//   fallbacks on this path (removed in PR-1.5 — see PR-1.5b for faithful nonterminal derivation).
-fn derive_grammar_relation_row_node(production: FormalProduction, emitted: Node) -> Node {
-  grammar_relation_row_to_node(
-    row: derive_grammar_relation_row(production: production, emitted: emitted),
-    tokens: Node {
-      kind: TypeNode {
-        connective: Conj
-      },
-      children: derive_grammar_relation_terminal_token_edges(production: production)
+fn conj_positional_child_count(children: List<Node>) -> Int {
+  fold_list(
+    xs: children,
+    empty: 0,
+    cons: fn(count, _) {
+      count + 1
     }
   )
+}
+
+
+fn conj_positional_children(parent: Node) -> List<Node> {
+  match parent.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        parent.children,
+        init: Empty,
+        f: fn(acc, edge) {
+          match edge.label {
+            Positional => list_snoc_item(xs: acc, item: edge.target)
+            Named { name: _ } => acc
+          }
+        }
+      )
+    _ => Empty
+  }
+}
+
+
+fn formal_production_emitted_slot_count_step(count: Int, symbol: FormalGrammarSymbol) -> Int {
+  match symbol {
+    FormalTerminalOccurrence { terminal: _, binding: binding } =>
+      match binding {
+        Present { value: _ } => count + 1
+        Absent => count
+      }
+    FormalNonterminalOccurrence { nonterminal: _ } => count + 1
+  }
+}
+
+fn formal_production_emitted_slot_count(production: FormalProduction) -> Int {
+  fold_list(
+    xs: production.rhs,
+    empty: 0,
+    cons: formal_production_emitted_slot_count_step
+  )
+}
+
+
+fn formal_production_lhs_matches(production: FormalProduction, lhs: Symbol) -> Bool {
+  production.lhs.identity == lhs
+}
+
+
+fn formal_production_matches_lhs_and_slot_count(
+  production: FormalProduction,
+  lhs: Symbol,
+  emitted_slot_count: Int
+) -> Bool {
+  formal_production_lhs_matches(production: production, lhs: lhs) &&
+    formal_production_emitted_slot_count(production: production) == emitted_slot_count
+}
+
+
+// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for atom-child lhs-exact match: production RHS
+// is exactly one unbound terminal (e.g. type_annotation → ty_string); not for bound slots.
+type RhsSingletonTerminalLookup
+  = RhsSingletonTerminalNotSeen
+  | RhsSingletonTerminalFound { identity: Symbol }
+  | RhsSingletonTerminalAmbiguous
+
+
+fn formal_production_rhs_singleton_terminal_identity_step(
+  state: RhsSingletonTerminalLookup,
+  symbol: FormalGrammarSymbol
+) -> RhsSingletonTerminalLookup {
+  match state {
+    RhsSingletonTerminalAmbiguous => state
+    RhsSingletonTerminalFound { identity: _ } => RhsSingletonTerminalAmbiguous
+    RhsSingletonTerminalNotSeen =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Absent => RhsSingletonTerminalFound { identity: terminal.identity }
+            Present { value: _ } => RhsSingletonTerminalAmbiguous
+          }
+        FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonTerminalAmbiguous
+      }
+  }
+}
+
+fn formal_production_rhs_singleton_terminal_identity(production: FormalProduction) -> Symbol? {
+  match fold_list(
+    xs: production.rhs,
+    empty: RhsSingletonTerminalNotSeen,
+    cons: formal_production_rhs_singleton_terminal_identity_step
+  ) {
+    RhsSingletonTerminalFound { identity: id } => Some { value: id }
+    _ => None
+  }
+}
+
+
+// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for atom-child lhs-exact match: production RHS
+// is exactly one bound terminal (emitted Conj slot = bound-terminal atom per DESIGN-1).
+type RhsSingletonBindingLookup
+  = RhsSingletonBindingNotSeen
+  | RhsSingletonBindingFound { binding: Symbol }
+  | RhsSingletonBindingAmbiguous
+
+
+fn formal_production_rhs_singleton_binding_step(
+  state: RhsSingletonBindingLookup,
+  symbol: FormalGrammarSymbol
+) -> RhsSingletonBindingLookup {
+  match state {
+    RhsSingletonBindingAmbiguous => state
+    RhsSingletonBindingFound { binding: _ } => RhsSingletonBindingAmbiguous
+    RhsSingletonBindingNotSeen =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: _, binding: binding } =>
+          match binding {
+            Present { value: b } => RhsSingletonBindingFound { binding: b }
+            Absent => RhsSingletonBindingAmbiguous
+          }
+        FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonBindingAmbiguous
+      }
+  }
+}
+
+fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symbol? {
+  match fold_list(
+    xs: production.rhs,
+    empty: RhsSingletonBindingNotSeen,
+    cons: formal_production_rhs_singleton_binding_step
+  ) {
+    RhsSingletonBindingFound { binding: b } => Some { value: b }
+    _ => None
+  }
+}
+
+
+fn node_atom_identity_optional(node: Node) -> Symbol? {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => Some { value: id }
+    _ => None
+  }
+}
+
+
+// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state walking production RHS against Conj positional
+// children (bound terminals + nonterminals); dissolves when parser-derived selection lands.
+type EmittedRhsMatchState
+  = EmittedRhsMatchOk { children: List<Node>, index: Int }
+  | EmittedRhsMatchFail
+
+
+fn formal_production_rhs_matches_emitted_conj_step(
+  state: EmittedRhsMatchState,
+  productions: List<FormalProduction>,
+  emitted: Node,
+  symbol: FormalGrammarSymbol
+) -> EmittedRhsMatchState {
+  match state {
+    EmittedRhsMatchFail => state
+    EmittedRhsMatchOk { children: children, index: index } =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Present { value: binding_symbol } =>
+              match list_nth(
+                xs: children,
+                wanted: index,
+                absent: Diagnostic {
+                  reason: grammar_relation_emitted_conj_slot_missing,
+                  at: node_locus(node: emitted),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              ) {
+                Holds { value: slot_child } =>
+                  match node_atom_identity_optional(node: slot_child) {
+                    Some { value: atom_id } =>
+                      if atom_id == binding_symbol {
+                        EmittedRhsMatchOk { children: children, index: index + 1 }
+                      } else {
+                        EmittedRhsMatchFail
+                      }
+                    None => EmittedRhsMatchFail
+                  }
+                Violates { diagnostic: _ } => EmittedRhsMatchFail
+              }
+            Absent =>
+              EmittedRhsMatchOk { children: children, index: index }
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          match list_nth(
+            xs: children,
+            wanted: index,
+            absent: Diagnostic {
+              reason: grammar_relation_emitted_conj_slot_missing,
+              at: node_locus(node: emitted),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ) {
+            Holds { value: slot_child } =>
+              match formal_production_for_lhs_exact(
+                productions: productions,
+                lhs: nonterminal.identity,
+                child: slot_child
+              ) {
+                Holds { value: _ } =>
+                  EmittedRhsMatchOk { children: children, index: index + 1 }
+                Violates { diagnostic: _ } => EmittedRhsMatchFail
+              }
+            Violates { diagnostic: _ } => EmittedRhsMatchFail
+          }
+      }
+  }
+}
+
+
+fn formal_production_rhs_matches_emitted_conj(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Bool {
+  match emitted.kind {
+    TypeNode { connective: Conj } =>
+      formal_production_rhs_matches_emitted_conj_conj(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      )
+    _ => false
+  }
+}
+
+
+fn formal_production_rhs_matches_emitted_conj_conj(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Bool {
+  let children = conj_positional_children(parent: emitted)
+  let child_count = conj_positional_child_count(children: children)
+  match fold_list(
+    xs: production.rhs,
+    empty: EmittedRhsMatchOk { children: children, index: 0 },
+    cons: fn(state, symbol) {
+      formal_production_rhs_matches_emitted_conj_step(
+        state: state,
+        productions: productions,
+        emitted: emitted,
+        symbol: symbol
+      )
+    }
+  ) {
+    EmittedRhsMatchOk { children: _, index: index } => index == child_count
+    EmittedRhsMatchFail => false
+  }
+}
+
+
+// Atom child: unbound-singleton-terminal or bound-singleton-binding (DESIGN-1).
+// Conj child: structural RHS/emitted Conj walk. Arrow/Cardinality/Instantiation/etc. reject.
+fn formal_production_matches_emitted_child(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  child: Node
+) -> Bool {
+  match child.kind {
+    TypeNode { connective: Atom { identity: atom_id } } =>
+      match formal_production_rhs_singleton_terminal_identity(production: production) {
+        Some { value: terminal_id } => atom_id == terminal_id
+        None =>
+          match formal_production_rhs_singleton_binding(production: production) {
+            Some { value: binding } => atom_id == binding
+            None => false
+          }
+      }
+    TypeNode { connective: Conj } =>
+      formal_production_rhs_matches_emitted_conj(
+        production: production,
+        productions: productions,
+        emitted: child
+      )
+    _ => false
+  }
+}
+
+
+fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
+  match child.kind {
+    TypeNode { connective: Conj } => true
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
+
+// 🟡 gated — feature:grammar-inverse-lhs-exact-selection — owner/lane: T-11 typescript ext PR-1.5b
+// (DESIGN-2) — dissolve-on: parser-derived production selection replaces this hand-rolled
+// lhs+emitted-shape walk in formal_production_for_lhs_exact (same commit train as
+// v4.compiler.parse substrate convergence). Interim: filter by emitted-slot arity, then walk
+// RHS symbols against positional emitted children (binding atoms + nested lhs-exact recursion).
+fn formal_production_for_lhs_exact(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node
+) -> Witness<FormalProduction> {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    formal_production_for_lhs_exact_supported(
+      productions: productions,
+      lhs: lhs,
+      child: child
+    )
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: grammar_relation_emitted_not_conj,
+        at: node_locus(node: child),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+
+fn formal_production_for_lhs_exact_supported(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node
+) -> Witness<FormalProduction> {
+  let emitted_slot_count = emitted_node_slot_count(emitted: child)
+  match fold_list(
+    xs: productions,
+    empty: optional_absent(),
+    cons: fn(found, candidate) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          if formal_production_matches_lhs_and_slot_count(
+            production: candidate,
+            lhs: lhs,
+            emitted_slot_count: emitted_slot_count
+          ) &&
+            formal_production_matches_emitted_child(
+              production: candidate,
+              productions: productions,
+              child: child
+            ) {
+            optional_present(value: candidate)
+          } else {
+            Absent
+          }
+      }
+    }
+  ) {
+    Present { value: production } => Holds { value: production }
+    Absent =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: grammar_relation_production_not_found,
+          at: node_locus(node: child),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+
+// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for recursive token-edge derive over Conj slots.
+type DeriveGrammarRelationTokensProgress {
+  edges: List<Edge>
+  conj_index: Int
+  conj_children: List<Node>
+}
+
+
+fn emitted_node_slot_count(emitted: Node) -> Int {
+  match emitted.kind {
+    TypeNode { connective: Conj } =>
+      conj_positional_child_count(children: conj_positional_children(parent: emitted))
+    TypeNode { connective: Atom { identity: _ } } => 0
+    _ => -1
+  }
+}
+
+
+fn derive_grammar_relation_token_edges_recursive_step(
+  progress: Witness<DeriveGrammarRelationTokensProgress>,
+  productions: List<FormalProduction>,
+  emitted: Node,
+  symbol: FormalGrammarSymbol
+) -> Witness<DeriveGrammarRelationTokensProgress> {
+  match progress {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: edges, conj_index: conj_index, conj_children: conj_children } } =>
+      match symbol {
+        FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
+          match binding {
+            Present { value: _ } =>
+              Holds {
+                value: DeriveGrammarRelationTokensProgress {
+                  edges: list_snoc_item(
+                    xs: edges,
+                    item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+                  ),
+                  conj_index: conj_index + 1,
+                  conj_children: conj_children
+                }
+              }
+            Absent =>
+              Holds {
+                value: DeriveGrammarRelationTokensProgress {
+                  edges: list_snoc_item(
+                    xs: edges,
+                    item: grammar_terminal_occurrence_to_token_edge(terminal: terminal, binding: binding)
+                  ),
+                  conj_index: conj_index,
+                  conj_children: conj_children
+                }
+              }
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          match list_nth(
+            xs: conj_children,
+            wanted: conj_index,
+            absent: Diagnostic {
+              reason: grammar_relation_emitted_conj_slot_missing,
+              at: node_locus(node: emitted),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ) {
+            Holds { value: child } =>
+              match formal_production_for_lhs_exact(
+                productions: productions,
+                lhs: nonterminal.identity,
+                child: child
+              ) {
+                Holds { value: nested } =>
+                  match derive_grammar_relation_token_edges_recursive(
+                    production: nested,
+                    productions: productions,
+                    emitted: child
+                  ) {
+                    Holds { value: nested_edges } =>
+                      Holds {
+                        value: DeriveGrammarRelationTokensProgress {
+                          edges: list_append(left: edges, right: nested_edges),
+                          conj_index: conj_index + 1,
+                          conj_children: conj_children
+                        }
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                Violates { diagnostic: d } => Violates { diagnostic: d }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+      }
+  }
+}
+
+
+fn derive_grammar_relation_token_edges_recursive(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Witness<List<Edge>> {
+  let conj_children = conj_positional_children(parent: emitted)
+  match fold_list(
+    xs: production.rhs,
+    empty: Holds {
+      value: DeriveGrammarRelationTokensProgress {
+        edges: Empty,
+        conj_index: 0,
+        conj_children: conj_children
+      }
+    },
+    cons: fn(progress, symbol) {
+      derive_grammar_relation_token_edges_recursive_step(
+        progress: progress,
+        productions: productions,
+        emitted: emitted,
+        symbol: symbol
+      )
+    }
+  ) {
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: conj_children } } =>
+      if conj_index == conj_positional_child_count(children: conj_children) {
+        Holds { value: result }
+      } else {
+        Violates {
+          diagnostic: Diagnostic {
+            reason: grammar_relation_emitted_conj_slot_surplus,
+            at: node_locus(node: emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+
+// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind TASKS.md T-11 — derive production+emitted+bindings
+// into the grammar_relation_row Node shape consumed by 06_translate.dag (via target_model fields).
+// 🟢 PR-1.5b — Conj-positional emitted + lhs-exact production recursion only; non-Conj emitted
+// rejects (no fail-soft terminal-only fallback — PR-1.5 prohibition restored).
+fn derive_grammar_relation_row_node(
+  production: FormalProduction,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Witness<Node> {
+  match emitted.kind {
+    TypeNode { connective: Conj } =>
+      match derive_grammar_relation_token_edges_recursive(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      ) {
+        Holds { value: token_edges } =>
+          Holds {
+            value: grammar_relation_row_to_node(
+              row: derive_grammar_relation_row(production: production, emitted: emitted),
+              tokens: Node {
+                kind: TypeNode {
+                  connective: Conj
+                },
+                children: token_edges
+              }
+            )
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: grammar_relation_emitted_not_conj,
+          at: node_locus(node: emitted),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
 }
 
 
