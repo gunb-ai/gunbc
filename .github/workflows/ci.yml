@@ -307,23 +307,29 @@ jobs:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_CARGO_CHECK_JOBS: "4"
       run: bash scripts/v4-m1-rust-emit-probe.sh
-    # Fixture-scoped gate: only when the PR diff touches the ratified phase1/nat_semiring
-    # module, its roster, or the host transport — not on every src/v4/ change (e.g. leaf-model
-    # Wave 1 PRs). Substrate gaps remain expected when the gate runs (ladder §6 appendix).
+    # Fixture-scoped gate: run when the PR touches the ratified fixture/roster/transport, or
+    # when workflow-policy files change the gate wiring itself — not on every src/v4/ change
+    # (e.g. leaf-model Wave 1). Unrelated ci.yml edits (bootstrap timeouts only) stay out of scope.
     - name: Detect phase1/nat_semiring fixture scope (PR diff)
       id: phase1_nat_semiring_fixture_scope
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: |
         set -euo pipefail
         range="origin/main...HEAD"
-        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == 'refs/heads/main' ]]; then
           range="HEAD~1..HEAD"
         fi
+        should_run=false
         if git diff --name-only "$range" | grep -qE '^(src/v4/test/claim/(algebra_laws/nat_semiring|nat_semiring/)|scripts/v4-phase1-nat-semiring)'; then
-          echo "should_run=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "should_run=false" >> "$GITHUB_OUTPUT"
+          should_run=true
         fi
+        if [[ "$should_run" != true ]] && git diff --name-only "$range" | grep -qE '^(\.github/workflows/ci\.yml|src/v4/workflow/ci\.dag|dsl/gunbc/ci_github_actions_workflow\.dag)'; then
+          if git diff "$range" -- .github/workflows/ci.yml src/v4/workflow/ci.dag dsl/gunbc/ci_github_actions_workflow.dag 2>/dev/null \
+            | grep -qE 'phase1/nat_semiring|phase1_nat_semiring|v4-phase1-nat-semiring'; then
+            should_run=true
+          fi
+        fi
+        echo "should_run=${should_run}" >> "$GITHUB_OUTPUT"
     # Phase 1 rung gate setup: provision Go on the self-hosted runner. The gate
     # invokes `go build` for R0-go-parse / R2-go-compile; without this step the
     # script's host-toolchain guard would fail-closed with
