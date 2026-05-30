@@ -40,12 +40,12 @@ type Validation<B> {
 
 // Placeholder stubs only: binds VacuousValidation at oracle-terminal call sites so
 // real predicates cannot be wired into refined_vacuous_oracle_terminal without the marker.
+// Nullary marker (same-name variant; cross-module import uses vacuous_admits_marker data).
 type VacuousAdmits
-  = VacuousAdmitsMarker
+  = VacuousAdmits
 
 
-// Exported sentinel (single-variant sums do not export the ctor for cross-module import).
-data vacuous_admits_marker: VacuousAdmits = VacuousAdmitsMarker
+data vacuous_admits_marker: VacuousAdmits = VacuousAdmits
 
 
 type VacuousValidation<B> {
