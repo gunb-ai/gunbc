@@ -107,6 +107,8 @@ jobs:
       run: bash scripts/check-release-doc-authority.sh
     - name: Release-doc authority self-test (consumer not ceremonial)
       run: bash scripts/test-check-release-doc-authority.sh
+    - name: install.sh pinned-version smoke (hermetic)
+      run: bash scripts/test-install-sh-pinned-version.sh
     - name: Manager-brief authority check (P2 single-authority discipline)
       run: bash scripts/check-manager-brief-authority.sh
       env:
@@ -131,6 +133,7 @@ jobs:
       v4: ${{ steps.detect.outputs.v4 }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
       release_distribution: ${{ steps.detect.outputs.release_distribution }}
+      release_distribution_only: ${{ steps.detect.outputs.release_distribution_only }}
     steps:
     - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
       run: |
@@ -338,7 +341,8 @@ jobs:
     # phase1/nat_semiring/setup/host_toolchain_missing (setup gap, not fixture
     # gap). Python3 is pre-installed on srv1/srv2. setup-go@v5 is cached.
     - name: Setup Go (phase1/nat_semiring rung gate prerequisite)
-      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true'
+      # RELEASE §5: release_distribution-only PRs skip fixture rung gate (orthogonal lane).
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true' && needs.affected.outputs.release_distribution_only != 'true'
       uses: actions/setup-go@v5
       with:
         go-version: 'stable'
@@ -350,7 +354,7 @@ jobs:
     # V4_PHASE1_NAT_SEMIRING_STRICT=1 still logs fail-closed rung receipts (#3955 §6); rust rung
     # not rustc-clean on main until emit substrate lands — workflow continue-on-error interim.
     - name: phase1/nat_semiring rungs 0-2 gate (dag rust python go)
-      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true'
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true' && needs.affected.outputs.release_distribution_only != 'true'
       timeout-minutes: 20
       continue-on-error: true
       env:
