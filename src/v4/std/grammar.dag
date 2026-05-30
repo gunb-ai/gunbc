@@ -781,6 +781,25 @@ fn derive_grammar_relation_token_edges_recursive(
 }
 
 
+// Compile-time fixtures with structurally valid rows call this after derive returns Holds.
+fn grammar_relation_row_from_derive_witness(row: Witness<Node>) -> Node {
+  match row {
+    Holds { value: node } => node
+    Violates { diagnostic: d } =>
+      grammar_relation_row_to_node(
+        row: derive_grammar_relation_row(
+          production: grammar_formal_production(lhs: grammar_relation_derive_failed, rhs: []),
+          emitted: grammar_empty_node()
+        ),
+        tokens: grammar_empty_node()
+      )
+  }
+}
+
+
+data grammar_relation_derive_failed: Symbol = grammar_relation_derive_failed
+
+
 // 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind TASKS.md T-11 — derive production+emitted+bindings
 // into the grammar_relation_row Node shape consumed by 06_translate.dag (via target_model fields).
 // 🟢 PR-1.5b — Conj-positional emitted + lhs-exact production recursion (terminal-only fallback for legacy Arrow emitted).
