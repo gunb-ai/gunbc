@@ -8,7 +8,7 @@ import v4.compiler.eval { TestClaimRun }
 import v4.std.algebra { is_empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat, Zero }
+import v4.std.nat { Zero }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
 import v4.test.claim.branch_dispatch.rung_3_4 {
@@ -44,6 +44,7 @@ fn branch_dispatch_rung34_report_has_evidence(report: CorpusEvalReport) -> Bool 
   }
 }
 
+// §4.4 rung-split: identical tally predicate per row until claim-kind filtering lands.
 fn branch_dispatch_rung3_gate(report: CorpusEvalReport) -> Bool {
   if branch_dispatch_rung34_report_has_evidence(report: report) {
     let tally = corpus_report_tally(r: report)

@@ -9,7 +9,7 @@ import v4.compiler.eval { TestClaimRun }
 import v4.std.algebra { is_empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat, Zero }
+import v4.std.nat { Zero }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
 import v4.test.claim.nat_semiring.rung_3_4 {
