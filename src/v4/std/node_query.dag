@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.algebra { Empty, list_snoc_item }
-import v4.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, is_positional, name_occurrences }
+import v4.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
 
 
 data named_child_missing: Symbol = named_child_missing
