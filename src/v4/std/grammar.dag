@@ -755,15 +755,15 @@ fn formal_production_rhs_matches_emitted_conj_conj(
 }
 
 
-// Atom child: try unbound-singleton-terminal then bound-singleton-binding (DESIGN-1 slots only).
-// Conj child: structural RHS/emitted Conj walk via formal_production_rhs_matches_emitted_conj.
+// Atom child: unbound-singleton-terminal or bound-singleton-binding (DESIGN-1).
+// Conj child: structural RHS/emitted Conj walk. Arrow/Cardinality/Instantiation/etc. reject.
 fn formal_production_matches_emitted_child(
   production: FormalProduction,
   productions: List<FormalProduction>,
   child: Node
 ) -> Bool {
-  match node_atom_identity_optional(node: child) {
-    Some { value: atom_id } =>
+  match child.kind {
+    TypeNode { connective: Atom { identity: atom_id } } =>
       match formal_production_rhs_singleton_terminal_identity(production: production) {
         Some { value: terminal_id } => atom_id == terminal_id
         None =>
@@ -772,12 +772,22 @@ fn formal_production_matches_emitted_child(
             None => false
           }
       }
-    None =>
+    TypeNode { connective: Conj } =>
       formal_production_rhs_matches_emitted_conj(
         production: production,
         productions: productions,
         emitted: child
       )
+    _ => false
+  }
+}
+
+
+fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
+  match child.kind {
+    TypeNode { connective: Conj } => true
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
   }
 }
 
