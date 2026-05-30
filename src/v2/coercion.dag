@@ -131,7 +131,7 @@ fn atom_realization_is_nominal_newtype(target: RenderTarget, dag_name: String) -
 }
 
 fn apply_atom_value_ctor_template(template: String, ident: String) -> String {
-  replace(template, "{ident}", ident)
+  replace(template, "\{ident\}", ident)
 }
 
 // Transitional: fail-open (returns dag_name on miss). M5-full should
