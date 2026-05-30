@@ -1,6 +1,6 @@
 // src/v4/std/refinement.dag
 // Scope: value-predicate refinement substrate — base type plus fail-closed validation obligation discharged at a named constructor boundary.
-// Status: T-25-core modeled. Determinism lane PR-3: structural ordered/unordered iteration refinement added (companion to PR-1 src/v4/std/determinism.dag carrier; PR-2 lens enforcement is separate).
+// Status: T-25-core modeled; structural ordered/unordered iteration refinement added (IterationOrdering / IterationClassifier<B> / refine_ordered_iteration).
 // Anchor: https://en.wikipedia.org/wiki/Refinement_type
 
 
@@ -270,8 +270,10 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 // 🟢 coproduct dissolution — TERMINAL at the substrate scope.
 // Structural marker classifying whether a collection carrier's iteration order is
 // reproducible from its identity. Orderedness is a type-level property of the
-// carrier (List / BTreeMap / BTreeSet are StructurallyOrdered; HashSet / HashMap
-// / FiniteSet leak insertion-order and are StructurallyUnordered) — NOT a value
+// carrier (cons-list shapes such as `v4.std.collection.List` and tree-keyed map
+// / set carriers are StructurallyOrdered; hash-bucket carriers such as
+// `HashMap` / `HashSet` leak insertion-order and are StructurallyUnordered) —
+// NOT a value
 // predicate — so the existing `Validation<B>.admits: fn(B) -> Bool` shape cannot
 // express it. The unordered arm carries no payload: hash-iteration is the only
 // iteration-shaped non-determinism source at this substrate scope, and typing the
