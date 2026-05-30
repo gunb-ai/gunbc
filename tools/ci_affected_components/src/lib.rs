@@ -63,7 +63,8 @@ where
             out.release_distribution = true;
         }
     }
-    out.release_distribution_only = ci_release_distribution_only_from_changed_paths(changed.iter().copied());
+    out.release_distribution_only =
+        ci_release_distribution_only_from_changed_paths(changed.iter().copied());
     out
 }
 
@@ -208,7 +209,9 @@ mod tests {
             "src/v4/install/install.dag",
             "src/v4/workflow/ci.dag",
         ]));
-        assert!(!ci_release_distribution_only_from_changed_paths(["docs/README.md"]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "docs/README.md"
+        ]));
     }
 
     #[test]
