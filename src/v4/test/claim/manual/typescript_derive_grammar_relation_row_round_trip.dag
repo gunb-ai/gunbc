@@ -19,8 +19,10 @@ import v4.extdeps.languages.typescript {
 import v4.std.grammar {
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
+  formal_production_for_lhs_exact,
   grammar_relation_row_to_node
 }
+import v4.extdeps.languages.typescript { ts_production_wave2a_type_alias_decl }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode, content_hash }
 import v4.std.verification {
@@ -84,7 +86,7 @@ fn ts_wave2a_task_derive_row_round_trip_holds() -> Bool {
         production: formal_production_for_lhs_exact(
           productions: ts_wave2a_task_formal_productions(),
           lhs: ts_production_wave2a_type_alias_decl,
-          emitted_slot_count: 2
+          child: ts_wave2a_task_type_alias_emitted()
         ),
         productions: ts_wave2a_task_formal_productions(),
         emitted: ts_wave2a_task_type_alias_emitted()

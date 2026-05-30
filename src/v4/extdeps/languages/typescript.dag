@@ -710,7 +710,7 @@ fn ts_relation_token_edges(tokens: List<TsConcreteSyntaxToken>) -> List<Edge> {
 
 // DESIGN-1: emitted Conj positional slots = bound-terminal + nonterminal RHS occurrences only.
 fn ts_wave2a_field_type_string_emitted() -> Node {
-  ts_grammar_atom(id: ts_surface_type_string)
+  ts_inhabitant_atom(id: ts_token_ty_string)
 }
 
 fn ts_wave2a_type_annotation_name_emitted(binding: Symbol) -> Node {
@@ -890,7 +890,7 @@ fn ts_wave2a_task_type_alias_relation_row_node() -> Node {
     production: formal_production_for_lhs_exact(
       productions: ts_wave2a_task_formal_productions(),
       lhs: ts_production_wave2a_type_alias_decl,
-      emitted_slot_count: 2
+      child: ts_wave2a_task_type_alias_emitted()
     ),
     productions: ts_wave2a_task_formal_productions(),
     emitted: ts_wave2a_task_type_alias_emitted()
@@ -1047,6 +1047,39 @@ fn ts_mvp1_target_model() -> TargetModel {
     lex: ts_wave1_lex(),
     binding_spellings: ts_mvp1_binding_spellings(),
     authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
+fn ts_wave2a_task_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: target_model_edge_selection_policy,
+        target: ts_inhabitant_number_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: ts_declared_inhabitants_root()
+      ),
+      ts_named_edge(
+        name: target_model_edge_translation_rules,
+        target: ts_mvp1_translation_rules_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_serialize_source,
+        target: ts_wave2a_task_serialize_source_node()
+      )
+    ]
+  }
+}
+
+fn ts_wave2a_task_target_model() -> TargetModel {
+  TargetModel {
+    bundle: ts_wave2a_task_target_model_node(),
+    lex: ts_wave2a_lex(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    authority_source_text: ts_task_type_alias_source_text
   }
 }
 

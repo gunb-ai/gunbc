@@ -197,6 +197,8 @@ data formal_symbol_terminal_node_projection: Symbol = formal_symbol_terminal_nod
 data formal_symbol_nonterminal_node_projection: Symbol = formal_symbol_nonterminal_node_projection
 data formal_production_lhs_node_projection: Symbol = formal_production_lhs_node_projection
 data formal_production_rhs_node_projection: Symbol = formal_production_rhs_node_projection
+data grammar_relation_production_not_found: Symbol = grammar_relation_production_not_found
+data grammar_relation_emitted_conj_slot_missing: Symbol = grammar_relation_emitted_conj_slot_missing
 
 
 fn grammar_atom(identity: Symbol) -> Node {
@@ -505,27 +507,18 @@ fn conj_positional_children(parent: Node) -> List<Node> {
 }
 
 
-fn formal_symbol_is_emitted_slot(symbol: FormalGrammarSymbol) -> Bool {
-  match symbol {
-    FormalTerminalOccurrence { terminal: _, binding: binding } =>
-      match binding {
-        Present { value: _ } => true
-        Absent => false
-      }
-    FormalNonterminalOccurrence { nonterminal: _ } => true
-  }
-}
-
-
 fn formal_production_emitted_slot_count(production: FormalProduction) -> Int {
   fold_list(
     xs: production.rhs,
     empty: 0,
     cons: fn(count, symbol) {
-      if formal_symbol_is_emitted_slot(symbol: symbol) {
-        count + 1
-      } else {
-        count
+      match symbol {
+        FormalTerminalOccurrence { terminal: _, binding: binding } =>
+          match binding {
+            Present { value: _ } => count + 1
+            Absent => count
+          }
+        FormalNonterminalOccurrence { nonterminal: _ } => count + 1
       }
     }
   )
@@ -616,39 +609,59 @@ fn formal_production_matches_emitted_child(
 }
 
 
+type FormalProductionLookupState
+  = FormalProductionLookupFound { production: FormalProduction }
+  | FormalProductionLookupMissing
+
+
 // Exact lhs + emitted-child shape (PR-1.5b DESIGN-2): arity first, then terminal/binding atom match.
 fn formal_production_for_lhs_exact(
   productions: List<FormalProduction>,
   lhs: Symbol,
   child: Node
-) -> FormalProduction {
+) -> Witness<FormalProduction> {
   let emitted_slot_count = emitted_node_slot_count(emitted: child)
   match fold_list(
     xs: productions,
-    empty: grammar_formal_production(lhs: lhs, rhs: []),
-    cons: fn(found, candidate) {
-      if formal_production_matches_lhs_and_slot_count(
-        production: candidate,
-        lhs: lhs,
-        emitted_slot_count: emitted_slot_count
-      ) &&
-        formal_production_matches_emitted_child(production: candidate, child: child) {
-        candidate
-      } else {
-        found
+    empty: FormalProductionLookupMissing,
+    cons: fn(state, candidate) {
+      match state {
+        FormalProductionLookupFound { production: _ } => state
+        FormalProductionLookupMissing =>
+          if formal_production_matches_lhs_and_slot_count(
+            production: candidate,
+            lhs: lhs,
+            emitted_slot_count: emitted_slot_count
+          ) &&
+            formal_production_matches_emitted_child(production: candidate, child: child) {
+            FormalProductionLookupFound { production: candidate }
+          } else {
+            FormalProductionLookupMissing
+          }
       }
     }
   ) {
-    result: FormalProduction => result
+    FormalProductionLookupFound { production: production } =>
+      Holds { value: production }
+    FormalProductionLookupMissing =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: grammar_relation_production_not_found,
+          at: node_locus(node: child),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
   }
 }
 
 
-type DeriveGrammarRelationTokensAcc {
-  edges: List<Edge>
-  conj_index: Int
-  conj_children: List<Node>
-}
+type DeriveGrammarRelationTokensState
+  = DeriveGrammarRelationTokensOk {
+      edges: List<Edge>
+      conj_index: Int
+      conj_children: List<Node>
+    }
+  | DeriveGrammarRelationTokensFailed { diagnostic: Diagnostic }
 
 
 fn emitted_node_slot_count(emitted: Node) -> Int {
@@ -708,7 +721,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
           let nested = formal_production_for_lhs_exact(
             productions: productions,
             lhs: nonterminal.identity,
-            emitted_slot_count: emitted_node_slot_count(emitted: child)
+            child: child
           )
           DeriveGrammarRelationTokensAcc {
             edges: list_append(
