@@ -1700,6 +1700,10 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
+// Wave-1 readiness receipt: Pass means dag-language lex/grammar/C5 authorities are wired —
+// not that the claim input fixture round-trips (emit→ingest fidelity is W1b / T-36 follow-up).
+// Eval re-derives via dag_round_trip_wave1_authorities_ready (P2); does not trust ready atoms
+// embedded in claim input.
 fn run_test_claim_round_trip_verdict(at: Node) -> Verdict<Node> {
   if dag_round_trip_wave1_authorities_ready() {
     Pass
