@@ -26,9 +26,11 @@ Each row's `Condition` column quotes MW-D8 **verbatim** from PR #3983 `docs/plan
 
 ## §2. Per-condition adjudication notes
 
-### §2.1 C1 — R1 leaf-model verdict (PROVEN)
+### §2.1 C1 — Step 4 R1 leaf-model verdict (PROVEN)
 
-**Evidence:** PR #3972 merged 2026-05-30 18:24Z produces the first R1 leaf-model verdict. Lane adjudication: condition asks for a *verdict*, and the merged PR carries the verdict surface. `ship_disposition: PROVEN`. **Falsification check:** none requested in MW-D8 framing; if a verdict-shape audit later surfaces that the verdict is structurally-only-present-but-not-executed, this row reopens.
+**MW-D8 verbatim:** "Step 4 R1 produces an actual leaf-model verdict (`rust.dag` R1 → `rustc` → `Verdict<R1>`)."
+
+**Evidence:** PR #3972 merged 2026-05-30 18:24Z produces the first R1 leaf-model verdict via the `rust.dag` R1 → `rustc` → `Verdict<R1>` chain. The MW-D8 phrasing "**actual** leaf-model verdict" rules out structural-only presence — the merged PR carries the executed verdict surface. `ship_disposition: PROVEN`. **Watch condition:** if a follow-on audit finds the verdict is structurally-only-present-but-not-executed, this row reopens.
 
 ### §2.2 C2 — SG-7 recursion dissolved OR replaced by modeled authority (GAP / SCAFFOLD_PRESENT)
 
@@ -53,9 +55,11 @@ Each row's `Condition` column quotes MW-D8 **verbatim** from PR #3983 `docs/plan
 - If `Upsert<T>` later lands as full usable substrate primitive (first-arm satisfaction), this row stays `PROVEN` but the §2.3 note updates to cite the first-arm receipt as the now-stronger evidence.
 - Activation debt on the skeleton (no consumer wired) triggers the anti-shelfware policy under PR #3949 §4 separately; it does NOT reopen this MW-D8 row, because MW-D8 C3 is explicitly disjunctive and the OR-arm receipt remains intact.
 
-### §2.4 C4 — `ci_selection_receipt_shadow` generatable (GAP / NO_ARTIFACT_FOUND)
+### §2.4 C4 — `ci_selection_receipt_shadow` generatable for at least one fixture (GAP / NO_ARTIFACT_FOUND)
 
-**Evidence:** none currently. `smart-stag-871` queued to author post-SG-7 closure (i.e. depends on C2 flipping to PROVEN first). Lane adjudication: row stays `GAP / NO_ARTIFACT_FOUND` until a generator artifact exists. When a PR lands claiming to generate the shadow, this lane adjudicates whether the generator actually runs (engineering_state: `EXECUTION_NOT_WIRED` if claim-only; `PROVEN` only if a fixture-fired generation receipt accompanies it).
+**MW-D8 verbatim:** "`ci_selection_receipt_shadow` exists and can be generated for at least one PR/change fixture (shadow mode, not active gating yet)."
+
+**Evidence:** none currently. `smart-stag-871` queued to author post-SG-7 closure (depends on C2 flipping). Lane adjudication: row stays `GAP / NO_ARTIFACT_FOUND` until a generator artifact exists. When a PR lands claiming generatability, the lane adjudicates whether the generator actually runs against at least one PR/change fixture (engineering_state: `EXECUTION_NOT_WIRED` if claim-only; `PROVEN` only if a fixture-fired generation receipt accompanies it). The MW-D8 "shadow mode, not active gating yet" caveat means active gating is **not** required for `PROVEN` — generation against one fixture is the bar.
 
 **Dependency note:** C4's revisit-by is set 72h out because C2 is its prerequisite. If C2 slips, C4's window extends pari-passu via this lane's per-PR revisit-by update — not a separate operator extension.
 
