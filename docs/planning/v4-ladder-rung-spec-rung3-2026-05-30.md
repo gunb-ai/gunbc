@@ -73,7 +73,9 @@ Two stages mirroring the landed substrate's own W1 / W1b split:
 | Input not well-formed (`eval_rejected_invalid_node`) | `phase1/nat_semiring/rung3/dag_roundtrip_input_not_well_formed` |
 | Precondition gate (`eval_rejected_roundtrip_precondition`) — composite | `phase1/nat_semiring/rung3/dag_roundtrip_wave1_not_ready` |
 
-**Row aggregate (rung 3):** `PASS` requires **both** stages = `PASS`. While W1b is unlanded, the row aggregate is `FAIL` and the headline blocking receipt is `dag_roundtrip_fidelity_w1b_unlanded` (per the "lowest unresolved upstream" rule in companion spec §2.4) — which is the **honest** rendering: the ladder rung-3 standard ("round-trip preserved") is not yet proven on the fixture, even when W1 readiness flips to `PASS`.
+**Row aggregate (rung 3):** `PASS` requires **both** stages = `PASS`. While W1b is unlanded, the row aggregate is `FAIL` and the headline blocking receipt is `phase1/<fixture>/rung3/dag_roundtrip_fidelity_w1b_unlanded` (per the "lowest unresolved upstream" rule in companion spec §2.4) — which is the **honest** rendering: the ladder rung-3 standard ("round-trip preserved") is not yet proven on the fixture, even when W1 readiness flips to `PASS`.
+
+**Cell render (single `dag` column on the rung 3 row):** the cell reports the **W1 stage status** alone — `PASS` when `R3-dag-roundtrip-wave1-ready` ran and passed, `FAIL` when it ran and failed, `SKIP` when it did not run. The **W1b stage** does **not** get its own cell on this row; it surfaces only as the row's blocking receipt (`dag_roundtrip_fidelity_w1b_unlanded`) while it remains unlanded, and as a row-aggregate gate once it lands. This keeps the rung 3 row shape identical to the companion spec's one-cell-per-target convention while preserving §1's W1/W1b honesty: the executable W1 result stays visible in the matrix, and the row aggregate stays `FAIL` until W1b closes. Forbidden: rendering the W1 cell as `SKIP` while W1 actually executed and passed (companion §2.4 — `SKIP` only when the predicate did not run).
 
 ### 2.3 Prerequisite chain
 
@@ -125,8 +127,8 @@ Extend the matrix with one more line per fixture id:
 
 | Pattern | File (line range, `origin/main` @ `0ace5f8b7`) | Use for |
 | ------- | --------------------------------------------- | ------- |
-| R3 eval path (W1) | `src/v4/compiler/05_eval.dag:1723-1742` (`run_test_claim_round_trip_verdict`) | Sole `Pass` constructor for R3 dag row in W1; runtime variant at `:1745-1768` |
-| R3 input admission | `src/v4/compiler/05_eval.dag:1707-1716` (`eval_round_trip_claim_input_for_verdict`) | Inner well-formed check |
+| R3 eval path (W1) | `src/v4/compiler/05_eval.dag:1721-1739` (`run_test_claim_round_trip_verdict`) | Sole `Pass` constructor for R3 dag row in W1; runtime variant at `:1741-1763` |
+| R3 input admission | `src/v4/compiler/05_eval.dag:1705-1717` (`eval_round_trip_claim_input_for_verdict`) | Inner well-formed check |
 | R3 wave-1 readiness gate | `src/v4/extdeps/languages/dag.dag:3168+` (`dag_round_trip_wave1_authorities_ready`) | The pass-condition (b); re-derived from `dag.dag` per P2 |
 | Wave-1 axis ready helpers | `src/v4/extdeps/languages/dag.dag:3132,3150,3160` (`dag_round_trip_lex_ready`, `dag_round_trip_grammar_ready`, `dag_round_trip_normalization_declared`) | Inner-fault disambiguation per §2.2 blocking-receipt table |
 | Aux fixture | `src/v4/test/fixture/dag_round_trip_mvp1.dag` | Subject of the only executable W1 R3 row today |
@@ -179,9 +181,10 @@ Companion spec §4 applies verbatim. Rung 3 adds:
 
 Primary success statement must be fixture×rung×stage shaped, e.g.:
 
-- `phase1/nat_semiring: rung3 FAIL (dag=SKIP upstream_blocked:claim_nat_semiring_module_roundtrip_not_authored)` — current baseline.
-- `phase1-aux/dag_round_trip_mvp1: rung3 PASS (dag=PASS — W1 wave-1 authorities ready)` — W1 aux row.
-- `phase1/nat_semiring: rung3 FAIL (dag=PASS W1 wave-1; W1b emit→ingest comparator unlanded)` — post claim-migration but pre-W1b.
+- `phase1/nat_semiring: rung3 FAIL (dag=SKIP) — blocking_receipt: upstream_blocked:claim_nat_semiring_module_roundtrip_not_authored` — current baseline (claim not yet bound to ladder fixture; W1 did not execute).
+- `phase1-aux/dag_round_trip_mvp1: rung3 FAIL (dag=PASS) — W1 wave-1 authorities ready; blocking_receipt: phase1-aux/dag_round_trip_mvp1/rung3/dag_roundtrip_fidelity_w1b_unlanded` — W1 aux row: cell `PASS` reflects executed W1, row aggregate stays `FAIL` on unlanded W1b. **Forbidden:** `rung3 PASS` headline on this fixture state — W1 alone does not close rung 3.
+- `phase1/nat_semiring: rung3 FAIL (dag=PASS) — W1 wave-1 ready; blocking_receipt: phase1/nat_semiring/rung3/dag_roundtrip_fidelity_w1b_unlanded` — post claim-migration but pre-W1b on the ladder fixture.
+- `phase1/nat_semiring: rung3 PASS (dag=PASS) — W1 wave-1 ready; W1b emit→ingest fidelity proven` — full close (post-W1b landing).
 
 ### 4.3 Manager dispatch gate (rung 3)
 
@@ -201,8 +204,8 @@ Verified 2026-05-30 with `git show origin/main:<path>`.
 
 | Spec claim | Spot-check | Result |
 | ---------- | ---------- | ------ |
-| R3 W1 verdict path landed | `src/v4/compiler/05_eval.dag:1723-1742` (`run_test_claim_round_trip_verdict`) | **CONFIRMED** — Pass arm requires both well-formed admission AND `dag_round_trip_wave1_authorities_ready` |
-| R3 runtime verdict variant landed | `src/v4/compiler/05_eval.dag:1745-1768` (`run_test_claim_round_trip_verdict_runtime`) | **CONFIRMED** |
+| R3 W1 verdict path landed | `src/v4/compiler/05_eval.dag:1721-1739` (`run_test_claim_round_trip_verdict`) | **CONFIRMED** — Pass arm requires both well-formed admission AND `dag_round_trip_wave1_authorities_ready` |
+| R3 runtime verdict variant landed | `src/v4/compiler/05_eval.dag:1741-1763` (`run_test_claim_round_trip_verdict_runtime`) | **CONFIRMED** |
 | Wave-1 authorities readiness gate | `src/v4/extdeps/languages/dag.dag:3168+` (`dag_round_trip_wave1_authorities_ready`) | **CONFIRMED** — conjunction of lex / grammar / C5 trivia ready |
 | C5 trivia DeclaredNormalized | `src/v4/extdeps/languages/dag.dag:3160-3166` (`dag_round_trip_normalization_declared`) | **CONFIRMED** — whitespace + line-comment + block-comment |
 | W1 wave-1 readiness scope (not full fidelity) | `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag:3` ("emit→ingest fidelity W1b") + `:80` (claim label "wave-1 readiness") | **CONFIRMED** — explicit W1 / W1b split in landed claim |
@@ -219,8 +222,8 @@ Verified 2026-05-30 with `git show origin/main:<path>`.
 
 **Ratification-time expectation:**
 
-- `phase1/nat_semiring` rung 3 = **`FAIL`** with `dag=SKIP` (`upstream_blocked:claim_nat_semiring_module_roundtrip_not_authored`) — no `RoundTripClaim` row binds to the ladder fixture module on `main`. Substrate is ready; claim-authoring follow-up is gated on module-loader (joint spec §5).
-- `phase1-aux/dag_round_trip_mvp1` rung 3 W1 = **`PASS`** expected (substrate gate satisfiable when `dag_round_trip_wave1_authorities_ready` returns `true` on current main); W1b = **`SKIP`** with `upstream_blocked:w1b_emit_ingest_comparator_unlanded`.
+- `phase1/nat_semiring` rung 3 = **`FAIL`** with `dag=SKIP` — no `RoundTripClaim` row binds to the ladder fixture module on `main`, so `R3-dag-roundtrip-wave1-ready` did not execute. Headline blocking receipt: `upstream_blocked:claim_nat_semiring_module_roundtrip_not_authored`. Substrate is ready; claim-authoring follow-up is gated on module-loader (joint spec §5).
+- `phase1-aux/dag_round_trip_mvp1` rung 3 = **`FAIL`** with `dag=PASS` — `R3-dag-roundtrip-wave1-ready` **executes today** via `claim_dag_ingest_round_trip` and is expected to pass (`dag_round_trip_wave1_authorities_ready` returns `true` on current main); W1b is unlanded, so the row aggregate stays `FAIL` with headline blocking receipt `phase1-aux/dag_round_trip_mvp1/rung3/dag_roundtrip_fidelity_w1b_unlanded`.
 
 Expected matrix render (ladder fixture; aux fixture rendered separately per §2.4):
 
@@ -230,11 +233,11 @@ fixture=phase1/nat_semiring
 blocking_receipt: upstream_blocked:claim_nat_semiring_module_roundtrip_not_authored
 
 fixture=phase1-aux/dag_round_trip_mvp1
-  rung3: FAIL  (dag=SKIP)
-blocking_receipt: upstream_blocked:w1b_emit_ingest_comparator_unlanded
+  rung3: FAIL  (dag=PASS)
+blocking_receipt: phase1-aux/dag_round_trip_mvp1/rung3/dag_roundtrip_fidelity_w1b_unlanded
 ```
 
-(Row aggregate **`FAIL`** when any cell is not `PASS`, including all-`SKIP` rows, per companion §2.4. **Substrate appendix (non-headline):** when the first `RoundTripClaim` row binds to `nat_semiring` AND `dag_round_trip_wave1_authorities_ready` returns `true`, the W1 stage flips `PASS`; the row aggregate still stays `FAIL` until W1b emit→ingest comparator lands — that's the honest ladder standard, not a regression.)
+(Row aggregate **`FAIL`** because W1b is unlanded — the rung-3 standard requires both stages per §2.2. The aux fixture cell is **`PASS`**, not `SKIP`, because `R3-dag-roundtrip-wave1-ready` **executed and passed** (per companion §2.4 — `SKIP` is reserved for predicates that did not run). The ladder fixture cell is `SKIP` because no `RoundTripClaim` row binds to `nat_semiring` yet, so the predicate did not execute. **Substrate appendix (non-headline):** once the first `RoundTripClaim` row binds to `nat_semiring`, the ladder fixture's `dag` cell flips from `SKIP` to `PASS` on a successful W1 run; the row aggregate still stays `FAIL` until W1b emit→ingest comparator lands — that's the honest ladder standard, not a regression.)
 
 **Executable receipt anchor:** the W1 baseline lands with the first PR that binds a `RoundTripClaim` row to `phase1/nat_semiring` AND extends `scripts/v4-phase1-nat-semiring-rung-gate.sh` with the rung-3 row. This spec records the **expected** baseline; the executed baseline supersedes on first run.
 
