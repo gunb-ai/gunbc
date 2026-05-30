@@ -64,9 +64,9 @@ Lane adjudication: closure invariant (PR #3949 §1) honored — executable recei
 
 **MW-D8 verbatim:** "`ci_selection_receipt_shadow` exists and can be generated for at least one PR/change fixture (shadow mode, not active gating yet)."
 
-**Evidence:** none currently. `smart-stag-871` queued to author post-SG-7 closure (depends on C2 flipping). Lane adjudication: row stays `GAP / NO_ARTIFACT_FOUND` until a generator artifact exists. When a PR lands claiming generatability, the lane adjudicates whether the generator actually runs against at least one PR/change fixture (engineering_state: `EXECUTION_NOT_WIRED` if claim-only; `PROVEN` only if a fixture-fired generation receipt accompanies it). The MW-D8 "shadow mode, not active gating yet" caveat means active gating is **not** required for `PROVEN` — generation against one fixture is the bar.
+**Evidence:** none currently. `smart-stag-871` next-up post-#4014 — the C2 prerequisite is now **closed** (see §2.2 and the `docs/audit/v4-mw-d8-c2-falsification-receipt-2026-05-30.md` receipt). Lane adjudication: row stays `GAP / NO_ARTIFACT_FOUND` until a generator artifact exists. When a PR lands claiming generatability, the lane adjudicates whether the generator actually runs against at least one PR/change fixture (engineering_state: `EXECUTION_NOT_WIRED` if claim-only; `PROVEN` only if a fixture-fired generation receipt accompanies it). The MW-D8 "shadow mode, not active gating yet" caveat means active gating is **not** required for `PROVEN` — generation against one fixture is the bar.
 
-**Dependency note:** C4's revisit-by is set 72h out because C2 is its prerequisite. If C2 slips, C4's window extends pari-passu via this lane's per-PR revisit-by update — not a separate operator extension.
+**Revisit-by note:** C4's revisit-by tightened to **24h** (2026-06-01 12:00Z) now that the C2 prerequisite is closed. No remaining structural blocker; only the authoring window remains. If `smart-stag-871` doesn't open the generator PR within that window, the next ledger update names the slip explicitly.
 
 ### §2.5 C5 — R2a/R2b/R3-external/R3-internal ready-to-run OR explicitly-blocked (PROVEN via mixed-arm)
 
