@@ -29,6 +29,7 @@ import v4.lens.testgen {
   testgen_scheduled_language_behavior_generators,
   Generator
 }
+import v4.std.refinement { refined_base }
 import v4.std.nat {
   NatAlgebraLawObligation,
   nat_declared_algebra_law_obligations
@@ -402,7 +403,7 @@ fn refinement_preservation_subject_eq(
   a: RefinementPreservationSubject,
   b: RefinementPreservationSubject
 ) -> Bool {
-  a.refined.base == b.refined.base && node_list_eq(a: a.original, b: b.original)
+  refined_base(r: a.refined) == refined_base(r: b.refined) && node_list_eq(a: a.original, b: b.original)
 }
 
 

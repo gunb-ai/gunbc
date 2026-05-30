@@ -75,6 +75,7 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
         || path == "scripts/v4-m1-rust-emit-probe.sh"
         || path.starts_with("scripts/v4-mvp1")
         || path.starts_with("scripts/v4-m1")
+        || path.starts_with("scripts/v4-phase1-nat-semiring")
         || path.starts_with("scripts/v4-testclaim-")
         || path.starts_with("dsl/std/")
         || path == "Cargo.toml"
