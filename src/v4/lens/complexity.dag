@@ -136,19 +136,27 @@ fn unknown_complexity() -> ComplexityBound {
   UnknownComplexity { diagnostic: complexity_projection_diagnostic() }
 }
 
-fn single_complexity_variable(size_var: SizeVariable) -> Witness<ComplexityVariables> {
-  complexity_variables_from_refine(xs: [size_var])
+fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
+  complexity_variables_from_witness(
+    witness: complexity_variables_from_refine(xs: [size_var])
+  )
 }
 
-fn empty_complexity_variables() -> Witness<ComplexityVariables> {
-  complexity_variables_from_refine(xs: Empty)
+fn empty_complexity_variables() -> ComplexityVariables {
+  complexity_variables_from_witness(
+    witness: complexity_variables_from_refine(xs: Empty)
+  )
 }
 
 fn composite_complexity_variables(
   lhs: ComplexityVariables,
   rhs: ComplexityVariables
-) -> Witness<ComplexityVariables> {
-  complexity_variables_from_refine(xs: concat(refined_base(r: lhs), refined_base(r: rhs)))
+) -> ComplexityVariables {
+  complexity_variables_from_witness(
+    witness: complexity_variables_from_refine(
+      xs: concat(refined_base(r: lhs), refined_base(r: rhs))
+    )
+  )
 }
 
 fn sized_complexity(
@@ -159,22 +167,20 @@ fn sized_complexity(
 }
 
 fn linear_complexity(size_var: SizeVariable) -> ComplexityBound {
-  match single_complexity_variable(size_var: size_var) {
-    Holds { value: variables } =>
-      sized_complexity(class: SizedLinearClass, variables: variables)
-    Violates { diagnostic: d } => unknown_complexity_with_diagnostic(diagnostic: d)
-  }
+  sized_complexity(
+    class: SizedLinearClass,
+    variables: single_complexity_variable(size_var: size_var)
+  )
 }
 
 fn polynomial_complexity(
   size_var: SizeVariable,
   degree: PolynomialDegree
 ) -> ComplexityBound {
-  match single_complexity_variable(size_var: size_var) {
-    Holds { value: variables } =>
-      sized_complexity(class: SizedPolynomialClass { degree: degree }, variables: variables)
-    Violates { diagnostic: d } => unknown_complexity_with_diagnostic(diagnostic: d)
-  }
+  sized_complexity(
+    class: SizedPolynomialClass { degree: degree },
+    variables: single_complexity_variable(size_var: size_var)
+  )
 }
 
 fn multidimensional_polynomial_complexity(
@@ -196,7 +202,7 @@ fn combine_complexity_variables(
     Holds { value: lv } =>
       match rhs {
         Holds { value: rv } =>
-          composite_complexity_variables(lhs: lv, rhs: rv)
+          Holds { value: composite_complexity_variables(lhs: lv, rhs: rv) }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -206,19 +212,19 @@ fn combine_complexity_variables(
 fn complexity_variables_from_cost(cost: SymbolicCost) -> Witness<ComplexityVariables> {
   match cost {
     ConstantCost { value: _ } =>
-      empty_complexity_variables()
+      Holds { value: empty_complexity_variables() }
     LogCost { variable: v } =>
-      single_complexity_variable(size_var: v)
+      Holds { value: single_complexity_variable(size_var: v) }
     LinearCost { variable: v } =>
-      single_complexity_variable(size_var: v)
+      Holds { value: single_complexity_variable(size_var: v) }
     PolynomialCost { variable: v, degree: _ } =>
-      single_complexity_variable(size_var: v)
+      Holds { value: single_complexity_variable(size_var: v) }
     PolyLogCost { variable: v, exponent: _ } =>
-      single_complexity_variable(size_var: v)
+      Holds { value: single_complexity_variable(size_var: v) }
     ExponentialCost { variable: v, base: _ } =>
-      single_complexity_variable(size_var: v)
+      Holds { value: single_complexity_variable(size_var: v) }
     FactorialCost { variable: v } =>
-      single_complexity_variable(size_var: v)
+      Holds { value: single_complexity_variable(size_var: v) }
     SumCost { lhs: lhs, rhs: rhs } =>
       combine_complexity_variables(
         lhs: complexity_variables_from_cost(cost: lhs),
