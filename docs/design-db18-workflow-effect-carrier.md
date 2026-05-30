@@ -184,6 +184,18 @@ pub struct BindNode {
 `Dag` accessors pattern-match both behaviors:
 
 ```rust
+// file-scoped helper in `src/v3/compiler/src/dag.rs`
+fn upsert_lane2_workflow_on_node(
+    slot: &mut Option<Box<WorkflowEffect>>,
+    workflow: WorkflowEffect,
+) -> bool {
+    match slot.as_deref() {
+        None => { *slot = Some(Box::new(workflow)); true }
+        Some(existing) if *existing == workflow => true,
+        Some(_) => false,  // conflict — no silent overwrite
+    }
+}
+
 impl Dag {
     pub fn try_register_lane2_workflow_effect(
         &mut self,
@@ -191,8 +203,8 @@ impl Dag {
         workflow: WorkflowEffect,
     ) -> bool {
         match self.nodes.get_mut(root.index()) {
-            Some(Behavior::Value(v)) => { v.lane2_workflow = Some(Box::new(workflow)); true }
-            Some(Behavior::Bind(b))  => { b.lane2_workflow = Some(Box::new(workflow)); true }
+            Some(Behavior::Value(v)) => upsert_lane2_workflow_on_node(&mut v.lane2_workflow, workflow),
+            Some(Behavior::Bind(b))  => upsert_lane2_workflow_on_node(&mut b.lane2_workflow, workflow),
             _ => false,  // other Behavior kinds cannot host a WorkflowEffect
         }
     }
