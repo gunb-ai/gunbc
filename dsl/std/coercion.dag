@@ -43,26 +43,6 @@ type TypeCheckpoint {
   literal_suffix: String?   // Rust String: ".to_string()" (&str → String ownership)
 }
 
-// TargetAtomTypeDeclKind: how a kernel-ambient atom is declared in the target language.
-type TargetAtomTypeDeclKind
-  = TransparentAlias
-  | NominalNewtype
-
-// TargetAtomRealization: single authority for kernel-ambient atom type + value lowering.
-// Per-language rows live in extdeps/languages/<lang>/types.dag. Both type-emit and
-// value-emit consume the same row (SG-1); do not duplicate Symbol/Bool/Char in
-// TypeCheckpoint when a row exists here.
-type TargetAtomRealization {
-  dag_name: String
-  type_form: String
-  storage_type: String
-  type_decl_kind: TargetAtomTypeDeclKind
-  value_ctor_template: String?
-  default_expr: String?
-  is_copy: Bool?
-  literal_suffix: String?
-}
-
 // InhabitantDecl: "this target type inhabits this .dag algebra."
 //
 // When no TypeCheckpoint matches, the compiler resolves through the type's
