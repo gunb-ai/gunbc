@@ -541,42 +541,66 @@ fn formal_production_matches_lhs_and_slot_count(
 }
 
 
+type RhsSingletonTerminalLookup
+  = RhsSingletonTerminalNotSeen
+  | RhsSingletonTerminalFound { identity: Symbol }
+  | RhsSingletonTerminalAmbiguous
+
+
 fn formal_production_rhs_singleton_terminal_identity(production: FormalProduction) -> Symbol? {
-  match production.rhs {
-    Cons { head: symbol, tail: t } =>
-      match t {
-        Empty =>
+  match fold_list(
+    xs: production.rhs,
+    empty: RhsSingletonTerminalNotSeen,
+    cons: fn(state, symbol) {
+      match state {
+        RhsSingletonTerminalAmbiguous => state
+        RhsSingletonTerminalFound { identity: _ } => RhsSingletonTerminalAmbiguous
+        RhsSingletonTerminalNotSeen =>
           match symbol {
             FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
               match binding {
-                Absent => Some { value: terminal.identity }
-                Present { value: _ } => None
+                Absent => RhsSingletonTerminalFound { identity: terminal.identity }
+                Present { value: _ } => RhsSingletonTerminalAmbiguous
               }
-            FormalNonterminalOccurrence { nonterminal: _ } => None
+            FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonTerminalAmbiguous
           }
-        _ => None
       }
-    Empty => None
+    }
+  ) {
+    RhsSingletonTerminalFound { identity: id } => Some { value: id }
+    _ => None
   }
 }
 
 
+type RhsSingletonBindingLookup
+  = RhsSingletonBindingNotSeen
+  | RhsSingletonBindingFound { binding: Symbol }
+  | RhsSingletonBindingAmbiguous
+
+
 fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symbol? {
-  match production.rhs {
-    Cons { head: symbol, tail: t } =>
-      match t {
-        Empty =>
+  match fold_list(
+    xs: production.rhs,
+    empty: RhsSingletonBindingNotSeen,
+    cons: fn(state, symbol) {
+      match state {
+        RhsSingletonBindingAmbiguous => state
+        RhsSingletonBindingFound { binding: _ } => RhsSingletonBindingAmbiguous
+        RhsSingletonBindingNotSeen =>
           match symbol {
             FormalTerminalOccurrence { terminal: _, binding: binding } =>
               match binding {
-                Present { value: b } => Some { value: b }
-                Absent => None
+                Present { value: b } => RhsSingletonBindingFound { binding: b }
+                Absent => RhsSingletonBindingAmbiguous
               }
-            FormalNonterminalOccurrence { nonterminal: _ } => None
+            FormalNonterminalOccurrence { nonterminal: _ } => RhsSingletonBindingAmbiguous
           }
-        _ => None
       }
-    Empty => None
+    }
+  ) {
+    RhsSingletonBindingFound { binding: b } => Some { value: b }
+    _ => None
   }
 }
 
