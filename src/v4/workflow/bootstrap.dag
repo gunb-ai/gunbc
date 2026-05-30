@@ -8,7 +8,10 @@ module v4.workflow.bootstrap
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node }
 import v4.std.algebra {
   bag_eq,
-  list_append
+  contains,
+  fold_list,
+  list_snoc_item,
+  unique
 }
 import v4.compiler.target_carriers { LanguageModel }
 import v4.std.target_model {
@@ -178,6 +181,28 @@ fn bootstrap_construct_eq(left: BootstrapConstruct, right: BootstrapConstruct) -
   left.identity == right.identity
 }
 
+// §4: construct inventory is a finite set of identities — dedupe on accumulation, not only at bag_eq gate.
+fn bootstrap_construct_snoc_dedup(
+  acc: List<BootstrapConstruct>,
+  item: BootstrapConstruct
+) -> List<BootstrapConstruct> {
+  match contains(xs: acc, item: item, eq: bootstrap_construct_eq) {
+    true => acc
+    false => list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn bootstrap_construct_list_append_unique(
+  left: List<BootstrapConstruct>,
+  right: List<BootstrapConstruct>
+) -> List<BootstrapConstruct> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, item) { bootstrap_construct_snoc_dedup(acc: acc, item: item) }
+  )
+}
+
 fn seed_capability_language_model() -> LanguageModel {
   Node {
     kind: TypeNode { connective: Atom { identity: bootstrap_seed_language_model_identity } },
@@ -242,7 +267,7 @@ fn bootstrap_construct_fold_step(
   child: BootstrapConstructFoldState
 ) -> BootstrapConstructFoldState {
   BootstrapConstructFoldState {
-    constructs: list_append(left: acc.constructs, right: child.constructs)
+    constructs: bootstrap_construct_list_append_unique(left: acc.constructs, right: child.constructs)
   }
 }
 
@@ -285,7 +310,7 @@ fn bootstrap_target_model_bundle_construct_fold_step(
     Positional => []
   }
   BootstrapConstructFoldState {
-    constructs: list_append(left: acc.constructs, right: facet_constructs)
+    constructs: bootstrap_construct_list_append_unique(left: acc.constructs, right: facet_constructs)
   }
 }
 
@@ -320,13 +345,17 @@ fn bootstrap_snapshot_construct_inventory(snapshot: BootstrapSourceSnapshot) -> 
 fn bootstrap_footprint_constructs_from_projection_inputs(
   inputs: BootstrapProjectionInputs
 ) -> List<BootstrapConstruct> {
-  list_append(
-    left: list_append(
+  bootstrap_construct_list_append_unique(
+    left: bootstrap_construct_list_append_unique(
       left: bootstrap_snapshot_construct_inventory(snapshot: inputs.snapshot),
       right: bootstrap_target_model_construct_inventory(target: inputs.target_model)
     ),
     right: bootstrap_runtime_model_construct_inventory(runtime: inputs.runtime_model)
   )
+}
+
+fn bootstrap_construct_inventory_unique(constructs: List<BootstrapConstruct>) -> Bool {
+  unique(xs: constructs, eq: bootstrap_construct_eq)
 }
 
 fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
@@ -540,12 +569,14 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
 
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
   let closure_hash = content_hash(n: bootstrap_projection_closure_node(inputs: inputs))
-  if bootstrap_projection_inputs_well_formed(inputs: inputs) {
+  let constructs = bootstrap_footprint_constructs_from_projection_inputs(inputs: inputs)
+  if bootstrap_projection_inputs_well_formed(inputs: inputs)
+       && bootstrap_construct_inventory_unique(constructs: constructs) {
     Holds {
       value: BootstrapFootprint {
         inputs: inputs,
         closure_hash: closure_hash,
-        constructs: bootstrap_footprint_constructs_from_projection_inputs(inputs: inputs)
+        constructs: constructs
       }
     }
   } else {
@@ -559,7 +590,8 @@ fn bootstrap_seed_capability_matches_footprint(
 ) -> Witness<BootstrapCapabilityExact> {
   match footprint {
     Holds { value: fp } =>
-      if bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
+      if bootstrap_construct_inventory_unique(constructs: capability.constructs)
+           && bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
         Holds { value: BootstrapCapabilityExact { footprint: fp, capability: capability } }
       } else {
         Violates { diagnostic: bs_diagnostic(reason: bootstrap_capability_not_minimal) }
