@@ -10,7 +10,6 @@ import v4.std.collection { List }
 import v4.std.nat { Nat }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
-import v4.std.diagnostic { Accepted }
 import v4.std.verdict { Verdict, verdict_combine }
 
 // Layer A boundary: OBLIGA rows reference model facts structurally (Node projection of declared bindings).
@@ -49,15 +48,15 @@ type LeafModelFixture<C> {
   claim: C
   artifact: TargetArtifact
   invocation: TargetInvocation
-  expected_verdict: Verdict<Symbol>
+  expected_verdict: Verdict<Symbol, Symbol>
   falsification_artifact: TargetArtifact
-  expected_falsification_verdict: Verdict<Symbol>
+  expected_falsification_verdict: Verdict<Symbol, Symbol>
 }
 
 type LeafModelClaimVerdictRow {
   claim_id: Symbol
-  verdict: Verdict<Symbol>
-  falsification_verdict: Verdict<Symbol>
+  verdict: Verdict<Symbol, Symbol>
+  falsification_verdict: Verdict<Symbol, Symbol>
 }
 
 type LeafModelVerificationTotals {
@@ -118,25 +117,19 @@ type LeafModelFixturePair {
 
 type LeafModelVerificationRunReceipt {
   claim_id: LeafModelClaimId
-  happy_verdict: Verdict<TargetCompileVerdict>
-  falsification_verdict: Verdict<TargetCompileVerdict>
+  happy_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
+  falsification_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
 }
 
-fn leaf_model_verification_claim_passes(receipt: LeafModelVerificationRunReceipt) -> Verdict<LeafModelClaimId> {
-  match verdict_combine(a: receipt.happy_verdict, b: receipt.falsification_verdict) {
-    Pass => Pass
-    Fail { actual: _ } => Fail { actual: Accepted { value: receipt.claim_id, diagnostics: None } }
-    Deferred { actual: _, diagnostic: diag } =>
-      Deferred {
-        actual: Accepted { value: receipt.claim_id, diagnostics: None },
-        diagnostic: diag
-      }
-  }
+fn leaf_model_verification_claim_passes(
+  receipt: LeafModelVerificationRunReceipt
+) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
+  verdict_combine(a: receipt.happy_verdict, b: receipt.falsification_verdict)
 }
 
 fn leaf_model_verification_combine_runs(
   runs: List<LeafModelVerificationRunReceipt>
-) -> Verdict<LeafModelClaimId> {
+) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
   fold(
     runs,
     init: Pass,
