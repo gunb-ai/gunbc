@@ -7,7 +7,7 @@ module v4.std.target_realization
 
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.collection { List, Optional, optional_absent }
-import v4.std.logic { Bool, bool_node }
+import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, content_hash }
 import v4.std.target_model { TargetModel }
 import v4.std.text { Char }
