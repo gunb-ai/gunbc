@@ -367,9 +367,38 @@ The questionnaire integration retroactively introduces one decision and modifies
 
 ## §10. Worked-example root-cause analyses (operator-driven, DFS discipline — not error-count chasing)
 
-**Why this section exists.** The §7 sequencing risks reverting to error-count-driven dispatch ("fix SG-1 → fix SG-2 → ..."). Past pattern: error-count reduction has led to spot-fixes that calcified poor modeling decisions into irreversible templates. **Anti-pattern protection: before dispatching ANY SG-class lane, walk the modeling DFS together — symptom → identification → root cause hypothesis → DFS through `std/` → systemic fix → dispatch shape that protects against the spot-fix trap.**
+**Why this section exists.** The §7 sequencing risks reverting to error-count-driven dispatch ("fix SG-1 → fix SG-2 → ..."). Past pattern: error-count reduction has led to spot-fixes that calcified poor modeling decisions into irreversible templates. **SG classes are evidence, not dispatch units.** The dispatch unit is the deepest modeling fact that removes the class without adding a new parallel authority.
 
-This section is collaboratively developed with the operator. SG-1 is the first worked example. SG-2 and SG-5/SG-6 follow once the structure is ratified.
+### §10.0 The mandatory DFS Root-Cause Worksheet
+
+**Mechanical dispatch rule (operator-ratified 2026-05-30):**
+
+> **No SG class may be assigned to a worker until its DFS worksheet identifies the single-authority fact to add or consume.**
+
+Every SG-class lane fills out this worksheet BEFORE the work item is dispatched. The worksheet is reviewable; the dispatch brief is downstream of it.
+
+**Worksheet template:**
+
+```text
+SG class:                                  // e.g. SG-1
+Representative emitted failure:            // verbatim from catalog
+Immediate local patch:                     // the tempting count-reduction fix
+Why that patch is forbidden or accepted:   // forbidden reason or accepted rationale
+DFS path:
+  std/ authority:                          // where the relevant substrate type lives
+  extdeps/language authority:              // where (if anywhere) the target realization lives
+  compiler stage consuming it:             // 04_infer, 05_emit, lens/, etc.
+  existing scaffold/dissolution notes:     // any gated 🟡 notes pointing at modeling debt
+Deepest unsound boundary:                  // where the missing fact actually lives
+Systemic fix:                              // the single-authority carrier to add or consume
+Non-goals:                                 // what NOT to do (often: spot fix, name-keyed list)
+Falsification probe:                       // how to verify the fix is systemic, not a patch
+Metric allowed only as secondary:          // error count is evidence, not goal
+```
+
+**Two load-bearing fields.** `Immediate local patch` and `Why that patch is forbidden` force the worker to name the tempting count-reduction fix and explicitly reject it when it would create a new parallel authority.
+
+SG-1, SG-2, and SG-5/SG-6 are worked through below using this template.
 
 ### §10.1 SG-1 — Symbol / Atom value emission (2978 errors)
 
