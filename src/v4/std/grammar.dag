@@ -11,7 +11,6 @@ import v4.std.collection {
   Optional,
   Present,
   Set,
-  Some,
   list_nth,
   optional_absent,
   optional_present
@@ -550,7 +549,7 @@ fn formal_production_rhs_singleton_terminal_identity(production: FormalProductio
           match symbol {
             FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
               match binding {
-                Absent => Some { value: terminal.identity }
+                Absent => Present { value: terminal.identity }
                 Present { value: _ } => None
               }
             FormalNonterminalOccurrence { nonterminal: _ } => None
@@ -570,7 +569,7 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
           match symbol {
             FormalTerminalOccurrence { terminal: _, binding: binding } =>
               match binding {
-                Present { value: b } => Some { value: b }
+                Present { value: b } => Present { value: b }
                 Absent => None
               }
             FormalNonterminalOccurrence { nonterminal: _ } => None
@@ -584,7 +583,7 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
 
 fn node_atom_identity_optional(node: Node) -> Symbol? {
   match node.kind {
-    TypeNode { connective: Atom { identity: id } } => Some { value: id }
+    TypeNode { connective: Atom { identity: id } } => Present { value: id }
     _ => None
   }
 }
@@ -595,12 +594,12 @@ fn formal_production_matches_emitted_child(
   child: Node
 ) -> Bool {
   match node_atom_identity_optional(node: child) {
-    Some { value: atom_id } =>
+    Present { value: atom_id } =>
       match formal_production_rhs_singleton_terminal_identity(production: production) {
-        Some { value: terminal_id } => atom_id == terminal_id
+        Present { value: terminal_id } => atom_id == terminal_id
         None =>
           match formal_production_rhs_singleton_binding(production: production) {
-            Some { value: binding } => atom_id == binding
+            Present { value: binding } => atom_id == binding
             None => false
           }
       }
