@@ -1,8 +1,28 @@
-# Phase 1 fixture ratification: `nat_semiring` × rungs 0–2
+# v4 ladder rung specs — Phase 1 (`nat_semiring` × rungs 0–2)
 
-> **Status:** MANAGER RATIFIED — Ladder/Fixture Manager (`keen-crab-361`), 2026-05-30.
-> **Authority:** PR #3938 §11.1 lane 2 (Ladder / Fixture). Parent planning: `docs/planning/v4-correctness-ladder-2026-05-30.md` (PR #3938, `session/nimble-dove-733`).
-> **Scope:** Ratify Phase 1 fixture; define acceptance predicates for rungs 0–2 only. Rungs 3–9 are out of scope until Compiler Spine + Runtime/TestClaim managers define executable runner receipts (planning doc §11.4 item 4).
+> **Status:** MANAGER DRAFT FOR REVIEW — Ladder/Fixture Manager (`keen-crab-361`), 2026-05-30.
+> **Authority:** PR #3938 §11.1 lane 2. **9-rung ontology:** PR #3938 §6 (`docs/planning/v4-correctness-ladder-2026-05-30.md` on `session/nimble-dove-733`).
+> **PR:** https://github.com/gunb-ai/gunbc/pull/3946 (`session/keen-crab-361`).
+> **Scope:** Ratify Phase 1 fixture; acceptance predicates for rungs 0–2 only. Rungs 3–9 blocked on Compiler Spine + Runtime/TestClaim interface definitions (§11.4 item 4).
+
+---
+
+## 0. Nine-rung ladder (reference only)
+
+| Rung | Property | Phase in §7 |
+| ---- | -------- | ----------- |
+| 0 | Parses in target | 1 |
+| 1 | Type-checks in Rust | 1 |
+| 2 | Compiles in committed multi-target smoke set | 1 |
+| 3 | Round-trip preserved | 2 |
+| 4 | Emit runs; output matches `.dag` eval | 2 |
+| 5 | Cross-target equivalence | 3 |
+| 6 | Algebraic laws preserved post-emit | 3 |
+| 7 | Self-emit fixpoint | 5+ |
+| 8 | TestClaim corpus executes | 5+ |
+| 9 | Lenses gate PRs | 5+ |
+
+This file operationalizes **rungs 0–2** on the Phase 1 fixture only. Do not infer predicates for rungs 3–9 here.
 
 ---
 
@@ -119,18 +139,44 @@ Optional appendix (not headline): global rustc error count, top error classes, l
 
 ### 2.5 TestClaim wiring target (worker implementation)
 
-Follow-on worker lands substrate at:
+**Output path (net-new — no prior rung-gate module exists):**
 
 - `src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag`
+
+**Structural templates (compose, do not copy blindly):**
+
+| Pattern | File | Use for |
+| ------- | ---- | ------- |
+| Fixture import + claim binding | `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag:57-62` | `import v4.test.claim.algebra_laws.nat_semiring { … }` |
+| `CompilesClaim` row | `src/v4/test/claim/self_host/claim_runner_compiles.dag:35-41` | Per-target compile claims |
+| Fixture `List<TestClaim>` roster | `src/v4/test/claim/workflow/affected_set_ci_runner.dag:99-103` | Named roster for gate selection |
+| Law-row `EqualsClaim` | `src/v4/test/claim/algebra_laws/nat_semiring.dag:112-151` | Fixture claim exports to import |
 
 Minimum claim shapes (map to existing `v4.std.verification` variants):
 
 | Rung | Suggested claim variant | Notes |
 | ---- | ----------------------- | ----- |
-| 0–1 | `CompilesClaim` per target slice | `input` = fixture module subject node; `expected_value` = same node until eval path supplies runtime value. |
-| 2 | `CompilesClaim` × 3 targets OR one integration row with `TestClassification { tier: Tier1, layer: Integration }` | Must name `rust` / `python` / `go` in label or anchor metadata until target axis is a first-class field. |
+| 0–1 | `CompilesClaim` per target slice | `input` = fixture law-subject or module anchor node; label must encode `fixture=phase1/nat_semiring` + `rung` + `target`. |
+| 2 | `CompilesClaim` × 3 targets OR one `Integration` row | Name `rust` / `python` / `go` in label until target axis is first-class. |
 
-Execution may remain `Deferred` behind T-38 **only** for claims that do not yet have runner wiring; the **CI gate** for Phase 1 must still invoke the toolchain checks directly until `TestClaimRun` verdicts are PROVEN. Substrate-only `CompilesClaim` rows without toolchain invocation do not satisfy §2.1–§2.3.
+Execution may remain `Deferred` behind T-38 **only** for substrate claims; the **CI gate** must still invoke toolchain checks directly until `TestClaimRun` verdicts are PROVEN (`05_eval.dag:1732` still defers `RoundTripClaim`).
+
+**CI wiring (where the matrix lands):**
+
+| Layer | File | Role |
+| ----- | ---- | ---- |
+| Authority (jobs/gates) | `src/v4/workflow/ci.dag` | Add a **new** `CiJob` + `CiGate` for `phase1/nat_semiring` rungs 0–2 — do not repurpose `M1RustEmitProbeCommand` (corpus-wide, diagnostic) or `TestClaimCorpusEvalCommand` (full corpus T-38). |
+| GHA projection | `dsl/gunbc/ci_github_actions_workflow.dag` | New step/job projecting the modeled command. |
+| Interim host script (if needed) | **New** `scripts/v4-phase1-nat-semiring-rung-gate.sh` | Fixture-scoped emit+toolchain; pattern from `scripts/v4-m1-rust-emit-probe.sh` but **single module path**, not full `src/v4`. |
+
+**Worker brief triple (required on your PR):**
+
+```text
+fixture=phase1/nat_semiring
+rung=0|1|2
+modeling_gap=none for pure wiring; SG-1|SG-2 only with Modeling DFS worksheet approval
+predicate=<R0-*|R1-*|R2-*> expected to flip
+```
 
 ---
 
@@ -184,9 +230,24 @@ Do not dispatch “Fix SG-*” or “M1-class-fix” workers without a brief tha
 3. `predicate id` from §2.1–§2.3 expected to flip
 4. Modeling DFS worksheet approval when touching `TargetAtomRealization` / `TargetTypeExpressionProjection` (planning doc §11.4)
 
+**Operator sign-off gate (2026-05-30 PM brief):** implementation workers **HOLD** until PR #3938 §8 decisions D1–D7 are operator-ratified. This spec is review input; wiring PRs may be drafted but must not merge ahead of sign-off.
+
 ---
 
-## 5. Current baseline (as of ratification)
+## 5. Spot-check receipts (planning doc vs `main` HEAD)
+
+| Planning claim | Spot-check | Result |
+| ---------------- | ---------- | ------ |
+| `nat_semiring.dag` in corpus with algebra laws | `src/v4/test/claim/algebra_laws/nat_semiring.dag:1-167` | **CONFIRMED** — 6 `EqualsClaim` + 1 `DiagnosticClaim`; T-14, eval deferred comment at :3-4 |
+| Round-trip eval deferred (rung 3) | `src/v4/compiler/05_eval.dag:1732-1733` | **CONFIRMED** — `RoundTripClaim` → `Deferred` |
+| TestClaim corpus runner gated T-38 | `src/v4/test/claim/workflow/testclaim_corpus_runner.dag:2-5` | **CONFIRMED** — wedge; replaces `scripts/v4-testclaim-corpus-gate.sh` on landing |
+| CI: corpus rust probe, not fixture matrix | `src/v4/workflow/ci.dag:255-257` `M1RustEmitProbeCommand`; `ci.dag:5` T-38 dissolution note | **CONFIRMED** — no `phase1/nat_semiring` job yet |
+| No Python/Go compile gate on v4 CI | `src/v4/workflow/ci.dag` — no `python`/`go` toolchain symbols | **CONFIRMED** — rung 2 gap matches planning §3 |
+| Laws tested on model only, not post-emit (rung 6) | `nat_semiring.dag` uses `EqualsClaim` on Node subjects, not emitted code | **CONFIRMED** — aligns planning §9.3 row |
+
+---
+
+## 6. Current baseline (as of ratification)
 
 | Rung | Expected baseline on `main` | Notes |
 | ---- | --------------------------- | ----- |
@@ -195,28 +256,14 @@ Do not dispatch “Fix SG-*” or “M1-class-fix” workers without a brief tha
 | 1 | **FAIL** (`GAP`) | Corpus blocked; fixture-specific path unproven. |
 | 2 | **FAIL** (`GAP`) | CI invokes Rust only; no Python/Go fixture gate. |
 
-This baseline is planning truth until a worker lands §2.5 with executable receipts. Updating the matrix to PASS requires evidence, not declaration.
-
----
-
-## 6. Related artifacts
-
-| Artifact | Role |
-| -------- | ---- |
-| `docs/planning/v4-correctness-ladder-2026-05-30.md` | 9-rung ontology, §7 sequencing (PR #3938) |
-| `src/v4/test/claim/algebra_laws/nat_semiring.dag` | Ratified fixture corpus |
-| `src/v4/std/nat.dag` | Algebra law symbols imported by fixture |
-| `docs/audit/v4-close-interrogation-validation-2026-05-30.md` | Probe-level disposition; complements ladder gates |
-| `docs/audit/v4-rustc-error-catalog-2026-05-29.md` | Diagnostic appendix only |
-
 ---
 
 ## 7. Manager sign-off
 
 | Decision | Disposition |
 | -------- | ----------- |
-| Phase 1 fixture = `nat_semiring` | **RATIFIED** |
-| Rungs 0–2 acceptance predicates (§2) | **RATIFIED** |
-| Phase 1 target set = dag + rust + python + go | **RATIFIED** |
-| No rustc-clean headline rule (§4) | **RATIFIED** |
-| Worker may wire `rung_0_to_2_three_targets.dag` + CI | **UNBLOCKED** (pending Modeling DFS approval for any SG-1/SG-2 substrate touches) |
+| Phase 1 fixture = `nat_semiring` | **RATIFIED** (pending operator §8) |
+| Rungs 0–2 acceptance predicates (§2) | **RATIFIED** (pending operator §8) |
+| Phase 1 target set = dag + rust + python + go | **RATIFIED** (pending operator §8) |
+| No rustc-clean headline rule (§4) | **RATIFIED** (pending operator §8) |
+| Worker wiring PR | **HOLD until operator §8 sign-off** |
