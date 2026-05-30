@@ -76,7 +76,6 @@ No new slot on `TestClaimRun` itself; the carrier change lives entirely in `std/
 data FalsificationReceipt<S, A> = FalsificationReceipt {
   subject:    TestClaimEvalSubject<S>,
   expected:   A,
-  actual:     A,
   divergence: ValueDiff<A>,
   evidence:   ExecutionEvidence,
 }
