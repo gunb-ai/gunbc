@@ -96,6 +96,7 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_type_expression_projection,
   target_type_expr_atom_emitted,
+  target_type_expr_arrow_emitted,
   target_type_expr_field_atom,
   target_type_expr_field_arrow,
   target_type_expr_field_cardinality,
@@ -109,6 +110,7 @@ import v4.std.target_model {
   target_type_expr_field_variant_separator,
   target_type_expr_field_surface,
   target_type_expr_generic_apply_emitted,
+  target_type_expr_record_emitted,
   target_type_expr_positional_child_at,
   target_type_expr_positional_children
 }

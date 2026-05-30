@@ -9,6 +9,11 @@ import v4.compiler.translate {
   target_serialize_source_from_model
 }
 import v4.extdeps.languages.rust {
+  rust_sg2_arrow_source_type_node,
+  rust_sg2_arrow_ternary_source_type_node,
+  rust_sg2_arrow_xy_emitted,
+  rust_sg2_conj_source_type_node,
+  rust_sg2_conj_xy_emitted,
   rust_sg2_instantiation_source_type_node,
   rust_sg2_rc_foobar_xy_emitted,
   rust_sg2_type_expr_target_model,
@@ -34,6 +39,8 @@ import v4.std.verification {
 data sg2_pass_sym: Symbol = sg2_pass_sym
 data sg2_fail_sym: Symbol = sg2_fail_sym
 data sg2_expected_type_text: String = "Rc<FooBar<X, Y>>"
+data sg2_expected_arrow_text: String = "(X) -> Y"
+data sg2_expected_conj_text: String = " { X, Y }"
 
 fn sg2_pass_node() -> Node {
   Node {
@@ -72,18 +79,66 @@ fn sg2_projection_matches_golden() -> Bool {
     content_hash(n: rust_sg2_rc_foobar_xy_emitted())
 }
 
-fn sg2_serialized_type_text() -> String {
+fn sg2_project_arrow_emitted() -> Node {
+  match project_type_expression_node(
+    node: rust_sg2_arrow_source_type_node(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => emitted
+    Rejected { diagnostics: _ } => sg2_fail_node()
+  }
+}
+
+fn sg2_project_conj_emitted() -> Node {
+  match project_type_expression_node(
+    node: rust_sg2_conj_source_type_node(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => emitted
+    Rejected { diagnostics: _ } => sg2_fail_node()
+  }
+}
+
+fn sg2_arrow_ternary_projection_rejects() -> Bool {
+  match project_type_expression_node(
+    node: rust_sg2_arrow_ternary_source_type_node(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn sg2_serialize_accepts(emitted: Node) -> Bool {
   match target_serialize_source_from_model(
     target: rust_sg2_type_expr_target_model(),
-    emitted: rust_sg2_rc_foobar_xy_emitted()
+    emitted: emitted
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_serialized_text(emitted: Node) -> String {
+  match target_serialize_source_from_model(
+    target: rust_sg2_type_expr_target_model(),
+    emitted: emitted
   ) {
     Accepted { value: source, diagnostics: _ } => source
-    Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => sg2_fail_sym
   }
 }
 
 fn sg2_serialize_matches_expected() -> Bool {
-  sg2_serialized_type_text() == sg2_expected_type_text
+  sg2_serialized_text(emitted: rust_sg2_rc_foobar_xy_emitted()) == sg2_expected_type_text
+}
+
+fn sg2_arrow_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: rust_sg2_arrow_xy_emitted()) == sg2_expected_arrow_text
+}
+
+fn sg2_conj_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == sg2_expected_conj_text
 }
 
 // §10.6 bidirectional readability: ingest/emission share the same delimiter token-class row.
@@ -122,6 +177,54 @@ data claim_sg2_bidirectional_delimiters: TestClaim = CompilesClaim {
   label: "manual/sg2: instantiation_form delimiters are bidirectional lex token classes (§10.6)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_instantiation_delimiters_bidirectional()),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_arrow_projection_structural: TestClaim = EqualsClaim {
+  label: "manual/sg2: Arrow<A,B> projects to golden arrow emitted node",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg2_project_arrow_emitted(),
+  rhs: rust_sg2_arrow_xy_emitted(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_conj_projection_structural: TestClaim = EqualsClaim {
+  label: "manual/sg2: Conj product projects to golden record emitted node",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg2_project_conj_emitted(),
+  rhs: rust_sg2_conj_xy_emitted(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_arrow_serialize: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialized arrow is (X) -> Y",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(ok: sg2_arrow_serialize_matches_expected()),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_conj_serialize: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialized conj record is { X, Y }",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(ok: sg2_conj_serialize_matches_expected()),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_arrow_ternary_rejects: TestClaim = CompilesClaim {
+  label: "manual/sg2: Arrow with extra positional child rejects (fail-closed arity)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(ok: sg2_arrow_ternary_projection_rejects()),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_serialize_rejects_malformed: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialize rejects malformed emitted node structurally",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(ok: !sg2_serialize_accepts(emitted: sg2_fail_node())),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
