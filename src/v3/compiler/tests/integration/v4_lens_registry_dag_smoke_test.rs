@@ -27,6 +27,9 @@ use v3_compiler::tokenize_for_test;
 
 const REGISTRY_DAG: &str = include_str!("../../../../v4/lens/registry.dag");
 const REGISTRY_PATH: &str = "src/v4/lens/registry.dag";
+const STRUCTURAL_SIMILARITY_DAG: &str =
+    include_str!("../../../../v4/lens/structural_similarity.dag");
+const STRUCTURAL_SIMILARITY_PATH: &str = "src/v4/lens/structural_similarity.dag";
 const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
 const CI_PATH: &str = "src/v4/workflow/ci.dag";
 const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
@@ -369,6 +372,24 @@ fn v4_lens_registry_t23_closed_lens_ids_present() {
             "{REGISTRY_PATH}: LensIdV0 arm `{id}` must appear in closed registry source"
         );
     }
+}
+
+#[test]
+fn v4_lens_structural_similarity_dag_parses() {
+    let module = parse_module(STRUCTURAL_SIMILARITY_DAG, STRUCTURAL_SIMILARITY_PATH);
+    assert_eq!(
+        module_path(&module),
+        vec!["v4", "lens", "structural_similarity"],
+        "{STRUCTURAL_SIMILARITY_PATH}: module path must match v4.lens.structural_similarity"
+    );
+    assert!(
+        surface_declares_fn(&module, "structural_similarity_fact"),
+        "{STRUCTURAL_SIMILARITY_PATH}: producer fn must be declared"
+    );
+    assert!(
+        surface_declares_data(&module, "structural_similarity_empty_type_shape"),
+        "{STRUCTURAL_SIMILARITY_PATH}: TypeShape.variant_set witness row must be declared"
+    );
 }
 
 #[test]

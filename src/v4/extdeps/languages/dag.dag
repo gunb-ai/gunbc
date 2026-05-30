@@ -1977,7 +1977,7 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
 
 // Binary operator set matches the lex token declarations above; both live in
 // this file, so enumeration is the current canonical authority. Gate on a
-// future operator-precedence table substrate when/if that lands.
+// future precedence table substrate when/if that lands.
 fn dag_grammar_multiplicative_op_choice() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: dag_token_star),

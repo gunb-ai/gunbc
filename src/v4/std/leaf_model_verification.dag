@@ -4,6 +4,7 @@
 // Authority: leaf model owns FACTS (stable fact_id in extdeps); this module owns OBLIGA shape.
 // Co-authored with Modeling DFS (proud-pike-680) — consume Verdict<Subj,T> from verdict.dag (PR #3961).
 // R1 rustc slice: concrete fixture-pair + compile verdict carriers (PR #3972).
+// R1 python slice: concrete fixture-pair + exec verdict carriers (W2.6 / PR #3938 §11.4).
 
 module v4.std.leaf_model_verification
 
@@ -82,14 +83,23 @@ type TargetCompileVerdict
   | TargetCompileRejected { diagnostic_code: Symbol }
 
 data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_type_mismatch
+data target_diagnostic_e0423_expected_value_found_type: Symbol = target_diagnostic_e0423_expected_value_found_type
+data target_diagnostic_e0599_method_not_found: Symbol = target_diagnostic_e0599_method_not_found
+data target_diagnostic_python_name_error_undefined_name: Symbol = target_diagnostic_python_name_error_undefined_name
 
 type LeafModelClaimId = Symbol
 
 data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId = leaf_model_claim_rust_r1_i32_surface_spelling
+data leaf_model_claim_python_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_python_r1_int_surface_spelling
+data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_model_claim_rust_r2a_i32_algebra_operations
+data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
+data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
+data leaf_model_claim_rust_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_rust_r3_external_symbol_projection
 
 type LeafModelRustCrateType = Symbol
 
 data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = leaf_model_rust_crate_type_lib
+data leaf_model_rust_crate_type_bin: LeafModelRustCrateType = leaf_model_rust_crate_type_bin
 
 // 🟡 gated — feature:leaf-model-r1-rustc-bridge — bind PR #3972 Phase 1 R1 —
 // dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
@@ -114,6 +124,27 @@ type LeafModelFixturePair {
   happy: LeafModelRustFixture
   expected_happy_verdict: TargetCompileVerdict
   falsification: LeafModelFalsificationCase
+}
+
+// 🟡 gated — feature:leaf-model-r1-python-bridge — bind W2.6 / PR #3938 §11.4 —
+// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
+// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands.
+type LeafModelPythonFixture {
+  source: String
+}
+
+type LeafModelPythonFalsificationCase {
+  fixture: LeafModelPythonFixture
+  expected_verdict: TargetCompileVerdict
+}
+
+type LeafModelPythonFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  encoding_spelling_fact: Symbol
+  happy: LeafModelPythonFixture
+  expected_happy_verdict: TargetCompileVerdict
+  falsification: LeafModelPythonFalsificationCase
 }
 
 type LeafModelVerificationRunReceipt {

@@ -1,5 +1,5 @@
 // src/v4/test/claim/manual/multi_target_emit_verification_gate.dag
-// Scope: operator-directive 2026-05-29 — receipt that arbitrary user-program
+// Scope: directive 2026-05-29 — receipt that arbitrary user-program
 // emission is gated by each target's E-5 `post_emit_verifier`, not only the M1
 // self-host rust-emit probe.
 //

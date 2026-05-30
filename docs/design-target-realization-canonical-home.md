@@ -48,7 +48,7 @@ type TargetAtomRealization {
 type TargetTypeExpressionProjection {
   target_model: TargetModel
   atom_form: TargetAtomTypeShape
-  conj_form: TargetRecordTypeShape
+  conj_form: TargetGenericApply
   disj_form: TargetSumTypeShape
   arrow_form: TargetFunctionTypeShape
   cardinality_form: TargetGenericApply
@@ -66,11 +66,10 @@ type TargetCollectionRealization {
 }
 
 // Supporting target-side vocabulary — co-located; one authority.
-type TargetTypeExpression { ... }
+type TargetTypeExpression { kind: TargetTypeExprKind, node: Node }
 type TargetValueTemplate { ... }
 type TargetConstructorTemplate { ... }
 type TargetAtomTypeShape { ... }
-type TargetRecordTypeShape { ... }
 type TargetSumTypeShape { ... }
 type TargetFunctionTypeShape { ... }
 type TargetGenericApply { ... }
