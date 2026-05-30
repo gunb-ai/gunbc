@@ -72,7 +72,7 @@ The gate applies to the **committed module** at the path above, not to the full 
 
 ## 2. Rung gate shape (acceptance predicates)
 
-Each rung is a **binary** gate on the ratified fixture. A rung **passes** only when every predicate in its row holds; otherwise it **fails** with a named blocking receipt (§2.4).
+Each rung is a **binary** gate on the ratified fixture. A rung **passes** only when every predicate cell in its row is `PASS` (§2.4); any `FAIL` or `SKIP` cell means the rung row is **`FAIL`** aggregate with a named blocking receipt. Matrix vocabulary is **`PASS` | `FAIL` | `SKIP` per cell only** — no fourth aggregate state (e.g. no `PARTIAL`).
 
 Phase 1 **target set** (explicit subset of project-committed targets):
 
@@ -292,13 +292,13 @@ blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed
 **Interpretation (matrix contract — post openai-pro review):** Script @ `27054dd31` used a **collapsed** rung-0 row (`rust/python/go=FAIL`) while `blocking_receipt` named **R1** — that violates §2.4 `SKIP` vs `FAIL` rules. Under this spec, the honest §2.4 rendering is:
 
 ```text
-  rung0: PARTIAL  (dag=PASS rust=SKIP python=SKIP go=SKIP)
-  rung1: FAIL     (rust=FAIL)
-  rung2: SKIP     (rust=SKIP python=SKIP go=SKIP)
+  rung0: FAIL  (dag=PASS rust=SKIP python=SKIP go=SKIP)
+  rung1: FAIL  (rust=FAIL)
+  rung2: FAIL  (rust=SKIP python=SKIP go=SKIP)
 blocking_receipt: phase1/nat_semiring/rung1/rust_typecheck_failed
 ```
 
-(`SKIP` = emit artifact present but parse not independently proven, or upstream blocked by R1 failure before per-target parse receipts ran.) Worker follow-up: align `scripts/v4-phase1-nat-semiring-rung-gate.sh` to §2.1 parse-only + §2.4 cell semantics — **not** a blocker on landing this planning authority.
+(Rung rows are **`FAIL`** when any cell is not `PASS`. `SKIP` = emit artifact unavailable or upstream blocked — not a parse failure. Script @ `27054dd31` mislabeled emit cells as `FAIL`; honest rendering uses `SKIP` per §2.4.) Worker follow-up: align `scripts/v4-phase1-nat-semiring-rung-gate.sh` to §2.1 parse-only + §2.4 cell semantics — **not** a blocker on landing this planning authority.
 
 Red CI under `STRICT=1` remains **expected substrate gap signaling**. Operator may merge #3955 when review criteria are met.
 
