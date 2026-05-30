@@ -251,3 +251,33 @@ data claim_sg2_serialize_rejects_malformed: TestClaim = CompilesClaim {
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+data claim_sg2_serialize_rejects_atom_extra_positional: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialize rejects kind-tagged atom emitted with extra positional child",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_positional_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_serialize_rejects_record_extra_positional: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialize rejects kind-tagged record emitted with extra positional child",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_record_extra_positional_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_sg2_serialize_rejects_sum_extra_positional: TestClaim = CompilesClaim {
+  label: "manual/sg2: serialize rejects kind-tagged sum emitted with extra positional child",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg2_claim_input(
+    ok: !sg2_serialize_accepts(emitted: rust_sg2_malformed_sum_extra_positional_emitted())
+  ),
+  expected_value: sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
