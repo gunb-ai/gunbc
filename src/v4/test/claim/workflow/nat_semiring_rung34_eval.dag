@@ -32,18 +32,31 @@ fn run_nat_semiring_rung34_eval() -> CorpusEvalReport {
 }
 
 
+// W2: empty roster must not read as closed (fail-closed until W3 populates rows).
+fn nat_semiring_rung34_report_has_evidence(report: CorpusEvalReport) -> Bool {
+  !is_empty(xs: report.entries)
+}
+
 // W3 backlog (§4.4): bodies are intentionally identical while the roster is empty.
 // Once nat_semiring_rung34_runtime_value_rows is populated, each gate must discriminate
 // disjoint claim subsets — filter by claim-kind here (RoundTrip vs emit-vs-eval) or accept
 // pre-filtered CorpusEvalReport slices from W3.
 fn nat_semiring_rung3_gate(report: CorpusEvalReport) -> Bool {
-  let tally = corpus_report_tally(r: report)
-  tally.fail == Zero && tally.deferred == Zero
+  if nat_semiring_rung34_report_has_evidence(report: report) {
+    let tally = corpus_report_tally(r: report)
+    tally.fail == Zero && tally.deferred == Zero
+  } else {
+    false
+  }
 }
 
 fn nat_semiring_rung4_gate(report: CorpusEvalReport) -> Bool {
-  let tally = corpus_report_tally(r: report)
-  tally.fail == Zero && tally.deferred == Zero
+  if nat_semiring_rung34_report_has_evidence(report: report) {
+    let tally = corpus_report_tally(r: report)
+    tally.fail == Zero && tally.deferred == Zero
+  } else {
+    false
+  }
 }
 
 fn nat_semiring_rungs_34_closed(report: CorpusEvalReport) -> Bool {

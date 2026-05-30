@@ -24,6 +24,8 @@
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/compiler/emit_host.dag");
 const HOST_RUN_DAG: &str = include_str!("../../../../v4/std/host_run.dag");
 const FALSIFICATION_DAG: &str = include_str!("../../../../v4/std/test_claim_falsification.dag");
+const NAT_SEMIRING_RUNG34_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung34_eval.dag");
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
@@ -91,10 +93,25 @@ fn v4_emit_host_fail_closed_transport_and_logical_run_gate() {
         "match host_receipt.logical_run",
         "claim_input_root: Node",
         "expected_eval_root: Node",
+        "actual: outcome_rejected(d: ds)",
     ] {
         assert!(
             EMIT_HOST_DAG.contains(needle),
             "emit_host.dag missing {needle}"
+        );
+    }
+}
+
+#[test]
+fn v4_nat_semiring_rung_gate_rejects_empty_roster() {
+    for needle in [
+        "fn nat_semiring_rung34_report_has_evidence",
+        "!is_empty(xs: report.entries)",
+        "nat_semiring_rung34_runtime_value_rows",
+    ] {
+        assert!(
+            NAT_SEMIRING_RUNG34_EVAL_DAG.contains(needle),
+            "nat_semiring_rung34_eval.dag missing {needle}"
         );
     }
 }
