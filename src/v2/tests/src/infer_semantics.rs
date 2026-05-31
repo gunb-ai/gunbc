@@ -553,7 +553,7 @@ fn structural_method_first_on_list_returns_optional_element() {
 fn structural_method_count_on_list_returns_int() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        &list_string,
+        list_string,
         "count".to_string(),
         empty_source_indices(),
     )
@@ -571,7 +571,7 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
     for method_name in &expected_methods {
         assert!(
             v2_compiler_infer_lookup::lookup_structural_method(
-                &int_node,
+                int_node.clone(),
                 method_name.to_string(),
                 empty_source_indices(),
             )
@@ -587,7 +587,7 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
 fn structural_method_compare_on_int_returns_ordering() {
     let int_node = leaf_node("Int".to_string());
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        &int_node,
+        int_node,
         "compare".to_string(),
         empty_source_indices(),
     )
@@ -622,7 +622,7 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
     for method_name in &expected_methods {
         assert!(
             v2_compiler_infer_lookup::lookup_structural_method(
-                &m,
+                m.clone(),
                 method_name.to_string(),
                 empty_source_indices(),
             )
@@ -641,7 +641,7 @@ fn structural_method_get_on_map_returns_optional_value() {
         leaf_node("Int".to_string()),
     );
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        &m,
+        m.clone(),
         "get".to_string(),
         empty_source_indices(),
     )
@@ -669,7 +669,7 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         leaf_node("Int".to_string()),
     );
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        &m,
+        m,
         "keys".to_string(),
         empty_source_indices(),
     )
@@ -697,7 +697,7 @@ fn structural_method_lookup_returns_none_for_unknown_type() {
     let custom = leaf_node("MyType".to_string());
     assert!(
         v2_compiler_infer_lookup::lookup_structural_method(
-            &custom,
+            custom,
             "add".to_string(),
             empty_source_indices()
         )
