@@ -39,4 +39,4 @@ fn loop_linear_bound_rung8_zero_deferred(report: CorpusEvalReport) -> Bool {
 }
 
 
-data witness_loop_linear_bound_rung8_zero_deferred_closed: Bool = loop_linear_bound_rung8_zero_deferred(report: run_loop_linear_bound_rung8_eval())
+data witness_loop_linear_bound_rung8_zero_deferred_closed: Bool = loop_linear_bound_rung8_gate(report: run_loop_linear_bound_rung8_eval())

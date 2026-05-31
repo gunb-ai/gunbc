@@ -573,7 +573,11 @@ fn v4_loop_linear_bound_rung8_dag_tokenizes_and_parses_full_fixture_roster() {
             &eval_module,
             "witness_loop_linear_bound_rung8_zero_deferred_closed"
         ),
-        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: authoring-time zero-deferred witness (data binding)"
+        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: authoring-time closed witness (data binding)"
+    );
+    assert!(
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains("loop_linear_bound_rung8_gate(report:"),
+        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: closed witness must bind full gate (non-empty roster + zero deferred)"
     );
     assert!(
         LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG
