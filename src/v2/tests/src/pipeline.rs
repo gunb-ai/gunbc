@@ -73,7 +73,6 @@ fn full_dsl_compiles() {
             let result = v2_compiler::v2_compiler_parse::parse(
                 v2_compiler::v2_compiler_tokenize::tokenize(
                     content,
-    |
                     path.to_string_lossy().to_string(),
                 ),
                 Rc::new(HashMap::new()),
@@ -2662,7 +2661,7 @@ fn diag_parse_node_decl_env() {
 
     // Call exactly what the SCC analysis calls
     let edges = collect_parser_progress_edges(
-        &"parse_node_decl".to_string(),
+        "\1".to_string(),
         &pnd.body,
         &state_param,
         &scc_name_set,

@@ -23,7 +23,7 @@ fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineInde
 
 // Test helpers: replicate deleted L1 constructor functions for test convenience.
 fn leaf_node(name: String) -> Rc<Node> {
-    leaf_node_with_span(&name, &make_span(0, 0))
+    leaf_node_with_span(name, make_span(0, 0))
 }
 
 fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
@@ -186,7 +186,7 @@ fn list_int_index_returns_optional_element_type() {
         leaf_node("Int".to_string()),
         &zero_span(),
         "test".to_string(),
-        &empty_source_indices(),
+        empty_source_indices(),
     );
 
     assert_eq!(
@@ -209,7 +209,7 @@ fn malformed_map_index_returns_compiler_error_type() {
         leaf_node("String".to_string()),
         &zero_span(),
         "test".to_string(),
-        &empty_source_indices(),
+        empty_source_indices(),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -223,8 +223,8 @@ fn invalid_slice_returns_compiler_error_type() {
         leaf_node("Int".to_string()),
         leaf_node("Int".to_string()),
         &zero_span(),
-        &"test".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -241,7 +241,7 @@ fn valid_map_index_preserves_optional_value_type() {
         leaf_node("String".to_string()),
         &zero_span(),
         "test".to_string(),
-        &empty_source_indices(),
+        empty_source_indices(),
     );
 
     assert!(result.diagnostics.is_empty());
@@ -269,9 +269,9 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
     )));
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
-        &"Some".to_string(),
+        "\1".to_string(),
         "test".to_string(),
-        &empty_source_indices(),
+        empty_source_indices(),
         0,
     );
 
@@ -293,9 +293,9 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
     let subject = v2_compiler_infer_patterns::pattern_subject_from_node(&error_type());
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
-        &"Some".to_string(),
+        "\1".to_string(),
         "test".to_string(),
-        &empty_source_indices(),
+        empty_source_indices(),
         0,
     );
 
@@ -309,14 +309,13 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
 #[test]
 fn optional_pattern_lookup_still_resolves_some_variant() {
     let subject = v2_compiler_infer_patterns::pattern_subject_from_node(
-        &with_optional_cardinality(leaf_node("String".to_string())),
-     |
+        with_optional_cardinality(leaf_node("String".to_string())),
     );
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
-        &"Some".to_string(),
+        "\1".to_string(),
         "test".to_string(),
-        &empty_source_indices(),
+        empty_source_indices(),
         0,
     );
 
@@ -333,8 +332,7 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
 #[test]
 fn optional_match_exhaustiveness_reports_missing_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
-        &with_optional_cardinality(leaf_node("String".to_string())),
-     |
+        with_optional_cardinality(leaf_node("String".to_string())),
         &Rc::new(vec![variant_arm("Some")]),
         &Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
@@ -357,8 +355,7 @@ fn optional_match_exhaustiveness_reports_missing_none() {
 #[test]
 fn optional_match_exhaustiveness_accepts_some_and_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
-        &with_optional_cardinality(leaf_node("String".to_string())),
-     |
+        with_optional_cardinality(leaf_node("String".to_string())),
         &Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         &Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
@@ -407,7 +404,7 @@ fn resolve_node_uses_node_name_for_lookup() {
     });
     let user_intern = v2_compiler::v2_std_core::intern(
         &v2_compiler::v2_std_core::empty_intern_table(),
-        &"User".to_string(),
+        "\1".to_string(),
     );
     let env = Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::from([(
@@ -468,7 +465,7 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
             v2_compiler_infer_lookup::lookup_structural_method(
                 &list_int,
                 &method_name.to_string(),
-                &empty_source_indices(),
+                empty_source_indices(),
             )
             .resolution
             .is_some(),
@@ -483,8 +480,8 @@ fn structural_method_any_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_int,
-        &"any".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     )
     .resolution
     .as_ref()
@@ -501,8 +498,8 @@ fn structural_method_all_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_int,
-        &"all".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     )
     .resolution
     .as_ref()
@@ -519,8 +516,8 @@ fn structural_method_sort_by_on_list_returns_self() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_int,
-        &"sort_by".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     )
     .resolution
     .as_ref()
@@ -537,8 +534,8 @@ fn structural_method_first_on_list_returns_optional_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_int,
-        &"first".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     )
     .resolution
     .as_ref()
@@ -562,8 +559,8 @@ fn structural_method_count_on_list_returns_int() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_string,
-        &"count".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     )
     .resolution
     .as_ref()
@@ -581,7 +578,7 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
             v2_compiler_infer_lookup::lookup_structural_method(
                 &int_node,
                 &method_name.to_string(),
-                &empty_source_indices(),
+                empty_source_indices(),
             )
             .resolution
             .is_some(),
@@ -596,8 +593,8 @@ fn structural_method_compare_on_int_returns_ordering() {
     let int_node = leaf_node("Int".to_string());
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &int_node,
-        &"compare".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     )
     .resolution
     .as_ref()
@@ -632,7 +629,7 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
             v2_compiler_infer_lookup::lookup_structural_method(
                 &m,
                 &method_name.to_string(),
-                &empty_source_indices(),
+                empty_source_indices(),
             )
             .resolution
             .is_some(),
@@ -650,8 +647,8 @@ fn structural_method_get_on_map_returns_optional_value() {
     );
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &m,
-        &"get".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     )
     .resolution
     .as_ref()
@@ -678,8 +675,8 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
     );
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &m,
-        &"keys".to_string(),
-        &empty_source_indices(),
+        "\1".to_string(),
+        empty_source_indices(),
     )
     .resolution
     .as_ref()
@@ -706,8 +703,8 @@ fn structural_method_lookup_returns_none_for_unknown_type() {
     assert!(
         v2_compiler_infer_lookup::lookup_structural_method(
             &custom,
-            &"add".to_string(),
-            &empty_source_indices()
+            "\1".to_string(),
+            empty_source_indices()
         )
         .resolution
         .is_none(),
@@ -784,20 +781,20 @@ fn is_fully_resolved_rejects_under_parameterized_container() {
     // leaf_node("List") creates a node named "List" with 0 children.
     // container_expected_arity("List") = Some(1), so 0 < 1 → not fully resolved.
     let bare_list = leaf_node("List".to_string());
-    assert!(!is_fully_resolved(&bare_list, &empty_source_indices()));
+    assert!(!is_fully_resolved(&bare_list, empty_source_indices()));
 }
 
 #[test]
 fn is_fully_resolved_accepts_parameterized_container() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    assert!(is_fully_resolved(&list_int, &empty_source_indices()));
+    assert!(is_fully_resolved(&list_int, empty_source_indices()));
 }
 
 #[test]
 fn is_fully_resolved_ignores_unknown_type_names() {
     // User-defined "Widget" with 0 children → arity is None → not under-parameterized.
     let widget = leaf_node("Widget".to_string());
-    assert!(is_fully_resolved(&widget, &empty_source_indices()));
+    assert!(is_fully_resolved(&widget, empty_source_indices()));
 }
 
 #[test]
@@ -811,7 +808,7 @@ fn map_index_with_correct_key_type_succeeds() {
         leaf_node("String".to_string()),
         &zero_span(),
         "test".to_string(),
-        &empty_source_indices(),
+        empty_source_indices(),
     );
     assert!(
         result.diagnostics.is_empty(),
@@ -838,7 +835,7 @@ fn map_index_with_wrong_key_type_reports_error() {
         leaf_node("Int".to_string()),
         &zero_span(),
         "test".to_string(),
-        &empty_source_indices(),
+        empty_source_indices(),
     );
     assert_eq!(
         result.diagnostics.len(),
@@ -888,7 +885,6 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
     });
 
     let outputs = v2_compiler_parse::node_inferred_to_outputs(conj_node, empty_source_indices());
-     |
     assert!(
         outputs.is_empty(),
         "fail-closed gate: Conj with error child must produce 0 outputs, got {}",

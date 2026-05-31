@@ -119,7 +119,7 @@ fn parse_deeply_nested_path() {
 #[test]
 fn parse_path_rejects_unclosed_param_segment() {
     assert!(matches!(
-        &*parse_path_template(&"/repos/{owner/pulls".to_string()),
+        &*parse_path_template("/repos/{owner/pulls".to_string()),
         PathTemplateParseResult::MalformedPathTemplate { .. }
     ));
 }
@@ -127,7 +127,7 @@ fn parse_path_rejects_unclosed_param_segment() {
 #[test]
 fn parse_path_rejects_stray_closing_brace() {
     assert!(matches!(
-        &*parse_path_template(&"/repos/owner}/pulls".to_string()),
+        &*parse_path_template("/repos/owner}/pulls".to_string()),
         PathTemplateParseResult::MalformedPathTemplate { .. }
     ));
 }
@@ -135,7 +135,7 @@ fn parse_path_rejects_stray_closing_brace() {
 #[test]
 fn parse_path_rejects_multiple_params_in_one_segment() {
     assert!(matches!(
-        &*parse_path_template(&"/v1/{project}{secret}".to_string()),
+        &*parse_path_template("/v1/{project}{secret}".to_string()),
         PathTemplateParseResult::MalformedPathTemplate { .. }
     ));
 }
@@ -218,7 +218,7 @@ fn derivation_consumes_typed_method_and_path_template_without_parsing_strings() 
 fn method_and_path_string_failures_remain_at_surface_parsers() {
     assert!(ingest_rest_transport_method("TRACE").is_none());
     assert!(matches!(
-        &*parse_path_template(&"/repos/{owner/pulls".to_string()),
+        &*parse_path_template("/repos/{owner/pulls".to_string()),
         PathTemplateParseResult::MalformedPathTemplate { .. }
     ));
 }
@@ -262,7 +262,6 @@ fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<
     source_indices.insert(
         filename.to_string(),
         build_newline_index(filename.to_string(), source.to_string()),
-     |
     );
     let source_indices = Rc::new(source_indices);
     let result = parse(tokens, source_indices.clone());
