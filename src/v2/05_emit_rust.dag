@@ -1512,7 +1512,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_type_alias_return_node(n: resolved_type(n: item), source_indices: env.source_indices) {
-      let rhs = render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices)
+      let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
+      let rhs = render_rust_decl_type(n: resolved_type(n: item), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices)
       if rhs == item_text {
         ""
       } else {
