@@ -435,41 +435,150 @@ The demand says **what the work requires**, never **what hardware to use**.
 "arm64 Linux + Rust toolchain + ≥4GiB RAM + hermetic-fs isolation + no
 ambient network" — yes. "srv1, 20 workers" — no (authored tuning, forbidden).
 
-#### Layer 4 — `ComputeProvider` / `ComputeOffer` / `ComputeLease` (supply)
+#### Layer 4 — Supply: facts, not "machines"
+
+`Machine` is a leaky abstraction — it collapses orthogonal axes (hostname,
+physical box, CPU package, OS install, container runtime, network identity,
+runner registration, cache locality, scheduler slot). Modeling discipline:
+**facts first, projections later**. The primitive types are factored along
+those axes:
 
 ```dag
-type ComputeProvider {
-  identity: ProviderId
-  machines: List<ComputeMachine>
-  execution_surfaces: List<ExecutionSurface>
-  cache_surfaces: List<CacheSurface>
-  network_surfaces: List<NetworkSurface>
-  cost_model: CostModel
-  performance_receipts: List<PerformanceReceipt>
+// Processor: CPU / GPU / accelerator are MUTUALLY EXCLUSIVE device kinds —
+// this IS a coproduct (a single processor is one of these, not several).
+// Resource REQUIREMENTS (Layer 3) are different — those are coordinates.
+type ProcessorKind
+  = CpuProcessor { cpu: CpuFacts }
+  | GpuProcessor { gpu: GpuFacts }
+  | AcceleratorProcessor { accelerator: AcceleratorFacts }
+
+type CpuFacts {
+  architecture: CpuArchitecture
+  vendor: Symbol          // ampere, apple, intel, amd, …
+  model: Symbol           // altra, m2_pro, xeon, epyc, …
+  cores: Int
+  threads: Int
+  instruction_sets: List<InstructionSet>
 }
 
+type GpuFacts {
+  vendor: Symbol
+  model: Symbol
+  compute_capability: Option<Symbol>
+  memory: MemoryFacts
+  supported_runtimes: List<GpuRuntime>
+}
+
+type MemoryDevice {
+  capacity: ByteSize
+  memory_kind: MemoryKind
+  bandwidth: Option<Bandwidth>
+}
+
+type StorageDevice {
+  capacity: ByteSize
+  medium: StorageMedium
+  read_bandwidth: Option<Bandwidth>
+  write_bandwidth: Option<Bandwidth>
+  persistence: PersistenceKind
+}
+
+type NetworkInterface {
+  addressability: NetworkAddressability
+  bandwidth: Option<Bandwidth>
+  latency_class: Option<LatencyClass>
+  locality: NetworkLocality
+}
+
+type OperatingSystemSurface {
+  kernel: KernelFamily       // linux, darwin, windows_nt, linux_guest_on_windows
+  distro_or_product: Symbol  // ubuntu, macos, windows, wsl_ubuntu
+  version: Symbol
+  filesystem_semantics: FileSystemSemantics
+  process_semantics: ProcessSemantics
+}
+
+type ExecutionSurface {
+  os: OperatingSystemSurface
+  isolation: IsolationBoundary
+  container_runtime: Option<ContainerRuntime>
+  toolchains: List<ToolchainCapability>
+  mounted_storage: List<StorageMount>
+  network: List<NetworkInterface>
+}
+
+type ComputeHost {
+  identity: HostIdentity
+  processors: List<ProcessorKind>
+  memory: List<MemoryDevice>
+  storage: List<StorageDevice>
+  network_interfaces: List<NetworkInterface>
+}
+
+type ComputeSupplyFacts {
+  physical: ComputeHost
+  execution: ExecutionSurface
+  cost: Option<CostModel>
+  observed_performance: List<PerformanceReceipt>
+}
+```
+
+**"srv1" / "srv2" / "Mac mini" / "WSL guest" are not primitives.** They are
+named projections over the factored facts above. A GitHub self-hosted runner,
+container, WSL shell, SSH session, Fargate task, or Mac mini user session is
+**an `ExecutionSurface` realized on a `ComputeHost`** — never the same thing as
+the host. If `Machine` exists at all, it's a convenience projection for humans
+and dashboards:
+
+```dag
+fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView
+```
+
+Authority remains in the factored facts, not in the projection.
+
+#### Layer 4 (continued) — Offer / Lease over fact bundles
+
+```dag
 type ComputeOffer {
-  provider: ProviderId
-  surface: ExecutionSurface
-  available_resources: ResourceEnvelope
-  cache_locality: CacheLocality
-  estimated_cost: CostEstimate
-  performance_model: PerformanceModel
+  provider: ProviderIdentity
+  supply: ComputeSupplyFacts
+  available_window: AvailabilityWindow
+  cost_quote: Option<CostEstimate>
+  constraints: List<ProviderConstraint>
 }
 
 type ComputeLease {
   offer: ComputeOffer
-  allocated_resources: ResourceEnvelope
-  lease_id: LeaseId
-  cache_scope: CacheScope
+  demand: WorkDemand
+  allocation: AllocationReceipt
+  eligibility: Witness<ComputeLeaseEligibility>
 }
 ```
 
-srv1/srv2 are **one provider** today (`self_hosted_provider`); Mac mini, WSL,
-ubicloud, gcloud are additional `ComputeProvider` rows. Provider rows are
-where physical-substrate detail lives — `ExecutionSurface` distinguishes
-Linux-self-hosted / macOS-host / WSL-guest / ephemeral-container; `CacheSurface`
-distinguishes per-host L1 / shared-CAS / ephemeral / none.
+#### Matching: homomorphism over fact bundles
+
+Eligibility is structural — a `satisfies` function maps demand dimensions to
+supply dimensions:
+
+```dag
+fn satisfies(
+  supply: ComputeSupplyFacts,
+  demand: WorkDemand
+) -> Witness<ComputeLeaseEligibility>
+```
+
+The scheduler does NOT say *"choose srv1 because fast."* It says:
+
+> "`WorkDemand` requires arm64 Linux + Rust toolchain + ≥16GiB RAM +
+> filesystem + shared CAS. srv1's `ExecutionSurface` satisfies those
+> dimensions. srv2 also satisfies them. gcloud container satisfies them if
+> image has Rust toolchain. Mac mini does **not** satisfy Linux requirement
+> unless demand accepts macOS or containerized Linux. WSL satisfies Linux-ish
+> process surface but has path/cache/network boundary facts."
+
+Performance-per-cost selection is downstream optimization **over eligible
+offers and observed receipts**, never an eligibility heuristic. Absent receipt
+evidence → scheduler reports `insufficient evidence`, not a silent guess.
 
 #### Layer 5 — `ExecutionReceipt<T>` (what happened)
 
@@ -557,9 +666,62 @@ divergence is silent. The following are forbidden anywhere in the chain:
 - **Provider-specific assumptions outside `ComputeProvider` rows** (e.g., `ctrl-jobserver` FIFO path hardcoded in a step's `create`). Provider-private facts stay in provider rows.
 - **`timeout: Duration` as the sole budget carrier**. Split into modeled `ExecutionBudget` (`expected_cost`, `provider_model`, `watchdog`).
 - **Authored cache keys** (`cache_key: "..."`). Already forbidden in `ci.dag:163-166` — cache identity is derived from `content_hash(complete CiUpsertStep<T>)`.
+- **`ComputeKind = CPU | GPU | Storage | Network` as exclusive variants.** Resource *requirements* (Layer 3) are orthogonal coordinates — a single workload inhabits multiple dimensions. Coproduct here would deny GPU-trains-with-CPU-orchestration and storage-heavy-with-network-egress jobs. (Processor *devices* in Layer 4 ARE a coproduct because a single device IS one kind; the coproduct-vs-coordinate check is contextual.)
+- **`host: Symbol` or `machine: Symbol` as eligibility authority.** Eligibility is structural over factored facts; "this work runs because hostname matches" is a heuristic for missing demand/supply dimensions.
+- **`Machine` as a primitive concept.** Use `ComputeHost` (composition of processors / memory / storage / network) + `ExecutionSurface`; `MachineView` is at most a convenience projection for dashboards.
+- **Scheduler risk / fallback heuristic enums** (`if no receipts, choose cheapest`). Absent receipts → `insufficient evidence`, fail-loud, not silent guess.
 
 Anything in this list is a re-introduction of the substrate gap the chain is
 meant to dissolve.
+
+### 4.0f Modeling DFS worksheet — acceptance criteria
+
+The substrate is **ratified only when these falsification cases pass** — they
+exist to prove the abstraction is real, not srv1/srv2-shaped with thin
+wrapping. (Dispatchable as a single Modeling DFS worksheet to
+proud-pike-680 per the §7 owner-table.)
+
+| # | Case | Pass condition |
+|---|------|---------------|
+| 1 | srv1/srv2 as `ComputeSupplyFacts` rows | No host-specific `CiUpsertStep<T>` field anywhere in pipeline |
+| 2 | Mac mini as `ComputeSupplyFacts` row | Apple Silicon `CpuFacts` + macOS `OperatingSystemSurface` lands without changing CI schema |
+| 3 | WSL as `ComputeSupplyFacts` row | Host/guest/path/network facts explicit (`linux_guest_on_windows` kernel, `wsl_path_translation` filesystem semantics, `wsl_nat_or_bridged` network) |
+| 4 | gcloud / ubicloud container provider | New `ComputeSupplyFacts` row with no new run-mode enum anywhere in the chain |
+| 5 | GPU-capable provider | `ResourceEnvelope.gpu: Some(...)` coordinate; **never** `ComputeKind = GPU` variant |
+| 6 | Storage-heavy provider | `storage + network` coordinates in demand; provider's `StorageDevice[]` + `NetworkInterface[]` match |
+| 7 | Single `WorkDemand` matches multiple providers | `satisfies(supply, demand)` returns `Witness<ComputeLeaseEligibility>` for srv1, srv2, gcloud-container, *and* (where compatible) Mac mini / WSL |
+| 8 | Ineligible provider fails closed | `satisfies` returns `Rejected { reason: missing_fact(...) }` naming the specific missing demand dimension; no silent fallback |
+
+**Worksheet outputs** (canonical types to land in `dsl/std/` / `src/v4/std/`,
+not in `src/v4/workflow/ci.dag` — these are general-purpose substrate, not
+CI-specific):
+
+```text
+ProcessorKind / CpuFacts / GpuFacts / AcceleratorFacts
+MemoryDevice / MemoryFacts
+StorageDevice
+NetworkInterface
+OperatingSystemSurface
+ExecutionSurface
+ComputeHost
+ComputeSupplyFacts
+WorkDemand
+ResourceEnvelope
+ComputeOffer
+ComputeLease
+ExecutionReceipt
+PerformanceReceipt
+CostReceipt
+ProcessorCostModel
+ParallelismShape
+ReducerLaws
+ExecutionBudget
+```
+
+Per `feedback_eliminate_x_directives`: this isn't an "eliminate srv1/srv2
+specialness" directive — it's a positive substrate-landing for orthogonal
+compute facts. The dissolution of srv1/srv2-specific CI semantics is the
+*downstream consequence* of the substrate landing, not the goal itself.
 
 ### 4.0e (provisional, superseded by §4.0a above) Frame: one pattern, every layer
 
