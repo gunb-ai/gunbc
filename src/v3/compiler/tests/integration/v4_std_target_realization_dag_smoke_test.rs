@@ -583,6 +583,9 @@ fn v4_translate_dag_imports_use_site_ownership_consumer() {
     );
 }
 
+// P5 receipt: SG-RC follow-up (#4133) — same-path smoke expansion (parse surface + include_str
+// substring checks only; no new hand-Rust scaffold). Mechanism (b): `_internal/INVARIANTS_OPS.md`
+// row for this harness; +0 SG-0 `EXPECTED_HAND_AUTHORED_TEST` paths (file header §492).
 #[test]
 fn v4_rust_language_model_declares_use_site_ownership_rows() {
     let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
