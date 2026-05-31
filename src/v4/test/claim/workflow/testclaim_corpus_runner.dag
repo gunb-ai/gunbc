@@ -1,7 +1,7 @@
 // src/v4/test/claim/workflow/testclaim_corpus_runner.dag
 // Scope: T-38 modeled corpus-level TestClaim runner over manual roster.
 // Status: wedge — fold manual_corpus_node_runtime_value_rows into CorpusEvalReport.
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: this runner replaces scripts/v4-testclaim-corpus-gate.sh + paired ci.yml/ci_github_actions_workflow.dag step under T-38-PR2.
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; CI host transport is scripts/v4-testclaim-corpus-eval.sh under positive-Y `ci_upsert_testclaim_corpus_eval_*`. Forward (T-38-PR2): amend when this runner's `run_manual_testclaim_corpus_eval` executes in CI and emits per-row Pass/Fail/Deferred verdicts.
 
 module v4.test.claim.workflow.testclaim_corpus_runner
 

@@ -317,7 +317,7 @@ jobs:
     # Modeled authority: src/v4/workflow/ci.dag `m1_rust_emit_probe_signal` +
     # `m1_ci_live_workflow_signal` (feature:project-github-actions-landed; non-blocking).
     - name: M1 v4 full-tree rust emit probe (v2 emit + cargo check)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
       continue-on-error: true
       timeout-minutes: 20
       env:
@@ -365,7 +365,7 @@ jobs:
         V4_PHASE1_NAT_SEMIRING_STRICT: "1"
       run: bash scripts/v4-phase1-nat-semiring-rung-gate.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
-      if: needs.affected.outputs.v4 == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true'
       id: v4_bootstrap_compile
       timeout-minutes: 35
       continue-on-error: true
@@ -380,7 +380,7 @@ jobs:
         echo "exitcode=${ec}" >> "$GITHUB_OUTPUT"
         exit "${ec}"
     - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
-      if: needs.affected.outputs.v4 == 'true' && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
       id: v4_bootstrap_resolve_posture
       env:
         V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
@@ -390,7 +390,7 @@ jobs:
         V4_BOOTSTRAP_COMPILER_EXIT="${{ steps.v4_bootstrap_compile.outputs.exitcode }}" \
           bash scripts/v4-bootstrap-resolve-posture-gate.sh
     - name: v4 bootstrap gate result (compile or tracked bridge)
-      if: always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'
+      if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'
       run: |
         set -euo pipefail
         if [[ "${{ steps.v4_bootstrap_compile.outcome }}" == "success" ]]; then
@@ -403,27 +403,20 @@ jobs:
         fi
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
-    - name: Cache T-22 TestClaim corpus structural bridge receipt
+    # P5 Layer 2 / T-22: modeled TestClaim corpus structural check (positive-Y CiUpsertStep).
+    # Modeled authority: src/v4/workflow/ci.dag `testclaim_corpus_eval_execution` +
+    # `testclaim_corpus_eval_signal` + `testclaim_corpus_eval_ci_live_workflow_signal`.
+  - name: T-22 TestClaim corpus eval (modeled CiUpsertStep — structural)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
-      id: t22_testclaim_corpus_cache
-      uses: actions/cache@v4
-      with:
-        path: ${{ runner.temp }}/t22-testclaim-corpus-gate
-        key: t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'dsl/std/**', 'src/v4/**') }}
-    - name: T-22 TestClaim corpus structural bridge — manual .dag corpus
-      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.t22_testclaim_corpus_cache.outputs.cache-hit != 'true'
       timeout-minutes: 15
       env:
-        V4_TESTCLAIM_TIMEOUT_SECS: '480'
-        # Reuse M1 rust + bootstrap dag emits when present (ci_v4 de-dup; PR #4074 run 26702944004).
-        V4_TESTCLAIM_REUSE_RUST_OUT: ${{ runner.temp }}/v4-rust-emit
-        V4_TESTCLAIM_REUSE_RUST_LOG: ${{ runner.temp }}/v4-rust-emit.compile.log
-        V4_TESTCLAIM_REUSE_DAG_OUT: ${{ runner.temp }}/v4-bootstrap
-        V4_TESTCLAIM_REUSE_DAG_LOG: ${{ runner.temp }}/v4-bootstrap.log
-      run: |
-        bash scripts/v4-testclaim-corpus-gate.sh
-        mkdir -p "${RUNNER_TEMP}/t22-testclaim-corpus-gate"
-        printf 'T-22 TestClaim corpus structural bridge passed for %s\n' "${GITHUB_SHA}" > "${RUNNER_TEMP}/t22-testclaim-corpus-gate/receipt.txt"
+        V2_COMPILER: target/release/gunbc
+        V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
+        V4_M1_RUST_EMIT_LOG: ${{ runner.temp }}/v4-rust-emit.compile.log
+        V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
+        V4_TESTCLAIM_CORPUS_TIMEOUT_SECS: '480'
+      run: bash scripts/v4-testclaim-corpus-eval.sh
   # Branch protection requires the `ci` check name (docs/admin/branch-protection-recommendation-
   # 2026-05-09.md). This job is the fail-closed aggregator over discipline + parallel lanes;
   # load-bearing steps live in ci_integration / ci_v4. `always()` + explicit dep validation
