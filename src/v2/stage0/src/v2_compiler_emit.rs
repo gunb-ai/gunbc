@@ -36,6 +36,7 @@ use crate::v2_compiler_languages::ImportTrigger::{
     TypeUsageTrigger,
 };
 use crate::v2_compiler_languages::InterpStyle::{FormatArgs, InlineExpr};
+use crate::v2_compiler_languages::MatchValueForm::{MatchExpression, MatchStatementArmReturn};
 use crate::v2_compiler_languages::NamingCase::{AsAuthored, CamelCase, PascalCase, SnakeCase};
 use crate::v2_compiler_languages::ReservedWordStrategy::{NoEscape, PrefixEscape, SuffixEscape};
 use crate::v2_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
@@ -45,8 +46,9 @@ pub use crate::v2_compiler_languages::{
     service_methods_inside_class, service_receiver_str, service_return_str, service_self_param,
     target_keyword, test_conventions_for_target, wrap_shared_type, BlockSyntax, EscapePair,
     ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger, InterpStyle, LanguageSpec,
-    NamingCase, RecordLitSyntax, ReservedWordStrategy, ServiceFieldTemplates, StringInterpSyntax,
-    TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax, VisibilitySpec,
+    MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy, ServiceFieldTemplates,
+    StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax,
+    VisibilitySpec,
 };
 use crate::v2_rt;
 use crate::v2_std_core::AlgebraFieldKind::*;
@@ -3833,39 +3835,42 @@ pub fn emit_unified_tco_match_arm(
                 render_pattern.clone(),
             )
         });
-        let body_str = emit_unified_tco_expr(
-            Rc::new(TcoFrame {
-                expr: arm_body(arm.clone()),
-                scope: scope.clone(),
-                depth: body_depth.clone(),
-            }),
-            fn_name.clone(),
-            params.clone(),
+        let body_str = emit_match_arm_body_stmt(
             target.clone(),
-            registry.clone(),
-            |expr, scope, depth| {
-                emit_unified_typed_expr(
-                    expr.clone(),
-                    target.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    1024,
-                    render_pattern.clone(),
-                )
-            },
-            |frame| {
-                emit_unified_tco_match(
-                    frame.clone(),
-                    fn_name.clone(),
-                    params.clone(),
-                    target.clone(),
-                    registry.clone(),
-                    render_pattern.clone(),
-                    render_init_stmts.clone(),
-                )
-            },
-            render_init_stmts.clone(),
+            emit_unified_tco_expr(
+                Rc::new(TcoFrame {
+                    expr: arm_body(arm.clone()),
+                    scope: scope.clone(),
+                    depth: body_depth.clone(),
+                }),
+                fn_name.clone(),
+                params.clone(),
+                target.clone(),
+                registry.clone(),
+                |expr, scope, depth| {
+                    emit_unified_typed_expr(
+                        expr.clone(),
+                        target.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        1024,
+                        render_pattern.clone(),
+                    )
+                },
+                |frame| {
+                    emit_unified_tco_match(
+                        frame.clone(),
+                        fn_name.clone(),
+                        params.clone(),
+                        target.clone(),
+                        registry.clone(),
+                        render_pattern.clone(),
+                        render_init_stmts.clone(),
+                    )
+                },
+                render_init_stmts.clone(),
+            ),
         );
         emit_match_arm_line(
             arm.clone(),
@@ -4056,6 +4061,32 @@ pub fn emit_unified_typed_func_body(
                     }
                 }
             }
+            ExprData::ExprMatch => match es.match_value_form.clone() {
+                MatchValueForm::MatchStatementArmReturn => emit_unified_typed_expr(
+                    body.clone(),
+                    target.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    1024,
+                    |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()),
+                ),
+                MatchValueForm::MatchExpression => v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(prefix, "return ".to_string()),
+                        emit_unified_typed_expr(
+                            body.clone(),
+                            target.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            1024,
+                            |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()),
+                        ),
+                    ),
+                    es.return_suffix.clone(),
+                ),
+            },
             _ => v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(prefix, "return ".to_string()),
@@ -5765,6 +5796,18 @@ pub fn emit_unified_variant_pattern(
     }
 }
 
+pub fn emit_match_arm_body_stmt(target: RenderTarget, body_str: String) -> String {
+    match language_spec(target)
+        .expression_semantics
+        .clone()
+        .match_value_form
+        .clone()
+    {
+        MatchValueForm::MatchStatementArmReturn => v2_rt::concat("return ".to_string(), body_str),
+        MatchValueForm::MatchExpression => body_str,
+    }
+}
+
 pub fn emit_match_arm_line(
     arm: Rc<Node>,
     target: RenderTarget,
@@ -5840,7 +5883,10 @@ pub fn emit_typed_match_unified(
             let mut __result = Vec::new();
             for arm in arms.iter().cloned() {
                 __result.push({
-                    let body_str = recurse(arm_body(arm.clone()), body_depth.clone());
+                    let body_str = emit_match_arm_body_stmt(
+                        target.clone(),
+                        recurse(arm_body(arm.clone()), body_depth.clone()),
+                    );
                     let guard_str = emit_arm_guard(arm.clone(), target.clone(), |g| {
                         recurse(g.clone(), depth.clone())
                     });

@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/english.dag
 // Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for article-led SVO and copula sentence forms.
-// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.
+// Status: T-4.19 (ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.
 // Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html
 // 🟡 feature:english-wave2-vocabulary — scaffold:T-4.19-wave2; dissolve-on: closed vocabulary declared; english_token_word catch-all replaced with per-word keyword rules or typed word set.
 

@@ -38,7 +38,23 @@ data emit_rust_fixtures_rustc_green_claim: TestClaim = {
   requires: []
 }
 
+// `program_fixtures_post_emit_clean_all_targets` — every `PROGRAM_FIXTURES` row
+// through each Shape-A `post_emit_verifier` (E-5); closes arbitrary user-program
+// emission gap vs M1 self-host-only probe. Body in
+// `r1c_e_gates::check_program_fixtures_post_emit_clean_all_targets`.
+data program_fixtures_post_emit_clean_all_targets_claim: TestClaim = {
+  name: "program_fixtures_post_emit_clean_all_targets",
+  source: "let marker: Int = 1",
+  file_name: "r1c_e_emit_gates_smoke.v3",
+  predicate: ExecuteCommand("__R1C_E_BIN__", ["program-fixtures-post-emit"], 0),
+  requires: []
+}
+
 data r1c_e_emit_gates_suite: TestSuite = {
   name: "r1c_e_emit_gates_suite",
-  claims: [Enumerated(emit_generic_bounds_survive_claim), Enumerated(emit_rust_fixtures_rustc_green_claim)]
+  claims: [
+    Enumerated(emit_generic_bounds_survive_claim),
+    Enumerated(emit_rust_fixtures_rustc_green_claim),
+    Enumerated(program_fixtures_post_emit_clean_all_targets_claim),
+  ]
 }

@@ -19,10 +19,9 @@
 //!   binding. (`syntax_only` is authored on the spec but not yet
 //!   consumed by any Rust-side consumer — see
 //!   `PostEmitVerifierBinding` doc.)
-//! - `run_post_emit_verifier` invokes `Command::new(binding.command)
-//!   .args(&binding.args).arg(source_path)`, collects stdout/stderr,
-//!   and applies the binding's `expected_exit_code` +
-//!   `output_policy` as the verdict.
+//! - `run_post_emit_verifier` invokes the contract command via
+//!   [`crate::bounded_host_command`] (wall-bounded wait + capped I/O),
+//!   then applies the binding's `expected_exit_code` + `output_policy`.
 //!
 //! Scope caveat — calling convention: the harness assumes the
 //! verifier takes the source file as its final positional argument.
@@ -37,11 +36,46 @@
 //! Rust branch inside this runner — same discipline as
 //! `pattern_bindings` / `output_policy`.
 
+use std::fmt;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
+use crate::bounded_host_command::{self, DEFAULT_WALL_TIMEOUT};
+
 use crate::dag::{DeclarationId, FieldValue, LiteralBits};
+use crate::emit::{emit_go_text, emit_python_text, emit_rust_text, EmitTarget};
+use crate::emit_rust_roundtrip_fixtures::{GO_EMIT_EXCLUDE, PYTHON_EMIT_EXCLUDE};
 use crate::Dag;
+
+/// Shape-A targets whose `CleanEmissionContract.post_emit_verifier` is landed today.
+pub const SHAPE_A_POST_EMIT_TARGETS: &[EmitTarget] =
+    &[EmitTarget::Rust, EmitTarget::Go, EmitTarget::Python];
+
+pub fn post_emit_target_label(target: EmitTarget) -> &'static str {
+    match target {
+        EmitTarget::Rust => "rust",
+        EmitTarget::Go => "go",
+        EmitTarget::Python => "python",
+    }
+}
+
+fn post_emit_default_source_filename(target: EmitTarget) -> &'static str {
+    match target {
+        EmitTarget::Rust => "main.rs",
+        EmitTarget::Go => "main.go",
+        EmitTarget::Python => "main.py",
+    }
+}
+
+/// Whether a `PROGRAM_FIXTURES` row participates in post-emit verification for `target`.
+pub fn fixture_supports_post_emit_target(fixture_name: &str, target: EmitTarget) -> bool {
+    match target {
+        EmitTarget::Rust => true,
+        EmitTarget::Go => !GO_EMIT_EXCLUDE.contains(&fixture_name),
+        EmitTarget::Python => !PYTHON_EMIT_EXCLUDE.contains(&fixture_name),
+    }
+}
 
 /// Typed read of `data <target>_clean_emission.post_emit_verifier`.
 /// Every field here is a structural declaration on the contract that
@@ -94,12 +128,16 @@ pub enum VerifierParseError {
     },
 }
 
-/// Runner failures. `InvocationFailed` fires when the OS cannot
-/// spawn the verifier process (binary missing from PATH, etc.);
-/// `WrongExitCode` and `PolicyViolation` fire after a successful
-/// spawn when the verdict does not match the contract.
+/// Runner failures. `SpecUnavailable` fires when the bootstrap dag lacks a
+/// clean-emission spec or the contract record cannot be parsed.
+/// `InvocationFailed` fires when the OS cannot spawn the verifier process
+/// (binary missing from PATH, etc.); `WrongExitCode` and `PolicyViolation`
+/// fire after a successful spawn when the verdict does not match the contract.
 #[derive(Debug)]
 pub enum VerifierRunError {
+    SpecUnavailable {
+        detail: String,
+    },
     InvocationFailed {
         command: String,
         io_error: String,
@@ -190,12 +228,16 @@ pub fn run_post_emit_verifier(
     {
         command.current_dir(parent);
     }
-    let output = command
-        .output()
-        .map_err(|err| VerifierRunError::InvocationFailed {
-            command: binding.command.clone(),
-            io_error: err.to_string(),
-        })?;
+    let label = format!("post_emit_verifier `{}`", binding.command);
+    let output = bounded_host_command::host_command_output(
+        &label,
+        DEFAULT_WALL_TIMEOUT,
+        bounded_host_command::prepare_host_command(command),
+    )
+    .map_err(|err| VerifierRunError::InvocationFailed {
+        command: binding.command.clone(),
+        io_error: err,
+    })?;
 
     let exit_code = output.status.code();
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -227,6 +269,139 @@ pub fn run_post_emit_verifier(
         });
     }
     Ok(())
+}
+
+impl fmt::Display for VerifierRunError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VerifierRunError::SpecUnavailable { detail } => {
+                write!(f, "post_emit_verifier contract unavailable: {detail}")
+            }
+            VerifierRunError::InvocationFailed { command, io_error } => {
+                write!(f, "failed to invoke `{command}`: {io_error}")
+            }
+            VerifierRunError::WrongExitCode {
+                expected,
+                actual,
+                stdout,
+                stderr,
+            } => write!(
+                f,
+                "verifier exit {actual:?} != expected {expected}; stdout:\n{stdout}\nstderr:\n{stderr}"
+            ),
+            VerifierRunError::PolicyViolation {
+                policy,
+                stdout,
+                stderr,
+            } => write!(
+                f,
+                "verifier output policy {policy:?} violated; stdout:\n{stdout}\nstderr:\n{stderr}"
+            ),
+        }
+    }
+}
+
+/// Resolve the cached `*_clean_emission` declaration for a Shape-A target.
+pub fn clean_emission_spec(
+    dag: &Dag,
+    target: EmitTarget,
+) -> Result<DeclarationId, VerifierParseError> {
+    let spec = match target {
+        EmitTarget::Rust => dag.rust_clean_emission_spec(),
+        EmitTarget::Go => dag.go_clean_emission_spec(),
+        EmitTarget::Python => dag.python_clean_emission_spec(),
+    };
+    spec.ok_or(VerifierParseError::MissingDeclaration)
+}
+
+/// Run the target's declared `post_emit_verifier` against an on-disk source file.
+pub fn verify_emitted_source_file(
+    dag: &Dag,
+    target: EmitTarget,
+    source_path: &Path,
+) -> Result<(), VerifierRunError> {
+    let spec = clean_emission_spec(dag, target).map_err(verifier_parse_error_to_run_error)?;
+    let binding = parse_post_emit_verifier(dag, spec).map_err(verifier_parse_error_to_run_error)?;
+    run_post_emit_verifier(&binding, source_path)
+}
+
+fn verifier_parse_error_to_run_error(err: VerifierParseError) -> VerifierRunError {
+    VerifierRunError::SpecUnavailable {
+        detail: err.to_string(),
+    }
+}
+
+impl fmt::Display for VerifierParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VerifierParseError::MissingDeclaration => {
+                write!(f, "clean_emission spec not found in bootstrap dag")
+            }
+            VerifierParseError::MalformedSpec { detail, .. } => {
+                write!(f, "malformed clean_emission spec: {detail}")
+            }
+        }
+    }
+}
+
+/// Emit `program_dag` for `target`, write the source into `scratch_dir`, and
+/// apply the contract's `post_emit_verifier`. `program_dag` must be a
+/// `compile_to_dag` result (bootstrap carries clean-emission specs).
+pub fn verify_program_emitted_source(
+    program_dag: &Dag,
+    target: EmitTarget,
+    scratch_dir: &Path,
+    file_stem: &str,
+) -> Result<(), String> {
+    let emitted = emit_text_for_target(program_dag, target)?;
+    std::fs::create_dir_all(scratch_dir)
+        .map_err(|e| format!("create scratch {}: {e}", scratch_dir.display()))?;
+    let filename = format!("{file_stem}_{}", post_emit_default_source_filename(target));
+    let src_path = scratch_dir.join(filename);
+    let mut file = std::fs::File::create(&src_path)
+        .map_err(|e| format!("create {}: {e}", src_path.display()))?;
+    file.write_all(emitted.as_bytes())
+        .map_err(|e| format!("write {}: {e}", src_path.display()))?;
+    verify_emitted_source_file(program_dag, target, &src_path).map_err(|e| {
+        format!(
+            "{} post_emit_verifier for `{file_stem}`: {e}",
+            post_emit_target_label(target)
+        )
+    })
+}
+
+/// Every **applicable** Shape-A target must accept the emitted source for `program_dag`.
+/// Skips Go/Python when `fixture_name` is listed in `GO_EMIT_EXCLUDE` /
+/// `PYTHON_EMIT_EXCLUDE` (same rule as omni emit gates).
+pub fn verify_program_emitted_source_all_targets(
+    program_dag: &Dag,
+    scratch_dir: &Path,
+    file_stem: &str,
+    fixture_name: &str,
+) -> Result<(), String> {
+    let mut failures = Vec::new();
+    for &target in SHAPE_A_POST_EMIT_TARGETS {
+        if !fixture_supports_post_emit_target(fixture_name, target) {
+            continue;
+        }
+        if let Err(msg) = verify_program_emitted_source(program_dag, target, scratch_dir, file_stem)
+        {
+            failures.push(msg);
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n"))
+    }
+}
+
+fn emit_text_for_target(program_dag: &Dag, target: EmitTarget) -> Result<String, String> {
+    match target {
+        EmitTarget::Rust => emit_rust_text(program_dag).map_err(|e| format!("{e:?}")),
+        EmitTarget::Go => emit_go_text(program_dag).map_err(|e| format!("{e:?}")),
+        EmitTarget::Python => emit_python_text(program_dag).map_err(|e| format!("{e:?}")),
+    }
 }
 
 fn require_string(

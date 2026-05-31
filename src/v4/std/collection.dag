@@ -58,6 +58,10 @@ type IndexedLookup<T> {
   index: Int
   value: Witness<T>
 }
+// 🟢 coproduct dissolution — generic list index lookup for Optional projection (M6 sibling to list_nth Witness path).
+type ListAtLookup<T>
+  = ListAtMissing { remaining: Int }
+  | ListAtFound { value: T }
 data map_key_absent: Symbol = map_key_absent
 data map_lookup_port: Symbol = map_lookup_port
 fn map_absent_diagnostic() -> Diagnostic {
@@ -102,6 +106,26 @@ fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
       }
     }
   ).value
+}
+fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
+  match fold_list(
+    xs: xs,
+    empty: ListAtMissing { remaining: index },
+    cons: fn(acc, item) {
+      match acc {
+        ListAtFound { value: _ } => acc
+        ListAtMissing { remaining: r } =>
+          if r == 0 {
+            ListAtFound { value: item }
+          } else {
+            ListAtMissing { remaining: r - 1 }
+          }
+      }
+    }
+  ) {
+    ListAtFound { value: v } => optional_present(value: v)
+    ListAtMissing { remaining: _ } => optional_absent()
+  }
 }
 // 🟡 needs-more-work — feature:finite-set-uniqueness-witness — dissolve-on: std/algebra derived unique: Witness<Holds> projection; FiniteSet binds structural unique field
 type FiniteSet<T> {

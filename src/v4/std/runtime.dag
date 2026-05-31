@@ -61,6 +61,14 @@ type RuntimeValue
   | RuntimeClosure { value: RuntimeClosureValue }
   | RuntimeUnit { value: RuntimeUnitValue }
 
+// 🟡 gated — feature:leaf-model-runtime-outcome — bind docs/planning/v4-leaf-model-verification-2026-05-30.md §5 —
+// dissolve-on-arrival: consumer:leaf-model-fixture-runner lands PanicClassification coproduct (replacing panic_classification: Symbol); forbidden: parallel outcome or panic-class vocab outside std/runtime.dag.
+type RuntimeOutcome
+  = Panic { panic_classification: Symbol }
+  | Wrap
+  | CheckedReturn { wrapped_value: Node }
+  | ExceptionRaise { exception_node: Node }
+
 // 🟡 coproduct dissolution — consumer:runtime-value-node-reification; fail-closed until RuntimeValue payloads have faithful Node representation.
 type RuntimeValueNodeProjection
   = RuntimeValueNodeProjected { node: Node }

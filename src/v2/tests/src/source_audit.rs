@@ -250,8 +250,8 @@ fn emit_has_tco_support() {
         "languages.dag python_spec should set loop_keyword to 'while True'"
     );
     assert!(
-        languages_source.contains("continue_str: \"continue\""),
-        "languages.dag python_spec should set continue_str to 'continue'"
+        languages_source.contains("continue_str: \"continue\\n\""),
+        "languages.dag python_spec should set continue_str to 'continue\\n' (TCO loop newline)"
     );
 
     let core_source = read_v2_file("src/v2/00_core.dag");

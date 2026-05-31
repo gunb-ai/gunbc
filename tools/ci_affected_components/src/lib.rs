@@ -15,6 +15,9 @@ pub struct CiComponentAffected {
     pub v4: bool,
     pub workflow_policy: bool,
     pub release_distribution: bool,
+    /// True when every changed path that triggers any CI component bucket is a
+    /// release-distribution path and at least one such path is present.
+    pub release_distribution_only: bool,
 }
 
 /// Mirror of `ci_component_affected_fail_closed` — all components affected (INVARIANTS P3).
@@ -25,6 +28,7 @@ pub fn ci_component_affected_fail_closed() -> CiComponentAffected {
         v4: true,
         workflow_policy: true,
         release_distribution: true,
+        release_distribution_only: false,
     }
 }
 
@@ -39,8 +43,10 @@ where
         v4: false,
         workflow_policy: false,
         release_distribution: false,
+        release_distribution_only: false,
     };
-    for path in changed {
+    let changed: Vec<&str> = changed.into_iter().collect();
+    for path in &changed {
         if ci_changed_path_affects_v2(path) {
             out.v2 = true;
         }
@@ -57,7 +63,38 @@ where
             out.release_distribution = true;
         }
     }
+    out.release_distribution_only =
+        ci_release_distribution_only_from_changed_paths(changed.iter().copied());
     out
+}
+
+fn ci_changed_path_triggers_ci_component(path: &str) -> bool {
+    ci_changed_path_affects_v2(path)
+        || ci_changed_path_affects_v3(path)
+        || ci_changed_path_affects_v4(path)
+        || ci_changed_path_affects_workflow_policy(path)
+        || ci_changed_path_affects_release_distribution(path)
+}
+
+/// RELEASE §5 — skip orthogonal fixture gates only when the diff is exclusively
+/// release-distribution paths (mixed release + phase1 fixture paths must not skip).
+pub fn ci_release_distribution_only_from_changed_paths<'a, I>(changed: I) -> bool
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let paths: Vec<&str> = changed.into_iter().collect();
+    let mut saw_release_path = false;
+    for path in &paths {
+        if ci_changed_path_affects_release_distribution(path) {
+            saw_release_path = true;
+        }
+        if ci_changed_path_triggers_ci_component(path)
+            && !ci_changed_path_affects_release_distribution(path)
+        {
+            return false;
+        }
+    }
+    saw_release_path
 }
 
 pub fn ci_changed_path_affects_v2(path: &str) -> bool {
@@ -75,6 +112,7 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
         || path == "scripts/v4-m1-rust-emit-probe.sh"
         || path.starts_with("scripts/v4-mvp1")
         || path.starts_with("scripts/v4-m1")
+        || path.starts_with("scripts/v4-phase1-nat-semiring")
         || path.starts_with("scripts/v4-testclaim-")
         || path.starts_with("dsl/std/")
         || path == "Cargo.toml"
@@ -91,7 +129,11 @@ pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
 }
 
 pub fn ci_changed_path_affects_release_distribution(path: &str) -> bool {
-    path == "src/v4/workflow/release.dag" || path == ".github/workflows/release.yml"
+    path == "src/v4/workflow/release.dag"
+        || path == ".github/workflows/release.yml"
+        || path == "install.sh"
+        || path == "scripts/release-target-triples.sh"
+        || path == "src/v4/install/install.dag"
 }
 
 #[cfg(test)]
@@ -154,11 +196,36 @@ mod tests {
     }
 
     #[test]
+    fn release_distribution_only_excludes_mixed_fixture_paths() {
+        assert!(ci_release_distribution_only_from_changed_paths([
+            "install.sh",
+            "src/v4/install/install.dag",
+        ]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "install.sh",
+            "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+        ]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "src/v4/install/install.dag",
+            "src/v4/workflow/ci.dag",
+        ]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "docs/README.md"
+        ]));
+    }
+
+    #[test]
     fn release_distribution_includes_release_authority_paths() {
         assert!(ci_changed_path_affects_release_distribution(
             "src/v4/workflow/release.dag"
         ));
-        assert!(!ci_changed_path_affects_release_distribution("install.sh"));
+        assert!(ci_changed_path_affects_release_distribution("install.sh"));
+        assert!(ci_changed_path_affects_release_distribution(
+            "scripts/release-target-triples.sh"
+        ));
+        assert!(ci_changed_path_affects_release_distribution(
+            "src/v4/install/install.dag"
+        ));
         assert!(!ci_changed_path_affects_release_distribution(
             "src/v4/workflow/ci.dag"
         ));
