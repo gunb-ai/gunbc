@@ -1,9 +1,11 @@
 // src/v4/test/claim/nat_semiring/rung_6.dag
-// Scope: phase1/nat_semiring rung 6 — post-emit additive-Monoid law preservation (tranche-1 / F4).
-// Status: W3.4 — three laws × rust + python via run_test_claim_emit_vs_eval.
-// Tranche-1 scaffold: lhs/rhs pin the same law subject Node (mirrors rung_3_4.dag:38-39); Pass on
-// substrate rows requires host stdout parsed as RuntimeValue matching eval once T-22 dispatches
-// transport. Until then, `v4_emit_host_harness_test.rs` proves MVP-2 emit-vs-eval per law×target.
+// Scope: phase1/nat_semiring rung 6 — post-emit semiring law preservation (F4).
+// Status: W3.4 tranche-1 additive-Monoid + tranche-2 multiplicative-Monoid + annihilator.
+// Tranche-1: add left/right identity + associativity × rust + python.
+// Tranche-2: mul left identity + associativity + annihilator × rust + python (expands when tranche-1 PROVEN).
+// Scaffold: lhs/rhs pin the same law subject Node (mirrors rung_3_4.dag:38-39); Pass on substrate rows
+// requires host stdout parsed as RuntimeValue matching eval once T-22 dispatches transport. Until then,
+// `v4_emit_host_harness_test.rs` proves MVP-2 emit-vs-eval per law×target.
 
 module v4.test.claim.nat_semiring.rung_6
 
@@ -23,7 +25,10 @@ import v4.std.verification {
 import v4.test.claim.algebra_laws.nat_semiring {
   nat_add_associativity_input,
   nat_add_left_identity_input,
-  nat_add_right_identity_input
+  nat_add_right_identity_input,
+  nat_mul_annihilator_input,
+  nat_mul_associativity_input,
+  nat_mul_left_identity_input
 }
 import v4.test.claim.rung_3_4_common { rung34_emit_host_rust_target_model }
 import v4.test.claim.rung_5_6_common {
