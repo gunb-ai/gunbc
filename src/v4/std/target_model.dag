@@ -651,8 +651,8 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
 // dissolve-on-arrival: catalog row encode always carries the full host TargetModel bundle
 // (including target_model_edge_atom_realizations); decode matches via structural equality on
 // that single shape only — delete target_model_bundle_core from this predicate and the
-// content_hash disjunction. Until then, rows may encode with core bundle (pre-catalog edge)
-// while the live host bundle includes the catalog edge; forbidden: adding a third bundle
+// content_hash disjunction. Until then, rows encode with host bundle minus
+// atom_realizations (including collection_realization when on the live host); forbidden: a third bundle
 // shape or widening the disjunction without modeling escalation.
 fn target_atom_realization_bundle_matches_host(row_bundle: Node, host: TargetModel) -> Bool {
   content_hash(n: row_bundle) == content_hash(n: host.bundle)

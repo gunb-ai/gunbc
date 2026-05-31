@@ -286,4 +286,15 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
         RUST_LANGUAGE_DAG.contains("data rust_std_projection_char:"),
         "rust_std_projection_char sentinel must remain for rust_facts_char std_projection"
     );
+    let bundle_core_start = RUST_LANGUAGE_DAG
+        .find("fn rust_mvp1_target_model_bundle_core()")
+        .expect("rust_mvp1_target_model_bundle_core");
+    let bundle_core_end = RUST_LANGUAGE_DAG[bundle_core_start..]
+        .find("fn rust_mvp1_binding_spellings()")
+        .expect("rust_mvp1_binding_spellings after bundle_core");
+    let bundle_core_body = &RUST_LANGUAGE_DAG[bundle_core_start..bundle_core_start + bundle_core_end];
+    assert!(
+        bundle_core_body.contains("target_model_edge_collection_realization"),
+        "{RUST_LANGUAGE_PATH}: row/catalog host_bundle must include collection_realization so target_model_bundle_core(host) decode matches"
+    );
 }

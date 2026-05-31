@@ -1696,6 +1696,10 @@ fn rust_mvp1_target_model_bundle_core() -> Node {
       rust_named_edge(
         name: target_model_edge_serialize_source,
         target: rust_mvp1_serialize_source_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_collection_realization,
+        target: rust_set_collection_realization_bundle_node()
       )
     ]
   }
@@ -1743,9 +1747,10 @@ fn rust_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
   )
 }
 
-// Row target_model uses staging core bundle (no atom_realizations edge); catalog encode
-// uses the same core as host_bundle while rust_mvp1_target_model_node() adds the edge.
-// target_atom_realization_bundle_matches_host accepts core-or-full host hashes.
+// Row target_model uses staging core bundle (SG-5 collection_realization + pre-catalog
+// edges; no atom_realizations). Catalog encode host_bundle matches row bundle; live host
+// adds atom_realizations only. target_atom_realization_bundle_matches_host accepts
+// target_model_bundle_core(host) (strip catalog edge) or full host.bundle.
 data rust_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
   source_carrier: symbol_kernel_type_node(),
   target_model: rust_mvp1_target_model_staging(),
