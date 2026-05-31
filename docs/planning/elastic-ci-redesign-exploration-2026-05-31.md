@@ -670,9 +670,137 @@ divergence is silent. The following are forbidden anywhere in the chain:
 - **`host: Symbol` or `machine: Symbol` as eligibility authority.** Eligibility is structural over factored facts; "this work runs because hostname matches" is a heuristic for missing demand/supply dimensions.
 - **`Machine` as a primitive concept.** Use `ComputeHost` (composition of processors / memory / storage / network) + `ExecutionSurface`; `MachineView` is at most a convenience projection for dashboards.
 - **Scheduler risk / fallback heuristic enums** (`if no receipts, choose cheapest`). Absent receipts → `insufficient evidence`, fail-loud, not silent guess.
+- **`CacheKind = GHA | sccache | BuildBuddy | Local | …` as exclusive variants.** Cache facts (key derivation, value shape, locality, eviction, atomicity, auth, latency) are orthogonal coordinates — same coproduct-vs-coordinate trap as `ComputeKind`. Cache backends are modeled as `CacheStore` *records* whose fields take values from each dimension.
+- **GHA-specific / Rust-specific / sccache-specific cache semantics above `CacheStore`.** Existing caches are *storage backends*, not separate cache designs. The Upsert<T> contract is invariant; only `CacheStore` rows know about backend specifics.
+- **Hand-authored cache keys at any layer** (`hashFiles(...)` in YAML, `cache_key:` strings in step definitions, sccache `--cache-mode-key` overrides). Cache identity is always `content_hash(canonical Upsert<T> subject)`, projected into the backend's native key format at lookup time.
+- **Bare-blob cache hits without `CachedArtifactReceipt`.** A cache must prove the artifact was produced by an `ExecutionReceipt` whose `WorkUnit` projects to the same `content_hash`; "this file existed at this key" is not sufficient (kills wrong-cache-hit bug class).
+- **Filesystem residue as proof of cache state.** "The file was at this path last run" must be verified by content-hash match, not assumed.
 
 Anything in this list is a re-introduction of the substrate gap the chain is
 meant to dissolve.
+
+### 4.0g Caching: model each concrete cache interface first; one discipline emerges
+
+**Same methodology as §4.0 — bottom-up.** Do NOT pre-design a generic cache
+abstraction (`CacheKind = GHA | sccache | BuildBuddy | Local | …` is exactly
+the compressive-coproduct anti-pattern §4.0d forbids for `ComputeKind`). Model
+each existing cache interface as concrete orthogonal facts; the common
+abstraction emerges from comparing the rows.
+
+#### Concrete cache-interface roster (model each as a fact row in `dsl/std/`)
+
+| Cache interface | Where it lives | Native key format | Value shape | Persistence | Eviction | Atomicity |
+|---|---|---|---|---|---|---|
+| **GHA Actions Cache** | GitHub-managed network | hand-authored string (today: `hashFiles(...)`) | tar archive of paths | cross-host network | 7-day TTL + ~10GB/repo cap | write-then-commit |
+| **sccache** | configurable backend (local disk / S3 / Redis / BuildBuddy) | hash(rustc command + inputs + env) | rustc output blob (object/rmeta) | backend-specific (per-host typical) | backend-specific | write-then-rename |
+| **BuildBuddy CAS** | BuildBuddy server (network), via `ctrl-build --remote` | `content_hash(value)` — natively content-addressed | arbitrary action-result blob | cross-host network | BuildBuddy-managed | write-then-commit |
+| **Cargo `target/` (incremental)** | per-`CARGO_TARGET_DIR` filesystem | Cargo internal fingerprint (content-hash of inputs + features + flags) | object files + dep files + metadata | per-runner filesystem | manual (`cargo clean`) | per-file |
+| **`~/.cargo/registry/`** | per-`CARGO_HOME` filesystem | crate-name + version + source checksum | downloaded crate sources | per-host filesystem | rarely | atomic-extract |
+| **rustup toolchain store** | per-`RUSTUP_HOME` filesystem | toolchain name + version + arch | toolchain binary tree | per-host filesystem | manual | atomic-extract |
+| *(future)* Mac mini local sccache | local APFS | sccache-native | sccache-native | per-host filesystem | sccache config | write-then-rename |
+| *(future)* S3-backed sccache | AWS S3 | sccache-native (over S3 keys) | sccache-native | cross-host network | S3 lifecycle | S3 object PUT atomicity |
+
+#### Orthogonal fact dimensions (emerge from comparing the rows)
+
+| Dimension | Range of values across the roster |
+|---|---|
+| **Key derivation** | content-addressed-by-value / hand-authored / native-internal-hash |
+| **Value shape** | bytes / structured artifact / tar archive / file tree |
+| **Persistence locality** | in-process / per-runner filesystem / per-host filesystem / cross-host network |
+| **Eviction policy** | TTL / LRU / size-bounded / never / manual |
+| **Atomicity** | per-file / write-then-rename / write-then-commit / two-phase |
+| **Auth scope** | none / filesystem perms / API key / network ACL |
+| **Read latency class** | ns (in-process) / µs (local disk) / ms (LAN) / 10s ms (WAN) |
+
+**Independence proof.** The roster occupies 4 of 4 possible
+`(content-addressed × locality)` combinations:
+
+| | Content-addressed | Hand-keyed |
+|---|---|---|
+| **Cross-host network** | BuildBuddy CAS | GHA Actions Cache |
+| **Per-host filesystem** | sccache, Cargo target/ | rustup toolchain store |
+
+Dimensions are orthogonal *in practice*, not just on paper. Modeling them as a
+`CacheKind` variant would deny these inhabited combinations.
+
+#### The fractal discipline emerges (don't pre-design)
+
+Once each cache is modeled as orthogonal facts, the common interface is:
+
+```dag
+type CacheStore {
+  identity: CacheStoreId
+  key_space: KeyDerivation
+  value_space: ValueShape
+  locality: PersistenceLocality
+  eviction: EvictionPolicy
+  atomicity: AtomicityModel
+  auth: AuthScope
+  read_latency: ReadLatencyClass
+}
+```
+
+— a record of orthogonal facts, not an enum-of-cases. Then the `Upsert<T>`
+fractal discipline applies uniformly: at every layer of the DAG,
+`cache_key = content_hash(canonical Upsert<T> subject)`, **projected** into
+the backend's `key_space`:
+
+| Backend `key_space` | Projection |
+|---|---|
+| Content-addressed (BuildBuddy CAS) | identity — already matches |
+| Hand-authored string (GHA Actions Cache) | emit `content_hash` as the opaque key string |
+| Native-internal-hash (sccache) | sub-layer; opaque inside the coarser Upsert<T>'s `create` |
+| Cargo fingerprint (Cargo `target/`) | L0 internal to a cargo invocation; opaque to fractal layers above |
+
+The fractal model **does not replace** sccache's or Cargo's internal hashing.
+It wraps them: a `ModuleEmitStep<T>` Upsert<T> at the fractal level can use
+sccache as L1 (the storage backend), with sccache's internal keying private to
+its implementation.
+
+#### Derived: layer-to-store mapping (worked projection — not the design)
+
+| DAG layer | Today's backing | Canonical `CacheStore` (fractal) |
+|---|---|---|
+| `CiUpsertStep<T>` verdict | T-22 receipt cache; M1 absent | L2 (GHA Cache / BuildBuddy CAS) |
+| `WorkUnit<T>` output (gunbc emit) | none — the 4× redundancy gap | L2 (BuildBuddy CAS) |
+| `ModuleEmitStep<T>` output | sccache | L1 (per-host sccache) |
+| rustc invocation (CGU-level) | Cargo `target/` | L0 (`$RUNNER_TEMP/target/`) |
+| Crate download | `~/.cargo/registry/cache/` | L1 + optional L2 mirror |
+| Toolchain | rustup-managed | L1 (per-host) |
+| Compute lease | scheduler-internal | L1 lease-state cache |
+
+#### Derived: cascade (one shape, every layer)
+
+```
+Upsert<T>.verify  → L0 (in-runner ephemeral target/, sccache local)
+                  │  miss
+                  ▼
+                  → L1 (srv1-cache / srv2-cache / Mac mini local / sccache shared)
+                  │  miss
+                  ▼
+                  → L2 (BuildBuddy CAS / GHA Actions Cache)
+                  │  miss
+                  ▼
+                  → satisfy (recurse into upstream Upsert<T>s, then create)
+```
+
+#### Two pairings that need explicit substrate modeling
+
+**`ctrl-build` ↔ sccache.** `ctrl-build` is a runner-side wrapper that sets
+up the cargo execution environment (`CARGO_TARGET_DIR`, sccache backend
+config, `CARGO_BUILD_JOBS` cap, memory caps). It is NOT a separate cache
+layer — it's part of the `ComputeProvider.execution_surface` definition
+(toolchain capability + env wiring) and wires existing `CacheStore` rows
+(sccache backend, Cargo `target/`) into the runner instance.
+
+**Cargo registry ↔ optional L2 mirror.** Today `~/.cargo/registry/` is
+per-host; cache miss = re-download from crates.io (external network). A
+modeled L2 backing means the crate-download Upsert<T>'s `verify` first
+queries the L2 mirror (keyed by
+`content_hash(crate-name, version, source-hash)`), falls back to crates.io,
+then puts to L2. No per-host filesystem assumption; ground truth is
+canonical regardless of whether srv1, Mac mini, or a fresh container made
+the request.
 
 ### 4.0f Modeling DFS worksheet — acceptance criteria
 
@@ -691,6 +819,13 @@ proud-pike-680 per the §7 owner-table.)
 | 6 | Storage-heavy provider | `storage + network` coordinates in demand; provider's `StorageDevice[]` + `NetworkInterface[]` match |
 | 7 | Single `WorkDemand` matches multiple providers | `satisfies(supply, demand)` returns `Witness<ComputeLeaseEligibility>` for srv1, srv2, gcloud-container, *and* (where compatible) Mac mini / WSL |
 | 8 | Ineligible provider fails closed | `satisfies` returns `Rejected { reason: missing_fact(...) }` naming the specific missing demand dimension; no silent fallback |
+| 9 | GHA Actions Cache as `CacheStore` row | Hand-authored `hashFiles(...)` patterns disappear from emitted workflow; harness derives keys from canonical `content_hash(Upsert<T> subject)` |
+| 10 | sccache as `CacheStore` row | sccache-native keying remains internal to its backend; the coarser Upsert<T> grain (module-emit / cargo-invocation) is what the fractal model addresses; sccache is L1 backing |
+| 11 | BuildBuddy CAS as `CacheStore` row | Routed via `ctrl-build --remote`; canonical content-hash key matches BuildBuddy's native key 1:1 (no projection needed) |
+| 12 | Cargo `target/` as `CacheStore` row | Modeled as L0 (per-runner ephemeral); never authority; cleared with the runner lease |
+| 13 | Adding a new cache backend (Mac mini local sccache, S3 mirror, etc.) | One new `CacheStore` fact row; no change to higher-layer `Upsert<T>` definitions or `WorkUnit<T>` types |
+| 14 | Wrong-cache-hit protection | A bare-blob hit without a matching `CachedArtifactReceipt { producer: ExecutionReceipt { work: WorkUnit<T> } }` is rejected; cache must prove subject-digest match |
+| 15 | Cache backends are orthogonal-fact composition, not a kind enum | The 4 of 4 `(content-addressed × locality)` combinations from §4.0g are all representable; no `CacheKind` coproduct anywhere |
 
 **Worksheet outputs** (canonical types to land in `dsl/std/` / `src/v4/std/`,
 not in `src/v4/workflow/ci.dag` — these are general-purpose substrate, not
