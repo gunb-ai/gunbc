@@ -57,6 +57,13 @@ const NAT_SEMIRING_RUNG_8_PATH: &str = "src/v4/test/claim/nat_semiring/rung_8.da
 const NAT_SEMIRING_RUNG8_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung8_eval.dag");
 const NAT_SEMIRING_RUNG8_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung8_eval.dag";
+const LOOP_LINEAR_BOUND_RUNG_8_DAG: &str =
+    include_str!("../../../../v4/test/claim/loop_linear_bound/rung_8.dag");
+const LOOP_LINEAR_BOUND_RUNG_8_PATH: &str = "src/v4/test/claim/loop_linear_bound/rung_8.dag";
+const LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/loop_linear_bound_rung8_eval.dag");
+const LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH: &str =
+    "src/v4/test/claim/workflow/loop_linear_bound_rung8_eval.dag";
 
 /// Minimal python host fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_PYTHON_FIXTURE_SOURCE: &str = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
@@ -518,6 +525,60 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
     assert!(
         NAT_SEMIRING_RUNG8_EVAL_DAG.contains("corpus_report_tally"),
         "{NAT_SEMIRING_RUNG8_EVAL_PATH}: VerdictTally via corpus_report_tally"
+    );
+}
+
+#[test]
+fn v4_loop_linear_bound_rung8_dag_tokenizes_and_parses_full_fixture_roster() {
+    let rung_8 = parse_module(LOOP_LINEAR_BOUND_RUNG_8_DAG, LOOP_LINEAR_BOUND_RUNG_8_PATH);
+    for name in [
+        "run_claim_loop_linear_bound_well_formed",
+        "run_claim_loop_linear_bound_equals_refl",
+        "run_claim_loop_linear_bound_content_hash_stable",
+    ] {
+        assert!(
+            surface_declares_data(&rung_8, name),
+            "{LOOP_LINEAR_BOUND_RUNG_8_PATH}: missing run row {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(&rung_8, "phase4_loop_linear_bound_rung8_runtime_value_rows"),
+        "{LOOP_LINEAR_BOUND_RUNG_8_PATH}: runtime roster carrier (3 rows)"
+    );
+    assert!(
+        surface_declares_fn(&rung_8, "rung8_tier1_eval_run"),
+        "{LOOP_LINEAR_BOUND_RUNG_8_PATH}: T-22 eval constructor must call run_test_claim"
+    );
+    assert!(
+        LOOP_LINEAR_BOUND_RUNG_8_DAG.contains("run_test_claim("),
+        "{LOOP_LINEAR_BOUND_RUNG_8_PATH}: roster rows must thread run_test_claim verdicts (not fabricated Pass)"
+    );
+
+    let eval_module = parse_module(LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG, LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH);
+    for name in [
+        "run_loop_linear_bound_rung8_eval",
+        "loop_linear_bound_rung8_gate",
+        "loop_linear_bound_rung8_zero_deferred",
+    ] {
+        assert!(
+            surface_declares_fn(&eval_module, name),
+            "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: missing fn {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(
+            &eval_module,
+            "witness_loop_linear_bound_rung8_zero_deferred_closed"
+        ),
+        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: authoring-time zero-deferred witness (data binding)"
+    );
+    assert!(
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains("phase4_loop_linear_bound_rung8_runtime_value_rows"),
+        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster"
+    );
+    assert!(
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains("corpus_report_tally"),
+        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: VerdictTally via corpus_report_tally"
     );
 }
 
