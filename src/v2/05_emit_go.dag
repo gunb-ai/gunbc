@@ -311,16 +311,21 @@ fn emit_go_imports(items: List<Node>, imports: List<Node>, source_indices: Map<S
   }
 }
 
+fn go_module_needs_v2rt_import(has_services: Bool, has_functions: Bool) -> Bool {
+  has_services || has_functions
+}
+
 fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bool) -> List<String> {
   let fmt_import = if has_types || has_functions || has_services { ["\t\"fmt\""] } else { [] }
-  let rt_import = [concat("\t\"", go_v2rt_import_path(), "\"")]
-  let strings_import = if has_functions || has_types || has_services { ["\t\"strings\""] } else { [] }
+  let rt_import = if go_module_needs_v2rt_import(has_services: has_services, has_functions: has_functions) {
+    [concat("\t\"", go_v2rt_import_path(), "\"")]
+  } else { [] }
   let net_imports = if has_services {
     ["\t\"net/http\"", "\t\"encoding/json\"", "\t\"bytes\"", "\t\"io\""]
   } else {
     []
   }
-  concat(fmt_import, rt_import, strings_import, net_imports)
+  concat(fmt_import, rt_import, net_imports)
 }
 
 // =========================================================================

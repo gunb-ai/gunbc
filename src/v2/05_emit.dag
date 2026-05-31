@@ -1806,6 +1806,31 @@ fn emit_unified_init_block_stmts(
     emit_expr: (stmt, sc, d) => emit_unified_typed_expr(texpr: stmt, target: target, registry: registry, scope: sc, depth: d, fuel: 1024, render_pattern: render_pattern))
 }
 
+fn emit_tco_match_go(
+    scrutinee_str: String, arms: List<Node>, depth: Int,
+    fn_name: String, params: List<Node>,
+    registry: Map<String, ItemInfo>, scope: InferScope,
+    render_pattern: fn(MatchPattern) -> String,
+    render_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
+  let si = scope.type_env.source_indices
+  let bs = language_spec(target: Go).block_syntax
+  let case_depth = depth + 1
+  let body_depth = case_depth + 1
+  let arm_strs = arms |> map(arm =>
+    let bindings = emit_go_match_arm_bindings(arm: arm, indent_level: body_depth, source_indices: si)
+    let tco_body = emit_unified_tco_expr(
+      frame: TcoFrame { expr: arm_body(n: arm), scope: scope, depth: body_depth },
+      fn_name: fn_name, params: params, target: Go, registry: registry,
+      recurse_expr: (expr, sc, d) => emit_unified_typed_expr(texpr: expr, target: Go, registry: registry, scope: sc, depth: d, fuel: 1024, render_pattern: render_pattern),
+      render_match: frame => emit_unified_tco_match(frame: frame, fn_name: fn_name, params: params, target: Go, registry: registry, render_pattern: render_pattern, render_init_stmts: render_init_stmts),
+      render_init_stmts: render_init_stmts)
+    let body_str = emit_match_arm_body_stmt(target: Go, body_str: tco_body)
+    let guard_str = emit_arm_guard(arm: arm, target: Go, render_guard_expr: g => emit_unified_typed_expr(texpr: g, target: Go, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern))
+    emit_match_arm_line(arm: arm, target: Go, case_depth: case_depth, body_depth: body_depth, body_str: concat(bindings, body_str), guard_str: guard_str, render_pattern: render_pattern)
+  )
+  concat("switch __gunbcMatch := ", scrutinee_str, ".(type)", bs.block_open, arm_strs |> join(separator: "\n"), "\n", make_indent(level: depth), bs.block_close)
+}
+
 fn emit_unified_tco_match(
     frame: TcoFrame, fn_name: String, params: List<Node>,
     target: RenderTarget, registry: Map<String, ItemInfo>,
@@ -1816,16 +1841,20 @@ fn emit_unified_tco_match(
       let s = match_scrutinee(texpr: frame.expr)
       let arm_list = match_arm_nodes(texpr: frame.expr)
       let scrut_str = emit_unified_typed_expr(texpr: s, target: target, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024, render_pattern: render_pattern)
-      let arm_strs = arm_list |> map(arm =>
-        emit_unified_tco_match_arm(arm: arm, fn_name: fn_name, params: params,
-          target: target, registry: registry, scope: frame.scope, depth: frame.depth,
-          render_pattern: render_pattern, render_init_stmts: render_init_stmts))
-      let arms_str = arm_strs |> join(separator: "\n")
-      let bs = language_spec(target: target).block_syntax
-      if bs.block_close == "" {
-        concat(bs.match_keyword, scrut_str, bs.block_open, arms_str)
-      } else {
-        concat(bs.match_keyword, scrut_str, bs.block_open, arms_str, "\n", bs.block_close)
+      match target {
+        Go => emit_tco_match_go(scrutinee_str: scrut_str, arms: arm_list, depth: frame.depth, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, render_pattern: render_pattern, render_init_stmts: render_init_stmts)
+        _ =>
+          let arm_strs = arm_list |> map(arm =>
+            emit_unified_tco_match_arm(arm: arm, fn_name: fn_name, params: params,
+              target: target, registry: registry, scope: frame.scope, depth: frame.depth,
+              render_pattern: render_pattern, render_init_stmts: render_init_stmts))
+          let arms_str = arm_strs |> join(separator: "\n")
+          let bs = language_spec(target: target).block_syntax
+          if bs.block_close == "" {
+            concat(bs.match_keyword, scrut_str, bs.block_open, arms_str)
+          } else {
+            concat(bs.match_keyword, scrut_str, bs.block_open, arms_str, "\n", bs.block_close)
+          }
       }
     _ => emit_error_expr(message: "emit_unified_tco_match expected ExprMatch", target: target)
   }
@@ -2683,7 +2712,16 @@ fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindin
         )
         concat(name, vps.open, binding_strs |> join(separator: ", "), vps.close)
       }
-    None => go_variant_case_type(name: name, parent_enum: parent_enum)
+    None =>
+      match target {
+        Go => go_variant_case_type(name: name, parent_enum: parent_enum)
+        _ =>
+          if field_bindings |> count > 0 {
+            emit_error_expr(message: "variant patterns with field bindings are not supported for this target", target: target)
+          } else {
+            go_variant_case_type(name: name, parent_enum: parent_enum)
+          }
+      }
   }
 }
 
