@@ -308,9 +308,9 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
 
 #[test]
 fn optional_pattern_lookup_still_resolves_some_variant() {
-    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(
-        with_optional_cardinality(leaf_node("String".to_string())),
-    );
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
+        leaf_node("String".to_string()),
+    ));
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
@@ -462,7 +462,8 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
     ];
     for method_name in &expected_methods {
         assert!(
-            v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
+            v2_compiler_infer_lookup::lookup_structural_method(
+                list_int.clone(),
                 method_name.to_string(),
                 empty_source_indices(),
             )
@@ -477,7 +478,8 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
 #[test]
 fn structural_method_any_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_int.clone(),
         "any".to_string(),
         empty_source_indices(),
     )
@@ -494,7 +496,8 @@ fn structural_method_any_on_list_returns_bool() {
 #[test]
 fn structural_method_all_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_int.clone(),
         "all".to_string(),
         empty_source_indices(),
     )
@@ -511,7 +514,8 @@ fn structural_method_all_on_list_returns_bool() {
 #[test]
 fn structural_method_sort_by_on_list_returns_self() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_int.clone(),
         "sort_by".to_string(),
         empty_source_indices(),
     )
@@ -528,7 +532,8 @@ fn structural_method_sort_by_on_list_returns_self() {
 #[test]
 fn structural_method_first_on_list_returns_optional_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_int.clone(),
         "first".to_string(),
         empty_source_indices(),
     )

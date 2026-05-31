@@ -2550,7 +2550,9 @@ fn diag_parser_scc_edges() {
         .cloned()
         .map(|n| (n, true))
         .collect();
-    let edges = collect_parser_edges_for_scc(scc_info.members.clone(), func_index_rc.clone(),
+    let edges = collect_parser_edges_for_scc(
+        scc_info.members.clone(),
+        func_index_rc.clone(),
         Rc::new(scc_name_set),
         Rc::new(HashMap::new()),
     );
@@ -2658,7 +2660,13 @@ fn diag_parse_node_decl_env() {
     eprintln!("body children count: {}", pnd.body.children.len());
 
     // Call exactly what the SCC analysis calls
-    let edges = collect_parser_progress_edges("parse_node_decl".to_string(), pnd.body.clone(), state_param.clone(), scc_name_set, empty_parser_progress_env(), parser_always_advancing,
+    let edges = collect_parser_progress_edges(
+        "parse_node_decl".to_string(),
+        pnd.body.clone(),
+        state_param.clone(),
+        scc_name_set,
+        empty_parser_progress_env(),
+        parser_always_advancing,
         Rc::new(HashMap::new()),
         Rc::new(HashMap::new()),
     );
@@ -5228,7 +5236,10 @@ fn type_rendering_bare_list_not_map() {
     let list_node = test_leaf_node("List");
     let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
 
-    let rendered = render_node_type(list_node, RenderTarget::Rust, shared_types,
+    let rendered = render_node_type(
+        list_node,
+        RenderTarget::Rust,
+        shared_types,
         Rc::new(HashMap::new()),
     );
 
@@ -5251,7 +5262,10 @@ fn type_rendering_bare_map_stays_hashmap() {
     let map_node = test_leaf_node("Map");
     let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
 
-    let rendered = render_node_type(map_node, RenderTarget::Rust, shared_types,
+    let rendered = render_node_type(
+        map_node,
+        RenderTarget::Rust,
+        shared_types,
         Rc::new(HashMap::new()),
     );
 
@@ -5279,7 +5293,10 @@ fn type_rendering_named_conj_with_container_template() {
     });
     let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
 
-    let rendered = render_node_type(free_monoid_conj, RenderTarget::Rust, shared_types,
+    let rendered = render_node_type(
+        free_monoid_conj,
+        RenderTarget::Rust,
+        shared_types,
         Rc::new(HashMap::new()),
     );
 
@@ -10753,7 +10770,9 @@ fn diag_emitter_scc() {
                 .map(|m| (m.clone(), true))
                 .collect::<HashMap<String, bool>>(),
         );
-        let edges = collect_scc_cx_l2_tree_edges(info.members.clone(), func_index.clone(),
+        let edges = collect_scc_cx_l2_tree_edges(
+            info.members.clone(),
+            func_index.clone(),
             scc_name_set,
             Rc::new(HashMap::new()),
         );
