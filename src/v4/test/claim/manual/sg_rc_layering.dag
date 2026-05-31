@@ -334,8 +334,7 @@ fn sg_rc_value_rc_wrap_tagged() -> Bool {
       match wrapped.kind {
         TargetValueExprReferenceRcNew =>
           sg_rc_value_expr_ctor_identity(expr: wrapped) == tokens.rc_new_ctor
-            && content_hash(n: sg_rc_value_expr_inner_node(expr: wrapped))
-              == content_hash(n: inner_node)
+            && content_hash(n: sg_rc_value_expr_inner_node(expr: wrapped)) == content_hash(n: inner_node)
         _ => false
       }
     Rejected { diagnostics: _ } => false
