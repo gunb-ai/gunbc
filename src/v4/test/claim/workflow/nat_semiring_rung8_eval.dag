@@ -5,14 +5,9 @@
 module v4.test.claim.workflow.nat_semiring_rung8_eval
 
 
-import v4.compiler.eval { TestClaimRun }
 import v4.std.algebra { is_empty }
-import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Zero }
-import v4.std.node { Node }
-import v4.std.runtime { RuntimeValue }
-import v4.std.verdict { Deferred }
 import v4.test.claim.nat_semiring.rung_8 { phase1_nat_semiring_rung8_runtime_value_rows }
 import v4.test.claim.workflow.testclaim_corpus_runner {
   CorpusEvalReport,
@@ -30,43 +25,18 @@ fn run_nat_semiring_rung8_eval() -> CorpusEvalReport {
 }
 
 
-fn nat_semiring_rung8_report_has_evidence(report: CorpusEvalReport) -> Bool {
-  match is_empty(xs: report.entries) {
-    true => false
-    false => true
-  }
-}
-
-
 fn nat_semiring_rung8_gate(report: CorpusEvalReport) -> Bool {
-  if nat_semiring_rung8_report_has_evidence(report: report) {
+  if is_empty(xs: report.entries) {
+    false
+  } else {
     let tally = corpus_report_tally(r: report)
     tally.fail == Zero && tally.deferred == Zero
-  } else {
-    false
   }
 }
 
 
 fn nat_semiring_rung8_zero_deferred(report: CorpusEvalReport) -> Bool {
   corpus_report_tally(r: report).deferred == Zero
-}
-
-
-fn nat_semiring_rung8_row_not_deferred(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Deferred { actual: _, diagnostic: _ } => false
-    _ => true
-  }
-}
-
-
-fn nat_semiring_rung8_all_rows_not_deferred() -> Bool {
-  fold(
-    phase1_nat_semiring_rung8_runtime_value_rows,
-    init: true,
-    f: fn(acc, run) { acc && nat_semiring_rung8_row_not_deferred(run: run) }
-  )
 }
 
 

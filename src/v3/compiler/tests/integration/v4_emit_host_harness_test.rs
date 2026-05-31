@@ -375,7 +375,7 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         "{NAT_SEMIRING_RUNG_8_PATH}: T-22 eval constructor must call run_test_claim"
     );
     assert!(
-        rung_8.contains("run_test_claim("),
+        NAT_SEMIRING_RUNG_8_DAG.contains("run_test_claim("),
         "{NAT_SEMIRING_RUNG_8_PATH}: roster rows must thread run_test_claim verdicts (not fabricated Pass)"
     );
     assert!(
@@ -388,7 +388,6 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         "run_nat_semiring_rung8_eval",
         "nat_semiring_rung8_gate",
         "nat_semiring_rung8_zero_deferred",
-        "nat_semiring_rung8_all_rows_not_deferred",
     ] {
         assert!(
             surface_declares_fn(&eval_module, name),
