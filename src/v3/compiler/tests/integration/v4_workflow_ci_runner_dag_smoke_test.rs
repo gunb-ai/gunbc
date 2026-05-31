@@ -938,6 +938,17 @@ fn v4_workflow_ci_bankruptcy_tier0_schedule_policy_carries_disposition() {
             && CI_DAG.contains("fn ci_job_scheduled_by_policy("),
         "{CI_DAG_PATH}: schedule-policy Bool dispatch must carry Practice-10 disposition"
     );
+    assert!(
+        CI_DAG.contains("feature:ci-bankruptcy-component-fail-closed")
+            && CI_DAG.contains("fn ci_component_affected_is_fail_closed("),
+        "{CI_DAG_PATH}: component fail-closed Bool classifier must carry Practice-10 disposition"
+    );
+    assert!(
+        CI_DAG.contains("feature:ci-bankruptcy-tier0-gha-step-if")
+            && CI_DAG.contains("ci_v3_self_host_fixed_point_ci_live_workflow_binding")
+            && CI_DAG.contains("ci_v4_bootstrap_gate_result_skip_guard_if"),
+        "{CI_DAG_PATH}: Tier-0 GHA if bridge carriers must carry Practice-10 disposition"
+    );
 }
 
 #[test]
@@ -1101,10 +1112,20 @@ fn v4_workflow_ci_bankruptcy_tier0_release_distribution_mask_axes_modeled() {
         CI_DAG.contains("testclaim_corpus && affected.testclaim_corpus"),
         "{CI_DAG_PATH}: ci_component_mask_intersects must include testclaim_corpus axis (I8 / IRT-1)"
     );
-    assert!(
-        CI_DAG.contains("affected.testclaim_corpus\n    && affected.workflow_policy"),
-        "{CI_DAG_PATH}: ci_component_affected_is_fail_closed must include all six CiComponentAffected axes"
-    );
+    let fail_closed_body = extract_fn_body(CI_DAG, "ci_component_affected_is_fail_closed");
+    for axis in [
+        "affected.v2",
+        "affected.v3",
+        "affected.v4",
+        "affected.testclaim_corpus",
+        "affected.workflow_policy",
+        "affected.release_distribution",
+    ] {
+        assert!(
+            fail_closed_body.contains(axis),
+            "{CI_DAG_PATH}: ci_component_affected_is_fail_closed must require axis `{axis}`"
+        );
+    }
     assert!(
         CI_DAG.contains(
             "BootstrapStageCompile { produces: _ } =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true"

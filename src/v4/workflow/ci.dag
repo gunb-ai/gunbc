@@ -474,7 +474,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
 data ci_v3_determinism_profile: CiBuildProfile = Release
 data ci_v3_self_host_fixed_point_profile: CiBuildProfile = Release
 
-// Tier-0 ci_integration step if — single authority for YAML projection (bankruptcy I4 D1: v3 frontier OR MainPush).
+// 🟡 gated — live-workflow projection interim (Practice 10) — feature:ci-bankruptcy-tier0-gha-step-if — consumers: ci_v3_self_host_fixed_point_ci_live_workflow_binding, ci_v4_bootstrap_gate_result_skip_guard_if, ci.yml Tier-0 step blocks — bind docs/design-ci-bankruptcy-rebuild.md §3.3 I4 D1 / B0 harness — dissolve-on-arrival: A15 Shape-B emits step `if` from `ci_job_scheduled_by_policy` + `CiComponentAffected` outputs (delete raw `if_condition` / guard String carriers); until then these two bindings are the sole Tier-0 GHA-if bridge; forbidden: additional untagged raw GitHub Actions `if:` string authorities for bankruptcy Tier-0 steps.
 type CiGhaWorkflowStepBinding {
   step_name: String
   if_condition: String
@@ -3339,6 +3339,7 @@ fn ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>) -
 }
 
 
+// 🟡 gated — predicate-dissolution interim (Practice 10) — feature:ci-bankruptcy-component-fail-closed — consumer: ci_job_selected_by_affected / ci_select_ci_jobs_from_affected_set — bind bankruptcy B0 §2.2 I1 fail-closed roster — dissolve-on: `CiComponentAffected` gains explicit fail-closed coproduct variant (delete this all-true Bool classifier); until then sentinel on git-diff reject only; forbidden: additional untagged `*_is_*` Bool classifiers on `CiComponentAffected` beside `feature:ci-bankruptcy-schedule-policy` cluster.
 fn ci_component_affected_is_fail_closed(affected: CiComponentAffected) -> Bool {
   affected.v2
     && affected.v3
