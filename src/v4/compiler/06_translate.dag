@@ -153,7 +153,7 @@ import v4.std.target_model {
   TargetAtomRealization,
   TargetValueExpression,
   SourceAtomValue,
-  source_atom_symbol,
+  source_atom_value_for_realization_row,
   target_atom_realization_lookup_in_catalog_node,
   target_atom_realization_lookup_miss,
   target_atom_realization_lookup_miss_diagnostic,
@@ -2747,20 +2747,6 @@ fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
         )
       }
     _ => shell
-  }
-}
-fn source_atom_value_for_realization_row(
-  source: Node,
-  row: TargetAtomRealization
-) -> Optional<SourceAtomValue> {
-  if content_hash(n: row.source_carrier) == content_hash(n: symbol_kernel_type_node()) {
-    match source.kind {
-      TypeNode { connective: Atom { identity: id } } =>
-        optional_present(source_atom_symbol(identity: id))
-      _ => optional_absent()
-    }
-  } else {
-    optional_absent()
   }
 }
 fn translate_atom_realization_value_from_source(

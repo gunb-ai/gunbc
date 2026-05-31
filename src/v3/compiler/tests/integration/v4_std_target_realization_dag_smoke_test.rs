@@ -220,6 +220,23 @@ fn v4_translate_dag_imports_target_atom_realization_consumer() {
         "{TRANSLATE_PATH}: value realization must project TargetValueExpression onto emitted Node"
     );
     assert!(
+        TARGET_MODEL_DAG.contains("source_atom_value_for_realization_row("),
+        "{TARGET_MODEL_PATH}: translate must import row.value_form-driven source projection"
+    );
+    assert!(
+        TARGET_MODEL_DAG.contains("ValueBoolLiteral") && TARGET_MODEL_DAG.contains("source_atom_bool("),
+        "{TARGET_MODEL_PATH}: Bool rows must project literal witnesses, not type-carrier shells only"
+    );
+    assert!(
+        TARGET_MODEL_DAG.contains("ValueCharUnicodeScalar")
+            && TARGET_MODEL_DAG.contains("source_atom_char("),
+        "{TARGET_MODEL_PATH}: Char rows must project unicode scalar witnesses"
+    );
+    assert!(
+        TRANSLATE_DAG.contains("source_atom_value_for_realization_row("),
+        "{TRANSLATE_PATH}: value path must call substrate source projection (no carrier-hash re-derive)"
+    );
+    assert!(
         TRANSLATE_DAG.contains("target_atom_realization_lookup_miss_diagnostic(source_carrier:"),
         "{TRANSLATE_PATH}: absent atom_realizations edge must decode as catalog lookup_miss"
     );

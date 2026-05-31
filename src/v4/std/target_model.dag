@@ -214,6 +214,65 @@ fn source_atom_char(codepoint: Char) -> SourceAtomValue {
   }
 }
 
+// Project infer/translate grounding nodes onto SourceAtomValue using row.value_form.kind
+// (single authority — consumers must not re-derive carrier-hash projections).
+fn source_atom_value_for_value_template(
+  source: Node,
+  template: TargetValueTemplate
+) -> Optional<SourceAtomValue> {
+  match template.kind {
+    ValueSymbolIdentityPassthrough =>
+      match source.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if id == symbol_kernel_type_atom {
+            optional_absent()
+          } else {
+            optional_present(source_atom_symbol(identity: id))
+          }
+        _ => optional_absent()
+      }
+    ValueSymbolToOwnedString =>
+      match source.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if id == symbol_kernel_type_atom {
+            optional_absent()
+          } else {
+            optional_present(source_atom_symbol(identity: id))
+          }
+        _ => optional_absent()
+      }
+    ValueBoolLiteral =>
+      match source.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if id == target_value_expression_bool_true {
+            optional_present(source_atom_bool(value: true))
+          } else if id == target_value_expression_bool_false {
+            optional_present(source_atom_bool(value: false))
+          } else {
+            optional_absent()
+          }
+        _ => optional_absent()
+      }
+    ValueCharUnicodeScalar =>
+      match source.kind {
+        TypeNode { connective: Atom { identity: c } } =>
+          if c == char_kernel_type_atom {
+            optional_absent()
+          } else {
+            optional_present(source_atom_char(codepoint: c))
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+fn source_atom_value_for_realization_row(
+  source: Node,
+  row: TargetAtomRealization
+) -> Optional<SourceAtomValue> {
+  source_atom_value_for_value_template(source: source, template: row.value_form)
+}
+
 fn source_atom_value_as_symbol(value: SourceAtomValue) -> Optional<Symbol> {
   match value.kind {
     SourceAtomSymbol =>
