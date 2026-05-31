@@ -11,8 +11,6 @@ use crate::std_computation::CallPattern::{
 };
 use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_computation::SizeBound;
-use crate::std_computation::SizeBound::TreeSize;
 use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
 pub use crate::std_computation::{
     tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
@@ -20,7 +18,7 @@ pub use crate::std_computation::{
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
-use crate::std_termination::RankingDimension::*;
+use crate::std_termination::RankingDimension::TreeSize;
 pub use crate::std_termination::{
     peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
     positive_descent_count, proportional_divisor_from_int_at_least_two,

@@ -9,12 +9,7 @@ pub use crate::extdeps_languages_rust_emit::{
 pub use crate::generated_method_template_projection::rust_method_template_emit;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
-use crate::std_syntax::AlgebraFieldKind::*;
-use crate::std_syntax::BinOp::*;
-use crate::std_syntax::LiteralValue::*;
-pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::is_container_type;
-pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
@@ -37,8 +32,8 @@ pub use crate::v2_compiler_emit::{
     scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
     service_field_decls, service_var_name, tco_reassign_core, test_function_name, to_lower_char,
     to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings, BlockEmitState, EmitResult, InterpPart,
-    ServiceFieldSet, TcoFrame, TcoReassignInput, TestProjection,
+    typed_named_arg_matches, unique_strings, wrap_shared_type, BlockEmitState, EmitResult,
+    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput, TestProjection,
 };
 pub use crate::v2_compiler_infer::{
     build_emit_graph_info, build_params_scope, expr_span, extend_scope, InferScope,
@@ -60,7 +55,6 @@ pub use crate::v2_compiler_infer_types::{
     is_unit_like, node_is_collection, node_is_element_collection, node_is_keyed_collection,
     node_is_set_collection, normalize_access_type_node, resolved_type,
 };
-pub use crate::v2_compiler_languages::wrap_shared_type;
 use crate::v2_compiler_languages::VisibilitySpec::KeywordVisibility;
 pub use crate::v2_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, sharing_for_target,
@@ -73,6 +67,8 @@ pub use crate::v2_compiler_ownership::{
 };
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
+use crate::v2_std_core::AlgebraFieldKind::*;
+use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
@@ -87,6 +83,7 @@ use crate::v2_std_core::FieldAccessStyle::{
 };
 use crate::v2_std_core::FieldValueShape::OptionalValue;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::MatchPattern::*;
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -114,10 +111,11 @@ pub use crate::v2_std_core::{
     service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
     transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
     transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, with_required_cardinality, CallSemantics,
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    transport_response_format, transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp,
+    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2661,16 +2659,7 @@ pub fn emit_imports(
                                 } else {
                                     {
                                         let deduped_names = unique_strings(filtered_names.clone());
-                                        let graph_type_imports = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for n in deduped_names.clone().iter().cloned() {
-                                                if is_graph_type_name(n.clone(), registry.clone()) {
-                                                    __result.push(n);
-                                                }
-                                            }
-                                            __result
-                                        });
-                                        let non_graph_imports = Rc::new({
+                                        let variant_import_names = Rc::new({
                                             let mut __result = Vec::new();
                                             for n in deduped_names.clone().iter().cloned() {
                                                 if (is_graph_type_name(n.clone(), registry.clone())
@@ -2681,9 +2670,9 @@ pub fn emit_imports(
                                             }
                                             __result
                                         });
-                                        let top_level_enums = Rc::new({
+                                        let top_level = Rc::new({
                                             let mut __result = Vec::new();
-                                            for n in non_graph_imports.clone().iter().cloned() {
+                                            for n in deduped_names.clone().iter().cloned() {
                                                 if if is_known_variant(
                                                     type_summaries.clone(),
                                                     n.clone(),
@@ -2717,7 +2706,7 @@ pub fn emit_imports(
                                         });
                                         let imported_enums = Rc::new({
                                             let mut __result = Vec::new();
-                                            for n in non_graph_imports.clone().iter().cloned() {
+                                            for n in variant_import_names.clone().iter().cloned() {
                                                 if is_enum_in_summaries(
                                                     type_summaries.clone(),
                                                     n.clone(),
@@ -2731,7 +2720,9 @@ pub fn emit_imports(
                                             let mut __result = Vec::new();
                                             for p in Rc::new({
                                                 let mut __result = Vec::new();
-                                                for n in non_graph_imports.clone().iter().cloned() {
+                                                for n in
+                                                    variant_import_names.clone().iter().cloned()
+                                                {
                                                     __result.push(
                                                         if is_enum_in_summaries(
                                                             type_summaries.clone(),
@@ -2770,10 +2761,7 @@ pub fn emit_imports(
                                         });
                                         let parent_list = unique_strings(all_parents.clone());
                                         let top_with_parents = unique_strings(v2_rt::concat(
-                                            v2_rt::concat(
-                                                graph_type_imports.clone(),
-                                                top_level_enums.clone(),
-                                            ),
+                                            top_level.clone(),
                                             parent_list.clone(),
                                         ));
                                         let local_reexport_names = Rc::new({
@@ -2868,7 +2856,7 @@ pub fn emit_imports(
                                                     );
                                                     let variants = Rc::new({
                                                         let mut __result = Vec::new();
-                                                        for n in non_graph_imports
+                                                        for n in variant_import_names
                                                             .clone()
                                                             .iter()
                                                             .cloned()
@@ -2921,7 +2909,7 @@ pub fn emit_imports(
                                         });
                                         let imported_enums = Rc::new({
                                             let mut __result = Vec::new();
-                                            for n in top_level_enums.clone().iter().cloned() {
+                                            for n in top_level.clone().iter().cloned() {
                                                 if is_enum_in_summaries(
                                                     type_summaries.clone(),
                                                     n.clone(),
