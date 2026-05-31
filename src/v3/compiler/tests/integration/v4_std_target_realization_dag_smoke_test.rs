@@ -349,7 +349,10 @@ fn v4_translate_dag_imports_collection_realization_consumer() {
 
 #[test]
 fn v4_bounded_lattice_completeness_and_infer_gate_are_wired() {
-    let bl_module = parse_module(BOUNDED_LATTICE_COMPLETENESS_DAG, BOUNDED_LATTICE_COMPLETENESS_PATH);
+    let bl_module = parse_module(
+        BOUNDED_LATTICE_COMPLETENESS_DAG,
+        BOUNDED_LATTICE_COMPLETENESS_PATH,
+    );
     assert!(
         surface_declares_fn(&bl_module, "bounded_lattice_instance_completeness"),
         "{BOUNDED_LATTICE_COMPLETENESS_PATH}: SG-6 completeness classifier must live in cycle-breaker module"
