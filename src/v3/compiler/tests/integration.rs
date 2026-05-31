@@ -1165,6 +1165,14 @@ mod parse_stage4_prep {
     }
 
     #[test]
+    fn handwritten_parser_accepts_cache_interface_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/cache_interface.dag"),
+            "dsl/std/cache_interface.dag",
+        );
+    }
+
+    #[test]
     fn handwritten_parser_accepts_nat_dag() {
         parse_file(
             include_str!("../../../../dsl/std/nat.dag"),
