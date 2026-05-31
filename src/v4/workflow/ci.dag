@@ -623,7 +623,9 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
 
 data ci_upsert_v2_bootstrap_smoke_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "scripts/**"),
-  ci_upsert_file_set_input(segment: "src/v2/**")
+  ci_upsert_file_set_input(segment: "src/v2/**"),
+  ci_upsert_file_set_input(segment: "Cargo.toml"),
+  ci_upsert_file_set_input(segment: "Cargo.lock")
 ]
 
 fn ci_upsert_v2_bootstrap_smoke_execution_mk() -> CiUpsertStepSymbol {
