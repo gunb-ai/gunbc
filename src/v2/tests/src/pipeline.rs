@@ -2533,7 +2533,7 @@ fn diag_parser_scc_edges() {
     let scc_result = build_scc_index(
         &func_entries,
         func_index_rc.clone(),
-        &Rc::new(HashMap::new()),
+        Rc::new(HashMap::new()),
     );
 
     // Find the large parser SCC (the one containing parse_type_expr)
@@ -2554,7 +2554,7 @@ fn diag_parser_scc_edges() {
         &scc_info.members,
         &func_index_rc,
         Rc::new(scc_name_set),
-        &Rc::new(HashMap::new()),
+        Rc::new(HashMap::new()),
     );
 
     eprintln!("Total edges: {}", edges.len());
@@ -2661,14 +2661,14 @@ fn diag_parse_node_decl_env() {
 
     // Call exactly what the SCC analysis calls
     let edges = collect_parser_progress_edges(
-        "\1".to_string(),
+        "parse_node_decl".to_string(),
         &pnd.body,
         &state_param,
         &scc_name_set,
         &empty_parser_progress_env(),
         &parser_always_advancing,
-        &Rc::new(HashMap::new()),
-        &Rc::new(HashMap::new()),
+        Rc::new(HashMap::new()),
+        Rc::new(HashMap::new()),
     );
 
     eprintln!("Edges from collect_parser_progress_edges: {}", edges.len());
@@ -5220,8 +5220,8 @@ type Outer<S> {
 fn test_leaf_node(name: &str) -> Rc<v2_compiler::v2_std_core::Node> {
     use v2_compiler::v2_std_core::{leaf_node_with_span, SourceSpan};
     leaf_node_with_span(
-        &name.to_string(),
-        &Rc::new(SourceSpan {
+        name.to_string(),
+        Rc::new(SourceSpan {
             file: "test".to_string(),
             start: 0,
             end: 0,
@@ -5240,7 +5240,7 @@ fn type_rendering_bare_list_not_map() {
         &list_node,
         &RenderTarget::Rust,
         &shared_types,
-        &Rc::new(HashMap::new()),
+        Rc::new(HashMap::new()),
     );
 
     assert!(
@@ -5266,7 +5266,7 @@ fn type_rendering_bare_map_stays_hashmap() {
         &map_node,
         &RenderTarget::Rust,
         &shared_types,
-        &Rc::new(HashMap::new()),
+        Rc::new(HashMap::new()),
     );
 
     assert!(
@@ -5297,7 +5297,7 @@ fn type_rendering_named_conj_with_container_template() {
         &free_monoid_conj,
         &RenderTarget::Rust,
         &shared_types,
-        &Rc::new(HashMap::new()),
+        Rc::new(HashMap::new()),
     );
 
     assert!(
@@ -5352,7 +5352,7 @@ fn apply_named_template_does_not_rescan_substituted_values() {
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "expr_with_{arg}_literal".to_string());
     bindings.insert("arg".to_string(), "sep".to_string());
-    let result = apply_named_template(template, &Rc::new(bindings));
+    let result = apply_named_template(template, Rc::new(bindings));
 
     assert_eq!(
         result, "expr_with_{arg}_literal.join(&sep)",
@@ -5369,7 +5369,7 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "receiver".to_string());
     bindings.insert("arg".to_string(), "has_{recv}_inside".to_string());
-    let result = apply_named_template(template, &Rc::new(bindings));
+    let result = apply_named_template(template, Rc::new(bindings));
 
     assert_eq!(
         result, "receiver.call(has_{recv}_inside)",
@@ -10749,9 +10749,9 @@ fn diag_emitter_scc() {
     let func_index = Rc::new(func_index);
 
     let scc_result = build_scc_index(
-        &Rc::new(func_entries.to_vec()),
+        Rc::new(func_entries.to_vec()),
         func_index.clone(),
-        &Rc::new(HashMap::new()),
+        Rc::new(HashMap::new()),
     );
 
     // Find the SCC containing emit_typed_expr
@@ -10774,7 +10774,7 @@ fn diag_emitter_scc() {
             &info.members,
             &func_index,
             scc_name_set,
-            &Rc::new(HashMap::new()),
+            Rc::new(HashMap::new()),
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
         for e in edges.iter() {
