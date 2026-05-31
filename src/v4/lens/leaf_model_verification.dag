@@ -1,12 +1,15 @@
 // src/v4/lens/leaf_model_verification.dag
 // Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1–R3-internal).
-// Status: R1 rust + R1 python + R2a + R2b (debug/release live) + R3-external rustc + R3-internal emit-coupling fixtures.
+// Status: R1 rust + R1 python + R2a rust + R2b rust (debug/release live) + R3-external rustc + R3-internal emit-coupling fixtures;
+//   python R2a + R2b (arbitrary-precision add) + R3-external CPython fixtures.
 
 module v4.lens.leaf_model_verification
 
 
 import v4.extdeps.languages.python {
+  python_atom_realization_symbol,
   python_facts_field_encoding,
+  python_integer_algebra_inhabitance_python_facts_int,
   python_surface_spelling_int
 }
 import v4.extdeps.languages.rust {
@@ -41,6 +44,9 @@ import v4.std.leaf_model_verification {
   LeafModelPythonFalsificationCase,
   LeafModelRustFixture,
   leaf_model_claim_python_r1_int_surface_spelling,
+  leaf_model_claim_python_r2a_int_algebra_operations,
+  leaf_model_claim_python_r2b_int_arbitrary_precision_add,
+  leaf_model_claim_python_r3_external_symbol_projection,
   leaf_model_claim_rust_r1_i32_surface_spelling,
   leaf_model_claim_rust_r2a_i32_algebra_operations,
   leaf_model_claim_rust_r2b_debug_default_overflow,
@@ -52,10 +58,14 @@ import v4.std.leaf_model_verification {
   leaf_model_rust_crate_type_lib,
   TargetCompileAccepted,
   TargetCompileRejected,
+  TargetPythonExerciseAccepted,
+  TargetPythonExecRejected,
   target_diagnostic_e0308_type_mismatch,
   target_diagnostic_e0423_expected_value_found_type,
   target_diagnostic_e0599_method_not_found,
-  target_diagnostic_python_name_error_undefined_name
+  target_diagnostic_python_name_error_undefined_name,
+  target_diagnostic_python_attribute_error_method_not_found,
+  target_diagnostic_python_type_error_init_arity_mismatch
 }
 import v4.std.node { Symbol }
 import v4.std.text { String }
@@ -131,10 +141,10 @@ fn python_r1_fixture_pair() -> LeafModelPythonFixturePair {
     surface_spelling_fact: python_r1_claim_surface_spelling_fact,
     encoding_spelling_fact: python_r1_claim_encoding_spelling_fact,
     happy: python_r1_happy_fixture(),
-    expected_happy_verdict: TargetCompileAccepted,
+    expected_happy_verdict: TargetPythonExerciseAccepted,
     falsification: LeafModelPythonFalsificationCase {
       fixture: python_r1_falsification_fixture(),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: TargetPythonExecRejected {
         diagnostic_code: target_diagnostic_python_name_error_undefined_name
       }
     }
@@ -143,6 +153,103 @@ fn python_r1_fixture_pair() -> LeafModelPythonFixturePair {
 
 fn python_r1_fixture() -> LeafModelPythonFixturePair {
   python_r1_fixture_pair()
+}
+
+// R2a — int algebra inhabitance: ordered-ring ops on Python int (planning §7 mirror of rust R2a).
+data python_r2a_claim_algebra_inhabitance_fact: Symbol = python_integer_algebra_inhabitance_python_facts_int
+
+data python_r2a_happy_fixture_source: String = "def r2a_test(a: int, b: int) -> tuple[int, bool]:\n    return (a + b, a < b)\n"
+
+data python_r2a_falsification_fixture_source: String = "def r2a_test(a: int) -> int:\n    return a.log2_exact()\n\nif __name__ == \"__main__\":\n    r2a_test(1)\n"
+
+fn python_r2a_happy_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r2a_happy_fixture_source }
+}
+
+fn python_r2a_falsification_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r2a_falsification_fixture_source }
+}
+
+fn python_r2a_fixture_pair() -> LeafModelPythonFixturePair {
+  LeafModelPythonFixturePair {
+    claim_id: leaf_model_claim_python_r2a_int_algebra_operations,
+    surface_spelling_fact: python_r2a_claim_algebra_inhabitance_fact,
+    encoding_spelling_fact: python_r2a_claim_algebra_inhabitance_fact,
+    happy: python_r2a_happy_fixture(),
+    expected_happy_verdict: TargetPythonExerciseAccepted,
+    falsification: LeafModelPythonFalsificationCase {
+      fixture: python_r2a_falsification_fixture(),
+      expected_verdict: TargetPythonExecRejected {
+        diagnostic_code: target_diagnostic_python_attribute_error_method_not_found
+      }
+    }
+  }
+}
+
+fn python_r2a_fixture() -> LeafModelPythonFixturePair {
+  python_r2a_fixture_pair()
+}
+
+// R2b — arbitrary-precision int add beyond fixed-width (python_repr_int_arbitrary_precision).
+data python_r2b_claim_algebra_inhabitance_fact: Symbol = python_integer_algebra_inhabitance_python_facts_int
+
+data python_r2b_runtime_fixture_source: String = "def r2b_test() -> int:\n    return (2**63 - 1) + 1\n\nif __name__ == \"__main__\":\n    assert r2b_test() == 2**63\n"
+
+fn python_r2b_runtime_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r2b_runtime_fixture_source }
+}
+
+fn python_r2b_fixture_pair() -> LeafModelPythonFixturePair {
+  LeafModelPythonFixturePair {
+    claim_id: leaf_model_claim_python_r2b_int_arbitrary_precision_add,
+    surface_spelling_fact: python_r2b_claim_algebra_inhabitance_fact,
+    encoding_spelling_fact: python_r2b_claim_algebra_inhabitance_fact,
+    happy: python_r2b_runtime_fixture(),
+    expected_happy_verdict: TargetPythonExerciseAccepted,
+    falsification: LeafModelPythonFalsificationCase {
+      fixture: python_r2b_runtime_fixture(),
+      expected_verdict: TargetPythonExerciseAccepted
+    }
+  }
+}
+
+fn python_r2b_fixture() -> LeafModelPythonFixturePair {
+  python_r2b_fixture_pair()
+}
+
+// R3-external — Symbol atom realization: nominal class (happy) vs ctor arity mismatch (falsification).
+data python_r3_external_claim_atom_realization_fact: Symbol = python_atom_realization_symbol
+
+data python_r3_external_happy_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(\"x\")\n\nif __name__ == \"__main__\":\n    r3_test()\n"
+
+data python_r3_external_falsification_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(1, 2)\n\nif __name__ == \"__main__\":\n    r3_test()\n"
+
+fn python_r3_external_happy_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r3_external_happy_fixture_source }
+}
+
+fn python_r3_external_falsification_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r3_external_falsification_fixture_source }
+}
+
+fn python_r3_external_fixture_pair() -> LeafModelPythonFixturePair {
+  LeafModelPythonFixturePair {
+    claim_id: leaf_model_claim_python_r3_external_symbol_projection,
+    surface_spelling_fact: python_r3_external_claim_atom_realization_fact,
+    encoding_spelling_fact: python_r3_external_claim_atom_realization_fact,
+    happy: python_r3_external_happy_fixture(),
+    expected_happy_verdict: TargetPythonExerciseAccepted,
+    falsification: LeafModelPythonFalsificationCase {
+      fixture: python_r3_external_falsification_fixture(),
+      expected_verdict: TargetPythonExecRejected {
+        diagnostic_code: target_diagnostic_python_type_error_init_arity_mismatch
+      }
+    }
+  }
+}
+
+fn python_r3_external_fixture() -> LeafModelPythonFixturePair {
+  python_r3_external_fixture_pair()
 }
 
 // R2a — algebra inhabitance: ordered-ring ops on i32 (design-rust-dag-leafmodel-instantiation.md §5).

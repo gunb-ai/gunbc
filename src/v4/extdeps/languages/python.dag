@@ -217,6 +217,11 @@ data python_witness_int_ordered_ring_arbitrary_precision: Symbol = python_witnes
 data python_witness_float_approximate_field: Symbol = python_witness_float_approximate_field
 data python_witness_bool_boolean_algebra: Symbol = python_witness_bool_boolean_algebra
 
+// Leaf-model Layer-A — derived fact exposure + PLANNED SG-1 slot (mirror rust.dag:809–813).
+data python_integer_algebra_inhabitance_python_facts_int: AlgebraInhabitanceDecl = python_integer_algebra_inhabitance(facts: python_facts_int)
+data python_atom_realization_symbol: Symbol = python_atom_realization_symbol
+data python_atom_realization_symbol_node: Node = python_inhabitant_atom(id: python_atom_realization_symbol)
+
 data python_tag_singleton_none: Symbol = python_tag_singleton_none
 data python_tag_singleton_notimplemented: Symbol = python_tag_singleton_notimplemented
 data python_tag_singleton_ellipsis: Symbol = python_tag_singleton_ellipsis
