@@ -94,7 +94,7 @@ fn meet_join_strict_same_field_matching_factor_is_commutative() {
     for (x, y) in [(left.clone(), right.clone()), (right, left)] {
         match (*meet_sub_value(x.clone(), y.clone())).clone() {
             SubValueRelation::StrictSubValue { field: f, factor } => {
-                assert!(inductive_field_eq(&f, &field));
+                assert!(inductive_field_eq(f.clone(), field.clone()));
                 assert!(matches!(
                     (*factor).clone(),
                     ShrinkFactor::ConstantShrink { steps: s } if *s == *steps
@@ -104,7 +104,7 @@ fn meet_join_strict_same_field_matching_factor_is_commutative() {
         }
         match (*join_sub_value(x, y)).clone() {
             SubValueRelation::StrictSubValue { field: f, factor } => {
-                assert!(inductive_field_eq(&f, &field));
+                assert!(inductive_field_eq(f.clone(), field.clone()));
                 assert!(matches!(
                     (*factor).clone(),
                     ShrinkFactor::ConstantShrink { steps: s } if *s == *steps
