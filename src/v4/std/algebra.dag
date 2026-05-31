@@ -7,7 +7,7 @@
 module v4.std.algebra
 
 
-import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
 type Magma<T> {
   op: fn(T, T) -> T
 }
@@ -602,6 +602,110 @@ fn bounded_lattice_node(inhabitant: Node) -> Node {
     algebra: bounded_lattice_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
+}
+
+
+// BoundedLattice instance completeness: meet/join witnesses must be populated on the
+// nested lattice field (std authority for field paths; infer gate consumes this).
+type NamedChildLookup
+  = NamedChildFound { target: Node }
+  | NamedChildMissing
+  | NamedChildAmbiguous
+
+
+type BoundedLatticeMissingWitness
+  = MissingMeet
+  | MissingJoin
+  | MissingLatticeField
+
+
+type BoundedLatticeInstanceCompleteness
+  = BoundedLatticeComplete
+  | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
+
+
+fn conj_has_unique_named_child(root: Node, name: Symbol) -> Bool {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      name_occurrences(name: name, children: root.children) == 1
+    _ => false
+  }
+}
+
+
+fn conj_named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      match name_occurrences(name: name, children: root.children) {
+        0 => NamedChildMissing
+        1 =>
+          fold(
+            root.children,
+            init: NamedChildMissing,
+            f: fn(acc, e) {
+              match acc {
+                NamedChildFound { target: _ } => acc
+                NamedChildMissing =>
+                  match e.label {
+                    Named { name: edge_name } =>
+                      if edge_name == name {
+                        NamedChildFound { target: e.target }
+                      } else {
+                        acc
+                      }
+                    Positional => acc
+                  }
+                NamedChildAmbiguous => acc
+              }
+            }
+          )
+        _ => NamedChildAmbiguous
+      }
+    _ => NamedChildMissing
+  }
+}
+
+
+fn bounded_lattice_instance_shape(instance: Node) -> Bool {
+  conj_has_unique_named_child(root: instance, name: bounded_lattice_field_lattice)
+    && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_top)
+    && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_bottom)
+}
+
+
+fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeInstanceCompleteness {
+  match conj_named_child_lookup(root: lattice, name: lattice_field_meet) {
+    NamedChildMissing => BoundedLatticePartial { missing: MissingMeet }
+    NamedChildAmbiguous => BoundedLatticePartial { missing: MissingMeet }
+    NamedChildFound { target: _ } =>
+      match conj_named_child_lookup(root: lattice, name: lattice_field_join) {
+        NamedChildMissing => BoundedLatticePartial { missing: MissingJoin }
+        NamedChildAmbiguous => BoundedLatticePartial { missing: MissingJoin }
+        NamedChildFound { target: _ } => BoundedLatticeComplete
+      }
+  }
+}
+
+
+fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
+  if bounded_lattice_instance_shape(instance: instance) {
+    match conj_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
+      NamedChildFound { target: lattice } =>
+        bounded_lattice_lattice_field_completeness(lattice: lattice)
+      NamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
+      NamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
+    }
+  } else {
+    BoundedLatticeComplete
+  }
+}
+
+
+fn bounded_lattice_instance_is_partial(instance: Node) -> Bool {
+  match bounded_lattice_instance_completeness(instance: instance) {
+    BoundedLatticeComplete => false
+    BoundedLatticePartial { missing: _ } => true
+  }
 }
 
 

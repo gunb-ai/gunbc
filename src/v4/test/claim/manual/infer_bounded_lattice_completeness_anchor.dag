@@ -1,0 +1,144 @@
+// src/v4/test/claim/manual/infer_bounded_lattice_completeness_anchor.dag
+// Scope: SG-6 falsification probe — BoundedLattice instance completeness gate in 04_infer.
+// Status: compile-only anchor; execution deferred to T-22 runner bridge.
+
+
+module v4.test.claim.manual.infer_bounded_lattice_completeness_anchor
+
+
+import v4.compiler.infer {
+  InferredTree,
+  infer,
+  infer_bounded_lattice_consumer_gate,
+  infer_bounded_lattice_instance_gate
+}
+import v4.std.algebra {
+  BoundedLatticePartial,
+  MissingMeet,
+  bounded_lattice_field_bottom,
+  bounded_lattice_field_lattice,
+  bounded_lattice_field_top,
+  bounded_lattice_instance_completeness,
+  bounded_lattice_instance_shape,
+  lattice_field_join,
+  lattice_field_meet
+}
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode }
+
+
+data anchor_meet_sym: Symbol = anchor_meet_sym
+data anchor_join_sym: Symbol = anchor_join_sym
+data anchor_top_sym: Symbol = anchor_top_sym
+data anchor_bottom_sym: Symbol = anchor_bottom_sym
+
+
+fn anchor_atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+
+fn anchor_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: []
+  }
+}
+
+
+fn anchor_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+
+fn anchor_complete_lattice_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      anchor_named_edge(name: lattice_field_meet, target: anchor_fn_node()),
+      anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
+    ]
+  }
+}
+
+
+fn anchor_lattice_missing_meet_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      anchor_named_edge(name: lattice_field_join, target: anchor_fn_node())
+    ]
+  }
+}
+
+
+data anchor_complete_bounded_lattice_instance: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    anchor_named_edge(name: bounded_lattice_field_lattice, target: anchor_complete_lattice_node()),
+    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: anchor_top_sym)),
+    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: anchor_bottom_sym))
+  ]
+}
+
+
+data anchor_partial_bounded_lattice_instance: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    anchor_named_edge(name: bounded_lattice_field_lattice, target: anchor_lattice_missing_meet_node()),
+    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: anchor_top_sym)),
+    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: anchor_bottom_sym))
+  ]
+}
+
+
+data anchor_consumer_of_partial: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    anchor_named_edge(
+      name: anchor_meet_sym,
+      target: anchor_partial_bounded_lattice_instance
+    )
+  ]
+}
+
+
+data anchor_bounded_lattice_instance_shape_holds: Bool =
+  bounded_lattice_instance_shape(instance: anchor_complete_bounded_lattice_instance)
+    && bounded_lattice_instance_shape(instance: anchor_partial_bounded_lattice_instance)
+
+
+data anchor_complete_bounded_lattice_completeness_ok: Bool =
+  match bounded_lattice_instance_completeness(instance: anchor_complete_bounded_lattice_instance) {
+    BoundedLatticePartial { missing: _ } => false
+    _ => true
+  }
+
+
+data anchor_partial_bounded_lattice_missing_meet: Bool =
+  match bounded_lattice_instance_completeness(instance: anchor_partial_bounded_lattice_instance) {
+    BoundedLatticePartial { missing: MissingMeet } => true
+    _ => false
+  }
+
+
+data anchor_instance_gate_rejects_partial: Outcome<Node> =
+  infer_bounded_lattice_instance_gate(instance: anchor_partial_bounded_lattice_instance)
+
+
+data anchor_instance_gate_accepts_complete: Outcome<Node> =
+  infer_bounded_lattice_instance_gate(instance: anchor_complete_bounded_lattice_instance)
+
+
+data anchor_consumer_gate_rejects_partial_reference: Outcome<Node> =
+  infer_bounded_lattice_consumer_gate(
+    consumer: anchor_consumer_of_partial,
+    partials: [anchor_partial_bounded_lattice_instance]
+  )
+
+
+data anchor_infer_rejects_partial_instance_tree: Outcome<InferredTree> =
+  infer(tree: anchor_partial_bounded_lattice_instance)

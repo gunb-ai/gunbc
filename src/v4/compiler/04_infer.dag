@@ -7,7 +7,22 @@
 module v4.compiler.infer
 
 
-import v4.std.algebra { list_snoc_item }
+import v4.std.algebra {
+  BoundedLatticeInstanceCompleteness,
+  BoundedLatticeMissingWitness,
+  BoundedLatticeComplete,
+  BoundedLatticePartial,
+  MissingMeet,
+  MissingJoin,
+  bounded_lattice_field_bottom,
+  bounded_lattice_field_lattice,
+  bounded_lattice_field_top,
+  bounded_lattice_instance_completeness,
+  bounded_lattice_instance_shape,
+  lattice_field_join,
+  lattice_field_meet,
+  any
+}
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { List, Map }
@@ -105,6 +120,8 @@ data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
 // 🟢 SM5-satisfied: v2 bootstrap on src/v4 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
+data infer_bounded_lattice_partial_instance: Symbol = infer_bounded_lattice_partial_instance
+data infer_bounded_lattice_consumer_partial: Symbol = infer_bounded_lattice_consumer_partial
 
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
@@ -128,6 +145,83 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
     reason: infer_algebra_ref_ungrounded,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn infer_bounded_lattice_partial_instance_diagnostic(
+  at: Locus,
+  missing: BoundedLatticeMissingWitness,
+) -> Diagnostic {
+  Diagnostic {
+    reason: infer_bounded_lattice_partial_instance,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn infer_bounded_lattice_consumer_partial_diagnostic(
+  consumer: Node,
+  instance: Node,
+) -> Diagnostic {
+  Diagnostic {
+    reason: infer_bounded_lattice_consumer_partial,
+    at: node_locus(node: consumer),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn infer_bounded_lattice_completeness_rejects(
+  instance: Node,
+  completeness: BoundedLatticeInstanceCompleteness,
+) -> Outcome<Node> {
+  match completeness {
+    BoundedLatticeComplete =>
+      Accepted { value: instance, diagnostics: None }
+    BoundedLatticePartial { missing: m } =>
+      outcome_rejected(
+        infer_bounded_lattice_partial_instance_diagnostic(
+          at: node_locus(node: instance),
+          missing: m
+        )
+      )
+  }
+}
+
+
+fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
+  infer_bounded_lattice_completeness_rejects(
+    instance: instance,
+    completeness: bounded_lattice_instance_completeness(instance: instance)
+  )
+}
+
+
+fn node_references_partial_bounded_lattice(
+  consumer: Node,
+  partials: List<Node>,
+) -> Bool {
+  any(xs: consumer.children, predicate: fn(e) {
+    any(xs: partials, predicate: fn(p) { e.target == p })
+  })
+}
+
+
+fn infer_bounded_lattice_consumer_gate(
+  consumer: Node,
+  partials: List<Node>,
+) -> Outcome<Node> {
+  if node_references_partial_bounded_lattice(consumer: consumer, partials: partials) {
+    outcome_rejected(
+      infer_bounded_lattice_consumer_partial_diagnostic(
+        consumer: consumer,
+        instance: consumer
+      )
+    )
+  } else {
+    Accepted { value: consumer, diagnostics: None }
   }
 }
 
@@ -235,23 +329,27 @@ fn infer_constraint_graph(n: Node) -> ConstraintGraph {
 
 
 fn infer_node_facts(n: Node) -> Outcome<InferredFacts> {
-  match infer_descent_witness_for_node(n: n) {
-    Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
-    Holds { value: descent_proof } =>
-      bind_outcome(
-        o: solve_constraints(
-          policy: ConstraintSolvePolicy {
-            graph: infer_constraint_graph(n: n)
-          }
-        ),
-        f: fn(grounding) {
-          inferred_facts_from_grounding(
-            grounding: grounding,
-            descent: Holds { value: descent_proof }
+  match infer_bounded_lattice_instance_gate(instance: n) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: _ } =>
+      match infer_descent_witness_for_node(n: n) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          bind_outcome(
+            o: solve_constraints(
+              policy: ConstraintSolvePolicy {
+                graph: infer_constraint_graph(n: n)
+              }
+            ),
+            f: fn(grounding) {
+              inferred_facts_from_grounding(
+                grounding: grounding,
+                descent: Holds { value: descent_proof }
+              )
+            }
           )
-        }
-      )
+      }
   }
 }
 
