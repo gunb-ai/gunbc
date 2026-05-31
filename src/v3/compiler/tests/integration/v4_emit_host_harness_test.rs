@@ -391,10 +391,11 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         );
     }
     assert!(
-        eval_module
-            .items
-            .iter()
-            .any(|item| matches!(item, SurfaceItem::Data { name, .. } if name == "phase1_nat_semiring_rung8_runtime_value_rows")),
-        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: must import roster from rung_8"
+        NAT_SEMIRING_RUNG8_EVAL_DAG.contains("phase1_nat_semiring_rung8_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG8_EVAL_DAG.contains("corpus_report_tally"),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: VerdictTally via corpus_report_tally"
     );
 }
