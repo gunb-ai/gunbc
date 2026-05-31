@@ -1872,8 +1872,7 @@ fn ci_upsert_cache_digest_create_sensitivity_witness_holds() -> Bool {
   ci_upsert_step_cache_digest(step: ci_upsert_cache_digest_create_sensitivity_a) != ci_upsert_step_cache_digest(step: ci_upsert_cache_digest_create_sensitivity_b)
 }
 
-data ci_upsert_cache_digest_create_sensitivity_witness: Bool =
-  ci_upsert_cache_digest_create_sensitivity_witness_holds()
+data ci_upsert_cache_digest_create_sensitivity_witness: Bool = ci_upsert_cache_digest_create_sensitivity_witness_holds()
 
 
 fn test_claim_typed_input_ci_pipeline(
