@@ -2710,12 +2710,6 @@ fn translate_outcome_is_catalog_lookup_miss(
   diagnostics.head.reason == target_atom_realization_lookup_miss
 }
 
-fn translate_outcome_is_use_site_ownership_lookup_miss(
-  diagnostics: NonEmptyDiagnostics
-) -> Bool {
-  diagnostics.head.reason == target_use_site_ownership_lookup_miss
-}
-
 fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -> Outcome<Bool> {
   match target_bundle_optional_child(target: target, edge_name: edge_name) {
     Accepted { value: optional_child, diagnostics: d } =>

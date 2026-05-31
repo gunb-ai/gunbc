@@ -506,6 +506,10 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
         "{TARGET_MODEL_PATH}: reference_layer must be a coproduct axis"
     );
     assert!(
+        surface_declares_type(&module, "TargetReferenceLayerWrapped"),
+        "{TARGET_MODEL_PATH}: probe payload must exclude Owned (illegal-states-unrepresentable)"
+    );
+    assert!(
         surface_declares_fn(&module, "target_use_site_ownership_lookup_in_catalog_node"),
         "{TARGET_MODEL_PATH}: per (carrier, use_site) lookup must be structural"
     );
