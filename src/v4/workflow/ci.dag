@@ -1252,7 +1252,7 @@ fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
   count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:ci-bankruptcy-needs-closure — consumer: ci_select_ci_jobs_needs_closure_pass — bind bankruptcy B0 — dissolve-on: DAG expression surface accepts unary `!` or std Bool negation at expression sites; until then match-negation of `ci_member` only; forbidden: additional untagged local Bool predicate helpers.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:ci-bankruptcy-needs-closure — consumer: ci_select_ci_jobs_needs_closure_pass — bind bankruptcy B0 — dissolve-on: DAG expression surface accepts unary `!` or std Bool negation at expression sites; until then match-negation of `ci_member` only; forbidden: additional untagged local Bool predicate helpers (schedule-policy interim: feature:ci-bankruptcy-schedule-policy).
 fn ci_symbol_not_in_ids(s: Symbol, ids: List<Symbol>) -> Bool {
   match ci_member(s: s, ids: ids) {
     true => false

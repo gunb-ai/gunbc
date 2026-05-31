@@ -915,6 +915,11 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         "{CI_DAG_PATH}: must declare ci_select_ci_jobs_from_affected_set (I1 / A2)"
     );
     assert!(
+        CI_DAG.contains("feature:ci-bankruptcy-schedule-policy")
+            && CI_DAG.contains("fn ci_job_scheduled_by_policy("),
+        "{CI_DAG_PATH}: schedule-policy Bool dispatch must carry Practice-10 disposition (openai-pro RC)"
+    );
+    assert!(
         CI_DAG.contains("v3_determinism_execution"),
         "{CI_DAG_PATH}: ci_pipeline must include v3_determinism_execution"
     );
