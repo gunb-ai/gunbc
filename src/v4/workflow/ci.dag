@@ -460,10 +460,8 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   timeout_minutes: 20
 }
 
-<<<<<<< HEAD
 data ci_v3_determinism_profile: CiBuildProfile = Release
 data ci_v3_self_host_fixed_point_profile: CiBuildProfile = Release
-=======
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding.
 // 🟡 gated — feature:phase1-nat-semiring-rust-rung-interim-nonblocking — bind #3955 §6 (rust rung emit not rustc-clean on main) — dissolve-on-arrival: flip non_blocking to false when rung1 rust_typecheck passes under V4_PHASE1_NAT_SEMIRING_STRICT=1; until then non_blocking: true (continue-on-error at workflow) while STRICT=1 still logs fail-closed rung receipts; forbidden: silent YAML-only continue-on-error without modeled parity.
 // 🟡 tracked-bridge — feature:phase1-nat-semiring-rung-gate-binding-smoke — owner:keen-crab-361 (Ladder/Fixture Manager) — bind node://adhoc-2b191c1e-6b3 ("phase1/nat_semiring rung gate binding-smoke test (mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml)") — consumer:src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs new test function asserting ci.dag step_name/script_path/non_blocking/timeout_minutes parity with .github/workflows/ci.yml step block — dissolve-on-arrival: binding_smoke_step_name carries the new test's step name (e.g. "phase1/nat_semiring rung gate model/YAML binding smoke") AND ci.yml runs the new test as a cargo-test step paired with the gate; forbidden: re-emptying binding_smoke_step_name after the test lands. Until the bound work item closes, ci.dag↔ci.yml single-authority for THIS signal is enforced by the four-field parity (step_name / script_path / non_blocking / timeout_minutes) under review checkpoint at PR-time — not by a CI binding test.
@@ -474,7 +472,6 @@ data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSign
   non_blocking: true
   timeout_minutes: 20
 }
->>>>>>> origin/main
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
   jobs: [
@@ -1486,7 +1483,6 @@ fn ci_gate_run_policy_projection_node(policy: CiGateRunPolicy) -> Node {
 }
 
 
-<<<<<<< HEAD
 fn ci_build_profile_projection_node(profile: CiBuildProfile) -> Node {
   match profile {
     Smoke => ci_atom(sym: ci_cache_build_profile_smoke_tag)
@@ -1505,65 +1501,7 @@ fn ci_schedule_policy_projection_node(policy: CiSchedulePolicy) -> Node {
 }
 
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — dissolve-on: std/node canonical `byte_offset_cache_key` Node projection replaces this tree. Live consumer: `content_hash(ci_pipeline_evaluator_input_node)` (not `ci_char_cache_digest`).
-fn ci_byte_limb_projection_node(limb: Int) -> Node {
-  if limb == 0 {
-    ci_atom(sym: canonical_tag_scalar_int_zero)
-  } else if limb == 1 {
-    ci_atom(sym: canonical_tag_scalar_int_one)
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(name: ci_projection_char_succ_edge, target: ci_atom(sym: canonical_tag_scalar_int_succ)),
-        ci_named_edge(name: ci_projection_char_pred_edge, target: ci_byte_limb_projection_node(limb: limb - 1))
-      ]
-    }
-  }
-}
-
-
-fn ci_int_offset_authority_projection_node(i: Int) -> Node {
-  if i < 0 {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(name: ci_projection_char_offset_neg_edge, target: ci_atom(sym: canonical_tag_scalar_int_neg)),
-        ci_named_edge(
-          name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_node(i: int_negate(i: i))
-        )
-      ]
-    }
-  } else if i == 0 {
-    ci_atom(sym: canonical_tag_scalar_int_zero)
-  } else if i <= 255 {
-    ci_byte_limb_projection_node(limb: i)
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        ci_named_edge(
-          name: ci_projection_char_offset_quotient_edge,
-          target: ci_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
-        ),
-        ci_named_edge(
-          name: ci_projection_char_offset_authority_edge,
-          target: ci_int_offset_authority_projection_node(i: i / 256)
-        ),
-        ci_named_edge(
-          name: ci_projection_char_offset_byte_edge,
-          target: ci_byte_limb_projection_node(limb: i - (i / 256) * 256)
-        )
-      ]
-    }
-  }
-}
-
-
-=======
 // SG-7 dissolved: offset projection authority is v4.std.node `byte_offset_cache_key_projection_node` only.
->>>>>>> origin/main
 fn ci_char_projection_node(c: Char) -> Node {
   if c < 0 || c > 255 {
     Node {
