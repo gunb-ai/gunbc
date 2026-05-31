@@ -2050,6 +2050,13 @@ fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> 
   }
 }
 
+fn go_lambda_emits_statement_body(body: Node) -> Bool {
+  match body.expr_data {
+    ExprMatch | ExprBlock | ExprLet => true
+    _ => false
+  }
+}
+
 fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> String {
   let spec = language_spec(target: target)
   apply_type_template2(template: spec.lambda_template, arg0: params_str, arg1: body_str)
@@ -2249,7 +2256,13 @@ fn emit_shared_expr(
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
     ExprLambda =>
       let body = lambda_body(texpr: texpr)
-      wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names_at(texpr: texpr, source_indices: source_indices), target: target), body_str: recurse(body), target: target))
+      let raw_body = recurse(body)
+      let final_body = match target {
+        Go =>
+          if go_lambda_emits_statement_body(body: body) { raw_body } else { concat("return ", raw_body) }
+        _ => raw_body
+      }
+      wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names_at(texpr: texpr, source_indices: source_indices), target: target), body_str: final_body, target: target))
     ExprStringInterp =>
       emit_string_interp(texpr)
     ExprBlock =>
@@ -2528,6 +2541,20 @@ fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target:
   }
 }
 
+fn is_go_v2rt_free_function(name: String) -> Bool {
+  match name {
+    "concat" => true
+    "to_string" => true
+    "lookup" => true
+    _ => false
+  }
+}
+
+fn emit_go_v2rt_free_call(func: String, arg_strs: List<String>) -> String {
+  let fn_name = bridge_method_name_unified(method_name: func, target: Go)
+  concat("v2rt.", emit_export_ident(name: fn_name, target: Go), "(", arg_strs |> join(separator: ", "), ")")
+}
+
 fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
@@ -2545,7 +2572,15 @@ fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget,
   }
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
-  let call_str = concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+  let call_str = match target {
+    Go =>
+      if is_go_v2rt_free_function(name: func) {
+        emit_go_v2rt_free_call(func: func, arg_strs: all_args)
+      } else {
+        concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+      }
+    _ => concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+  }
   match callee {
     Some { value: info } =>
       let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
@@ -2631,7 +2666,14 @@ fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indi
   }
 }
 
-fn emit_unified_variant_pattern(name: String, field_bindings: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
+fn go_variant_case_type(name: String, parent_enum: String?) -> String {
+  match parent_enum {
+    Some { value: parent } => concat(parent, name)
+    None => name
+  }
+}
+
+fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let es = language_spec(target: target).expression_semantics
   match es.variant_pattern {
     Some { value: vps } =>
@@ -2644,14 +2686,7 @@ fn emit_unified_variant_pattern(name: String, field_bindings: List<Node>, target
         )
         concat(name, vps.open, binding_strs |> join(separator: ", "), vps.close)
       }
-    None =>
-      // Type-name-only pattern (Go type switch). Fail closed if bindings
-      // are present — the target cannot faithfully represent them.
-      if field_bindings |> count > 0 {
-        emit_error_expr(message: concat("variant pattern has bindings but target has no destructuring syntax: ", name), target: target)
-      } else {
-        name
-      }
+    None => go_variant_case_type(name: name, parent_enum: parent_enum)
   }
 }
 
