@@ -1334,81 +1334,81 @@ fn emit_specific_import_block(mod_name: String, deduped_names: List<String>, emi
   if deduped_names |> count == 0 {
     ""
   } else {
-            // Partition before any global variant-membership logic (F1: String must not
-            // pick up GoScalarKind parent; graph types emit from defining module only).
-            let graph_type_imports = deduped_names |> filter(n => is_graph_type_import(name: n, import_mod: mod_name, registry: registry, type_summaries: type_summaries))
-            let non_graph_imports = deduped_names |> filter(n => is_graph_type_import(name: n, import_mod: mod_name, registry: registry, type_summaries: type_summaries) == false)
-            let top_level_enums = non_graph_imports |> filter(n =>
-              if is_known_variant(type_summaries: type_summaries, name: n) {
-                is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
-              } else { true }
-            )
-            let enums_in_import_mod = enum_names_defining_in_module(type_summaries: type_summaries, registry: registry, mod_filename: mod_name)
-            let imported_enums = non_graph_imports |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-            let all_enum_names = map_keys(type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-            let all_parents = non_graph_imports |> map(n =>
-              if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { "" }
-              else {
-                // Import-mod first (F2 homonyms), then explicit enum imports, then global fallback.
-                match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: enums_in_import_mod) {
+    // Partition before any global variant-membership logic (F1: String must not
+    // pick up GoScalarKind parent; graph types emit from defining module only).
+    let graph_type_imports = deduped_names |> filter(n => is_graph_type_import(name: n, import_mod: mod_name, registry: registry, type_summaries: type_summaries))
+    let non_graph_imports = deduped_names |> filter(n => is_graph_type_import(name: n, import_mod: mod_name, registry: registry, type_summaries: type_summaries) == false)
+    let top_level_enums = non_graph_imports |> filter(n =>
+      if is_known_variant(type_summaries: type_summaries, name: n) {
+        is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
+      } else { true }
+    )
+    let enums_in_import_mod = enum_names_defining_in_module(type_summaries: type_summaries, registry: registry, mod_filename: mod_name)
+    let imported_enums = non_graph_imports |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+    let all_enum_names = map_keys(type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+    let all_parents = non_graph_imports |> map(n =>
+      if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { "" }
+      else {
+        // Import-mod first (F2 homonyms), then explicit enum imports, then global fallback.
+        match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: enums_in_import_mod) {
+          Some { value: parent } => parent
+          None =>
+            match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: imported_enums) {
+              Some { value: parent } => parent
+              None =>
+                match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: all_enum_names) {
                   Some { value: parent } => parent
-                  None =>
-                    match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: imported_enums) {
-                      Some { value: parent } => parent
-                      None =>
-                        match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: all_enum_names) {
-                          Some { value: parent } => parent
-                          None => ""
-                        }
-                    }
+                  None => ""
                 }
-              }
-            ) |> filter(p => p != "")
-            let parent_list = unique_strings(items: all_parents)
-            // Parent enum types must appear in pub use when body code uses `Parent::Variant`
-            // (variant-only `use Parent::{…}` does not bring `Parent` into scope). Homonym
-            // variants are avoided by scoped variant imports + import-mod-first parent resolution.
-            let top_with_parents = unique_strings(items: concat(graph_type_imports, top_level_enums, parent_list))
-            let local_reexport_names = top_with_parents |> filter(n => item_defining_mod_filename(name: n, registry: registry, fallback_mod: mod_name) == mod_name)
-            let remote_reexport_names = top_with_parents |> filter(n => item_defining_mod_filename(name: n, registry: registry, fallback_mod: mod_name) != mod_name)
-            let remote_mods = unique_strings(items: remote_reexport_names |> map(n => item_defining_mod_filename(name: n, registry: registry, fallback_mod: mod_name)))
-            let main_line = emit_pub_use_from_module(mod_filename: mod_name, names: local_reexport_names, registry: registry)
-            let remote_main_lines = remote_mods |> map(rmod =>
-              let names = remote_reexport_names |> filter(n => item_defining_mod_filename(name: n, registry: registry, fallback_mod: mod_name) == rmod)
-              emit_pub_use_from_module(mod_filename: rmod, names: names, registry: registry)
-            )
-            let variant_lines = parent_list |> map(parent =>
-              let parent_mod = item_defining_mod_filename(name: parent, registry: registry, fallback_mod: mod_name)
-              if parent_mod != mod_name {
-                ""
-              } else {
-              let variants = non_graph_imports |> filter(n =>
-                if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { false }
-                else {
-                  match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: [parent]) {
-                    Some { value: _ } => true
-                    None => false
-                  }
-                }
-              )
-              let vars_str = variants |> join(separator: ", ")
-              concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
-              }
-            )
-            let imported_enums = top_level_enums |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-            let wildcard_enum_lines = imported_enums
-              |> filter(en => parent_list |> any(p => p == en) == false)
-              |> map(en =>
-                let en_mod = item_defining_mod_filename(name: en, registry: registry, fallback_mod: mod_name)
-                concat("use crate::", en_mod, "::", en, "::*;")
-              )
-            let all_lines = concat(
-              [main_line],
-              remote_main_lines |> filter(l => l != ""),
-              variant_lines |> filter(l => l != ""),
-              wildcard_enum_lines
-            )
-            all_lines |> filter(line => line != "") |> join(separator: "\n")
+            }
+        }
+      }
+    ) |> filter(p => p != "")
+    let parent_list = unique_strings(items: all_parents)
+    // Parent enum types must appear in pub use when body code uses `Parent::Variant`
+    // (variant-only `use Parent::{…}` does not bring `Parent` into scope). Homonym
+    // variants are avoided by scoped variant imports + import-mod-first parent resolution.
+    let top_with_parents = unique_strings(items: concat(graph_type_imports, top_level_enums, parent_list))
+    let local_reexport_names = top_with_parents |> filter(n => item_defining_mod_filename(name: n, registry: registry, fallback_mod: mod_name) == mod_name)
+    let remote_reexport_names = top_with_parents |> filter(n => item_defining_mod_filename(name: n, registry: registry, fallback_mod: mod_name) != mod_name)
+    let remote_mods = unique_strings(items: remote_reexport_names |> map(n => item_defining_mod_filename(name: n, registry: registry, fallback_mod: mod_name)))
+    let main_line = emit_pub_use_from_module(mod_filename: mod_name, names: local_reexport_names, registry: registry)
+    let remote_main_lines = remote_mods |> map(rmod =>
+      let names = remote_reexport_names |> filter(n => item_defining_mod_filename(name: n, registry: registry, fallback_mod: mod_name) == rmod)
+      emit_pub_use_from_module(mod_filename: rmod, names: names, registry: registry)
+    )
+    let variant_lines = parent_list |> map(parent =>
+      let parent_mod = item_defining_mod_filename(name: parent, registry: registry, fallback_mod: mod_name)
+      if parent_mod != mod_name {
+        ""
+      } else {
+        let variants = non_graph_imports |> filter(n =>
+          if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { false }
+          else {
+            match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: [parent]) {
+              Some { value: _ } => true
+              None => false
+            }
+          }
+        )
+        let vars_str = variants |> join(separator: ", ")
+        concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
+      }
+    )
+    let imported_enums = top_level_enums |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+    let wildcard_enum_lines = imported_enums
+      |> filter(en => parent_list |> any(p => p == en) == false)
+      |> map(en =>
+        let en_mod = item_defining_mod_filename(name: en, registry: registry, fallback_mod: mod_name)
+        concat("use crate::", en_mod, "::", en, "::*;")
+      )
+    let all_lines = concat(
+      [main_line],
+      remote_main_lines |> filter(l => l != ""),
+      variant_lines |> filter(l => l != ""),
+      wildcard_enum_lines
+    )
+    all_lines |> filter(line => line != "") |> join(separator: "\n")
   }
 }
 
