@@ -2,6 +2,7 @@
 // Source module: v2.compiler.languages
 
 use self::IfValueForm::*;
+use self::MatchValueForm::*;
 use self::ImportTrigger::*;
 use self::InterpStyle::*;
 use self::NamingCase::*;
@@ -215,9 +216,17 @@ pub enum IfValueForm {
     IfStatement,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum MatchValueForm {
+    MatchExpression,
+    MatchStatementArmReturn,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
+    pub match_value_form: MatchValueForm,
     pub wildcard_case: Option<String>,
     pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
     pub guard_prefix: Option<String>,
@@ -571,6 +580,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
+            match_value_form: MatchValueForm::MatchExpression,
             wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
@@ -752,6 +762,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
+            match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: "(".to_string(),
@@ -932,6 +943,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfStatement,
+            match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: Some("default".to_string()),
             variant_pattern: None,
             guard_prefix: None,
@@ -1099,6 +1111,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
+            match_value_form: MatchValueForm::MatchExpression,
             wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),

@@ -231,8 +231,13 @@ type IfValueForm
   | ConditionalTernary
   | IfStatement
 
+type MatchValueForm
+  = MatchExpression
+  | MatchStatementArmReturn
+
 type ExpressionSemantics {
   if_value_form: IfValueForm
+  match_value_form: MatchValueForm
   wildcard_case: String?
   variant_pattern: VariantPatternSyntax?
   guard_prefix: String?
@@ -530,6 +535,7 @@ fn rust_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
+      match_value_form: MatchExpression,
       wildcard_case: None,
       variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
       guard_prefix: Some { value: " if " },
@@ -674,6 +680,7 @@ fn python_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: ConditionalTernary,
+      match_value_form: MatchStatementArmReturn,
       wildcard_case: None,
       variant_pattern: Some { value: VariantPatternSyntax { open: "(", close: ")", binding_sep: "=", empty_suffix: "()" } },
       guard_prefix: Some { value: " if " },
@@ -818,6 +825,7 @@ fn go_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfStatement,
+      match_value_form: MatchStatementArmReturn,
       wildcard_case: Some { value: "default" },
       variant_pattern: None,
       guard_prefix: None,
@@ -962,6 +970,7 @@ fn dag_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
+      match_value_form: MatchExpression,
       wildcard_case: None,
       variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
       guard_prefix: Some { value: " if " },

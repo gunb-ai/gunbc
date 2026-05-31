@@ -3555,6 +3555,33 @@ fn weather_python_emit_match_is_statement_not_return_match() {
     );
 }
 
+#[test]
+fn weather_rust_emit_match_arms_are_expressions_not_return_prefixed() {
+    let ws = crate::helpers::workspace_root();
+    let weather_src =
+        std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag")).expect("weather.dag");
+    let result = crate::helpers::compile_dag_named(
+        "dsl/examples/weather/weather.dag",
+        &weather_src,
+        v2_compiler::v2_compiler_artifact::RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let rs: String = result
+        .files
+        .iter()
+        .filter(|f| f.path.ends_with(".rs") && !f.path.contains("_test"))
+        .map(|f| f.content.as_str())
+        .collect();
+    assert!(
+        rs.contains("match "),
+        "weather should emit Rust match for coproduct dispatch"
+    );
+    assert!(
+        !rs.contains("=> return "),
+        "Rust match arms must stay expression-shaped (no unified-path => return leak)"
+    );
+}
+
 // ── Duplicate module detection ───────────────────────────────────────────
 
 #[test]
