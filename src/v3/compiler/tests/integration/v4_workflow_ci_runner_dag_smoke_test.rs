@@ -1191,7 +1191,15 @@ fn v4_workflow_ci_bankruptcy_tier0_upsert_slice_registers_tier0_jobs() {
             && CI_DAG.contains("ci_job_v4_t15_self_host_fixed_point_execution_row"),
         "{CI_DAG_PATH}: Tier-0 CiJob rows must be canonical (pipeline + Upsert create)"
     );
-    let v2_i2_inputs = extract_fn_body(CI_DAG, "ci_upsert_v2_bootstrap_smoke_execution_inputs");
+    let v2_i2_inputs = CI_DAG
+        .split("data ci_upsert_v2_bootstrap_smoke_execution_inputs:")
+        .nth(1)
+        .and_then(|rest| rest.split("fn ci_upsert_v2_bootstrap_smoke_execution_mk").next())
+        .unwrap_or_else(|| {
+            panic!(
+                "{CI_DAG_PATH}: missing data ci_upsert_v2_bootstrap_smoke_execution_inputs"
+            )
+        });
     for segment in ["src/v2/**", "Cargo.toml", "Cargo.lock"] {
         assert!(
             v2_i2_inputs.contains(&format!("segment: \"{segment}\"")),
