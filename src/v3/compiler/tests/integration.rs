@@ -1166,6 +1166,10 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_cache_interface_dag() {
+        // P5 receipt: narrow parser-acceptance consumer for Worksheet B §2 gate
+        // P-CI-TYPE (`docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md` §2).
+        // Does not add semantic authority or expand the SG-0 path census — one test in the
+        // existing `integration.rs` hand-Rust file already counted by `sg0_census_test.rs`.
         parse_file(
             include_str!("../../../../dsl/std/cache_interface.dag"),
             "dsl/std/cache_interface.dag",

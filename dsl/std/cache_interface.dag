@@ -208,7 +208,14 @@ data gha_actions_cache_facts: CacheInterfaceFacts = {
     visibility_scope: Repo
     invalidation_triggers: [ManualPurge, ToolchainChange, DependencyChange]
   }
-  lookup_semantics: PrefixFallback { ordered_prefixes: [] }
+  lookup_semantics: PrefixFallback {
+    ordered_prefixes: [
+      "exact-subject-digest",
+      "toolchain-pinned",
+      "lockfile-pinned",
+      "runner-scoped",
+    ]
+  }
   write_semantics: WriteThenCommit
   miss_semantics: MissThenCreate
   value_shape: TarArchive
@@ -255,7 +262,8 @@ data sccache_local_facts: CacheInterfaceFacts = {
   miss_semantics: MissThenCreate
   value_shape: RawBytes
   locality: PerHostFilesystem
-  eviction: SizeBounded { cap_bytes: ByteSize }
+  // sccache max cache size is operator-configured (sccache.conf), not a fixed substrate fact.
+  eviction: Lru
   atomicity: WriteThenRename
   auth: FilesystemPerms
   read_latency: LocalDiskUs
@@ -266,6 +274,13 @@ data sccache_local_facts: CacheInterfaceFacts = {
       evidence: VendorCitation {
         source: "sccache storage backends"
         url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md"
+      }
+    },
+    {
+      field: "eviction"
+      evidence: VendorCitation {
+        source: "sccache cache size and LRU eviction policy"
+        url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md#cache-size"
       }
     },
   ]
@@ -386,21 +401,21 @@ fn cache_key_projection<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfac
   CacheKeyProjection {
     artifact: artifact
     backend: backend
-    transport: cache_key_projection_transport(backend: backend),
+    transport: cache_key_projection_transport(artifact: artifact, backend: backend),
   }
 }
 
-fn cache_key_projection_transport(backend: CacheInterfaceFacts) -> BackendCacheKey {
+fn cache_key_projection_transport<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> BackendCacheKey {
   BackendCacheKey {
     store: backend.identity
-    key: cache_key_projection_provider_key(backend: backend),
+    key: cache_key_projection_provider_key(artifact: artifact, backend: backend),
   }
 }
 
-fn cache_key_projection_provider_key(backend: CacheInterfaceFacts) -> ProviderKey {
+fn cache_key_projection_provider_key<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> ProviderKey {
   match backend.key_derivation.classification {
-    ContentAddressedByValue => CasContentDigest { digest: "content-addressed-projection-stub" }
-    HandAuthoredString => OpaqueStringKey { key: "hand-authored-projection-stub" }
-    NativeInternalHash => SccacheInternalHash { digest: "native-internal-projection-stub" }
+    ContentAddressedByValue => CasContentDigest { digest: artifact.subject_digest }
+    HandAuthoredString => OpaqueStringKey { key: artifact.subject_digest }
+    NativeInternalHash => SccacheInternalHash { digest: artifact.subject_digest }
   }
 }
