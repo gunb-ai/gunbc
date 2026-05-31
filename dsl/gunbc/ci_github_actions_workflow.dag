@@ -728,14 +728,23 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'" },
           continue_on_error: false,
           timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache T-22 TestClaim corpus structural bridge receipt" },
+          id: Some { value: "t22_testclaim_corpus_cache" },
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          with: { "path": "${{ runner.temp }}/t22-testclaim-corpus-gate", "key": "t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'src/v4/**', 'src/v4/test/claim/manual/**/*.dag') }}" },
+          env: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
         }, RunStep {
           name: Some { value: "T-22 TestClaim corpus structural bridge — manual .dag corpus" },
           id: none,
-          run: "bash scripts/v4-testclaim-corpus-gate.sh",
+          run: "bash scripts/v4-testclaim-corpus-gate.sh\nmkdir -p \"${RUNNER_TEMP}/t22-testclaim-corpus-gate\"\nprintf 'T-22 TestClaim corpus structural bridge passed for %s\\n' \"${GITHUB_SHA}\" > \"${RUNNER_TEMP}/t22-testclaim-corpus-gate/receipt.txt\"\n",
           shell: Bash,
           env: { "V4_TESTCLAIM_TIMEOUT_SECS": "480" },
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.t22_testclaim_corpus_cache.outputs.cache-hit != 'true'" },
           continue_on_error: false,
           timeout_minutes: Some { value: 15 }
         }],
