@@ -3470,6 +3470,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (Practice 10) — feature:ci-bankruptcy-schedule-policy — consumer: ci_job_scheduled_by_policy / ci_select_ci_jobs_from_affected_set — bind bankruptcy B0 §2.2.6 / design-ci-bankruptcy-rebuild.md D1 — dissolve-on: CiJob carries modeled schedule facts and YAML projection reads them directly (delete this Bool dispatch layer); until then command/schedule match arms only; forbidden: additional untagged Bool schedule predicates beside ci_symbol_not_in_ids.
 fn ci_v3_tier0_scheduled(affected: CiComponentAffected, schedule: CiSchedulePolicy) -> Bool {
   affected.v3 || schedule == MainPush
 }
@@ -3481,7 +3482,7 @@ fn ci_v4_t15_scheduled(affected: CiComponentAffected, schedule: CiSchedulePolicy
 }
 
 
-// Job command carries intended schedule (`cmd_schedule`); caller passes active run policy (`run_schedule`).
+// I4 cmd_schedule vs run_schedule guard — included in feature:ci-bankruptcy-schedule-policy disposition above.
 fn ci_v3_self_host_fixed_point_scheduled(
   affected: CiComponentAffected,
   cmd_schedule: CiSchedulePolicy,
