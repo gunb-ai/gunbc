@@ -69,6 +69,7 @@ pub mod v2_compiler_normalize;
 pub mod v2_compiler_ownership;
 pub mod v2_compiler_parse;
 pub mod v2_compiler_resolve;
+pub mod v2_compiler_runtime_go;
 pub mod v2_compiler_runtime_rust;
 pub mod v2_compiler_tokenize;
 pub mod v2_compiler_trace;

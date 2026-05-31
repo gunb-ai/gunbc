@@ -48,6 +48,7 @@ pub use crate::v2_compiler_languages::{
     is_string_like, scaffold_for_target, test_conventions_for_target, ItemKeywords,
     TestConventions, VisibilitySpec,
 };
+pub use crate::v2_compiler_runtime_go::go_runtime_source;
 use crate::v2_rt;
 use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
@@ -141,8 +142,9 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             __result
         });
         let go_mod = emit_go_mod("generated".to_string());
+        let v2rt_file = emit_go_v2rt_module();
         let files = v2_rt::concat(
-            v2_rt::concat(Rc::new(vec![go_mod]), module_files),
+            v2_rt::concat(Rc::new(vec![go_mod, v2rt_file]), module_files),
             test_files,
         );
         Rc::new(EmitResult {
@@ -150,6 +152,13 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             diagnostics: Rc::new(vec![]),
         })
     }
+}
+
+pub fn emit_go_v2rt_module() -> Rc<TextFile> {
+    Rc::new(TextFile {
+        path: "generated/v2rt/v2rt.go".to_string(),
+        content: go_runtime_source(),
+    })
 }
 
 pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
@@ -473,7 +482,8 @@ pub fn emit_go_module(
             __result
         })
         .join(&"\n\n".to_string());
-        let filename = module_to_filename(mod_name_str.clone());
+        let mod_dir = module_to_filename(mod_name_str.clone());
+        let filename = mod_dir.clone();
         let content = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -501,7 +511,13 @@ pub fn emit_go_module(
         );
         Rc::new(TextFile {
             path: v2_rt::concat(
-                filename,
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat("generated/".to_string(), mod_dir.clone()),
+                        "/".to_string(),
+                    ),
+                    filename,
+                ),
                 scaffold_for_target(RenderTarget::Go)
                     .source_file_extension
                     .clone(),
@@ -614,11 +630,18 @@ pub fn collect_go_std_imports(
     has_functions: bool,
 ) -> Rc<Vec<String>> {
     {
-        let fmt_import = if ((has_types || has_functions) || has_services.clone()) {
+        let fmt_import = if ((has_types.clone() || has_functions.clone()) || has_services.clone()) {
             Rc::new(vec!["\t\"fmt\"".to_string()])
         } else {
             Rc::new(vec![])
         };
+        let rt_import = Rc::new(vec!["\t\"generated/v2rt\"".to_string()]);
+        let strings_import =
+            if ((has_functions.clone() || has_types.clone()) || has_services.clone()) {
+                Rc::new(vec!["\t\"strings\"".to_string()])
+            } else {
+                Rc::new(vec![])
+            };
         let net_imports = if has_services.clone() {
             Rc::new(vec![
                 "\t\"net/http\"".to_string(),
@@ -629,7 +652,10 @@ pub fn collect_go_std_imports(
         } else {
             Rc::new(vec![])
         };
-        v2_rt::concat(fmt_import, net_imports)
+        v2_rt::concat(
+            v2_rt::concat(v2_rt::concat(fmt_import, rt_import), strings_import),
+            net_imports,
+        )
     }
 }
 
@@ -1137,8 +1163,13 @@ pub fn emit_go_fn_def(
             }
         } else {
             {
-                let body_str =
-                    emit_go_typed_expr(body.clone(), registry.clone(), body_scope, 1, 1024);
+                let body_str = emit_unified_typed_func_body(
+                    body.clone(),
+                    RenderTarget::Go,
+                    registry.clone(),
+                    body_scope,
+                    1,
+                );
                 v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(
@@ -1148,30 +1179,24 @@ pub fn emit_go_fn_def(
                                         v2_rt::concat(
                                             v2_rt::concat(
                                                 v2_rt::concat(
-                                                    v2_rt::concat(
-                                                        v2_rt::concat(
-                                                            language_spec(RenderTarget::Go)
-                                                                .items
-                                                                .clone()
-                                                                .func_keyword
-                                                                .clone(),
-                                                            " ".to_string(),
-                                                        ),
-                                                        go_export_ident(name.clone()),
-                                                    ),
-                                                    "(".to_string(),
+                                                    language_spec(RenderTarget::Go)
+                                                        .items
+                                                        .clone()
+                                                        .func_keyword
+                                                        .clone(),
+                                                    " ".to_string(),
                                                 ),
-                                                params_str,
+                                                go_export_ident(name.clone()),
                                             ),
-                                            ")".to_string(),
+                                            "(".to_string(),
                                         ),
-                                        ret_str,
+                                        params_str,
                                     ),
-                                    " {\n".to_string(),
+                                    ")".to_string(),
                                 ),
-                                make_indent(1),
+                                ret_str,
                             ),
-                            "return ".to_string(),
+                            " {\n".to_string(),
                         ),
                         body_str,
                     ),
