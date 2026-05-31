@@ -19,11 +19,8 @@ use self::StringPart::*;
 use self::TokenShape::*;
 use self::UnaryOpKind::*;
 use self::VarBindingKind::*;
-use crate::std_algebra::CollectionSizeEffect::*;
-use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
-use crate::std_induction::SubValueRelation::*;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };

@@ -13,7 +13,7 @@ use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
 pub use crate::std_computation::{
-    tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
+    tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor,
 };
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};

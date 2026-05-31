@@ -11,7 +11,7 @@ use crate::v2_std_core::CompilerDiagnostic::InternalError;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v2_std_core::{
     authored_name_at, diagnostic_to_message, int_type, make_error_node, string_type, unit_type,
-    with_optional_cardinality, CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex, Node,
+    with_optional_cardinality, ErrorNode, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

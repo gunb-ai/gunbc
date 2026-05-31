@@ -7,9 +7,13 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, HigherOrderMethodSpec,
 };
 pub use crate::generated_method_template_projection::rust_method_template_emit;
-pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+use crate::std_syntax::AlgebraFieldKind::*;
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::LiteralValue::*;
+pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::is_container_type;
+pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
@@ -32,8 +36,8 @@ pub use crate::v2_compiler_emit::{
     scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
     service_field_decls, service_var_name, tco_reassign_core, test_function_name, to_lower_char,
     to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings, wrap_shared_type, BlockEmitState, EmitResult,
-    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput, TestProjection,
+    typed_named_arg_matches, unique_strings, BlockEmitState, EmitResult, InterpPart,
+    ServiceFieldSet, TcoFrame, TcoReassignInput, TestProjection,
 };
 pub use crate::v2_compiler_infer::{
     build_emit_graph_info, build_params_scope, expr_span, extend_scope, InferScope,
@@ -41,11 +45,11 @@ pub use crate::v2_compiler_infer::{
 use crate::v2_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v2_compiler_infer_emit_info::{
     find_variant_parent, is_enum_in_summaries, is_known_variant, lookup_emit_type_summary,
-    variant_belongs_to_enum, variant_summary_key, EmitGraphInfo, TypeRepr, TypeSummary,
+    variant_belongs_to_enum, variant_summary_key, EmitGraphInfo, TypeSummary,
 };
 pub use crate::v2_compiler_infer_env::{authored_name, lookup_type_by_name, TypeBinding, TypeEnv};
 use crate::v2_compiler_infer_items::ItemKind::{DataItem, TypeItem};
-pub use crate::v2_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
@@ -55,11 +59,11 @@ pub use crate::v2_compiler_infer_types::{
     is_unit_like, node_is_collection, node_is_element_collection, node_is_keyed_collection,
     node_is_set_collection, normalize_access_type_node, resolved_type,
 };
+pub use crate::v2_compiler_languages::wrap_shared_type;
 use crate::v2_compiler_languages::VisibilitySpec::KeywordVisibility;
 pub use crate::v2_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, sharing_for_target,
     test_conventions_for_target, visibility_for_target, ItemKeywords, TestConventions,
-    VisibilitySpec,
 };
 pub use crate::v2_compiler_ownership::{
     analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params,
@@ -67,8 +71,6 @@ pub use crate::v2_compiler_ownership::{
 };
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
-use crate::v2_std_core::AlgebraFieldKind::*;
-use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
@@ -83,13 +85,10 @@ use crate::v2_std_core::FieldAccessStyle::{
 };
 use crate::v2_std_core::FieldValueShape::OptionalValue;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::*;
-use crate::v2_std_core::MatchPattern::*;
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v2_std_core::StringPart::{Interpolation, Text};
-use crate::v2_std_core::UnaryOpKind::*;
 use crate::v2_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
@@ -111,11 +110,9 @@ pub use crate::v2_std_core::{
     service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
     transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
     transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp,
-    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
-    VarBindingKind,
+    transport_response_format, transport_stdin, with_required_cardinality, CallSemantics,
+    Cardinality, Connective, ErrorNode, ExprData, FieldSummary, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

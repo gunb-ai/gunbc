@@ -2,7 +2,6 @@
 // Source module: v2.compiler.infer_items
 
 use self::ItemKind::*;
-pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_infer_emit_info::EmitGraphInfo;

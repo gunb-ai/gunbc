@@ -8,17 +8,12 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
-use crate::v2_compiler_languages::BodyKind::{
-    BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
-};
-use crate::v2_compiler_languages::ItemFormKind::OtherForm;
-pub use crate::v2_compiler_languages::{
-    BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
-};
+pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
+pub use crate::std_types::{is_container_type, SourceSpan};
+pub use crate::v2_compiler_complexity::empty_intern_table;
+pub use crate::v2_compiler_infer::kernel_span;
 use crate::v2_rt;
-use crate::v2_std_core::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::ParseError;
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -29,7 +24,6 @@ use crate::v2_std_core::ExprData::{
 };
 use crate::v2_std_core::ExprErrorKind::ParseRecoveryError;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 use crate::v2_std_core::OperationModifier::{Hermetic, Idempotent, Readonly};
 use crate::v2_std_core::StringPart::{Interpolation, Text};
@@ -42,22 +36,21 @@ use crate::v2_std_core::TokenShape::{
 };
 use crate::v2_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v2_std_core::{
-    arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
-    expr_var_name_at, field_access_field_at, field_binding_pattern, field_node_cardinality,
-    field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
-    file_transport_node, import_node, intern, is_compiler_error, is_container_type, kernel_span,
-    leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
-    no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
-    rest_transport_node, service_config_properties, shell_transport_node, transport_body_key,
-    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
-    transport_query_key, transport_response_format_key, transport_stdin_key, transport_url_key,
-    variant_node_fields, variant_node_name_at, with_required_cardinality, BinOp, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternResult,
-    InternTable, LiteralValue, MatchPattern, NewlineIndex, Node, OperationModifier, SourceSpan,
-    StringPart, Token, TokenShape, UnaryOpKind,
+    arg_name_at, arg_value, authored_name_at, error_type, expr_call_func_at, expr_var_name_at,
+    field_access_field_at, field_binding_pattern, field_node_cardinality, field_node_default_value,
+    field_node_from_key, field_node_name_at, field_node_type_expr, file_transport_node,
+    import_node, intern, is_compiler_error, leaf_node_with_span, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_binding_node, make_field_init_node, make_field_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_resource_use_node, make_span, make_text_part_node,
+    make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
+    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
+    shell_transport_node, transport_body_key, transport_headers_key, transport_method_key,
+    transport_path_key, transport_path_template_key, transport_query_key,
+    transport_response_format_key, transport_stdin_key, transport_url_key, variant_node_fields,
+    variant_node_name_at, with_required_cardinality, Cardinality, Connective, ErrorNode, ExprData,
+    ExprErrorKind, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
+    OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
