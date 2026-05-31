@@ -19,7 +19,6 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.leaf_model_verification {
-  LeafModelClaimId,
   LeafModelVerificationRunReceipt,
   leaf_model_claim_rust_r3_internal_symbol_coupling,
   TargetCompileAccepted,
@@ -27,7 +26,7 @@ import v4.std.leaf_model_verification {
 }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.verdict { Pass, Verdict, verdict_fail }
+import v4.std.verdict { verdict_fail }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -64,45 +63,26 @@ data claim_rust_r3_internal_emit_coupling_wired: TestClaim = EqualsClaim {
 }
 
 
-data rust_r3_internal_coupling_failure_reason: Symbol = rust_r3_internal_coupling_failure_reason
+data rust_r3_internal_pending_verification_reason: Symbol = rust_r3_internal_pending_verification_reason
 
 
-fn rust_r3_internal_coupling_failure_diagnostic() -> Diagnostic {
+fn rust_r3_internal_pending_verification_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: rust_r3_internal_coupling_failure_reason,
-    at: Textual { file: rust_r3_internal_coupling_failure_reason, extent: WholeFile },
+    reason: rust_r3_internal_pending_verification_reason,
+    at: Textual { file: rust_r3_internal_pending_verification_reason, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
-  }
-}
-
-
-fn rust_r3_internal_coupling_happy_verdict() -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
-  if rust_r3_internal_emit_coupling_both_projections_changed(receipt: rust_r3_internal_fixture()) {
-    Pass
-  } else {
-    verdict_fail(
-      actual: outcome_rejected(d: rust_r3_internal_coupling_failure_diagnostic())
-    )
-  }
-}
-
-
-fn rust_r3_internal_coupling_falsification_verdict() -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
-  // Wrong expectation (neither projection must change) is rejected when row mutation moves both.
-  if rust_r3_internal_emit_coupling_both_projections_changed(receipt: rust_r3_internal_fixture()) {
-    Pass
-  } else {
-    verdict_fail(
-      actual: outcome_rejected(d: rust_r3_internal_coupling_failure_diagnostic())
-    )
   }
 }
 
 
 data rust_r3_internal_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
   claim_id: leaf_model_claim_rust_r3_internal_symbol_coupling,
-  happy_verdict: rust_r3_internal_coupling_happy_verdict(),
-  falsification_verdict: rust_r3_internal_coupling_falsification_verdict()
+  happy_verdict: verdict_fail(
+    actual: outcome_rejected(d: rust_r3_internal_pending_verification_diagnostic())
+  ),
+  falsification_verdict: verdict_fail(
+    actual: outcome_rejected(d: rust_r3_internal_pending_verification_diagnostic())
+  )
 }
 
 
