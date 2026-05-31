@@ -3300,19 +3300,19 @@ fn ci_job_selected_by_affected(
 }
 
 
-fn ci_jobs_matching_ids(jobs: List[CiJob], ids: List[Symbol]) -> List[CiJob] {
+fn ci_jobs_matching_ids(jobs: List<CiJob>, ids: List<Symbol>) -> List<CiJob> {
   filter(xs: jobs, predicate: fn(j) { ci_member(s: j.id, ids: ids) })
 }
 
 
-fn ci_collect_needs_for_ids(ids: List[Symbol], jobs: List[CiJob]) -> List[Symbol] {
+fn ci_collect_needs_for_ids(ids: List<Symbol>, jobs: List<CiJob>) -> List<Symbol> {
   fold(ids, init: [], f: fn(acc, id) {
     concat(acc, ci_job_needs(id: id, jobs: jobs))
   })
 }
 
 
-fn ci_merge_jobs_unique(acc: List[CiJob], more: List[CiJob]) -> List[CiJob] {
+fn ci_merge_jobs_unique(acc: List<CiJob>, more: List<CiJob>) -> List<CiJob> {
   fold(more, init: acc, f: fn(acc2, j) {
     if ci_member(s: j.id, ids: ci_job_ids(jobs: acc2)) {
       acc2
@@ -3324,10 +3324,10 @@ fn ci_merge_jobs_unique(acc: List[CiJob], more: List[CiJob]) -> List[CiJob] {
 
 
 fn ci_select_ci_jobs_needs_closure_pass(
-  jobs: List[CiJob],
-  selected: List[CiJob],
+  jobs: List<CiJob>,
+  selected: List<CiJob>,
   passes_remaining: Int
-) -> List[CiJob] {
+) -> List<CiJob> {
   if passes_remaining <= 0 {
     selected
   } else {
@@ -3358,7 +3358,7 @@ fn ci_select_ci_jobs_needs_closure_pass(
 }
 
 
-fn ci_select_ci_jobs_needs_closure(jobs: List[CiJob], selected: List[CiJob]) -> List[CiJob] {
+fn ci_select_ci_jobs_needs_closure(jobs: List<CiJob>, selected: List<CiJob>) -> List<CiJob> {
   ci_select_ci_jobs_needs_closure_pass(
     jobs: jobs,
     selected: selected,
@@ -3368,10 +3368,10 @@ fn ci_select_ci_jobs_needs_closure(jobs: List[CiJob], selected: List[CiJob]) -> 
 
 
 fn ci_select_ci_jobs_from_jobs(
-  jobs: List[CiJob],
+  jobs: List<CiJob>,
   affected: CiComponentAffected,
   schedule: CiSchedulePolicy
-) -> List[CiJob] {
+) -> List<CiJob> {
   let initial = filter(
     xs: jobs,
     predicate: fn(j) {
@@ -3386,7 +3386,7 @@ fn ci_select_ci_jobs_from_affected_set(
   pipeline: CiPipeline,
   affected: CiComponentAffected,
   schedule: CiSchedulePolicy
-) -> List[CiJob] {
+) -> List<CiJob> {
   if ci_acyclic(jobs: pipeline.jobs) {
     if ci_all_needs_resolve(jobs: pipeline.jobs) {
       ci_select_ci_jobs_from_jobs(
