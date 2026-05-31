@@ -66,9 +66,9 @@ DFS path:
     - PubInPath / RustVisibility: src/v4/extdeps/languages/rust.dag (T-28 residual per TASKS.md)
   compiler stage consuming it:
     - v2 `emit_imports` in src/v2/05_emit_rust.dag (M1 full-tree emit)
-    - v4 `03_name_resolve.dag` owns admission/export binding (T-28-B); emit must consume **defining module**, not import-site module
+    - v4 `src/v4/compiler/03_name_resolve.dag` owns admission/export binding (T-28-B); emit must consume **defining module**, not import-site module
   existing scaffold/dissolution notes:
-    - T-28 dissolved catalog carrier; T-28-B admission in 03_name_resolve.dag
+    - T-28 dissolved catalog carrier; T-28-B admission in `compiler/03_name_resolve.dag` (per `src/v4/TASKS.md`)
     - TASKS.md T-28 residual: PubInPath visibility authority before PubInPath consumers execute
 Deepest unsound boundary:
   Rust import emission treats every imported spelling as a potential enum variant, resolves variant parents against the **import statement's module**, and re-exports parent + child from that module. Type imports (registry `TypeItem`) and defining-module boundaries are ignored. Separately, parametric type aliases (`type List<T> = …`) classify as `type_decl` and emit nothing.
