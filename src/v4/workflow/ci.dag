@@ -213,6 +213,26 @@ fn ci_upsert_lens_output_ref_input(lens: LensIdV0) -> UpsertInputRef {
   LensOutputRef { lens: lens, ports: [] }
 }
 
+fn ci_upsert_lens_inputs_from_required_lenses(lenses: List<LensIdV0>) -> List<UpsertInputRef> {
+  fold_list(
+    xs: lenses,
+    empty: Empty,
+    cons: fn(acc, lens) {
+      list_snoc_item(xs: acc, item: ci_upsert_lens_output_ref_input(lens: lens))
+    }
+  )
+}
+
+fn ci_step_id_list_append_items(base: List<CiStepId>, more: List<CiStepId>) -> List<CiStepId> {
+  fold_list(
+    xs: more,
+    empty: base,
+    cons: fn(acc, step_id) {
+      list_snoc_item(xs: acc, item: step_id)
+    }
+  )
+}
+
 type CiJobId = Symbol
 type CiGateId = Symbol
 type CiCommandId = Symbol
@@ -534,14 +554,8 @@ fn ci_upsert_phase1_nat_semiring_rung_gate_execution_mk() -> CiUpsertStepSymbol 
 
 data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStepSymbol = ci_upsert_phase1_nat_semiring_rung_gate_execution_mk()
 
-data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = [
-  ci_upsert_lens_output_ref_input(lens: Complexity),
-  ci_upsert_lens_output_ref_input(lens: Cost),
-  ci_upsert_lens_output_ref_input(lens: Parallelism),
-  ci_upsert_lens_output_ref_input(lens: EffectEnumeration),
-  ci_upsert_lens_output_ref_input(lens: Idempotency),
-  ci_upsert_lens_output_ref_input(lens: UnusedParameters)
-]
+data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> =
+  ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses)
 
 fn ci_upsert_lens_ci_registry_execution_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
@@ -632,15 +646,10 @@ data ci_upsert_steps_bucket_c_out_of_scope_step_ids: List<CiStepId> = [
 ]
 
 // Landed buckets A+C — registry bijection authority after bucket C (#4055 + this slice).
-data ci_upsert_steps_buckets_a_c_in_scope_step_ids: List<CiStepId> = [
-  JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
-  JobStep { job: m1_rust_emit_probe_execution, step: m1_rust_emit_probe_execution },
-  JobStep {
-    job: phase1_nat_semiring_rung_gate_execution,
-    step: phase1_nat_semiring_rung_gate_execution
-  },
-  JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution }
-]
+data ci_upsert_steps_buckets_a_c_in_scope_step_ids: List<CiStepId> = ci_step_id_list_append_items(
+  base: ci_upsert_steps_bucket_a_slice_step_ids,
+  more: ci_upsert_steps_bucket_c_slice_step_ids
+)
 
 data ci_upsert_steps_buckets_a_c_out_of_scope_step_ids: List<CiStepId> = ci_upsert_steps_bucket_c_out_of_scope_step_ids
 
@@ -1815,17 +1824,6 @@ fn ci_upsert_steps_slice_strict_subset_of_pipeline_shadow(p: CiPipeline, slice: 
   let shadow = ci_pipeline_step_ids_shadow(p: p)
   ci_step_ids_subset_of(xs: slice, universe: shadow)
     && length(xs: slice) != length(xs: shadow)
-}
-
-
-fn ci_step_id_list_append_items(base: List<CiStepId>, more: List<CiStepId>) -> List<CiStepId> {
-  fold_list(
-    xs: more,
-    empty: base,
-    cons: fn(acc, step_id) {
-      list_snoc_item(xs: acc, item: step_id)
-    }
-  )
 }
 
 
