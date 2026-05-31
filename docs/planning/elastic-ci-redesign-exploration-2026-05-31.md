@@ -298,29 +298,46 @@ whose shape is fixed.
 - One escape valve (`ci_always_run_carveouts`-style explicit data) when the
   layer below isn't yet modeled.
 
-**Logical compute view: srv1 + srv2 = one giant computer.** At the modeling
-layer, the harness sees a single compute pool of *workers* (declared with
-`worker_count`, `timeout`, `resource_class` — modeled facts on the step). It does
-not know or care which physical box runs which step.
+**Workload view: ask the network for compute; don't name machines.**
+At the modeling layer, the workload (a `CiUpsertStep<T>`) declares only its
+*needs*: deterministic ID (content hash), inputs (content-addressed), and
+optional hints (`max_useful_parallelism`, `min_memory_bytes`, `arch_constraint`,
+`locality_hint: Option<PriorRunIdentity>`). The workload does **not** name srv1,
+srv2, a runner pool, or any other physical fact. The request to the network is
+"give me a compute slot to run this Upsert<T>" — the network decides what to
+hand back, and the workload adapts (jobserver runs at whatever parallelism the
+slot exposes; no step pins to "N cores").
 
-**Physical view: a locality-aware resource-manager `Upsert<T>` sits between.**
-That Node:
-- Consumes the step's declared resource needs + cache-locality hints (where was
-  this step's prior verdict produced? where do its inputs live?).
-- Knows `ci_self_hosted_runner_pools` (`ci.dag:420-423`) — which boxes exist,
-  what their `jobserver_token_cap` / `core_count` / `runner_count` are.
-- Knows the physical-reality penalties: crossing the srv1↔srv2 boundary costs
-  network for L1 cache, splitting a step's working set across hosts is forbidden
-  (one runner = one host, by construction), memory pressure is per-box.
-- `create` picks a host: prefer one with warm L1 for this step's inputs; fall
-  back to the other; never split a step.
+**Network view: `ComputeFabric` is a pluggable provider `Upsert<T>`.** The
+fabric is one Node whose `create` phase resolves an abstract request to a
+concrete runner instance. Concrete providers plug into it. Today's instance is
+srv1+srv2 self-hosted (`ci_self_hosted_runner_pools`, `ci.dag:420-423`);
+swapping to Fargate, k8s, BuildBuddy RBE, or GHA hosted runners is a new
+provider Node, not a workload-layer change. Each provider declares its own:
 
-The high-level harness never says "run this on srv1." It says "run this step";
-the resource-manager `Upsert<T>` resolves the physical placement using the same
-verify → satisfy → create → resolve discipline. If srv1 dies, every step still
-runs on srv2 — slower (L2 path), correct (no semantic change). If you add srv3
-tomorrow, the resource-manager Node grows by one row in
-`ci_self_hosted_runner_pools`; no other layer changes.
+- **capacity** — `advertised_slots: AdvertisedSlots` (what the provider will hand
+  out right now: count, core/mem profile, arch). Dynamic, not pinned.
+- **locality model** — provider-private. Stateful providers (srv1/srv2,
+  long-lived k8s pools) advertise per-instance L1 affinity; stateless providers
+  (Fargate, single-use containers) advertise "no L1 — every cold start hits L2."
+- **cost class** — for future scheduling: cheap-and-slow (queue tolerant) vs
+  fast-and-expensive (latency-sensitive critical path).
+- **boundary penalties** — what crossing this provider's physical fault lines
+  costs (e.g., for srv1↔srv2: a network round-trip on L1 miss; for Fargate:
+  always cold L1).
+
+**Splitting work across boundaries is the provider's no-go, not the workload's.**
+One step = one slot, by `ComputeFabric` invariant. If the workload could fit on
+srv1 *or* srv2, the fabric picks one (locality-warm preferred) and that's the
+slot. The workload never splits its working set across provider boundaries —
+that decision is made one layer down, transparent to the workload.
+
+**Decoupling payoff.** If srv2 dies, the fabric's `verify` for srv2-pinned
+affinity misses; `satisfy` falls back to srv1 or to L2-cold; workload sees a
+slower step, never a broken step. If we add a Fargate provider tomorrow, the
+fabric grows by one row in its provider list; workload code does not change.
+"Give me as much compute as the network wants to" is literal: the fabric
+returns a slot, the workload runs in it, the jobserver scales to it.
 
 The subsections below (§4.1–§4.10) are each one instance of this pattern at a
 specific layer. Treat them as worked examples of §4.0, not as parallel designs.
@@ -420,13 +437,19 @@ identity:
 These three are real compiler engineering (sequencing into Phase 1b or beyond),
 not workflow YAML edits.
 
-### 4.5 Runner pool as elastic resource — the resource-manager `Upsert<T>`
+### 4.5 Compute fabric — workloads declare needs, the network decides
 
-**Frame (§4.0 application):** runner allocation is itself an `Upsert<T>` Node.
-The high-level workflow harness does *not* know srv1/srv2 exist — it sees one
-logical compute pool. The resource-manager `Upsert<T>` is the single layer that
-maps logical step → physical runner with locality awareness (and is the *only*
-place that reads `ci_self_hosted_runner_pools`).
+**Frame (§4.0 application):** compute allocation is the `ComputeFabric`
+`Upsert<T>` — a pluggable provider abstraction. The workflow harness never
+names srv1, srv2, or any other physical fact. It declares the step's resource
+*request* (max useful parallelism, min memory, arch, locality hint) and the
+fabric returns a slot. Whatever the fabric returns, the step adapts to it
+(jobserver scales to slot capacity, not to a pinned core count).
+
+The fabric is the *only* layer that reads `ci_self_hosted_runner_pools` today,
+and the *only* layer that would read a hypothetical `fargate_provider`,
+`buildbuddy_rbe_provider`, or `k8s_provider` tomorrow. Providers plug into the
+same interface — workload-layer code is provider-agnostic.
 
 Today: pool capacity (50 runners) is implicit; jobs race for them under GHA's
 runner-selection logic.
@@ -465,27 +488,33 @@ Elastic:
 not the *authority* on parallelism (which lives in the modeled
 `worker_count`).
 
-### 4.7 L1 locality is the resource-manager's intelligence (not a separate concern)
+### 4.7 Locality is provider-private; the workload only sees an opaque hint
 
-The §4.0 resource-manager `Upsert<T>` is where physical-locality knowledge lives.
-The top-level harness treats srv1+srv2 as one logical computer; the
-resource-manager is the only layer that:
+L1 locality knowledge belongs to the `ComputeFabric` and its providers — never
+to the workload. The workload ships one *opaque* hint with its request:
+`locality_hint: Option<PriorRunIdentity>` — "if you ran this same Node before,
+where?" The provider interprets it (or doesn't):
 
-- Knows srv1-cache and srv2-cache are **logically distinct** L1 stores.
-- Records `last_produced_on: SelfHostedRunnerPool` per step verdict.
-- On `verify`, prefers the host whose L1 last produced this step's output
-  (best L1 hit rate; minimizes cross-box network).
-- On `create` (fresh runner spawn), picks a host with current capacity and warm
-  L1 affinity for the step's *inputs* (not just outputs).
-- **Never splits a step across boxes** — one runner is one host by construction.
-  This is the "intelligent enough not to split storage across boundaries"
-  property the operator named.
+| Provider type | What `locality_hint` means there |
+|---------------|----------------------------------|
+| Stateful host-pool (srv1+srv2 today) | "prefer the host whose L1 produced this output last; rebuild via L2 if unavailable" |
+| Stateless container (Fargate, single-use k8s pods) | Ignored — every slot is cold-start; L2 is the only cache |
+| Remote-execution CAS (BuildBuddy RBE) | "warm worker affinity if the CAS scheduler exposes it; otherwise scheduler's choice" |
+| GHA hosted runners | Ignored — Microsoft owns scheduling |
 
-If srv1 dies, the resource-manager's `verify` misses every srv1-affinity hint;
-the `satisfy` recursion falls to L2 (Actions Cache or BuildBuddy CAS); every step
-runs on srv2 — slower (L2 path), correct (no semantic change). No higher layer
-notices. This is the elasticity-vs-locality knob: prefer L1 when available, fall
-back to L2, never assume.
+The workload doesn't switch on provider type. It always sends the same hint;
+each provider decides what to do with it. The "intelligent enough not to split
+storage across boundaries" property is a provider-side invariant
+(`ComputeFabric` returns one slot per step; never partial); not a workload
+constraint.
+
+If srv2 dies, the host-pool provider's `verify` misses every srv2-affinity hint
+in its `locality_hint` resolution; falls back to srv1 or to L2-cold; workload
+sees a slower step, never a broken step. If we add a Fargate provider and
+schedule a step there, the same `locality_hint` is sent and silently ignored;
+the step runs cold via L2. No workload-layer change. **This is the elasticity
+knob: providers expose what they can do with locality; workload sends one hint
+and adapts to whatever it gets.**
 
 ### 4.8 Cache invalidation discipline
 
@@ -591,6 +620,23 @@ non-deterministic step's verdict cannot safely cache. Does each `CiUpsertStep<T>
 declare a deterministic effect, with non-deterministic steps either
 (a) excluded from IRT-4 reuse, or (b) routed through a determinism-witness
 sub-step? This is orthogonal to elasticity but conflicts at the cache layer.
+
+**Q7 — Provider plurality.** When (not if) we run with multiple `ComputeFabric`
+providers — e.g., srv1+srv2 + a Fargate burst-pool for CI bursts — what's the
+cross-provider L2 cache discipline? L2 must be the single source of truth all
+providers read from. Concretely: if step S runs on Fargate (cold L1), produces
+output, puts to L2; next run, srv1 picks up step S, its L1 is empty for this
+hash, falls through to L2 → hit. That's the design contract. Question for
+operator: is there a preferred L2 backend that all providers should target
+(Actions Cache? BuildBuddy CAS? S3?), or does each provider get its own L2
+identity?
+
+**Q8 — Locality hint surface.** The opaque `locality_hint: Option<PriorRunIdentity>`
+shape works for stateful providers and is ignored by stateless ones. Open: should
+this be richer (e.g., the workload also declares its L1 *working-set size* so
+stateful providers can decide whether L1 affinity is worth the queue wait)? Or
+is the simpler "opaque hint, provider decides" interface load-bearing for the
+provider abstraction?
 
 **Q6 — Active gate condition.** Phase 2.5 turns receipt decisions into runner
 dispatch. The operator's framing says "absolutely minimal set of functionality
