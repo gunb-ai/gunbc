@@ -36,6 +36,8 @@ declaration-id-raw-test-witness = []
 # gunbc#1739 #issuecomment-4392731264): `IntervalInt::ExactInterval` host
 # repr widens to `BigInt` to admit `u128::MAX`.
 num-bigint = { workspace = true }
+# W3 / T-38: executable `run_emit_host_rust` row (`emit_host_bridge.rs`); substrate stays deferred.
+emit_host_runner = { path = "../../../tools/emit_host_runner" }
 
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2", default-features = false }
@@ -46,7 +48,6 @@ libc = { version = "0.2", default-features = false }
 criterion = "0.5"
 gen_gunbc_ci_workflow_dag = { path = "../../../tools/gen_gunbc_ci_workflow_dag" }
 ci_affected_components = { path = "../../../tools/ci_affected_components" }
-emit_host_runner = { path = "../../../tools/emit_host_runner" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # T-V2 G-1 manifest ratchet: structured Cargo.toml walk (`toml` value parse).
