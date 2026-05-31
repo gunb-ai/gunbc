@@ -970,6 +970,25 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         ),
         "{CI_WORKFLOW_DAG_PATH}: ci_v4 job if_condition must mirror ci.yml main-push disjunct (I7)"
     );
+    let t15_workflow_marker = format!("name: Some {{ value: \"{T15_SELF_HOST_STEP_NAME}\" }}");
+    let t15_workflow_idx = CI_WORKFLOW_DAG
+        .find(&t15_workflow_marker)
+        .unwrap_or_else(|| {
+            panic!(
+                "{CI_WORKFLOW_DAG_PATH}: missing modeled step `{T15_SELF_HOST_STEP_NAME}`"
+            )
+        });
+    let t15_workflow_window = &CI_WORKFLOW_DAG[t15_workflow_idx..t15_workflow_idx.saturating_add(512)];
+    assert!(
+        !t15_workflow_window.contains("needs.affected.outputs.v3 == 'true'"),
+        "{CI_WORKFLOW_DAG_PATH}: T-15 step if_condition must not gate on v3 (P2 parity with ci.yml / ci.dag)"
+    );
+    assert!(
+        t15_workflow_window.contains(
+            "if_condition: Some { value: \"needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')\" }"
+        ),
+        "{CI_WORKFLOW_DAG_PATH}: T-15 step if_condition must mirror ci.yml (I7 / no v3 disjunct)"
+    );
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
         binding_step.contains(&format!(
