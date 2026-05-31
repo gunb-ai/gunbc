@@ -73,7 +73,7 @@ Hard-gated on P2 bridge deletion + P3 binary build. No active worker dispatchabl
 - P5-D tranche-2: nat_semiring multiplicative + annihilator LANDED #4089
 
 **Layer 2 — Authority gate (substrate deletion): OPEN**
-- **Structural-bridge deletion**: `scripts/v4-testclaim-corpus-gate.sh` removal. Per quick-tern's no-new-shell read, this needs a **positive-Y modeled CI-step authoring** (likely a modeled `ci.dag` `CiUpsertStep` row that replaces the shell call) before dispatch. **Not currently spawned.** The shape of the replacement must align with the elastic CI design currently being fleshed out in [#4091](https://github.com/gunb-ai/gunbc/pull/4091) (`docs/planning/elastic-ci-redesign-exploration-2026-05-31.md`) — specifically §3 Upsert<T> substrate state + the four-compile-redundancy reduction that informs where T-22 corpus gate steps belong in the redesigned graph.
+- **Structural-bridge deletion**: `scripts/v4-testclaim-corpus-gate.sh` removal. Per quick-tern's no-new-shell read, this needs a **positive-Y modeled CI-step authoring** (likely a modeled `ci.dag` `CiUpsertStep` row that replaces the shell call) before dispatch. The shape of the replacement must align with the elastic CI design **ratified on main as [#4091](https://github.com/gunb-ai/gunbc/pull/4091)** (squash c05a5a84, merged 2026-05-31T07:04Z; `docs/planning/elastic-ci-redesign-exploration-2026-05-31.md`) — specifically §3 Upsert<T> substrate state + the four-compile-redundancy reduction that informs where T-22 corpus gate steps belong in the redesigned graph. Per proud-pike scope-clarification (msg_6287177d): **#4095 does NOT cover the bridge replacement** (#4095 scope is `dsl/std` + `v4.std` substrate vocabulary per #4091 §4.0f/§4.0g; explicitly out-of-scope for `ci.dag`/`ci.yml`/shell bridge deletion). Separate downstream worksheet still required — operator framing per #4094 decision 2: **first concrete CiUpsertStep replacement under #4091**, consuming Upsert<T>/WorkUnit chain from #4095-substrate, not a parallel substrate doc.
 
 **P5 PROVEN requires BOTH layers closed.** Layer 1 done; Layer 2 still open. Reading "Wa-2 LANDED → P5 GREEN" is a category error.
 
@@ -122,7 +122,7 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 | Blocker | Owner action |
 |---|---|
 | **P2-B bridge deletion authorization** | Operator decision. Smart-stag flagged 2026-05-30; bridge at `ci.yml:378-385` + `scripts/v4-bootstrap-resolve-posture-gate.sh`. |
-| **Structural-bridge replacement** (P5 final gate) | Modeling DFS — positive-Y `CiUpsertStep` in `ci.dag` to replace `scripts/v4-testclaim-corpus-gate.sh` shell call. Not currently spawned. Authoring should cite [#4091](https://github.com/gunb-ai/gunbc/pull/4091) §3 substrate state to avoid drifting from the in-flight elastic CI design. |
+| **Structural-bridge replacement** (P5 final gate) | Modeling DFS — positive-Y `CiUpsertStep` in `ci.dag` to replace `scripts/v4-testclaim-corpus-gate.sh` shell call. [#4091](https://github.com/gunb-ai/gunbc/pull/4091) ratified on main (squash c05a5a84) as substrate authority; **#4095 does NOT cover bridge replacement** per proud-pike (msg_6287177d) — separate downstream §10.0 worksheet still needed (likely `v4-p5-structural-bridge-replacement-worksheet`). proud-pike capacity: blocked behind SG-RC-LAYERING + #4095 split amend + SG-1b in same authoring lane. PM prioritization ask pending: should bridge worksheet be authored BEFORE SG-RC/SG-1b §8? |
 | **SG-RC-LAYERING worksheet** | proud-pike — authoring next; downstream worker auto-spawns once §10.0 published |
 | **#4085 SG-6 cursor RC** | lively-eagle authoring fix |
 
@@ -131,12 +131,12 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 | Priority | Item | State | Owner | Exit receipt |
 |---|---|---|---|---|
 | 1 | Wa-2 #4080 | LANDED dca5ce7a ✓ | valiant-cat (archived) | fixture/law bundle 3/3 closed |
-| 2 | Structural-bridge replacement DFS | **unstaffed** | Modeling DFS (proud-pike) | §10.0 worksheet for positive-Y CiUpsertStep replacing scripts/v4-testclaim-corpus-gate.sh |
-| 3 | P2-B deletion authorization | **operator-gated decision-node** | operator/PM | bridge deletion authorized OR explicitly kept with named follow-up |
+| 2 | Structural-bridge replacement DFS | **unstaffed (#4095 confirmed out-of-scope per proud-pike msg_6287177d)** | Modeling DFS (proud-pike) | separate §10.0 worksheet for positive-Y CiUpsertStep replacing scripts/v4-testclaim-corpus-gate.sh — first concrete CiUpsertStep replacement under #4091 |
+| 3 | P2-B deletion authorization | **operator-gated decision-node** | operator/PM | bridge deletion authorized OR explicitly kept with named follow-up (M2 probe by sharp-otter pending as safety-net receipt) |
 | 4 | SG-RC-LAYERING worksheet | authoring | proud-pike | §10.0 worksheet published |
-| 5 | SG-6 #4085 | cursor RC | lively-eagle | class merged |
-| 6 | SG-1b sibling | routed | Target Realization (keen-heron) | worker dispatched |
-| 7 | #4091 elastic CI ratification | draft / exploration | operator | ratification posture decided |
+| 5 | SG-6 #4085 | LANDED 06:28Z (squash 2ac52f26) ✓ | lively-eagle (archived) | class merged; Wave 2 TR-lane COMPLETE |
+| 6 | SG-1b sibling | routed | Target Realization (keen-heron) | worker dispatched once proud-pike ratifies worksheet/amendment |
+| 7 | #4091 elastic CI ratification | **MERGED 07:04Z (squash c05a5a84) ✓** | operator | ratified on main; substrate now authoritative for downstream CI substrate work |
 
 ## §7. PM-side actionable items
 
@@ -147,15 +147,15 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 **Both authoring items ARE active blockers — monitor and escalate if no movement.**
 
 **Operator-gated decisions also blocking dispatch:**
-- P2-B bridge deletion authorization (without it P2 stays AUTHORITY-BLOCKED → P4 + P6 cascade)
-- #4091 elastic CI ratification posture (without it structural-bridge replacement substrate framing is uncertain → risks re-shape post-ratification)
+- P2-B bridge deletion authorization (without it P2 stays AUTHORITY-BLOCKED → P4 + P6 cascade); sharp-otter dispatched to run M2 probe (full corpus compile w/o bridge step) as safety-net receipt
+- ~~#4091 elastic CI ratification posture~~ — **RESOLVED 07:04Z (#4091 merged, squash c05a5a84)**; structural-bridge replacement substrate framing now authoritative
 
 ## §8. Risk / honesty section
 
 - **P5 Layer 1 fixture/law bundle is 3/3 done** (Wa-1 + Wa-2 + P5-D tranche-2). Layer 2 substrate gate is the live risk now.
 - **Structural-bridge replacement is unstaffed.** Per quick-tern's no-new-shell-substrate read, it needs DFS authoring before worker dispatch. This is the latent gate that could surprise — and per operator framing it should be the **first concrete CiUpsertStep replacement under #4091** rather than a one-off shell swap.
 - **P2-B bridge deletion is operator-gated and not authorized.** Without it, P2 stays YELLOW even though scope (a) is PROVEN.
-- **#4092 saved ~14m CI runtime** but ci_v4 step still sometimes times out (#4074 rerun was a 32min nailbiter); CI overhaul gap is partially closing, not fully. The full elastic redesign is being explored in [#4091](https://github.com/gunb-ai/gunbc/pull/4091) (operator-authored, draft), anchored on the same #4074 run profile that surfaced the four-compile-redundancy (M1 rust emit + v2→v4 bootstrap + T-22 corpus rust + T-22 corpus dag, all on the same 332-source closure). Until that lands, partial wins like #4092 + #4074 are the per-step amortizations; structural overhaul awaits ratification.
+- **#4092 saved ~14m CI runtime** but ci_v4 step still sometimes times out (#4074 rerun was a 32min nailbiter); CI overhaul gap is partially closing at the per-step level. The full elastic redesign **landed in [#4091](https://github.com/gunb-ai/gunbc/pull/4091)** (squash c05a5a84, merged 2026-05-31T07:04Z), anchored on the same #4074 run profile that surfaced the four-compile-redundancy (M1 rust emit + v2→v4 bootstrap + T-22 corpus rust + T-22 corpus dag, all on the same 332-source closure). #4091 is now substrate authority for downstream CI substrate work; the structural overhaul timeline now depends on #4095-class DFS worksheets landing + implementation workers shipping.
 - **6991 rustc errors → 0 is a long-horizon path.** Per-class closures (SG-RC-LAYERING ~700, SG-COLLECTION-PROJECTION ~170, etc.) accumulate — the visible single-class wins from SG-1 (~37%) won't recur at that magnitude.
 
 ## §9. Cross-refs (authoritative state)
@@ -165,20 +165,22 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 - sharp-otter P1 roster: `docs/planning/v4-p1-other-task-roster-2026-05-30.md`
 - sharp-otter post-SG-1 catalog: `docs/audit/v4-rustc-error-catalog-2026-05-31.md` (PR #4086)
 - prior dep graph (baseline): `docs/planning/v4-predicate-dependency-graph-2026-05-30.md` (#4058)
-- elastic CI redesign exploration (in flight, draft): `docs/planning/elastic-ci-redesign-exploration-2026-05-31.md` ([#4091](https://github.com/gunb-ai/gunbc/pull/4091)) — anchor for any structural-bridge replacement authoring + framing for the CI overhaul gap
+- elastic CI redesign **(RATIFIED on main, squash c05a5a84, merged 2026-05-31T07:04Z)**: `docs/planning/elastic-ci-redesign-exploration-2026-05-31.md` ([#4091](https://github.com/gunb-ai/gunbc/pull/4091)) — substrate authority for downstream CI substrate work including the structural-bridge replacement
+- elastic compute fabric + cache substrate DFS worksheet (in flight): `docs/planning/v4-elastic-compute-fabric-substrate-worksheet-2026-05-30.md` ([#4095](https://github.com/gunb-ai/gunbc/pull/4095), sharp-wolf-824, proud-pike §8-approved) — downstream substrate authoring track under #4091
 - Definitions: `src/v4/TASKS.md:806-817`
 
 ## §10. Watchlist (receipt-state, not time-based)
 
 **Likely next-flip** (high confidence, named workers in flight; expressed as receipts not deadlines):
-- SG-6 #4085 lands once cursor RC addressed → P3 class closure increment
-- merry-badger burn-down refresh post-cascade reflecting Wave 1 EXIT + Wa-2 landing
+- merry-badger burn-down refresh post-cascade reflecting Wave 1 EXIT + Wa-2 landing + SG-6 landing + #4091 ratification
 - proud-pike SG-RC-LAYERING §10.0 worksheet authored → downstream P3 worker dispatchable
-- (Wa-2 #4080 LANDED dca5ce7a — already on main; fixture/law bundle 3/3)
+- #4095 elastic compute fabric DFS worksheet review → ratification → enables structural-bridge replacement worker dispatch
+- sharp-otter M2 probe (full corpus compile w/o bridge step) → P2-B safety-net receipt → operator authorization unblocked
+- (Wa-2 #4080 LANDED dca5ce7a + SG-6 #4085 LANDED 2ac52f26 + #4091 LANDED c05a5a84 — already on main)
 
 **Decisions blocking forward progress** (no PM authority to resolve):
-- **P2-B bridge deletion authorization** — without it P2 stays AUTHORITY-BLOCKED, P4+P6 cascade gated
-- **Structural-bridge replacement dispatch authorization** — needs DFS authoring of positive-Y CiUpsertStep replacing scripts/v4-testclaim-corpus-gate.sh; should align with #4091 §3 substrate state (operator framing)
-- **#4091 ratification posture** — currently draft+exploration; flipping to ratified would unblock structural-bridge replacement framing
-- **SG-RC-LAYERING vs SG-1b prioritization** — proud-pike authoring SG-RC-LAYERING; SG-1b sibling needs separate keen-heron-relayed worksheet (operator: parallel or serial?)
-- **CI risk posture** — ci_v4 timeout (#4074 was a 32min nailbiter; #4092 saved ~14m but partial); operational nuisance vs merge-blocker until #4091 lands
+- **P2-B bridge deletion authorization** — without it P2 stays AUTHORITY-BLOCKED, P4+P6 cascade gated. M2 probe (sharp-otter, dispatched 07:05Z) will produce safety-net receipt before operator decision.
+- **Structural-bridge replacement scope under #4095** — proud-pike scope-clarification ask out (dispatched 07:04Z): does #4095 elastic compute fabric DFS cover the bridge replacement directly, or is a separate downstream worksheet needed? Operator framing per #4094 decision 2: bridge replacement should be the **first concrete CiUpsertStep replacement under #4091** (now ratified) rather than parallel substrate.
+- ~~#4091 ratification posture~~ — **RESOLVED 07:04Z (#4091 merged squash c05a5a84)**
+- **SG-RC-LAYERING vs SG-1b prioritization** — operator answered #4094 decision 3 PARALLEL; proud-pike scope-clarification ask out (07:04Z) on whether SG-1b is separate worksheet vs amendment under SG-1.
+- **CI risk posture** — ci_v4 timeout (#4074 was a 32min nailbiter; #4092 saved ~14m partial). Operator answered #4094 decision 5: **operational nuisance NOT merge-blocker** until ci_v4 fail-rate climbs above ~1-in-3. Standing protocol per deep-ferret-235 escalation contract.
