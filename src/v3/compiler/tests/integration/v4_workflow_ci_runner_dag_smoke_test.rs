@@ -988,6 +988,20 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         ),
         "{CI_WORKFLOW_DAG_PATH}: T-15 step if_condition must mirror ci.yml (I7 / no v3 disjunct)"
     );
+    let v2_build_workflow_marker =
+        "name: Some { value: \"Build v2 compiler (v4 bootstrap / host eval gate)\" }";
+    let v2_build_workflow_idx = CI_WORKFLOW_DAG
+        .find(v2_build_workflow_marker)
+        .unwrap_or_else(|| {
+            panic!("{CI_WORKFLOW_DAG_PATH}: missing modeled step `Build v2 compiler (v4 bootstrap / host eval gate)`")
+        });
+    let v2_build_workflow_window =
+        &CI_WORKFLOW_DAG[v2_build_workflow_idx..v2_build_workflow_idx.saturating_add(560)];
+    assert!(
+        v2_build_workflow_window.contains("github.event_name == 'push'")
+            && v2_build_workflow_window.contains("refs/heads/main"),
+        "{CI_WORKFLOW_DAG_PATH}: v2 compiler build if_condition must include main-push (T-15 needs v2_compile_src_v4)"
+    );
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
         binding_step.contains(&format!(
@@ -1029,6 +1043,17 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         v2_bootstrap_build.contains("needs.affected.outputs.v4 == 'true'")
             && !v2_bootstrap_build.contains("needs.affected.outputs.v2 == 'true'"),
         "{CI_YML_PATH}: v2 compiler build step must follow ci_v4 job gate (v4|testclaim|workflow_policy), not v2-only"
+    );
+    assert!(
+        v2_bootstrap_build.contains("github.event_name == 'push'")
+            && v2_bootstrap_build.contains("refs/heads/main"),
+        "{CI_YML_PATH}: v2 compiler build step must include main-push when T-15 does (modeled needs: v2_compile_src_v4)"
+    );
+    let v2_bin_cache =
+        workflow_step_block(CI_YML, "Cache gunbc binary (v4 bootstrap / host eval gate)");
+    assert!(
+        v2_bin_cache.contains("github.event_name == 'push'") && v2_bin_cache.contains("refs/heads/main"),
+        "{CI_YML_PATH}: v2 compiler cache step must include main-push paired with build/T-15 needs closure"
     );
     assert!(
         CI_DAG.contains("fn ci_select_ci_jobs_needs_closure_pass("),
