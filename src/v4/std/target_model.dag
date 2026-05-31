@@ -74,6 +74,9 @@ data serialize_source_field_source_grammar: Symbol = serialize_source_field_sour
 
 data target_model_edge_atom_realizations: Symbol = target_model_edge_atom_realizations
 
+// SG-1b function-boundary signature realization catalog (per-language; Param/Return sites only).
+data target_model_edge_signature_realizations: Symbol = target_model_edge_signature_realizations
+
 // --- SG-1 atom realization vocabulary (M6 product carriers on kind+payload axes) ---
 
 type SourceAtomValueKind
@@ -625,7 +628,11 @@ fn target_constructor_template_from_node(
 fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
   match edge.label {
     Named { name: n } =>
-      match n == target_model_edge_atom_realizations {
+      // Strip realization-catalog edges (atom SG-1 + signature SG-1b) so a row's encoded
+      // host_bundle (pre-catalog core) structurally matches core(live host) regardless of
+      // which catalogs the live host carries.
+      match n == target_model_edge_atom_realizations
+        || n == target_model_edge_signature_realizations {
         true => acc
         false => list_snoc_item(xs: acc, item: edge)
       }
@@ -1021,6 +1028,337 @@ fn target_atom_realization_lookup_in_catalog_node(
       }
     _ =>
       outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+  }
+}
+
+// --- SG-1b function-boundary signature realization (sibling to SG-1; catalog label SG-1-FOLLOWON) ---
+//
+// TargetFunctionSignatureRealization supplies the signature_type_form for a fn entry/exit
+// (Param/Return) site, keyed by the SAME source_carrier Node identity as the SG-1
+// TargetAtomRealization row. It does NOT duplicate the atom catalog: per-language rows
+// reference SG-1 type_form by field projection (see extdeps/languages/<lang>.dag), so changing
+// one realization row moves both the signature annotation and the value body together.
+//
+// M6: FunctionBoundarySite is a pure nullary discriminator (mirror of TargetTypeExprKind);
+// TargetFunctionSignatureRealization is a product (heterogeneous fields), not an N-arm
+// identical-payload coproduct.
+
+data target_function_boundary_site_param: Symbol = target_function_boundary_site_param
+data target_function_boundary_site_return: Symbol = target_function_boundary_site_return
+
+data target_function_signature_realization_field_source_carrier: Symbol = target_function_signature_realization_field_source_carrier
+data target_function_signature_realization_field_target_model_bundle: Symbol = target_function_signature_realization_field_target_model_bundle
+data target_function_signature_realization_field_boundary_site: Symbol = target_function_signature_realization_field_boundary_site
+data target_function_signature_realization_field_signature_type_form: Symbol = target_function_signature_realization_field_signature_type_form
+
+data target_function_signature_realization_lookup_miss: Symbol = target_function_signature_realization_lookup_miss
+data target_function_signature_realization_lookup_ambiguous: Symbol = target_function_signature_realization_lookup_ambiguous
+data target_function_signature_realization_row_decode_invalid: Symbol = target_function_signature_realization_row_decode_invalid
+data target_function_signature_realization_target_model_bundle_mismatch: Symbol = target_function_signature_realization_target_model_bundle_mismatch
+data target_function_boundary_site_decode_invalid: Symbol = target_function_boundary_site_decode_invalid
+
+// 🟢 terminal coproduct — fn entry/exit site discriminator. The Arrow connective has exactly two
+// boundary roles (domain = Param, codomain = Return); the axis is closed by Arrow's shape, so there
+// is nothing further to dissolve. Nullary arms (no payload axis) — mirror of TargetTypeExprKind.
+type FunctionBoundarySite
+  = FunctionBoundaryParam
+  | FunctionBoundaryReturn
+
+// 🟢 product carrier (M6) — SG-1b function-boundary signature realization. Fields are heterogeneous
+// (Node key, host model, boundary discriminator, SG-2 type expression); this is NOT an N-arm
+// identical-payload coproduct. signature_type_form is sourced BY REFERENCE from the paired SG-1
+// TargetAtomRealization (shared source_carrier), so it carries no second atom catalog.
+type TargetFunctionSignatureRealization {
+  source_carrier: Node
+  target_model: TargetModel
+  boundary_site: FunctionBoundarySite
+  signature_type_form: TargetTypeExpression
+}
+
+fn target_function_boundary_site_symbol(site: FunctionBoundarySite) -> Symbol {
+  match site {
+    FunctionBoundaryParam => target_function_boundary_site_param
+    FunctionBoundaryReturn => target_function_boundary_site_return
+  }
+}
+
+fn target_function_boundary_site_to_node(site: FunctionBoundarySite) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: target_function_boundary_site_symbol(site: site) }
+    },
+    children: []
+  }
+}
+
+fn target_function_boundary_site_eq(a: FunctionBoundarySite, b: FunctionBoundarySite) -> Bool {
+  target_function_boundary_site_symbol(site: a) == target_function_boundary_site_symbol(site: b)
+}
+
+fn target_function_signature_realization_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_function_signature_realization_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_function_signature_realization_lookup_ambiguous_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_function_signature_realization_lookup_ambiguous,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_function_signature_realization_row_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_function_signature_realization_row_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_function_signature_realization_target_model_bundle_mismatch_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_function_signature_realization_target_model_bundle_mismatch,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_function_boundary_site_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_function_boundary_site_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_function_boundary_site_from_node(
+  n: Node,
+  source_carrier: Node
+) -> Outcome<FunctionBoundarySite> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == target_function_boundary_site_param {
+        outcome_accepted(FunctionBoundaryParam)
+      } else if id == target_function_boundary_site_return {
+        outcome_accepted(FunctionBoundaryReturn)
+      } else {
+        outcome_rejected(
+          target_function_boundary_site_decode_invalid_diagnostic(source_carrier: source_carrier)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        target_function_boundary_site_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
+  }
+}
+
+fn target_function_signature_realization_to_node(
+  row: TargetFunctionSignatureRealization,
+  host_bundle: Node
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_function_signature_realization_field_source_carrier,
+        target: row.source_carrier
+      ),
+      target_model_named_edge(
+        name: target_function_signature_realization_field_target_model_bundle,
+        target: host_bundle
+      ),
+      target_model_named_edge(
+        name: target_function_signature_realization_field_boundary_site,
+        target: target_function_boundary_site_to_node(site: row.boundary_site)
+      ),
+      target_model_named_edge(
+        name: target_function_signature_realization_field_signature_type_form,
+        target: row.signature_type_form.node
+      )
+    ]
+  }
+}
+
+// Catalog rows are POSITIONAL slots, not Named edges: the (source_carrier, boundary_site)
+// lookup key lives inside each encoded row, so a Named edge keyed on either coordinate alone
+// would alias a second row at the same boundary (or same carrier) into a duplicate Conj edge
+// name. Positional slots keep every (carrier × site) row representable without collision (P2).
+fn target_function_signature_realization_catalog_edge(
+  row: TargetFunctionSignatureRealization,
+  host_bundle: Node
+) -> Edge {
+  Edge {
+    label: Positional,
+    target: target_function_signature_realization_to_node(row: row, host_bundle: host_bundle)
+  }
+}
+
+fn target_function_signature_realization_catalog_snoc_edge(
+  acc: List<Edge>,
+  row: TargetFunctionSignatureRealization,
+  host_bundle: Node
+) -> List<Edge> {
+  list_snoc_item(
+    xs: acc,
+    item: target_function_signature_realization_catalog_edge(row: row, host_bundle: host_bundle)
+  )
+}
+
+fn target_function_signature_realization_catalog_node(
+  rows: List<TargetFunctionSignatureRealization>,
+  host_bundle: Node
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) {
+        target_function_signature_realization_catalog_snoc_edge(
+          acc: acc,
+          row: row,
+          host_bundle: host_bundle
+        )
+      }
+    )
+  }
+}
+
+fn target_function_signature_realization_from_row_node(
+  row_node: Node,
+  host_target_model: TargetModel
+) -> Outcome<TargetFunctionSignatureRealization> {
+  let source_carrier = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_function_signature_realization_field_source_carrier
+  )
+  let row_bundle = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_function_signature_realization_field_target_model_bundle
+  )
+  if target_atom_realization_bundle_matches_host(row_bundle: row_bundle, host: host_target_model) {
+    match target_function_boundary_site_from_node(
+      n: target_atom_realization_conj_child(
+        row_node: row_node,
+        edge_name: target_function_signature_realization_field_boundary_site
+      ),
+      source_carrier: source_carrier
+    ) {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: boundary_site, diagnostics: _ } =>
+        match target_type_expression_from_node(
+          n: target_atom_realization_conj_child(
+            row_node: row_node,
+            edge_name: target_function_signature_realization_field_signature_type_form
+          ),
+          source_carrier: source_carrier
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: signature_type_form, diagnostics: _ } =>
+            outcome_accepted(
+              TargetFunctionSignatureRealization {
+                source_carrier: source_carrier,
+                target_model: host_target_model,
+                boundary_site: boundary_site,
+                signature_type_form: signature_type_form
+              }
+            )
+        }
+    }
+  } else {
+    outcome_rejected(
+      target_function_signature_realization_target_model_bundle_mismatch_diagnostic(
+        source_carrier: source_carrier
+      )
+    )
+  }
+}
+
+// 🟢 coproduct dissolution — internal fold state for the SG-1b signature-realization catalog scan
+// (Result-style: heterogeneous arms — Unique carries a row payload, the other three are nullary
+// outcome tags). Mirrors TargetAtomRealizationCatalogLookup; not an N-arm identical-payload coproduct.
+type TargetFunctionSignatureRealizationCatalogLookup
+  = TargetFunctionSignatureRealizationCatalogMissing
+  | TargetFunctionSignatureRealizationCatalogUnique { row: TargetFunctionSignatureRealization }
+  | TargetFunctionSignatureRealizationCatalogAmbiguous
+  | TargetFunctionSignatureRealizationCatalogInvalid
+
+fn target_function_signature_realization_catalog_lookup_step(
+  acc: TargetFunctionSignatureRealizationCatalogLookup,
+  row_node: Node,
+  source_carrier: Node,
+  boundary_site: FunctionBoundarySite,
+  host_target_model: TargetModel
+) -> TargetFunctionSignatureRealizationCatalogLookup {
+  match target_function_signature_realization_from_row_node(
+    row_node: row_node,
+    host_target_model: host_target_model
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_carrier)
+        && target_function_boundary_site_eq(a: row.boundary_site, b: boundary_site) {
+        match acc {
+          TargetFunctionSignatureRealizationCatalogMissing =>
+            TargetFunctionSignatureRealizationCatalogUnique { row: row }
+          TargetFunctionSignatureRealizationCatalogUnique { row: _ } =>
+            TargetFunctionSignatureRealizationCatalogAmbiguous
+          TargetFunctionSignatureRealizationCatalogAmbiguous =>
+            TargetFunctionSignatureRealizationCatalogAmbiguous
+          TargetFunctionSignatureRealizationCatalogInvalid =>
+            TargetFunctionSignatureRealizationCatalogInvalid
+        }
+      } else {
+        acc
+      }
+    Rejected { diagnostics: _ } => TargetFunctionSignatureRealizationCatalogInvalid
+  }
+}
+
+fn target_function_signature_realization_lookup_in_catalog_node(
+  catalog: Node,
+  source_carrier: Node,
+  boundary_site: FunctionBoundarySite,
+  host_target_model: TargetModel
+) -> Outcome<TargetFunctionSignatureRealization> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: TargetFunctionSignatureRealizationCatalogMissing,
+        f: fn(acc, e) {
+          target_function_signature_realization_catalog_lookup_step(
+            acc: acc,
+            row_node: e.target,
+            source_carrier: source_carrier,
+            boundary_site: boundary_site,
+            host_target_model: host_target_model
+          )
+        }
+      ) {
+        TargetFunctionSignatureRealizationCatalogMissing =>
+          outcome_rejected(
+            target_function_signature_realization_lookup_miss_diagnostic(source_carrier: source_carrier)
+          )
+        TargetFunctionSignatureRealizationCatalogUnique { row: row } =>
+          Accepted { value: row, diagnostics: None }
+        TargetFunctionSignatureRealizationCatalogAmbiguous =>
+          outcome_rejected(
+            target_function_signature_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier)
+          )
+        TargetFunctionSignatureRealizationCatalogInvalid =>
+          outcome_rejected(
+            target_function_signature_realization_row_decode_invalid_diagnostic(source_carrier: source_carrier)
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_function_signature_realization_lookup_miss_diagnostic(source_carrier: source_carrier)
+      )
   }
 }
 // TargetModel bundle edge — per-language TargetTypeExpressionProjection row (SG-2).
