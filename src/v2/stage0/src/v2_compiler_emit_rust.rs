@@ -44,7 +44,7 @@ pub use crate::v2_compiler_infer_emit_info::{
     variant_belongs_to_enum, variant_summary_key, EmitGraphInfo, TypeRepr, TypeSummary,
 };
 pub use crate::v2_compiler_infer_env::{authored_name, lookup_type_by_name, TypeBinding, TypeEnv};
-use crate::v2_compiler_infer_items::ItemKind::DataItem;
+use crate::v2_compiler_infer_items::ItemKind::{DataItem, TypeItem};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -2555,6 +2555,456 @@ pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) 
     }
 }
 
+pub fn item_defining_mod_filename(
+    name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    fallback_mod: String,
+) -> String {
+    match v2_rt::map_get(&registry, name) {
+        Some(info) => module_to_filename(info.module_name.clone()),
+        None => fallback_mod,
+    }
+}
+
+pub fn is_graph_type_import(
+    name: String,
+    import_mod: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> bool {
+    match v2_rt::map_get(&registry, name.clone()) {
+        Some(info) => {
+            ((module_to_filename(info.module_name.clone()).as_str() == import_mod.as_str())
+                && ((info.kind.clone() == ItemKind::TypeItem)
+                    || ((info.kind.clone() == ItemKind::OtherItem)
+                        && (is_enum_in_summaries(type_summaries, name.clone()) == false))))
+        }
+        None => false,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportNamesByModAcc {
+    pub names_by_mod: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub mod_order: Rc<Vec<String>>,
+}
+
+pub fn fold_import_names_by_mod(
+    acc: Rc<ImportNamesByModAcc>,
+    mod_name: String,
+    names: Rc<Vec<String>>,
+) -> Rc<ImportNamesByModAcc> {
+    {
+        let merged = match v2_rt::map_get(&acc.names_by_mod.clone(), mod_name.clone()) {
+            Some(existing) => unique_strings(v2_rt::concat(existing.clone(), names)),
+            None => unique_strings(names),
+        };
+        let mod_order = match v2_rt::map_get(&acc.names_by_mod.clone(), mod_name.clone()) {
+            Some(_) => acc.mod_order.clone(),
+            None => v2_rt::rc_list_push(acc.mod_order.clone(), mod_name.clone()),
+        };
+        Rc::new(ImportNamesByModAcc {
+            names_by_mod: v2_rt::rc_map_insert(acc.names_by_mod.clone(), mod_name.clone(), merged),
+            mod_order: mod_order,
+        })
+    }
+}
+
+pub fn emit_pub_use_from_module(
+    mod_filename: String,
+    names: Rc<Vec<String>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> String {
+    if ((names.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let names_str = Rc::new({
+                let mut __result = Vec::new();
+                for n in names.clone().iter().cloned() {
+                    __result.push(emit_import_name(n.clone(), registry.clone()));
+                }
+                __result
+            })
+            .join(&", ".to_string());
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(rust_visibility_prefix(), "use crate::".to_string()),
+                            mod_filename,
+                        ),
+                        "::{".to_string(),
+                    ),
+                    names_str,
+                ),
+                "};".to_string(),
+            )
+        }
+    }
+}
+
+pub fn enum_names_defining_in_module(
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mod_filename: String,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for n in Rc::new(v2_rt::map_keys(&type_summaries)).iter().cloned() {
+            if (is_enum_in_summaries(type_summaries.clone(), n.clone())
+                && (item_defining_mod_filename(n.clone(), registry.clone(), mod_filename.clone())
+                    .as_str()
+                    == mod_filename.clone().as_str()))
+            {
+                __result.push(n);
+            }
+        }
+        __result
+    })
+}
+
+pub fn emit_specific_import_block(
+    mod_name: String,
+    deduped_names: Rc<Vec<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> String {
+    if ((deduped_names.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let graph_type_imports = Rc::new({
+                let mut __result = Vec::new();
+                for n in deduped_names.clone().iter().cloned() {
+                    if is_graph_type_import(
+                        n.clone(),
+                        mod_name.clone(),
+                        registry.clone(),
+                        type_summaries.clone(),
+                    ) {
+                        __result.push(n);
+                    }
+                }
+                __result
+            });
+            let non_graph_imports = Rc::new({
+                let mut __result = Vec::new();
+                for n in deduped_names.clone().iter().cloned() {
+                    if (is_graph_type_import(
+                        n.clone(),
+                        mod_name.clone(),
+                        registry.clone(),
+                        type_summaries.clone(),
+                    ) == false)
+                    {
+                        __result.push(n);
+                    }
+                }
+                __result
+            });
+            let top_level_enums = Rc::new({
+                let mut __result = Vec::new();
+                for n in non_graph_imports.clone().iter().cloned() {
+                    if if is_known_variant(type_summaries.clone(), n.clone()) {
+                        is_enum_in_summaries(type_summaries.clone(), n.clone())
+                    } else {
+                        true
+                    } {
+                        __result.push(n);
+                    }
+                }
+                __result
+            });
+            let enums_in_import_mod = enum_names_defining_in_module(
+                type_summaries.clone(),
+                registry.clone(),
+                mod_name.clone(),
+            );
+            let imported_enums = Rc::new({
+                let mut __result = Vec::new();
+                for n in non_graph_imports.clone().iter().cloned() {
+                    if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                        __result.push(n);
+                    }
+                }
+                __result
+            });
+            let all_enum_names = Rc::new({
+                let mut __result = Vec::new();
+                for n in Rc::new(v2_rt::map_keys(&type_summaries)).iter().cloned() {
+                    if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                        __result.push(n);
+                    }
+                }
+                __result
+            });
+            let all_parents = Rc::new({
+                let mut __result = Vec::new();
+                for p in Rc::new({
+                    let mut __result = Vec::new();
+                    for n in non_graph_imports.clone().iter().cloned() {
+                        __result.push(if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                            "".to_string()
+                        } else {
+                            match find_variant_parent(
+                                type_summaries.clone(),
+                                n.clone(),
+                                enums_in_import_mod.clone(),
+                            ) {
+                                Some(parent) => parent.clone(),
+                                None => match find_variant_parent(
+                                    type_summaries.clone(),
+                                    n.clone(),
+                                    imported_enums.clone(),
+                                ) {
+                                    Some(parent) => parent.clone(),
+                                    None => match find_variant_parent(
+                                        type_summaries.clone(),
+                                        n.clone(),
+                                        all_enum_names.clone(),
+                                    ) {
+                                        Some(parent) => parent.clone(),
+                                        None => "".to_string(),
+                                    },
+                                },
+                            }
+                        });
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    if (p.clone().as_str() != "".to_string().as_str()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            });
+            let parent_list = unique_strings(all_parents);
+            let top_with_parents = unique_strings(v2_rt::concat(
+                v2_rt::concat(graph_type_imports, top_level_enums.clone()),
+                parent_list.clone(),
+            ));
+            let local_reexport_names = Rc::new({
+                let mut __result = Vec::new();
+                for n in top_with_parents.clone().iter().cloned() {
+                    if (item_defining_mod_filename(n.clone(), registry.clone(), mod_name.clone())
+                        .as_str()
+                        == mod_name.clone().as_str())
+                    {
+                        __result.push(n);
+                    }
+                }
+                __result
+            });
+            let remote_reexport_names = Rc::new({
+                let mut __result = Vec::new();
+                for n in top_with_parents.clone().iter().cloned() {
+                    if (item_defining_mod_filename(n.clone(), registry.clone(), mod_name.clone())
+                        .as_str()
+                        != mod_name.clone().as_str())
+                    {
+                        __result.push(n);
+                    }
+                }
+                __result
+            });
+            let remote_mods = unique_strings(Rc::new({
+                let mut __result = Vec::new();
+                for n in remote_reexport_names.clone().iter().cloned() {
+                    __result.push(item_defining_mod_filename(
+                        n.clone(),
+                        registry.clone(),
+                        mod_name.clone(),
+                    ));
+                }
+                __result
+            }));
+            let main_line =
+                emit_pub_use_from_module(mod_name.clone(), local_reexport_names, registry.clone());
+            let remote_main_lines = Rc::new({
+                let mut __result = Vec::new();
+                for rmod in remote_mods.iter().cloned() {
+                    __result.push({
+                        let names = Rc::new({
+                            let mut __result = Vec::new();
+                            for n in remote_reexport_names.clone().iter().cloned() {
+                                if (item_defining_mod_filename(
+                                    n.clone(),
+                                    registry.clone(),
+                                    mod_name.clone(),
+                                )
+                                .as_str()
+                                    == rmod.clone().as_str())
+                                {
+                                    __result.push(n);
+                                }
+                            }
+                            __result
+                        });
+                        emit_pub_use_from_module(rmod.clone(), names.clone(), registry.clone())
+                    });
+                }
+                __result
+            });
+            let variant_lines = Rc::new({
+                let mut __result = Vec::new();
+                for parent in parent_list.clone().iter().cloned() {
+                    __result.push({
+                        let parent_mod = item_defining_mod_filename(
+                            parent.clone(),
+                            registry.clone(),
+                            mod_name.clone(),
+                        );
+                        if (parent_mod.clone().as_str() != mod_name.clone().as_str()) {
+                            "".to_string()
+                        } else {
+                            {
+                                let variants = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for n in non_graph_imports.clone().iter().cloned() {
+                                        if if is_enum_in_summaries(
+                                            type_summaries.clone(),
+                                            n.clone(),
+                                        ) {
+                                            false
+                                        } else {
+                                            match find_variant_parent(
+                                                type_summaries.clone(),
+                                                n.clone(),
+                                                Rc::new(vec![parent.clone()]),
+                                            ) {
+                                                Some(_) => true,
+                                                None => false,
+                                            }
+                                        } {
+                                            __result.push(n);
+                                        }
+                                    }
+                                    __result
+                                });
+                                let vars_str = variants.clone().join(&", ".to_string());
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        "use crate::".to_string(),
+                                                        parent_mod.clone(),
+                                                    ),
+                                                    "::".to_string(),
+                                                ),
+                                                parent.clone(),
+                                            ),
+                                            "::{".to_string(),
+                                        ),
+                                        vars_str.clone(),
+                                    ),
+                                    "};".to_string(),
+                                )
+                            }
+                        }
+                    });
+                }
+                __result
+            });
+            let imported_enums = Rc::new({
+                let mut __result = Vec::new();
+                for n in top_level_enums.clone().iter().cloned() {
+                    if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                        __result.push(n);
+                    }
+                }
+                __result
+            });
+            let wildcard_enum_lines = Rc::new({
+                let mut __result = Vec::new();
+                for en in Rc::new({
+                    let mut __result = Vec::new();
+                    for en in imported_enums.clone().iter().cloned() {
+                        if ({
+                            let mut __found = false;
+                            for p in parent_list.clone().iter().cloned() {
+                                if (p.clone().as_str() == en.clone().as_str()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } == false)
+                        {
+                            __result.push(en);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push({
+                        let en_mod = item_defining_mod_filename(
+                            en.clone(),
+                            registry.clone(),
+                            mod_name.clone(),
+                        );
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat("use crate::".to_string(), en_mod.clone()),
+                                    "::".to_string(),
+                                ),
+                                en.clone(),
+                            ),
+                            "::*;".to_string(),
+                        )
+                    });
+                }
+                __result
+            });
+            let all_lines = v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        Rc::new(vec![main_line]),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for l in remote_main_lines.iter().cloned() {
+                                if (l.clone().as_str() != "".to_string().as_str()) {
+                                    __result.push(l);
+                                }
+                            }
+                            __result
+                        }),
+                    ),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for l in variant_lines.iter().cloned() {
+                            if (l.clone().as_str() != "".to_string().as_str()) {
+                                __result.push(l);
+                            }
+                        }
+                        __result
+                    }),
+                ),
+                wildcard_enum_lines,
+            );
+            Rc::new({
+                let mut __result = Vec::new();
+                for line in all_lines.iter().cloned() {
+                    if (line.clone().as_str() != "".to_string().as_str()) {
+                        __result.push(line);
+                    }
+                }
+                __result
+            })
+            .join(&"\n".to_string())
+        }
+    }
+}
+
 pub fn emit_imports(
     imports: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -2567,334 +3017,89 @@ pub fn emit_imports(
     } else {
         {
             let type_summaries = emit_info.type_summaries.clone();
-            let import_lines = Rc::new({
+            let glob_lines = Rc::new({
                 let mut __result = Vec::new();
-                for imp in imports.clone().iter().cloned() {
+                for imp in Rc::new({
+                    let mut __result = Vec::new();
+                    for imp in imports.clone().iter().cloned() {
+                        if import_is_all(imp.clone()) {
+                            __result.push(imp);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
                     __result.push({
                         let mod_name = module_to_filename(authored_name_at(
                             source_indices.clone(),
                             imp.clone(),
                         ));
-                        if import_is_all(imp.clone()) {
-                            v2_rt::concat(
-                                v2_rt::concat("use crate::".to_string(), mod_name.clone()),
-                                "::*;".to_string(),
-                            )
-                        } else {
-                            {
-                                let specific_names =
-                                    import_specific_names_at(imp.clone(), source_indices.clone());
-                                let filtered_names = Rc::new({
-                                    let mut __result = Vec::new();
-                                    for n in specific_names.clone().iter().cloned() {
-                                        if {
-                                            let mut __all = true;
-                                            for ln in local_names.clone().iter().cloned() {
-                                                if !(ln.clone().as_str() != n.clone().as_str()) {
-                                                    __all = false;
-                                                    break;
-                                                }
-                                            }
-                                            __all
-                                        } {
-                                            __result.push(n);
-                                        }
-                                    }
-                                    __result
-                                });
-                                if ((filtered_names.clone().len() as i64) == 0) {
-                                    "".to_string()
-                                } else {
-                                    {
-                                        let deduped_names = unique_strings(filtered_names.clone());
-                                        let top_level = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for n in deduped_names.clone().iter().cloned() {
-                                                if if is_known_variant(
-                                                    type_summaries.clone(),
-                                                    n.clone(),
-                                                ) {
-                                                    is_enum_in_summaries(
-                                                        type_summaries.clone(),
-                                                        n.clone(),
-                                                    )
-                                                } else {
-                                                    true
-                                                } {
-                                                    __result.push(n);
-                                                }
-                                            }
-                                            __result
-                                        });
-                                        let all_enum_names = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for n in Rc::new(v2_rt::map_keys(&type_summaries))
-                                                .iter()
-                                                .cloned()
-                                            {
-                                                if is_enum_in_summaries(
-                                                    type_summaries.clone(),
-                                                    n.clone(),
-                                                ) {
-                                                    __result.push(n);
-                                                }
-                                            }
-                                            __result
-                                        });
-                                        let imported_enums = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for n in deduped_names.clone().iter().cloned() {
-                                                if is_enum_in_summaries(
-                                                    type_summaries.clone(),
-                                                    n.clone(),
-                                                ) {
-                                                    __result.push(n);
-                                                }
-                                            }
-                                            __result
-                                        });
-                                        let all_parents = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for p in Rc::new({
-                                                let mut __result = Vec::new();
-                                                for n in deduped_names.clone().iter().cloned() {
-                                                    __result.push(
-                                                        if is_enum_in_summaries(
-                                                            type_summaries.clone(),
-                                                            n.clone(),
-                                                        ) {
-                                                            "".to_string()
-                                                        } else {
-                                                            match find_variant_parent(
-                                                                type_summaries.clone(),
-                                                                n.clone(),
-                                                                imported_enums.clone(),
-                                                            ) {
-                                                                Some(parent) => parent.clone(),
-                                                                None => match find_variant_parent(
-                                                                    type_summaries.clone(),
-                                                                    n.clone(),
-                                                                    all_enum_names.clone(),
-                                                                ) {
-                                                                    Some(parent) => parent.clone(),
-                                                                    None => "".to_string(),
-                                                                },
-                                                            }
-                                                        },
-                                                    );
-                                                }
-                                                __result
-                                            })
-                                            .iter()
-                                            .cloned()
-                                            {
-                                                if (p.clone().as_str() != "".to_string().as_str()) {
-                                                    __result.push(p);
-                                                }
-                                            }
-                                            __result
-                                        });
-                                        let parent_list = unique_strings(all_parents.clone());
-                                        let top_with_parents = unique_strings(v2_rt::concat(
-                                            top_level.clone(),
-                                            parent_list.clone(),
-                                        ));
-                                        let main_line =
-                                            if ((top_with_parents.clone().len() as i64) > 0) {
-                                                {
-                                                    let names_str = Rc::new({
-                                                        let mut __result = Vec::new();
-                                                        for n in
-                                                            top_with_parents.clone().iter().cloned()
-                                                        {
-                                                            __result.push(emit_import_name(
-                                                                n.clone(),
-                                                                registry.clone(),
-                                                            ));
-                                                        }
-                                                        __result
-                                                    })
-                                                    .join(&", ".to_string());
-                                                    v2_rt::concat(
-                                                        v2_rt::concat(
-                                                            v2_rt::concat(
-                                                                v2_rt::concat(
-                                                                    v2_rt::concat(
-                                                                        rust_visibility_prefix(),
-                                                                        "use crate::".to_string(),
-                                                                    ),
-                                                                    mod_name.clone(),
-                                                                ),
-                                                                "::{".to_string(),
-                                                            ),
-                                                            names_str.clone(),
-                                                        ),
-                                                        "};".to_string(),
-                                                    )
-                                                }
-                                            } else {
-                                                "".to_string()
-                                            };
-                                        let variant_lines = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for parent in parent_list.clone().iter().cloned() {
-                                                __result.push({
-                                                    let variants = Rc::new({
-                                                        let mut __result = Vec::new();
-                                                        for n in
-                                                            deduped_names.clone().iter().cloned()
-                                                        {
-                                                            if if is_enum_in_summaries(
-                                                                type_summaries.clone(),
-                                                                n.clone(),
-                                                            ) {
-                                                                false
-                                                            } else {
-                                                                match find_variant_parent(
-                                                                    type_summaries.clone(),
-                                                                    n.clone(),
-                                                                    Rc::new(vec![parent.clone()]),
-                                                                ) {
-                                                                    Some(_) => true,
-                                                                    None => false,
-                                                                }
-                                                            } {
-                                                                __result.push(n);
-                                                            }
-                                                        }
-                                                        __result
-                                                    });
-                                                    let vars_str =
-                                                        variants.clone().join(&", ".to_string());
-                                                    v2_rt::concat(
-                                                        v2_rt::concat(
-                                                            v2_rt::concat(
-                                                                v2_rt::concat(
-                                                                    v2_rt::concat(
-                                                                        v2_rt::concat(
-                                                                            "use crate::"
-                                                                                .to_string(),
-                                                                            mod_name.clone(),
-                                                                        ),
-                                                                        "::".to_string(),
-                                                                    ),
-                                                                    parent.clone(),
-                                                                ),
-                                                                "::{".to_string(),
-                                                            ),
-                                                            vars_str.clone(),
-                                                        ),
-                                                        "};".to_string(),
-                                                    )
-                                                });
-                                            }
-                                            __result
-                                        });
-                                        let imported_enums = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for n in top_level.clone().iter().cloned() {
-                                                if is_enum_in_summaries(
-                                                    type_summaries.clone(),
-                                                    n.clone(),
-                                                ) {
-                                                    __result.push(n);
-                                                }
-                                            }
-                                            __result
-                                        });
-                                        let wildcard_enum_lines = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for en in Rc::new({
-                                                let mut __result = Vec::new();
-                                                for en in imported_enums.clone().iter().cloned() {
-                                                    if ({
-                                                        let mut __found = false;
-                                                        for p in parent_list.clone().iter().cloned()
-                                                        {
-                                                            if (p.clone().as_str()
-                                                                == en.clone().as_str())
-                                                            {
-                                                                __found = true;
-                                                                break;
-                                                            }
-                                                        }
-                                                        __found
-                                                    } == false)
-                                                    {
-                                                        __result.push(en);
-                                                    }
-                                                }
-                                                __result
-                                            })
-                                            .iter()
-                                            .cloned()
-                                            {
-                                                __result.push(v2_rt::concat(
-                                                    v2_rt::concat(
-                                                        v2_rt::concat(
-                                                            v2_rt::concat(
-                                                                "use crate::".to_string(),
-                                                                mod_name.clone(),
-                                                            ),
-                                                            "::".to_string(),
-                                                        ),
-                                                        en.clone(),
-                                                    ),
-                                                    "::*;".to_string(),
-                                                ));
-                                            }
-                                            __result
-                                        });
-                                        let all_lines = if (main_line.clone().as_str()
-                                            != "".to_string().as_str())
-                                        {
-                                            v2_rt::concat(
-                                                v2_rt::concat(
-                                                    Rc::new(vec![main_line.clone()]),
-                                                    Rc::new({
-                                                        let mut __result = Vec::new();
-                                                        for l in
-                                                            variant_lines.clone().iter().cloned()
-                                                        {
-                                                            if (l.clone().as_str()
-                                                                != "".to_string().as_str())
-                                                            {
-                                                                __result.push(l);
-                                                            }
-                                                        }
-                                                        __result
-                                                    }),
-                                                ),
-                                                wildcard_enum_lines.clone(),
-                                            )
-                                        } else {
-                                            v2_rt::concat(
-                                                Rc::new({
-                                                    let mut __result = Vec::new();
-                                                    for l in variant_lines.clone().iter().cloned() {
-                                                        if (l.clone().as_str()
-                                                            != "".to_string().as_str())
-                                                        {
-                                                            __result.push(l);
-                                                        }
-                                                    }
-                                                    __result
-                                                }),
-                                                wildcard_enum_lines.clone(),
-                                            )
-                                        };
-                                        all_lines.clone().join(&"\n".to_string())
+                        v2_rt::concat(
+                            v2_rt::concat("use crate::".to_string(), mod_name.clone()),
+                            "::*;".to_string(),
+                        )
+                    });
+                }
+                __result
+            });
+            let import_acc = Rc::new({
+                let mut __result = Vec::new();
+                for imp in imports.clone().iter().cloned() {
+                    if (import_is_all(imp.clone()) == false) {
+                        __result.push(imp);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(ImportNamesByModAcc {
+                    names_by_mod: v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+                    mod_order: Rc::new(vec![]),
+                }),
+                |acc: Rc<ImportNamesByModAcc>, imp: Rc<Node>| {
+                    let mod_name =
+                        module_to_filename(authored_name_at(source_indices.clone(), imp.clone()));
+                    let names = Rc::new({
+                        let mut __result = Vec::new();
+                        for n in import_specific_names_at(imp.clone(), source_indices.clone())
+                            .iter()
+                            .cloned()
+                        {
+                            if {
+                                let mut __all = true;
+                                for ln in local_names.clone().iter().cloned() {
+                                    if !(ln.clone().as_str() != n.clone().as_str()) {
+                                        __all = false;
+                                        break;
                                     }
                                 }
+                                __all
+                            } {
+                                __result.push(n);
                             }
                         }
+                        __result
                     });
+                    fold_import_names_by_mod(acc, mod_name.clone(), names.clone())
+                },
+            );
+            let specific_lines = Rc::new({
+                let mut __result = Vec::new();
+                for mod_name in import_acc.mod_order.clone().iter().cloned() {
+                    __result.extend((*match v2_rt::map_get(&import_acc.names_by_mod.clone(), mod_name.clone()) {
+    Some(deduped) => Rc::new(vec![emit_specific_import_block(mod_name.clone(), deduped.clone(), emit_info.clone(), registry.clone(), type_summaries.clone())]),
+    None => Rc::new(vec![]),
+}).iter().cloned());
                 }
                 __result
             });
             Rc::new({
                 let mut __result = Vec::new();
-                for line in import_lines.iter().cloned() {
+                for line in v2_rt::concat(glob_lines, specific_lines).iter().cloned() {
                     if (line.clone().as_str() != "".to_string().as_str()) {
                         __result.push(line);
                     }
@@ -3000,7 +3205,65 @@ pub fn emit_typed_item(
                     {
                         rust_nominal_identity_carrier_def(item_text.clone())
                     } else {
-                        "".to_string()
+                        if is_type_alias_return_node(
+                            resolved_type(item.clone()),
+                            env.source_indices.clone(),
+                        ) {
+                            {
+                                let generic_param_names = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for p in item.params.clone().iter().cloned() {
+                                        __result.push(generic_param_name_at(
+                                            p.clone(),
+                                            env.source_indices.clone(),
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let rhs = render_rust_decl_type(
+                                    resolved_type(item.clone()),
+                                    generic_param_names,
+                                    shared_types,
+                                    env.source_indices.clone(),
+                                );
+                                if (rhs.clone().as_str() == item_text.clone().as_str()) {
+                                    "".to_string()
+                                } else {
+                                    {
+                                        let type_params = emit_type_params(
+                                            item.params.clone(),
+                                            env.source_indices.clone(),
+                                        );
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(
+                                                            v2_rt::concat(
+                                                                v2_rt::concat(
+                                                                    rust_visibility_prefix(),
+                                                                    rust_items()
+                                                                        .type_alias_keyword
+                                                                        .clone(),
+                                                                ),
+                                                                " ".to_string(),
+                                                            ),
+                                                            item_text.clone(),
+                                                        ),
+                                                        type_params,
+                                                    ),
+                                                    " = ".to_string(),
+                                                ),
+                                                rhs.clone(),
+                                            ),
+                                            ";".to_string(),
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            "".to_string()
+                        }
                     }
                 } else {
                     if is_function_item(item.clone()) {
