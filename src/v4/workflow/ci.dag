@@ -642,6 +642,7 @@ data ci_upsert_v2_bootstrap_smoke_execution: CiUpsertStepSymbol = ci_upsert_v2_b
 
 data ci_upsert_v3_determinism_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v3/**"),
+  ci_upsert_file_set_input(segment: "dsl/**"),
   ci_upsert_file_set_input(segment: "Cargo.toml"),
   ci_upsert_file_set_input(segment: "Cargo.lock")
 ]
@@ -662,6 +663,7 @@ data ci_upsert_v3_determinism_execution: CiUpsertStepSymbol = ci_upsert_v3_deter
 
 data ci_upsert_v3_self_host_fixed_point_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v3/**"),
+  ci_upsert_file_set_input(segment: "dsl/**"),
   ci_upsert_upstream_job_input(job: v3_determinism_execution)
 ]
 
@@ -2369,6 +2371,8 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     ci_changed_path_affects_v2(changed: path)
   } else if segment == "src/v3/**" {
     ci_changed_path_affects_v3(changed: path)
+  } else if segment == "dsl/**" {
+    ci_repo_path_has_prefix(path: path, prefix: "dsl/")
   } else if segment == "src/v4/**" {
     ci_changed_path_affects_v4(changed: path)
   } else if segment == "scripts/**" {

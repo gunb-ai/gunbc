@@ -998,6 +998,26 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
             "{CI_DAG_PATH}: ci_changed_path_affects_v3 must include `{path}` (V3DeterminismCommand Upsert inputs at ci_upsert_v3_determinism_execution_inputs)"
         );
     }
+    assert!(
+        CI_DAG.contains("segment == \"dsl/**\""),
+        "{CI_DAG_PATH}: ci_glob_segment_matches_changed_path must support dsl/** Upsert segment (P2 parity with ci_changed_path_affects_v3 dsl/ prefix)"
+    );
+    let i3_inputs = CI_DAG
+        .split("data ci_upsert_v3_determinism_execution_inputs:")
+        .nth(1)
+        .and_then(|rest| {
+            rest.split("fn ci_upsert_v3_determinism_execution_mk")
+                .next()
+        })
+        .unwrap_or_else(|| {
+            panic!("{CI_DAG_PATH}: missing data ci_upsert_v3_determinism_execution_inputs")
+        });
+    for segment in ["src/v3/**", "dsl/**", "Cargo.toml", "Cargo.lock"] {
+        assert!(
+            i3_inputs.contains(&format!("segment: \"{segment}\"")),
+            "{CI_DAG_PATH}: ci_upsert_v3_determinism_execution_inputs must include `{segment}` (P2 parity with affected.v3)"
+        );
+    }
     assert_ci_dag_rust_bucket_parity("ci_changed_path_affects_v3");
 }
 
