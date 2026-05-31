@@ -59,6 +59,8 @@ type Duration = Measure<Time, One>
 type HostIdentity = NonEmptyStr where brand("HostIdentity")
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
 type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
+// Forward reference — Worksheet B / harness identity carrier (P2; no import cache_interface).
+type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
 
 type ComputeArtifactLocality
   = InProcess
@@ -211,7 +213,7 @@ type IsolationRequirement { boundary: IsolationBoundary }
 type ToolchainRequirement { name: NonEmptyStr, version: NonEmptyStr }
 
 type ArtifactLocalityRequirement {
-  artifact_kind: NonEmptyStr
+  artifact_kind: ArtifactKindId
   locality: ComputeArtifactLocality
 }
 

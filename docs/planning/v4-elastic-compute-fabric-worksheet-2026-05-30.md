@@ -123,7 +123,10 @@ type ComputeArtifactLocality
   | PerHostColocation
   | CrossHostFetch
 
-type ArtifactLocalityRequirement { artifact_kind: NonEmptyStr, locality: ComputeArtifactLocality }
+// Forward reference — same brand as Worksheet B `ArtifactIdentity.artifact_kind` (harness-aligned).
+type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
+
+type ArtifactLocalityRequirement { artifact_kind: ArtifactKindId, locality: ComputeArtifactLocality }
 
 type ToolchainCapability {
   name: NonEmptyStr
@@ -325,6 +328,7 @@ type StorageMount { mount_path: NonEmptyStr, device: StorageDevice, lifecycle: P
 | Artifact identity | `v4.std.artifact` `ArtifactRef` |
 | Compute facts | **`dsl/std/compute_fabric.dag`** (NEW) |
 | Demand artifact locality | **`ComputeArtifactLocality`** in compute_fabric (not `PersistenceLocality`) |
+| Artifact kind on demand | **`ArtifactKindId`** (shared with Worksheet B / harness — not bare `NonEmptyStr`) |
 
 ---
 
@@ -333,6 +337,7 @@ type StorageMount { mount_path: NonEmptyStr, device: StorageDevice, lifecycle: P
 | Pattern | Why forbidden |
 | ------- | ------------- |
 | `PersistenceLocality` on `WorkDemand` / `ArtifactLocalityRequirement` | Cache-owned enum (Worksheet B); use `ComputeArtifactLocality` |
+| `artifact_kind: NonEmptyStr` on `ArtifactLocalityRequirement` | Use `ArtifactKindId` (shared with Worksheet B identity) |
 | `ComputeKind` coproduct | §4.0d |
 | `host:` on `CiUpsertStep` | Placement on result layer |
 | `worker_count` on CI step | Use `ParallelismShape` |
