@@ -78,6 +78,7 @@ fn ci_changed_path_triggers_ci_component(path: &str) -> bool {
     ci_changed_path_affects_v2(path)
         || ci_changed_path_affects_v3(path)
         || ci_changed_path_affects_v4(path)
+        || ci_changed_path_affects_testclaim_corpus(path)
         || ci_changed_path_affects_workflow_policy(path)
         || ci_changed_path_affects_release_distribution(path)
 }
