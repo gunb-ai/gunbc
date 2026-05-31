@@ -1296,22 +1296,10 @@ fn emit_pub_use_from_module(mod_filename: String, names: List<String>, registry:
   }
 }
 
-fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  if imports |> count == 0 {
+fn emit_specific_import_block(mod_name: String, deduped_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>) -> String {
+  if deduped_names |> count == 0 {
     ""
   } else {
-    let type_summaries = emit_info.type_summaries
-    let import_lines = imports |> map(imp =>
-      let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
-      if import_is_all(n: imp) {
-        concat("use crate::", mod_name, "::*;")
-      } else {
-          let specific_names = import_specific_names_at(n: imp, source_indices: source_indices)
-          let filtered_names = specific_names |> filter(n => local_names |> all(ln => ln != n))
-          if filtered_names |> count == 0 {
-            ""
-          } else {
-            let deduped_names = unique_strings(items: filtered_names)
             // Partition before any global variant-membership logic (F1: String must not
             // pick up GoScalarKind parent; graph types emit from defining module only).
             let graph_type_imports = deduped_names |> filter(n => is_graph_type_name(name: n, registry: registry))
@@ -1374,10 +1362,37 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
               wildcard_enum_lines
             )
             all_lines |> filter(line => line != "") |> join(separator: "\n")
-          }
+  }
+}
+
+fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if imports |> count == 0 {
+    ""
+  } else {
+    let type_summaries = emit_info.type_summaries
+    let glob_lines = imports |> filter(imp => import_is_all(n: imp)) |> map(imp =>
+      let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
+      concat("use crate::", mod_name, "::*;")
+    )
+    let names_by_mod = imports |> filter(imp => import_is_all(n: imp) == false) |> fold(init: empty_map(), f: (acc, imp) =>
+      let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
+      let names = import_specific_names_at(n: imp, source_indices: source_indices)
+        |> filter(n => local_names |> all(ln => ln != n))
+      match map_get(acc, mod_name) {
+        Some { value: existing } =>
+          map_insert(acc, mod_name, unique_strings(items: concat(existing, names)))
+        None =>
+          map_insert(acc, mod_name, unique_strings(items: names))
       }
     )
-    import_lines |> filter(line => line != "") |> join(separator: "\n")
+    let specific_lines = map_keys(names_by_mod) |> flat_map(mod_name =>
+      match map_get(names_by_mod, mod_name) {
+        Some { value: deduped } =>
+          [emit_specific_import_block(mod_name: mod_name, deduped_names: deduped, emit_info: emit_info, registry: registry, type_summaries: type_summaries)]
+        None => []
+      }
+    )
+    concat(glob_lines, specific_lines) |> filter(line => line != "") |> join(separator: "\n")
   }
 }
 
