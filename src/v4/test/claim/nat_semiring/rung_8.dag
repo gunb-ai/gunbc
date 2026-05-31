@@ -12,10 +12,10 @@ import v4.compiler.eval {
   test_claim_input
 }
 import v4.std.collection { List }
-import v4.std.diagnostic { Rejected }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
-import v4.std.verdict { Fail, Pass, Deferred, Absent, verdict_fail }
+import v4.std.verdict { Fail, Absent }
 import v4.std.verification { TestClaim, test_claim_expected_outcome }
 import v4.test.claim.algebra_laws.nat_semiring {
   claim_nat_add_associativity,
