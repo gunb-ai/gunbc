@@ -185,13 +185,14 @@ type MachineView { label: NonEmptyStr, host: HostIdentity }
 
 fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView {
   MachineView {
-    label: host_label_for(host: host),
+    label: machine_view_label(host: host, surface: surface),
     host: host.identity,
   }
 }
 
-fn host_label_for(host: ComputeHost) -> NonEmptyStr {
-  host.identity
+fn machine_view_label(_host: ComputeHost, surface: ExecutionSurface) -> NonEmptyStr {
+  // Label from execution surface; host identity is on MachineView.host (Worksheet A §1.4).
+  surface.os.distro_or_product
 }
 
 // --- §1.2 demand -------------------------------------------------------------
