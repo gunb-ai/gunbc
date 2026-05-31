@@ -47,6 +47,7 @@ import v4.std.diagnostic {
   bind_outcome,
   diagnostics_merge,
   diagnostics_singleton,
+  non_empty_diagnostics_append,
   outcome_rejected,
   outcome_accepted,
   rejected_with_pending
@@ -220,7 +221,22 @@ fn infer_bounded_lattice_consumer_gate(
 ) -> Outcome<Node> {
   match fold(consumer.children, init: outcome_accepted(value: consumer), f: fn(acc, e) {
     match acc {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Rejected { diagnostics: r } =>
+        if any(xs: partials, predicate: fn(p) { e.target == p }) {
+          Rejected {
+            diagnostics: non_empty_diagnostics_append(
+              a: r,
+              b: diagnostics_singleton(
+                d: infer_bounded_lattice_consumer_partial_diagnostic(
+                  consumer: consumer,
+                  instance: e.target
+                )
+              )
+            )
+          }
+        } else {
+          Rejected { diagnostics: r }
+        }
       Accepted { value: _, diagnostics: d } =>
         if any(xs: partials, predicate: fn(p) { e.target == p }) {
           outcome_rejected(
