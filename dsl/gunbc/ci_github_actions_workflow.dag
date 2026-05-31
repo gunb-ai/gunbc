@@ -686,8 +686,13 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_CARGO_CHECK_JOBS": "4" },
           working_directory: none,
+<<<<<<< HEAD
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
+=======
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: true,
+>>>>>>> origin/main
           timeout_minutes: Some { value: 20 }
         }, RunStep {
           name: Some { value: "Detect phase1/nat_semiring fixture scope (PR diff)" },
@@ -735,7 +740,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "480" },
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: true,
           timeout_minutes: Some { value: 35 }
         }, RunStep {
@@ -745,7 +750,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: { "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log" },
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')" },
+          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -755,26 +760,17 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: Some { value: "always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'" },
-          continue_on_error: false,
-          timeout_minutes: none
-        }, UsesStep {
-          name: Some { value: "Cache T-22 TestClaim corpus structural bridge receipt" },
-          id: Some { value: "t22_testclaim_corpus_cache" },
-          uses: { owner: "actions", repo: "cache", ref: "v4" },
-          with: { "path": "${{ runner.temp }}/t22-testclaim-corpus-gate", "key": "t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'dsl/std/**', 'src/v4/**') }}" },
-          env: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          if_condition: Some { value: "always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "T-22 TestClaim corpus structural bridge — manual .dag corpus" },
+          name: Some { value: "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)" },
           id: none,
-          run: "bash scripts/v4-testclaim-corpus-gate.sh\nmkdir -p \"${RUNNER_TEMP}/t22-testclaim-corpus-gate\"\nprintf 'T-22 TestClaim corpus structural bridge passed for %s\\n' \"${GITHUB_SHA}\" > \"${RUNNER_TEMP}/t22-testclaim-corpus-gate/receipt.txt\"\n",
+          run: "bash scripts/v4-testclaim-corpus-eval.sh",
           shell: Bash,
-          env: { "V4_TESTCLAIM_TIMEOUT_SECS": "480", "V4_TESTCLAIM_REUSE_RUST_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_TESTCLAIM_REUSE_RUST_LOG": "${{ runner.temp }}/v4-rust-emit.compile.log", "V4_TESTCLAIM_REUSE_DAG_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_TESTCLAIM_REUSE_DAG_LOG": "${{ runner.temp }}/v4-bootstrap.log" },
+          env: { "V2_COMPILER": "target/release/gunbc", "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_RUST_EMIT_LOG": "${{ runner.temp }}/v4-rust-emit.compile.log", "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_TESTCLAIM_CORPUS_TIMEOUT_SECS": "480" },
           working_directory: none,
-          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.t22_testclaim_corpus_cache.outputs.cache-hit != 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
           timeout_minutes: Some { value: 15 }
         }],
@@ -819,6 +815,459 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       timeout_minutes: Some { value: 5 },
       continue_on_error: false,
       concurrency: none
+<<<<<<< HEAD
+=======
+    }, {
+      id: "v2",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
+          id: none,
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Checkout" },
+          id: none,
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          with: { "fetch-depth": "1" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Rust" },
+          id: none,
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          with: { "cache": "false", "rustflags": "" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache Cargo (v2)" },
+          id: none,
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}", "restore-keys": "cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-v2-${{ runner.os }}-${{ runner.arch }}-\n" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v2 stage0 freshness gate (--verify)" },
+          id: none,
+          run: "set -euo pipefail\ncargo run -p v2-compiler --bin regen_stage0 -- --verify\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }],
+      needs: ["affected"],
+      env: none,
+      outputs: none,
+      if_condition: Some { value: "github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'" },
+      strategy: none,
+      timeout_minutes: Some { value: 30 },
+      continue_on_error: false,
+      concurrency: none
+    }, {
+      id: "v4",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "v4 receipt (bootstrap gate runs in ci_v4 job)" },
+          id: none,
+          run: "echo \"::notice::v4 bootstrap viability + modeled TestClaim corpus eval (CiUpsertStep) ran inside ci_v4 when v4/workflow_policy/testclaim_corpus is affected; per-row verdict execution remains T-38-PR2.\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }],
+      needs: ["affected", "ci"],
+      env: none,
+      outputs: none,
+      if_condition: Some { value: "github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'" },
+      strategy: none,
+      timeout_minutes: Some { value: 5 },
+      continue_on_error: false,
+      concurrency: none
+    }, {
+      id: "v3",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
+          id: none,
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Checkout" },
+          id: none,
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          with: { "fetch-depth": "1" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Rust" },
+          id: none,
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          with: { "components": "rustfmt, clippy", "cache": "false", "rustflags": "" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Zig C toolchain" },
+          id: none,
+          uses: { owner: "goto-bus-stop", repo: "setup-zig", ref: "v2" },
+          with: { "version": "0.13.0", "cache": "false" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Configure user-space C linker" },
+          id: none,
+          run: "mkdir -p \"${RUNNER_TEMP}/gunbc-bin\"\ncat > \"${RUNNER_TEMP}/gunbc-bin/zig-cc\" <<'EOF'\n#!/usr/bin/env bash\nexec zig cc \"$@\"\nEOF\nchmod +x \"${RUNNER_TEMP}/gunbc-bin/zig-cc\"\necho \"CC=${RUNNER_TEMP}/gunbc-bin/zig-cc\" >> \"${GITHUB_ENV}\"\necho \"RUSTFLAGS=-D warnings -C linker=${RUNNER_TEMP}/gunbc-bin/zig-cc\" >> \"${GITHUB_ENV}\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Python" },
+          id: none,
+          uses: { owner: "actions", repo: "setup-python", ref: "v6" },
+          with: { "python-version": "3.x" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Go" },
+          id: none,
+          uses: { owner: "actions", repo: "setup-go", ref: "v6" },
+          with: { "go-version": "stable" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache Cargo (v3)" },
+          id: none,
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-v3-${{ runner.os }}-${{ runner.arch }}-\n" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Build ExecuteCommand unshare helper" },
+          id: none,
+          run: "cargo build -p execute-command-bootstrap",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Prebuild v3 integration test binary (lane2d wall-clock denominator)" },
+          id: none,
+          run: "set -euo pipefail\nheartbeat() {\n  while sleep 60; do\n    echo \"v3 prebuild heartbeat: $(date -u +%FT%TZ)\"\n  done\n}\nheartbeat &\nheartbeat_pid=$!\ntrap 'kill \"$heartbeat_pid\" 2>/dev/null || true' EXIT\ncargo test -p v3-compiler --test integration --no-run\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v3 tests (Stage 2d integration module, HOT-FIX SKIPPED)" },
+          id: none,
+          run: "echo \"::notice::v3 lane2d Stage 2d test execution SKIPPED per operator hot-fix directive at gunbc#846 (cold-v3 → ~10min target).\"\necho \"::notice::Restore criteria: per-test wall ≤ 2s under OnceLock/cached_compile amortization (rebuild session per #2722 §5).\"\nexit 0\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v3 full-suite split guard (integration test targets)" },
+          id: none,
+          run: "scripts/check-v3-full-suite-split-test-targets.sh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v3 tests (full suite timings capture, parts 1-4/4)" },
+          id: none,
+          run: "set -euo pipefail\ntimings_log=\"${RUNNER_TEMP}/v3-test-timings.log\"\nV3_SUITE_START_TS=$(date +%s)\necho \"V3_SUITE_START_TS=${V3_SUITE_START_TS}\" >> \"${GITHUB_ENV}\"\n: > \"${timings_log}\"\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee \"${timings_log}\"\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (lib+bins) failed (exit=$status)\"\n  exit \"$status\"\nfi\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a \"${timings_log}\"\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (determinism_test) failed (exit=$status)\"\n  exit \"$status\"\nfi\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a \"${timings_log}\"\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (--doc) failed (exit=$status)\"\n  exit \"$status\"\nfi\necho \"::notice::v3 integration test execution SKIPPED via zero-test-filter per operator hot-fix at gunbc#846.\"\necho \"::notice::Guard pattern preserved; integration binary runs zero tests (nonexistent filter).\"\n# Zero-test-filter: `__HOT_FIX_NONEXISTENT_FILTER__` matches no tests;\n# binary runs through libtest setup + reports 0 tests run. Satisfies\n# check-v3-full-suite-split-test-targets.sh pattern requirement.\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration __HOT_FIX_NONEXISTENT_FILTER__ -- -Z unstable-options --report-time 2>&1 | tee -a \"${timings_log}\"\nstatus=${PIPESTATUS[0]}\nelapsed=$(( $(date +%s) - V3_SUITE_START_TS ))\necho \"v3 full-suite wall time (integration-skipped): ${elapsed}s\"\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (integration, zero-filter) failed (exit=$status) — should never happen with nonexistent filter; investigate.\"\n  exit \"$status\"\nfi\necho \"::notice::Restore criteria: rebuild session per #2722 §5 OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster filter (replace __HOT_FIX_NONEXISTENT_FILTER__ with cluster-specific filter).\"\nif [ ! -s \"${timings_log}\" ]; then\n  echo \"::notice::no timing log captured or log is empty (full-suite steps did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet\"\nelse\n  cargo build -p v3-compiler --bin gunbc-ci\n  scripts/check-test-timeout.sh \"${timings_log}\"\nfi\n",
+          shell: Bash,
+          env: { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" },
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v3 Compiler Clippy (default features)" },
+          id: none,
+          run: "cargo clippy -p v3-compiler --all-targets -- -D warnings",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v3 Compiler Clippy (bootstrap-regen-fresh)" },
+          id: none,
+          run: "cargo clippy -p v3-compiler --all-targets --features bootstrap-regen-fresh -- -D warnings",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v3 test targets compile with bootstrap-regen-fresh" },
+          id: none,
+          run: "cargo test -p v3-compiler --no-run --features bootstrap-regen-fresh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "L-7 Substrate accessor reconstruction gate" },
+          id: none,
+          run: "# L-7 (INVARIANTS.md): lenses consume substrate query\n# functions (`port`, `node`, `resolve_producer`) instead of\n# reconstructing local `find_port` / `find_behavior` / ...\n# Scan `.dag` lens files for forbidden helper declarations.\nmatches=$(grep -nE \"fn (find_port|find_behavior|resolve_producer|lookup_node|lookup_port)\" src/v3/lenses/*.dag 2>/dev/null || true)\nif [ -n \"$matches\" ]; then\n  echo \"::error::L-7 violation: lens reconstructs a substrate lookup locally\"\n  echo \"$matches\"\n  exit 1\nfi\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "L-8 Lens surface gate" },
+          id: none,
+          run: "# L-8 (INVARIANTS.md): migrated .dag lenses must not collapse\n# their typed failure carriers into primitives at the public\n# Rust surface. The forbidden shape is any `pub fn ... -> T`\n# for T in {usize, bool, i64} inside a hand-written wrapper\n# alongside a generated lens module — e.g., the deleted\n# `pub fn cost_of(&self, port: PortId) -> usize` wrapper that\n# shadowed the generated `CostLookup` carrier.\n#\n# Scope: every `src/v3/compiler/src/lens_*.rs` file (hand-written\n# and `*_generated.rs` — catching a collapsed wrapper in generated\n# code would mean the emitter regressed).\nwrappers=$(ls src/v3/compiler/src/lens_*.rs 2>/dev/null || true)\nif [ -z \"$wrappers\" ]; then\n  echo \"L-8: no lens wrapper files to scan\"\n  exit 0\nfi\nmatches=$(grep -nE \"pub fn .*-> (usize|bool|i64)\" $wrappers 2>/dev/null || true)\nif [ -n \"$matches\" ]; then\n  echo \"::error::L-8 violation: lens wrapper collapses typed carrier to a primitive\"\n  echo \"$matches\"\n  exit 1\nfi\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Compiler-std consolidation ratchet" },
+          id: none,
+          run: "scripts/check-compiler-std-ratchet.sh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Banked-dissolutions ratchet" },
+          id: none,
+          run: "scripts/check-banked-dissolutions.sh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }],
+      needs: ["affected"],
+      env: none,
+      outputs: none,
+      if_condition: Some { value: "github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))" },
+      strategy: none,
+      timeout_minutes: Some { value: 120 },
+      continue_on_error: false,
+      concurrency: none
+    }, {
+      id: "self_host_ratchet",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
+          id: none,
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Validate gate evidence (fail-closed under v3 failure; tolerates v3 skipped)" },
+          id: none,
+          run: "echo \"Gate evidence: v3.result=${{ needs.v3.result }}\"\n# Under v3-freeze (2026-05-15), v3 job is skipped on PRs that don't touch v3.\n# 'skipped' is acceptable here — means v3 was correctly not run.\nif [ \"${{ needs.v3.result }}\" = \"skipped\" ]; then\n  echo \"::notice::v3 job skipped (v3 not affected by this PR); self_host_ratchet has nothing to validate.\"\n  exit 0\nfi\nif [ \"${{ needs.v3.result }}\" = \"failure\" ] || [ \"${{ needs.v3.result }}\" = \"cancelled\" ]; then\n  echo \"::error::v3 job did not succeed (result=${{ needs.v3.result }}); ratchet cannot claim green.\"\n  exit 1\nfi\nif [ \"${{ needs.v3.result }}\" != \"success\" ]; then\n  echo \"::error::v3 job has unexpected result (result=${{ needs.v3.result }}); expected success after Layer-2 path-regex removal.\"\n  exit 1\nfi\necho \"Gate evidence validated; ratchet may proceed.\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Checkout" },
+          id: none,
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          with: { "fetch-depth": "1" },
+          env: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "DB-8 stub (PR / non-main — full matrix is main-push only)" },
+          id: none,
+          run: "echo \"::notice::self_host_ratchet DB-8 release matrix runs only on pushes to main (Lane 1e staged).\"\nexit 0\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "github.event_name != 'push' || github.ref != 'refs/heads/main'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Rust" },
+          id: none,
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          with: { "cache": "false", "rustflags": "" },
+          env: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache Cargo (self_host_ratchet)" },
+          id: none,
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}", "restore-keys": "cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-self-host-${{ runner.os }}-${{ runner.arch }}-\n" },
+          env: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "DB-8 determinism_test (5× emit matrix)" },
+          id: none,
+          run: "cargo test -p v3-compiler --release --test determinism_test",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: true,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "DB-8 self_host_fixed_point (staged)" },
+          id: none,
+          run: "cargo run -p v3-compiler --release --bin self_host_fixed_point",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: true,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "DB-8 emit.rs HashMap iteration policy (informational)" },
+          id: none,
+          run: "if grep -nE \"(HashMap|HashSet)::\" src/v3/compiler/src/emit.rs; then\n  echo \"::notice::DB-8: emit.rs still uses HashMap/HashSet:: iteration — target is BTree* / sorted keys (determinism_test + ROADMAP Lane 3 Stage 3c prep)\"\nelse\n  echo \"emit.rs: no HashMap::/HashSet:: — consider graduating this check to required when Lane 1e clears debt\"\nfi\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }],
+      needs: ["affected", "v3"],
+      env: none,
+      outputs: none,
+      if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}" },
+      strategy: none,
+      timeout_minutes: Some { value: 60 },
+      continue_on_error: true,
+      concurrency: none
+>>>>>>> origin/main
     }],
   env: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings" },
   permissions: Some {
