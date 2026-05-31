@@ -3165,6 +3165,7 @@ fn ci_component_mask_intersects(mask: CiComponentAffected, affected: CiComponent
   (mask.v2 && affected.v2)
     || (mask.v3 && affected.v3)
     || (mask.v4 && affected.v4)
+    || (mask.testclaim_corpus && affected.testclaim_corpus)
     || (mask.workflow_policy && affected.workflow_policy)
     || (mask.release_distribution && affected.release_distribution)
 }
@@ -3242,6 +3243,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v2: false
         v3: false
         v4: true
+        testclaim_corpus: true
         workflow_policy: true
         release_distribution: true
       }

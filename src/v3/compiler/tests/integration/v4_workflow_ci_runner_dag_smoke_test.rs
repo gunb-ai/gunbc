@@ -865,6 +865,10 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         "{CI_DAG_PATH}: ci_component_mask_intersects must include release_distribution axis"
     );
     assert!(
+        CI_DAG.contains("testclaim_corpus && affected.testclaim_corpus"),
+        "{CI_DAG_PATH}: ci_component_mask_intersects must include testclaim_corpus axis (I8 / IRT-1)"
+    );
+    assert!(
         CI_DAG.contains("fn ci_select_ci_jobs_needs_closure_pass("),
         "{CI_DAG_PATH}: needs closure must be bounded (P4) — not unbounded recursion on unresolved needs"
     );
