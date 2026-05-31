@@ -1,18 +1,26 @@
 # v4 SG-8 Worksheet — Module graph + carrier re-exports
 
-> **Status:** WORKSHEET COMPLETE (content) — Modeling DFS §8 sign-off **OPEN**; #4127 co-delivers §10.0 + emitter fix (1)+(2) for falsification review under Target Realization dispatch (`keen-heron-687`). Merge blocked on §8 ratification per mechanical dispatch rule below.
+> **Status:** WORKSHEET COMPLETE (content) — Modeling DFS §8 sign-off **OPEN**. Worksheet PR [#4127](https://github.com/gunb-ai/gunbc/pull/4127) is **docs-only** (same split as SG-RC [#4100](https://github.com/gunb-ai/gunbc/pull/4100)); Target Realization implementation dispatch (`keen-heron-687`) lands **after** #4127 merges to `main`.
 > **Date:** 2026-05-31
 > **Dispatch anchor:** `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §5 (SG-8 ~796 E0425+E0432+E0433); `#4086` routing; fresh probe `7181` lines / **808** SG-8-family (`485+240+83`).
-> **Primary consumer:** `src/v2/05_emit_rust.dag` `emit_imports` + generic type-alias emission (M1 v2 Rust emit path over full `src/v4` tree).
+> **Primary consumer (implementation worker):** `src/v2/05_emit_rust.dag` `emit_imports` + generic type-alias emission (M1 v2 Rust emit path over full `src/v4` tree).
 > **Canonical modeling home (export facts):** `src/v4/std/target_model.dag` (`v4.std.target_model`) for cross-target export-surface vocabulary; **live M1 fix lands in v2 emit** until `06_translate` owns Rust module files.
+
+### Status (single authority — no contradiction)
+
+| Layer | State |
+| ----- | ----- |
+| **Worksheet** | **COMPLETE (content)** — §8 Manager checklist **OPEN** |
+| **Worksheet PR** | [#4127](https://github.com/gunb-ai/gunbc/pull/4127) — docs-only; merge unblocks downstream implementation worker |
+| **Implementation dispatch** | **Blocked** until #4127 on `main` + §8 closed — Target Realization (`05_emit_rust.dag` items (1)+(2)); §4 falsification transcript in implementation PR |
 
 ---
 
 ## Mechanical dispatch rule
 
-> **Merge gate:** §10.0 worksheet content must be **complete** and Modeling DFS Manager–approved (§8 checklist) before #4127 merges.
+> **No SG-8 implementation worker may land until this worksheet is complete and Modeling DFS Manager–approved (§8 checklist).**
 >
-> **#4127 co-delivery (falsification-only):** Emitter changes implementing §10.0 items (1)+(2) are included in the same PR **only** so reviewers can run §4 falsification probes against real code. That co-delivery does **not** waive §8 sign-off or satisfy the merge gate by itself — same pattern as SG-RC #4100 (worksheet) + implementation PR, collapsed into one draft for review velocity under Target Realization dispatch.
+> **#4127 merge gate:** §10.0 worksheet content complete + §8 sign-off only. Falsification probes F1–F4 are proven in the **implementation PR**, not in the worksheet-only PR.
 
 Acceptance is **§4 falsification probes**, not E0425/E0432/E0433 count reduction on the M1 probe.
 
@@ -96,9 +104,24 @@ Metric allowed only as secondary:
 
 ---
 
-## Tightened worker brief
+## §5 Landing order (implementation — not worksheet-only PR)
 
-Implement §10.0 systemic fix (1)+(2) in `src/v2/05_emit_rust.dag`. Re-run `scripts/v4-m1-rust-emit-probe.sh`; attach probe summary + forbidden-pattern greps as PR evidence. Do not claim SG-8 PROVEN on error count alone.
+```text
+1. emit_imports: graph-type variant isolation + defining-module pub use (05_emit_rust.dag).
+2. emit_typed_item: parametric type-alias emission (05_emit_rust.dag).
+3. regen_stage0 + v4 M1 probe; attach §4 falsification table PROVEN rows.
+4. Follow-on (separate dispatch): TargetModuleExportSurface in v4.std.target_model for 06_translate.
+```
+
+**Lane split:** Target Realization owns steps 1–2; Runtime/TestClaim owns step 3 transcript.
+
+---
+
+## §6 Downstream worker brief (dispatch after §8)
+
+Implement §10.0 systemic fix (1)+(2) in `src/v2/05_emit_rust.dag` on `main` after #4127 merges. Re-run `scripts/v4-m1-rust-emit-probe.sh`; attach probe summary + forbidden-pattern greps as implementation PR evidence. Do not claim SG-8 PROVEN on error count alone.
+
+**Worksheet-only PR non-goals:** `src/v2/05_emit_rust.dag`, `src/v2/stage0/`, or generated `src/v4_*.rs` edits (per SG-RC #4100 worksheet-only pattern).
 
 ---
 
