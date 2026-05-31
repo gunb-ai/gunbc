@@ -268,11 +268,37 @@ defining new types) and CLAUDE.md "Cost of Change = 1" — abstractions are
 were the right factoring. It probably isn't — the right factoring becomes visible
 only when ubicloud, gcloud, and other providers are modeled concretely alongside.
 
-**Rule of three.** Don't lock in the abstraction with one provider modeled. Land
-the intricate srv1/srv2 substrate first; add ubicloud (Ubicloud container instance,
-operator roadmap) next; add gcloud (GKE / Cloud Run container) third; only then
-should the cross-provider `ComputeFabric` shape be canonical. Anything earlier is
-candidate-vocabulary, not authority.
+**Concrete provider roster (operator roadmap, 2026-05-31):**
+
+| Provider | Footprint class | Why it matters for the abstraction |
+|----------|----------------|-----------------------------------|
+| **srv1** / **srv2** | Owned bare-metal Ampere Altra arm64 Linux, pooled host | Today's reality; shared `$HOME`, host-wide FIFO, locality-rich L1 |
+| **ubicloud containers** | Managed Ubicloud container, ephemeral hermetic Linux | Stateless L1; per-invocation lifecycle; tests the "no shared host state" path |
+| **gcloud containers** | GKE / Cloud Run, ephemeral hermetic Linux, per-second billed | Same statelessness; introduces the per-second cost model |
+| **Mac mini** | Owned single-host Apple Silicon arm64 **Darwin/macOS** | **The abstraction stress test.** Different OS (not Linux), different FS (APFS, case-sensitivity quirks), different process model (no cgroups, launchd not systemd, SIP/codesigning constraints), no shared-`$HOME` pattern unless explicitly configured. If the `ComputeFabric` interface accommodates macOS cleanly, it's actually general. |
+| **WSL** | Linux-on-Windows-host, developer-machine | Distinct storage performance topology (DrvFs penalties on Windows-mounted paths); developer-attention cost class (the human owns the box); irregular availability |
+
+**Five concrete providers, four distinct footprint classes** (bare-metal pool /
+ephemeral container / macOS host / WSL developer). The cross-provider
+`ComputeFabric` shape is canonical only after **all five are modeled
+concretely** — not after one. The user-named insight: **Mac mini's footprint is
+deliberately different to force hard thinking about how this fabric actually
+works** — without it, the abstraction risks being "two Linux self-hosted pools
+with thin wrapping" rather than a genuine compute substrate.
+
+Anything before the five-provider concrete model lands is candidate-vocabulary,
+not authority.
+
+**Performance-per-cost scheduling — separate concern.** A meta-scheduler over
+`ComputeFabric` providers can pick the best perf-per-cost slot per workload.
+Cost models vary sharply: srv1/srv2 + Mac mini are owned (marginal cost ≈ 0,
+fixed throughput); gcloud is per-second billed (high throughput, real cost);
+ubicloud is metered; WSL is developer-machine attention (cost = "is the human
+running CI right now?"). The scheduler's choice function reads
+`cost_class: CostClass` + `advertised_throughput` from each provider's slot
+offer. **Out of scope for the core abstraction**; lands as a separate Node once
+providers are concretely modeled. Naming the meta-scheduler now risks
+prematurely shaping it; the abstraction has to be right first.
 
 **What "model srv1/srv2 intricately" means concretely (the agenda):** today's
 `SelfHostedRunnerPool` (`ci.dag:364-370`) captures 5 fields — `host`, `arch`,
@@ -541,12 +567,13 @@ to the workload. The workload ships one *opaque* hint with its request:
 `locality_hint: Option<PriorRunIdentity>` — "if you ran this same Node before,
 where?" The provider interprets it (or doesn't):
 
-| Provider type | What `locality_hint` means there |
-|---------------|----------------------------------|
-| Stateful host-pool (srv1+srv2 today) | "prefer the host whose L1 produced this output last; rebuild via L2 if unavailable" |
-| Stateless container (Fargate, single-use k8s pods) | Ignored — every slot is cold-start; L2 is the only cache |
-| Remote-execution CAS (BuildBuddy RBE) | "warm worker affinity if the CAS scheduler exposes it; otherwise scheduler's choice" |
-| GHA hosted runners | Ignored — Microsoft owns scheduling |
+| Provider (concrete roster, §4.0) | What `locality_hint` means there |
+|---------------------------------|----------------------------------|
+| **srv1 / srv2** (owned arm64 Linux pool) | "prefer the host whose L1 produced this output last; rebuild via L2 if unavailable" |
+| **Mac mini** (owned single Apple Silicon host) | "this is the only host — L1 is always 'this box' or nothing"; locality hint collapses to "do you have it in your cache?" |
+| **WSL** (developer-machine Linux-on-Windows) | "if the human's machine is online and has L1, use it; else L2." Provider's availability is itself dynamic. |
+| **ubicloud / gcloud containers** (ephemeral hermetic) | Ignored — every slot is cold-start; L2 is the only cache |
+| **BuildBuddy RBE** (remote-execution, via `ctrl-build --remote`) | "warm worker affinity if the CAS scheduler exposes it; otherwise scheduler's choice" |
 
 The workload doesn't switch on provider type. It always sends the same hint;
 each provider decides what to do with it. The "intelligent enough not to split
