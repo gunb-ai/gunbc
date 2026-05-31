@@ -181,7 +181,16 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
     CiAffectedFixture {
         path: "Cargo.lock",
         v2: true,
-        v3: false,
+        v3: true,
+        v4: true,
+        testclaim_corpus: false,
+        workflow_policy: false,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
+        path: "Cargo.toml",
+        v2: true,
+        v3: true,
         v4: true,
         testclaim_corpus: false,
         workflow_policy: false,
