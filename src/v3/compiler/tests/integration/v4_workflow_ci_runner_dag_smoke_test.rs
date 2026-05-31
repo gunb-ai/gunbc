@@ -163,7 +163,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         path: "src/v4/install/install.dag",
         v2: false,
         v3: false,
-        v4: true,
+        v4: false,
         testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: true,
