@@ -33,17 +33,23 @@ set -e
 
 passed=0
 failed=0
+behavioral_ok=false
 if [[ -f /tmp/v4-leaf-model-r3-internal-verify.log ]]; then
   passed="$(grep -cE 'test v4_leaf_model_rust_r3_internal[^ ]+ \.\.\. ok' /tmp/v4-leaf-model-r3-internal-verify.log || true)"
   failed="$(grep -cE 'test v4_leaf_model_rust_r3_internal[^ ]+ \.\.\. FAILED' /tmp/v4-leaf-model-r3-internal-verify.log || true)"
+  if grep -qE 'test v4_leaf_model_rust_r3_internal_row_mutation_changes_type_and_value_projections \.\.\. ok' \
+    /tmp/v4-leaf-model-r3-internal-verify.log; then
+    behavioral_ok=true
+  fi
 fi
 
 proven=false
-[[ "$status" -eq 0 && "$failed" -eq 0 && "$passed" -gt 0 ]] && proven=true
+[[ "$status" -eq 0 && "$failed" -eq 0 && "$behavioral_ok" == true ]] && proven=true
 
 export V4_R3_INTERNAL_CARGO_EXIT="$status"
 export V4_R3_INTERNAL_TESTS_PASSED="$passed"
 export V4_R3_INTERNAL_TESTS_FAILED="$failed"
+export V4_R3_INTERNAL_BEHAVIORAL_OK="$behavioral_ok"
 export V4_R3_INTERNAL_PROVEN="$proven"
 
 python3 - <<'PY'
@@ -58,6 +64,7 @@ print(
             "cargo_exit": int(os.environ["V4_R3_INTERNAL_CARGO_EXIT"]),
             "tests_passed": int(os.environ["V4_R3_INTERNAL_TESTS_PASSED"]),
             "tests_failed": int(os.environ["V4_R3_INTERNAL_TESTS_FAILED"]),
+            "behavioral_coupling_ok": os.environ.get("V4_R3_INTERNAL_BEHAVIORAL_OK", "false") == "true",
             "proven": os.environ["V4_R3_INTERNAL_PROVEN"] == "true",
         },
         indent=2,
@@ -66,8 +73,8 @@ print(
 PY
 
 if [[ "$proven" != true ]]; then
-  echo "error: leaf-model R3-internal verification failed (cargo test)" >&2
+  echo "error: leaf-model R3-internal verification failed (projection replay test required)" >&2
   exit 1
 fi
 
-echo "leaf-model R3-internal verification PROVEN"
+echo "leaf-model R3-internal emit-coupling verification PROVEN (projection replay; T-22 eval deferred)"

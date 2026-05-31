@@ -418,7 +418,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // and v4-leaf-model-rust-r3-external-verify.sh.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r2_r3_external_rustc_test.rs",
     // Phase 1 leaf-model R3-internal (post-SG-1 #3956): emit coupling receipt for Symbol row mutation;
-    // host runner scripts/v4-leaf-model-rust-r3-internal-verify.sh.
+    // boundary projection replay for `target_atom_type_spelling` + value kind until T-22 eval.
+    //
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+    // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` + **TASKS.md** T-22/T-38 (Runtime/TestClaim
+    // verdict surface; interim host runner `scripts/v4-leaf-model-rust-r3-internal-verify.sh`).
+    // Dissolution: delete when modeled runner exercises
+    // `RustEmitProjectionEqualityExpectation` without this hand-Rust bridge.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r3_internal_emit_coupling_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
