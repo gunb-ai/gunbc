@@ -214,6 +214,10 @@ fn source_atom_char(codepoint: Char) -> SourceAtomValue {
   }
 }
 
+fn target_model_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
 fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
   match source.kind {
     TypeNode { connective: Atom { identity: id } } =>
