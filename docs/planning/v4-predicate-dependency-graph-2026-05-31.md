@@ -47,7 +47,7 @@ Per #4086 catalog + proud-pike routing (msg_6db2dc9e):
 
 | Class | ~Errors | State | Routing |
 |---|---|---|---|
-| SG-1b function-signature String↔Symbol | (subset of 7,175) | worksheet-needed | NEW sibling worksheet — TR lane (keen-heron) implements |
+| SG-1b function-signature String↔Symbol | (subset of 7,175) | routed | worksheet #4099 **LANDED** (per #4122 catalog §6); TR lane (keen-heron) worker dispatch is the next-step receipt |
 | SG-RC-LAYERING | ~700 (10%) | authoring | NEW §10.0 worksheet — **proud-pike authoring** |
 | SG-2 | (extend existing) | routed | proud-pike's SG-2 worksheet; worker dispatch when ready |
 | SG-8 | (extend existing) | routed | extend existing worksheet |
@@ -57,7 +57,7 @@ Per #4086 catalog + proud-pike routing (msg_6db2dc9e):
 | SG-1-FOLLOWON | (extend existing) | routed | worker-only follow-on |
 | SG-COLLECTION-PROJECTION | ~170 | route-pending | amend SG-5/SG-6 first; escalate to NEW only if single-authority-fact fails |
 
-(Table lists 9 rows for 8 distinct receipt-producing classes — SG-1b + SG-1-FOLLOWON are two routing paths for one class per #4086 catalog. Of the 8, **7 are active** in various routing states (`worksheet-needed` / `authoring` / `routed` / `in-review` / `route-pending` — not all worker-dispatchable yet; see per-row state) and SG-3-CASCADE is the one **retired** cascade-residual meter (not worker-extensible). `state` legend: `worksheet-needed` = no §10.0 yet; `authoring` = §10.0 being written; `routed` = §10.0 exists, worker dispatchable; `in-review` = worker PR open; `route-pending` = decision needed on extend-vs-new; `retired (no worksheet)` = determined cascade-only, bands owned by primaries, not separately dispatchable per `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md`.)
+(Table lists 9 rows for 8 distinct receipt-producing classes — SG-1b + SG-1-FOLLOWON are two routing paths for one class per #4086 catalog. Of the 8, **7 are active** in various routing states (currently `authoring` / `routed` / `in-review` / `route-pending` — not all worker-dispatchable yet; see per-row state) and SG-3-CASCADE is the one **retired** cascade-residual meter (not worker-extensible). `state` legend: `worksheet-needed` = no §10.0 yet; `authoring` = §10.0 being written; `routed` = §10.0 exists, worker dispatchable; `in-review` = worker PR open; `route-pending` = decision needed on extend-vs-new; `retired (no worksheet)` = determined cascade-only, bands owned by primaries, not separately dispatchable per `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md`.)
 
 P3 PROVEN bar: **Rust source compiles to a binary** (not zero rustc errors — that is a measurement proxy; not Python+Go either — those are v0.1.0 alpha scope per Wave F F3). Each named class closure shrinks the rustc error count; when residual errors → 0 on the Rust compile path, the binary builds.
 
@@ -110,7 +110,7 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 | valiant-cat-623 | Wa-2 #4080 LANDED dca5ce7a; worker archived |
 | lively-eagle-677 | SG-6 #4085 — address cursor RC |
 | proud-pike-680 | Author SG-RC-LAYERING §10.0 worksheet |
-| keen-heron-687 | SG-1b sibling worksheet relay → TR worker dispatch when proud-pike ratifies |
+| keen-heron-687 | SG-1b worksheet #4099 landed → TR worker dispatch is the next-step receipt (per #4122 catalog §6) |
 | sharp-otter-407 | Standing by post-routing |
 | smart-stag-871 | Standing by; P2-B bridge deletion blocked-on-decision |
 | quick-tern-735 | Tranche-3 dispatch when Wa-2 lands; structural-bridge replacement pending positive-Y authoring |
@@ -135,7 +135,7 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 | 3 | P2-B deletion authorization | **operator-gated decision-node** | operator/PM | bridge deletion authorized OR explicitly kept with named follow-up (M2 probe by sharp-otter pending as safety-net receipt) |
 | 4 | SG-RC-LAYERING worksheet | authoring | proud-pike | §10.0 worksheet published |
 | 5 | SG-6 #4085 | LANDED 06:28Z (squash 2ac52f26) ✓ | lively-eagle (archived) | class merged; Wave 2 TR-lane COMPLETE |
-| 6 | SG-1b sibling | routed | Target Realization (keen-heron) | worker dispatched once proud-pike ratifies worksheet/amendment |
+| 6 | SG-1b sibling | routed | Target Realization (keen-heron) | worksheet #4099 landed (per #4122 catalog §6); TR worker dispatch is the next-step receipt |
 | 7 | #4091 elastic CI ratification | **MERGED 07:04Z (squash c05a5a84) ✓** | operator | ratified on main; substrate now authoritative for downstream CI substrate work |
 
 ## §7. PM-side actionable items
