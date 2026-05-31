@@ -441,15 +441,19 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
 type CiUpsertStepRow {
   step_id: CiStepId
   step: CiUpsertStepSymbol
+  // Shadow `inputs_consulted` — v4 `gunbc compile` cannot read `CiUpsertStepSymbol.inputs` (P1.5-PARSER).
+  inputs: List<UpsertInputRef>
 }
+
+data ci_upsert_v2_compile_src_v4_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v2/**"),
+  ci_upsert_file_set_input(segment: "Cargo.toml"),
+  ci_upsert_file_set_input(segment: "Cargo.lock")
+]
 
 fn ci_upsert_v2_compile_src_v4_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
-  inputs: [
-    ci_upsert_file_set_input(segment: "src/v2/**"),
-    ci_upsert_file_set_input(segment: "Cargo.toml"),
-    ci_upsert_file_set_input(segment: "Cargo.lock")
-  ]
+  inputs: ci_upsert_v2_compile_src_v4_inputs
   verify: ci_command_projection_node(
     c: BootstrapStageCompile { produces: v4_stage0_binary }
   )
@@ -467,14 +471,16 @@ fn ci_upsert_v2_compile_src_v4_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_v2_compile_src_v4: CiUpsertStepSymbol = ci_upsert_v2_compile_src_v4_mk()
 
+data ci_upsert_m1_rust_emit_probe_execution_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v4/**"),
+  ci_upsert_file_set_input(segment: "scripts/v4-m1*"),
+  ci_upsert_file_set_input(segment: "Cargo.toml"),
+  ci_upsert_file_set_input(segment: "Cargo.lock")
+]
+
 fn ci_upsert_m1_rust_emit_probe_execution_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
-  inputs: [
-    ci_upsert_file_set_input(segment: "src/v4/**"),
-    ci_upsert_file_set_input(segment: "scripts/v4-m1*"),
-    ci_upsert_file_set_input(segment: "Cargo.toml"),
-    ci_upsert_file_set_input(segment: "Cargo.lock")
-  ]
+  inputs: ci_upsert_m1_rust_emit_probe_execution_inputs
   verify: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
   create: ci_job_projection_node(
     j: CiJob {
