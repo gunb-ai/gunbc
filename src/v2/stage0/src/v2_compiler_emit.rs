@@ -31,12 +31,12 @@ pub use crate::v2_compiler_infer_types::{
     resolved_type,
 };
 use crate::v2_compiler_languages::IfValueForm::{ConditionalTernary, IfExpression, IfStatement};
-use crate::v2_compiler_languages::MatchValueForm::{MatchExpression, MatchStatementArmReturn};
 use crate::v2_compiler_languages::ImportTrigger::{
     AsyncUsageTrigger, ContainerUsageTrigger, DeriveMacroTrigger, TraitImplTrigger,
     TypeUsageTrigger,
 };
 use crate::v2_compiler_languages::InterpStyle::{FormatArgs, InlineExpr};
+use crate::v2_compiler_languages::MatchValueForm::{MatchExpression, MatchStatementArmReturn};
 use crate::v2_compiler_languages::NamingCase::{AsAuthored, CamelCase, PascalCase, SnakeCase};
 use crate::v2_compiler_languages::ReservedWordStrategy::{NoEscape, PrefixEscape, SuffixEscape};
 use crate::v2_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
@@ -46,9 +46,9 @@ pub use crate::v2_compiler_languages::{
     service_methods_inside_class, service_receiver_str, service_return_str, service_self_param,
     target_keyword, test_conventions_for_target, wrap_shared_type, BlockSyntax, EscapePair,
     ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger, InterpStyle, LanguageSpec,
-    MatchValueForm,
-    NamingCase, RecordLitSyntax, ReservedWordStrategy, ServiceFieldTemplates, StringInterpSyntax,
-    TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax, VisibilitySpec,
+    MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy, ServiceFieldTemplates,
+    StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax,
+    VisibilitySpec,
 };
 use crate::v2_rt;
 use crate::v2_std_core::AlgebraFieldKind::*;

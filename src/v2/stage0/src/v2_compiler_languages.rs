@@ -2,9 +2,9 @@
 // Source module: v2.compiler.languages
 
 use self::IfValueForm::*;
-use self::MatchValueForm::*;
 use self::ImportTrigger::*;
 use self::InterpStyle::*;
+use self::MatchValueForm::*;
 use self::NamingCase::*;
 use self::ReservedWordStrategy::*;
 use self::ServiceMethodStrategy::*;
