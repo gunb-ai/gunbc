@@ -673,7 +673,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         CI_DAG.contains(
-            "M1RustEmitProbeCommand =>\n      CiComponentAffected {\n        v2: false\n        v3: false\n        v4: true\n        testclaim_corpus: true\n        workflow_policy: true\n        release_distribution: true"
+            "M1RustEmitProbeCommand =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true,\n        testclaim_corpus: true,\n        workflow_policy: true,\n        release_distribution: true\n      )"
         ),
         "{CI_DAG_PATH}: M1RustEmitProbeCommand mask must match ci.yml step if (I8 / T-22 upstream)"
     );
@@ -968,7 +968,7 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     );
     assert!(
         CI_DAG.contains(
-            "V4T15SelfHostFixedPointCommand =>\n      CiComponentAffected {\n        v2: false\n        v3: false\n        v4: true\n        testclaim_corpus: false\n        workflow_policy: true\n        release_distribution: false"
+            "V4T15SelfHostFixedPointCommand =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true,\n        testclaim_corpus: false,\n        workflow_policy: true,\n        release_distribution: false\n      )"
         ),
         "{CI_DAG_PATH}: V4T15SelfHostFixedPointCommand mask must match ci_v4 T-15 step if: axes"
     );
@@ -1068,9 +1068,29 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     );
     assert!(
         CI_DAG.contains(
-            "BootstrapStageCompile { produces: _ } =>\n      CiComponentAffected {\n        v2: false\n        v3: false\n        v4: true"
+            "BootstrapStageCompile { produces: _ } =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true"
         ),
         "{CI_DAG_PATH}: BootstrapStageCompile mask must not select on v2-only (I2 is ci_integration; gunbc build is ci_v4 v4-axis)"
+    );
+    assert!(
+        CI_DAG.contains("fn ci_job_component_mask_row(")
+            && CI_DAG.contains("release_distribution_only: false"),
+        "{CI_DAG_PATH}: job masks must populate release_distribution_only (P2 carrier completeness)"
+    );
+    assert!(
+        CI_DAG.contains("data ci_upsert_steps_bankruptcy_tier0_slice_step_ids:")
+            && CI_DAG.contains("ci_upsert_v2_bootstrap_smoke_execution")
+            && CI_DAG.contains("ci_upsert_v3_determinism_execution")
+            && CI_DAG.contains("ci_upsert_v3_self_host_fixed_point_execution")
+            && CI_DAG.contains("ci_upsert_v4_t15_self_host_fixed_point_execution"),
+        "{CI_DAG_PATH}: bankruptcy Tier-0 jobs must register in ci_upsert_steps + full-in-scope slice"
+    );
+    assert!(
+        CI_DAG.contains("ci_job_v2_bootstrap_smoke_execution_row")
+            && CI_DAG.contains("ci_job_v3_determinism_execution_row")
+            && CI_DAG.contains("ci_job_v3_self_host_fixed_point_execution_row")
+            && CI_DAG.contains("ci_job_v4_t15_self_host_fixed_point_execution_row"),
+        "{CI_DAG_PATH}: Tier-0 CiJob rows must be canonical (pipeline + Upsert create)"
     );
     let v2_bootstrap_build =
         workflow_step_block(CI_YML, "Build v2 compiler (v4 bootstrap / host eval gate)");
