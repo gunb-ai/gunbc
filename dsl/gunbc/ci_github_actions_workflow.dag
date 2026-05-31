@@ -564,7 +564,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       needs: ["affected", "discipline"],
       env: none,
       outputs: none,
-      if_condition: Some { value: "github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))" },
+      if_condition: Some { value: "github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))" },
       strategy: none,
       timeout_minutes: Some { value: 60 },
       continue_on_error: false,
