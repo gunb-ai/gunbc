@@ -4400,8 +4400,6 @@ pub fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget)
 pub fn go_lambda_emits_statement_body(body: Rc<Node>) -> bool {
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprMatch => true,
-        ExprData::ExprBlock => true,
-        ExprData::ExprLet => true,
         _ => false,
     }
 }
@@ -5928,6 +5926,7 @@ pub fn emit_arm_guard(
 
 pub fn emit_go_match_arm_bindings(
     arm: Rc<Node>,
+    indent_level: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*arm_pattern(arm)).clone() {
@@ -5945,7 +5944,7 @@ pub fn emit_go_match_arm_bindings(
                             v2_rt::concat(
                                 v2_rt::concat(
                                     v2_rt::concat(
-                                        make_indent(2),
+                                        make_indent(indent_level.clone()),
                                         emit_ident(
                                             field_binding_name_at(
                                                 fb.clone(),
@@ -5989,7 +5988,11 @@ pub fn emit_typed_match_go(
             let mut __result = Vec::new();
             for arm in arms.iter().cloned() {
                 __result.push({
-                    let bindings = emit_go_match_arm_bindings(arm.clone(), source_indices.clone());
+                    let bindings = emit_go_match_arm_bindings(
+                        arm.clone(),
+                        body_depth.clone(),
+                        source_indices.clone(),
+                    );
                     let body_str = emit_match_arm_body_stmt(
                         RenderTarget::Go,
                         recurse(arm_body(arm.clone()), body_depth.clone()),

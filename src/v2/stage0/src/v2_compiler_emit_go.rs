@@ -92,6 +92,14 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn go_emit_module_root() -> String {
+    "generated".to_string()
+}
+
+pub fn go_v2rt_import_path() -> String {
+    v2_rt::concat(go_emit_module_root(), "/v2rt".to_string())
+}
+
 pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let registry = typed.item_registry.clone();
@@ -141,7 +149,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             }
             __result
         });
-        let go_mod = emit_go_mod("generated".to_string());
+        let go_mod = emit_go_mod(go_emit_module_root());
         let v2rt_file = emit_go_v2rt_module();
         let files = v2_rt::concat(
             v2_rt::concat(Rc::new(vec![go_mod, v2rt_file]), module_files),
@@ -156,7 +164,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
 
 pub fn emit_go_v2rt_module() -> Rc<TextFile> {
     Rc::new(TextFile {
-        path: "generated/v2rt/v2rt.go".to_string(),
+        path: v2_rt::concat(go_emit_module_root(), "/v2rt/v2rt.go".to_string()),
         content: go_runtime_source(),
     })
 }
@@ -513,7 +521,10 @@ pub fn emit_go_module(
             path: v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
-                        v2_rt::concat("generated/".to_string(), mod_dir.clone()),
+                        v2_rt::concat(
+                            v2_rt::concat(go_emit_module_root(), "/".to_string()),
+                            mod_dir.clone(),
+                        ),
                         "/".to_string(),
                     ),
                     filename,
@@ -602,7 +613,13 @@ pub fn emit_go_imports(
                     let mod_name =
                         module_to_filename(authored_name_at(source_indices.clone(), imp.clone()));
                     v2_rt::concat(
-                        v2_rt::concat("\t\"generated/".to_string(), mod_name.clone()),
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat("\t\"".to_string(), go_emit_module_root()),
+                                "/".to_string(),
+                            ),
+                            mod_name.clone(),
+                        ),
                         "\"".to_string(),
                     )
                 });
@@ -635,7 +652,10 @@ pub fn collect_go_std_imports(
         } else {
             Rc::new(vec![])
         };
-        let rt_import = Rc::new(vec!["\t\"generated/v2rt\"".to_string()]);
+        let rt_import = Rc::new(vec![v2_rt::concat(
+            v2_rt::concat("\t\"".to_string(), go_v2rt_import_path()),
+            "\"".to_string(),
+        )]);
         let strings_import =
             if ((has_functions.clone() || has_types.clone()) || has_services.clone()) {
                 Rc::new(vec!["\t\"strings\"".to_string()])
