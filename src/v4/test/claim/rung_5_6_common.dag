@@ -1,0 +1,45 @@
+// src/v4/test/claim/rung_5_6_common.dag
+// Scope: shared rung 6 post-emit algebra-law TestClaim subject + emit-host target wiring.
+// Status: W3.4 tranche-1 additive-Monoid — rust + python emit-vs-eval rows; host transport via bridge.
+
+module v4.test.claim.rung_5_6_common
+
+
+import v4.compiler.emit_host {
+  emit_host_python_authority_pin,
+  run_test_claim_emit_vs_eval
+}
+import v4.compiler.eval {
+  TestClaimRun
+}
+import v4.std.collection { empty_map }
+import v4.std.lexing { VoidLexRules }
+import v4.std.node { Node }
+import v4.std.runtime { RuntimeValue }
+import v4.std.target_model { TargetModel }
+import v4.std.verification { TestClaim }
+import v4.test.claim.rung_3_4_common {
+  rung34_emit_host_rust_target_model,
+  rung34_emit_host_target_bundle,
+  rung34_test_claim_subject
+}
+
+
+data rung56_emit_host_python_target_model: TargetModel = TargetModel {
+  bundle: rung34_emit_host_target_bundle,
+  lex: VoidLexRules,
+  binding_spellings: empty_map(),
+  authority_source_text: emit_host_python_authority_pin
+}
+
+
+fn rung56_emit_vs_eval_run(
+  claim: TestClaim,
+  fixture_subject: Node,
+  target: TargetModel
+) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: rung34_test_claim_subject(claim: claim, evaluator_input: fixture_subject),
+    target: target
+  )
+}
