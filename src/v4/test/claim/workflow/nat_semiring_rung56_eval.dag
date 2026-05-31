@@ -9,7 +9,7 @@ import v4.compiler.eval { TestClaimRun }
 import v4.std.algebra { is_empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.nat { Zero }
+import v4.std.nat { Zero, Succ, nat_gte }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
 import v4.test.claim.nat_semiring.rung_6 {
@@ -54,10 +54,11 @@ fn nat_semiring_rung56_report_has_evidence(report: CorpusEvalReport) -> Bool {
 }
 
 
+// Gate: no fail/deferred and ≥1 Pass (main used invalid field pass_count; VerdictTally.pass + nat_gte).
 fn nat_semiring_rung6_gate(report: CorpusEvalReport) -> Bool {
   if nat_semiring_rung56_report_has_evidence(report: report) {
     let tally = corpus_report_tally(r: report)
-    tally.fail == Zero && tally.deferred == Zero
+    tally.fail == Zero && tally.deferred == Zero && nat_gte(a: tally.pass, b: Succ { prev: Zero })
   } else {
     false
   }
