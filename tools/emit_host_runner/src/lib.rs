@@ -196,6 +196,11 @@ impl fmt::Display for RuntimeValueParseFailure {
     }
 }
 
+/// MVP-2 / eval_runtime_mvp alignment: five stdout bytes denote runtime value `5` (shared rust/python row).
+pub fn runtime_value_parse_python(bytes: &[u8]) -> Result<(), RuntimeValueParseFailure> {
+    runtime_value_parse_rust(bytes)
+}
+
 /// MVP-2 / eval_runtime_mvp alignment: five stdout bytes denote runtime value `5`.
 pub fn runtime_value_parse_rust(bytes: &[u8]) -> Result<(), RuntimeValueParseFailure> {
     const EXPECTED: usize = 5;
