@@ -221,13 +221,15 @@ fn node_is_alias_rhs_type_argument(child: Node, generic_param_names: List<String
     _ =>
       if child.connective != NoConnective {
         false
-      } else if child.children |> count > 0 {
-        true
       } else {
-        let cname = authored_name_at(source_indices: source_indices, node: child)
-        match map_get(registry, cname) {
-          Some { value: info } => info.kind == TypeItem || info.kind == OtherItem
-          None => generic_param_names |> any(g => g == cname)
+        if child.children |> count > 0 {
+          true
+        } else {
+          let cname = authored_name_at(source_indices: source_indices, node: child)
+          match map_get(registry, cname) {
+            Some { value: info } => info.kind == TypeItem || info.kind == OtherItem
+            None => generic_param_names |> any(g => g == cname)
+          }
         }
       }
   }
@@ -250,12 +252,14 @@ fn render_rust_parametric_alias_rhs(item: Node, generic_param_names: List<String
   let type_args = rhs_node.children |> filter(c => node_is_alias_rhs_type_argument(child: c, generic_param_names: generic_param_names, registry: registry, source_indices: source_indices))
   if type_args |> count > 0 {
     render_rust_applied_decl_type(n: rhs_node, type_arg_nodes: type_args, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
-  } else if (generic_param_names |> count) > 0 && (rhs_node.children |> count) > (generic_param_names |> count) {
-    let base_str = render_rust_applied_decl_type(n: rhs_node, type_arg_nodes: [], generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
-    let args_str = generic_param_names |> join(separator: ", ")
-    concat(base_str, "<", args_str, ">")
   } else {
-    render_rust_decl_type(n: rhs_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+    if (generic_param_names |> count) > 0 && (rhs_node.children |> count) > (generic_param_names |> count) {
+      let base_str = render_rust_applied_decl_type(n: rhs_node, type_arg_nodes: [], generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+      let args_str = generic_param_names |> join(separator: ", ")
+      concat(base_str, "<", args_str, ">")
+    } else {
+      render_rust_decl_type(n: rhs_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+    }
   }
 }
 
