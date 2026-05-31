@@ -1058,6 +1058,13 @@ fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
   count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
 }
 
+fn ci_symbol_not_in_ids(s: Symbol, ids: List<Symbol>) -> Bool {
+  match ci_member(s: s, ids: ids) {
+    true => false
+    false => true
+  }
+}
+
 fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
   ci_member(s: s, ids: ci_job_ids(jobs: jobs))
 }
@@ -3353,7 +3360,7 @@ fn ci_select_ci_jobs_needs_closure_pass(
     let missing_ids = filter(
       xs: need_ids,
       predicate: fn(n) {
-        ci_symbol_resolves(s: n, jobs: jobs) && !ci_member(s: n, ids: selected_ids)
+        ci_symbol_resolves(s: n, jobs: jobs) && ci_symbol_not_in_ids(s: n, ids: selected_ids)
       }
     )
     if length(xs: missing_ids) == 0 {

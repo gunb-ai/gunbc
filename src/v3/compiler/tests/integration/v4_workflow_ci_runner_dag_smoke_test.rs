@@ -874,7 +874,7 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     );
     assert!(
         CI_DAG.contains(
-            "ci_symbol_resolves(s: n, jobs: jobs) && !ci_member(s: n, ids: selected_ids)"
+            "ci_symbol_resolves(s: n, jobs: jobs) && ci_symbol_not_in_ids(s: n, ids: selected_ids)"
         ),
         "{CI_DAG_PATH}: needs closure must ignore unresolved need symbols"
     );
