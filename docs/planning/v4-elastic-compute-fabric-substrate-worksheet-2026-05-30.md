@@ -184,6 +184,10 @@ type ExecutionBudget {
 
 type ProcessorCostModel { /* per-provider rate table — Node or data rows in landing PR */ }
 type ProviderCostModel { /* provider-indexed ProcessorCostModel */ }
+type CostModel {
+  cost_class: CostClass
+  rates: ProviderCostModel
+}
 type WatchdogLimit { max_wall: Duration }    // Duration = Measure<Time, _> from std.measure
 ```
 
@@ -279,6 +283,24 @@ type ComputeOffer {
   cost_quote: Option<CostEstimate>
   constraints: List<ProviderConstraint>
 }
+
+// Provider-private facts (§7 — ctrl-jobserver FIFO, runner caps). Closed coproduct, not host strings on CI steps.
+type ProviderConstraint
+  = HostJobserverFifo { fifo_path: NonEmptyStr, token_cap: Int }
+  | SharedHomeRoot { path: NonEmptyStr }
+  | MaxConcurrentRunners { cap: Int }
+  | OomBehavior { signal: OomSignalClass }
+
+type AvailabilityWindow {
+  open: LogicalTime
+  close: Option<LogicalTime>
+}
+
+type CostEstimate {
+  model: CostModel
+  expected_units: Float
+  currency: NonEmptyStr
+}
 ```
 
 **Projection only (dashboards):**
@@ -295,9 +317,33 @@ type ComputeLeaseEligibility
   = Eligible { witness: ComputeLeaseWitness }
   | Rejected { reason: MissingDemandFact }    // fail-closed — case 8
 
+// Closed axis set for case 8 fail-closed diagnostics — one variant per WorkDemand coordinate.
+type DemandDimension
+  = DemandCompute
+  | DemandMemory
+  | DemandStorage
+  | DemandNetwork
+  | DemandOs
+  | DemandIsolation
+  | DemandToolchains
+  | DemandParallelism
+  | DemandDataLocality
+  | DemandEffects
+
 type MissingDemandFact {
-  dimension: DemandDimension                 // closed enum of WorkDemand field names
+  dimension: DemandDimension
   required: NonEmptyStr                      // human-readable fact description
+}
+
+type ComputeLeaseWitness {
+  provider: ProviderIdentity
+  satisfied: List<DemandDimension>
+}
+
+type AllocationReceipt {
+  provider: ProviderIdentity
+  scope: NonEmptyStr                         // runner lease / container id — not CiStepId
+  acquired_at: LogicalTime
 }
 
 type ComputeLease {
