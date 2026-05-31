@@ -58,15 +58,15 @@ fn v4_leaf_model_rust_r3_internal_emit_kind_labels_differ() {
         .expect("rust_r3_internal_mutated_value_emit_kind");
     assert_ne!(
         baseline, mutated,
-        "value projection kind labels must differ after row mutation"
+        "value projection kind label bindings must differ after row mutation"
     );
     assert!(
-        baseline.contains("rust_r3_internal_emit_kind_symbol_to_owned_string"),
-        "baseline value projection must use ToOwnedString kind label"
+        baseline.contains("rust_target_atom_realization_symbol"),
+        "baseline value projection must consult production Symbol row"
     );
     assert!(
-        mutated.contains("rust_r3_internal_emit_kind_symbol_identity"),
-        "mutated value projection must use SymbolIdentity kind label"
+        mutated.contains("rust_r3_internal_mutated_row"),
+        "mutated value projection must consult mutated Symbol row"
     );
 }
 
