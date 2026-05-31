@@ -88,7 +88,7 @@ type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 type GpuFacts {
   vendor: NonEmptyStr
   model: NonEmptyStr
-  compute_capability: Option<NonEmptyStr>
+  compute_capability: NonEmptyStr?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
 }
@@ -98,21 +98,21 @@ type AcceleratorFacts { vendor: NonEmptyStr, model: NonEmptyStr }
 type MemoryDevice {
   capacity: ByteSize
   memory_kind: MemoryKind
-  bandwidth: Option<Bandwidth>
+  bandwidth: Bandwidth?
 }
 
 type StorageDevice {
   capacity: ByteSize
   medium: StorageMedium
-  read_bandwidth: Option<Bandwidth>
-  write_bandwidth: Option<Bandwidth>
+  read_bandwidth: Bandwidth?
+  write_bandwidth: Bandwidth?
   persistence: PersistenceKind
 }
 
 type NetworkInterface {
   addressability: NetworkAddressability
-  bandwidth: Option<Bandwidth>
-  latency_class: Option<LatencyClass>
+  bandwidth: Bandwidth?
+  latency_class: LatencyClass?
   locality: NetworkLocality
 }
 
@@ -127,7 +127,7 @@ type OperatingSystemSurface {
 type ExecutionSurface {
   os: OperatingSystemSurface
   isolation: IsolationBoundary
-  container_runtime: Option<ContainerRuntime>
+  container_runtime: ContainerRuntime?
   toolchains: List<ToolchainCapability>
   mounted_storage: List<StorageMount>
   network: List<NetworkInterface>
@@ -157,7 +157,7 @@ type CostModel {
 type ComputeSupplyFacts {
   physical: ComputeHost
   execution: ExecutionSurface
-  cost: Option<CostModel>
+  cost: CostModel?
   observed_performance: List<PerformanceReceipt>
 }
 
@@ -167,14 +167,14 @@ type ProviderConstraint
   | MaxConcurrentRunners { cap: Int }
   | OomBehavior { signal: OomSignalClass }
 
-type AvailabilityWindow { open: LogicalTime, close: Option<LogicalTime> }
+type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
 type CostEstimate { model: CostModel, expected_units: Float, currency: NonEmptyStr }
 
 type ComputeOffer {
   provider: ProviderIdentity
   supply: ComputeSupplyFacts
   available_window: AvailabilityWindow
-  cost_quote: Option<CostEstimate>
+  cost_quote: CostEstimate?
   constraints: List<ProviderConstraint>
 }
 
@@ -194,18 +194,18 @@ fn host_label_for(host: ComputeHost) -> NonEmptyStr {
 // --- §1.2 demand -------------------------------------------------------------
 
 type ResourceEnvelope {
-  cpu: Option<CpuRequirement>
-  gpu: Option<GpuRequirement>
-  memory: Option<MemoryRequirement>
-  storage: Option<StorageRequirement>
-  network: Option<NetworkRequirement>
+  cpu: CpuRequirement?
+  gpu: GpuRequirement?
+  memory: MemoryRequirement?
+  storage: StorageRequirement?
+  network: NetworkRequirement?
 }
 
-type CpuRequirement { min_cores: Int, architecture: Option<CpuArchitecture> }
+type CpuRequirement { min_cores: Int, architecture: CpuArchitecture? }
 type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
 type MemoryRequirement { min_bytes: ByteSize }
 type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
-type NetworkRequirement { egress: Option<NetworkEgressClass>, ambient_allowed: Bool }
+type NetworkRequirement { egress: NetworkEgressClass?, ambient_allowed: Bool }
 type OperatingSystemRequirement { surface: OperatingSystemSurface }
 type IsolationRequirement { boundary: IsolationBoundary }
 type ToolchainRequirement { name: NonEmptyStr, version: NonEmptyStr }
@@ -226,13 +226,13 @@ type ToolchainCapability {
   name: NonEmptyStr
   version: NonEmptyStr
   env_isolation: ToolchainEnvIsolation
-  build_wrapper: Option<BuildWrapperKind>
-  linked_cache_interface: Option<CacheInterfaceId>
+  build_wrapper: BuildWrapperKind?
+  linked_cache_interface: CacheInterfaceId?
 }
 
 type WorkDemand {
   resources: ResourceEnvelope
-  os: Option<OperatingSystemRequirement>
+  os: OperatingSystemRequirement?
   isolation: IsolationRequirement
   toolchains: List<ToolchainRequirement>
   parallelism: ParallelismShape
@@ -255,9 +255,9 @@ type ParallelismShape
 
 type ReducerLaws {
   associative: Witness<Associativity>
-  commutative: Option<Witness<Commutativity>>
-  identity: Option<IdentityElement>
-  idempotent: Option<Witness<Idempotency>>
+  commutative: Witness<Commutativity>?
+  identity: IdentityElement?
+  idempotent: Witness<Idempotency>?
 }
 
 type ExecutionBudget {
@@ -344,7 +344,7 @@ type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
   wall_duration: Duration
-  cpu_seconds: Option<Float>
+  cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
   confidence: MeasurementConfidence
