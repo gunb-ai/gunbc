@@ -131,6 +131,7 @@ jobs:
       v2: ${{ steps.detect.outputs.v2 }}
       v3: ${{ steps.detect.outputs.v3 }}
       v4: ${{ steps.detect.outputs.v4 }}
+      testclaim_corpus: ${{ steps.detect.outputs.testclaim_corpus }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
       release_distribution: ${{ steps.detect.outputs.release_distribution }}
       release_distribution_only: ${{ steps.detect.outputs.release_distribution_only }}
@@ -397,12 +398,22 @@ jobs:
         fi
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
-    - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+    - name: Cache T-22 TestClaim corpus structural bridge receipt
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      id: t22_testclaim_corpus_cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/t22-testclaim-corpus-gate
+        key: t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'src/v4/**', 'src/v4/test/claim/manual/**/*.dag') }}
+    - name: T-22 TestClaim corpus structural bridge — manual .dag corpus
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.t22_testclaim_corpus_cache.outputs.cache-hit != 'true'
       timeout-minutes: 15
       env:
         V4_TESTCLAIM_TIMEOUT_SECS: '480'
-      run: bash scripts/v4-testclaim-corpus-gate.sh
+      run: |
+        bash scripts/v4-testclaim-corpus-gate.sh
+        mkdir -p "${RUNNER_TEMP}/t22-testclaim-corpus-gate"
+        printf 'T-22 TestClaim corpus structural bridge passed for %s\n' "${GITHUB_SHA}" > "${RUNNER_TEMP}/t22-testclaim-corpus-gate/receipt.txt"
   # Branch protection requires the `ci` check name (docs/admin/branch-protection-recommendation-
   # 2026-05-09.md). This job is the fail-closed aggregator over discipline + parallel lanes;
   # load-bearing steps live in ci_integration / ci_v4. `always()` + explicit dep validation

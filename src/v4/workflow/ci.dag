@@ -330,13 +330,14 @@ type SelectionDecision
 // Receipt field alias — single authority with `v4.std.change` `AffectedDependency`.
 type AffectedNode = AffectedDependency
 
-// RULING-1: 🟢 pretty-much-done — GitHub Actions `affected` job outputs (v2/v3/v4/workflow_policy/release_distribution).
+// RULING-1: 🟢 pretty-much-done — GitHub Actions `affected` job outputs (v2/v3/v4/testclaim_corpus/workflow_policy/release_distribution/release_distribution_only).
 // Structural replacement for scripts/detect-affected-components.sh (T-21/T-24); host transport:
 // `cargo run -p ci_affected_components --bin detect-ci-affected-components` (must stay aligned with these predicates).
 type CiComponentAffected {
   v2: Bool
   v3: Bool
   v4: Bool
+  testclaim_corpus: Bool
   workflow_policy: Bool
   release_distribution: Bool
   release_distribution_only: Bool
@@ -2666,7 +2667,16 @@ fn ci_changed_path_affects_v3(changed: RepoPath) -> Bool {
 
 
 fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
-  ci_repo_path_has_prefix(path: changed, prefix: "src/v4/")
+  changed == "src/v4/bin/main.dag"
+    || changed == "src/v4/workflow/bootstrap.dag"
+    || changed == "src/v4/workflow/ci.dag"
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/compiler/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/std/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/extdeps/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/lens/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/manual/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/generated/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/fixture/")
     || ci_repo_path_has_prefix(path: changed, prefix: "fixtures/v4-mvp1/")
     || changed == "scripts/v4-mvp1-e2e-gate.sh"
     || changed == "scripts/v4-m1-rust-emit-probe.sh"
@@ -2677,6 +2687,11 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
     || ci_repo_path_has_prefix(path: changed, prefix: "dsl/std/")
     || changed == "Cargo.toml"
     || changed == "Cargo.lock"
+}
+
+
+fn ci_changed_path_affects_testclaim_corpus(changed: RepoPath) -> Bool {
+  ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/")
 }
 
 
@@ -2737,6 +2752,7 @@ fn ci_component_affected_fail_closed() -> CiComponentAffected {
     v2: true
     v3: true
     v4: true
+    testclaim_corpus: true
     workflow_policy: true
     release_distribution: true
     release_distribution_only: false
@@ -2749,6 +2765,10 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
     v2: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v2),
     v3: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v3),
     v4: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v4),
+    testclaim_corpus: any(
+      xs: git_diff.changed_paths,
+      predicate: ci_changed_path_affects_testclaim_corpus
+    ),
     workflow_policy: any(
       xs: git_diff.changed_paths,
       predicate: ci_changed_path_affects_workflow_policy

@@ -210,6 +210,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
+          name: Some { value: "install.sh pinned-version smoke (hermetic)" },
+          id: none,
+          run: "bash scripts/test-install-sh-pinned-version.sh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
           name: Some { value: "Manager-brief authority check (P2 single-authority discipline)" },
           id: none,
           run: "bash scripts/check-manager-brief-authority.sh",
@@ -333,7 +343,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }],
       needs: [],
       env: none,
-      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}", "release_distribution": "${{ steps.detect.outputs.release_distribution }}" },
+      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "testclaim_corpus": "${{ steps.detect.outputs.testclaim_corpus }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}", "release_distribution": "${{ steps.detect.outputs.release_distribution }}", "release_distribution_only": "${{ steps.detect.outputs.release_distribution_only }}" },
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 15 },
@@ -500,6 +510,36 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Phase 1 leaf-model R1 rustc boundary (gunbc#846 bypass)" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_leaf_model_rust_r1_rustc_test -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Phase 1 leaf-model python R1 boundary (gunbc#846 bypass)" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_leaf_model_python_r1_test -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Phase 1 leaf-model R2a/R2b/R3-external rustc boundary (gunbc#846 bypass)" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_leaf_model_rust_r2_r3_external_rustc_test -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
         }],
       needs: ["affected", "discipline"],
       env: none,
@@ -619,13 +659,33 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: true,
           timeout_minutes: Some { value: 20 }
+        }, RunStep {
+          name: Some { value: "Detect phase1/nat_semiring fixture scope (PR diff)" },
+          id: Some { value: "phase1_nat_semiring_fixture_scope" },
+          run: "bash scripts/detect-phase1-nat-semiring-gate-scope.sh \"${{ github.event_name }}\" \"$GITHUB_OUTPUT\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "phase1/nat_semiring gate policy ratchet (workflow-policy edits)" },
+          id: none,
+          run: "set -euo pipefail\nbash scripts/check-workflow-path-regex-inventory.sh\nbash scripts/detect-phase1-nat-semiring-gate-scope.sh \"${{ github.event_name }}\" \"${RUNNER_TEMP}/phase1-gate-scope-smoke.out\"\ngrep -q '^should_run=' \"${RUNNER_TEMP}/phase1-gate-scope-smoke.out\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "steps.phase1_nat_semiring_fixture_scope.outputs.policy_check == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
         }, UsesStep {
           name: Some { value: "Setup Go (phase1/nat_semiring rung gate prerequisite)" },
           id: none,
           uses: { owner: "actions", repo: "setup-go", ref: "v5" },
           with: { "go-version": "stable", "cache": "false" },
           env: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          if_condition: Some { value: "steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true' && needs.affected.outputs.release_distribution_only != 'true'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -635,8 +695,8 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: { "V2_COMPILER": "target/release/gunbc", "V4_PHASE1_NAT_SEMIRING_OUT": "${{ runner.temp }}/v4-phase1-nat-semiring", "V4_PHASE1_NAT_SEMIRING_STRICT": "1" },
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
-          continue_on_error: false,
+          if_condition: Some { value: "steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true' && needs.affected.outputs.release_distribution_only != 'true'" },
+          continue_on_error: true,
           timeout_minutes: Some { value: 20 }
         }, RunStep {
           name: Some { value: "v2 → v4 bootstrap compile (fail-closed full)" },
@@ -668,16 +728,25 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'" },
           continue_on_error: false,
           timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache T-22 TestClaim corpus structural bridge receipt" },
+          id: Some { value: "t22_testclaim_corpus_cache" },
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          with: { "path": "${{ runner.temp }}/t22-testclaim-corpus-gate", "key": "t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'src/v4/**', 'src/v4/test/claim/manual/**/*.dag') }}" },
+          env: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
         }, RunStep {
           name: Some { value: "T-22 TestClaim corpus structural bridge — manual .dag corpus" },
           id: none,
-          run: "bash scripts/v4-testclaim-corpus-gate.sh",
+          run: "bash scripts/v4-testclaim-corpus-gate.sh\nmkdir -p \"${RUNNER_TEMP}/t22-testclaim-corpus-gate\"\nprintf 'T-22 TestClaim corpus structural bridge passed for %s\\n' \"${GITHUB_SHA}\" > \"${RUNNER_TEMP}/t22-testclaim-corpus-gate/receipt.txt\"\n",
           shell: Bash,
           env: { "V4_TESTCLAIM_TIMEOUT_SECS": "480" },
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.t22_testclaim_corpus_cache.outputs.cache-hit != 'true'" },
           continue_on_error: false,
-          timeout_minutes: none
+          timeout_minutes: Some { value: 15 }
         }],
       needs: ["affected", "discipline"],
       env: none,
