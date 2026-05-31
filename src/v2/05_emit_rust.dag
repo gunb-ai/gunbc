@@ -206,10 +206,26 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
-  } else if n.children |> count > 0 {
-    render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  } else if n.connective == NoConnective && n.children |> count > 0 {
+    let base = coerce_primitive_type(target: Rust, dag_name: name)
+    let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+    concat(base, "<", args, ">")
   } else {
     render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
+// `type List<T> = FreeMonoid<T>`: resolved RHS can carry algebra method children; emit only
+// the declared type-parameter names as arguments (F3/F4), not the full carrier shape.
+fn render_rust_parametric_alias_rhs(item: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let rhs_node = resolved_type(n: item)
+  let base = authored_name_at(source_indices: source_indices, node: rhs_node)
+  if (generic_param_names |> count) > 0 {
+    let base_str = coerce_primitive_type(target: Rust, dag_name: base)
+    let args = generic_param_names |> join(separator: ", ")
+    concat(base_str, "<", args, ">")
+  } else {
+    render_rust_decl_type(n: rhs_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
@@ -1517,7 +1533,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_type_alias_return_node(n: resolved_type(n: item), source_indices: env.source_indices) {
       let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
-      let rhs = render_rust_decl_type(n: resolved_type(n: item), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices)
+      let rhs = render_rust_parametric_alias_rhs(item: item, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices)
       if rhs == item_text {
         ""
       } else {
