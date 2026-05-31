@@ -1,6 +1,6 @@
 # v4 SG-1b Worksheet — Function-boundary signature realization (`TargetFunctionSignatureRealization`)
 
-> **Status:** WORKSHEET DRAFT — pending Modeling DFS Manager §8 sign-off (`proud-pike-680`).
+> **Status:** WORKSHEET APPROVED — Modeling DFS Manager §8 sign-off 2026-05-31 (`proud-pike-680`; msg_a2db9528). **READY-FOR-IMPLEMENTATION-DISPATCH** (Target Realization / keen-heron TR lane).
 > **Date:** 2026-05-31
 > **Dispatch anchor:** `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §3 (SG-1 partial dissolution / SG-1-FOLLOWON); `#4086` P3 routing row **SG-1b function-signature String↔Symbol**; `docs/planning/v4-predicate-dependency-graph-2026-05-31.md` §3.3.
 > **Sibling discipline:** sharp-otter-407 classification — **separate §10.0 worksheet**, NOT an amendment to `docs/planning/v4-sg1-target-atom-realization-worksheet-2026-05-30.md` (SG-1 atom authority closed via #3956).
@@ -149,16 +149,16 @@ Non-goals:
 
 ---
 
-## §8 Manager approval checklist (`proud-pike-680`) — OPEN
+## §8 Manager approval checklist (`proud-pike-680`) — CLOSED 2026-05-31
 
-- [ ] Single-authority fact: `TargetFunctionSignatureRealization` in `v4.std.target_model`
-- [ ] Sibling discipline: SG-1 atom worksheet untouched; no implementation in worksheet PR
-- [ ] SG-1 consumption: rows lookup atom catalog by `source_carrier`; no duplicate catalog
-- [ ] Boundary scope: `FunctionBoundarySite` limits authority to fn entry/exit
-- [ ] Cross-section: `signature_type_form` uses SG-2 `TargetTypeExpression` only
-- [ ] Spot-fix forbidden: global `-> String` coercion; value-only Symbol strip
-- [ ] Falsification (1)–(3) accepted for worker dispatch
-- [ ] Worker dispatch — **authorize** to Target Realization Manager after §8 close
+- [x] Single-authority fact: `TargetFunctionSignatureRealization` in `v4.std.target_model`
+- [x] Sibling discipline: SG-1 atom worksheet untouched; no implementation in worksheet PR
+- [x] SG-1 consumption: rows lookup atom catalog by `source_carrier`; no duplicate catalog
+- [x] Boundary scope: `FunctionBoundarySite` limits authority to fn entry/exit
+- [x] Cross-section: `signature_type_form` uses SG-2 `TargetTypeExpression` only
+- [x] Spot-fix forbidden: global `-> String` coercion; value-only Symbol strip
+- [x] Falsification (1)–(3) accepted for worker dispatch
+- [x] Worker dispatch — **authorized** to Target Realization Manager (keen-heron TR lane)
 
 ---
 
