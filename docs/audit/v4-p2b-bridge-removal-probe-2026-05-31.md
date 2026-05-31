@@ -3,7 +3,7 @@
 **Manager session:** `sharp-otter-407` (Close/Receipt lane).
 **Authority:** PR #4094 §3.2 P2-B dispatch (PM forced-dispatch 2026-05-31); cross-link to PR #4086 §3 (post-SG-1 catalog — SG-7 cleared + 0 v2 diagnostics on the M1 probe).
 **Predecessor receipt:** P2-A (`valiant-moth-559`) verified 44-source compiler closure with 0 dag+rust diagnostics; this probe is the **complementary safety-net receipt** required before operator authorizes the bridge deletion in dispatch board priority 3.
-**Reference commit:** `origin/main` at `7e9c4ba8c0` (pulled 2026-05-31 ~07:05Z; HEAD at probe time per `git rev-parse HEAD`).
+**Reference commit:** `origin/main` at `c05a5a84b` (CI #4091 merge; HEAD when the M2 probe ran, verified via `git rev-parse HEAD` on this branch's parent).
 **Bridge under test:** `scripts/v4-bootstrap-resolve-posture-gate.sh` + the CI step at `.github/workflows/ci.yml:377-384` (`v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)`).
 
 ---
