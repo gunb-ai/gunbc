@@ -17,11 +17,13 @@
 //! via `emit_host_bridge` / `emit_host_runner`. Rosters authored in #4046 (`rung_3_4`).
 //! **W3.3 (+0 SG-0 paths):** go transport + rung-5 full law roster × rust/python/go
 //! (`rung_5.dag`, `nat_semiring_rung5_eval.dag`); cross-target MVP-2 stdout parity via bridge.
-//! **W3.4 (+0 SG-0 paths):** extends bridge with python transport + rung-6 additive-Monoid
-//! roster (`rung_6.dag`, `rung_5_6_common.dag`, `nat_semiring_rung56_eval.dag`). Behavior receipts:
-//! MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte stdout contract;
-//! not per-law emitted artifacts until emit pipeline wires law subjects). Substrate rows stay
-//! `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B / **TASKS.md** T-22 T-38.
+//! **W3.4 (+0 SG-0 paths):** extends bridge with python transport + rung-6 post-emit law
+//! preservation (`rung_6.dag`, `rung_5_6_common.dag`, `nat_semiring_rung56_eval.dag`).
+//! Tranche-1 additive-Monoid + tranche-2 multiplicative-Monoid + annihilator (rust + python).
+//! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte
+//! stdout contract; not per-law emitted artifacts until emit pipeline wires law subjects).
+//! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
+//! **TASKS.md** T-22 T-38.
 //!
 //! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
 //! `tools/emit_host_runner` / `emit_host_bridge` (real cargo + run).
@@ -292,6 +294,66 @@ fn nat_semiring_rung6_python_add_associativity_emit_vs_eval_transport_passes() {
     assert_rung6_mvp2_emit_vs_eval_pass(
         "gunbc_rung6_py_assoc",
         "nat_add_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_rust_mul_left_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_mul_left_id",
+        "nat_mul_left_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_rust_mul_associativity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_mul_assoc",
+        "nat_mul_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_rust_mul_annihilator_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_mul_ann",
+        "nat_mul_annihilator_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_mul_left_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_mul_left_id",
+        "nat_mul_left_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_mul_associativity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_mul_assoc",
+        "nat_mul_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_mul_annihilator_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_mul_ann",
+        "nat_mul_annihilator_input",
         emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
         EMIT_HOST_PYTHON_FIXTURE_SOURCE,
     );
@@ -666,15 +728,21 @@ fn emit_host_runner_python_row_runs_and_parses_stdout() {
 }
 
 #[test]
-fn v4_nat_semiring_rung_6_dag_tokenizes_and_parses_additive_monoid_emit_rows() {
+fn v4_nat_semiring_rung_6_dag_tokenizes_and_parses_post_emit_law_preservation_emit_rows() {
     let module = parse_module(NAT_SEMIRING_RUNG_6_DAG, NAT_SEMIRING_RUNG_6_PATH);
     for name in [
         "run_phase1_nat_semiring_rung6_rust_add_left_identity_emit_equals_eval",
         "run_phase1_nat_semiring_rung6_rust_add_right_identity_emit_equals_eval",
         "run_phase1_nat_semiring_rung6_rust_add_associativity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_rust_mul_left_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_rust_mul_associativity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_rust_mul_annihilator_emit_equals_eval",
         "run_phase1_nat_semiring_rung6_python_add_left_identity_emit_equals_eval",
         "run_phase1_nat_semiring_rung6_python_add_right_identity_emit_equals_eval",
         "run_phase1_nat_semiring_rung6_python_add_associativity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_mul_left_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_mul_associativity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_mul_annihilator_emit_equals_eval",
     ] {
         assert!(
             surface_declares_data(&module, name),
@@ -712,5 +780,23 @@ fn v4_nat_semiring_rung56_eval_dag_tokenizes_and_parses_rung6_gate() {
             "nat_semiring_rung6_additive_monoid_runtime_value_rows"
         ),
         "{NAT_SEMIRING_RUNG56_EVAL_PATH}: tranche-1 additive-Monoid roster"
+    );
+    assert!(
+        surface_declares_data(
+            &module,
+            "nat_semiring_rung6_mul_monoid_annihilator_runtime_value_rows"
+        ),
+        "{NAT_SEMIRING_RUNG56_EVAL_PATH}: tranche-2 mul-Monoid + annihilator roster"
+    );
+    assert!(
+        surface_declares_data(
+            &module,
+            "nat_semiring_rung6_post_emit_law_preservation_runtime_value_rows"
+        ),
+        "{NAT_SEMIRING_RUNG56_EVAL_PATH}: combined tranche-1+2 CorpusEval roster"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG56_EVAL_DAG.contains("nat_semiring_rung6_post_emit_law_preservation_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG56_EVAL_PATH}: CorpusEvalReport must consume full rung-6 roster"
     );
 }
