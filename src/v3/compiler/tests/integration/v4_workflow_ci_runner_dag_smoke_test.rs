@@ -451,7 +451,9 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
 
 /// True when `job_id` is a deleted bankruptcy legacy *workflow job* block (not `affected` outputs).
 fn ci_yml_has_deleted_legacy_top_level_job(workflow_yml: &str, job_id: &str) -> bool {
-    workflow_yml.contains(&format!("\n  {job_id}:\n    needs:"))
+    // Legacy jobs used `if:` before `needs:` / `runs-on:` (see main pre-bankruptcy ci.yml).
+    workflow_yml.contains(&format!("\n  {job_id}:\n    if:"))
+        || workflow_yml.contains(&format!("\n  {job_id}:\n    needs:"))
         || workflow_yml.contains(&format!("\n  {job_id}:\n    runs-on:"))
 }
 

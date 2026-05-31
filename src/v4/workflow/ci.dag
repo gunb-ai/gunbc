@@ -3164,6 +3164,7 @@ fn ci_component_affected_is_fail_closed(affected: CiComponentAffected) -> Bool {
   affected.v2
     && affected.v3
     && affected.v4
+    && affected.testclaim_corpus
     && affected.workflow_policy
     && affected.release_distribution
 }
