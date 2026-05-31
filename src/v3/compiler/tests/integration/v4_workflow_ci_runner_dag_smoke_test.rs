@@ -821,11 +821,13 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
         CI_DAG.contains("ci_all_gate_run_policies_resolve(gates: p.gates, jobs: p.jobs)"),
         "{CI_DAG_PATH}: ci_pipeline_well_formed must reject dangling gate run-policy jobs"
     );
+    let bootstrap_skip_guard = expr_string(data_body(
+        &module,
+        "ci_v4_bootstrap_gate_result_skip_guard_if",
+    ));
     assert!(
-        CI_YML.contains(
-            "if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'"
-        ),
-        "{CI_YML_PATH}: bootstrap gate result skip guard must include v4, testclaim_corpus, workflow_policy, and release_distribution upstream paths"
+        CI_YML.contains(&bootstrap_skip_guard),
+        "{CI_YML_PATH}: bootstrap gate result skip guard must match modeled ci_v4_bootstrap_gate_result_skip_guard_if"
     );
     assert!(
         CI_DAG.contains("workflow_local_bootstrap_dag_upstream")
@@ -938,18 +940,22 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
         "{CI_YML_PATH}: Tier-0 I4 must run inside the ci harness job"
     );
-    let i4_step = workflow_step_block(CI_YML, "v3 self-host fixed point (Tier-0 I4)");
+    let i4_binding = data_body(
+        &module,
+        "ci_v3_self_host_fixed_point_ci_live_workflow_binding",
+    );
+    let i4_step_name = expr_string(record_body_field(i4_binding, "step_name"));
+    let i4_if_condition = expr_string(record_body_field(i4_binding, "if_condition"));
+    let i4_step = workflow_step_block(CI_YML, &i4_step_name);
     assert!(
-        i4_step.contains("needs.affected.outputs.v3 == 'true'")
-            && i4_step.contains("github.event_name == 'push'")
-            && i4_step.contains("refs/heads/main"),
-        "{CI_YML_PATH}: Tier-0 I4 must run on v3 frontier PRs and main-push (design-ci-bankruptcy-rebuild §3.3 / D1)"
+        i4_step.contains(&i4_if_condition),
+        "{CI_YML_PATH}: Tier-0 I4 step `if` must match modeled ci_v3_self_host_fixed_point_ci_live_workflow_binding (§3.3 / D1)"
     );
     assert!(
-        CI_DAG.matches("needs: [v2_compile_src_v4, m1_rust_emit_probe_execution]")
-            .count()
-            >= 2,
-        "{CI_DAG_PATH}: corpus eval CiJob.needs and Upsert create projection must both include M1 (P2)"
+        CI_DAG.contains("data ci_job_testclaim_corpus_eval_execution_row: CiJob = ci_job_testclaim_corpus_eval_execution_mk()")
+            && CI_DAG.contains("create: ci_job_projection_node(j: ci_job_testclaim_corpus_eval_execution_row)")
+            && CI_DAG.contains("ci_job_testclaim_corpus_eval_execution_row,"),
+        "{CI_DAG_PATH}: corpus eval must use one canonical CiJob row for pipeline + Upsert create (P2)"
     );
     let t15_step = workflow_step_block(CI_YML, T15_SELF_HOST_STEP_NAME);
     assert!(
