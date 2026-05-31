@@ -250,7 +250,7 @@ verdict(step) = cached_verdict(content_hash(whole CiUpsertStep<T> node))
 | Active selection | Receipt decisions don't drive runner fanout (still shadow) |
 | Cache-key derivation | Non-TestClaim commands still use static `Symbol` tags as cache identity (e.g. `ci_cache_cmd_m1_probe_tag`); must dissolve to `content_hash(whole node)` |
 | Output sharing | Bootstrap → consumer fan-out has no L2 cache primitive; the four-compile redundancy in §1.2 is exactly this gap |
-| Per-step `timeout` / `worker_count` | Not modeled in `CiUpsertStep<T>` yet |
+| Declared parallelism + execution budget | `ParallelismShape` + `ReducerLaws` (§4.0b) and `ExecutionBudget { expected_cost, provider_model, watchdog }` (§4.0c) not yet landed; authored `worker_count` / `timeout` fields are explicitly **forbidden** (§4.0d) — they bake provider capacity into the step |
 | `gunbc` content-addressed emit | Compiler doesn't expose `--manifest <path>` or `--cache-key` flags |
 | Parallel module emit | Compiler is sequential per ~1.25s/file at 332-source closure |
 
@@ -1062,8 +1062,10 @@ Modeled: `SelfHostedRunnerPool { runner_count, jobserver_token_cap }` is data
 Elastic:
 - Each scheduled step → fresh runner instance, pulled from `ci_self_hosted_runner_pools`
 - Pool exhaustion = FIFO queue, not capacity-aware backoff tricks
-- Per-step `worker_count: Int` (new modeled field on `CiUpsertStep<T>` or derived
-  from `CiCommand` variant) → how many parallel workers the step's runner runs
+- Per-step parallelism comes from the step's declared `ParallelismShape` (§4.0b),
+  not an authored `worker_count` field (forbidden §4.0d). The scheduler derives
+  the concrete worker count from `(parallelism_shape × provider_capacity ×
+  cache_locality)` at lease time.
 - Cross-step parallelism is unlimited up to pool size; over-subscription queues
 - Per-host affinity (srv1 vs srv2) is hash-driven for L1 cache locality, not for
   load-balancing — see §4.7
@@ -1081,14 +1083,15 @@ silently turns full-tree emit into a 20m hang.
 Elastic:
 - Each runner instantiates its own jobserver in `$RUNNER_TEMP` (ephemeral, lives
   for the runner's lifetime)
-- Token cap = `min(host_pool.jobserver_token_cap, step.worker_count)` (derived
-  from modeled facts)
+- Token cap is **derived**, not authored: scheduler computes it from
+  `(step.ParallelismShape × provider_capacity × cache_locality)` at lease time,
+  bounded above by `host_pool.jobserver_token_cap`. No `step.worker_count` field
+  (forbidden §4.0d).
 - No cross-step, no cross-runner, no host-wide state
 - Eliminates the FIFO-race-as-side-channel anti-pattern entirely
 
 `ctrl-build`'s `CARGO_BUILD_JOBS` cap stays — but it's a *floor* (memory safety)
-not the *authority* on parallelism (which lives in the modeled
-`worker_count`).
+not the *authority* on parallelism (which lives in the modeled `ParallelismShape`).
 
 ### 4.7 Locality is provider-private; the workload only sees an opaque hint
 
@@ -1216,9 +1219,16 @@ Tentative answer: most of §4.1 + §4.2 + §4.7 + §4.8 + §4.9 wins are achieva
 are the bottom-up throughput multiplier. So elastic CI can ship in stages, with
 compiler work as a parallel lane.
 
-**Q4 — Per-step `worker_count` modeling.** Add a field on `CiUpsertStep<T>` (or
-on `CiCommand` variants)? Modeling DFS Manager owns the substrate decision per
-`docs/planning/v4-ci-overhaul-2026-05-30.md` §7.
+**Q4 — `ParallelismShape` × provider capacity interaction.** Given §4.0b's
+algebraic parallelism (`SingleWorkItem` / `IndependentShards` /
+`DependencyGraphParallel` / `PartitionedReduce { laws }`) and §4.0d's
+prohibition on authored `worker_count`, the scheduler derives concrete worker
+count from `(parallelism_shape × provider_capacity × cache_locality)`. Open:
+when `ParallelismShape = IndependentShards { shard_count: N }` and provider has
+M < N free slots, does the scheduler (a) run N sequentially in M, (b) queue
+extra shards, (c) split across providers (forbidden — §4.0a/§4.7 one-step =
+one-slot), or (d) something else? Modeling DFS Manager owns the substrate
+decision per `docs/planning/v4-ci-overhaul-2026-05-30.md` §7.
 
 **Q5 — Determinism as effect.** Per `project_determinism_as_effect` memory: a
 non-deterministic step's verdict cannot safely cache. Does each `CiUpsertStep<T>`
@@ -1257,9 +1267,12 @@ should be the structural criterion (per planning doc §5).
 This isn't a single PR. It's a multi-quarter program with three parallel lanes:
 
 **Lane M (modeling).** Land Phase 1.4 → 1.5 → 1b → 2 → 2.5. Owner: Modeling DFS
-+ Compiler Spine per planning doc §7. Adds per-step `worker_count`, `timeout`,
-content-hash-derived `cache_digest`. Replaces every shell gate with a
-`CiUpsertStep<T>` Node.
++ Compiler Spine per planning doc §7. Lands the §4.0a canonical schema
+(`WorkUnit<T>`, `ComputeDemand`, `ComputeSupplyFacts`, `ComputeOffer`,
+`ComputeLease`, `ExecutionReceipt`, `ParallelismShape` + `ReducerLaws`,
+`ExecutionBudget`) plus content-hash-derived `cache_digest`. Replaces every
+shell gate with a `CiUpsertStep<T>` Node. Authored `worker_count` / `timeout`
+fields are forbidden (§4.0d); parallelism + budget are derived.
 
 **Lane C (compiler).** `gunbc --manifest` output, parallel module emit,
 per-file content-addressed skip. Owner: Compiler Spine. Independently
@@ -1284,8 +1297,10 @@ their conjunction.
   not replacements).
 - Not committing to a cache backend (Q1/Q2 are operator-bar).
 - Not bridging missing modeling with a "temporary" carrier — every named
-  prerequisite (per-step timeout, worker_count, content-addressed gunbc output)
-  is a structural fact that needs modeling, not a heuristic.
+  prerequisite (`ExecutionBudget` / `ParallelismShape` + `ReducerLaws` per
+  §4.0b/c, content-addressed gunbc output) is a structural fact that needs
+  modeling, not a heuristic. Authored `worker_count` / `timeout: Duration`
+  fields are explicitly forbidden (§4.0d).
 
 ---
 
