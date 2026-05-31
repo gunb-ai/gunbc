@@ -25,8 +25,8 @@ import v4.std.leaf_model_verification {
   LeafModelClaimId,
   LeafModelVerificationRunReceipt,
   leaf_model_claim_python_r1_int_surface_spelling,
-  TargetCompileRejected,
-  TargetCompileVerdict,
+  TargetPythonExerciseVerdict,
+  TargetPythonExecRejected,
   target_diagnostic_python_name_error_undefined_name
 }
 import v4.std.logic { Bool }
@@ -109,6 +109,6 @@ data claim_python_r1_surface_spelling_fact_ids_stable: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data python_r1_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
+data python_r1_modeled_falsification_expectation: TargetPythonExerciseVerdict = TargetPythonExecRejected {
   diagnostic_code: target_diagnostic_python_name_error_undefined_name
 }
