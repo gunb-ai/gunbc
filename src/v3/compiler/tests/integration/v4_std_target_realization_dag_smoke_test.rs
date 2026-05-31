@@ -599,7 +599,8 @@ fn v4_rust_language_model_declares_use_site_ownership_rows() {
         "{RUST_LANGUAGE_PATH}: Rc/Box surface tokens must live on TargetModel bundle"
     );
     assert!(
-        RUST_LANGUAGE_DAG.contains("rust_sg_rc_ctor_rc_new") && RUST_LANGUAGE_DAG.contains("Rc::new"),
+        RUST_LANGUAGE_DAG.contains("rust_sg_rc_ctor_rc_new")
+            && RUST_LANGUAGE_DAG.contains("Rc::new"),
         "{RUST_LANGUAGE_PATH}: value ctor symbols must have binding_spellings realization"
     );
     assert!(
