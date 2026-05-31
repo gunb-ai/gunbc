@@ -89,13 +89,63 @@ Emit must not fabricate meet/join stubs.
 
 ---
 
+## §5 Landing order (implementation — not worksheet-only PR)
+
+```text
+1. TargetCollectionRealization carrier + choice/witness coproducts in v4.std.target_model.
+2. Rust Set collection_realization row on rust TargetModel bundle (extdeps/languages/rust.dag).
+3. 06_translate collection projection consumes primary + alternatives OR fail-closed fallback.
+4. bounded_lattice_completeness.dag (cycle-breaker) + 04_infer consumer completeness gate.
+5. Manual falsification claims: sg5_set_non_ordable_falsification + infer_bounded_lattice_completeness_anchor.
+```
+
+**Lane split:** Target Realization owns steps 1–3; Compiler Spine owns step 4; Runtime/TestClaim owns step 5.
+
+---
+
+## §6 Downstream worker brief (dispatch after §8)
+
+```text
+Implement SG-5 + SG-6 per approved worksheet §10.0 on main.
+
+MUST:
+  - Author TargetCollectionRealization in v4.std.target_model; Rust Set row(s) in rust.dag;
+    refactor 06_translate collection projection to consume bundle rows (fail-closed fallback).
+  - Author bounded_lattice_instance_completeness in v4.std.bounded_lattice_completeness;
+    wire 04_infer consumer gate (partial declarations tagged; consumer sites reject).
+  - Land manual falsification probes: Set<NonOrdable> fail-closed (SG-5 CompilesClaim);
+    missing-meet BoundedLattice infer rejection (SG-6 CompilesClaim).
+  - Include variant-shape histogram for new coproduct arms (v4-substrate-pr-review-gate §3).
+
+MUST NOT:
+  - Rust-side T: Ord patches without model authority; silent BTreeSet default; dummy meet/join at emit.
+  - Fold SG-COLLECTION-PROJECTION FreeMonoid→Vec band into this PR without Modeling DFS ack.
+  - Use SG-5/6 rustc error-count reduction as acceptance.
+
+Escalate to Modeling DFS:
+  - declared_inhabitants witness wiring required before dissolving 🟡 SG-5-element-trait-eligibility.
+  - Structural set_carrier recognition without Cardinality predicate (🟡 SG-5-set-carrier-recognition).
+  - Need Map collection row beyond catalog scope without worksheet amendment.
+```
+
+---
+
+## §7 Non-goals
+
+- SG-COLLECTION-PROJECTION (~170 FreeMonoid→Vec errors) — separate dispatch; do not fold into SG-5/6 PR
+- SG-RC-LAYERING / SG-1b / emit-binary M1 probe as primary acceptance
+- `ci.dag` / ci.yml / shell gate migration
+- Dissolving 🟡 MVP-1 kernel-atom eligibility or set_carrier predicate without named dissolve-on
+
+---
+
 ## §8 Manager approval checklist (`cool-ibex-692`) — CLOSED 2026-05-30
 
 - [x] Single-authority facts identified (collection realization + infer gate)
 - [x] Spot-fixes forbidden (Ord patches, stub meet/join)
 - [x] Two work items (not one "fix SG-5/6" blob)
 - [x] Falsification probes accepted
-- [ ] Worker dispatch — **authorized** (may parallel SG-2/SG-1 chain; independent substrate)
+- [x] Worker dispatch — **authorized** (`keen-bat-825`; Modeling DFS GO 2026-05-31)
 
 ## Related artifacts
 

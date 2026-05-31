@@ -130,6 +130,7 @@ print(
             },
             "falsification": {
                 "python_exit": int(os.environ["V4_PYTHON_R1_FALSIFICATION_STATUS"]),
+                "expected_authority": "exec",
                 "expected_diagnostic": "NameError:i32",
                 "name_error_i32_observed": bool(
                     re.search(r"NameError: name 'i32' is not defined", stderr)

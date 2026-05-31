@@ -402,6 +402,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `run_target_verification` owns target verdicts; interim host runner
     // `scripts/v4-leaf-model-python-r1-verify.sh`.
     "src/v3/compiler/tests/boundary/v4_leaf_model_python_r1_test.rs",
+    // Phase 1 leaf-model python R2a/R2b/R3-external (MW-D3 cross-target widening): boundary
+    // CPython exercise for R2a algebra ops, R2b arbitrary-precision add, R3-external Symbol
+    // projection; host runners scripts/v4-leaf-model-python-r2{a,b,r3-external}-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_r2_r3_external_test.rs",
     // Phase 1 leaf-model verification R1 (`docs/planning/v4-leaf-model-verification-2026-05-30.md` §7):
     // boundary rustc exercise for `src/v4/lens/leaf_model_verification.dag` fixtures until
     // T-22 modeled `run_target_verification` owns target verdicts.
@@ -944,7 +948,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-33: parse ratchet on `src/v4/std/model_core.dag` — Ratified Q1 ModelCore carrier.
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS.md.
+    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
+    // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
     "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
