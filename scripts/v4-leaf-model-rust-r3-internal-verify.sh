@@ -42,6 +42,8 @@ proven=false
 [[ "$status" -eq 0 && "$failed" -eq 0 && "$passed" -gt 0 ]] && proven=true
 
 export V4_R3_INTERNAL_CARGO_EXIT="$status"
+export V4_R3_INTERNAL_TESTS_PASSED="$passed"
+export V4_R3_INTERNAL_TESTS_FAILED="$failed"
 export V4_R3_INTERNAL_PROVEN="$proven"
 
 python3 - <<'PY'
@@ -54,17 +56,14 @@ print(
             "schema": "scripts/v4-leaf-model-rust-r3-internal-verify.sh::host_receipt_v1",
             "claim_id": "RustR3InternalSymbolEmitCoupling",
             "cargo_exit": int(os.environ["V4_R3_INTERNAL_CARGO_EXIT"]),
-            "tests_passed": int(os.environ.get("V4_R3_INTERNAL_TESTS_PASSED", "0")),
-            "tests_failed": int(os.environ.get("V4_R3_INTERNAL_TESTS_FAILED", "0")),
+            "tests_passed": int(os.environ["V4_R3_INTERNAL_TESTS_PASSED"]),
+            "tests_failed": int(os.environ["V4_R3_INTERNAL_TESTS_FAILED"]),
             "proven": os.environ["V4_R3_INTERNAL_PROVEN"] == "true",
         },
         indent=2,
     )
 )
 PY
-
-export V4_R3_INTERNAL_TESTS_PASSED="$passed"
-export V4_R3_INTERNAL_TESTS_FAILED="$failed"
 
 if [[ "$proven" != true ]]; then
   echo "error: leaf-model R3-internal verification failed (cargo test)" >&2
