@@ -1215,6 +1215,8 @@ data ci_projection_char_offset_neg_edge: Symbol = ci_projection_char_offset_neg_
 data ci_projection_char_offset_quotient_edge: Symbol = ci_projection_char_offset_quotient_edge
 data ci_projection_char_offset_byte_edge: Symbol = ci_projection_char_offset_byte_edge
 data ci_projection_command_variant_edge: Symbol = ci_projection_command_variant_edge
+data ci_projection_command_profile_edge: Symbol = ci_projection_command_profile_edge
+data ci_projection_command_schedule_edge: Symbol = ci_projection_command_schedule_edge
 data ci_cache_bootstrap_plan_hash_pins_rejected_tag: Symbol = ci_cache_bootstrap_plan_hash_pins_rejected_tag
 data ci_projection_command_produces_edge: Symbol = ci_projection_command_produces_edge
 data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_name_edge
@@ -3308,7 +3310,13 @@ fn ci_job_selected_by_affected(
 
 
 fn ci_jobs_matching_ids(jobs: List<CiJob>, ids: List<Symbol>) -> List<CiJob> {
-  filter(xs: jobs, predicate: fn(j) { ci_member(s: j.id, ids: ids) })
+  fold(jobs, init: [], f: fn(acc, j) {
+    if ci_member(s: j.id, ids: ids) {
+      concat([j], acc)
+    } else {
+      acc
+    }
+  })
 }
 
 
