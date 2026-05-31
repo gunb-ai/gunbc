@@ -359,3 +359,65 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
         "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
     );
 }
+
+#[test]
+fn emit_host_runner_python_row_runs_and_parses_stdout() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_v4_emit_host_py_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "w34_py_claim_input".to_string(),
+        expected_eval_root: "w34_py_expected_eval".to_string(),
+    };
+    let receipt = emit_host_runner::run_emit_host_python(
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+        &inputs,
+        &work_dir,
+    )
+    .expect("run_emit_host_python");
+    assert!(receipt.exit.exit_holds());
+    emit_host_runner::runtime_value_parse_python(&receipt.stdout_bytes).expect("parse");
+}
+
+#[test]
+fn v4_nat_semiring_rung_6_dag_tokenizes_and_parses_additive_monoid_emit_rows() {
+    let module = parse_module(NAT_SEMIRING_RUNG_6_DAG, NAT_SEMIRING_RUNG_6_PATH);
+    for name in [
+        "run_phase1_nat_semiring_rung6_rust_add_left_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_rust_add_right_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_rust_add_associativity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_add_left_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_add_right_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_add_associativity_emit_equals_eval",
+    ] {
+        assert!(
+            surface_declares_data(&module, name),
+            "{NAT_SEMIRING_RUNG_6_PATH}: missing rung-6 row {name}"
+        );
+    }
+    let common = parse_module(RUNG_5_6_COMMON_DAG, RUNG_5_6_COMMON_PATH);
+    assert!(
+        surface_declares_data(&common, "rung56_emit_host_python_target_model"),
+        "{RUNG_5_6_COMMON_PATH}: python TargetModel"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung56_eval_dag_tokenizes_and_parses_rung6_gate() {
+    let module = parse_module(NAT_SEMIRING_RUNG56_EVAL_DAG, NAT_SEMIRING_RUNG56_EVAL_PATH);
+    for name in [
+        "nat_semiring_rung56_report_has_evidence",
+        "nat_semiring_rung6_gate",
+        "run_nat_semiring_rung56_eval",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{NAT_SEMIRING_RUNG56_EVAL_PATH}: missing fn {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(&module, "nat_semiring_rung6_additive_monoid_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG56_EVAL_PATH}: tranche-1 additive-Monoid roster"
+    );
+}
