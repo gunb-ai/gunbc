@@ -3420,10 +3420,11 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: false,
         release_distribution: false
       )
+    // Lens-CI YAML steps gate v4|workflow_policy only (ci.yml smoke + semantic); no v3 disjunct.
     LensCiCommand { required_lenses: _ } =>
       ci_job_component_mask_row(
         v2: false,
-        v3: true,
+        v3: false,
         v4: true,
         testclaim_corpus: false,
         workflow_policy: true,

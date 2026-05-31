@@ -1150,6 +1150,40 @@ fn v4_workflow_ci_bankruptcy_tier0_needs_closure_is_bounded_and_skips_unresolved
 }
 
 #[test]
+fn v4_workflow_ci_bankruptcy_tier0_lens_ci_mask_matches_ci_yml() {
+    assert!(
+        CI_DAG.contains(
+            "LensCiCommand { required_lenses: _ } =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true,\n        testclaim_corpus: false,\n        workflow_policy: true,\n        release_distribution: false\n      )"
+        ),
+        "{CI_DAG_PATH}: LensCiCommand mask must match ci.yml step if (v4|workflow_policy; no v3 — I1 parity)"
+    );
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
+    let smoke_step_name = expr_string(record_body_field(live_signal, "smoke_step_name"));
+    let semantic_step_name = expr_string(record_body_field(live_signal, "semantic_step_name"));
+    let smoke_step = workflow_step_block(CI_YML, &smoke_step_name);
+    let semantic_step = workflow_step_block(CI_YML, &semantic_step_name);
+    assert!(
+        !smoke_step.contains("needs.affected.outputs.v3 == 'true'"),
+        "{CI_YML_PATH}: `{smoke_step_name}` must not gate on v3"
+    );
+    assert!(
+        smoke_step.contains("needs.affected.outputs.v4 == 'true'")
+            && smoke_step.contains("needs.affected.outputs.workflow_policy == 'true'"),
+        "{CI_YML_PATH}: `{smoke_step_name}` must gate on v4|workflow_policy"
+    );
+    assert!(
+        !semantic_step.contains("needs.affected.outputs.v3 == 'true'"),
+        "{CI_YML_PATH}: `{semantic_step_name}` must not gate on v3"
+    );
+    assert!(
+        semantic_step.contains("needs.affected.outputs.v4 == 'true'")
+            && semantic_step.contains("needs.affected.outputs.workflow_policy == 'true'"),
+        "{CI_YML_PATH}: `{semantic_step_name}` must gate on v4|workflow_policy"
+    );
+}
+
+#[test]
 fn v4_workflow_ci_bankruptcy_tier0_binding_step_matches_generated_workflow() {
     assert!(
         CI_WORKFLOW_DAG.contains(&format!(
