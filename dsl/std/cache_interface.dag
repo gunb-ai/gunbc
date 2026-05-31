@@ -18,6 +18,8 @@ type StorageSurface = NonEmptyStr where brand("StorageSurface")
 type LogicalTime = NonEmptyStr where brand("LogicalTime")
 type ByteSize = Measure<Memory, One>
 
+// 🟡 STAGED — Worksheet B §1.6 dimension vocabulary (falsification case 16); terminal
+// per backend row, not a closed CacheKind enum.
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
 
 // Cache-store placement only — compute demand uses ComputeArtifactLocality (Worksheet A).
@@ -39,6 +41,7 @@ type AuthScope = None | FilesystemPerms | ApiKey | NetworkAcl
 type ReadLatencyClass = InProcessNs | LocalDiskUs | LanMs | WanTensMs
 type ConsistencyModel = Strong | Eventual | ReadYourWrites
 
+// 🟢 TERMINAL — typed cache reject reasons (case 15); no prose NonEmptyStr authority.
 type CacheRejectReason
   = SubjectDigestMismatch
   | ContentDigestMismatch
@@ -110,6 +113,7 @@ type KeyDerivationFacts {
 
 // --- §1.1 authority rows + evidence ------------------------------------------
 
+// 🟢 TERMINAL — vendor evidence carriers (case 19).
 type CacheRowEvidence
   = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
   | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
@@ -121,9 +125,18 @@ type CacheEvidence {
   evidence: CacheRowEvidence
 }
 
+// Per-row authority for ProviderKey transport shape (case 12 / 17 / 14); projection
+// reads this field only — no KeyDerivationClass fallback.
+type ProviderKeyEncoding
+  = OpaqueStringEncoding
+  | SccacheInternalEncoding
+  | CasContentEncoding
+  | CargoFingerprintEncoding
+
 type CacheInterfaceFacts {
   identity: CacheInterfaceId
   backing_surface: StorageSurface
+  transport_encoding: ProviderKeyEncoding
   key_derivation: KeyDerivationFacts
   lookup_semantics: CacheLookupSemantics
   write_semantics: CacheWriteSemantics
@@ -149,6 +162,7 @@ type ArtifactIdentity<T> {
   artifact_kind: ArtifactKindId
 }
 
+// 🟢 TERMINAL — backend-specific transport carriers (exploration §4.0g ~830–832).
 type ProviderKey
   = OpaqueStringKey { key: NonEmptyStr }
   | SccacheInternalHash { digest: ContentHash }
@@ -174,6 +188,7 @@ type ExecutionReceiptRef<T> {
   receipt_digest: ContentHash
 }
 
+// 🟢 TERMINAL — sole producer discriminant; ExecutionReceiptRef is digest-only.
 type ProducerReceipt<T>
   = InternalExecution { receipt: ExecutionReceiptRef<T> }
   | VendorArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
@@ -187,6 +202,7 @@ type CachedArtifactReceipt<T> {
   content_digest: ContentHash
 }
 
+// 🟢 TERMINAL — lookup outcome (case 15 RejectedHit uses CacheRejectReason).
 type CacheLookupResult<T>
   = Hit { receipt: CachedArtifactReceipt<T> }
   | Miss
@@ -199,6 +215,7 @@ data gha_actions_cache_id: CacheInterfaceId = "gha_actions_cache"
 data gha_actions_cache_facts: CacheInterfaceFacts = {
   identity: gha_actions_cache_id
   backing_surface: "github-actions-cache-api"
+  transport_encoding: OpaqueStringEncoding
   key_derivation: {
     classification: HandAuthoredString
     inputs_considered: [UpsertSubject, FilePaths]
@@ -248,6 +265,7 @@ data sccache_local_id: CacheInterfaceId = "sccache_local"
 data sccache_local_facts: CacheInterfaceFacts = {
   identity: sccache_local_id
   backing_surface: "sccache-local-disk"
+  transport_encoding: SccacheInternalEncoding
   key_derivation: {
     classification: NativeInternalHash
     inputs_considered: [RustcInvocation, ToolchainSpec]
@@ -291,6 +309,7 @@ data buildbuddy_cas_id: CacheInterfaceId = "buildbuddy_cas"
 data buildbuddy_cas_facts: CacheInterfaceFacts = {
   identity: buildbuddy_cas_id
   backing_surface: "buildbuddy-remote-cas"
+  transport_encoding: CasContentEncoding
   key_derivation: {
     classification: ContentAddressedByValue
     inputs_considered: [UpsertSubject]
@@ -340,6 +359,7 @@ data cargo_target_dir_id: CacheInterfaceId = "cargo_target_dir"
 data cargo_target_dir_facts: CacheInterfaceFacts = {
   identity: cargo_target_dir_id
   backing_surface: "cargo-target-directory"
+  transport_encoding: CargoFingerprintEncoding
   key_derivation: {
     classification: NativeInternalHash
     inputs_considered: [RustcInvocation, FilePaths, ToolchainSpec]
@@ -375,6 +395,7 @@ data rustup_toolchain_store_id: CacheInterfaceId = "rustup_toolchain_store"
 data rustup_toolchain_store_facts: CacheInterfaceFacts = {
   identity: rustup_toolchain_store_id
   backing_surface: "rustup-toolchains-dir"
+  transport_encoding: OpaqueStringEncoding
   key_derivation: {
     classification: NativeInternalHash
     inputs_considered: [ToolchainSpec]
@@ -427,25 +448,10 @@ fn cache_key_projection_transport<T>(artifact: ArtifactIdentity<T>, backend: Cac
 }
 
 fn cache_key_projection_provider_key<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> ProviderKey {
-  // Per-backend transport encoding (exploration §4.0g ~830–832) — store identity,
-  // not KeyDerivationClass alone; preserves falsification cases 12 / 17.
-  match backend.identity {
-    "gha_actions_cache" => OpaqueStringKey { key: artifact.subject_digest }
-    "buildbuddy_cas" => CasContentDigest { digest: artifact.subject_digest }
-    "sccache_local" => SccacheInternalHash { digest: artifact.subject_digest }
-    "cargo_target_dir" => CargoFingerprint { digest: artifact.subject_digest }
-    "rustup_toolchain_store" => OpaqueStringKey { key: artifact.subject_digest }
-    _ => cache_key_projection_provider_key_from_classification(
-      artifact: artifact,
-      kd: backend.key_derivation,
-    )
-  }
-}
-
-fn cache_key_projection_provider_key_from_classification<T>(artifact: ArtifactIdentity<T>, kd: KeyDerivationFacts) -> ProviderKey {
-  match kd.classification {
-    ContentAddressedByValue => CasContentDigest { digest: artifact.subject_digest }
-    HandAuthoredString => OpaqueStringKey { key: artifact.subject_digest }
-    NativeInternalHash => SccacheInternalHash { digest: artifact.subject_digest }
+  match backend.transport_encoding {
+    OpaqueStringEncoding => OpaqueStringKey { key: artifact.subject_digest }
+    SccacheInternalEncoding => SccacheInternalHash { digest: artifact.subject_digest }
+    CasContentEncoding => CasContentDigest { digest: artifact.subject_digest }
+    CargoFingerprintEncoding => CargoFingerprint { digest: artifact.subject_digest }
   }
 }
