@@ -81,12 +81,13 @@ This roster classifies the live `src/v4/TASKS.md` task list against the P1 close
 | `T-33` (std/model_core.dag — shared substrate factoring) | yes | `PROVEN` | Header: `[DONE]`. |
 | `T-33-Q10` (std/model_core.dag effect / partiality carriers) | yes | `GAP` (engineering_state SCHEDULED) | `[SCHEDULED]` tag; effect/partiality wave-2b ongoing per §T-33-Q10. |
 | `T-34` (std/runtime.dag + extdeps/runtimes/*.dag) | yes | `PROVEN` | Header: `[DONE]`. |
+| `T-QN-1` (QualifiedName infrastructure — Change 1, prerequisite for T-35) | yes | `PROVEN` | Header: `[DONE]` (ratified 2026-05-27 per §body). `QualifiedName` substrate landed in `std/qualified_name.dag`. |
 | `T-35` (virtual module-loader + ModuleBatch — filesystem-free ingest) | yes | `GAP` (engineering_state SCHEDULED) | `[SCHEDULED]` tag. |
 | `T-36` (Omni ingest demo: round-trip fidelity claim) | yes | `GAP` (engineering_state IN_PROGRESS) | `[IN PROGRESS — PR open]` tag; round-trip eval now live at `05_eval.dag:1895-1907` per PR #4032; full claim receipt pending. |
 | `T-37` (v2 DAG artifact serializer fix) | yes | `PROVEN` | Header: `[DONE — #3791]`. |
 | `T-38` (TestClaim execution harness) | yes | `GAP` (engineering_state SCHEDULED) | `[SCHEDULED]` tag; #3902 wedge landed but full harness blocked per §T-38; cross-cuts P5 close + MW-D8 C4 unblock path. |
 
-**Row count:** 49 tasks enumerated (T-1, T-2, T-3, T-4, T-4.5, T-4.6, T-4.7, T-4.8, T-4.9, T-4.10, T-4.11, T-4.12, T-4.13, T-4.14, T-4.15, T-4.16, T-4.17, T-4.18, T-4.19, T-5, T-6, T-7, T-8, T-9, T-10, T-11, T-12, T-13, T-14, T-15, T-16, T-17, T-18, T-19, T-20, T-21, T-22, T-23, T-24, T-25, T-26, T-27, T-28, T-28-B, T-29, T-30, T-31, T-32, T-33, T-33-Q10, T-34, T-35, T-36, T-37, T-38).
+**Row count:** **56 tasks enumerated** (T-1, T-2, T-3, T-4, T-4.5, T-4.6, T-4.7, T-4.8, T-4.9, T-4.10, T-4.11, T-4.12, T-4.13, T-4.14, T-4.15, T-4.16, T-4.17, T-4.18, T-4.19, T-5, T-6, T-7, T-8, T-9, T-10, T-11, T-12, T-13, T-14, T-15, T-16, T-17, T-18, T-19, T-20, T-21, T-22, T-23, T-24, T-25, T-26, T-27, T-28, T-28-B, T-29, T-30, T-31, T-32, T-33, T-33-Q10, T-34, T-QN-1, T-35, T-36, T-37, T-38). Cross-checked against `grep -E '^### T-' src/v4/TASKS.md` on `origin/main` (51 section headers, with `### T-4.9 … T-4.14` umbrella expanded into 6 per-task rows because each has its own `#### T-4.X` body subsection).
 
 ---
 
@@ -94,16 +95,14 @@ This roster classifies the live `src/v4/TASKS.md` task list against the P1 close
 
 | Disposition | Count | Tasks |
 | ----------- | -----:| ----- |
-| `PROVEN` | **6** | T-17, T-19, T-28 (via dissolution), T-29, T-33, T-34, T-37 — actually **7** rows |
-| `GAP` | **39** | the in-flight / scheduled / active corpus |
+| `PROVEN` | **8** | T-17, T-19, T-28 (via dissolution), T-29, T-33, T-34, T-QN-1, T-37 |
+| `GAP` | **45** | the in-flight / scheduled / active corpus |
 | `ODR` | **2** | T-5 (REMOVED), T-27 (DROPPED) — both operator-ratified-already, no fresh proposals |
 | `NOT-PROMISED` | **0** | none surfaced on this HEAD |
 | **excluded** | **1** | T-15 (P1's own text excepts it) |
-| **Total** | **48 in P1 scope + 1 excluded = 49** | |
+| **Total** | **55 in P1 scope + 1 excluded = 56** | |
 
-*(Spot-correction to the table prose above: count of PROVEN is 7, not 6, due to T-28 dissolution-as-receipt. Re-tally: PROVEN = 7, GAP = 39, ODR = 2, NOT-PROMISED = 0, excluded = 1 — total 49.)*
-
-**P1-headline:** **7 / 48 PROVEN** in P1 scope on this HEAD. 39 GAP rows are the in-flight corpus the live PR / sub-task waves are working through. No row stays GAP for "no owner" reasons; every GAP row's `blocking_receipt` cites a named substrate / consumer / activation receipt or a `[SCHEDULED]` / `[ACTIVE]` header.
+**P1-headline:** **8 / 55 PROVEN** in P1 scope on this HEAD. 45 GAP rows are the in-flight corpus the live PR / sub-task waves are working through. No row stays GAP for "no owner" reasons; every GAP row's `blocking_receipt` cites a named substrate / consumer / activation receipt or a `[SCHEDULED]` / `[ACTIVE]` header.
 
 ---
 
