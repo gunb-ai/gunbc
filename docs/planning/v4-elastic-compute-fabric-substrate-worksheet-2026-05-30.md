@@ -1,6 +1,6 @@
 # v4 Modeling DFS Worksheet — Elastic compute fabric + cache substrate (fractal Upsert chain)
 
-> **Status:** WORKSHEET DRAFT — pending Modeling DFS Manager §8 sign-off (proud-pike-680).
+> **Status:** WORKSHEET APPROVED — Modeling DFS Manager §8 sign-off 2026-05-31 (proud-pike-680; PR #4095). **READY-FOR-IMPLEMENTATION-DISPATCH** once #4095 merges to main.
 > **Date:** 2026-05-30
 > **Author:** sharp-wolf-824 (worker under proud-pike-680)
 > **Dispatch anchor:** node://adhoc-2e6e2313-8a5 — PR #4091 §4.0f / §4.0g acceptance (worksheet-only slice)
@@ -11,7 +11,7 @@
 
 ## Mechanical dispatch rule
 
-> **No compute-fabric / cache-substrate implementation worker may be dispatched until this worksheet is Modeling DFS Manager–approved.**
+> **Compute-fabric / cache-substrate implementation workers may dispatch per §6 Phase A–E after PR #4095 merges (§8 closed 2026-05-31).**
 
 Same discipline as PR #3938 §10.0 / §11.1: the worksheet is reviewable authority; implementation PRs are downstream. Acceptance of the **implementation** lane is falsification cases 1–15 passing against landed types — not YAML wall-clock wins.
 
@@ -609,15 +609,15 @@ Escalate proud-pike-680:
 
 ---
 
-## §10 Manager approval checklist (proud-pike-680)
+## §10 Manager approval checklist (proud-pike-680) — CLOSED 2026-05-31
 
-- [ ] §1 canonical signatures approved (WorkDemand naming, ProcessorKind vs ResourceEnvelope discipline)
-- [ ] §4 forbidden register accepted (ComputeKind / CacheKind escalation path)
-- [ ] §5 falsification 1–15 mapping accepted
-- [ ] §6 landing order accepted (bottom-up srv1/srv2 before abstraction consumers)
-- [ ] §8 out-of-scope boundary accepted
-- [ ] Parser gates §2 split (P-ECF-TYPE vs Witness/SymbolicCost deferral) accepted
-- [ ] Substrate implementation worker dispatch authorized (separate PR)
+- [x] §1 canonical signatures approved (WorkDemand naming, ProcessorKind vs ResourceEnvelope discipline)
+- [x] §4 forbidden register accepted (ComputeKind / CacheKind escalation path)
+- [x] §5 falsification 1–15 mapping accepted
+- [x] §6 landing order accepted (bottom-up srv1/srv2 before abstraction consumers)
+- [x] §8 out-of-scope boundary accepted
+- [x] Parser gates §2 split (P-ECF-TYPE vs Witness/SymbolicCost deferral) accepted
+- [x] Substrate implementation worker dispatch authorized (separate PR per §6 A–E)
 
 ---
 
