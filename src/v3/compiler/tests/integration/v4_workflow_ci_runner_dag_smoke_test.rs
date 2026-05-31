@@ -40,6 +40,7 @@ const CI_CHANGED_PATH_AFFECTS_FNS: &[&str] = &[
     "ci_changed_path_affects_v2",
     "ci_changed_path_affects_v3",
     "ci_changed_path_affects_v4",
+    "ci_changed_path_affects_testclaim_corpus",
     "ci_changed_path_affects_workflow_policy",
     "ci_changed_path_affects_release_distribution",
 ];
@@ -49,6 +50,7 @@ struct CiAffectedFixture {
     v2: bool,
     v3: bool,
     v4: bool,
+    testclaim_corpus: bool,
     workflow_policy: bool,
     release_distribution: bool,
 }
@@ -60,6 +62,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: true,
         v3: false,
         v4: false,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: false,
     },
@@ -68,6 +71,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: false,
         v3: true,
         v4: false,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: false,
     },
@@ -76,6 +80,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: false,
         v3: true,
         v4: true,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: false,
     },
@@ -84,6 +89,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: false,
         v3: false,
         v4: true,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: false,
     },
@@ -92,6 +98,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: false,
         v3: false,
         v4: true,
+        testclaim_corpus: false,
         workflow_policy: true,
         release_distribution: false,
     },
@@ -99,7 +106,71 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         path: "src/v4/workflow/release.dag",
         v2: false,
         v3: false,
+        v4: false,
+        testclaim_corpus: false,
+        workflow_policy: false,
+        release_distribution: true,
+    },
+    CiAffectedFixture {
+        path: "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag",
+        v2: false,
+        v3: false,
+        v4: false,
+        testclaim_corpus: true,
+        workflow_policy: false,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
+        path: "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+        v2: false,
+        v3: false,
+        v4: false,
+        testclaim_corpus: true,
+        workflow_policy: false,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
+        path: "src/v4/test/claim/manual/mvp1_rust_add_translate.dag",
+        v2: false,
+        v3: false,
         v4: true,
+        testclaim_corpus: true,
+        workflow_policy: false,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
+        path: "src/v4/test/coercion_fold_int_rust_fixture.dag",
+        v2: false,
+        v3: false,
+        v4: true,
+        testclaim_corpus: false,
+        workflow_policy: false,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
+        path: "install.sh",
+        v2: false,
+        v3: false,
+        v4: false,
+        testclaim_corpus: false,
+        workflow_policy: false,
+        release_distribution: true,
+    },
+    CiAffectedFixture {
+        path: "scripts/release-target-triples.sh",
+        v2: false,
+        v3: false,
+        v4: false,
+        testclaim_corpus: false,
+        workflow_policy: false,
+        release_distribution: true,
+    },
+    CiAffectedFixture {
+        path: "src/v4/install/install.dag",
+        v2: false,
+        v3: false,
+        v4: false,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: true,
     },
@@ -108,6 +179,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: true,
         v3: false,
         v4: true,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: false,
     },
@@ -116,6 +188,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: false,
         v3: false,
         v4: false,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: false,
     },
@@ -201,6 +274,31 @@ fn assert_ci_dag_rust_bucket_parity(fn_name: &str) {
     );
 }
 
+fn assert_ci_dag_rust_mirror_release_distribution_only_parity() {
+    use ci_affected_components::{
+        ci_component_affected_from_changed_paths, ci_release_distribution_only_from_changed_paths,
+    };
+    assert!(ci_release_distribution_only_from_changed_paths([
+        "install.sh",
+        "src/v4/install/install.dag",
+    ]));
+    assert!(!ci_release_distribution_only_from_changed_paths([
+        "install.sh",
+        "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+    ]));
+    assert!(!ci_release_distribution_only_from_changed_paths([
+        "install.sh",
+        "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+    ]));
+    let mixed = ci_component_affected_from_changed_paths([
+        "install.sh",
+        "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+    ]);
+    assert!(mixed.release_distribution);
+    assert!(mixed.v4);
+    assert!(!mixed.release_distribution_only);
+}
+
 fn assert_ci_dag_rust_mirror_behavioral_parity() {
     use ci_affected_components::ci_component_affected_from_changed_paths;
     for fixture in CI_AFFECTED_BEHAVIORAL_FIXTURES {
@@ -208,6 +306,11 @@ fn assert_ci_dag_rust_mirror_behavioral_parity() {
         assert_eq!(flags.v2, fixture.v2, "path `{}`: v2 flag", fixture.path);
         assert_eq!(flags.v3, fixture.v3, "path `{}`: v3 flag", fixture.path);
         assert_eq!(flags.v4, fixture.v4, "path `{}`: v4 flag", fixture.path);
+        assert_eq!(
+            flags.testclaim_corpus, fixture.testclaim_corpus,
+            "path `{}`: testclaim_corpus flag",
+            fixture.path
+        );
         assert_eq!(
             flags.workflow_policy, fixture.workflow_policy,
             "path `{}`: workflow_policy flag",
@@ -225,6 +328,7 @@ fn assert_ci_dag_rust_mirror_full_parity() {
     for fn_name in CI_CHANGED_PATH_AFFECTS_FNS {
         assert_ci_dag_rust_bucket_parity(fn_name);
     }
+    assert_ci_dag_rust_mirror_release_distribution_only_parity();
     assert_ci_dag_rust_mirror_behavioral_parity();
 }
 
@@ -471,6 +575,7 @@ fn v4_workflow_ci_component_bucket_prefixes_align_rust_mirror() {
         "ci_changed_path_affects_v2",
         "ci_changed_path_affects_v3",
         "ci_changed_path_affects_v4",
+        "ci_changed_path_affects_testclaim_corpus",
     ] {
         assert_ci_dag_rust_bucket_parity(fn_name);
     }
@@ -588,6 +693,18 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),
         "{CI_YML_PATH}: M1 step must project modeled cargo-check job cap"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_testclaim_corpus_bridge_runs_for_claim_changes() {
+    let step_name = "T-22 TestClaim corpus structural bridge — manual .dag corpus";
+    let step = workflow_step_block(CI_YML, step_name);
+    assert!(
+        step.contains("needs.affected.outputs.v4 == 'true'")
+            && step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
+            && step.contains("needs.affected.outputs.workflow_policy == 'true'"),
+        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, and workflow-policy changes"
     );
 }
 

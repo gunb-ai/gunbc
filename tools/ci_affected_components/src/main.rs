@@ -66,8 +66,14 @@ fn write_github_output(path: &str, flags: CiComponentAffected) -> io::Result<()>
     writeln!(file, "v2={}", flags.v2)?;
     writeln!(file, "v3={}", flags.v3)?;
     writeln!(file, "v4={}", flags.v4)?;
+    writeln!(file, "testclaim_corpus={}", flags.testclaim_corpus)?;
     writeln!(file, "workflow_policy={}", flags.workflow_policy)?;
     writeln!(file, "release_distribution={}", flags.release_distribution)?;
+    writeln!(
+        file,
+        "release_distribution_only={}",
+        flags.release_distribution_only
+    )?;
     Ok(())
 }
 
@@ -125,12 +131,24 @@ fn main() -> ExitCode {
         }
     );
     eprintln!(
+        "testclaim_corpus (T-22 corpus bridge): {}",
+        if flags.testclaim_corpus { "yes" } else { "no" }
+    );
+    eprintln!(
         "workflow_policy (Gate #103 surface): {}",
         if flags.workflow_policy { "yes" } else { "no" }
     );
     eprintln!(
         "release_distribution (RELEASE §5 parity smoke): {}",
         if flags.release_distribution {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+    eprintln!(
+        "release_distribution_only (RELEASE §5 skip phase1 rung): {}",
+        if flags.release_distribution_only {
             "yes"
         } else {
             "no"

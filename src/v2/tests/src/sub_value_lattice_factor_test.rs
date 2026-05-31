@@ -1,7 +1,7 @@
 //! P2 / single-authority: `meet_sub_value` and `join_sub_value` must not drop
 //! cost-relevant `ShrinkFactor` when field or param keys align (PR #726 review).
 //!
-//! PATH-2-FULL → option (A) Inc-split (operator-ratified 2026-05-21): SubValueRelation
+//! PATH-2-FULL → option (A) Inc-split (2026-05-21): SubValueRelation
 //! merge algebra over seven lawful inhabitants (plus `SubValueUnknown` ⊥). The two top
 //! inhabitants — `StrictAxisErased` (above strict-style witnesses, proj=Strict) and
 //! `MixedTop` (overall join-⊤, proj=NonIncreasing) — resolve the codex #15892 vs #15942
@@ -23,8 +23,7 @@
 //!   - strict-cone boundary: meet(StrictAxisErased, PreservedValue) drops to
 //!     NonIncreasingValue (the GLB across the strict/non-strict boundary).
 //!   - **meet vs MixedTop**: meet(MixedTop, X) → NonIncreasingValue — MixedTop is join-⊤
-//!     only; meet must not strengthen proj(meet) above NonIncreasing. (operator-ratified
-//!     follow-up to #3505)
+//!     only; meet must not strengthen proj(meet) above NonIncreasing. (follow-up to #3505)
 
 use std::rc::Rc;
 

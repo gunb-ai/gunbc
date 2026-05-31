@@ -13,8 +13,12 @@ pub struct CiComponentAffected {
     pub v2: bool,
     pub v3: bool,
     pub v4: bool,
+    pub testclaim_corpus: bool,
     pub workflow_policy: bool,
     pub release_distribution: bool,
+    /// True when every changed path that triggers any CI component bucket is a
+    /// release-distribution path and at least one such path is present.
+    pub release_distribution_only: bool,
 }
 
 /// Mirror of `ci_component_affected_fail_closed` — all components affected (INVARIANTS P3).
@@ -23,8 +27,10 @@ pub fn ci_component_affected_fail_closed() -> CiComponentAffected {
         v2: true,
         v3: true,
         v4: true,
+        testclaim_corpus: true,
         workflow_policy: true,
         release_distribution: true,
+        release_distribution_only: false,
     }
 }
 
@@ -37,10 +43,13 @@ where
         v2: false,
         v3: false,
         v4: false,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: false,
+        release_distribution_only: false,
     };
-    for path in changed {
+    let changed: Vec<&str> = changed.into_iter().collect();
+    for path in &changed {
         if ci_changed_path_affects_v2(path) {
             out.v2 = true;
         }
@@ -50,6 +59,9 @@ where
         if ci_changed_path_affects_v4(path) {
             out.v4 = true;
         }
+        if ci_changed_path_affects_testclaim_corpus(path) {
+            out.testclaim_corpus = true;
+        }
         if ci_changed_path_affects_workflow_policy(path) {
             out.workflow_policy = true;
         }
@@ -57,7 +69,39 @@ where
             out.release_distribution = true;
         }
     }
+    out.release_distribution_only =
+        ci_release_distribution_only_from_changed_paths(changed.iter().copied());
     out
+}
+
+fn ci_changed_path_triggers_ci_component(path: &str) -> bool {
+    ci_changed_path_affects_v2(path)
+        || ci_changed_path_affects_v3(path)
+        || ci_changed_path_affects_v4(path)
+        || ci_changed_path_affects_testclaim_corpus(path)
+        || ci_changed_path_affects_workflow_policy(path)
+        || ci_changed_path_affects_release_distribution(path)
+}
+
+/// RELEASE §5 — skip orthogonal fixture gates only when the diff is exclusively
+/// release-distribution paths (mixed release + phase1 fixture paths must not skip).
+pub fn ci_release_distribution_only_from_changed_paths<'a, I>(changed: I) -> bool
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let paths: Vec<&str> = changed.into_iter().collect();
+    let mut saw_release_path = false;
+    for path in &paths {
+        if ci_changed_path_affects_release_distribution(path) {
+            saw_release_path = true;
+        }
+        if ci_changed_path_triggers_ci_component(path)
+            && !ci_changed_path_affects_release_distribution(path)
+        {
+            return false;
+        }
+    }
+    saw_release_path
 }
 
 pub fn ci_changed_path_affects_v2(path: &str) -> bool {
@@ -69,16 +113,32 @@ pub fn ci_changed_path_affects_v3(path: &str) -> bool {
 }
 
 pub fn ci_changed_path_affects_v4(path: &str) -> bool {
-    path.starts_with("src/v4/")
+    path == "src/v4/bin/main.dag"
+        || path == "src/v4/workflow/bootstrap.dag"
+        || path == "src/v4/workflow/ci.dag"
+        || path.starts_with("src/v4/compiler/")
+        || path.starts_with("src/v4/std/")
+        || path.starts_with("src/v4/extdeps/")
+        || path.starts_with("src/v4/lens/")
+        || path.starts_with("src/v4/test/claim/manual/")
+        || path.starts_with("src/v4/test/claim/generated/")
+        || path.starts_with("src/v4/test/fixture/")
+        || path.starts_with("src/v4/test/v2_run_preflight/")
+        || path == "src/v4/test/coercion_fold_int_rust_fixture.dag"
         || path.starts_with("fixtures/v4-mvp1/")
         || path == "scripts/v4-mvp1-e2e-gate.sh"
         || path == "scripts/v4-m1-rust-emit-probe.sh"
         || path.starts_with("scripts/v4-mvp1")
         || path.starts_with("scripts/v4-m1")
+        || path.starts_with("scripts/v4-phase1-nat-semiring")
         || path.starts_with("scripts/v4-testclaim-")
         || path.starts_with("dsl/std/")
         || path == "Cargo.toml"
         || path == "Cargo.lock"
+}
+
+pub fn ci_changed_path_affects_testclaim_corpus(path: &str) -> bool {
+    path.starts_with("src/v4/test/claim/")
 }
 
 pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
@@ -91,7 +151,11 @@ pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
 }
 
 pub fn ci_changed_path_affects_release_distribution(path: &str) -> bool {
-    path == "src/v4/workflow/release.dag" || path == ".github/workflows/release.yml"
+    path == "src/v4/workflow/release.dag"
+        || path == ".github/workflows/release.yml"
+        || path == "install.sh"
+        || path == "scripts/release-target-triples.sh"
+        || path == "src/v4/install/install.dag"
 }
 
 #[cfg(test)]
@@ -122,6 +186,43 @@ mod tests {
     }
 
     #[test]
+    fn v4_bucket_uses_gate_frontier_not_all_src_v4() {
+        assert!(ci_changed_path_affects_v4("src/v4/std/node.dag"));
+        assert!(ci_changed_path_affects_v4("src/v4/compiler/05_eval.dag"));
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/test/claim/manual/mvp1_rust_add_translate.dag"
+        ));
+        assert!(!ci_changed_path_affects_v4(
+            "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"
+        ));
+        assert!(!ci_changed_path_affects_v4(
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
+        ));
+        // Previously tripped v4 via blanket `src/v4/`; now release_distribution or testclaim only.
+        assert!(!ci_changed_path_affects_v4("src/v4/install/install.dag"));
+        assert!(ci_changed_path_affects_release_distribution(
+            "src/v4/install/install.dag"
+        ));
+        assert!(!ci_changed_path_affects_v4("src/v4/TASKS.md"));
+    }
+
+    #[test]
+    fn testclaim_corpus_includes_all_v4_claim_paths() {
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/manual/mvp1_rust_add_translate.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"
+        ));
+        assert!(!ci_changed_path_affects_testclaim_corpus(
+            "src/v4/workflow/ci.dag"
+        ));
+    }
+
+    #[test]
     fn dsl_std_triggers_v3_and_v4() {
         assert!(ci_changed_path_affects_v3("dsl/std/node.dag"));
         assert!(ci_changed_path_affects_v4("dsl/std/node.dag"));
@@ -149,8 +250,65 @@ mod tests {
         assert!(!flags.v2);
         assert!(!flags.v3);
         assert!(flags.v4);
+        assert!(!flags.testclaim_corpus);
         assert!(flags.workflow_policy);
         assert!(!flags.release_distribution);
+    }
+
+    #[test]
+    fn claim_corpus_paths_only_raise_testclaim_bucket() {
+        let flags = ci_component_affected_from_changed_paths([
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+        ]);
+        assert!(!flags.v2);
+        assert!(!flags.v3);
+        assert!(!flags.v4);
+        assert!(flags.testclaim_corpus);
+        assert!(!flags.workflow_policy);
+        assert!(!flags.release_distribution);
+    }
+
+    #[test]
+    fn v4_compile_harness_paths_outside_claim_bucket() {
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/test/coercion_fold_int_rust_fixture.dag"
+        ));
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
+        ));
+        assert!(!ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/coercion_fold_int_rust_fixture.dag"
+        ));
+    }
+
+    #[test]
+    fn triggers_ci_component_includes_testclaim_corpus() {
+        assert!(ci_changed_path_triggers_ci_component(
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
+        ));
+    }
+
+    #[test]
+    fn release_distribution_only_excludes_mixed_fixture_paths() {
+        assert!(ci_release_distribution_only_from_changed_paths([
+            "install.sh",
+            "src/v4/install/install.dag",
+        ]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "install.sh",
+            "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+        ]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "install.sh",
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
+        ]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "src/v4/install/install.dag",
+            "src/v4/workflow/ci.dag",
+        ]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "docs/README.md"
+        ]));
     }
 
     #[test]
@@ -158,7 +316,13 @@ mod tests {
         assert!(ci_changed_path_affects_release_distribution(
             "src/v4/workflow/release.dag"
         ));
-        assert!(!ci_changed_path_affects_release_distribution("install.sh"));
+        assert!(ci_changed_path_affects_release_distribution("install.sh"));
+        assert!(ci_changed_path_affects_release_distribution(
+            "scripts/release-target-triples.sh"
+        ));
+        assert!(ci_changed_path_affects_release_distribution(
+            "src/v4/install/install.dag"
+        ));
         assert!(!ci_changed_path_affects_release_distribution(
             "src/v4/workflow/ci.dag"
         ));

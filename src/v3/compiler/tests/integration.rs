@@ -77,6 +77,8 @@ mod e_p_per_call_descent_lens_consumer_cementing;
 mod effect_enumeration_lens_behavioral_completion;
 #[path = "integration/emission_provenance_lens_test.rs"]
 mod emission_provenance_lens_test;
+#[path = "integration/emit_verification_gates_test.rs"]
+mod emit_verification_gates_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
 mod extdeps_rust_primitives_loader_test;
 #[path = "integration/extdeps_sql_transport_test.rs"]
@@ -285,6 +287,8 @@ mod v4_compiler_compile_public_terminal_smoke_test;
 mod v4_compiler_emit_translate_smoke_test;
 #[path = "integration/v4_compiler_parse_table_dag_smoke_test.rs"]
 mod v4_compiler_parse_table_dag_smoke_test;
+#[path = "integration/v4_emit_host_harness_test.rs"]
+mod v4_emit_host_harness_test;
 #[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
 mod v4_extdeps_coordination_dag_smoke_test;
 #[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
@@ -293,12 +297,20 @@ mod v4_extdeps_file_system_dag_smoke_test;
 mod v4_extdeps_formatters_black_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
+#[path = "boundary/v4_leaf_model_python_r1_test.rs"]
+mod v4_leaf_model_python_r1_test;
+#[path = "boundary/v4_leaf_model_rust_r1_rustc_test.rs"]
+mod v4_leaf_model_rust_r1_rustc_test;
+#[path = "boundary/v4_leaf_model_rust_r2_r3_external_rustc_test.rs"]
+mod v4_leaf_model_rust_r2_r3_external_rustc_test;
 #[path = "integration/v4_lens_affected_set_dag_smoke_test.rs"]
 mod v4_lens_affected_set_dag_smoke_test;
 #[path = "integration/v4_lens_application_dag_smoke_test.rs"]
 mod v4_lens_application_dag_smoke_test;
 #[path = "integration/v4_lens_edit_locus_dag_smoke_test.rs"]
 mod v4_lens_edit_locus_dag_smoke_test;
+#[path = "integration/v4_lens_identical_variant_payload_dag_smoke_test.rs"]
+mod v4_lens_identical_variant_payload_dag_smoke_test;
 #[path = "integration/v4_lens_registry_dag_smoke_test.rs"]
 mod v4_lens_registry_dag_smoke_test;
 #[path = "integration/v4_lens_testgen_dag_smoke_test.rs"]
@@ -307,6 +319,8 @@ mod v4_lens_testgen_dag_smoke_test;
 mod v4_p9_llvm_instruction_cost_single_owner_test;
 #[path = "integration/v4_std_model_core_dag_smoke_test.rs"]
 mod v4_std_model_core_dag_smoke_test;
+#[path = "integration/v4_std_target_realization_dag_smoke_test.rs"]
+mod v4_std_target_realization_dag_smoke_test;
 #[path = "integration/v4_t15_self_host_fixed_point_harness_test.rs"]
 mod v4_t15_self_host_fixed_point_harness_test;
 #[path = "integration/v4_test_bootstrap_infra_closeout_test.rs"]
@@ -1107,6 +1121,14 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/types.dag"),
             "dsl/std/types.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_patterns_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/patterns.dag"),
+            "dsl/std/patterns.dag",
         );
     }
 

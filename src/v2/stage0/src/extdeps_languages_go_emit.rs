@@ -214,7 +214,7 @@ pub fn go_method_templates() -> Rc<HashMap<String, String>> {
 pub fn go_lambda_template() -> String {
     thread_local! {
         static CACHED: String = {
-            "func({0}) interface{} { return {1} }".to_string()
+            "func({0}) interface{} { {1} }".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

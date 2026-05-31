@@ -16,6 +16,7 @@ import v4.compiler.eval {
   test_claim_cache_receipt,
   test_claim_typed_input_node
 }
+import v4.std.collection { Absent }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
   InferredFacts,
@@ -273,12 +274,12 @@ fn lbe_run_test_claim_assert_from_emit(
   anchor: ManualAnchorKey,
   label: String,
   mock: LanguageBehaviorIoMock
-) -> Verdict<Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
     Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
     Rejected { diagnostics: d } =>
-      Fail { actual: Rejected { diagnostics: d } }
+      Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
   }
 }
 
@@ -294,7 +295,7 @@ fn lbe_test_claim_run_from_emit(
     Rejected { diagnostics: d } =>
       TestClaimRun {
         cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
-        verdict: Fail { actual: Rejected { diagnostics: d } }
+        verdict: Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
       }
   }
 }
@@ -311,7 +312,7 @@ fn lbe_mock_actual(mock: LanguageBehaviorIoMock) -> Outcome<Node> {
 fn lbe_run_test_claim_assert_from_mock(
   claim: TestClaim,
   mock: LanguageBehaviorIoMock
-) -> Verdict<Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   run_test_claim_assert(
     claim: claim,
     actual: lbe_mock_actual(mock: mock),
@@ -326,7 +327,7 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_conj_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -337,7 +338,7 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_disj_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -348,7 +349,7 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
   mock: lbe_io_mock_transform_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 

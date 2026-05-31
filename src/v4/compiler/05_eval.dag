@@ -16,7 +16,7 @@ import v4.compiler.infer {
 import v4.std.algebra { fold_list }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map, list_nth }
-import v4.std.verdict { Verdict, verdict_fold }
+import v4.std.verdict { Verdict, verdict_fail, verdict_fold }
 import v4.std.runtime {
   EnvironmentBindingKey,
   Continue,
@@ -129,6 +129,7 @@ import v4.std.verification {
   test_claim_input
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v4.extdeps.languages.dag { dag_round_trip_wave1_authorities_ready }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
   v4_eval_wave1_allocate_literal,
@@ -451,7 +452,7 @@ type TestClaimCacheReceipt<T> {
 // RULING-1: needs-more-work — executable corpus runner will replace Wave-0 run rows.
 type TestClaimRun<S, A> {
   cache: TestClaimCacheReceipt<S>
-  verdict: Verdict<A>
+  verdict: Verdict<TestClaimEvalSubject<S>, A>
 }
 
 
@@ -477,7 +478,7 @@ fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> TestClaim {
 }
 
 
-fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<A> {
+fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<TestClaimEvalSubject<S>, A> {
   run.verdict
 }
 
@@ -943,7 +944,7 @@ fn test_claim_cache_receipt(subject: TestClaimEvalSubject<Node>) -> TestClaimCac
 
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
-data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
+data eval_rejected_roundtrip_precondition: Symbol = eval_rejected_roundtrip_precondition
 data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 data eval_rejected_type_node: Symbol = eval_rejected_type_node
 data eval_rejected_pending_children: Symbol = eval_rejected_pending_children
@@ -1699,11 +1700,74 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
+// Wave-1 witness receipt (IRT-3): structural admission for TypeNode/Conj claim inputs — runtime
+// eval rejects TypeNode (eval_interpret_node); well-formed admission is the eval frontier here.
+fn eval_round_trip_claim_input_for_verdict(input: Node) -> Outcome<Node> {
+  if well_formed(n: input) {
+    Accepted { value: input, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: eval_diagnostic(reason: eval_rejected_invalid_node, node: input)
+      )
+    }
+  }
+}
+
+
+// Wave-1 readiness receipt: Pass requires admitted input plus dag_round_trip_wave1_authorities_ready
+// re-derived from dag.dag (P2); does not compare actual to embedded ready atoms in input.
+// Emit→ingest fidelity is W1b / T-36 follow-up, not this verdict.
+fn run_test_claim_round_trip_verdict(
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
+  match actual {
+    Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+    Accepted { value: _, diagnostics: _ } =>
+      if dag_round_trip_wave1_authorities_ready() {
+        Pass
+      } else {
+        verdict_fail(
+          actual: outcome_rejected(
+            d: eval_diagnostic(reason: eval_rejected_roundtrip_precondition, node: at)
+          )
+        )
+      }
+  }
+}
+
+
+fn run_test_claim_round_trip_verdict_runtime(
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  match actual {
+    Rejected { diagnostics: _ } =>
+      verdict_fail(
+        actual: outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_invalid_node, node: at)
+        )
+      )
+    Accepted { value: _, diagnostics: _ } =>
+      if dag_round_trip_wave1_authorities_ready() {
+        Pass
+      } else {
+        verdict_fail(
+          actual: outcome_rejected(
+            d: eval_diagnostic(reason: eval_rejected_roundtrip_precondition, node: at)
+          )
+        )
+      }
+  }
+}
+
+
 fn run_test_claim_assert(
   claim: TestClaim,
   actual: Outcome<Node>,
   at: Node
-) -> Verdict<Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
 }
 
@@ -1712,13 +1776,13 @@ fn run_test_claim_assert_decided(
   claim: TestClaim,
   actual: Outcome<Node>,
   at: Node
-) -> Verdict<Node> {
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
         Pass
       } else {
-        Fail { actual: actual }
+        verdict_fail(actual: actual)
       }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } =>
       if outcome_node_eq(
@@ -1727,22 +1791,22 @@ fn run_test_claim_assert_decided(
       ) {
         Pass
       } else {
-        Fail { actual: actual }
+        verdict_fail(actual: actual)
       }
-    RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
-      Deferred {
-        actual: actual,
-        diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
-      }
+    RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
+      run_test_claim_round_trip_verdict(
+        actual: eval_round_trip_claim_input_for_verdict(input: input),
+        at: at
+      )
     DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
           if outcome_node_eq(a: actual, b: Rejected { diagnostics: expected }) {
             Pass
           } else {
-            Fail { actual: actual }
+            verdict_fail(actual: actual)
           }
-        _ => Fail { actual: actual }
+        _ => verdict_fail(actual: actual)
       }
   }
 }
@@ -1772,14 +1836,14 @@ fn run_test_claim_runtime_assert(
   interpretation: InterpretationAlgebra,
   actual: Outcome<RuntimeValue>,
   at: Node
-) -> Verdict<RuntimeValue> {
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: rhs })
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
       } else {
-        Fail { actual: actual }
+        verdict_fail(actual: actual)
       }
     }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
@@ -1787,23 +1851,23 @@ fn run_test_claim_runtime_assert(
       if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
         Pass
       } else {
-        Fail { actual: actual }
+        verdict_fail(actual: actual)
       }
     }
-    RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
-      Deferred {
-        actual: actual,
-        diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
-      }
+    RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
+      run_test_claim_round_trip_verdict_runtime(
+        actual: eval_round_trip_claim_input_for_verdict(input: input),
+        at: at
+      )
     DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
           if outcome_runtime_value_eq(a: actual, b: Rejected { diagnostics: expected }) {
             Pass
           } else {
-            Fail { actual: actual }
+            verdict_fail(actual: actual)
           }
-        _ => Fail { actual: actual }
+        _ => verdict_fail(actual: actual)
       }
   }
 }
@@ -1811,14 +1875,17 @@ fn run_test_claim_runtime_assert(
 
 // Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Fail (no fabricated Pass).
 // Empty-case policy: Fail with eval_empty_verdict_list diagnostic (context-specific at-node).
-fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
+fn aggregate_verdicts<S, T>(
+  rs: List<Verdict<TestClaimEvalSubject<S>, T>>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<S>, T> {
   verdict_fold(
     rs: rs,
-    empty_verdict: Fail {
+    empty_verdict: verdict_fail(
       actual: outcome_rejected(
         d: eval_diagnostic(reason: eval_empty_verdict_list, node: at)
       )
-    }
+    )
   )
 }
 
@@ -1826,26 +1893,40 @@ fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>
 ) -> TestClaimRun<Node, RuntimeValue> {
-  let actual = eval(
-    tree: subject.tree,
-    interpretation: eval_context_interpretation(context: subject.context),
-    inputs: Inputs { root: subject.input.evaluator_input }
-  )
   let at = test_claim_input(c: subject.claim)
-  TestClaimRun {
-    cache: test_claim_cache_receipt_node(subject: subject),
-    verdict: aggregate_verdicts(
-      rs: [
-        run_test_claim_runtime_assert(
-          claim: subject.claim,
-          tree: subject.tree,
-          interpretation: eval_context_interpretation(context: subject.context),
-          actual: actual,
+  match subject.claim {
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      TestClaimRun {
+        cache: test_claim_cache_receipt_node(subject: subject),
+        verdict: run_test_claim_round_trip_verdict_runtime(
+          actual: eval_round_trip_claim_input_for_verdict(
+            input: subject.input.evaluator_input
+          ),
           at: at
         )
-      ],
-      at: at
-    )
+      }
+    _ => {
+      let actual = eval(
+        tree: subject.tree,
+        interpretation: eval_context_interpretation(context: subject.context),
+        inputs: Inputs { root: subject.input.evaluator_input }
+      )
+      TestClaimRun {
+        cache: test_claim_cache_receipt_node(subject: subject),
+        verdict: aggregate_verdicts(
+          rs: [
+            run_test_claim_runtime_assert(
+              claim: subject.claim,
+              tree: subject.tree,
+              interpretation: eval_context_interpretation(context: subject.context),
+              actual: actual,
+              at: at
+            )
+          ],
+          at: at
+        )
+      }
+    }
   }
 }
 

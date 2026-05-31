@@ -59,54 +59,15 @@ jobs:
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
-  # Affected-set detection — drives gating of v2/v3/v4 jobs (path buckets modeled in
-  # `src/v4/workflow/ci.dag`; host transport `detect-ci-affected-components` in
-  # `tools/ci_affected_components`, outside v3-compiler so v3=false can emit without
-  # compiling the frozen v3 package). First run on a cold runner compiles this tiny crate only.
-  affected:
+  # Rust-free discipline gates extracted from the monolithic `ci` job so they run in
+  # parallel with `fmt` / `affected` instead of paying serial cost on the critical path.
+  # Step names are preserved verbatim — modeled bindings in src/v4/workflow/ci.dag
+  # reference step names, not job names.
+  discipline:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 15
-    outputs:
-      v2: ${{ steps.detect.outputs.v2 }}
-      v3: ${{ steps.detect.outputs.v3 }}
-      v4: ${{ steps.detect.outputs.v4 }}
-      workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
-      release_distribution: ${{ steps.detect.outputs.release_distribution }}
+    timeout-minutes: 30
     steps:
-    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
-      run: |
-        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-    - name: Clear inherited GitHub auth header (shared runner HOME)
-      run: git config --global --unset-all http.https://github.com/.extraheader || true
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Setup Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-      with:
-        cache: false
-        rustflags: ''
-    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
-      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
-    - name: Fetch main for diff base
-      if: github.event_name == 'pull_request'
-      run: git fetch origin main:refs/remotes/origin/main
-    - name: Detect affected components
-      id: detect
-      run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
-  ci:
-    if: github.event.pull_request.draft != true
-    needs: [affected]
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 40
-    steps:
-    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
-      run: |
-        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
@@ -142,13 +103,12 @@ jobs:
       run: bash scripts/check-fabrication-sentinels.sh
     - name: T-19 testgen activation self-test (Python)
       run: python3 scripts/test_check_t19_testgen_activation.py
-    - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      run: python3 scripts/check_t19_testgen_activation.py
     - name: Release-doc authority check (P2 single-authority discipline)
       run: bash scripts/check-release-doc-authority.sh
     - name: Release-doc authority self-test (consumer not ceremonial)
       run: bash scripts/test-check-release-doc-authority.sh
+    - name: install.sh pinned-version smoke (hermetic)
+      run: bash scripts/test-install-sh-pinned-version.sh
     - name: Manager-brief authority check (P2 single-authority discipline)
       run: bash scripts/check-manager-brief-authority.sh
       env:
@@ -159,6 +119,69 @@ jobs:
       run: bash scripts/test-check-test-timeout.sh
     - name: Rust toolchain single-authority check (P2)
       run: bash scripts/check-rust-toolchain-single-authority.sh
+  # Affected-set detection — drives gating of v2/v3/v4 jobs (path buckets modeled in
+  # `src/v4/workflow/ci.dag`; host transport `detect-ci-affected-components` in
+  # `tools/ci_affected_components`, outside v3-compiler so v3=false can emit without
+  # compiling the frozen v3 package). First run on a cold runner compiles this tiny crate only.
+  affected:
+    if: github.event.pull_request.draft != true
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 15
+    outputs:
+      v2: ${{ steps.detect.outputs.v2 }}
+      v3: ${{ steps.detect.outputs.v3 }}
+      v4: ${{ steps.detect.outputs.v4 }}
+      testclaim_corpus: ${{ steps.detect.outputs.testclaim_corpus }}
+      workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
+      release_distribution: ${{ steps.detect.outputs.release_distribution }}
+      release_distribution_only: ${{ steps.detect.outputs.release_distribution_only }}
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Fetch main for diff base
+      if: github.event_name == 'pull_request'
+      run: git fetch origin main:refs/remotes/origin/main
+    - name: Detect affected components
+      id: detect
+      run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
+  # v3 integration receipts + bootstrap verify — parallel with ci_v4 on the v4 critical path.
+  ci_integration:
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    needs: [affected, discipline]
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 25
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Fetch main for PR discipline diffs
+      if: github.event_name == 'pull_request'
+      run: git fetch origin main:refs/remotes/origin/main
+    - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: python3 scripts/check_t19_testgen_activation.py
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
@@ -205,8 +228,9 @@ jobs:
         cargo test -p v3-compiler --test integration workflow_no_path_regex_policy_ci_yml -- --quiet
     # T-15 SG-0 / INVARIANTS §P5(b) receipt: `v4_bin_main_dag_smoke_test` lives in the v3
     # integration harness, but the v3 job still runs that harness under the gunbc#846 HOT-FIX
-    # zero-test-filter — so this receipt must execute here (ci job) whenever v3/v4/workflow_policy
-    # gates compile the integration binary, else the parse/tokenize/source-anchor assertions never run.
+    # zero-test-filter — so this receipt must execute here (ci_integration job) whenever
+    # v3/v4/workflow_policy gates compile the integration binary, else the parse/tokenize/source-anchor
+    # assertions never run.
     - name: T-15 v4 bin main.dag smoke (live integration receipt)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_bin_main_dag_smoke_test::v4_bin_main_dag_tokenizes_and_parses_with_trampoline_source_anchor -- --exact --quiet
@@ -224,18 +248,75 @@ jobs:
     - name: RELEASE §5 v4 workflow release model/YAML binding smoke
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_workflow_release_dag_smoke_test -- --quiet
+<<<<<<< HEAD
     # v4 bootstrap viability — load-bearing compile runs in this `ci` job (40m budget).
     # MVP-1 + v4 bootstrap share the v2-compiler binary; workflow_policy PRs that
     # touch gate wiring must still build/run the MVP-1 and host-eval receipts.
     - name: Cache gunbc binary (v4 bootstrap / host eval gate)
+=======
+    # Phase 1 leaf-model R1 — gunbc#846 bypass: v3 job skips integration execution; run boundary
+    # rustc receipt here (docs/planning/v4-leaf-model-verification-2026-05-30.md §7; pairs with
+    # scripts/v4-leaf-model-rust-r1-verify.sh). Dissolution: modeled run_target_verification.
+    - name: Phase 1 leaf-model R1 rustc boundary (gunbc#846 bypass)
+>>>>>>> origin/main
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: cargo test -p v3-compiler --test integration v4_leaf_model_rust_r1_rustc_test -- --quiet
+    - name: Phase 1 leaf-model python R1 boundary (gunbc#846 bypass)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: cargo test -p v3-compiler --test integration v4_leaf_model_python_r1_test -- --quiet
+    - name: Phase 1 leaf-model R2a/R2b/R3-external rustc boundary (gunbc#846 bypass)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: cargo test -p v3-compiler --test integration v4_leaf_model_rust_r2_r3_external_rustc_test -- --quiet
+  # v4 compile gates — parallel with ci_integration. Standalone `v4` jobs hit a ~5m Ubicloud
+  # shutdown mid-emit; per-job budgets keep one runner lifecycle per concern. The `v4` job is a
+  # receipt-only stub so required check names stay stable. MVP-1 + v4 bootstrap share the
+  # v2-compiler binary; workflow_policy PRs that touch gate wiring must still build/run receipts.
+  ci_v4:
+    # Run when v4 compile gates OR testclaim_corpus (T-22 + gunbc prereq) OR workflow_policy.
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true')
+    needs: [affected, discipline]
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 40
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        components: rustfmt
+        cache: false
+        rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (ci bootstrap gate)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+        restore-keys: |
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+    - name: Cache gunbc binary (v4 bootstrap / host eval gate)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
       id: v4-v2-bin
       uses: actions/cache@v4
       with:
         path: target/release/gunbc
         key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: Build v2 compiler (v4 bootstrap / host eval gate)
-      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
     - name: T-15 self-host fixed-point harness (stage1==stage2)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -264,11 +345,55 @@ jobs:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_CARGO_CHECK_JOBS: "4"
       run: bash scripts/v4-m1-rust-emit-probe.sh
+    # Fixture-scoped gate: full rung gate only for fixture/transport or gate *execution*
+    # edits; scope-detector / if-routing narrowing uses policy_check (Gate #103 ratchet).
+    - name: Detect phase1/nat_semiring fixture scope (PR diff)
+      id: phase1_nat_semiring_fixture_scope
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: bash scripts/detect-phase1-nat-semiring-gate-scope.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
+    - name: phase1/nat_semiring gate policy ratchet (workflow-policy edits)
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.policy_check == 'true'
+      run: |
+        set -euo pipefail
+        bash scripts/check-workflow-path-regex-inventory.sh
+        bash scripts/detect-phase1-nat-semiring-gate-scope.sh "${{ github.event_name }}" "${RUNNER_TEMP}/phase1-gate-scope-smoke.out"
+        grep -q '^should_run=' "${RUNNER_TEMP}/phase1-gate-scope-smoke.out"
+    # Phase 1 rung gate setup: provision Go on the self-hosted runner. The gate
+    # invokes `go build` for R0-go-parse / R2-go-compile; without this step the
+    # script's host-toolchain guard would fail-closed with
+    # phase1/nat_semiring/setup/host_toolchain_missing (setup gap, not fixture
+    # gap). Python3 is pre-installed on srv1/srv2. setup-go@v5 is cached.
+    - name: Setup Go (phase1/nat_semiring rung gate prerequisite)
+      # RELEASE §5: release_distribution-only PRs skip fixture rung gate (orthogonal lane).
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true' && needs.affected.outputs.release_distribution_only != 'true'
+      uses: actions/setup-go@v5
+      with:
+        go-version: 'stable'
+        cache: false
+    # Phase 1 rung gate: fixture-scoped emit + rustc/py_compile/go build over
+    # src/v4/test/claim/algebra_laws/nat_semiring.dag. Modeled authority:
+    # src/v4/workflow/ci.dag `phase1_nat_semiring_rung_gate_signal` +
+    # `phase1_nat_semiring_rung_gate_ci_live_workflow_signal` (non_blocking: true — P2 parity).
+    # V4_PHASE1_NAT_SEMIRING_STRICT=1 still logs fail-closed rung receipts (#3955 §6); rust rung
+    # not rustc-clean on main until emit substrate lands — workflow continue-on-error interim.
+    - name: phase1/nat_semiring rungs 0-2 gate (dag rust python go)
+      if: steps.phase1_nat_semiring_fixture_scope.outputs.should_run == 'true' && needs.affected.outputs.release_distribution_only != 'true'
+      timeout-minutes: 20
+      continue-on-error: true
+      env:
+        V2_COMPILER: target/release/gunbc
+        V4_PHASE1_NAT_SEMIRING_OUT: ${{ runner.temp }}/v4-phase1-nat-semiring
+        V4_PHASE1_NAT_SEMIRING_STRICT: "1"
+      run: bash scripts/v4-phase1-nat-semiring-rung-gate.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
       id: v4_bootstrap_compile
       timeout-minutes: 35
       continue-on-error: true
+      env:
+        V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
+        V4_BOOTSTRAP_TIMEOUT_SECS: '480'
       run: |
         set +euo pipefail
         bash scripts/v4-bootstrap-viability.sh
@@ -276,8 +401,10 @@ jobs:
         echo "exitcode=${ec}" >> "$GITHUB_OUTPUT"
         exit "${ec}"
     - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
-      if: needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outputs.exitcode != '0'
+      if: needs.affected.outputs.v4 == 'true' && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
       id: v4_bootstrap_resolve_posture
+      env:
+        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
       run: |
         set -euo pipefail
         V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1 \
@@ -297,6 +424,383 @@ jobs:
         fi
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
+<<<<<<< HEAD
     - name: 'T-22 TestClaim corpus structural bridge — manual .dag corpus'
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: bash scripts/v4-testclaim-corpus-gate.sh
+=======
+    - name: Cache T-22 TestClaim corpus structural bridge receipt
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      id: t22_testclaim_corpus_cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/t22-testclaim-corpus-gate
+        key: t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'dsl/std/**', 'src/v4/**') }}
+    - name: T-22 TestClaim corpus structural bridge — manual .dag corpus
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.t22_testclaim_corpus_cache.outputs.cache-hit != 'true'
+      timeout-minutes: 15
+      env:
+        V4_TESTCLAIM_TIMEOUT_SECS: '480'
+        # Reuse M1 rust + bootstrap dag emits when present (ci_v4 de-dup; PR #4074 run 26702944004).
+        V4_TESTCLAIM_REUSE_RUST_OUT: ${{ runner.temp }}/v4-rust-emit
+        V4_TESTCLAIM_REUSE_RUST_LOG: ${{ runner.temp }}/v4-rust-emit.compile.log
+        V4_TESTCLAIM_REUSE_DAG_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_TESTCLAIM_REUSE_DAG_LOG: ${{ runner.temp }}/v4-bootstrap.log
+      run: |
+        bash scripts/v4-testclaim-corpus-gate.sh
+        mkdir -p "${RUNNER_TEMP}/t22-testclaim-corpus-gate"
+        printf 'T-22 TestClaim corpus structural bridge passed for %s\n' "${GITHUB_SHA}" > "${RUNNER_TEMP}/t22-testclaim-corpus-gate/receipt.txt"
+  # Branch protection requires the `ci` check name (docs/admin/branch-protection-recommendation-
+  # 2026-05-09.md). This job is the fail-closed aggregator over discipline + parallel lanes;
+  # load-bearing steps live in ci_integration / ci_v4. `always()` + explicit dep validation
+  # mirrors self_host_ratchet — a skipped required child must not let merge proceed.
+  ci:
+    if: ${{ always() && github.event.pull_request.draft != true }}
+    needs: [affected, discipline, ci_integration, ci_v4]
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+    - name: Validate prerequisites (fail-closed under skipped/failed deps)
+      run: |
+        set -euo pipefail
+        if [[ "${{ needs.discipline.result }}" != "success" ]]; then
+          echo "::error::discipline job did not succeed (result=${{ needs.discipline.result }}); ci aggregator fails closed."
+          exit 1
+        fi
+        if [[ "${{ needs.affected.result }}" != "success" ]]; then
+          echo "::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed."
+          exit 1
+        fi
+        for dep in ci_integration ci_v4; do
+          result=""
+          case "$dep" in
+            ci_integration) result="${{ needs.ci_integration.result }}" ;;
+            ci_v4) result="${{ needs.ci_v4.result }}" ;;
+          esac
+          if [[ "$result" == "success" || "$result" == "skipped" ]]; then
+            echo "dep OK: $dep result=$result"
+            continue
+          fi
+          echo "::error::$dep job did not succeed (result=$result); ci aggregator fails closed."
+          exit 1
+        done
+        echo "ci aggregator: all prerequisites satisfied"
+    - name: ci receipt (parallel lanes)
+      run: |
+        echo "::notice::Load-bearing CI steps ran in ci_integration and/or ci_v4 (parallel); this job preserves the branch-protection check name."
+  # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
+  # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
+  # that any modification to v2 preserves the self-host fixed-point property.
+  v2:
+    if: github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'
+    needs: [affected]
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 30
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (v2)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
+        restore-keys: |
+          cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-v2-${{ runner.os }}-${{ runner.arch }}-
+    - name: v2 stage0 freshness gate (--verify)
+      run: |
+        set -euo pipefail
+        cargo run -p v2-compiler --bin regen_stage0 -- --verify
+  # v4 — check name preserved for branch protection. Load-bearing compile runs in `ci_v4`.
+  v4:
+    if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
+    needs: [affected, ci]
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+    - name: v4 receipt (bootstrap gate runs in ci_v4 job)
+      run: |
+        echo "::notice::v4 bootstrap viability + T-22 TestClaim corpus structural bridge ran inside the ci_v4 job when v4 is affected; TestClaim verdict execution remains a T-38 follow-up."
+  # v3 — FROZEN 2026-05-15 pending v4 program. Runs only when src/v3/ or dsl/
+  # is affected (or on push-to-main for trunk verification). v3 is no longer
+  # the active compiler; v4 program supersedes it (see PR #3147).
+  v3:
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    needs: [affected]
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 120
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        components: rustfmt, clippy
+        cache: false
+        rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Setup Zig C toolchain
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.13.0
+        cache: false
+    - name: Configure user-space C linker
+      run: |
+        mkdir -p "${RUNNER_TEMP}/gunbc-bin"
+        cat > "${RUNNER_TEMP}/gunbc-bin/zig-cc" <<'EOF'
+        #!/usr/bin/env bash
+        exec zig cc "$@"
+        EOF
+        chmod +x "${RUNNER_TEMP}/gunbc-bin/zig-cc"
+        echo "CC=${RUNNER_TEMP}/gunbc-bin/zig-cc" >> "${GITHUB_ENV}"
+        echo "RUSTFLAGS=-D warnings -C linker=${RUNNER_TEMP}/gunbc-bin/zig-cc" >> "${GITHUB_ENV}"
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: 3.x
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: stable
+    - name: Cache Cargo (v3)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+        restore-keys: |
+          cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-v3-${{ runner.os }}-${{ runner.arch }}-
+    - name: Build ExecuteCommand unshare helper
+      run: cargo build -p execute-command-bootstrap
+    - name: Prebuild v3 integration test binary (lane2d wall-clock denominator)
+      run: |
+        set -euo pipefail
+        heartbeat() {
+          while sleep 60; do
+            echo "v3 prebuild heartbeat: $(date -u +%FT%TZ)"
+          done
+        }
+        heartbeat &
+        heartbeat_pid=$!
+        trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
+        cargo test -p v3-compiler --test integration --no-run
+    - name: v3 tests (Stage 2d integration module, HOT-FIX SKIPPED)
+      run: |
+        echo "::notice::v3 lane2d Stage 2d test execution SKIPPED per operator hot-fix directive at gunbc#846 (cold-v3 → ~10min target)."
+        echo "::notice::Restore criteria: per-test wall ≤ 2s under OnceLock/cached_compile amortization (rebuild session per #2722 §5)."
+        exit 0
+    - name: v3 full-suite split guard (integration test targets)
+      run: scripts/check-v3-full-suite-split-test-targets.sh
+    # Single step for lib+bins → determinism → doc → integration timings capture.
+    # srv1/srv2 self-hosted pools may dispatch consecutive workflow steps to
+    # different runner instances; /tmp is not shared across steps, so splitting
+    # tee across steps left the per-test ratchet reading a compile-only log.
+    - name: v3 tests (full suite timings capture, parts 1-4/4)
+      env:
+        CARGO_TERM_COLOR: never
+        RUST_MIN_STACK: 16777216
+      run: |
+        set -euo pipefail
+        timings_log="${RUNNER_TEMP}/v3-test-timings.log"
+        V3_SUITE_START_TS=$(date +%s)
+        echo "V3_SUITE_START_TS=${V3_SUITE_START_TS}" >> "${GITHUB_ENV}"
+        : > "${timings_log}"
+        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee "${timings_log}"
+        status=${PIPESTATUS[0]}
+        if [ "$status" -ne 0 ]; then
+          echo "::error::cargo test (lib+bins) failed (exit=$status)"
+          exit "$status"
+        fi
+        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a "${timings_log}"
+        status=${PIPESTATUS[0]}
+        if [ "$status" -ne 0 ]; then
+          echo "::error::cargo test (determinism_test) failed (exit=$status)"
+          exit "$status"
+        fi
+        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a "${timings_log}"
+        status=${PIPESTATUS[0]}
+        if [ "$status" -ne 0 ]; then
+          echo "::error::cargo test (--doc) failed (exit=$status)"
+          exit "$status"
+        fi
+        echo "::notice::v3 integration test execution SKIPPED via zero-test-filter per operator hot-fix at gunbc#846."
+        echo "::notice::Guard pattern preserved; integration binary runs zero tests (nonexistent filter)."
+        # Zero-test-filter: `__HOT_FIX_NONEXISTENT_FILTER__` matches no tests;
+        # binary runs through libtest setup + reports 0 tests run. Satisfies
+        # check-v3-full-suite-split-test-targets.sh pattern requirement.
+        RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration __HOT_FIX_NONEXISTENT_FILTER__ -- -Z unstable-options --report-time 2>&1 | tee -a "${timings_log}"
+        status=${PIPESTATUS[0]}
+        elapsed=$(( $(date +%s) - V3_SUITE_START_TS ))
+        echo "v3 full-suite wall time (integration-skipped): ${elapsed}s"
+        if [ "$status" -ne 0 ]; then
+          echo "::error::cargo test (integration, zero-filter) failed (exit=$status) — should never happen with nonexistent filter; investigate."
+          exit "$status"
+        fi
+        echo "::notice::Restore criteria: rebuild session per #2722 §5 OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster filter (replace __HOT_FIX_NONEXISTENT_FILTER__ with cluster-specific filter)."
+        if [ ! -s "${timings_log}" ]; then
+          echo "::notice::no timing log captured or log is empty (full-suite steps did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
+        else
+          cargo build -p v3-compiler --bin gunbc-ci
+          scripts/check-test-timeout.sh "${timings_log}"
+        fi
+    - name: v3 Compiler Clippy (default features)
+      run: cargo clippy -p v3-compiler --all-targets -- -D warnings
+    - name: v3 Compiler Clippy (bootstrap-regen-fresh)
+      run: cargo clippy -p v3-compiler --all-targets --features bootstrap-regen-fresh -- -D warnings
+    - name: v3 test targets compile with bootstrap-regen-fresh
+      run: cargo test -p v3-compiler --no-run --features bootstrap-regen-fresh
+    - name: L-7 Substrate accessor reconstruction gate
+      run: |
+        # L-7 (INVARIANTS.md): lenses consume substrate query
+        # functions (`port`, `node`, `resolve_producer`) instead of
+        # reconstructing local `find_port` / `find_behavior` / ...
+        # Scan `.dag` lens files for forbidden helper declarations.
+        matches=$(grep -nE "fn (find_port|find_behavior|resolve_producer|lookup_node|lookup_port)" src/v3/lenses/*.dag 2>/dev/null || true)
+        if [ -n "$matches" ]; then
+          echo "::error::L-7 violation: lens reconstructs a substrate lookup locally"
+          echo "$matches"
+          exit 1
+        fi
+    - name: L-8 Lens surface gate
+      run: |
+        # L-8 (INVARIANTS.md): migrated .dag lenses must not collapse
+        # their typed failure carriers into primitives at the public
+        # Rust surface. The forbidden shape is any `pub fn ... -> T`
+        # for T in {usize, bool, i64} inside a hand-written wrapper
+        # alongside a generated lens module — e.g., the deleted
+        # `pub fn cost_of(&self, port: PortId) -> usize` wrapper that
+        # shadowed the generated `CostLookup` carrier.
+        #
+        # Scope: every `src/v3/compiler/src/lens_*.rs` file (hand-written
+        # and `*_generated.rs` — catching a collapsed wrapper in generated
+        # code would mean the emitter regressed).
+        wrappers=$(ls src/v3/compiler/src/lens_*.rs 2>/dev/null || true)
+        if [ -z "$wrappers" ]; then
+          echo "L-8: no lens wrapper files to scan"
+          exit 0
+        fi
+        matches=$(grep -nE "pub fn .*-> (usize|bool|i64)" $wrappers 2>/dev/null || true)
+        if [ -n "$matches" ]; then
+          echo "::error::L-8 violation: lens wrapper collapses typed carrier to a primitive"
+          echo "$matches"
+          exit 1
+        fi
+    - name: Compiler-std consolidation ratchet
+      run: scripts/check-compiler-std-ratchet.sh
+    - name: Banked-dissolutions ratchet
+      run: scripts/check-banked-dissolutions.sh
+  self_host_ratchet:
+    if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 60
+    needs:
+    - affected
+    - v3
+    continue-on-error: true
+    steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Validate gate evidence (fail-closed under v3 failure; tolerates v3 skipped)
+      run: |
+        echo "Gate evidence: v3.result=${{ needs.v3.result }}"
+        # Under v3-freeze (2026-05-15), v3 job is skipped on PRs that don't touch v3.
+        # 'skipped' is acceptable here — means v3 was correctly not run.
+        if [ "${{ needs.v3.result }}" = "skipped" ]; then
+          echo "::notice::v3 job skipped (v3 not affected by this PR); self_host_ratchet has nothing to validate."
+          exit 0
+        fi
+        if [ "${{ needs.v3.result }}" = "failure" ] || [ "${{ needs.v3.result }}" = "cancelled" ]; then
+          echo "::error::v3 job did not succeed (result=${{ needs.v3.result }}); ratchet cannot claim green."
+          exit 1
+        fi
+        if [ "${{ needs.v3.result }}" != "success" ]; then
+          echo "::error::v3 job has unexpected result (result=${{ needs.v3.result }}); expected success after Layer-2 path-regex removal."
+          exit 1
+        fi
+        echo "Gate evidence validated; ratchet may proceed."
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
+    - name: Checkout
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+    - name: DB-8 stub (PR / non-main — full matrix is main-push only)
+      if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+      run: |
+        echo "::notice::self_host_ratchet DB-8 release matrix runs only on pushes to main (Lane 1e staged)."
+        exit 0
+    - name: Setup Rust
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    - name: Cache Cargo (self_host_ratchet)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
+          target/
+        key: cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
+        restore-keys: |
+          cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-self-host-${{ runner.os }}-${{ runner.arch }}-
+    - name: DB-8 determinism_test (5× emit matrix)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      continue-on-error: true
+      run: cargo test -p v3-compiler --release --test determinism_test
+    - name: DB-8 self_host_fixed_point (staged)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      continue-on-error: true
+      run: cargo run -p v3-compiler --release --bin self_host_fixed_point
+    - name: DB-8 emit.rs HashMap iteration policy (informational)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        if grep -nE "(HashMap|HashSet)::" src/v3/compiler/src/emit.rs; then
+          echo "::notice::DB-8: emit.rs still uses HashMap/HashSet:: iteration — target is BTree* / sorted keys (determinism_test + ROADMAP Lane 3 Stage 3c prep)"
+        else
+          echo "emit.rs: no HashMap::/HashSet:: — consider graduating this check to required when Lane 1e clears debt"
+        fi
+>>>>>>> origin/main

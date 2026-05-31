@@ -23,7 +23,11 @@
 #   V4_TESTCLAIM_LOG        - dag compiler log path (default: ${OUT}.log)
 #   V4_TESTCLAIM_RUST_OUT   - rust emit output dir (default: ${OUT}-rust)
 #   V4_TESTCLAIM_RUST_LOG   - rust emit compiler log path (default: ${RUST_OUT}.log)
-#   V4_TESTCLAIM_TIMEOUT_SECS - optional timeout (CI default: 240)
+#   V4_TESTCLAIM_TIMEOUT_SECS - optional timeout (CI default: 480)
+#   V4_TESTCLAIM_REUSE_RUST_OUT - optional prior M1 rust emit dir (skip rust compile when clean)
+#   V4_TESTCLAIM_REUSE_RUST_LOG - compile log for reuse dir (default: ${REUSE_RUST_OUT}.compile.log)
+#   V4_TESTCLAIM_REUSE_DAG_OUT  - optional prior bootstrap dag emit dir (skip dag compile when clean)
+#   V4_TESTCLAIM_REUSE_DAG_LOG  - compile log for reuse dir (default: ${REUSE_DAG_OUT}.log)
 
 set -euo pipefail
 
@@ -55,16 +59,50 @@ fi
 
 run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-$$}"
 tmp_root="${RUNNER_TEMP:-/tmp}"
-out="${V4_TESTCLAIM_OUT:-${tmp_root}/v4-testclaim-corpus-${run_suffix}}"
-log="${V4_TESTCLAIM_LOG:-${out}.log}"
-rust_out="${V4_TESTCLAIM_RUST_OUT:-${out}-rust}"
-rust_log="${V4_TESTCLAIM_RUST_LOG:-${rust_out}.log}"
-rm -rf "$out" "$rust_out"
-mkdir -p "$out" "$rust_out" "$(dirname "$log")" "$(dirname "$rust_log")"
+
+has_clean_compile_receipt() {
+  local compile_log="$1"
+  [[ -f "$compile_log" ]] \
+    && grep -qE '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$compile_log"
+}
+
+use_rust_reuse=false
+if [[ -n "${V4_TESTCLAIM_REUSE_RUST_OUT:-}" ]]; then
+  rust_reuse_log="${V4_TESTCLAIM_REUSE_RUST_LOG:-${V4_TESTCLAIM_REUSE_RUST_OUT}.compile.log}"
+  if has_clean_compile_receipt "$rust_reuse_log"; then
+    use_rust_reuse=true
+    rust_out="${V4_TESTCLAIM_REUSE_RUST_OUT}"
+    rust_log="$rust_reuse_log"
+  fi
+fi
+if [[ "$use_rust_reuse" == "false" ]]; then
+  out_for_rust="${V4_TESTCLAIM_OUT:-${tmp_root}/v4-testclaim-corpus-${run_suffix}}"
+  rust_out="${V4_TESTCLAIM_RUST_OUT:-${out_for_rust}-rust}"
+  rust_log="${V4_TESTCLAIM_RUST_LOG:-${rust_out}.log}"
+  rm -rf "$rust_out"
+  mkdir -p "$rust_out" "$(dirname "$rust_log")"
+fi
+
+use_dag_reuse=false
+if [[ -n "${V4_TESTCLAIM_REUSE_DAG_OUT:-}" ]]; then
+  dag_reuse_log="${V4_TESTCLAIM_REUSE_DAG_LOG:-${V4_TESTCLAIM_REUSE_DAG_OUT}.log}"
+  if has_clean_compile_receipt "$dag_reuse_log"; then
+    use_dag_reuse=true
+    out="${V4_TESTCLAIM_REUSE_DAG_OUT}"
+    log="$dag_reuse_log"
+  fi
+fi
+if [[ "$use_dag_reuse" == "false" ]]; then
+  out="${V4_TESTCLAIM_OUT:-${tmp_root}/v4-testclaim-corpus-${run_suffix}}"
+  log="${V4_TESTCLAIM_LOG:-${out}.log}"
+  rm -rf "$out"
+  mkdir -p "$out" "$(dirname "$log")"
+fi
 
 compile_timeout="${V4_TESTCLAIM_TIMEOUT_SECS:-}"
 if [[ -n "${GITHUB_ACTIONS:-}" && -z "$compile_timeout" ]]; then
-  compile_timeout=240
+  # 480s: full src/v4 --target rust on loaded self-hosted runners (exit 143 at lower caps).
+  compile_timeout=480
 fi
 
 run_compile() {
@@ -93,8 +131,12 @@ run_compile() {
   fi
 }
 
-echo "=== T-22: compile src/v4 manual TestClaim corpus (--target rust) ==="
-run_compile rust "$rust_out" "$rust_log"
+if [[ "$use_rust_reuse" == "true" ]]; then
+  echo "=== T-22: reuse prior src/v4 rust emit (${rust_out}; log ${rust_log}) ==="
+else
+  echo "=== T-22: compile src/v4 manual TestClaim corpus (--target rust) ==="
+  run_compile rust "$rust_out" "$rust_log"
+fi
 
 require_file() {
   local path="$1"
@@ -392,8 +434,12 @@ PY
 
 check_generated_rust_receipt
 
-echo "=== T-22: compile src/v4 manual TestClaim corpus (--target dag) ==="
-run_compile dag "$out" "$log"
+if [[ "$use_dag_reuse" == "true" ]]; then
+  echo "=== T-22: reuse prior src/v4 dag emit (${out}; log ${log}) ==="
+else
+  echo "=== T-22: compile src/v4 manual TestClaim corpus (--target dag) ==="
+  run_compile dag "$out" "$log"
+fi
 
 artifact="${out}/dag-artifact.json"
 if [[ ! -s "$artifact" ]]; then

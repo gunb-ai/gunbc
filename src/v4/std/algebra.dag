@@ -605,6 +605,22 @@ fn bounded_lattice_node(inhabitant: Node) -> Node {
 }
 
 
+// BoundedLattice instance completeness types and field paths (query lives in
+// bounded_lattice_completeness.dag — cycle-breaker for node_query authority).
+// 🟢 coproduct dissolution — CP-AI1-BL-MISSING-WITNESS (MissingMeet/Join/LatticeField distinguish partial-instance gaps).
+type BoundedLatticeMissingWitness
+  = MissingMeet
+  | MissingJoin
+  | MissingLatticeField
+
+
+// 🟢 coproduct dissolution — CP-AI1-BL-INSTANCE-COMPLETENESS (NotBL / Complete / Partial trichotomy).
+type BoundedLatticeInstanceCompleteness
+  = NotBoundedLatticeInstance
+  | BoundedLatticeComplete
+  | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
+
+
 fn boolean_algebra_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: boolean_algebra_type_node(inhabitant: inhabitant),

@@ -6,7 +6,12 @@
 module v4.extdeps.formatters.black
 
 import v4.std.collection { List }
+import v4.std.diagnostic { Outcome }
 import v4.std.patch { ConfigPatchRecord, config_patch_layer }
+import v4.std.refinement {
+  PositiveInt,
+  positive_int_authoritative_literal,
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -52,7 +57,7 @@ type BlackUnstableFeature
 
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: witness checks enable_unstable_feature empty unless preview; unstable implies preview; forbidden: ad-hoc cross-field guards outside validation substrate.
 type BlackConfig {
-  line_length: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  line_length: Outcome<PositiveInt>
   target_version: BlackTargetVersionPolicy
   required_version: BlackRequiredVersionPolicy
   pyi: Bool
@@ -72,7 +77,7 @@ type BlackConfig {
 
 
 data black_defaults: BlackConfig = BlackConfig {
-  line_length: 88,
+  line_length: positive_int_authoritative_literal(value: 88),
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
   pyi: false,

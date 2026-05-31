@@ -99,7 +99,7 @@ data go_method_templates: Map<String, String> = {
 }
 
 // -- Expression syntax templates ------------------------------------------
-data go_lambda_template: String = "func({0}) interface\{\} \{ return {1} \}"
+data go_lambda_template: String = "func({0}) interface\{\} \{ {1} \}"
 data go_error_expr_template: String = "panic({0})"
 data go_list_literal_empty: String = "[]interface\{\}\{\}"
 data go_list_literal_template: String = "[]interface\{\}\{{0}\}"
