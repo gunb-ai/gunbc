@@ -98,7 +98,7 @@ Metric allowed only as secondary:
 | ID | Probe | Receipt |
 | -- | ----- | ------- |
 | F1 | String type import cannot pull GoScalarKind parent | `rg 'GoScalarKind' emitted module` empty for fixture |
-| F2 | TargetSource import does not re-export CarrierKind from wrong mod | `rg 'CarrierKind' v4_compiler_emit.rs` empty |
+| F2 | TargetSource import does not re-export CarrierKind from wrong mod | `rg 'v4_compiler_target_carriers.*CarrierKind|CarrierKind.*v4_compiler_target_carriers' <emitted_fixture.rs>` empty (forbids wrong-module `pub use` / variant-parent path at :41–42); correct `CarrierKind` from `v4_std_pipeline` is allowed |
 | F3 | List alias emitted in collection | `rg 'pub type List' v4_std_collection.rs` present |
 | F4 | New generic alias emits via generic path | Hermetic fixture `.dag` module + **structural** `.dag TestClaim` (runner-evaluated) **or** `src/v2/tests` unit test; receipt: `rg 'pub type Pair' <emitted_fixture.rs>` in implementation PR. Prose/manual assertion alone is **not** PROVEN. |
 
