@@ -718,7 +718,7 @@ fn ci_upsert_testclaim_corpus_eval_execution_mk() -> CiUpsertStepSymbol {
     j: CiJob {
       id: testclaim_corpus_eval_execution,
       command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn },
-      needs: [v2_compile_src_v4]
+      needs: [v2_compile_src_v4, m1_rust_emit_probe_execution]
     }
   )
   resolve: ci_atom(sym: testclaim_corpus_eval_execution)
@@ -3226,11 +3226,11 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: false
         release_distribution: false
       }
-    // I4: all-false mask — selection uses ci_job_scheduled_by_policy (MainPush-only), not mask intersection.
+    // I4: v3 frontier (D1) + MainPush via ci_v3_self_host_fixed_point_scheduled; not mask-only MainPush.
     V3SelfHostFixedPointCommand { profile: _, schedule: _ } =>
       CiComponentAffected {
         v2: false
-        v3: false
+        v3: true
         v4: false
         testclaim_corpus: false
         workflow_policy: false

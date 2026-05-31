@@ -217,7 +217,7 @@ jobs:
       if: needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --release --test determinism_test
     - name: v3 self-host fixed point (Tier-0 I4)
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      if: needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo run -p v3-compiler --release --bin self_host_fixed_point
     - name: 'Gate #103 — path-regex inventory ratchet (canvas §5)'
       if: needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
