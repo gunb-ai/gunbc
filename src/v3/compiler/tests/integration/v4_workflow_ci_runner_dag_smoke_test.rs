@@ -1150,6 +1150,16 @@ fn v4_workflow_ci_bankruptcy_tier0_needs_closure_is_bounded_and_skips_unresolved
 }
 
 #[test]
+fn v4_workflow_ci_bankruptcy_tier0_binding_step_matches_generated_workflow() {
+    assert!(
+        CI_WORKFLOW_DAG.contains(&format!(
+            "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
+        )),
+        "{CI_WORKFLOW_DAG_PATH}: M1 binding step run must use bankruptcy D3 prefix filter (P2 parity with {CI_YML_PATH})"
+    );
+}
+
+#[test]
 fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step() {
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
