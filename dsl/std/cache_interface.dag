@@ -255,7 +255,7 @@ data sccache_local_facts: CacheInterfaceFacts = {
   miss_semantics: MissThenCreate
   value_shape: RawBytes
   locality: PerHostFilesystem
-  eviction: SizeBounded { cap_bytes: Measure<Memory, One> }
+  eviction: SizeBounded { cap_bytes: ByteSize }
   atomicity: WriteThenRename
   auth: FilesystemPerms
   read_latency: LocalDiskUs
@@ -382,10 +382,7 @@ fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
   CacheStoreView { facts: facts }
 }
 
-fn cache_key_projection<T>(
-  artifact: ArtifactIdentity<T>,
-  backend: CacheInterfaceFacts,
-) -> CacheKeyProjection<T> {
+fn cache_key_projection<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> CacheKeyProjection<T> {
   CacheKeyProjection {
     artifact: artifact
     backend: backend
