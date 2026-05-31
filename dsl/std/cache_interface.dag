@@ -11,6 +11,14 @@ import std.types { NonEmptyStr, ContentHash, Bool, Int }
 import std.measure { Measure, Memory, One }
 
 // --- §1.6 dimension enums + branded carriers ---------------------------------
+//
+// Practice 4 — Worksheet B §1.6 dimension axes (case 16 orthogonal grid; no CacheKind):
+// 🟡 STAGED on ValueShape, PersistenceLocality, EvictionPolicy, AtomicityModel, AuthScope,
+// ReadLatencyClass, ConsistencyModel, CacheLookupSemantics, CacheWriteSemantics,
+// CacheMissSemantics, KeyDerivationClass, InputSurface, VisibilityScope, InvalidationTrigger.
+// feature:cache-interface-substrate-landed
+// consumer: ci harness cache projection + downstream cache lookup planner
+// dissolve-on-arrival: Grounding binds literal row fields when first consumer lands
 
 type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
 type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
@@ -18,8 +26,6 @@ type StorageSurface = NonEmptyStr where brand("StorageSurface")
 type LogicalTime = NonEmptyStr where brand("LogicalTime")
 type ByteSize = Measure<Memory, One>
 
-// 🟡 STAGED — Worksheet B §1.6 dimension vocabulary (falsification case 16); terminal
-// per backend row, not a closed CacheKind enum.
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
 
 // Cache-store placement only — compute demand uses ComputeArtifactLocality (Worksheet A).
@@ -125,8 +131,7 @@ type CacheEvidence {
   evidence: CacheRowEvidence
 }
 
-// Per-row authority for ProviderKey transport shape (case 12 / 17 / 14); projection
-// reads this field only — no KeyDerivationClass fallback.
+// 🟢 TERMINAL — per-row transport encoding authority (case 12 / 14); projection reads only.
 type ProviderKeyEncoding
   = OpaqueStringEncoding
   | SccacheInternalEncoding
@@ -174,10 +179,10 @@ type BackendCacheKey {
   key: ProviderKey
 }
 
+// Semantic binding only — transport is derived via cache_key_projection_transport (case 17).
 type CacheKeyProjection<T> {
   artifact: ArtifactIdentity<T>
   backend: CacheInterfaceFacts
-  transport: BackendCacheKey
 }
 
 // --- §1.5 producer composition (Option A — no compute_fabric import) ---------
@@ -194,11 +199,12 @@ type ProducerReceipt<T>
   | VendorArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
   | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
 
+// Hit receipts: construct only via cache_verified_hit_receipt (backend_key derived
+// from artifact + backend.transport_encoding; subject match is artifact.subject_digest).
 type CachedArtifactReceipt<T> {
   artifact: ArtifactIdentity<T>
   backend_key: BackendCacheKey
   producer: ProducerReceipt<T>
-  verified_subject_digest: ContentHash
   content_digest: ContentHash
 }
 
@@ -433,11 +439,7 @@ fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
 }
 
 fn cache_key_projection<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> CacheKeyProjection<T> {
-  CacheKeyProjection {
-    artifact: artifact
-    backend: backend
-    transport: cache_key_projection_transport(artifact: artifact, backend: backend),
-  }
+  CacheKeyProjection { artifact: artifact, backend: backend }
 }
 
 fn cache_key_projection_transport<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> BackendCacheKey {
@@ -453,5 +455,14 @@ fn cache_key_projection_provider_key<T>(artifact: ArtifactIdentity<T>, backend: 
     SccacheInternalEncoding => SccacheInternalHash { digest: artifact.subject_digest }
     CasContentEncoding => CasContentDigest { digest: artifact.subject_digest }
     CargoFingerprintEncoding => CargoFingerprint { digest: artifact.subject_digest }
+  }
+}
+
+fn cache_verified_hit_receipt<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts, producer: ProducerReceipt<T>, content_digest: ContentHash) -> CachedArtifactReceipt<T> {
+  CachedArtifactReceipt {
+    artifact: artifact
+    backend_key: cache_key_projection_transport(artifact: artifact, backend: backend)
+    producer: producer
+    content_digest: content_digest
   }
 }
