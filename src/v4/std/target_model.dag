@@ -1029,7 +1029,9 @@ fn target_atom_realization_lookup_in_catalog_node(
           )
       }
     _ =>
-      outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+      outcome_rejected(
+        target_atom_realization_catalog_row_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
   }
 }
 
@@ -1143,10 +1145,16 @@ fn target_function_boundary_site_from_node(
 ) -> Outcome<FunctionBoundarySite> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == target_function_boundary_site_param {
-        outcome_accepted(FunctionBoundaryParam)
-      } else if id == target_function_boundary_site_return {
-        outcome_accepted(FunctionBoundaryReturn)
+      if is_empty(xs: n.children) {
+        if id == target_function_boundary_site_param {
+          outcome_accepted(FunctionBoundaryParam)
+        } else if id == target_function_boundary_site_return {
+          outcome_accepted(FunctionBoundaryReturn)
+        } else {
+          outcome_rejected(
+            target_function_boundary_site_decode_invalid_diagnostic(source_carrier: source_carrier)
+          )
+        }
       } else {
         outcome_rejected(
           target_function_boundary_site_decode_invalid_diagnostic(source_carrier: source_carrier)
@@ -1358,7 +1366,7 @@ fn target_function_signature_realization_lookup_in_catalog_node(
       }
     _ =>
       outcome_rejected(
-        target_function_signature_realization_lookup_miss_diagnostic(source_carrier: source_carrier)
+        target_function_signature_realization_row_decode_invalid_diagnostic(source_carrier: source_carrier)
       )
   }
 }

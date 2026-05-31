@@ -8,7 +8,7 @@ Forward projection of remaining work to v4-done. Supersedes the 2026-05-30 snaps
 |---|---|---|
 | P1 | Every other scheduled task complete | YELLOW (8/53 PROVEN per sharp-otter #4065 roster + #4060 distribution; 45 GAP items remain) |
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **TECHNICAL-PROVEN / AUTHORITY-BLOCKED**: scope (a) PROVEN per valiant-moth-559 probe (44-source compiler closure, 0 dag+rust diagnostics, no resolve-posture bridge needed). Full predicate gated on P2-B bridge deletion (`ci.yml:378-385` + `scripts/v4-bootstrap-resolve-posture-gate.sh`) — operator-authorization-blocked. |
-| P3 | v4 emits Rust source that compiles to a binary | YELLOW. Post-SG-1 #3956 measurement: 6991 rustc errors (was 7951; SG-1 dissolved E0423 class -2978; SG-7 cleared). 8 receipt-producing classes per #4086 catalog — 7 active across routing states + SG-3-CASCADE retired cascade-residual (see §3.3). |
+| P3 | v4 emits Rust source that compiles to a binary | YELLOW. Live ratchet (#4122 post-#4115 probe, `docs/audit/v4-rustc-error-catalog-2026-05-31-post-p5.md`): **7,175** rustc errors (post-SG-1 baseline #4086 was 6,991; pre-SG-1 7,951 — SG-1 dissolved E0423 −2,978, SG-7 cleared; #4086 is retained only as the delta baseline). 8 receipt-producing classes per #4086 catalog — 7 active across routing states + SG-3-CASCADE retired cascade-residual (see §3.3). |
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | RED — hard-gated on P2 full deletion + P3 PROVEN |
 | P5 | TestClaim suite passes | YELLOW. **P5-minimum-viable LANDED** (#4063 + #4064). **P5-PROVEN gates split into two bundles. Layer 1 fixture/law bundle: 3/3 CLOSED** (Wa-1 #4079 + Wa-2 #4080 + P5-D tranche-2 #4089). **Layer 2 authority gate: OPEN** (structural-bridge `scripts/v4-testclaim-corpus-gate.sh` replacement+deletion). **P5 PROVEN requires BOTH layers closed.** Don't read "Wa-2 LANDED → P5 GREEN". |
 | P6 | Hand-authored Rust not editable authority (proven by REPRODUCTION) | RED — hard-gated on P4 + P3 PROVEN |
@@ -47,7 +47,7 @@ Per #4086 catalog + proud-pike routing (msg_6db2dc9e):
 
 | Class | ~Errors | State | Routing |
 |---|---|---|---|
-| SG-1b function-signature String↔Symbol | (subset of 6991) | worksheet-needed | NEW sibling worksheet — TR lane (keen-heron) implements |
+| SG-1b function-signature String↔Symbol | (subset of 7,175) | routed | worksheet #4099 **LANDED** (per #4122 catalog §6); TR lane (keen-heron) worker dispatch is the next-step receipt |
 | SG-RC-LAYERING | ~700 (10%) | authoring | NEW §10.0 worksheet — **proud-pike authoring** |
 | SG-2 | (extend existing) | routed | proud-pike's SG-2 worksheet; worker dispatch when ready |
 | SG-8 | (extend existing) | routed | extend existing worksheet |
@@ -57,7 +57,7 @@ Per #4086 catalog + proud-pike routing (msg_6db2dc9e):
 | SG-1-FOLLOWON | (extend existing) | routed | worker-only follow-on |
 | SG-COLLECTION-PROJECTION | ~170 | route-pending | amend SG-5/SG-6 first; escalate to NEW only if single-authority-fact fails |
 
-(Table lists 9 rows for 8 distinct receipt-producing classes — SG-1b + SG-1-FOLLOWON are two routing paths for one class per #4086 catalog. Of the 8, **7 are active** in various routing states (`worksheet-needed` / `authoring` / `routed` / `in-review` / `route-pending` — not all worker-dispatchable yet; see per-row state) and SG-3-CASCADE is the one **retired** cascade-residual meter (not worker-extensible). `state` legend: `worksheet-needed` = no §10.0 yet; `authoring` = §10.0 being written; `routed` = §10.0 exists, worker dispatchable; `in-review` = worker PR open; `route-pending` = decision needed on extend-vs-new; `retired (no worksheet)` = determined cascade-only, bands owned by primaries, not separately dispatchable per `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md`.)
+(Table lists 9 rows for 8 distinct receipt-producing classes — SG-1b + SG-1-FOLLOWON are two routing paths for one class per #4086 catalog. Of the 8, **7 are active** in various routing states (currently `authoring` / `routed` / `in-review` / `route-pending` — not all worker-dispatchable yet; see per-row state) and SG-3-CASCADE is the one **retired** cascade-residual meter (not worker-extensible). `state` legend: `worksheet-needed` = no §10.0 yet; `authoring` = §10.0 being written; `routed` = §10.0 exists, worker dispatchable; `in-review` = worker PR open; `route-pending` = decision needed on extend-vs-new; `retired (no worksheet)` = determined cascade-only, bands owned by primaries, not separately dispatchable per `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md`.)
 
 P3 PROVEN bar: **Rust source compiles to a binary** (not zero rustc errors — that is a measurement proxy; not Python+Go either — those are v0.1.0 alpha scope per Wave F F3). Each named class closure shrinks the rustc error count; when residual errors → 0 on the Rust compile path, the binary builds.
 
@@ -110,7 +110,7 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 | valiant-cat-623 | Wa-2 #4080 LANDED dca5ce7a; worker archived |
 | lively-eagle-677 | SG-6 #4085 — address cursor RC |
 | proud-pike-680 | Author SG-RC-LAYERING §10.0 worksheet |
-| keen-heron-687 | SG-1b sibling worksheet relay → TR worker dispatch when proud-pike ratifies |
+| keen-heron-687 | SG-1b worksheet #4099 landed → TR worker dispatch is the next-step receipt (per #4122 catalog §6) |
 | sharp-otter-407 | Standing by post-routing |
 | smart-stag-871 | Standing by; P2-B bridge deletion blocked-on-decision |
 | quick-tern-735 | Tranche-3 dispatch when Wa-2 lands; structural-bridge replacement pending positive-Y authoring |
@@ -135,7 +135,7 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 | 3 | P2-B deletion authorization | **operator-gated decision-node** | operator/PM | bridge deletion authorized OR explicitly kept with named follow-up (M2 probe by sharp-otter pending as safety-net receipt) |
 | 4 | SG-RC-LAYERING worksheet | authoring | proud-pike | §10.0 worksheet published |
 | 5 | SG-6 #4085 | LANDED 06:28Z (squash 2ac52f26) ✓ | lively-eagle (archived) | class merged; Wave 2 TR-lane COMPLETE |
-| 6 | SG-1b sibling | routed | Target Realization (keen-heron) | worker dispatched once proud-pike ratifies worksheet/amendment |
+| 6 | SG-1b sibling | routed | Target Realization (keen-heron) | worksheet #4099 landed (per #4122 catalog §6); TR worker dispatch is the next-step receipt |
 | 7 | #4091 elastic CI ratification | **MERGED 07:04Z (squash c05a5a84) ✓** | operator | ratified on main; substrate now authoritative for downstream CI substrate work |
 
 ## §7. PM-side actionable items
@@ -156,7 +156,7 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 - **Structural-bridge replacement is unstaffed.** Per quick-tern's no-new-shell-substrate read, it needs DFS authoring before worker dispatch. This is the latent gate that could surprise — and per operator framing it should be the **first concrete CiUpsertStep replacement under #4091** rather than a one-off shell swap.
 - **P2-B bridge deletion is operator-gated and not authorized.** Without it, P2 stays YELLOW even though scope (a) is PROVEN.
 - **#4092 saved ~14m CI runtime** but ci_v4 step still sometimes times out (#4074 rerun was a 32min nailbiter); CI overhaul gap is partially closing at the per-step level. The full elastic redesign **landed in [#4091](https://github.com/gunb-ai/gunbc/pull/4091)** (squash c05a5a84, merged 2026-05-31T07:04Z), anchored on the same #4074 run profile that surfaced the four-compile-redundancy (M1 rust emit + v2→v4 bootstrap + T-22 corpus rust + T-22 corpus dag, all on the same 332-source closure). #4091 is now substrate authority for downstream CI substrate work; the structural overhaul timeline now depends on #4095-class DFS worksheets landing + implementation workers shipping.
-- **6991 rustc errors → 0 is a long-horizon path.** Per-class closures (SG-RC-LAYERING ~700, SG-COLLECTION-PROJECTION ~170, etc.) accumulate — the visible single-class wins from SG-1 (~37%) won't recur at that magnitude.
+- **7,175 rustc errors → 0 is a long-horizon path.** (#4122 live ratchet; #4086's 6,991 was the post-SG-1 baseline.) Per-class closures (SG-RC-LAYERING ~700, SG-COLLECTION-PROJECTION ~170, etc.) accumulate — the visible single-class wins from SG-1 (~37%) won't recur at that magnitude.
 
 ## §9. Cross-refs (authoritative state)
 
