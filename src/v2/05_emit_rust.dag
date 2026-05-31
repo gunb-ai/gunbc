@@ -1312,14 +1312,15 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
             ""
           } else {
             let deduped_names = unique_strings(items: filtered_names)
+            let variant_import_names = deduped_names |> filter(n => is_graph_type_name(name: n, registry: registry) == false)
             let top_level = deduped_names |> filter(n =>
               if is_known_variant(type_summaries: type_summaries, name: n) {
                 is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
               } else { true }
             )
             let all_enum_names = map_keys(type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-            let imported_enums = deduped_names |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-            let all_parents = deduped_names |> map(n =>
+            let imported_enums = variant_import_names |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+            let all_parents = variant_import_names |> map(n =>
               if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { "" }
               else {
                 match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: imported_enums) {
@@ -1334,14 +1335,17 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
             ) |> filter(p => p != "")
             let parent_list = unique_strings(items: all_parents)
             let top_with_parents = unique_strings(items: concat(top_level, parent_list))
-            let main_line = if top_with_parents |> count > 0 {
-              let names_str = top_with_parents |> map(n =>
-                emit_import_name(n: n, registry: registry)
-              ) |> join(separator: ", ")
-              concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
-            } else { "" }
+            let local_reexport_names = top_with_parents |> filter(n => symbol_defining_mod_filename(name: n, registry: registry, import_mod: mod_name) == mod_name)
+            let remote_reexport_names = top_with_parents |> filter(n => symbol_defining_mod_filename(name: n, registry: registry, import_mod: mod_name) != mod_name)
+            let remote_mods = unique_strings(items: remote_reexport_names |> map(n => symbol_defining_mod_filename(name: n, registry: registry, import_mod: mod_name)))
+            let main_line = emit_pub_use_from_module(mod_filename: mod_name, names: local_reexport_names, registry: registry)
+            let remote_main_lines = remote_mods |> map(rmod =>
+              let names = remote_reexport_names |> filter(n => symbol_defining_mod_filename(name: n, registry: registry, import_mod: mod_name) == rmod)
+              emit_pub_use_from_module(mod_filename: rmod, names: names, registry: registry)
+            )
             let variant_lines = parent_list |> map(parent =>
-              let variants = deduped_names |> filter(n =>
+              let parent_mod = symbol_defining_mod_filename(name: parent, registry: registry, import_mod: mod_name)
+              let variants = variant_import_names |> filter(n =>
                 if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { false }
                 else {
                   match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: [parent]) {
@@ -1351,18 +1355,22 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
                 }
               )
               let vars_str = variants |> join(separator: ", ")
-              concat("use crate::", mod_name, "::", parent, "::{", vars_str, "};")
+              concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
             )
             let imported_enums = top_level |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
             let wildcard_enum_lines = imported_enums
               |> filter(en => parent_list |> any(p => p == en) == false)
-              |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
-            let all_lines = if main_line != "" {
-              concat([main_line], variant_lines |> filter(l => l != ""), wildcard_enum_lines)
-            } else {
-              concat(variant_lines |> filter(l => l != ""), wildcard_enum_lines)
-            }
-            all_lines |> join(separator: "\n")
+              |> map(en =>
+                let en_mod = symbol_defining_mod_filename(name: en, registry: registry, import_mod: mod_name)
+                concat("use crate::", en_mod, "::", en, "::*;")
+              )
+            let all_lines = concat(
+              [main_line],
+              remote_main_lines |> filter(l => l != ""),
+              variant_lines |> filter(l => l != ""),
+              wildcard_enum_lines
+            )
+            all_lines |> filter(line => line != "") |> join(separator: "\n")
           }
       }
     )
@@ -1447,6 +1455,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
+    } else if is_type_alias_return_node(n: resolved_type(n: item), source_indices: env.source_indices) {
+      let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, type_params, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
     } else {
       ""
     }
