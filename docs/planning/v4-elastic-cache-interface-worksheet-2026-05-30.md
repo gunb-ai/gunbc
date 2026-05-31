@@ -1,6 +1,6 @@
 # v4 Modeling DFS Worksheet B — Elastic cache interface (fractal Upsert chain)
 
-> **Status:** WORKSHEET APPROVED — Modeling DFS Manager §8 sign-off 2026-05-31 (proud-pike-680; PR #4095 split amend). **READY-FOR-IMPLEMENTATION-DISPATCH** once #4095 merges to main. Pair with **Worksheet A** (`v4-elastic-compute-fabric-worksheet-2026-05-30.md`).
+> **Status:** WORKSHEET APPROVED — Modeling DFS Manager §8 sign-off 2026-05-31 (proud-pike-680; PR #4095). **Pre-implementation schema amendments** 2026-05-31 (operator review; §1.9). **READY-FOR-IMPLEMENTATION-DISPATCH** once #4095 merges to main. Pair with **Worksheet A** (`v4-elastic-compute-fabric-worksheet-2026-05-30.md`).
 > **Date:** 2026-05-30 (split amend 2026-05-31)
 > **Author:** sharp-wolf-824 (worker under proud-pike-680)
 > **Dispatch anchor:** node://adhoc-2e6e2313-8a5 — exploration §4.0f **Worksheet B** (cases 9–19) + §4.0g
@@ -13,10 +13,13 @@
 
 Compose with compute fabric **only** through:
 
-- `CachedArtifactReceipt<T>.producer: ExecutionReceipt<T>` (cache hit must cite compute proof)
+- `CachedArtifactReceipt<T>.producer: ProducerReceipt<T>` where internal hits cite `ExecutionReceiptRef<T>` (neutral digest ref — **no** `import compute_fabric`)
+- Worksheet A still exposes full `ExecutionReceipt<T>` on `ExecutionReceipt.output` (compute → artifact handle)
 - Semantic artifacts use `ArtifactIdentity<T>` projected from Upsert subjects (same `content_hash` discipline as compute `ArtifactRef` ingress — identities must align at harness boundary)
 
 **Forbidden:** `dsl/std/cache_interface.dag` importing `compute_fabric.dag`. **`CacheStore` is not first authority** — use `CacheInterfaceFacts` rows + derived `CacheStoreView`.
+
+**Staged target (post–first landing):** hoist `ProducerReceiptRef<T>` / shared provenance carriers to `dsl/std/artifact.dag` (Option B); first implementation uses Option A in §1.5.
 
 ---
 
@@ -67,7 +70,7 @@ type CacheInterfaceFacts {
   auth: AuthScope
   read_latency: ReadLatencyClass
   consistency: ConsistencyModel
-  evidence: CacheRowEvidence              // case 19 — vendor or observed
+  evidence: List<CacheEvidence>           // case 19 — plural, field-scoped when needed
 }
 
 // Derived projection — NEVER first authority.
@@ -78,14 +81,25 @@ type CacheStoreView {
 type CacheRowEvidence
   = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
   | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
+  | OperatorObserved { note: NonEmptyStr, observed_at: LogicalTime }
+  | CiReceiptCitation { workflow_run_id: NonEmptyStr, step_id: NonEmptyStr }
+
+// Field-scoped evidence when vendor docs, runner observation, and operator notes
+// support different coordinates on the same row (case 19).
+type CacheEvidence {
+  field: Symbol                            // e.g. eviction, read_latency, key_derivation
+  evidence: CacheRowEvidence
+}
 ```
 
 ### 1.2 Identity vs transport
 
 ```dag
+type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")  // stage → v4.std.artifact at harness
+
 type ArtifactIdentity<T> {
   subject_digest: ContentHash              // content_hash(canonical Upsert<T> subject)
-  artifact_kind: NonEmptyStr               // branded kind — align with v4.std.artifact at harness
+  artifact_kind: ArtifactKindId            // not bare NonEmptyStr — prevents copy-paste drift
 }
 
 type ProviderKey
@@ -124,8 +138,14 @@ type CacheWriteSemantics
 
 type CacheMissSemantics
   = MissThenCreate
-  | MissThenFallback { lower_tier: CacheInterfaceId }
   | MissIsDiagnostic
+  | ProviderNativeFallback                  // intrinsic to backend (e.g. GHA restore-key chain)
+
+// Cross-store L1→L2 fallback is composition, NOT a field on CacheInterfaceFacts.
+type CacheLayerPlan {
+  primary: CacheInterfaceId
+  fallback: Option<CacheInterfaceId>
+}
 ```
 
 ### 1.4 KeyDerivationFacts (per-backend concrete fields)
@@ -136,6 +156,8 @@ type KeyDerivationClass
   | HandAuthoredString
   | NativeInternalHash
 
+// Preliminary classifier only — concrete rows MUST still spell field-specific hit/miss
+// inputs in KeyDerivationFacts (do not let RustcInvocation become a black box).
 type InputSurface
   = UpsertSubject
   | FilePaths
@@ -161,22 +183,45 @@ type KeyDerivationFacts {
 }
 ```
 
-### 1.5 Cache hit receipt (composition with Worksheet A)
+### 1.5 Cache hit receipt + producer composition (Worksheet A)
 
 ```dag
-// ExecutionReceipt<T> — defined in compute_fabric.dag; referenced here only.
+// Option A (first landing): neutral ref — cache_interface.dag does NOT import compute_fabric.
+type ProducerKind
+  = InternalExecution
+  | ExternalVendor
+  | RunnerObserved
+
+type ExecutionReceiptRef<T> {
+  receipt_digest: ContentHash              // digest of full ExecutionReceipt<T> in compute_fabric
+  producer_kind: ProducerKind
+}
+
+type ProducerReceipt<T>
+  = InternalExecution { receipt: ExecutionReceiptRef<T> }   // our CI compute path
+  | VendorArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
+  | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
+
 type CachedArtifactReceipt<T> {
   artifact: ArtifactIdentity<T>
   backend_key: BackendCacheKey
-  producer: ExecutionReceipt<T>            // COMPOSITION EDGE — no compute import in .dag
+  producer: ProducerReceipt<T>             // not bare ExecutionReceipt<T> — see §1.9
   verified_subject_digest: ContentHash
   content_digest: ContentHash
 }
 
+type CacheRejectReason
+  = SubjectDigestMismatch
+  | ContentDigestMismatch
+  | ProducerReceiptMissing
+  | BackendKeyMalformed
+  | BackendUnauthorized
+  | BackendUnavailable
+
 type CacheLookupResult<T>
   = Hit { receipt: CachedArtifactReceipt<T> }
   | Miss
-  | RejectedHit { reason: NonEmptyStr }
+  | RejectedHit { reason: CacheRejectReason }
 ```
 
 ### 1.6 Dimension enums + StorageSurface
@@ -212,11 +257,36 @@ fn cache_key_projection<T>(
 |--------|-------------------|------------------|------|
 | `gha_actions_cache_facts` | `PrefixFallback` | `MissThenCreate` | 9 |
 | `sccache_local_facts` | `NativeInternalLookup` | `MissThenCreate` | 10 |
-| `buildbuddy_cas_facts` | `ContentAddressLookup` | `MissThenFallback` | 11 |
+| `buildbuddy_cas_facts` | `ContentAddressLookup` | `MissThenCreate` | 11 |
 | `cargo_target_dir_facts` | `NativeInternalLookup` | `MissThenCreate` | 12 |
 | `rustup_toolchain_store_facts` | `NativeInternalLookup` | `MissThenCreate` | 13 |
 
-Each row must include `evidence: CacheRowEvidence` before ratification (case 19).
+Each row must include non-empty `evidence: List<CacheEvidence>` before ratification (case 19). Cross-store fallback (e.g. sccache L1 → remote CAS) is modeled with `CacheLayerPlan`, not `MissThenFallback` on a single row.
+
+### 1.9 Implementation notes (pre–`cache_interface.dag` landing)
+
+```text
+1. CachedArtifactReceipt.producer uses ProducerReceipt<T>, not a direct
+   ExecutionReceipt<T> import. First landing: ExecutionReceiptRef<T> digest ref
+   (Option A). Later: shared provenance in artifact.dag (Option B).
+
+2. CacheInterfaceFacts.evidence is List<CacheEvidence> — field-scoped when vendor
+   docs, runner observation, operator notes, or CI receipts support different coords.
+
+3. Cross-store fallback belongs in CacheLayerPlan, not CacheInterfaceFacts, unless
+   the provider itself implements fallback (ProviderNativeFallback on miss_semantics).
+
+4. ArtifactKindId and CacheRejectReason are branded/typed carriers — not prose NonEmptyStr.
+
+5. InputSurface is a coarse classifier; each concrete row still documents what the
+   backend actually considers for hit/miss, verification, and invalidation.
+
+Implementation guardrails (dispatch):
+  - Land concrete CacheInterfaceFacts rows first.
+  - No CacheKind; no import compute_fabric; CacheStoreView is never first authority.
+  - No CI/workflow emission in cache_interface PR.
+  - Model GHA / sccache / BuildBuddy / Cargo / rustup as distinct rows.
+```
 
 ---
 
@@ -238,7 +308,8 @@ Each row must include `evidence: CacheRowEvidence` before ratification (case 19)
 | Upsert cache discipline | `dsl/std/patterns.dag` (content_hash canon) |
 | Content hash | `dsl/std/types.dag` |
 | Backend facts | **`dsl/std/cache_interface.dag`** |
-| Compute proof | `ExecutionReceipt<T>` in **compute_fabric** (composition) |
+| Producer proof | `ProducerReceipt<T>` in **cache_interface**; `ExecutionReceipt<T>` in **compute_fabric** via `ExecutionReceiptRef` digest |
+| Layered cache plans | **`CacheLayerPlan`** (harness / planner — not per-row miss field) |
 
 ---
 
@@ -251,7 +322,9 @@ Each row must include `evidence: CacheRowEvidence` before ratification (case 19)
 | `hashFiles(...)` in workflow authority | case 9 |
 | Bare blob without `CachedArtifactReceipt` | case 15 |
 | `import compute_fabric` | Composition boundary |
-| Row without `CacheRowEvidence` | case 19 |
+| Row without `List<CacheEvidence>` | case 19 |
+| `MissThenFallback { lower_tier }` on `CacheInterfaceFacts` | Use `CacheLayerPlan` + `ProviderNativeFallback` |
+| `RejectedHit { reason: NonEmptyStr }` | Use `CacheRejectReason` |
 
 ---
 
@@ -265,25 +338,25 @@ Each row must include `evidence: CacheRowEvidence` before ratification (case 19)
 | 12 | Cargo target/ L0 | `cargo_target_dir_facts`, `PerRunnerFilesystem` | Ephemeral; cleared on lease end |
 | 13 | rustup store | `rustup_toolchain_store_facts` | Distinct `KeyDerivationFacts` vs CAS |
 | 14 | New backend | one new `CacheInterfaceFacts` row | No `Upsert<T>` / `WorkUnit` change |
-| 15 | Wrong-cache-hit | `CachedArtifactReceipt`, `RejectedHit` | `verified_subject_digest` + `content_digest` match |
+| 15 | Wrong-cache-hit | `CachedArtifactReceipt`, `RejectedHit { CacheRejectReason }` | Digest mismatch → typed reject reason |
 | 16 | Orthogonal facts | dimension enums + rows | 4/4 grid; no `CacheKind` |
 | 17 | Same identity, different transport | `cache_key_projection` | Different `BackendCacheKey`, same `ArtifactIdentity` |
 | 18 | Toolchain bump | `InvalidationTrigger::ToolchainChange` | Output-affecting bump → new `subject_digest` |
-| 19 | Vendor evidence | `CacheRowEvidence` on every row | Ratification rejects rows without evidence |
+| 19 | Vendor evidence | `List<CacheEvidence>` on every row | Ratification rejects empty evidence; field-scoped allowed |
 
 ---
 
 ## §6 Landing order (Worksheet B)
 
 ```text
-B1. §1.6 dimension enums + KeyDerivationFacts
-B2. §1.3 semantics coproducts
-B3. §1.1 CacheInterfaceFacts record
-B4. data rows (gha, sccache, buildbuddy, cargo_target, rustup) + evidence
+B1. §1.6 dimension enums + ArtifactKindId + CacheRejectReason
+B2. §1.3 semantics coproducts + CacheLayerPlan
+B3. §1.1 CacheInterfaceFacts + List<CacheEvidence>
+B4. data rows (gha, sccache, buildbuddy, cargo_target, rustup) + evidence lists
 B5. ArtifactIdentity / BackendCacheKey / CacheKeyProjection
-B6. CachedArtifactReceipt + CacheLookupResult
+B6. ProducerReceipt / ExecutionReceiptRef + CachedArtifactReceipt + CacheLookupResult
 B7. CacheStoreView projection fn (optional)
-B8. v4.std mirror (ExecutionReceipt reference by name)
+B8. v4.std mirror (ProducerReceiptRef if shared module not yet landed)
 ```
 
 ---
@@ -309,7 +382,8 @@ Land `dsl/std/cache_interface.dag` per §6. **MUST NOT** import compute module. 
 - [x] Lookup/write/miss semantics + `KeyDerivationFacts` accepted
 - [x] §5 cases 9–19 accepted
 - [x] Vendor evidence discipline (case 19) accepted
-- [x] Composition boundary with Worksheet A accepted
+- [x] Composition boundary with Worksheet A accepted (`ProducerReceipt` / `ExecutionReceiptRef`, no cross-import)
+- [x] Pre-implementation amendments (§1.9) accepted for dispatch guardrails
 - [x] Implementation dispatch authorized (cache_interface PR only, post-merge)
 
 ---
