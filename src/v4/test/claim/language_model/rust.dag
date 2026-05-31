@@ -256,6 +256,35 @@ data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModel
   }
 }
 
+// 🟡 gated — feature:leaf-model-sg1b-signature-boundary-runner — bind #4099 SG-1b worksheet §"Falsification"
+// (1)–(3) / scripts/v4-leaf-model-rust-r3-internal-verify.sh class —
+// dissolve-on-arrival: a runner that emits a Symbol-returning fn and asserts the `-> T` boundary
+// annotation tracks the SG-1 value_form (signature_must_track_value_form). Until that runner lands
+// this row is a not_checked stub: it reuses the R3-internal coupling expectation
+// (type_emit_must_change ∧ value_emit_must_change) scoped to the fn-boundary signature site, which
+// is exactly the SG-1b coupling — mutating rust_target_atom_realization_symbol.type_form (consumed
+// by TargetFunctionSignatureRealization via shared source_carrier) must move the boundary `-> T`
+// annotation AND the value body together. The falsification flips both must_change flags to false.
+// SG-1b R-internal — fn-boundary signature coupling (PLANNED runner; not_checked until bound).
+data claim_rust_leaf_sg1b_signature_boundary_coupling: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave1(),
+  fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
+  subject: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+  expectation: RustEmitProjectionEqualityExpectation {
+    atom_realization_row: rust_atom_realization_symbol_node,
+    type_emit_must_change: true,
+    value_emit_must_change: true
+  },
+  falsification_case: FalsificationCase {
+    subject_variant: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+    expected_failure_mode: RustEmitProjectionEqualityExpectation {
+      atom_realization_row: rust_atom_realization_symbol_node,
+      type_emit_must_change: false,
+      value_emit_must_change: false
+    }
+  }
+}
+
 data rust_leaf_model_claim_corpus_phase1: List<RustLeafModelClaim> = [
   claim_rust_leaf_r1_i32_type,
   claim_rust_leaf_r2a_i32_algebra_operations,
@@ -264,5 +293,6 @@ data rust_leaf_model_claim_corpus_phase1: List<RustLeafModelClaim> = [
   claim_rust_leaf_r2b_overflow_checks_enabled_overflow,
   claim_rust_leaf_r2b_overflow_checks_disabled_overflow,
   claim_rust_leaf_r3_external_symbol_projection,
-  claim_rust_leaf_r3_internal_symbol_coupling
+  claim_rust_leaf_r3_internal_symbol_coupling,
+  claim_rust_leaf_sg1b_signature_boundary_coupling
 ]
