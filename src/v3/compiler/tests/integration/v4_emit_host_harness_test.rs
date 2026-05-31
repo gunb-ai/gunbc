@@ -185,6 +185,9 @@ fn nat_semiring_rung4_emit_vs_eval_falsification_on_host_value_mismatch() {
     );
 }
 
+/// Tranche-1 bridge receipt only: same MVP-2 fixture per target (five-byte stdout), not per-law emit.
+/// `claim_input_root` pins the roster row's law subject symbol until emit wires law bodies; test names
+/// mirror `.dag` row ids (`run_phase1_nat_semiring_rung6_*`) — they do not yet prove law semantics.
 fn assert_rung6_mvp2_emit_vs_eval_pass(
     work_dir_prefix: &str,
     claim_input_root: &str,
@@ -215,7 +218,7 @@ fn assert_rung6_mvp2_emit_vs_eval_pass(
     assert_eq!(verdict, emit_host_bridge::EmitHostEmitVsEvalVerdict::Pass);
 }
 
-/// W3.4 tranche-1: each additive-Monoid law row × rust — MVP-2 host emit stdout vs eval literal `5`.
+/// Roster-row receipt (law pin + rust transport); MVP-2 stdout only — see `assert_rung6_mvp2_emit_vs_eval_pass`.
 #[test]
 fn nat_semiring_rung6_rust_add_left_identity_emit_vs_eval_transport_passes() {
     assert_rung6_mvp2_emit_vs_eval_pass(

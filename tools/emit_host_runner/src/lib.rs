@@ -197,6 +197,8 @@ impl fmt::Display for RuntimeValueParseFailure {
 }
 
 /// MVP-2 / eval_runtime_mvp alignment: five stdout bytes denote runtime value `5` (shared rust/python row).
+/// Tranche-1: byte contract matches rust; `emit_host.dag` `runtime_value_parse` branches on authority pin
+/// so python-specific parsing can land without changing transport callers.
 pub fn runtime_value_parse_python(bytes: &[u8]) -> Result<(), RuntimeValueParseFailure> {
     runtime_value_parse_rust(bytes)
 }
