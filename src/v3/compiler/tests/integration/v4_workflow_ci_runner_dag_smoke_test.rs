@@ -631,8 +631,10 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     let m1_step = workflow_step_block(CI_YML, step_name);
     assert!(
-        m1_step.contains("if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'"),
-        "{CI_YML_PATH}: `{step_name}` must run for v4 and workflow-policy changes"
+        m1_step.contains("needs.affected.outputs.v4 == 'true'")
+            && m1_step.contains("needs.affected.outputs.workflow_policy == 'true'")
+            && m1_step.contains("needs.affected.outputs.testclaim_corpus == 'true'"),
+        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, and workflow-policy changes (M1 is upstream rust emit for corpus eval per #4091 §1.2)"
     );
     if non_blocking {
         assert!(
