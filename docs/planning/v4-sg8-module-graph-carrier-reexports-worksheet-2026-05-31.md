@@ -1,6 +1,6 @@
 # v4 SG-8 Worksheet — Module graph + carrier re-exports
 
-> **Status:** WORKSHEET COMPLETE (content) — Modeling DFS §8 sign-off **OPEN**. Worksheet PR [#4127](https://github.com/gunb-ai/gunbc/pull/4127) is **docs-only** (same split as SG-RC [#4100](https://github.com/gunb-ai/gunbc/pull/4100)); Target Realization implementation dispatch (`keen-heron-687`) lands **after** #4127 merges to `main`.
+> **Status:** WORKSHEET COMPLETE (content) — Modeling DFS §8 sign-off **OPEN**. Worksheet PR [#4127](https://github.com/gunb-ai/gunbc/pull/4127) is **docs-only** (same split as SG-RC [#4100](https://github.com/gunb-ai/gunbc/pull/4100)). Target Realization implementation (`keen-heron-687`) is **authorized only after** §8 closes **and** #4127 is on `main` — merge alone does not authorize emitter work.
 > **Date:** 2026-05-31
 > **Dispatch anchor:** `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §5 (SG-8 ~796 E0425+E0432+E0433); `#4086` routing; fresh probe `7181` lines / **808** SG-8-family (`485+240+83`).
 > **Primary consumer (implementation worker):** `src/v2/05_emit_rust.dag` `emit_imports` + generic type-alias emission (M1 v2 Rust emit path over full `src/v4` tree).
@@ -11,8 +11,8 @@
 | Layer | State |
 | ----- | ----- |
 | **Worksheet** | **COMPLETE (content)** — §8 Manager checklist **OPEN** |
-| **Worksheet PR** | [#4127](https://github.com/gunb-ai/gunbc/pull/4127) — docs-only; merge unblocks downstream implementation worker |
-| **Implementation dispatch** | **Blocked** until #4127 on `main` + §8 closed — Target Realization (`05_emit_rust.dag` items (1)+(2)); §4 falsification transcript in implementation PR |
+| **Worksheet PR** | [#4127](https://github.com/gunb-ai/gunbc/pull/4127) — docs-only; **merge requires §8 sign-off**; lands dispatch binding on `main` (no emitter) |
+| **Implementation dispatch** | **Blocked** until §8 closed; **authorized** after §8 closed + #4127 on `main` — Target Realization (`05_emit_rust.dag` items (1)+(2)); §4 falsification in implementation PR |
 
 ---
 
