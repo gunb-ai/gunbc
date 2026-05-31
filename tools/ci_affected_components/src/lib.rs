@@ -247,7 +247,6 @@ mod tests {
     }
 
     #[test]
-<<<<<<< HEAD
     fn claim_corpus_paths_only_raise_testclaim_bucket() {
         let flags = ci_component_affected_from_changed_paths([
             "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
@@ -258,7 +257,9 @@ mod tests {
         assert!(flags.testclaim_corpus);
         assert!(!flags.workflow_policy);
         assert!(!flags.release_distribution);
-=======
+    }
+
+    #[test]
     fn release_distribution_only_excludes_mixed_fixture_paths() {
         assert!(ci_release_distribution_only_from_changed_paths([
             "install.sh",
@@ -275,7 +276,6 @@ mod tests {
         assert!(!ci_release_distribution_only_from_changed_paths([
             "docs/README.md"
         ]));
->>>>>>> origin/main
     }
 
     #[test]

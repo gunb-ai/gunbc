@@ -106,7 +106,6 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         release_distribution: true,
     },
     CiAffectedFixture {
-<<<<<<< HEAD
         path: "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag",
         v2: false,
         v3: false,
@@ -132,11 +131,13 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         testclaim_corpus: true,
         workflow_policy: false,
         release_distribution: false,
-=======
+    },
+    CiAffectedFixture {
         path: "install.sh",
         v2: false,
         v3: false,
         v4: false,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: true,
     },
@@ -145,6 +146,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: false,
         v3: false,
         v4: false,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: true,
     },
@@ -153,9 +155,9 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         v2: false,
         v3: false,
         v4: true,
+        testclaim_corpus: false,
         workflow_policy: false,
         release_distribution: true,
->>>>>>> origin/main
     },
     CiAffectedFixture {
         path: "Cargo.lock",
