@@ -159,6 +159,11 @@ Promote from audit with **measured wall** (warm-cache methodology per #3881):
 | Lens-CI semantic compile | Tier-1 | Frontier on lens registry |
 | v3 full `cargo test` matrix | Tier-1 | Collapsed to `V3IntegrationClusterCommand` once, not job + ratchet |
 | Gate #103 path-regex | Tier-2 | After I1 stable |
+| **L-7** substrate accessor reconstruction (`scripts/check-l7-*.sh` or successor) | Tier-1 | B2 promotion: `TestClaim` port + delete shell; was legacy `v3` job only |
+| **L-8** lens surface gate | Tier-1 | B2 promotion: same; was legacy `v3` job only |
+| Compiler-std consolidation ratchet | Tier-1 | B2 promotion: `check-compiler-std-ratchet.sh` → TestClaim |
+| Banked-dissolutions ratchet | Tier-1 | B2 promotion: `check-banked-dissolutions.sh` → TestClaim |
+| v3 `cargo clippy` / `cargo test --no-run` (`bootstrap-regen-fresh`) | Tier-1 | B2: fold into `V3IntegrationClusterCommand` or discipline; **not** Tier-0 I3/I4 |
 
 ---
 
