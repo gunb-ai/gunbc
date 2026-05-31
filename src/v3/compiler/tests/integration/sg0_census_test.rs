@@ -296,11 +296,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
     // predicate substrate owns the walk without host FS coupling).
     "src/v3/compiler/src/cementing_dispatch.rs",
-    // W3 / T-38: executable `run_emit_host_rust` bridge until T-22 substrate eval dispatches
-    // host transport (`emit_host.dag` row stays `transport_not_wired` — P3 fail-closed).
-    // **P5 receipt (Mechanism (b)):** pairs with `v4_emit_host_harness_test.rs` (+0 test paths).
-    // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
-    "src/v3/compiler/src/emit_host_bridge.rs",
     "src/v3/compiler/src/complexity_lattice.rs",
     "src/v3/compiler/src/cost_basis_declaration.rs",
     "src/v3/compiler/src/dag.rs",
