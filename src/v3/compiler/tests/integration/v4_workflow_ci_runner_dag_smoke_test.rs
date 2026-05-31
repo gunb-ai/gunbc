@@ -9,10 +9,11 @@
 //! deferred until cross-module v4 load lands (same posture as peer v4 smoke tests).
 //!
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
-//! **TASKS.md** T-21 + T-24.
+//! **TASKS.md** T-21 + T-24; bankruptcy B0/B1 Tier-0 binding smoke: `docs/design-ci-bankruptcy-rebuild.md` §4.1
+//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101).
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
-//! this hand-Rust parse harness.
+//! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};

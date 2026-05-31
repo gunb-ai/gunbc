@@ -135,6 +135,17 @@ ci_pipeline
 | **B2 — Opt-in backlog** | Promote audit Table B rows one at a time → `CiCommand` + delete script | Each promotion = one PR + cost note |
 | **B3 — Shape-B** | A15: emit checked `ci.yml` from `CiPipeline` | T-24 / C4 close |
 
+### 4.1 P5 receipt — v3 binding smoke (B0/B1)
+
+Per **INVARIANTS** P5 Mechanism **(b)** (`_internal/INVARIANTS_OPS.md`): bankruptcy Tier-0 parity is a **same-path expansion** of `src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs` — **+0** new `EXPECTED_HAND_AUTHORED_TEST` census paths (file already registered for T-21/T-24 Wave-0).
+
+| Receipt field | Authority |
+|---------------|-----------|
+| **Lane** | `_internal/ROADMAP_OPS.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero` |
+| **INVARIANTS row** | `_internal/INVARIANTS_OPS.md` → `v4_workflow_ci_runner_dag_smoke_test.rs` (**PR #4101** expansion bullet) |
+| **Dissolve-on** | **B3 / A15 Shape-B:** `ci_pipeline` emits checked `ci.yml`; retire `v4_workflow_ci_bankruptcy_tier0_*` substring ratchets when `.dag` `TestClaim` harness exercises CI facts without hand-Rust `include_str!` probes |
+| **Interim ratchet** | `v4_workflow_ci_bankruptcy_tier0_*` tests; ci.yml modeled binding step runs `cargo test … v4_workflow_ci_bankruptcy_tier0_ -- --quiet` (D3; mirrors existing M1 binding-smoke pattern in [design-ci-dag-overhaul.md](./design-ci-dag-overhaul.md)) |
+
 **Mapping from old atoms (design canvas §6.3):**
 
 | Old | Bankruptcy phase |
