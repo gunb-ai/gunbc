@@ -3482,39 +3482,39 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
                       ),
                       target_carrier_diagnostics,
                       "Diagnostics"
+                        ),
+                        target_carrier_node,
+                        "Node"
+                      ),
+                      target_carrier_test_claim,
+                      "TestClaim"
                     ),
-                    target_carrier_node,
-                    "Node"
+                    target_carrier_free_monoid,
+                    "FreeMonoid"
                   ),
-                  target_carrier_test_claim,
-                  "TestClaim"
+                  target_carrier_outcome,
+                  "Outcome"
                 ),
-                target_carrier_free_monoid,
-                "FreeMonoid"
+                target_carrier_model_core,
+                "ModelCore"
               ),
-              target_carrier_outcome,
-              "Outcome"
+              target_carrier_algebra_inhabitance_decl,
+              "AlgebraInhabitanceDecl"
             ),
-            target_carrier_model_core,
-            "ModelCore"
+            target_carrier_probe_heap,
+            "ProbeHeap"
           ),
-          target_carrier_algebra_inhabitance_decl,
-          "AlgebraInhabitanceDecl"
+          rust_collection_surface_btree_set,
+          "std::collections::BTreeSet"
         ),
-        target_carrier_probe_heap,
-        "ProbeHeap"
+        rust_collection_surface_hash_set,
+        "std::collections::HashSet"
       ),
-      rust_collection_surface_btree_set,
-      "std::collections::BTreeSet"
+      target_collection_set_carrier,
+      "Set"
     ),
-    rust_collection_surface_hash_set,
-    "std::collections::HashSet"
-  ),
-  target_collection_set_carrier,
-  "Set"
-),
-rust_target_atom_type_spelling_string,
-"String"
+    rust_target_atom_type_spelling_string,
+    "String"
   )
 }
 

@@ -38,6 +38,8 @@ import v4.std.target_model {
   target_reference_layer_apply_value_expression,
   target_reference_layer_probe_from_emitted_type,
   target_type_expr_atom_emitted,
+  target_atom_realization_conj_child,
+  target_value_expression_field_inner,
   target_value_expression_symbol_identity,
   target_value_expression_node
 }
@@ -132,6 +134,13 @@ fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {
     TypeNode { connective: Atom { identity: id } } => id
     _ => sg_rc_fail_sym
   }
+}
+
+fn sg_rc_value_expr_inner_node(expr: TargetValueExpression) -> Node {
+  target_atom_realization_conj_child(
+    row_node: expr.node,
+    edge_name: target_value_expression_field_inner
+  )
 }
 
 // F1 value half — Rc wrap vs owned inner moves together with type text (§4 / §6).
@@ -310,10 +319,11 @@ fn sg_rc_f6_round_trip_owned() -> Bool {
   }
 }
 
-// Value path coupling — translate/catalog consumer emits target-specific Rc ctor wrapper.
+// Value path coupling — translate/catalog consumer preserves inner expr + target ctor (P3).
 fn sg_rc_value_rc_wrap_tagged() -> Bool {
   let inner = sg_rc_diagnostics_identity_value()
   let tokens = rust_reference_layer_tokens()
+  let inner_node = target_value_expression_node(expr: inner)
   match translate_apply_use_site_ownership_to_value_expression(
     expr: inner,
     source_carrier: target_carrier_diagnostics_node(),
@@ -324,6 +334,8 @@ fn sg_rc_value_rc_wrap_tagged() -> Bool {
       match wrapped.kind {
         TargetValueExprReferenceRcNew =>
           sg_rc_value_expr_ctor_identity(expr: wrapped) == tokens.rc_new_ctor
+            && content_hash(n: sg_rc_value_expr_inner_node(expr: wrapped))
+              == content_hash(n: inner_node)
         _ => false
       }
     Rejected { diagnostics: _ } => false
