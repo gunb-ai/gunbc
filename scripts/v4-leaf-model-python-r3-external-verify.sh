@@ -108,6 +108,7 @@ print(
             },
             "falsification": {
                 "python_exit": int(os.environ["V4_PYTHON_R3_FALSIFICATION_STATUS"]),
+                "expected_authority": "exec",
                 "expected_diagnostic": "TypeError:Symbol.__init__",
                 "type_error_init_observed": bool(
                     re.search(r"TypeError.*Symbol\.__init__\(\)", stderr)

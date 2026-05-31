@@ -21,8 +21,8 @@ import v4.std.diagnostic {
 import v4.std.leaf_model_verification {
   LeafModelVerificationRunReceipt,
   leaf_model_claim_python_r3_external_symbol_projection,
-  TargetCompileRejected,
-  TargetCompileVerdict,
+  TargetPythonExerciseVerdict,
+  TargetPythonExecRejected,
   target_diagnostic_python_type_error_init_arity_mismatch
 }
 import v4.std.logic { Bool }
@@ -92,6 +92,6 @@ data claim_python_r3_external_verification_receipt_shape: TestClaim = EqualsClai
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data python_r3_external_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
+data python_r3_external_modeled_falsification_expectation: TargetPythonExerciseVerdict = TargetPythonExecRejected {
   diagnostic_code: target_diagnostic_python_type_error_init_arity_mismatch
 }

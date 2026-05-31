@@ -109,6 +109,7 @@ print(
             },
             "falsification": {
                 "python_exit": int(os.environ["V4_PYTHON_R2A_FALSIFICATION_STATUS"]),
+                "expected_authority": "exec",
                 "expected_diagnostic": "AttributeError:log2_exact",
                 "attribute_error_observed": bool(
                     re.search(r"AttributeError.*log2_exact", stderr)
