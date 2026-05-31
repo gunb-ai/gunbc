@@ -2050,11 +2050,10 @@ fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> 
   }
 }
 
+// Only ExprMatch is statement-shaped in Go lambdas (per-arm `return` via emit_match_arm_body_stmt).
 fn go_lambda_emits_statement_body(body: Node) -> Bool {
   match body.expr_data {
     ExprMatch => true
-    ExprBlock => true
-    ExprLet => true
     _ => false
   }
 }
