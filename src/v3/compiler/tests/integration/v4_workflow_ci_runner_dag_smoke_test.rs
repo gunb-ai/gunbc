@@ -449,6 +449,12 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
     }
 }
 
+/// True when `job_id` is a deleted bankruptcy legacy *workflow job* block (not `affected` outputs).
+fn ci_yml_has_deleted_legacy_top_level_job(workflow_yml: &str, job_id: &str) -> bool {
+    workflow_yml.contains(&format!("\n  {job_id}:\n    needs:"))
+        || workflow_yml.contains(&format!("\n  {job_id}:\n    runs-on:"))
+}
+
 fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
     let marker = format!("    - name: {step_name}");
     let start = workflow_yml
@@ -824,10 +830,10 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         CI_DAG.contains("v4_t15_self_host_fixed_point_execution"),
         "{CI_DAG_PATH}: ci_pipeline must include v4_t15_self_host_fixed_point_execution (I7 / T-15)"
     );
-    for legacy_job in ["  v2:", "  v3:", "  v4:", "  self_host_ratchet:"] {
+    for legacy_job in ["v2", "v3", "v4", "self_host_ratchet"] {
         assert!(
-            !CI_YML.contains(legacy_job),
-            "{CI_YML_PATH}: bankruptcy B0 must delete legacy job `{legacy_job}`"
+            !ci_yml_has_deleted_legacy_top_level_job(CI_YML, legacy_job),
+            "{CI_YML_PATH}: bankruptcy B0 must delete legacy top-level job `{legacy_job}`"
         );
     }
     assert!(
