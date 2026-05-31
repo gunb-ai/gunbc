@@ -15,9 +15,11 @@
 //!
 //! **W3:** substrate `run_emit_host_rust` stays `transport_not_wired` (fail-closed); real cargo+run
 //! via `emit_host_bridge` / `emit_host_runner`. Rosters authored in #4046 (`rung_3_4`).
-//! Behavior receipts: real cargo compile+run transport, MVP-2 emit-vs-eval `Pass`/`Fail` verdicts
-//! (host `FalsificationReceipt` path on value mismatch / parse reject). Dissolution: delete when
-//! T-22 generated harness replaces hand-Rust probes.
+//! **W3.4 (this PR, +0 SG-0 paths):** extends bridge with python transport + rung-6 additive-Monoid
+//! roster (`rung_6.dag`, `rung_5_6_common.dag`, `nat_semiring_rung56_eval.dag`). Behavior receipts:
+//! MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte stdout contract;
+//! not per-law emitted artifacts until emit pipeline wires law subjects). Substrate rows stay
+//! `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B / **TASKS.md** T-22 T-38.
 //!
 //! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
 //! `tools/emit_host_runner` / `emit_host_bridge` (real cargo + run).

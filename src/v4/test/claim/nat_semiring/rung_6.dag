@@ -1,6 +1,9 @@
 // src/v4/test/claim/nat_semiring/rung_6.dag
 // Scope: phase1/nat_semiring rung 6 — post-emit additive-Monoid law preservation (tranche-1 / F4).
 // Status: W3.4 — three laws × rust + python via run_test_claim_emit_vs_eval.
+// Tranche-1 scaffold: lhs/rhs pin the same law subject Node (mirrors rung_3_4.dag:38-39); Pass on
+// substrate rows requires host stdout parsed as RuntimeValue matching eval once T-22 dispatches
+// transport. Until then, `v4_emit_host_harness_test.rs` proves MVP-2 emit-vs-eval per law×target.
 
 module v4.test.claim.nat_semiring.rung_6
 

@@ -94,7 +94,7 @@ fn emit_vs_eval_mvp2_verdict_from_receipt(
     }
 }
 
-/// W3 rung-4 / rung-6 proof path: real `run_emit_host_rust` transport + MVP-2 five-byte check.
+/// W3 rung-4 / W3.4 tranche-1 rung-6 rows: real `run_emit_host_rust` transport + MVP-2 five-byte check.
 ///
 /// Matches `run_test_claim_emit_vs_eval_for_claim` / `run_test_claim_emit_vs_eval_verdict` in
 /// `emit_host.dag` for the rust authority pin (host stdout parsed then compared to eval literal `5`).
@@ -112,7 +112,8 @@ pub fn run_emit_vs_eval_mvp2_transport(
     ))
 }
 
-/// W3.4 rung-6 proof path: real `run_emit_host_python` transport + same MVP-2 stdout contract.
+/// W3.4 tranche-1: real `run_emit_host_python` transport + MVP-2 five-byte stdout (same contract
+/// as rung-4 rust row). Executable bridge until per-law emit + T-22 substrate dispatch land.
 pub fn run_emit_vs_eval_mvp2_python_transport(
     emitted_source: &str,
     inputs: &EmitHostFixtureInputs,
