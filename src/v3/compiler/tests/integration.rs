@@ -59,6 +59,8 @@ mod cementing_provenance_origin_integration_test;
 mod complexity_lens_behavioral_completion;
 #[path = "integration/cementing/cost_lens_symbolic_consumer_test.rs"]
 mod cost_lens_symbolic_consumer_test;
+#[path = "integration/compute_fabric_dag_smoke_test.rs"]
+mod compute_fabric_dag_smoke_test;
 #[path = "integration/coverage_defect_acceptance_dag_test.rs"]
 mod coverage_defect_acceptance_dag_test;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
