@@ -1157,9 +1157,12 @@ fn target_function_boundary_site_from_node(
   }
 }
 
+// Single host authority: the encoded bundle is derived from row.target_model (its catalog-stripped
+// core), NOT a separately-threaded host_bundle that could disagree with the row's declared model.
+// target_model_bundle_core strips realization-catalog edges so the encoded bundle matches
+// core(live host) on decode regardless of which catalogs the live host carries.
 fn target_function_signature_realization_to_node(
-  row: TargetFunctionSignatureRealization,
-  host_bundle: Node
+  row: TargetFunctionSignatureRealization
 ) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1170,7 +1173,7 @@ fn target_function_signature_realization_to_node(
       ),
       target_model_named_edge(
         name: target_function_signature_realization_field_target_model_bundle,
-        target: host_bundle
+        target: target_model_bundle_core(host: row.target_model)
       ),
       target_model_named_edge(
         name: target_function_signature_realization_field_boundary_site,
@@ -1189,29 +1192,26 @@ fn target_function_signature_realization_to_node(
 // would alias a second row at the same boundary (or same carrier) into a duplicate Conj edge
 // name. Positional slots keep every (carrier × site) row representable without collision (P2).
 fn target_function_signature_realization_catalog_edge(
-  row: TargetFunctionSignatureRealization,
-  host_bundle: Node
+  row: TargetFunctionSignatureRealization
 ) -> Edge {
   Edge {
     label: Positional,
-    target: target_function_signature_realization_to_node(row: row, host_bundle: host_bundle)
+    target: target_function_signature_realization_to_node(row: row)
   }
 }
 
 fn target_function_signature_realization_catalog_snoc_edge(
   acc: List<Edge>,
-  row: TargetFunctionSignatureRealization,
-  host_bundle: Node
+  row: TargetFunctionSignatureRealization
 ) -> List<Edge> {
   list_snoc_item(
     xs: acc,
-    item: target_function_signature_realization_catalog_edge(row: row, host_bundle: host_bundle)
+    item: target_function_signature_realization_catalog_edge(row: row)
   )
 }
 
 fn target_function_signature_realization_catalog_node(
-  rows: List<TargetFunctionSignatureRealization>,
-  host_bundle: Node
+  rows: List<TargetFunctionSignatureRealization>
 ) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1221,8 +1221,7 @@ fn target_function_signature_realization_catalog_node(
       cons: fn(acc, row) {
         target_function_signature_realization_catalog_snoc_edge(
           acc: acc,
-          row: row,
-          host_bundle: host_bundle
+          row: row
         )
       }
     )

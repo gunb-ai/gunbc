@@ -1798,14 +1798,14 @@ data rust_target_atom_realization_catalog: List<TargetAtomRealization> = [
 // mismatch, so they are NOT speculatively expanded here.
 data rust_target_function_signature_realization_symbol_param: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
   source_carrier: symbol_kernel_type_node(),
-  target_model: rust_mvp1_target_model_staging(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
   boundary_site: FunctionBoundaryParam,
   signature_type_form: rust_target_atom_realization_symbol.type_form
 }
 
 data rust_target_function_signature_realization_symbol_return: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
   source_carrier: symbol_kernel_type_node(),
-  target_model: rust_mvp1_target_model_staging(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
   boundary_site: FunctionBoundaryReturn,
   signature_type_form: rust_target_atom_realization_symbol.type_form
 }
@@ -3349,8 +3349,7 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
           item: rust_named_edge(
             name: target_model_edge_signature_realizations,
             target: target_function_signature_realization_catalog_node(
-              rows: rust_target_function_signature_realization_catalog,
-              host_bundle: rust_sg2_type_expr_target_model_bundle_core()
+              rows: rust_target_function_signature_realization_catalog
             )
           )
         )
@@ -3433,6 +3432,19 @@ fn rust_sg2_serialize_source_node() -> Node {
 fn rust_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
     bundle: rust_sg2_type_expr_target_model_node(),
+    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    binding_spellings: rust_sg2_binding_spellings(),
+    authority_source_text: rust_sg2_type_alias_text
+  }
+}
+
+// Staging variant of the SG-2 type-expr model whose bundle is the pre-catalog core (no
+// signature_realizations edge). SG-1b rows declare THIS as their target_model so the row's host
+// authority matches the bundle they are encoded into (single authority); using the full model
+// would be cyclic (the catalog edge encodes these very rows). Mirrors rust_mvp1_target_model_staging.
+fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_sg2_type_expr_target_model_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
     authority_source_text: rust_sg2_type_alias_text
