@@ -15,7 +15,7 @@ Authoritative-source citations verbatim from TASKS.md + burn-down blocking-recei
 | # | Predicate (TASKS.md verbatim) | Anchor | Blocking receipt per burn-down |
 |---|---|---|---|
 | P1 | Every other scheduled task in this plan complete (whole plan minus T-15) | `src/v4/TASKS.md:806-812` | Meta-gate; each scheduled task PROVEN, named-blocked, or out-of-scope per its own gate |
-| P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | `src/v4/TASKS.md:813` | **Compiler-of-record pipeline** active + **resolve-posture bridge** (`.github/workflows/ci.yml:293-300`) deleted (per burn-down P2 row: "Resolve-posture bridge still live; v4 compiler-of-record not proven") |
+| P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | `src/v4/TASKS.md:813` | **Compiler-of-record pipeline** active + **resolve-posture bridge** (`.github/workflows/ci.yml:378-385` + script `scripts/v4-bootstrap-resolve-posture-gate.sh`) deleted (per burn-down P2 row: "Resolve-posture bridge still live; v4 compiler-of-record not proven") |
 | P3 | v4 emits Rust source that compiles to a binary | `src/v4/TASKS.md:814` | **emit → binary** PROVEN: v4 emits Rust source, that Rust compiles to a working binary (per burn-down P3 row: "~2978 E0423 class — dominant Pareto; landing by Jun 1 is possible but emit→binary PROVEN is not") |
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | `src/v4/TASKS.md:815` | **Self-host fixed-point**: binary regenerates bit-identical output across two consecutive runs on compiler source (per burn-down P4: "T-15 runner scaffold; B1 pins open; W2.5 ladder fixtures support path only; bit-identical fixpt is Wave 3 (W3.5)") |
 | P5 | TestClaim suite passes | `src/v4/TASKS.md:816` | **Modeled T-22 eval + structural-bridge deletion**: per burn-down P5 row, "Jun 1 anti-shelfware asks structural-bridge deletion schedule, not full T-38 GREEN. `scripts/v4-testclaim-corpus-gate.sh` likely still live Jun 1." |
@@ -41,7 +41,7 @@ P1 (every-other-task, TASKS.md:806-812)
 P2 (compiler-of-record self-bootstrap, TASKS.md:813)
   ← P2-A compiler-of-record pipeline active end-to-end on src/v4/compiler/*.dag
        (NO resolve-posture bridge fallback; scoped to compiler subdir, NOT full corpus)
-  ← P2-B resolve-posture bridge (.github/workflows/ci.yml:293-300) deleted
+  ← P2-B resolve-posture bridge (.github/workflows/ci.yml:378-385 (script scripts/v4-bootstrap-resolve-posture-gate.sh)) deleted
   ← P2-C P2 PROVEN ledger entry
 
 P3 (v4 emits Rust source that compiles to a binary, TASKS.md:814)
@@ -117,7 +117,7 @@ Each work-unit is named by the receipt-flip it produces. Manager lanes per PR #3
 
 ### §3.2. P2 — v4 compiles `src/v4/compiler/*.dag` end-to-end (TASKS.md:813)
 
-**Status**: YELLOW. Per burn-down P2 row: "Resolve-posture bridge still live; v4 compiler-of-record not proven." Blocking receipts: **compiler-of-record pipeline active** + **resolve-posture bridge (`.github/workflows/ci.yml:293-300`) deletion**.
+**Status**: YELLOW. Per burn-down P2 row: "Resolve-posture bridge still live; v4 compiler-of-record not proven." Blocking receipts: **compiler-of-record pipeline active** + **resolve-posture bridge (`.github/workflows/ci.yml:378-385` + script `scripts/v4-bootstrap-resolve-posture-gate.sh`) deletion**.
 
 **Bar is NOT "zero rustc errors on full-tree v4 corpus"** — that's a measurement proxy. The predicate is: v4 compiles its own `src/v4/compiler/*.dag` end-to-end via the modeled pipeline (not via the resolve-posture bridge fallback).
 
@@ -126,7 +126,7 @@ Each work-unit is named by the receipt-flip it produces. Manager lanes per PR #3
    - Lane: Compiler Spine (smart-stag-871) + Modeling DFS (substrate support)
    - Gating: substrate landings that the compiler depends on (subset of SG fixes; specifically what the compiler subdirectory needs, not the full corpus)
    - Receipt: compiler pipeline traversal log showing no resolve-posture-bridge fallback
-2. **P2-B — Resolve-posture bridge deleted from CI**: `.github/workflows/ci.yml:293-300` (the bridge that lets v4 bootstrap fall back to v2-compiled output when v4 compile fails) removed. Per INVARIANTS A3/P5 (NOT predicate P5): the bridge is a stand-in honesty signal, not a real compiler.
+2. **P2-B — Resolve-posture bridge deleted from CI**: `.github/workflows/ci.yml:378-385` + script `scripts/v4-bootstrap-resolve-posture-gate.sh` (the bridge that lets v4 bootstrap fall back to v2-compiled output when v4 compile fails) removed. Per INVARIANTS A3/P5 (NOT predicate P5): the bridge is a stand-in honesty signal, not a real compiler.
    - Lane: Compiler Spine (smart-stag-871) + Close/Receipt (sharp-otter-407 — adjudication)
    - Gating: P2-A (compiler-of-record working without the bridge)
    - Receipt: CI workflow with bridge code removed + green compiler-of-record run on main
@@ -225,7 +225,7 @@ Per burn-down P2 row + #4014 evidence: "advances ci.dag authority, not corpus co
    - Receipt: per-law preservation receipt
 5. **P5-E — Structural-bridge deletion**: per burn-down P5 row, the **anti-shelfware closure** asks `scripts/v4-testclaim-corpus-gate.sh` (the structural-bridge) be **deleted** so T-22 eval is the sole authority. Not a partial-subset close.
    - Lane: Compiler Spine + Close/Receipt
-   - Gating: P5-A + P5-B + P5-C + P5-D
+   - Gating: P5-A + P5-B + P5-C; **P5-D only if** rung-6 algebra-laws are on the authoritative TestClaim suite roster per operator decision D3 (else P5-D is rung-6 work, not P5, and does NOT gate P5-E)
    - Receipt: structural-bridge script removed from CI + T-22 eval is the only suite-pass authority
 6. **P5-F — P5 PROVEN ledger entry**: TestClaim suite passes per TASKS.md:816 with T-22 eval as sole authority (no structural-bridge fallback).
    - Lane: Close/Receipt
