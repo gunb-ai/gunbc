@@ -678,8 +678,7 @@ fn ci_upsert_v3_self_host_fixed_point_execution_mk() -> CiUpsertStepSymbol {
   }
 }
 
-data ci_upsert_v3_self_host_fixed_point_execution: CiUpsertStepSymbol =
-  ci_upsert_v3_self_host_fixed_point_execution_mk()
+data ci_upsert_v3_self_host_fixed_point_execution: CiUpsertStepSymbol = ci_upsert_v3_self_host_fixed_point_execution_mk()
 
 data ci_upsert_v4_t15_self_host_fixed_point_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/**"),
@@ -696,8 +695,7 @@ fn ci_upsert_v4_t15_self_host_fixed_point_execution_mk() -> CiUpsertStepSymbol {
   }
 }
 
-data ci_upsert_v4_t15_self_host_fixed_point_execution: CiUpsertStepSymbol =
-  ci_upsert_v4_t15_self_host_fixed_point_execution_mk()
+data ci_upsert_v4_t15_self_host_fixed_point_execution: CiUpsertStepSymbol = ci_upsert_v4_t15_self_host_fixed_point_execution_mk()
 
 type CiUpsertStepRow {
   step_id: CiStepId
