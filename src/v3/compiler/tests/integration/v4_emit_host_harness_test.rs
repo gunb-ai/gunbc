@@ -40,6 +40,17 @@ const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
 const NAT_SEMIRING_RUNG_3_4_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
 const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
+const NAT_SEMIRING_RUNG_6_DAG: &str = include_str!("../../../../v4/test/claim/nat_semiring/rung_6.dag");
+const NAT_SEMIRING_RUNG_6_PATH: &str = "src/v4/test/claim/nat_semiring/rung_6.dag";
+const NAT_SEMIRING_RUNG56_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung56_eval.dag");
+const NAT_SEMIRING_RUNG56_EVAL_PATH: &str =
+    "src/v4/test/claim/workflow/nat_semiring_rung56_eval.dag";
+const RUNG_5_6_COMMON_DAG: &str = include_str!("../../../../v4/test/claim/rung_5_6_common.dag");
+const RUNG_5_6_COMMON_PATH: &str = "src/v4/test/claim/rung_5_6_common.dag";
+
+/// Minimal python host fixture: five stdout bytes (MVP runtime value `5` alignment).
+const EMIT_HOST_PYTHON_FIXTURE_SOURCE: &str = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
@@ -268,7 +279,9 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
     let module = parse_module(EMIT_HOST_DAG, EMIT_HOST_PATH);
     for name in [
         "run_emit_host_rust",
+        "run_emit_host_python",
         "run_emit_host",
+        "runtime_value_parse_python",
         "host_exit_failure_outcome",
         "run_test_claim_emit_vs_eval_for_claim",
         "run_test_claim_emit_vs_eval",
@@ -285,6 +298,10 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
     assert!(
         surface_declares_data(&module, "emit_host_transport_not_wired"),
         "{EMIT_HOST_PATH}: transport_not_wired reason symbol"
+    );
+    assert!(
+        surface_declares_data(&module, "emit_host_python_authority_pin"),
+        "{EMIT_HOST_PATH}: python authority pin (W3.4)"
     );
 }
 

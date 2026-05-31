@@ -468,6 +468,37 @@ pub fn run_emit_host_rust(
     })
 }
 
+/// Run `source` as a Python script in `work_dir` via `python3`, capture stdout/stderr.
+pub fn run_emit_host_python(
+    source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+    validate_emit_host_fixture_inputs(inputs)?;
+    fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
+        source: e.to_string(),
+    })?;
+
+    let script_path = work_dir.join("fixture.py");
+    fs::write(&script_path, source).map_err(|e| HostSetupFailure::SourceWriteFailed {
+        source: e.to_string(),
+    })?;
+
+    let run = run_command_bounded(
+        Command::new("python3").arg(&script_path),
+        HOST_RUN_TIMEOUT,
+        HostPhase::FixtureRun,
+    )?;
+    let build_log = bounded_output_to_log(&run, "run");
+    Ok(EmitHostRunReceipt {
+        source_text: source.to_string(),
+        exit: host_exit_from_bounded(&run, HostPhase::FixtureRun),
+        stdout_bytes: run.stdout,
+        stderr_bytes: run.stderr,
+        build_log,
+    })
+}
+
 /// Default temp directory under `std::env::temp_dir()`.
 pub fn default_work_dir(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(prefix)

@@ -1,4 +1,4 @@
-//! Rust transport row for `v4.compiler.emit_host` (`run_emit_host_rust`).
+//! Host transport rows for `v4.compiler.emit_host` (`run_emit_host_rust` / `run_emit_host_python`).
 //!
 //! **Modeled authority:** `src/v4/compiler/emit_host.dag` — executable host-process boundary is
 //! `tools/emit_host_runner`; substrate `.dag` assembles `EmitHostRunReceipt` from typed host facts.
@@ -6,8 +6,8 @@
 //! host transport directly (dissolves `emit_host_transport_not_wired`).
 
 use emit_host_runner::{
-    host_logical_run_from_exit, run_emit_host_rust, EmitHostFixtureInputs, EmitHostRunReceipt,
-    HostExit, RuntimeValueParseFailure,
+    host_logical_run_from_exit, run_emit_host_python, run_emit_host_rust, EmitHostFixtureInputs,
+    EmitHostRunReceipt, HostExit, RuntimeValueParseFailure,
 };
 
 /// MVP-2 / `eval_runtime_mvp` alignment: five stdout bytes denote runtime value `5`.
@@ -40,6 +40,15 @@ pub fn run_emit_host_rust_transport(
     run_emit_host_rust(source, inputs, work_dir)
 }
 
+/// Host-process transport: run emitted Python via `python3`, returning the runner receipt.
+pub fn run_emit_host_python_transport(
+    source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &std::path::Path,
+) -> Result<EmitHostRunReceipt, emit_host_runner::HostSetupFailure> {
+    run_emit_host_python(source, inputs, work_dir)
+}
+
 /// True when the host exit witness is `Holds` (logical child succeeded).
 pub fn host_exit_holds(exit: &HostExit) -> bool {
     exit.exit_holds()
@@ -50,7 +59,42 @@ pub fn host_stdout_bytes(exit: &HostExit, stdout_bytes: Vec<u8>) -> Option<Vec<u
     host_logical_run_from_exit(exit, stdout_bytes).map(|run| run.stdout_bytes)
 }
 
-/// W3 rung-4 proof path: real `run_emit_host_rust` transport + MVP-2 five-byte equality check.
+fn emit_vs_eval_mvp2_verdict_from_receipt(
+    receipt: EmitHostRunReceipt,
+    expected_bytes: [u8; 5],
+    parse_stdout: fn(&[u8]) -> Result<(), RuntimeValueParseFailure>,
+) -> EmitHostEmitVsEvalVerdict {
+    if !host_exit_holds(&receipt.exit) {
+        return EmitHostEmitVsEvalVerdict::FailHostExit {
+            host_receipt: receipt,
+        };
+    }
+    let stdout = match host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()) {
+        Some(bytes) => bytes,
+        None => {
+            return EmitHostEmitVsEvalVerdict::FailHostExit {
+                host_receipt: receipt,
+            };
+        }
+    };
+    if let Err(parse) = parse_stdout(&stdout) {
+        return EmitHostEmitVsEvalVerdict::FailParse {
+            host_receipt: receipt,
+            parse,
+        };
+    }
+    if stdout == expected_bytes {
+        EmitHostEmitVsEvalVerdict::Pass
+    } else {
+        EmitHostEmitVsEvalVerdict::FailValueMismatch {
+            host_receipt: receipt,
+            host_stdout: stdout,
+            expected_bytes,
+        }
+    }
+}
+
+/// W3 rung-4 / rung-6 proof path: real `run_emit_host_rust` transport + MVP-2 five-byte check.
 ///
 /// Matches `run_test_claim_emit_vs_eval_for_claim` / `run_test_claim_emit_vs_eval_verdict` in
 /// `emit_host.dag` for the rust authority pin (host stdout parsed then compared to eval literal `5`).
@@ -61,34 +105,26 @@ pub fn run_emit_vs_eval_mvp2_transport(
     expected_bytes: [u8; 5],
 ) -> Result<EmitHostEmitVsEvalVerdict, emit_host_runner::HostSetupFailure> {
     let receipt = run_emit_host_rust_transport(emitted_source, inputs, work_dir)?;
-    if !host_exit_holds(&receipt.exit) {
-        return Ok(EmitHostEmitVsEvalVerdict::FailHostExit {
-            host_receipt: receipt,
-        });
-    }
-    let stdout = match host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()) {
-        Some(bytes) => bytes,
-        None => {
-            return Ok(EmitHostEmitVsEvalVerdict::FailHostExit {
-                host_receipt: receipt,
-            })
-        }
-    };
-    if let Err(parse) = emit_host_runner::runtime_value_parse_rust(&stdout) {
-        return Ok(EmitHostEmitVsEvalVerdict::FailParse {
-            host_receipt: receipt,
-            parse,
-        });
-    }
-    if stdout == expected_bytes {
-        Ok(EmitHostEmitVsEvalVerdict::Pass)
-    } else {
-        Ok(EmitHostEmitVsEvalVerdict::FailValueMismatch {
-            host_receipt: receipt,
-            host_stdout: stdout,
-            expected_bytes,
-        })
-    }
+    Ok(emit_vs_eval_mvp2_verdict_from_receipt(
+        receipt,
+        expected_bytes,
+        emit_host_runner::runtime_value_parse_rust,
+    ))
+}
+
+/// W3.4 rung-6 proof path: real `run_emit_host_python` transport + same MVP-2 stdout contract.
+pub fn run_emit_vs_eval_mvp2_python_transport(
+    emitted_source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &std::path::Path,
+    expected_bytes: [u8; 5],
+) -> Result<EmitHostEmitVsEvalVerdict, emit_host_runner::HostSetupFailure> {
+    let receipt = run_emit_host_python_transport(emitted_source, inputs, work_dir)?;
+    Ok(emit_vs_eval_mvp2_verdict_from_receipt(
+        receipt,
+        expected_bytes,
+        emit_host_runner::runtime_value_parse_python,
+    ))
 }
 
 #[cfg(test)]
@@ -174,5 +210,37 @@ mod tests {
             verdict,
             EmitHostEmitVsEvalVerdict::FailParse { .. }
         ));
+    }
+
+    const PYTHON_FIXTURE_SOURCE_PASS: &str =
+        "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
+
+    #[test]
+    fn bridge_python_transport_builds_runs_and_parses_stdout() {
+        let work_dir = default_work_dir(&format!("gunbc_emit_host_py_bridge_{}", std::process::id()));
+        let receipt = run_emit_host_python_transport(
+            PYTHON_FIXTURE_SOURCE_PASS,
+            &mvp2_inputs(),
+            &work_dir,
+        )
+        .expect("transport");
+        assert!(host_exit_holds(&receipt.exit));
+        let stdout =
+            host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()).expect("logical stdout");
+        emit_host_runner::runtime_value_parse_python(&stdout).expect("parse");
+    }
+
+    #[test]
+    fn emit_vs_eval_mvp2_python_transport_passes_for_five_zero_bytes() {
+        let work_dir =
+            default_work_dir(&format!("gunbc_emit_vs_eval_py_pass_{}", std::process::id()));
+        let verdict = run_emit_vs_eval_mvp2_python_transport(
+            PYTHON_FIXTURE_SOURCE_PASS,
+            &mvp2_inputs(),
+            &work_dir,
+            MVP2_RUNTIME_VALUE_FIVE_BYTES,
+        )
+        .expect("transport setup");
+        assert_eq!(verdict, EmitHostEmitVsEvalVerdict::Pass);
     }
 }
