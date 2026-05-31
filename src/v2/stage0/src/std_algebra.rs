@@ -53,6 +53,10 @@ pub struct AbelianGroup<T> {
     pub inverse: Rc<dyn Fn(T) -> T>,
 }
 
+pub type GroupCompletion<M> = GroupCompletion;
+
+pub type FieldOfFractions<R> = FieldOfFractions;
+
 #[derive(Clone)]
 pub struct Semiring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,

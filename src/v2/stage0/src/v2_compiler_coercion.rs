@@ -15,6 +15,8 @@ pub use crate::extdeps_languages_rust_types::{
     rust_type_checkpoints,
 };
 pub use crate::std_coercion::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
+pub use crate::std_types::CodegenBackend;
+use crate::std_types::CodegenBackend::{Go, Rust};
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};

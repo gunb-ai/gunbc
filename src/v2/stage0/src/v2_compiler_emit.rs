@@ -10,6 +10,13 @@ pub use crate::generated_method_template_projection::{
 };
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+use crate::std_syntax::AlgebraFieldKind::*;
+use crate::std_syntax::BinOp::NullCoalesce;
+use crate::std_syntax::LiteralValue::*;
+pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
+pub use crate::std_types::CodegenBackend;
+use crate::std_types::CodegenBackend::{Go, Rust};
+pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
@@ -17,6 +24,7 @@ pub use crate::v2_compiler_coercion::{
     can_cast, coerce_container_template, coerce_primitive_type, literal_suffix, render_cast,
     target_callable, target_optional_template,
 };
+pub use crate::v2_compiler_complexity::empty_intern_table;
 pub use crate::v2_compiler_infer::{build_params_scope, extend_scope, InferScope};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 pub use crate::v2_compiler_infer_env::{authored_name, TypeBinding, TypeEnv};
@@ -51,8 +59,6 @@ pub use crate::v2_compiler_languages::{
     VisibilitySpec,
 };
 use crate::v2_rt;
-use crate::v2_std_core::AlgebraFieldKind::*;
-use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v2_std_core::ExprData::{
@@ -62,7 +68,6 @@ use crate::v2_std_core::ExprData::{
 };
 use crate::v2_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -72,22 +77,21 @@ use crate::v2_std_core::UnaryOpKind::*;
 use crate::v2_std_core::VarBindingKind::*;
 pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
-    expr_field_access_summary, expr_has_non_tail_self_call, expr_has_self_call,
-    expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_init_operation_modifier, find_child_named, foreach_body,
-    foreach_collection, foreach_variable_at, if_condition, if_else_branch, if_then_branch,
-    index_base, index_expr, is_compiler_error, is_file_transport, is_local_transport,
-    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, local_transport_node, match_arm_nodes, match_scrutinee, method_arg_nodes,
+    binop_right, cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
+    expr_has_non_tail_self_call, expr_has_self_call, expr_method_call_semantics,
+    expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
+    field_binding_name_at, field_binding_pattern, field_init_node_name_at, field_init_node_value,
+    field_init_operation_modifier, find_child_named, foreach_body, foreach_collection,
+    foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
+    is_compiler_error, is_file_transport, is_local_transport, is_rest_transport,
+    is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
     return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
-    unaryop_operand, with_required_cardinality, AlgebraFieldKind, BinOp, Cardinality, Connective,
-    DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode,
-    LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
-    TextFile, UnaryOpKind, VarBindingKind,
+    unaryop_operand, with_required_cardinality, Cardinality, Connective, DeclaredFuncSig,
+    ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

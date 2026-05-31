@@ -4,8 +4,14 @@
 pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+use crate::std_syntax::BinOp::NullCoalesce;
+use crate::std_syntax::LiteralValue::*;
+pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_types::CodegenBackend;
+use crate::std_types::CodegenBackend::Go;
+pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
-use crate::v2_compiler_artifact::RenderTarget::Go;
+use crate::v2_compiler_artifact::RenderTarget::*;
 pub use crate::v2_compiler_emit::{
     apply_named_template, apply_naming_case, apply_type_template1, apply_type_template2,
     apply_type_template3, capitalize_first, compute_service_fields, effective_operation_transport,
@@ -50,7 +56,6 @@ pub use crate::v2_compiler_languages::{
 };
 pub use crate::v2_compiler_runtime_go::go_runtime_source;
 use crate::v2_rt;
-use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{
@@ -62,7 +67,6 @@ use crate::v2_std_core::FieldAccessStyle::{
     EnumAccessor, OptionalUnwrap, StoredField, TupleFirst, TupleSecond,
 };
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
-use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::MatchPattern::*;
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -81,10 +85,9 @@ pub use crate::v2_std_core::{
     module_imports, module_items, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
     slice_end, slice_start, transport_auth_header_name, transport_env, transport_has_auth,
-    transport_headers, with_required_cardinality, BinOp, Cardinality, Connective, DeclaredFuncSig,
-    ExprData, FieldAccessStyle, FieldSummary, InferredNode, LiteralValue, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
-    VarBindingKind,
+    transport_headers, with_required_cardinality, Cardinality, Connective, DeclaredFuncSig,
+    ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics,
+    NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
