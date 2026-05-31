@@ -9,7 +9,8 @@ use std::process::Command;
 
 const FIXTURE_DAG: &str = include_str!("../../../../v4/lens/leaf_model_verification.dag");
 
-const R2A_HAPPY: &str = "def r2a_test(a: int, b: int) -> tuple[int, bool]:\n    return (a + b, a < b)\n";
+const R2A_HAPPY: &str =
+    "def r2a_test(a: int, b: int) -> tuple[int, bool]:\n    return (a + b, a < b)\n";
 const R2A_FALSIFICATION: &str = "def r2a_test(a: int) -> int:\n    return a.log2_exact()\n\nif __name__ == \"__main__\":\n    r2a_test(1)\n";
 
 const R2B_RUNTIME: &str = "def r2b_test() -> int:\n    return (2**63 - 1) + 1\n\nif __name__ == \"__main__\":\n    assert r2b_test() == 2**63\n";
@@ -128,9 +129,11 @@ fn v4_leaf_model_python_r2b_arbitrary_precision_add_succeeds_at_runtime() {
 fn v4_leaf_model_python_r3_external_fixture_strings_match_dag_authority() {
     let happy =
         extract_fixture_source(FIXTURE_DAG, "python_r3_external_happy_fixture_source").unwrap();
-    let falsification =
-        extract_fixture_source(FIXTURE_DAG, "python_r3_external_falsification_fixture_source")
-            .unwrap();
+    let falsification = extract_fixture_source(
+        FIXTURE_DAG,
+        "python_r3_external_falsification_fixture_source",
+    )
+    .unwrap();
     assert_eq!(happy, R3_HAPPY);
     assert_eq!(falsification, R3_FALSIFICATION);
 }
