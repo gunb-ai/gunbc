@@ -1,6 +1,6 @@
 # v4 Modeling DFS Worksheet B — Elastic cache interface (fractal Upsert chain)
 
-> **Status:** WORKSHEET DRAFT — §8 **pending** (prior combined-doc §8 withdrawn 2026-05-31; proud-pike-680). Pair with **Worksheet A** (`v4-elastic-compute-fabric-worksheet-2026-05-30.md`).
+> **Status:** WORKSHEET APPROVED — Modeling DFS Manager §8 sign-off 2026-05-31 (proud-pike-680; PR #4095 split amend). **READY-FOR-IMPLEMENTATION-DISPATCH** once #4095 merges to main. Pair with **Worksheet A** (`v4-elastic-compute-fabric-worksheet-2026-05-30.md`).
 > **Date:** 2026-05-30 (split amend 2026-05-31)
 > **Author:** sharp-wolf-824 (worker under proud-pike-680)
 > **Dispatch anchor:** node://adhoc-2e6e2313-8a5 — exploration §4.0f **Worksheet B** (cases 9–19) + §4.0g
@@ -22,7 +22,7 @@ Compose with compute fabric **only** through:
 
 ## Mechanical dispatch rule
 
-> **No cache-interface implementation worker until Worksheet B is Modeling DFS Manager–approved.**
+> **Cache-interface implementation workers may dispatch per §6 after PR #4095 merges (Worksheet B §8 closed 2026-05-31).**
 
 Land concrete `CacheInterfaceFacts` **data rows first**; `CacheStoreView` is a projection only (same posture as `MachineView` in Worksheet A).
 
@@ -301,15 +301,15 @@ Land `dsl/std/cache_interface.dag` per §6. **MUST NOT** import compute module. 
 
 ---
 
-## §10 Manager approval checklist (Worksheet B) — OPEN
+## §10 Manager approval checklist (Worksheet B) — CLOSED 2026-05-31
 
-- [ ] `CacheInterfaceFacts` before `CacheStoreView` discipline accepted
-- [ ] Identity vs transport (`ArtifactIdentity` / `BackendCacheKey` / `CacheKeyProjection`) accepted
-- [ ] Lookup/write/miss semantics + `KeyDerivationFacts` accepted
-- [ ] §5 cases 9–19 accepted
-- [ ] Vendor evidence discipline (case 19) accepted
-- [ ] Composition boundary with Worksheet A accepted
-- [ ] Implementation dispatch authorized (cache PR only)
+- [x] `CacheInterfaceFacts` before `CacheStoreView` discipline accepted
+- [x] Identity vs transport (`ArtifactIdentity` / `BackendCacheKey` / `CacheKeyProjection`) accepted
+- [x] Lookup/write/miss semantics + `KeyDerivationFacts` accepted
+- [x] §5 cases 9–19 accepted
+- [x] Vendor evidence discipline (case 19) accepted
+- [x] Composition boundary with Worksheet A accepted
+- [x] Implementation dispatch authorized (cache_interface PR only, post-merge)
 
 ---
 

@@ -1,6 +1,6 @@
 # v4 Modeling DFS Worksheet A — Elastic compute fabric (fractal Upsert chain)
 
-> **Status:** WORKSHEET DRAFT — §8 **pending** (prior combined-doc §8 withdrawn 2026-05-31; proud-pike-680). Pair with **Worksheet B** (`v4-elastic-cache-interface-worksheet-2026-05-30.md`).
+> **Status:** WORKSHEET APPROVED — Modeling DFS Manager §8 sign-off 2026-05-31 (proud-pike-680; PR #4095 split amend). **READY-FOR-IMPLEMENTATION-DISPATCH** once #4095 merges to main. Pair with **Worksheet B** (`v4-elastic-cache-interface-worksheet-2026-05-30.md`).
 > **Date:** 2026-05-30 (split amend 2026-05-31)
 > **Author:** sharp-wolf-824 (worker under proud-pike-680)
 > **Dispatch anchor:** node://adhoc-2e6e2313-8a5 — exploration §4.0f **Worksheet A** (cases 1–8)
@@ -22,7 +22,7 @@ Compose with cache substrate **only** through:
 
 ## Mechanical dispatch rule
 
-> **No compute-fabric implementation worker until Worksheet A is Modeling DFS Manager–approved.**
+> **Compute-fabric implementation workers may dispatch per §6 after PR #4095 merges (Worksheet A §8 closed 2026-05-31).**
 
 Worksheet B is a separate §8 gate. Do **not** merge either worksheet PR until both checklists match exploration §4.0f split on **main**.
 
@@ -387,13 +387,13 @@ Land `dsl/std/compute_fabric.dag` per §6. **MUST NOT** import cache module. Pro
 
 ---
 
-## §10 Manager approval checklist (Worksheet A) — OPEN
+## §10 Manager approval checklist (Worksheet A) — CLOSED 2026-05-31
 
-- [ ] §1 signatures (ingress chain, ResourceEnvelope, confidence fields)
-- [ ] §5 cases 1–8
-- [ ] §6 landing order
-- [ ] Composition boundary with Worksheet B accepted
-- [ ] Implementation dispatch authorized (compute PR only)
+- [x] §1 signatures (ingress chain, ResourceEnvelope, confidence fields)
+- [x] §5 cases 1–8
+- [x] §6 landing order
+- [x] Composition boundary with Worksheet B accepted
+- [x] Implementation dispatch authorized (compute_fabric PR only, post-merge)
 
 ---
 
