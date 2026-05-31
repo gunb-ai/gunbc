@@ -14,6 +14,11 @@ const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.d
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
+const BOUNDED_LATTICE_COMPLETENESS_DAG: &str =
+    include_str!("../../../../v4/std/bounded_lattice_completeness.dag");
+const BOUNDED_LATTICE_COMPLETENESS_PATH: &str = "src/v4/std/bounded_lattice_completeness.dag";
+const INFER_DAG: &str = include_str!("../../../../v4/compiler/04_infer.dag");
+const INFER_PATH: &str = "src/v4/compiler/04_infer.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -297,5 +302,73 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
     assert!(
         bundle_core_body.contains("target_model_edge_collection_realization"),
         "{RUST_LANGUAGE_PATH}: row/catalog host_bundle must include collection_realization so target_model_bundle_core(host) decode matches"
+    );
+}
+
+#[test]
+fn v4_std_target_model_declares_target_collection_realization_carrier() {
+    let module = parse_module(TARGET_MODEL_DAG, TARGET_MODEL_PATH);
+    assert!(
+        surface_declares_type(&module, "TargetCollectionRealization"),
+        "{TARGET_MODEL_PATH}: SG-5 canonical collection realization carrier"
+    );
+    assert!(
+        surface_declares_type(&module, "TargetCollectionReprKind"),
+        "{TARGET_MODEL_PATH}: representation kind must be a coproduct (M6)"
+    );
+    assert!(
+        surface_declares_type(&module, "RequiredTraitWitness"),
+        "{TARGET_MODEL_PATH}: per-alternative trait witnesses must be typed"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_collection_select_choice"),
+        "{TARGET_MODEL_PATH}: primary/alternatives selection must be substrate authority"
+    );
+}
+
+#[test]
+fn v4_translate_dag_imports_collection_realization_consumer() {
+    let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_collection_realization"
+        ),
+        "{TRANSLATE_PATH}: translate must read collection_realization bundle edge"
+    );
+    assert!(
+        surface_declares_fn(&module, "project_set_collection_type_node"),
+        "{TRANSLATE_PATH}: Set carrier projection must consume TargetCollectionRealization rows"
+    );
+    assert!(
+        surface_declares_fn(&module, "collection_realization_from_target"),
+        "{TRANSLATE_PATH}: collection rows must decode from TargetModel bundle"
+    );
+}
+
+#[test]
+fn v4_bounded_lattice_completeness_and_infer_gate_are_wired() {
+    let bl_module = parse_module(BOUNDED_LATTICE_COMPLETENESS_DAG, BOUNDED_LATTICE_COMPLETENESS_PATH);
+    assert!(
+        surface_declares_fn(&bl_module, "bounded_lattice_instance_completeness"),
+        "{BOUNDED_LATTICE_COMPLETENESS_PATH}: SG-6 completeness classifier must live in cycle-breaker module"
+    );
+    let infer_module = parse_module(INFER_DAG, INFER_PATH);
+    assert!(
+        import_includes_name(
+            &infer_module,
+            &["v4", "std", "bounded_lattice_completeness"],
+            "bounded_lattice_instance_completeness"
+        ),
+        "{INFER_PATH}: infer must import completeness from bounded_lattice_completeness.dag"
+    );
+    assert!(
+        surface_declares_fn(&infer_module, "infer_bounded_lattice_consumer_gate"),
+        "{INFER_PATH}: consumer sites must reject partial BoundedLattice references"
+    );
+    assert!(
+        surface_declares_fn(&infer_module, "partial_bounded_lattice_instances_in_tree"),
+        "{INFER_PATH}: partial instances must be collected before consumer gate"
     );
 }
