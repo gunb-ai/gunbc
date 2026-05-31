@@ -967,8 +967,7 @@ fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     );
     assert!(
         CI_YML.contains("needs: [affected]\n    runs-on:")
-            || CI_YML.contains("ci_integration:")
-            && CI_YML.contains("needs: [affected]"),
+            || CI_YML.contains("ci_integration:") && CI_YML.contains("needs: [affected]"),
         "{CI_YML_PATH}: Tier-0 ci_integration must not need discipline"
     );
     assert!(
