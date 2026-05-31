@@ -1194,11 +1194,12 @@ fn v4_workflow_ci_bankruptcy_tier0_upsert_slice_registers_tier0_jobs() {
     let v2_i2_inputs = CI_DAG
         .split("data ci_upsert_v2_bootstrap_smoke_execution_inputs:")
         .nth(1)
-        .and_then(|rest| rest.split("fn ci_upsert_v2_bootstrap_smoke_execution_mk").next())
+        .and_then(|rest| {
+            rest.split("fn ci_upsert_v2_bootstrap_smoke_execution_mk")
+                .next()
+        })
         .unwrap_or_else(|| {
-            panic!(
-                "{CI_DAG_PATH}: missing data ci_upsert_v2_bootstrap_smoke_execution_inputs"
-            )
+            panic!("{CI_DAG_PATH}: missing data ci_upsert_v2_bootstrap_smoke_execution_inputs")
         });
     for segment in ["src/v2/**", "Cargo.toml", "Cargo.lock"] {
         assert!(
