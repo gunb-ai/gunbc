@@ -3556,6 +3556,33 @@ fn weather_python_emit_match_is_statement_not_return_match() {
 }
 
 #[test]
+fn weather_go_emit_match_is_type_switch_not_return_match() {
+    let ws = crate::helpers::workspace_root();
+    let weather_src =
+        std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag")).expect("weather.dag");
+    let result = crate::helpers::compile_dag_named(
+        "dsl/examples/weather/weather.dag",
+        &weather_src,
+        v2_compiler::v2_compiler_artifact::RenderTarget::Go,
+    );
+    assert_no_diagnostics(&result);
+    let go: String = result
+        .files
+        .iter()
+        .filter(|f| f.path.ends_with(".go") && !f.path.contains("_test"))
+        .map(|f| f.content.as_str())
+        .collect();
+    assert!(
+        !go.contains("return switch "),
+        "match must be a statement at function body, not return switch (invalid Go)"
+    );
+    assert!(
+        go.contains("switch __gunbcMatch := ") && go.contains(".(type)"),
+        "weather coproduct should emit Go type-switch match"
+    );
+}
+
+#[test]
 fn weather_rust_emit_match_arms_are_expressions_not_return_prefixed() {
     let ws = crate::helpers::workspace_root();
     let weather_src =
