@@ -370,6 +370,8 @@ jobs:
       timeout-minutes: 35
       continue-on-error: true
       env:
+        V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
         V4_BOOTSTRAP_TIMEOUT_SECS: '480'
       run: |
         set +euo pipefail
@@ -380,6 +382,8 @@ jobs:
     - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
       if: needs.affected.outputs.v4 == 'true' && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
       id: v4_bootstrap_resolve_posture
+      env:
+        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
       run: |
         set -euo pipefail
         V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1 \
@@ -411,6 +415,11 @@ jobs:
       timeout-minutes: 15
       env:
         V4_TESTCLAIM_TIMEOUT_SECS: '480'
+        # Reuse M1 rust + bootstrap dag emits when present (ci_v4 de-dup; PR #4074 run 26702944004).
+        V4_TESTCLAIM_REUSE_RUST_OUT: ${{ runner.temp }}/v4-rust-emit
+        V4_TESTCLAIM_REUSE_RUST_LOG: ${{ runner.temp }}/v4-rust-emit.compile.log
+        V4_TESTCLAIM_REUSE_DAG_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_TESTCLAIM_REUSE_DAG_LOG: ${{ runner.temp }}/v4-bootstrap.log
       run: |
         bash scripts/v4-testclaim-corpus-gate.sh
         mkdir -p "${RUNNER_TEMP}/t22-testclaim-corpus-gate"
