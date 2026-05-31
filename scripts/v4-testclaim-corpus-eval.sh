@@ -7,7 +7,11 @@
 # 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 +
 # docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 —
 # structural-slice: positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority.
-# Forward (T-38-PR2): runtime invocation of `run_manual_testclaim_corpus_eval` with per-row verdicts.
+# T-38-PR2: verdict SURFACE migrated — receipt now reports the per-row TestClaimRun roster + the
+# modeled corpus tally witness (witness_manual_corpus_gate_closed: non-empty AND zero Fail AND zero
+# Deferred), retiring the opaque blocked_m1_subset string. The witness is an AUTHORING-TIME const
+# over the modeled CorpusEvalReport; per-row RUNTIME execution (cargo-clean M1 emitted subset OR
+# bootstrap-evaluator corpus path) is load-bearing/out-of-lane and tracked as escalated upward debt.
 #
 # Authority: src/v4/workflow/ci.dag (`TestClaimCorpusEvalCommand` +
 # `testclaim_corpus_eval_ci_live_workflow_signal`) +
@@ -457,15 +461,41 @@ require_module "v4.test.claim.manual.eval_runtime_mvp"
 require_item "claim_eval_mvp2_test_claim_route"
 require_item "run_eval_mvp2_test_claim_route"
 
+# T-38-PR2 verdict surface: the modeled corpus tally over run_manual_testclaim_corpus_eval.
+# Authoring-time const witness (src/v4/test/claim/workflow/manual_corpus_eval.dag); a Fail or
+# Deferred row holds witness_manual_corpus_gate_closed open, so those verdict facts are not
+# silently dropped. This is the SURFACE — per-row runtime execution is the escalated residual gate.
+require_module "v4.test.claim.workflow.testclaim_corpus_runner"
+require_module "v4.test.claim.workflow.manual_corpus_eval"
+require_item "run_manual_testclaim_corpus_eval"
+require_item "witness_manual_corpus_gate_closed"
+
+corpus_eval_src="src/v4/test/claim/workflow/manual_corpus_eval.dag"
+if ! grep -q '^data witness_manual_corpus_gate_closed: Bool = manual_corpus_gate(' "$corpus_eval_src"; then
+  echo "error: ${corpus_eval_src}: missing authoring-time corpus gate witness binding" >&2
+  exit 1
+fi
+if ! grep -Eq '\(tally\.fail == Zero\) && \(tally\.deferred == Zero\)' "$corpus_eval_src"; then
+  echo "error: ${corpus_eval_src}: corpus gate must require zero Fail AND zero Deferred (no dropped verdict facts)" >&2
+  exit 1
+fi
+
+# JSON array of the discovered TestClaimRun roster rows (per-row verdict surface).
+run_roster_json="$(printf '%s\n' "${run_rows[@]}" | jq -R . | jq -s -c .)"
+
 files_emitted="$(grep -E '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$rust_log" | tail -1 | sed -n 's/^compiled: \([0-9]*\) files emitted, 0 diagnostics$/\1/p')"
 
 cat <<JSON
 {
-  "schema": "scripts/v4-testclaim-corpus-eval.sh::host_structural_receipt_v2",
-  "execution_status": "blocked_m1_subset",
-  "blocked_reason": "P5 Layer 2 structural authority only — upstream M1 rust + bootstrap dag receipts verified; per-row TestClaimRun verdict execution deferred to T-38-PR2.",
+  "schema": "scripts/v4-testclaim-corpus-eval.sh::host_verdict_surface_receipt_v3",
+  "execution_status": "authoring_time_verdict_surface",
+  "verdict_surface_source": "authoring-time const witnesses over the modeled corpus runner (CorpusEvalReport / VerdictTally); NOT CI-executed runtime verdicts",
+  "residual_runtime_gate": "per-row runtime TestClaimRun execution (cargo-clean M1 emitted subset OR bootstrap-evaluator corpus path) is load-bearing and out of this author lane; tracked as escalated upward debt",
   "manual_dag_files": ${#manual_files[@]},
   "testclaim_run_rows": ${#run_rows[@]},
+  "testclaim_run_roster": ${run_roster_json},
+  "corpus_tally_gate_witness": "witness_manual_corpus_gate_closed",
+  "corpus_gate_predicate": "non-empty roster AND zero Fail AND zero Deferred",
   "rust_emit_files_emitted": ${files_emitted},
   "structural_witness": "PASS"
 }
@@ -473,9 +503,9 @@ JSON
 
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
-    echo "### T-22 TestClaim corpus eval — P5 structural (modeled CiUpsertStep)"
+    echo "### T-22 TestClaim corpus eval — verdict surface (modeled CiUpsertStep)"
     echo ""
-    echo "**execution_status:** \`blocked_m1_subset\` — structural obligations verified over upstream M1 + bootstrap emits; no per-row verdicts in CI yet (T-38-PR2)."
+    echo "**execution_status:** \`authoring_time_verdict_surface\` — per-row TestClaimRun roster + modeled corpus tally witness (\`witness_manual_corpus_gate_closed\`, predicate: non-empty AND zero Fail AND zero Deferred). Source is authoring-time const witnesses, NOT CI-executed runtime verdicts; per-row runtime execution remains the escalated residual gate."
     echo ""
     echo "| receipt | status |"
     echo "| --- | --- |"
@@ -483,8 +513,9 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo "| upstream bootstrap dag emit (0-diagnostic) | PASS |"
     echo "| manual corpus modules + TestClaimRun registry | PASS (${#manual_files[@]} files, ${#run_rows[@]} runs) |"
     echo "| MVP generated-Rust + modeled runner structural witness | PASS |"
+    echo "| modeled corpus tally gate witness (Fail+Deferred surfaced) | PASS |"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
 
-echo "T-22 TestClaim corpus structural eval PASS: ${#manual_files[@]} manual .dag files; ${#run_rows[@]} TestClaimRun rows; upstream M1+bootstrap receipts; no verdicts evaluated."
+echo "T-22 TestClaim corpus verdict-surface eval PASS: ${#manual_files[@]} manual .dag files; ${#run_rows[@]} TestClaimRun rows surfaced via modeled corpus tally witness; upstream M1+bootstrap receipts; per-row runtime execution = escalated residual gate."
 exit 0
