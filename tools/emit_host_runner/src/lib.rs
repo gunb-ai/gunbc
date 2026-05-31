@@ -484,11 +484,9 @@ pub fn run_emit_host_python(
         source: e.to_string(),
     })?;
 
-    let run = run_command_bounded(
-        Command::new("python3").arg(&script_path),
-        HOST_RUN_TIMEOUT,
-        HostPhase::FixtureRun,
-    )?;
+    let mut run_cmd = Command::new("python3");
+    run_cmd.arg(&script_path);
+    let run = run_command_bounded(run_cmd, HOST_RUN_TIMEOUT, HostPhase::FixtureRun)?;
     let build_log = bounded_output_to_log(&run, "run");
     Ok(EmitHostRunReceipt {
         source_text: source.to_string(),
