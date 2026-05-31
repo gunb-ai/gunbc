@@ -1,0 +1,385 @@
+// std/compute_fabric.dag — Elastic compute fabric (Worksheet A / exploration §4.0f cases 1–8).
+//
+// Authority: docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md
+// Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface.
+//
+// Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v4.workflow.ci / v4.std.change
+// authority — forward-stubbed as Node until harness wires cross-module checks (P-CF-INGRESS).
+
+module std.compute_fabric
+
+import std.types { NonEmptyStr, ContentHash, Bool, Int }
+import std.float { Float }
+import std.measure { Measure, Time, Memory, DataRate, One }
+
+// 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
+type Witness<C> = Node
+type Outcome<T> = Node
+
+// 🟡 forward — v4 ingress / artifact carriers (P-CF-INGRESS).
+type UpsertInputRef = Node
+type ChangeSet = Node
+type ArtifactRef<T> = Node
+type ArtifactSpec<T> = Node
+type WorkAction = Node
+type WorkGraph = Node
+type Partitioner = Node
+type Reducer = Node
+type EffectBoundary = Node
+type SymbolicCost = Node
+type Associativity = Node
+type Commutativity = Node
+type Idempotency = Node
+type IdentityElement = Node
+type InstructionSet = Node
+
+// --- §1.7 supporting enums + measure carriers --------------------------------
+
+type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
+type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
+type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
+type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
+type NetworkLocality = Loopback | Lan | Internet | WslNat | WslBridged
+type NetworkAddressability = Unicast | Multicast | Broadcast
+type NetworkEgressClass = None | CratesIo | InternalMirror | Unrestricted
+type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
+type PersistenceKind = Ephemeral | Persistent | CachedMirror
+type MemoryKind = Dram | Hbm | UnifiedShared
+type StorageMedium = Nvme | Ssd | Hdd | NetworkAttached | EphemeralFs
+type LatencyClass = UltraLow | Low | Medium | High
+type GpuRuntime = Cuda | Rocm | Metal | OpenCl
+type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
+type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
+type OomSignalClass = KillProcess | Throttle | ReportOnly
+
+type LogicalTime = NonEmptyStr where brand("LogicalTime")
+type ByteSize = Measure<Memory, One>
+type Bandwidth = Measure<DataRate, One>
+type Duration = Measure<Time, One>
+type HostIdentity = NonEmptyStr where brand("HostIdentity")
+type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
+type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
+
+type ComputeArtifactLocality
+  = InProcess
+  | PerRunnerColocation
+  | PerHostColocation
+  | CrossHostFetch
+
+// --- §1.4 supply records -----------------------------------------------------
+
+type StorageMount {
+  mount_path: NonEmptyStr
+  device: StorageDevice
+  lifecycle: PersistenceKind
+}
+
+type CpuFacts {
+  architecture: CpuArchitecture
+  vendor: NonEmptyStr
+  model: NonEmptyStr
+  cores: Int
+  threads: Int
+  instruction_sets: List<InstructionSet>
+}
+
+type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
+
+type GpuFacts {
+  vendor: NonEmptyStr
+  model: NonEmptyStr
+  compute_capability: Option<NonEmptyStr>
+  memory: MemoryFacts
+  supported_runtimes: List<GpuRuntime>
+}
+
+type AcceleratorFacts { vendor: NonEmptyStr, model: NonEmptyStr }
+
+type MemoryDevice {
+  capacity: ByteSize
+  memory_kind: MemoryKind
+  bandwidth: Option<Bandwidth>
+}
+
+type StorageDevice {
+  capacity: ByteSize
+  medium: StorageMedium
+  read_bandwidth: Option<Bandwidth>
+  write_bandwidth: Option<Bandwidth>
+  persistence: PersistenceKind
+}
+
+type NetworkInterface {
+  addressability: NetworkAddressability
+  bandwidth: Option<Bandwidth>
+  latency_class: Option<LatencyClass>
+  locality: NetworkLocality
+}
+
+type OperatingSystemSurface {
+  kernel: KernelFamily
+  distro_or_product: NonEmptyStr
+  version: NonEmptyStr
+  filesystem_semantics: FileSystemSemantics
+  process_semantics: ProcessSemantics
+}
+
+type ExecutionSurface {
+  os: OperatingSystemSurface
+  isolation: IsolationBoundary
+  container_runtime: Option<ContainerRuntime>
+  toolchains: List<ToolchainCapability>
+  mounted_storage: List<StorageMount>
+  network: List<NetworkInterface>
+}
+
+type ProcessorKind
+  = CpuProcessor { cpu: CpuFacts }
+  | GpuProcessor { gpu: GpuFacts }
+  | AcceleratorProcessor { accelerator: AcceleratorFacts }
+
+type ComputeHost {
+  identity: HostIdentity
+  processors: List<ProcessorKind>
+  memory: List<MemoryDevice>
+  storage: List<StorageDevice>
+  network_interfaces: List<NetworkInterface>
+}
+
+type ProcessorCostModel { /* data rows per provider — land with supply rows */ }
+type ProviderCostModel { /* provider-indexed */ }
+
+type CostModel {
+  cost_class: CostClass
+  rates: ProviderCostModel
+}
+
+type ComputeSupplyFacts {
+  physical: ComputeHost
+  execution: ExecutionSurface
+  cost: Option<CostModel>
+  observed_performance: List<PerformanceReceipt>
+}
+
+type ProviderConstraint
+  = HostJobserverFifo { fifo_path: NonEmptyStr, token_cap: Int }
+  | SharedHomeRoot { path: NonEmptyStr }
+  | MaxConcurrentRunners { cap: Int }
+  | OomBehavior { signal: OomSignalClass }
+
+type AvailabilityWindow { open: LogicalTime, close: Option<LogicalTime> }
+type CostEstimate { model: CostModel, expected_units: Float, currency: NonEmptyStr }
+
+type ComputeOffer {
+  provider: ProviderIdentity
+  supply: ComputeSupplyFacts
+  available_window: AvailabilityWindow
+  cost_quote: Option<CostEstimate>
+  constraints: List<ProviderConstraint>
+}
+
+type MachineView { label: NonEmptyStr, host: HostIdentity }
+
+fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView {
+  MachineView {
+    label: host_label_for(host: host),
+    host: host.identity,
+  }
+}
+
+fn host_label_for(host: ComputeHost) -> NonEmptyStr {
+  host.identity
+}
+
+// --- §1.2 demand -------------------------------------------------------------
+
+type ResourceEnvelope {
+  cpu: Option<CpuRequirement>
+  gpu: Option<GpuRequirement>
+  memory: Option<MemoryRequirement>
+  storage: Option<StorageRequirement>
+  network: Option<NetworkRequirement>
+}
+
+type CpuRequirement { min_cores: Int, architecture: Option<CpuArchitecture> }
+type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
+type MemoryRequirement { min_bytes: ByteSize }
+type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
+type NetworkRequirement { egress: Option<NetworkEgressClass>, ambient_allowed: Bool }
+type OperatingSystemRequirement { surface: OperatingSystemSurface }
+type IsolationRequirement { boundary: IsolationBoundary }
+type ToolchainRequirement { name: NonEmptyStr, version: NonEmptyStr }
+
+type ArtifactLocalityRequirement {
+  artifact_kind: NonEmptyStr
+  locality: ComputeArtifactLocality
+}
+
+type ToolchainEnvIsolation
+  = SharedHomeAcrossJobs
+  | PerJobCargoHome { cargo_home_var: NonEmptyStr, rustup_home_var: NonEmptyStr }
+  | HermeticContainer
+
+type BuildWrapperKind = CtrlBuild | BakedInImage | NoBuildWrapper
+
+type ToolchainCapability {
+  name: NonEmptyStr
+  version: NonEmptyStr
+  env_isolation: ToolchainEnvIsolation
+  build_wrapper: Option<BuildWrapperKind>
+  linked_cache_interface: Option<CacheInterfaceId>
+}
+
+type WorkDemand {
+  resources: ResourceEnvelope
+  os: Option<OperatingSystemRequirement>
+  isolation: IsolationRequirement
+  toolchains: List<ToolchainRequirement>
+  parallelism: ParallelismShape
+  data_locality: List<ArtifactLocalityRequirement>
+  effects: List<EffectBoundary>
+}
+
+// --- §1.3 parallelism + budget -----------------------------------------------
+
+type ParallelismShape
+  = SingleWorkItem
+  | IndependentShards { shard_count: Int }
+  | DependencyGraphParallel { graph: WorkGraph }
+  | PartitionedReduce {
+      partitioner: Partitioner
+      map: WorkAction
+      reduce: Reducer
+      laws: ReducerLaws
+    }
+
+type ReducerLaws {
+  associative: Witness<Associativity>
+  commutative: Option<Witness<Commutativity>>
+  identity: Option<IdentityElement>
+  idempotent: Option<Witness<Idempotency>>
+}
+
+type ExecutionBudget {
+  expected_cost: SymbolicCost
+  provider_model: ProviderCostModel
+  watchdog: WatchdogLimit
+}
+
+type WatchdogLimit { max_wall: Duration }
+
+// --- §1.5 eligibility --------------------------------------------------------
+
+type DemandDimension
+  = DemandCpu
+  | DemandGpu
+  | DemandMemory
+  | DemandStorage
+  | DemandNetwork
+  | DemandOs
+  | DemandIsolation
+  | DemandToolchains
+  | DemandParallelism
+  | DemandDataLocality
+  | DemandEffects
+
+type MissingDemandFact { dimension: DemandDimension, required: NonEmptyStr }
+
+type ComputeLeaseWitness {
+  provider: ProviderIdentity
+  satisfied: List<DemandDimension>
+}
+
+type ComputeLeaseEligibility
+  = Eligible { witness: ComputeLeaseWitness }
+  | Rejected { reason: MissingDemandFact }
+
+type AllocationReceipt {
+  provider: ProviderIdentity
+  scope: NonEmptyStr
+  acquired_at: LogicalTime
+}
+
+type ComputeLease {
+  offer: ComputeOffer
+  demand: WorkDemand
+  allocation: AllocationReceipt
+  eligibility: Witness<ComputeLeaseEligibility>
+}
+
+// 🟡 P-CF-WITNESS — `satisfies` witness derivation lands with supply proofs (cases 7–8).
+fn satisfies(_supply: ComputeSupplyFacts, _demand: WorkDemand) -> Witness<ComputeLeaseEligibility>
+
+// --- §1.1 executable unit + ingress --------------------------------------------
+
+type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
+
+type WorkUnit<T> {
+  id: WorkUnitId
+  inputs: List<ArtifactRef>
+  action: WorkAction
+  output: ArtifactSpec<T>
+  requirements: WorkDemand
+}
+
+fn artifact_refs_from_upsert_inputs(
+  _inputs: List<UpsertInputRef>,
+  _change: ChangeSet,
+) -> List<ArtifactRef> {
+  artifact_refs_from_upsert_inputs_empty()
+}
+
+fn artifact_refs_from_upsert_inputs_empty() -> List<ArtifactRef> {
+  []
+}
+
+// --- §1.6 execution receipts -------------------------------------------------
+
+type MeasurementConfidence
+  = SingleSample
+  | Range { low: Float, high: Float }
+  | DistributionSummary { mean: Float, variance: Float }
+
+type PerformanceReceipt {
+  provider: ProviderIdentity
+  work_shape: WorkUnitId
+  wall_duration: Duration
+  cpu_seconds: Option<Float>
+  sample_count: Int
+  measurement_context: ExecutionSurface
+  confidence: MeasurementConfidence
+  cache_state_summary: Option<NonEmptyStr>
+}
+
+type PricingSource
+  = VendorDocument { citation: NonEmptyStr }
+  | ObservedBill { receipt_id: NonEmptyStr }
+  | NegotiatedRate { contract_ref: NonEmptyStr }
+
+type AmortizationScope
+  = PerLease
+  | PerCalendarMonth
+  | PerWorkShape
+
+type CostReceipt {
+  provider: ProviderIdentity
+  cost_class: CostClass
+  amount: Option<Float>
+  pricing_source: PricingSource
+  amortization_scope: Option<AmortizationScope>
+}
+
+type ExecutionReceipt<T> {
+  work: WorkUnit<T>
+  lease: ComputeLease
+  output: Outcome<ArtifactRef<T>>
+  performance: PerformanceReceipt
+  cost: CostReceipt
+  started_at: LogicalTime
+  finished_at: LogicalTime
+}
+
+// --- §7 falsification supply rows (cases 1–3 skeleton) -----------------------
+
+data supply_srv1_host_identity: HostIdentity = "srv1"
+data supply_srv2_host_identity: HostIdentity = "srv2"
