@@ -496,6 +496,49 @@ fn ci_job_testclaim_corpus_eval_execution_mk() -> CiJob {
 }
 
 data ci_job_testclaim_corpus_eval_execution_row: CiJob = ci_job_testclaim_corpus_eval_execution_mk()
+
+fn ci_job_v2_bootstrap_smoke_execution_mk() -> CiJob {
+  CiJob {
+    id: v2_bootstrap_smoke_execution,
+    command: V2BootstrapCompileCommand,
+    needs: []
+  }
+}
+
+data ci_job_v2_bootstrap_smoke_execution_row: CiJob = ci_job_v2_bootstrap_smoke_execution_mk()
+
+fn ci_job_v3_determinism_execution_mk() -> CiJob {
+  CiJob {
+    id: v3_determinism_execution,
+    command: V3DeterminismCommand { profile: ci_v3_determinism_profile },
+    needs: []
+  }
+}
+
+data ci_job_v3_determinism_execution_row: CiJob = ci_job_v3_determinism_execution_mk()
+
+fn ci_job_v3_self_host_fixed_point_execution_mk() -> CiJob {
+  CiJob {
+    id: v3_self_host_fixed_point_execution,
+    command: V3SelfHostFixedPointCommand {
+      profile: ci_v3_self_host_fixed_point_profile
+      schedule: MainPush
+    },
+    needs: [v3_determinism_execution]
+  }
+}
+
+data ci_job_v3_self_host_fixed_point_execution_row: CiJob = ci_job_v3_self_host_fixed_point_execution_mk()
+
+fn ci_job_v4_t15_self_host_fixed_point_execution_mk() -> CiJob {
+  CiJob {
+    id: v4_t15_self_host_fixed_point_execution,
+    command: V4T15SelfHostFixedPointCommand,
+    needs: [v2_compile_src_v4]
+  }
+}
+
+data ci_job_v4_t15_self_host_fixed_point_execution_row: CiJob = ci_job_v4_t15_self_host_fixed_point_execution_mk()
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding.
 // 🟡 gated — feature:phase1-nat-semiring-rust-rung-interim-nonblocking — bind #3955 §6 (rust rung emit not rustc-clean on main) — dissolve-on-arrival: flip non_blocking to false when rung1 rust_typecheck passes under V4_PHASE1_NAT_SEMIRING_STRICT=1; until then non_blocking: true (continue-on-error at workflow) while STRICT=1 still logs fail-closed rung receipts; forbidden: silent YAML-only continue-on-error without modeled parity.
 // 🟡 tracked-bridge — feature:phase1-nat-semiring-rung-gate-binding-smoke — owner:keen-crab-361 (Ladder/Fixture Manager) — bind node://adhoc-2b191c1e-6b3 ("phase1/nat_semiring rung gate binding-smoke test (mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml)") — consumer:src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs new test function asserting ci.dag step_name/script_path/non_blocking/timeout_minutes parity with .github/workflows/ci.yml step block — dissolve-on-arrival: binding_smoke_step_name carries the new test's step name (e.g. "phase1/nat_semiring rung gate model/YAML binding smoke") AND ci.yml runs the new test as a cargo-test step paired with the gate; forbidden: re-emptying binding_smoke_step_name after the test lands. Until the bound work item closes, ci.dag↔ci.yml single-authority for THIS signal is enforced by the four-field parity (step_name / script_path / non_blocking / timeout_minutes) under review checkpoint at PR-time — not by a CI binding test.
@@ -518,39 +561,20 @@ data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
   jobs: [
-    CiJob {
-      id: v2_bootstrap_smoke_execution,
-      command: V2BootstrapCompileCommand,
-      needs: []
-    },
+    ci_job_v2_bootstrap_smoke_execution_row,
     CiJob {
       id: v2_compile_src_v4,
       command: BootstrapStageCompile { produces: v4_stage0_binary },
       needs: []
     },
-    CiJob {
-      id: v3_determinism_execution,
-      command: V3DeterminismCommand { profile: ci_v3_determinism_profile },
-      needs: []
-    },
-    CiJob {
-      id: v3_self_host_fixed_point_execution,
-      command: V3SelfHostFixedPointCommand {
-        profile: ci_v3_self_host_fixed_point_profile
-        schedule: MainPush
-      },
-      needs: [v3_determinism_execution]
-    },
+    ci_job_v3_determinism_execution_row,
+    ci_job_v3_self_host_fixed_point_execution_row,
     CiJob {
       id: lens_ci_registry_execution,
       command: LensCiCommand { required_lenses: lens_ci_required_lenses },
       needs: [v2_compile_src_v4]
     },
-    CiJob {
-      id: v4_t15_self_host_fixed_point_execution,
-      command: V4T15SelfHostFixedPointCommand,
-      needs: [v2_compile_src_v4]
-    },
+    ci_job_v4_t15_self_host_fixed_point_execution_row,
     CiJob {
       id: m1_rust_emit_probe_execution,
       command: M1RustEmitProbeCommand,
@@ -593,9 +617,87 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
 })
 
 
-// ── W2.3 Phase 1.5 — CiUpsertStep rows (Buckets A+B+C+E — full `ci_pipeline_step_ids_shadow`) ──
-// In-scope: `ci_upsert_steps_full_in_scope_step_ids` (A–E landed; bijection with shadow universe).
+// ── W2.3 Phase 1.5 — CiUpsertStep rows (Buckets A+B+C+E + bankruptcy Tier-0 — full `ci_pipeline_step_ids_shadow`) ──
+// In-scope: `ci_upsert_steps_full_in_scope_step_ids` (A–E + Tier-0 B0 jobs; bijection with shadow universe).
 // Historical partial slices: `ci_upsert_steps_buckets_a_b_c_*` retained for bucket A/B/C landing ledger.
+
+data ci_upsert_v2_bootstrap_smoke_execution_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "scripts/**"),
+  ci_upsert_file_set_input(segment: "src/v2/**")
+]
+
+fn ci_upsert_v2_bootstrap_smoke_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_v2_bootstrap_smoke_execution_inputs
+  verify: ci_command_projection_node(c: V2BootstrapCompileCommand)
+  create: ci_job_projection_node(j: ci_job_v2_bootstrap_smoke_execution_row)
+  resolve: ci_atom(sym: v2_bootstrap_smoke_execution)
+  payload_type: ci_atom(sym: ci_cache_cmd_v2_bootstrap_tag)
+  }
+}
+
+data ci_upsert_v2_bootstrap_smoke_execution: CiUpsertStepSymbol = ci_upsert_v2_bootstrap_smoke_execution_mk()
+
+data ci_upsert_v3_determinism_execution_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v3/**"),
+  ci_upsert_file_set_input(segment: "Cargo.toml"),
+  ci_upsert_file_set_input(segment: "Cargo.lock")
+]
+
+fn ci_upsert_v3_determinism_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_v3_determinism_execution_inputs
+  verify: ci_command_projection_node(
+    c: V3DeterminismCommand { profile: ci_v3_determinism_profile }
+  )
+  create: ci_job_projection_node(j: ci_job_v3_determinism_execution_row)
+  resolve: ci_atom(sym: v3_determinism_execution)
+  payload_type: ci_atom(sym: ci_cache_cmd_v3_determinism_tag)
+  }
+}
+
+data ci_upsert_v3_determinism_execution: CiUpsertStepSymbol = ci_upsert_v3_determinism_execution_mk()
+
+data ci_upsert_v3_self_host_fixed_point_execution_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v3/**"),
+  ci_upsert_upstream_job_input(job: v3_determinism_execution)
+]
+
+fn ci_upsert_v3_self_host_fixed_point_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_v3_self_host_fixed_point_execution_inputs
+  verify: ci_command_projection_node(
+    c: V3SelfHostFixedPointCommand {
+      profile: ci_v3_self_host_fixed_point_profile
+      schedule: MainPush
+    }
+  )
+  create: ci_job_projection_node(j: ci_job_v3_self_host_fixed_point_execution_row)
+  resolve: ci_atom(sym: v3_self_host_fixed_point_execution)
+  payload_type: ci_atom(sym: ci_cache_cmd_v3_self_host_tag)
+  }
+}
+
+data ci_upsert_v3_self_host_fixed_point_execution: CiUpsertStepSymbol =
+  ci_upsert_v3_self_host_fixed_point_execution_mk()
+
+data ci_upsert_v4_t15_self_host_fixed_point_execution_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v4/**"),
+  ci_upsert_upstream_job_input(job: v2_compile_src_v4)
+]
+
+fn ci_upsert_v4_t15_self_host_fixed_point_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_v4_t15_self_host_fixed_point_execution_inputs
+  verify: ci_command_projection_node(c: V4T15SelfHostFixedPointCommand)
+  create: ci_job_projection_node(j: ci_job_v4_t15_self_host_fixed_point_execution_row)
+  resolve: ci_atom(sym: v4_t15_self_host_fixed_point_execution)
+  payload_type: ci_atom(sym: ci_cache_cmd_v4_t15_self_host_tag)
+  }
+}
+
+data ci_upsert_v4_t15_self_host_fixed_point_execution: CiUpsertStepSymbol =
+  ci_upsert_v4_t15_self_host_fixed_point_execution_mk()
 
 type CiUpsertStepRow {
   step_id: CiStepId
@@ -907,6 +1009,35 @@ data ci_upsert_phase1_nat_semiring_rung_gate_signal: CiUpsertStepSymbol = ci_ups
 
 data ci_upsert_steps: List<CiUpsertStepRow> = [
   CiUpsertStepRow {
+    step_id: JobStep {
+      job: v2_bootstrap_smoke_execution,
+      step: v2_bootstrap_smoke_execution
+    },
+    step: ci_upsert_v2_bootstrap_smoke_execution,
+    inputs: ci_upsert_v2_bootstrap_smoke_execution_inputs
+  },
+  CiUpsertStepRow {
+    step_id: JobStep { job: v3_determinism_execution, step: v3_determinism_execution },
+    step: ci_upsert_v3_determinism_execution,
+    inputs: ci_upsert_v3_determinism_execution_inputs
+  },
+  CiUpsertStepRow {
+    step_id: JobStep {
+      job: v3_self_host_fixed_point_execution,
+      step: v3_self_host_fixed_point_execution
+    },
+    step: ci_upsert_v3_self_host_fixed_point_execution,
+    inputs: ci_upsert_v3_self_host_fixed_point_execution_inputs
+  },
+  CiUpsertStepRow {
+    step_id: JobStep {
+      job: v4_t15_self_host_fixed_point_execution,
+      step: v4_t15_self_host_fixed_point_execution
+    },
+    step: ci_upsert_v4_t15_self_host_fixed_point_execution,
+    inputs: ci_upsert_v4_t15_self_host_fixed_point_execution_inputs
+  },
+  CiUpsertStepRow {
     step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
     step: ci_upsert_v2_compile_src_v4,
     inputs: ci_upsert_v2_compile_src_v4_inputs
@@ -967,6 +1098,20 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
     },
     step: ci_upsert_phase1_nat_semiring_rung_gate_signal,
     inputs: ci_upsert_phase1_nat_semiring_rung_gate_signal_inputs
+  }
+]
+
+// Bankruptcy B0 Tier-0 job rows — must ⊆ `ci_pipeline_step_ids_shadow` (bijection slice).
+data ci_upsert_steps_bankruptcy_tier0_slice_step_ids: List<CiStepId> = [
+  JobStep { job: v2_bootstrap_smoke_execution, step: v2_bootstrap_smoke_execution },
+  JobStep { job: v3_determinism_execution, step: v3_determinism_execution },
+  JobStep {
+    job: v3_self_host_fixed_point_execution,
+    step: v3_self_host_fixed_point_execution
+  },
+  JobStep {
+    job: v4_t15_self_host_fixed_point_execution,
+    step: v4_t15_self_host_fixed_point_execution
   }
 ]
 
@@ -1038,9 +1183,12 @@ data ci_upsert_steps_bucket_e_slice_step_ids: List<CiStepId> = [
   }
 ]
 
-// Full W2.3 universe — A+B+C job rows (#4055/#4066/#4067) + E gate rows (this slice).
+// Full W2.3 universe — bankruptcy Tier-0 + A+B+C job rows (#4055/#4066/#4067) + E gate rows.
 data ci_upsert_steps_full_in_scope_step_ids: List<CiStepId> = ci_step_id_list_append_items(
-  base: ci_upsert_steps_buckets_a_b_c_in_scope_step_ids,
+  base: ci_step_id_list_append_items(
+    base: ci_upsert_steps_bankruptcy_tier0_slice_step_ids,
+    more: ci_upsert_steps_buckets_a_b_c_in_scope_step_ids
+  ),
   more: ci_upsert_steps_bucket_e_slice_step_ids
 )
 
@@ -3209,93 +3357,114 @@ fn ci_component_mask_intersects(mask: CiComponentAffected, affected: CiComponent
 }
 
 
+// Job-selection mask row — always sets release_distribution_only: false (orthogonal RELEASE §5 lane flag on affected outputs).
+fn ci_job_component_mask_row(
+  v2: Bool,
+  v3: Bool,
+  v4: Bool,
+  testclaim_corpus: Bool,
+  workflow_policy: Bool,
+  release_distribution: Bool
+) -> CiComponentAffected {
+  CiComponentAffected {
+    v2: v2
+    v3: v3
+    v4: v4
+    testclaim_corpus: testclaim_corpus
+    workflow_policy: workflow_policy
+    release_distribution: release_distribution
+    release_distribution_only: false
+  }
+}
+
+
 fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
   match j.command {
     V2BootstrapCompileCommand =>
-      CiComponentAffected {
-        v2: true
-        v3: false
-        v4: false
-        testclaim_corpus: false
-        workflow_policy: false
+      ci_job_component_mask_row(
+        v2: true,
+        v3: false,
+        v4: false,
+        testclaim_corpus: false,
+        workflow_policy: false,
         release_distribution: false
-      }
+      )
     // v2-only I2 (stage0) is ci_integration + V2BootstrapCompileCommand; v2_compile_src_v4 YAML projection is ci_v4 gunbc build (v4|testclaim|workflow_policy|main-push for I7 T-15 needs closure).
     BootstrapStageCompile { produces: _ } =>
-      CiComponentAffected {
-        v2: false
-        v3: false
-        v4: true
-        testclaim_corpus: false
-        workflow_policy: false
+      ci_job_component_mask_row(
+        v2: false,
+        v3: false,
+        v4: true,
+        testclaim_corpus: false,
+        workflow_policy: false,
         release_distribution: false
-      }
+      )
     V3DeterminismCommand { profile: _ } =>
-      CiComponentAffected {
-        v2: false
-        v3: true
-        v4: false
-        testclaim_corpus: false
-        workflow_policy: false
+      ci_job_component_mask_row(
+        v2: false,
+        v3: true,
+        v4: false,
+        testclaim_corpus: false,
+        workflow_policy: false,
         release_distribution: false
-      }
+      )
     // I4: v3 frontier (D1) + MainPush via ci_v3_self_host_fixed_point_scheduled; not mask-only MainPush.
     V3SelfHostFixedPointCommand { profile: _, schedule: _ } =>
-      CiComponentAffected {
-        v2: false
-        v3: true
-        v4: false
-        testclaim_corpus: false
-        workflow_policy: false
+      ci_job_component_mask_row(
+        v2: false,
+        v3: true,
+        v4: false,
+        testclaim_corpus: false,
+        workflow_policy: false,
         release_distribution: false
-      }
+      )
     LensCiCommand { required_lenses: _ } =>
-      CiComponentAffected {
-        v2: false
-        v3: true
-        v4: true
-        testclaim_corpus: false
-        workflow_policy: true
+      ci_job_component_mask_row(
+        v2: false,
+        v3: true,
+        v4: true,
+        testclaim_corpus: false,
+        workflow_policy: true,
         release_distribution: false
-      }
+      )
     // Mask axes: v4|workflow_policy (ci.yml T-15 step if); main-push via ci_v4_t15_scheduled. No v3 — I7 runs only when ci_v4 runs (parent job gates v4|testclaim_corpus|workflow_policy|main-push).
     V4T15SelfHostFixedPointCommand =>
-      CiComponentAffected {
-        v2: false
-        v3: false
-        v4: true
-        testclaim_corpus: false
-        workflow_policy: true
+      ci_job_component_mask_row(
+        v2: false,
+        v3: false,
+        v4: true,
+        testclaim_corpus: false,
+        workflow_policy: true,
         release_distribution: false
-      }
+      )
     // I8: testclaim_corpus + release_distribution — upstream for T-22 via Upsert; mask must match YAML step if.
     M1RustEmitProbeCommand =>
-      CiComponentAffected {
-        v2: false
-        v3: false
-        v4: true
-        testclaim_corpus: true
-        workflow_policy: true
+      ci_job_component_mask_row(
+        v2: false,
+        v3: false,
+        v4: true,
+        testclaim_corpus: true,
+        workflow_policy: true,
         release_distribution: true
-      }
+      )
     Phase1NatSemiringRungGateCommand =>
-      CiComponentAffected {
-        v2: false
-        v3: false
-        v4: true
-        testclaim_corpus: false
-        workflow_policy: true
+      ci_job_component_mask_row(
+        v2: false,
+        v3: false,
+        v4: true,
+        testclaim_corpus: false,
+        workflow_policy: true,
         release_distribution: false
-      }
+      )
     TestClaimCorpusEvalCommand { selection_fn: _ } =>
-      CiComponentAffected {
-        v2: false
-        v3: false
-        v4: true
-        testclaim_corpus: true
-        workflow_policy: true
+      ci_job_component_mask_row(
+        v2: false,
+        v3: false,
+        v4: true,
+        testclaim_corpus: true,
+        workflow_policy: true,
         release_distribution: true
-      }
+      )
     LintCommand => ci_component_affected_fail_closed()
     TestCommand => ci_component_affected_fail_closed()
     IgnoredTestCommand { test_name: _ } => ci_component_affected_fail_closed()
