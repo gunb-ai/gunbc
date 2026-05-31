@@ -15,9 +15,11 @@
 //!
 //! **W3:** substrate `run_emit_host_rust` stays `transport_not_wired` (fail-closed); real cargo+run
 //! via `emit_host_bridge` / `emit_host_runner`. Rosters authored in #4046 (`rung_3_4`).
-//! Behavior receipts: real cargo compile+run transport, MVP-2 emit-vs-eval `Pass`/`Fail` verdicts
-//! (host `FalsificationReceipt` path on value mismatch / parse reject). Dissolution: delete when
-//! T-22 generated harness replaces hand-Rust probes.
+//! **W3.4 (this PR, +0 SG-0 paths):** extends bridge with python transport + rung-6 additive-Monoid
+//! roster (`rung_6.dag`, `rung_5_6_common.dag`, `nat_semiring_rung56_eval.dag`). Behavior receipts:
+//! MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte stdout contract;
+//! not per-law emitted artifacts until emit pipeline wires law subjects). Substrate rows stay
+//! `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B / **TASKS.md** T-22 T-38.
 //!
 //! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
 //! `tools/emit_host_runner` / `emit_host_bridge` (real cargo + run).
@@ -40,6 +42,24 @@ const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
 const NAT_SEMIRING_RUNG_3_4_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
 const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
+const NAT_SEMIRING_RUNG_6_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_6.dag");
+const NAT_SEMIRING_RUNG_6_PATH: &str = "src/v4/test/claim/nat_semiring/rung_6.dag";
+const NAT_SEMIRING_RUNG56_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung56_eval.dag");
+const NAT_SEMIRING_RUNG56_EVAL_PATH: &str =
+    "src/v4/test/claim/workflow/nat_semiring_rung56_eval.dag";
+const RUNG_5_6_COMMON_DAG: &str = include_str!("../../../../v4/test/claim/rung_5_6_common.dag");
+const RUNG_5_6_COMMON_PATH: &str = "src/v4/test/claim/rung_5_6_common.dag";
+const NAT_SEMIRING_RUNG_8_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_8.dag");
+const NAT_SEMIRING_RUNG_8_PATH: &str = "src/v4/test/claim/nat_semiring/rung_8.dag";
+const NAT_SEMIRING_RUNG8_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung8_eval.dag");
+const NAT_SEMIRING_RUNG8_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung8_eval.dag";
+
+/// Minimal python host fixture: five stdout bytes (MVP runtime value `5` alignment).
+const EMIT_HOST_PYTHON_FIXTURE_SOURCE: &str = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
@@ -171,6 +191,100 @@ fn nat_semiring_rung4_emit_vs_eval_falsification_on_host_value_mismatch() {
     );
 }
 
+/// Tranche-1 bridge receipt only: same MVP-2 fixture per target (five-byte stdout), not per-law emit.
+/// `claim_input_root` pins the roster row's law subject symbol until emit wires law bodies; test names
+/// mirror `.dag` row ids (`run_phase1_nat_semiring_rung6_*`) — they do not yet prove law semantics.
+fn assert_rung6_mvp2_emit_vs_eval_pass(
+    work_dir_prefix: &str,
+    claim_input_root: &str,
+    run_transport: fn(
+        &str,
+        &emit_host_runner::EmitHostFixtureInputs,
+        &std::path::Path,
+        [u8; 5],
+    ) -> Result<
+        emit_host_bridge::EmitHostEmitVsEvalVerdict,
+        emit_host_runner::HostSetupFailure,
+    >,
+    emitted_source: &str,
+) {
+    let work_dir =
+        emit_host_runner::default_work_dir(&format!("{work_dir_prefix}_{}", std::process::id()));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: claim_input_root.to_string(),
+        expected_eval_root: "phase1_nat_semiring_rung6_expected_eval".to_string(),
+    };
+    let verdict = run_transport(
+        emitted_source,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("emit_vs_eval transport");
+    assert_eq!(verdict, emit_host_bridge::EmitHostEmitVsEvalVerdict::Pass);
+}
+
+/// Roster-row receipt (law pin + rust transport); MVP-2 stdout only — see `assert_rung6_mvp2_emit_vs_eval_pass`.
+#[test]
+fn nat_semiring_rung6_rust_add_left_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_left_id",
+        "nat_add_left_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_rust_add_right_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_right_id",
+        "nat_add_right_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_rust_add_associativity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_assoc",
+        "nat_add_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_add_left_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_left_id",
+        "nat_add_left_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_add_right_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_right_id",
+        "nat_add_right_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_add_associativity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_assoc",
+        "nat_add_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
 #[test]
 fn emit_host_bridge_rust_transport_builds_runs_and_parses_stdout() {
     let work_dir = emit_host_runner::default_work_dir(&format!(
@@ -268,7 +382,9 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
     let module = parse_module(EMIT_HOST_DAG, EMIT_HOST_PATH);
     for name in [
         "run_emit_host_rust",
+        "run_emit_host_python",
         "run_emit_host",
+        "runtime_value_parse_python",
         "host_exit_failure_outcome",
         "run_test_claim_emit_vs_eval_for_claim",
         "run_test_claim_emit_vs_eval",
@@ -285,6 +401,10 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
     assert!(
         surface_declares_data(&module, "emit_host_transport_not_wired"),
         "{EMIT_HOST_PATH}: transport_not_wired reason symbol"
+    );
+    assert!(
+        surface_declares_data(&module, "emit_host_python_authority_pin"),
+        "{EMIT_HOST_PATH}: python authority pin (W3.4)"
     );
 }
 
@@ -340,5 +460,125 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
             "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
         ),
         "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
+    let rung_8 = parse_module(NAT_SEMIRING_RUNG_8_DAG, NAT_SEMIRING_RUNG_8_PATH);
+    for name in [
+        "run_claim_nat_add_left_identity",
+        "run_claim_nat_add_right_identity",
+        "run_claim_nat_add_associativity",
+        "run_claim_nat_mul_left_identity",
+        "run_claim_nat_mul_annihilator",
+        "run_claim_nat_mul_associativity",
+        "run_claim_nat_add_wrong_identity_falsifies_law",
+    ] {
+        assert!(
+            surface_declares_data(&rung_8, name),
+            "{NAT_SEMIRING_RUNG_8_PATH}: missing run row {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(&rung_8, "phase1_nat_semiring_rung8_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG_8_PATH}: runtime roster carrier (7 rows)"
+    );
+    assert!(
+        surface_declares_fn(&rung_8, "rung8_tier1_eval_run"),
+        "{NAT_SEMIRING_RUNG_8_PATH}: T-22 eval constructor must call run_test_claim"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG_8_DAG.contains("run_test_claim("),
+        "{NAT_SEMIRING_RUNG_8_PATH}: roster rows must thread run_test_claim verdicts (not fabricated Pass)"
+    );
+
+    let eval_module = parse_module(NAT_SEMIRING_RUNG8_EVAL_DAG, NAT_SEMIRING_RUNG8_EVAL_PATH);
+    for name in [
+        "run_nat_semiring_rung8_eval",
+        "nat_semiring_rung8_gate",
+        "nat_semiring_rung8_zero_deferred",
+    ] {
+        assert!(
+            surface_declares_fn(&eval_module, name),
+            "{NAT_SEMIRING_RUNG8_EVAL_PATH}: missing fn {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(
+            &eval_module,
+            "witness_nat_semiring_rung8_zero_deferred_closed"
+        ),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: authoring-time zero-deferred witness (data binding)"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG8_EVAL_DAG.contains("phase1_nat_semiring_rung8_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG8_EVAL_DAG.contains("corpus_report_tally"),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: VerdictTally via corpus_report_tally"
+    );
+}
+
+#[test]
+fn emit_host_runner_python_row_runs_and_parses_stdout() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_v4_emit_host_py_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "w34_py_claim_input".to_string(),
+        expected_eval_root: "w34_py_expected_eval".to_string(),
+    };
+    let receipt =
+        emit_host_runner::run_emit_host_python(EMIT_HOST_PYTHON_FIXTURE_SOURCE, &inputs, &work_dir)
+            .expect("run_emit_host_python");
+    assert!(receipt.exit.exit_holds());
+    emit_host_runner::runtime_value_parse_python(&receipt.stdout_bytes).expect("parse");
+}
+
+#[test]
+fn v4_nat_semiring_rung_6_dag_tokenizes_and_parses_additive_monoid_emit_rows() {
+    let module = parse_module(NAT_SEMIRING_RUNG_6_DAG, NAT_SEMIRING_RUNG_6_PATH);
+    for name in [
+        "run_phase1_nat_semiring_rung6_rust_add_left_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_rust_add_right_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_rust_add_associativity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_add_left_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_add_right_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung6_python_add_associativity_emit_equals_eval",
+    ] {
+        assert!(
+            surface_declares_data(&module, name),
+            "{NAT_SEMIRING_RUNG_6_PATH}: missing rung-6 row {name}"
+        );
+    }
+    let common = parse_module(RUNG_5_6_COMMON_DAG, RUNG_5_6_COMMON_PATH);
+    assert!(
+        surface_declares_data(&common, "rung56_emit_host_python_target_model"),
+        "{RUNG_5_6_COMMON_PATH}: python TargetModel"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung56_eval_dag_tokenizes_and_parses_rung6_gate() {
+    let module = parse_module(NAT_SEMIRING_RUNG56_EVAL_DAG, NAT_SEMIRING_RUNG56_EVAL_PATH);
+    for name in [
+        "nat_semiring_rung56_report_has_evidence",
+        "nat_semiring_rung6_gate",
+        "run_nat_semiring_rung56_eval",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{NAT_SEMIRING_RUNG56_EVAL_PATH}: missing fn {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(
+            &module,
+            "nat_semiring_rung6_additive_monoid_runtime_value_rows"
+        ),
+        "{NAT_SEMIRING_RUNG56_EVAL_PATH}: tranche-1 additive-Monoid roster"
     );
 }
