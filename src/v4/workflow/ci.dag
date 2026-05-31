@@ -1513,6 +1513,17 @@ fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash {
 }
 
 
+// v4 `gunbc compile` does not project fields through `CiUpsertStepSymbol` inside `fold` callbacks.
+fn ci_upsert_step_symbol_inputs(step: CiUpsertStepSymbol) -> List<UpsertInputRef> {
+  step.inputs
+}
+
+
+fn ci_upsert_step_symbol_cache_digest(step: CiUpsertStepSymbol) -> Hash {
+  ci_upsert_step_cache_digest(step: step)
+}
+
+
 fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId> {
   fold(rows, init: Empty, f: fn(acc, row) {
     list_snoc_item(xs: acc, item: row.step_id)
@@ -1523,7 +1534,7 @@ fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId>
 fn ci_upsert_row_inputs_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> List<UpsertInputRef> {
   fold(rows, init: [], f: fn(acc, row) {
     if ci_step_id_eq(left: step_id, right: row.step_id) {
-      row.step.inputs
+      ci_upsert_step_symbol_inputs(step: row.step)
     } else {
       acc
     }
@@ -1537,7 +1548,7 @@ fn ci_upsert_row_cache_digest_for_step_id(step_id: CiStepId, rows: List<CiUpsert
     init: content_hash(n: ci_step_id_projection_node(step_id: step_id)),
     f: fn(acc, row) {
       if ci_step_id_eq(left: step_id, right: row.step_id) {
-        ci_upsert_step_cache_digest(step: row.step)
+        ci_upsert_step_symbol_cache_digest(step: row.step)
       } else {
         acc
       }
