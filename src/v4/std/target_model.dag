@@ -110,7 +110,7 @@ type TargetValueTemplate {
 }
 
 type TargetConstructorTemplate
-  = CtorTemplateUnit
+  = CtorTemplateUnit {}
 
 type TargetAtomRealization {
   source_carrier: Node
@@ -577,7 +577,7 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
       }
     Present { value: template } =>
       match template {
-        CtorTemplateUnit =>
+        CtorTemplateUnit {} =>
           Node {
             kind: TypeNode {
               connective: Atom { identity: target_constructor_template_constructor_absent }
@@ -605,7 +605,7 @@ fn target_constructor_template_from_node(
       if id == target_constructor_template_optional_absent {
         outcome_accepted(optional_absent())
       } else if id == target_constructor_template_constructor_absent {
-        outcome_accepted(optional_present(CtorTemplateUnit))
+        outcome_accepted(optional_present(CtorTemplateUnit {}))
       } else {
         outcome_rejected(
           target_constructor_template_decode_invalid_diagnostic(source_carrier: source_carrier)
