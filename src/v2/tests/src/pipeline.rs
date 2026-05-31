@@ -2631,14 +2631,15 @@ fn diag_parse_node_decl_env() {
 
     // Build parser_always_advancing exactly as the SCC analysis does
     let si = Rc::new(HashMap::new());
-    let parser_always_advancing = infer_parser_always_advancing_members(parser_function_names(func_index_rc.clone(), Rc::new(HashMap::new())),
-        &func_index_rc,
-        &si,
+    let parser_always_advancing = infer_parser_always_advancing_members(
+        parser_function_names(func_index_rc.clone(), Rc::new(HashMap::new())),
+        func_index_rc.clone(),
+        si.clone(),
     );
 
     // Build scc_name_set for the parser SCC containing parse_node_decl
     use v2_compiler::v2_compiler_complexity::build_scc_index;
-    let scc_result = build_scc_index(Rc::new(func_entries.clone()), func_index_rc.clone(), si);
+    let scc_result = build_scc_index(func_entries.clone(), func_index_rc.clone(), si);
     let scc_info = scc_result
         .index
         .get("parse_node_decl")
