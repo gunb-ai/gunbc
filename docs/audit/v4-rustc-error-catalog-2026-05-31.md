@@ -3,7 +3,7 @@
 **Manager session:** `sharp-otter-407` (Close/Receipt lane).
 **Authority:** PR #3938 §11.1 + §11.3 lane map; P3-B operator dispatch 2026-05-31 ("fresh measurement after systemic fix, not stale baseline reuse").
 **Replaces (does NOT delete):** `docs/audit/v4-rustc-error-catalog-2026-05-29.md` as the **live** M1 ratchet meter. The 2026-05-29 catalog stays as the **pre-SG-1 baseline** for delta computation.
-**Reference commit:** `origin/main` post-SG-1 (`78b9698ab` squash of #3956) + post-SG-7 (`#4014`/#4050`) + downstream W2.3 + W1.5 landings (`17a9ac4c3` HEAD).
+**Reference commit:** `origin/main` at **`78b9698ab`** — the SG-1 squash (#3956) is the tip at probe time, sitting on top of `17a9ac4c3` (post-#4075 burn-down, the prior W2.3 + W1.5 landings parent). v2-compiler binary and the M1 probe both measured against `78b9698ab` as `git rev-parse HEAD`.
 **Probe:** `scripts/v4-m1-rust-emit-probe.sh` run by `sharp-otter-407` (2026-05-31 ~04:25Z) → `docs/audit/v4-rustc-error-catalog-2026-05-31.m1-probe-summary.txt` (committed in this PR).
 
 ---
