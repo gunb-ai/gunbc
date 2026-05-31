@@ -37,7 +37,7 @@ behavioral_ok=false
 if [[ -f /tmp/v4-leaf-model-r3-internal-verify.log ]]; then
   passed="$(grep -cE 'test v4_leaf_model_rust_r3_internal[^ ]+ \.\.\. ok' /tmp/v4-leaf-model-r3-internal-verify.log || true)"
   failed="$(grep -cE 'test v4_leaf_model_rust_r3_internal[^ ]+ \.\.\. FAILED' /tmp/v4-leaf-model-r3-internal-verify.log || true)"
-  if grep -qE 'test v4_leaf_model_rust_r3_internal_row_mutation_changes_type_and_value_projections \.\.\. ok' \
+  if grep -qE 'row_mutation_changes_type_and_value_projections \.\.\. ok' \
     /tmp/v4-leaf-model-r3-internal-verify.log; then
     behavioral_ok=true
   fi
