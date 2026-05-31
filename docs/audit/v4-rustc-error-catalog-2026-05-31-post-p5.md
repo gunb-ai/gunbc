@@ -112,7 +112,7 @@ Reuses the §5 elastic-core table from PR #4086. **No new §10.0 worksheets need
 | **SG-RC-LAYERING** (Rc/Box/raw at boundaries) | ~780 | ~700 | +80 | **WORKSHEET LANDED** (#4100 per proud-pike) |
 | **SG-COLLECTION-PROJECTION** (FreeMonoid vs Vec) | ~170 | ~170 | 0 | **EXTEND SG-5/SG-6** (routing per proud-pike); no urgency change |
 | **SG-8** (E0425 + E0432 + E0433) | 804 | 796 | +8 | **EXISTS — worker dispatch needed** |
-| **SG-3-CASCADE** (E0277 + E0573 + E0560 + E0369 + E0121 + **unclassified-E0308 mop-up**) | **~1,390** | ~1,386 (corrected vs #4086's stated 1,191) | +4 | **EXISTING — mop-up after primaries** |
+| **SG-3-CASCADE** (E0277 + E0573 + E0560 + E0369 + E0121 + **unclassified-E0308 mop-up**) | **~1,390** | **~1,436** (corrected vs #4086's stated 1,191; recomputed under this bucket's true definition) | **−46** (SG-RC-LAYERING absorbed +80 of what was previously E0308 mop-up; net cascade-mop-up shrinks even though named SG-3 codes are flat) | **EXISTING — mop-up after primaries** |
 | **Long tail** (E0391 29 + E0599 28 + other 12 codes 58) | **115** | 115 (same shape, was mis-stated as 58 in §6 mid-edit) | 0 | Naturally bounded, no worksheet |
 
 **P3-D elastic core count (unchanged from #4086):** **8 active receipt-producing classes** + 2 closed. The +184 delta does not change the number of dispatchable classes.
