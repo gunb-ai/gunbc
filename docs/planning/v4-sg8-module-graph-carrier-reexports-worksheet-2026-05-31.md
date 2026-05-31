@@ -10,7 +10,9 @@
 
 ## Mechanical dispatch rule
 
-> **No SG-8 implementation worker may land until this worksheet is complete and Modeling DFS Manager–approved.**
+> **Merge gate:** §10.0 worksheet content must be **complete** and Modeling DFS Manager–approved (§8 checklist) before #4127 merges.
+>
+> **#4127 co-delivery (falsification-only):** Emitter changes implementing §10.0 items (1)+(2) are included in the same PR **only** so reviewers can run §4 falsification probes against real code. That co-delivery does **not** waive §8 sign-off or satisfy the merge gate by itself — same pattern as SG-RC #4100 (worksheet) + implementation PR, collapsed into one draft for review velocity under Target Realization dispatch.
 
 Acceptance is **§4 falsification probes**, not E0425/E0432/E0433 count reduction on the M1 probe.
 
