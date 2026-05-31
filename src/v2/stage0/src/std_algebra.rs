@@ -7,6 +7,8 @@ use self::CollectionSizeEffect::*;
 use self::ContainerSource::*;
 use self::CostShape::*;
 use self::Ordering::*;
+use crate::std_error_primitives::DivError::*;
+use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
@@ -50,10 +52,6 @@ pub struct AbelianGroup<T> {
     pub identity: Box<T>,
     pub inverse: Rc<dyn Fn(T) -> T>,
 }
-
-pub type GroupCompletion<M> = GroupCompletion;
-
-pub type FieldOfFractions<R> = FieldOfFractions;
 
 #[derive(Clone)]
 pub struct Semiring<T> {

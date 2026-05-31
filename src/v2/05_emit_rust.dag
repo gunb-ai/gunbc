@@ -1339,9 +1339,10 @@ fn emit_specific_import_block(mod_name: String, deduped_names: List<String>, emi
               }
             ) |> filter(p => p != "")
             let parent_list = unique_strings(items: all_parents)
-            // Parents are for variant `use Parent::{…}` lines only — not pub re-exports (avoids
-            // homonym variants like IdentityEffect pulling CollectionSizeEffect into scope).
-            let top_with_parents = unique_strings(items: concat(graph_type_imports, top_level_enums))
+            // Parent enum types must appear in pub use when body code uses `Parent::Variant`
+            // (variant-only `use Parent::{…}` does not bring `Parent` into scope). Homonym
+            // variants are avoided by scoped variant imports + import-mod-first parent resolution.
+            let top_with_parents = unique_strings(items: concat(graph_type_imports, top_level_enums, parent_list))
             let local_reexport_names = top_with_parents |> filter(n => symbol_defining_mod_filename(name: n, registry: registry, import_mod: mod_name) == mod_name)
             let remote_reexport_names = top_with_parents |> filter(n => symbol_defining_mod_filename(name: n, registry: registry, import_mod: mod_name) != mod_name)
             let remote_mods = unique_strings(items: remote_reexport_names |> map(n => symbol_defining_mod_filename(name: n, registry: registry, import_mod: mod_name)))
@@ -1494,8 +1495,13 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_type_alias_return_node(n: resolved_type(n: item), source_indices: env.source_indices) {
-      let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
-      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, type_params, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+      let rhs = render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices)
+      if rhs == item_text {
+        ""
+      } else {
+        let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+        concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, type_params, " = ", rhs, ";")
+      }
     } else {
       ""
     }
