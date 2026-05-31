@@ -311,6 +311,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/collection_ops_method_contract.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
+    // W3 / T-38: executable `run_emit_host_rust` hand-Rust bridge (`tools/emit_host_runner`).
+    // **P5 receipt (Mechanism (b)):** matching row in `_internal/INVARIANTS_OPS.md`
+    // § SG-0 hand-authored compiler non-test paths (`T-PB-B` / `pb_rust_tests_outside_residual_zero`).
+    // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
+    "src/v3/compiler/src/emit_host_bridge.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
