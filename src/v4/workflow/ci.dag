@@ -3195,6 +3195,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: false
         release_distribution: false
       }
+    // I4: all-false mask — selection uses ci_job_scheduled_by_policy (MainPush-only), not mask intersection.
     V3SelfHostFixedPointCommand { profile: _, schedule: _ } =>
       CiComponentAffected {
         v2: false
