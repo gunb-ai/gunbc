@@ -51,13 +51,13 @@ Per #4086 catalog + proud-pike routing (msg_6db2dc9e):
 | SG-RC-LAYERING | ~700 (10%) | authoring | NEW §10.0 worksheet — **proud-pike authoring** |
 | SG-2 | (extend existing) | routed | proud-pike's SG-2 worksheet; worker dispatch when ready |
 | SG-8 | (extend existing) | routed | extend existing worksheet |
-| SG-3-CASCADE | (extend existing) | routed | extend existing worksheet |
+| SG-3-CASCADE | (cascade residual) | retired (no worksheet) | cascade-only — no §10.0; bands owned by primaries. See `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md` |
 | SG-5 | (extend existing) | routed | extend existing worksheet |
 | SG-6 | (extend existing) | in-review | #4085 SG-6 in cursor RC cycle (lively-eagle) |
 | SG-1-FOLLOWON | (extend existing) | routed | worker-only follow-on |
 | SG-COLLECTION-PROJECTION | ~170 | route-pending | amend SG-5/SG-6 first; escalate to NEW only if single-authority-fact fails |
 
-(Table lists 9 routing rows for 8 distinct receipt-producing classes — SG-1b + SG-1-FOLLOWON are two routing paths for one class per #4086 catalog. `state` legend: `worksheet-needed` = no §10.0 yet; `authoring` = §10.0 being written; `routed` = §10.0 exists, worker dispatchable; `in-review` = worker PR open; `route-pending` = decision needed on extend-vs-new.)
+(Table lists 9 routing rows for 8 distinct receipt-producing classes — SG-1b + SG-1-FOLLOWON are two routing paths for one class per #4086 catalog. `state` legend: `worksheet-needed` = no §10.0 yet; `authoring` = §10.0 being written; `routed` = §10.0 exists, worker dispatchable; `in-review` = worker PR open; `route-pending` = decision needed on extend-vs-new; `retired (no worksheet)` = determined cascade-only, bands owned by primaries, not separately dispatchable per `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md`.)
 
 P3 PROVEN bar: **Rust source compiles to a binary** (not zero rustc errors — that is a measurement proxy; not Python+Go either — those are v0.1.0 alpha scope per Wave F F3). Each named class closure shrinks the rustc error count; when residual errors → 0 on the Rust compile path, the binary builds.
 
