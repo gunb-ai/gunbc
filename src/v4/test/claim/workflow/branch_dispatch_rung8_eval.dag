@@ -40,4 +40,4 @@ fn branch_dispatch_rung8_zero_deferred(report: CorpusEvalReport) -> Bool {
 }
 
 
-data witness_branch_dispatch_rung8_zero_deferred_closed: Bool = branch_dispatch_rung8_zero_deferred(report: run_branch_dispatch_rung8_eval())
+data witness_branch_dispatch_rung8_gate_closed: Bool = branch_dispatch_rung8_gate(report: run_branch_dispatch_rung8_eval())
