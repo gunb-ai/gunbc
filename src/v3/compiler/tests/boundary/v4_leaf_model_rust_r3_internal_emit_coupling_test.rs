@@ -18,7 +18,8 @@ const FIXTURE_DAG: &str = include_str!("../../../../v4/lens/leaf_model_verificat
 const FIXTURE_PATH: &str = "src/v4/lens/leaf_model_verification.dag";
 const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
-const CLAIM_DAG: &str = include_str!("../../../../v4/test/claim/language_model/rust_r3_internal.dag");
+const CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/language_model/rust_r3_internal.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/language_model/rust_r3_internal.dag";
 
 /// Mirrors `target_atom_value_expression` → `TargetValueExpression.kind` for Phase-1 Symbol rows.
@@ -75,7 +76,7 @@ fn extract_type_spelling_from_row_block(block: &str) -> Option<String> {
 }
 
 fn extract_value_template_kind_from_row_block(block: &str) -> Option<ValueTemplateKind> {
-  if block.contains("kind: ValueSymbolToOwnedString") {
+    if block.contains("kind: ValueSymbolToOwnedString") {
         return Some(ValueTemplateKind::SymbolToOwnedString);
     }
     if block.contains("kind: ValueSymbolIdentityPassthrough") {
@@ -85,8 +86,11 @@ fn extract_value_template_kind_from_row_block(block: &str) -> Option<ValueTempla
 }
 
 fn baseline_symbol_row_config() -> SymbolAtomRowConfig {
-    let block = extract_block_after_header(RUST_LANGUAGE_DAG, "data rust_target_atom_realization_symbol:")
-        .expect("rust_target_atom_realization_symbol row in rust.dag");
+    let block = extract_block_after_header(
+        RUST_LANGUAGE_DAG,
+        "data rust_target_atom_realization_symbol:",
+    )
+    .expect("rust_target_atom_realization_symbol row in rust.dag");
     SymbolAtomRowConfig {
         type_spelling: extract_type_spelling_from_row_block(&block)
             .expect("baseline row type_form spelling"),
@@ -166,11 +170,9 @@ fn v4_leaf_model_rust_r3_internal_lens_oracle_labels_match_projection_replay() {
         "rust_r3_internal_emit_kind_symbol_to_owned_string",
     )
     .expect("lens kind label for ToOwnedString");
-    let identity = extract_data_symbol_binding(
-        FIXTURE_DAG,
-        "rust_r3_internal_emit_kind_symbol_identity",
-    )
-    .expect("lens kind label for SymbolIdentity");
+    let identity =
+        extract_data_symbol_binding(FIXTURE_DAG, "rust_r3_internal_emit_kind_symbol_identity")
+            .expect("lens kind label for SymbolIdentity");
 
     assert_eq!(
         replay_value_projection_kind_label(&baseline),
@@ -181,9 +183,7 @@ fn v4_leaf_model_rust_r3_internal_lens_oracle_labels_match_projection_replay() {
         "TargetValueExprSymbolIdentity"
     );
     assert!(
-        FIXTURE_DAG.contains(&format!(
-            "TargetValueExprSymbolToOwnedString => {to_owned}"
-        )),
+        FIXTURE_DAG.contains(&format!("TargetValueExprSymbolToOwnedString => {to_owned}")),
         "lens oracle must label ToOwnedString arm consistently"
     );
     assert!(
