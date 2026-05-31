@@ -861,6 +861,18 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         ),
         "{CI_DAG_PATH}: V4T15SelfHostFixedPointCommand mask must match ci_v4 T-15 step if: axes"
     );
+    assert!(
+        CI_DAG.contains("fn ci_v4_t15_scheduled(affected: CiComponentAffected, schedule: CiSchedulePolicy) -> Bool"),
+        "{CI_DAG_PATH}: T-15 must model main-push schedule authority"
+    );
+    assert!(
+        CI_DAG.contains("V4T15SelfHostFixedPointCommand =>\n      ci_v4_t15_scheduled(affected: affected, schedule: schedule)"),
+        "{CI_DAG_PATH}: ci_job_scheduled_by_policy must select V4T15 on MainPush (YAML main-push disjunct)"
+    );
+    assert!(
+        t15_step.contains("github.event_name == 'push'") && t15_step.contains("refs/heads/main"),
+        "{CI_YML_PATH}: T-15 step must include main-push disjunct paired with modeled ci_v4_t15_scheduled"
+    );
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
         binding_step.contains(&format!(
