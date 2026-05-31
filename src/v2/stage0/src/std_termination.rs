@@ -6,6 +6,7 @@ use self::DescentSource::*;
 use self::PositiveDescentAmount::*;
 use self::ProportionalDivisor::*;
 use self::RankingDimension::*;
+use crate::std_algebra::Ordering::*;
 pub use crate::std_algebra::{BoundedLattice, Ordering};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;

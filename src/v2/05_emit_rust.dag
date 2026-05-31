@@ -1280,15 +1280,15 @@ fn item_defining_mod_filename(name: String, registry: Map<String, ItemInfo>, fal
   }
 }
 
-fn is_graph_type_import(name: String, import_mod: String, registry: Map<String, ItemInfo>) -> Bool {
+fn is_graph_type_import(name: String, import_mod: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>) -> Bool {
   match map_get(registry, name) {
     Some { value: info } =>
       module_to_filename(name: info.module_name) == import_mod
       && (
         info.kind == TypeItem
-        // Parametric/bare type aliases (`type String = …`, `type List<T> = …`) are OtherItem
-        // in item_kind (04_items.dag) but must still pub-use from the defining module (F1).
-        || info.kind == OtherItem
+        // Bare/parametric type aliases are OtherItem in item_kind (04_items.dag), not TypeItem.
+        // Narrow with is_enum_in_summaries so enum type names stay on the variant-parent path.
+        || (info.kind == OtherItem && is_enum_in_summaries(type_summaries: type_summaries, type_name: name) == false)
       )
     None => false
   }
@@ -1336,8 +1336,8 @@ fn emit_specific_import_block(mod_name: String, deduped_names: List<String>, emi
   } else {
             // Partition before any global variant-membership logic (F1: String must not
             // pick up GoScalarKind parent; graph types emit from defining module only).
-            let graph_type_imports = deduped_names |> filter(n => is_graph_type_import(name: n, import_mod: mod_name, registry: registry))
-            let non_graph_imports = deduped_names |> filter(n => is_graph_type_import(name: n, import_mod: mod_name, registry: registry) == false)
+            let graph_type_imports = deduped_names |> filter(n => is_graph_type_import(name: n, import_mod: mod_name, registry: registry, type_summaries: type_summaries))
+            let non_graph_imports = deduped_names |> filter(n => is_graph_type_import(name: n, import_mod: mod_name, registry: registry, type_summaries: type_summaries) == false)
             let top_level_enums = non_graph_imports |> filter(n =>
               if is_known_variant(type_summaries: type_summaries, name: n) {
                 is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
@@ -1345,16 +1345,21 @@ fn emit_specific_import_block(mod_name: String, deduped_names: List<String>, emi
             )
             let enums_in_import_mod = enum_names_defining_in_module(type_summaries: type_summaries, registry: registry, mod_filename: mod_name)
             let imported_enums = non_graph_imports |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+            let all_enum_names = map_keys(type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
             let all_parents = non_graph_imports |> map(n =>
               if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { "" }
               else {
-                // Prefer parent enums from the import-source module (registry is name-only).
+                // Import-mod first (F2 homonyms), then explicit enum imports, then global fallback.
                 match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: enums_in_import_mod) {
                   Some { value: parent } => parent
                   None =>
                     match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: imported_enums) {
                       Some { value: parent } => parent
-                      None => ""
+                      None =>
+                        match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: all_enum_names) {
+                          Some { value: parent } => parent
+                          None => ""
+                        }
                     }
                 }
               }
