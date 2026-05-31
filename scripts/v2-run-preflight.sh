@@ -3,8 +3,7 @@
 #
 # Retired T-24 bridge helper. The structural v4 bootstrap authority remains
 # `v2-compiler compile`; the T-22 manual TestClaim corpus gate now runs in CI
-# through `scripts/v4-testclaim-corpus-gate.sh` and pins the modeled
-# TestClaimRun surface.
+# through `scripts/v4-testclaim-corpus-eval.sh` (positive-Y CiUpsertStep host transport).
 #
 # Usage: from repo root, with v2-compiler already built:
 #   V2_COMPILER=target/release/gunbc bash scripts/v2-run-preflight.sh
