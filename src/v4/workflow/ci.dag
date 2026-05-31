@@ -1835,9 +1835,17 @@ fn ci_carveout_reason_for_step(step_id: CiStepId, carveouts: List<CiCarveout>) -
 
 
 fn ci_step_in_carveouts(step_id: CiStepId, carveouts: List<CiCarveout>) -> Bool {
-  any(xs: carveouts, predicate: fn(entry) {
-    ci_step_id_eq(left: step_id, right: entry.step_id)
-  })
+  fold(
+    carveouts,
+    init: false,
+    f: fn(found, entry) {
+      if found {
+        true
+      } else {
+        ci_step_id_eq(left: step_id, right: entry.step_id)
+      }
+    }
+  )
 }
 
 
