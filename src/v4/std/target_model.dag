@@ -2828,9 +2828,14 @@ fn target_reference_layer_apply_value_expression(
   }
 }
 
+// Wrapped layers only — Owned is represented solely by ReferenceLayerProbeNotWrapped (M6).
+type TargetReferenceLayerWrapped
+  = ReferenceLayerRc
+  | ReferenceLayerBox
+
 // 🟢 coproduct dissolution — SG-RC bidirectional read: outer instantiation head → reference layer.
 type TargetReferenceLayerProbe
-  = ReferenceLayerProbe { value: TargetReferenceLayer }
+  = ReferenceLayerProbe { value: TargetReferenceLayerWrapped }
   | ReferenceLayerProbeNotWrapped
   | ReferenceLayerProbeInvalid
 

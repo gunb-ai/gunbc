@@ -2716,44 +2716,65 @@ fn translate_outcome_is_use_site_ownership_lookup_miss(
   diagnostics.head.reason == target_use_site_ownership_lookup_miss
 }
 
-fn translate_sg_rc_bundle_has_edge(target: TargetModel, edge_name: Symbol) -> Bool {
+fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -> Outcome<Bool> {
   match target_bundle_optional_child(target: target, edge_name: edge_name) {
-    Accepted { value: optional_child, diagnostics: _ } =>
+    Accepted { value: optional_child, diagnostics: d } =>
       match optional_child {
-        None => false
-        Some { value: _ } => true
+        None => outcome_accepted(false)
+        Some { value: _ } => outcome_accepted(true)
       }
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
-// Accepted false => no SG-RC edges (passthrough Owned); true => apply; Rejected => partial bundle.
+// Accepted false => no SG-RC edges (skip consumer); true => apply catalog; Rejected => malformed/partial bundle.
 fn translate_sg_rc_bundle_apply_disposition(
   target: TargetModel,
   source_carrier: Node
 ) -> Outcome<Bool> {
-  let has_catalog = translate_sg_rc_bundle_has_edge(target: target, edge_name: target_model_edge_use_site_ownership_realizations)
-  let has_tokens = translate_sg_rc_bundle_has_edge(target: target, edge_name: target_model_edge_reference_layer_tokens)
-  if !has_catalog && !has_tokens {
-    outcome_accepted(false)
-  } else {
-    if has_catalog && has_tokens {
-      outcome_accepted(true)
-    } else {
-      outcome_rejected(translate_sg_rc_bundle_partial_diagnostic(source_carrier: source_carrier))
+  bind_outcome(
+    o: translate_sg_rc_bundle_edge_present(
+      target: target,
+      edge_name: target_model_edge_use_site_ownership_realizations
+    ),
+    f: fn(has_catalog) {
+      bind_outcome(
+        o: translate_sg_rc_bundle_edge_present(
+          target: target,
+          edge_name: target_model_edge_reference_layer_tokens
+        ),
+        f: fn(has_tokens) {
+          if !has_catalog && !has_tokens {
+            outcome_accepted(false)
+          } else {
+            if has_catalog && has_tokens {
+              outcome_accepted(true)
+            } else {
+              outcome_rejected(translate_sg_rc_bundle_partial_diagnostic(source_carrier: source_carrier))
+            }
+          }
+        }
+      )
     }
-  }
+  )
 }
 
 // SG-RC edges are Rust-bundle-only in wave 1; both edges required when either is present.
 fn translate_sg_rc_bundle_ready(target: TargetModel) -> Bool {
-  translate_sg_rc_bundle_has_edge(
+  match translate_sg_rc_bundle_edge_present(
     target: target,
     edge_name: target_model_edge_use_site_ownership_realizations
-  ) && translate_sg_rc_bundle_has_edge(
-    target: target,
-    edge_name: target_model_edge_reference_layer_tokens
-  )
+  ) {
+    Accepted { value: has_catalog, diagnostics: _ } =>
+      match translate_sg_rc_bundle_edge_present(
+        target: target,
+        edge_name: target_model_edge_reference_layer_tokens
+      ) {
+        Accepted { value: has_tokens, diagnostics: _ } => has_catalog && has_tokens
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn translate_reference_layer_tokens_from_target(
@@ -2932,14 +2953,7 @@ fn translate_apply_use_site_ownership_to_type_shell(
                       tokens: tokens
                     )
                   )
-                Rejected { diagnostics: r } =>
-                  // SG-RC miss contract (mirrors SG-1 atom catalog_lookup_miss): no row for
-                  // (source_carrier, use_site) → passthrough inner shell unwrapped (= Owned layer).
-                  if translate_outcome_is_use_site_ownership_lookup_miss(diagnostics: r) {
-                    outcome_accepted(shell)
-                  } else {
-                    Rejected { diagnostics: r }
-                  }
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
               }
             }
           )
@@ -3215,13 +3229,7 @@ fn translate_apply_use_site_ownership_to_value_expression(
                   tokens: tokens
                 )
               )
-            Rejected { diagnostics: r } =>
-              // SG-RC miss contract: lookup miss → passthrough inner value expr (= Owned).
-              if translate_outcome_is_use_site_ownership_lookup_miss(diagnostics: r) {
-                outcome_accepted(expr)
-              } else {
-                Rejected { diagnostics: r }
-              }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
           }
         }
       )
