@@ -208,6 +208,11 @@ fn ci_upsert_file_set_input(segment: GlobSegment) -> UpsertInputRef {
   }
 }
 
+// W2.3 Bucket C — `LensOutputRef` per `LensCiCommand.required_lenses` (`ports` empty until port substrate).
+fn ci_upsert_lens_output_ref_input(lens: LensIdV0) -> UpsertInputRef {
+  LensOutputRef { lens: lens, ports: [] }
+}
+
 type CiJobId = Symbol
 type CiGateId = Symbol
 type CiCommandId = Symbol
@@ -434,9 +439,9 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
 })
 
 
-// ── W2.3 Phase 1.5 — CiUpsertStep rows (Bucket A FileSet slice) ─────────────────────────────
-// In-scope: `ci_upsert_steps_bucket_a_slice_step_ids` (FileSet-only job steps, bucket A).
-// Out-of-scope: `ci_upsert_steps_bucket_a_out_of_scope_step_ids` (buckets B/C/E; §2.1 partial close).
+// ── W2.3 Phase 1.5 — CiUpsertStep rows (Buckets A + C landed slices) ────────────────────────
+// In-scope: `ci_upsert_steps_buckets_a_c_in_scope_step_ids` (bucket A FileSet + bucket C LensOutputRef).
+// Out-of-scope: `ci_upsert_steps_buckets_a_c_out_of_scope_step_ids` (buckets B/E; §2.1 partial close).
 
 type CiUpsertStepRow {
   step_id: CiStepId
@@ -519,6 +524,35 @@ fn ci_upsert_phase1_nat_semiring_rung_gate_execution_mk() -> CiUpsertStepSymbol 
 
 data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStepSymbol = ci_upsert_phase1_nat_semiring_rung_gate_execution_mk()
 
+data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = [
+  ci_upsert_lens_output_ref_input(lens: Complexity),
+  ci_upsert_lens_output_ref_input(lens: Cost),
+  ci_upsert_lens_output_ref_input(lens: Parallelism),
+  ci_upsert_lens_output_ref_input(lens: EffectEnumeration),
+  ci_upsert_lens_output_ref_input(lens: Idempotency),
+  ci_upsert_lens_output_ref_input(lens: UnusedParameters)
+]
+
+fn ci_upsert_lens_ci_registry_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_lens_ci_registry_execution_inputs
+  verify: ci_command_projection_node(
+    c: LensCiCommand { required_lenses: lens_ci_required_lenses }
+  )
+  create: ci_job_projection_node(
+    j: CiJob {
+      id: lens_ci_registry_execution,
+      command: LensCiCommand { required_lenses: lens_ci_required_lenses },
+      needs: [v2_compile_src_v4]
+    }
+  )
+  resolve: ci_atom(sym: lens_ci_registry_execution)
+  payload_type: ci_atom(sym: ci_cache_cmd_lens_ci_tag)
+  }
+}
+
+data ci_upsert_lens_ci_registry_execution: CiUpsertStepSymbol = ci_upsert_lens_ci_registry_execution_mk()
+
 data ci_upsert_steps: List<CiUpsertStepRow> = [
   CiUpsertStepRow {
     step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
@@ -537,6 +571,11 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
     },
     step: ci_upsert_phase1_nat_semiring_rung_gate_execution,
     inputs: ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs
+  },
+  CiUpsertStepRow {
+    step_id: JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution },
+    step: ci_upsert_lens_ci_registry_execution,
+    inputs: ci_upsert_lens_ci_registry_execution_inputs
   }
 ]
 
@@ -550,7 +589,7 @@ data ci_upsert_steps_bucket_a_slice_step_ids: List<CiStepId> = [
   }
 ]
 
-// Deferred buckets B/C/E — complement of slice within `ci_pipeline_step_ids_shadow(ci_pipeline)`.
+// Deferred buckets B/C/E from bucket A alone — historical partition at A landing (#4055).
 data ci_upsert_steps_bucket_a_out_of_scope_step_ids: List<CiStepId> = [
   JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution },
   JobStep { job: testclaim_corpus_eval_execution, step: testclaim_corpus_eval_execution },
@@ -563,6 +602,37 @@ data ci_upsert_steps_bucket_a_out_of_scope_step_ids: List<CiStepId> = [
     gate: phase1_nat_semiring_rung_gate_signal
   }
 ]
+
+// W2.3 Bucket C slice — `LensOutputRef` over `lens_ci_required_lenses` (§2.3 partition table).
+data ci_upsert_steps_bucket_c_slice_step_ids: List<CiStepId> = [
+  JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution }
+]
+
+// Deferred buckets B/E from bucket C — complement within `ci_pipeline_step_ids_shadow`.
+data ci_upsert_steps_bucket_c_out_of_scope_step_ids: List<CiStepId> = [
+  JobStep { job: testclaim_corpus_eval_execution, step: testclaim_corpus_eval_execution },
+  GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
+  GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
+  GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+  GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
+  GateStep {
+    job: phase1_nat_semiring_rung_gate_execution,
+    gate: phase1_nat_semiring_rung_gate_signal
+  }
+]
+
+// Landed buckets A+C — registry bijection authority after bucket C (#4055 + this slice).
+data ci_upsert_steps_buckets_a_c_in_scope_step_ids: List<CiStepId> = [
+  JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
+  JobStep { job: m1_rust_emit_probe_execution, step: m1_rust_emit_probe_execution },
+  JobStep {
+    job: phase1_nat_semiring_rung_gate_execution,
+    step: phase1_nat_semiring_rung_gate_execution
+  },
+  JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution }
+]
+
+data ci_upsert_steps_buckets_a_c_out_of_scope_step_ids: List<CiStepId> = ci_upsert_steps_bucket_c_out_of_scope_step_ids
 
 
 data ci_duplicate_job_id: Symbol = ci_duplicate_job_id
@@ -1792,8 +1862,8 @@ fn ci_upsert_rows_match_job_shadow_ids(rows: List<CiUpsertStepRow>, jobs: List<C
 
 
 fn ci_upsert_steps_slice_bijection_for_pipeline(p: CiPipeline, rows: List<CiUpsertStepRow>) -> Bool {
-  let slice = ci_upsert_steps_bucket_a_slice_step_ids
-  let out_of_scope = ci_upsert_steps_bucket_a_out_of_scope_step_ids
+  let slice = ci_upsert_steps_buckets_a_c_in_scope_step_ids
+  let out_of_scope = ci_upsert_steps_buckets_a_c_out_of_scope_step_ids
   ci_upsert_steps_registry_ids_unique(rows: rows)
     && ci_upsert_steps_registry_matches_declared_slice(rows: rows, slice: slice)
     && ci_upsert_steps_slice_subset_of_pipeline_shadow(p: p, slice: slice)
