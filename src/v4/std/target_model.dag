@@ -214,6 +214,18 @@ fn source_atom_char(codepoint: Char) -> SourceAtomValue {
   }
 }
 
+fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
+  match source.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == symbol_kernel_type_atom {
+        optional_absent()
+      } else {
+        optional_present(source_atom_symbol(identity: id))
+      }
+    _ => optional_absent()
+  }
+}
+
 // Project infer/translate grounding nodes onto SourceAtomValue using row.value_form.kind
 // (single authority — consumers must not re-derive carrier-hash projections).
 fn source_atom_value_for_value_template(
@@ -222,25 +234,9 @@ fn source_atom_value_for_value_template(
 ) -> Optional<SourceAtomValue> {
   match template.kind {
     ValueSymbolIdentityPassthrough =>
-      match source.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          if id == symbol_kernel_type_atom {
-            optional_absent()
-          } else {
-            optional_present(source_atom_symbol(identity: id))
-          }
-        _ => optional_absent()
-      }
+      source_atom_symbol_projection_from_node(source: source)
     ValueSymbolToOwnedString =>
-      match source.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          if id == symbol_kernel_type_atom {
-            optional_absent()
-          } else {
-            optional_present(source_atom_symbol(identity: id))
-          }
-        _ => optional_absent()
-      }
+      source_atom_symbol_projection_from_node(source: source)
     ValueBoolLiteral =>
       match source.kind {
         TypeNode { connective: Atom { identity: id } } =>

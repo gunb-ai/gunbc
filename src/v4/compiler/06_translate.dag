@@ -2664,12 +2664,6 @@ fn serialize_type_expr_emitted_bounded(
     )
   }
 }
-fn translate_coerced_node_pass_through(coerced: Node) -> Node {
-  Node {
-    kind: coerced.kind,
-    children: []
-  }
-}
 fn translate_outcome_is_catalog_lookup_miss(
   diagnostics: NonEmptyDiagnostics
 ) -> Bool {
