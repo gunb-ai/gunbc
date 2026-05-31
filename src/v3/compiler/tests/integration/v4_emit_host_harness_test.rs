@@ -796,7 +796,8 @@ fn v4_nat_semiring_rung56_eval_dag_tokenizes_and_parses_rung6_gate() {
         "{NAT_SEMIRING_RUNG56_EVAL_PATH}: combined tranche-1+2 CorpusEval roster"
     );
     assert!(
-        NAT_SEMIRING_RUNG56_EVAL_DAG.contains("nat_semiring_rung6_post_emit_law_preservation_runtime_value_rows"),
+        NAT_SEMIRING_RUNG56_EVAL_DAG
+            .contains("nat_semiring_rung6_post_emit_law_preservation_runtime_value_rows"),
         "{NAT_SEMIRING_RUNG56_EVAL_PATH}: CorpusEvalReport must consume full rung-6 roster"
     );
 }
