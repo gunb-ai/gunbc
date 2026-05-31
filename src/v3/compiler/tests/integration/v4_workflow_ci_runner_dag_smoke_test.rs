@@ -974,11 +974,10 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     let t15_workflow_idx = CI_WORKFLOW_DAG
         .find(&t15_workflow_marker)
         .unwrap_or_else(|| {
-            panic!(
-                "{CI_WORKFLOW_DAG_PATH}: missing modeled step `{T15_SELF_HOST_STEP_NAME}`"
-            )
+            panic!("{CI_WORKFLOW_DAG_PATH}: missing modeled step `{T15_SELF_HOST_STEP_NAME}`")
         });
-    let t15_workflow_window = &CI_WORKFLOW_DAG[t15_workflow_idx..t15_workflow_idx.saturating_add(512)];
+    let t15_workflow_window =
+        &CI_WORKFLOW_DAG[t15_workflow_idx..t15_workflow_idx.saturating_add(512)];
     assert!(
         !t15_workflow_window.contains("needs.affected.outputs.v3 == 'true'"),
         "{CI_WORKFLOW_DAG_PATH}: T-15 step if_condition must not gate on v3 (P2 parity with ci.yml / ci.dag)"
