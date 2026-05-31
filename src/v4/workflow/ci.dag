@@ -1835,9 +1835,9 @@ fn ci_carveout_reason_for_step(step_id: CiStepId, carveouts: List<CiCarveout>) -
 
 
 fn ci_step_in_carveouts(step_id: CiStepId, carveouts: List<CiCarveout>) -> Bool {
-  count_where(xs: carveouts, predicate: fn(carveout) {
-    ci_step_id_eq(left: step_id, right: carveout.step_id)
-  }) != 0
+  any(xs: carveouts, predicate: fn(entry) {
+    ci_step_id_eq(left: step_id, right: entry.step_id)
+  })
 }
 
 
@@ -2338,10 +2338,10 @@ fn ci_receipt_step_decision_matches(
   step_id: CiStepId,
   decision_pred: fn(CiStepSelection) -> Bool
 ) -> Bool {
-  count_where(xs: receipt.decisions, predicate: fn(selection) {
+  any(xs: receipt.decisions, predicate: fn(selection) {
     ci_step_id_eq(left: selection.step_id, right: step_id)
-      && decision_pred(selection: selection)
-  }) != 0
+      && decision_pred(selection)
+  })
 }
 
 fn ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds() -> Bool {
