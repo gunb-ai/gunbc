@@ -616,7 +616,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           uses: { owner: "actions", repo: "cache", ref: "v4" },
           with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}" },
           env: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -626,7 +626,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'" },
+          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -732,7 +732,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "Cache T-22 TestClaim corpus structural bridge receipt" },
           id: Some { value: "t22_testclaim_corpus_cache" },
           uses: { owner: "actions", repo: "cache", ref: "v4" },
-          with: { "path": "${{ runner.temp }}/t22-testclaim-corpus-gate", "key": "t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'src/v4/**', 'src/v4/test/claim/manual/**/*.dag') }}" },
+          with: { "path": "${{ runner.temp }}/t22-testclaim-corpus-gate", "key": "t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'dsl/std/**', 'src/v4/**') }}" },
           env: none,
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
@@ -751,7 +751,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       needs: ["affected", "discipline"],
       env: none,
       outputs: none,
-      if_condition: Some { value: "github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true')" },
+      if_condition: Some { value: "github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true')" },
       strategy: none,
       timeout_minutes: Some { value: 40 },
       continue_on_error: false,

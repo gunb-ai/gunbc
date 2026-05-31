@@ -253,7 +253,8 @@ jobs:
   # receipt-only stub so required check names stay stable. MVP-1 + v4 bootstrap share the
   # v2-compiler binary; workflow_policy PRs that touch gate wiring must still build/run receipts.
   ci_v4:
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true')
+    # Run when v4 compile gates OR testclaim_corpus (T-22 + gunbc prereq) OR workflow_policy.
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true')
     needs: [affected, discipline]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 40
@@ -289,14 +290,14 @@ jobs:
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Cache gunbc binary (v4 bootstrap / host eval gate)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
       id: v4-v2-bin
       uses: actions/cache@v4
       with:
         path: target/release/gunbc
         key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: Build v2 compiler (v4 bootstrap / host eval gate)
-      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
     - name: MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
@@ -404,7 +405,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ${{ runner.temp }}/t22-testclaim-corpus-gate
-        key: t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'src/v4/**', 'src/v4/test/claim/manual/**/*.dag') }}
+        key: t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'dsl/std/**', 'src/v4/**') }}
     - name: T-22 TestClaim corpus structural bridge — manual .dag corpus
       if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.t22_testclaim_corpus_cache.outputs.cache-hit != 'true'
       timeout-minutes: 15
