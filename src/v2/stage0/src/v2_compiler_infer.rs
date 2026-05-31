@@ -5,23 +5,27 @@ use self::SizeExpr::*;
 pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
+pub use crate::std_computation::ShrinkFactor;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
-use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, MixedTop, NonIncreasingValue, PreservedValue,
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
     compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,
-    sub_value_to_evidence, InductiveField, RecursionShape, ShrinkFactor, SubValueRelation,
+    sub_value_to_evidence, InductiveField, RecursionShape, SubValueRelation,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
+pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
     PositiveDescentAmount,
+};
+pub use crate::std_types::{
+    container_expected_arity, is_container_type, is_kernel_type, kernel_type_set,
 };
 pub use crate::std_types::{container_param_name, SourceSpan};
 pub use crate::v2_compiler_infer_access::{
@@ -55,15 +59,12 @@ pub use crate::v2_compiler_infer_lookup::{
 pub use crate::v2_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
 };
-use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_patterns::{
     check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
     lookup_variant_in_type, pattern_binding_type, pattern_subject_from_inferred,
     pattern_subject_from_node, NodeLookupResult, PatternSubject,
 };
-pub use crate::v2_compiler_infer_resolve::{
-    resolve_item_types, resolve_node, ItemResult, NodeResolveResult,
-};
+pub use crate::v2_compiler_infer_resolve::{resolve_item_types, resolve_node, NodeResolveResult};
 pub use crate::v2_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_called_func_names,
     collect_typed_service_calls, expand_transitive_services, extract_typed_service_name,
@@ -82,11 +83,9 @@ pub use crate::v2_compiler_infer_types::{
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
     template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild,
 };
+pub use crate::v2_compiler_parse::ItemResult;
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
-use crate::v2_std_core::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, TypeMismatch, VariantCollision};
@@ -102,7 +101,6 @@ use crate::v2_std_core::FieldAccessStyle::{
 };
 use crate::v2_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -114,28 +112,27 @@ use crate::v2_std_core::VarBindingKind::{
 };
 pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, bool_type, build_newline_index, cast_expr, cast_target, container_expected_arity,
-    default_ident_span, error_type, expr_call_func_at, expr_has_non_tail_self_call,
-    expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named, float_type,
-    foreach_body, foreach_collection, foreach_variable_at, has_child_named, has_inferred,
-    if_condition, if_else_branch, if_then_branch, import_is_all, index_base, index_expr, int_type,
-    intern, intern_str, is_child_accessor_in_model, is_compiler_error, is_container_type,
-    is_error_diagnostic, is_kernel_type, is_property_contraction, is_tree_size_reducing,
-    kernel_type_set, lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
-    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality, BinOp,
+    binop_right, bool_type, build_newline_index, cast_expr, cast_target, default_ident_span,
+    error_type, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
+    field_binding_name_at, field_binding_pattern, field_init_node_name_at, field_init_node_value,
+    field_node_name_at, field_node_type_expr, find_child_named, float_type, foreach_body,
+    foreach_collection, foreach_variable_at, has_child_named, has_inferred, if_condition,
+    if_else_branch, if_then_branch, import_is_all, index_base, index_expr, int_type, intern,
+    intern_str, is_child_accessor_in_model, is_compiler_error, is_error_diagnostic,
+    is_property_contraction, is_tree_size_reducing, lambda_body, lambda_param_names_at,
+    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node, make_span,
+    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
+    node_name_span, none_type, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
+    string_type, unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
     ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, InternTable, LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    StringPart, UnaryOpKind, VarBindingKind,
+    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
