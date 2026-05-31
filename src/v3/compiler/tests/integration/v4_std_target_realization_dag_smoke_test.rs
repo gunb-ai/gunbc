@@ -566,6 +566,10 @@ fn v4_translate_dag_imports_use_site_ownership_consumer() {
         "{TRANSLATE_PATH}: partial SG-RC bundle must fail-closed, not passthrough Owned"
     );
     assert!(
+        surface_declares_fn(&module, "translate_sg_rc_bundle_edge_present"),
+        "{TRANSLATE_PATH}: malformed bundle edge lookup must propagate Rejected"
+    );
+    assert!(
         !TRANSLATE_DAG.contains("shared_types"),
         "{TRANSLATE_PATH}: forbidden spelling-keyed shared_types table (§3)"
     );

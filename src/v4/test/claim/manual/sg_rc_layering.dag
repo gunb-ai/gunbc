@@ -225,6 +225,18 @@ fn sg_rc_f3_new_carrier_holds() -> Bool {
     sg_rc_expected_rc_probe_heap
 }
 
+// Negative: SG-RC-ready bundle with no row for (carrier, use_site) must fail closed (not passthrough Owned).
+fn sg_rc_probe_heap_param_without_row_rejects() -> Bool {
+  match translate_coerced_shell_at_use_site(
+    coerced: target_carrier_probe_heap_node(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtFunctionParameter
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 // F4 — Box layer at struct-field site for Node carrier.
 fn sg_rc_f4_box_node_shell() -> Node {
   match translate_coerced_shell_at_use_site(
