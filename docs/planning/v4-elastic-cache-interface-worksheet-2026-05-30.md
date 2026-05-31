@@ -183,6 +183,7 @@ type CacheLookupResult<T>
 
 ```dag
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
+// Cache-store placement only — compute demand uses `ComputeArtifactLocality` (Worksheet A).
 type PersistenceLocality = InProcess | PerRunnerFilesystem | PerHostFilesystem | CrossHostNetwork
 type EvictionPolicy = Ttl { days: Int } | Lru | SizeBounded { cap_bytes: ByteSize } | Never | Manual
 type AtomicityModel = PerFile | WriteThenRename | WriteThenCommit | TwoPhase

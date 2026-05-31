@@ -114,7 +114,16 @@ type NetworkRequirement { egress: Option<NetworkEgressClass>, ambient_allowed: B
 type OperatingSystemRequirement { surface: OperatingSystemSurface }
 type IsolationRequirement { boundary: IsolationBoundary }
 type ToolchainRequirement { name: NonEmptyStr, version: NonEmptyStr }
-type ArtifactLocalityRequirement { artifact_kind: NonEmptyStr, locality: PersistenceLocality }
+
+// Compute-owned demand locality — NOT `PersistenceLocality` (Worksheet B / cache_interface.dag).
+// Harness aligns demand vs cache row locality at schedule time; no cross-module type import.
+type ComputeArtifactLocality
+  = InProcess
+  | PerRunnerColocation
+  | PerHostColocation
+  | CrossHostFetch
+
+type ArtifactLocalityRequirement { artifact_kind: NonEmptyStr, locality: ComputeArtifactLocality }
 
 type ToolchainCapability {
   name: NonEmptyStr
@@ -315,6 +324,7 @@ type StorageMount { mount_path: NonEmptyStr, device: StorageDevice, lifecycle: P
 | Change frontier | `v4.std.change` `ChangeSet` |
 | Artifact identity | `v4.std.artifact` `ArtifactRef` |
 | Compute facts | **`dsl/std/compute_fabric.dag`** (NEW) |
+| Demand artifact locality | **`ComputeArtifactLocality`** in compute_fabric (not `PersistenceLocality`) |
 
 ---
 
@@ -322,6 +332,7 @@ type StorageMount { mount_path: NonEmptyStr, device: StorageDevice, lifecycle: P
 
 | Pattern | Why forbidden |
 | ------- | ------------- |
+| `PersistenceLocality` on `WorkDemand` / `ArtifactLocalityRequirement` | Cache-owned enum (Worksheet B); use `ComputeArtifactLocality` |
 | `ComputeKind` coproduct | §4.0d |
 | `host:` on `CiUpsertStep` | Placement on result layer |
 | `worker_count` on CI step | Use `ParallelismShape` |
