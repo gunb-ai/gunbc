@@ -2542,7 +2542,12 @@ fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target:
 }
 
 fn is_go_v2rt_free_function(name: String) -> Bool {
-  name == "concat" || name == "to_string" || name == "lookup"
+  match name {
+    "concat" => true
+    "to_string" => true
+    "lookup" => true
+    _ => false
+  }
 }
 
 fn emit_go_v2rt_free_call(func: String, arg_strs: List<String>) -> String {
