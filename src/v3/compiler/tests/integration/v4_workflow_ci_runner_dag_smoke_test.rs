@@ -887,6 +887,22 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         "{CI_DAG_PATH}: ci_component_mask_intersects must include testclaim_corpus axis (I8 / IRT-1)"
     );
     assert!(
+        CI_DAG.contains("affected.testclaim_corpus\n    && affected.workflow_policy"),
+        "{CI_DAG_PATH}: ci_component_affected_is_fail_closed must include all six CiComponentAffected axes"
+    );
+    assert!(
+        CI_DAG.contains(
+            "BootstrapStageCompile { produces: _ } =>\n      CiComponentAffected {\n        v2: false\n        v3: false\n        v4: true"
+        ),
+        "{CI_DAG_PATH}: BootstrapStageCompile mask must not select on v2-only (I2 is ci_integration; gunbc build is ci_v4 v4-axis)"
+    );
+    let v2_bootstrap_build = workflow_step_block(CI_YML, "Build v2 compiler (v4 bootstrap / host eval gate)");
+    assert!(
+        v2_bootstrap_build.contains("needs.affected.outputs.v4 == 'true'")
+            && !v2_bootstrap_build.contains("needs.affected.outputs.v2 == 'true'"),
+        "{CI_YML_PATH}: v2 compiler build step must follow ci_v4 job gate (v4|testclaim|workflow_policy), not v2-only"
+    );
+    assert!(
         CI_DAG.contains("fn ci_select_ci_jobs_needs_closure_pass("),
         "{CI_DAG_PATH}: needs closure must be bounded (P4) — not unbounded recursion on unresolved needs"
     );

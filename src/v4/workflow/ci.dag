@@ -1787,24 +1787,6 @@ fn ci_bootstrap_plan_cache_hash() -> Outcome<Hash> {
 }
 
 
-fn ci_build_profile_cache_digest(profile: CiBuildProfile) -> Hash {
-  match profile {
-    Smoke => ci_symbol_digest(sym: ci_cache_build_profile_smoke_tag)
-    Release => ci_symbol_digest(sym: ci_cache_build_profile_release_tag)
-    FixedPointMatrix => ci_symbol_digest(sym: ci_cache_build_profile_fixed_point_tag)
-  }
-}
-
-
-fn ci_schedule_policy_cache_digest(policy: CiSchedulePolicy) -> Hash {
-  match policy {
-    PullRequest => ci_symbol_digest(sym: ci_cache_schedule_pull_request_tag)
-    MainPush => ci_symbol_digest(sym: ci_cache_schedule_main_push_tag)
-    Nightly => ci_symbol_digest(sym: ci_cache_schedule_nightly_tag)
-  }
-}
-
-
 fn ci_command_cache_digest(c: CiCommand) -> Hash {
   content_hash(n: ci_command_projection_node(c: c))
 }
@@ -3191,9 +3173,10 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: false
         release_distribution: false
       }
+    // v2-only I2 (stage0) is ci_integration + V2BootstrapCompileCommand; v2_compile_src_v4 tracks ci_v4 gunbc build (v4|testclaim|workflow_policy).
     BootstrapStageCompile { produces: _ } =>
       CiComponentAffected {
-        v2: true
+        v2: false
         v3: false
         v4: true
         testclaim_corpus: false
