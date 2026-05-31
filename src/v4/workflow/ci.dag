@@ -274,9 +274,11 @@ type DissolutionTarget
 
 data ci_receipt_inputs_fail_closed_reason: Symbol = ci_receipt_inputs_fail_closed_reason
 data ci_carveout_matched_reason: Symbol = ci_carveout_matched_reason
-data ci_affected_intersection_nonempty_reason: Symbol = ci_affected_intersection_nonempty_reason
-data ci_affected_intersection_empty_cache_valid_reason: Symbol = ci_affected_intersection_empty_cache_valid_reason
+// Phase 2.1 interim — git-diff path proxy for UpsertInputRef ∩ affected (T-21 RepoPath-in-ChangeSet pending).
+data ci_shadow_git_diff_proxy_nonempty_reason: Symbol = ci_shadow_git_diff_proxy_nonempty_reason
+data ci_shadow_git_diff_proxy_empty_skip_reason: Symbol = ci_shadow_git_diff_proxy_empty_skip_reason
 data ci_cache_digest_projection_fail_closed_reason: Symbol = ci_cache_digest_projection_fail_closed_reason
+// Shadow carveout `reason_code` keys (§7) — not a permanent enum; dissolve with feature:ci-always-run-carveouts.
 data v2_substrate_circular_dep: Symbol = v2_substrate_circular_dep
 data integrity_always_run_interim: Symbol = integrity_always_run_interim
 data v2_substrate_dependency_modeled_in_affected_set: Symbol = v2_substrate_dependency_modeled_in_affected_set
@@ -1811,6 +1813,7 @@ fn ci_pipeline_step_ids_shadow(p: CiPipeline) -> List<CiStepId> {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (Practice 10) — feature:ci-selection-receipt-shadow — consumer:ci_selection_receipt_shadow_rows — bind docs/planning/compiler-spine-ci-selection-receipt-shadow-2026-05-30.md §4 fail-closed — dissolve-on-arrival: superset selection reads `AffectedSet` coproduct directly at call site (no Bool projection); forbidden: permanent `AffectedSet` → Bool classifier beside T-21 lens authority.
 fn ci_affected_set_is_fail_closed(affected: AffectedSet) -> Bool {
   match affected {
     AffectedSetFailClosed { changes: _, evidence: _ } => true
@@ -1849,7 +1852,7 @@ fn ci_step_in_carveouts(step_id: CiStepId, carveouts: List<CiCarveout>) -> Bool 
 }
 
 
-// W1.5 shadow bridge — `GlobSegment` mirrors `ci_changed_path_affects_*` until Q-Regex-Primitive.
+// W1.5 shadow bridge — segment literal → `ci_changed_path_affects_*` (owner: compiler-spine-ci-selection-receipt-shadow §6; dissolve: Q-Regex-Primitive).
 fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) -> Bool {
   if segment == "src/v2/**" {
     ci_changed_path_affects_v2(changed: path)
@@ -1952,6 +1955,22 @@ fn ci_upsert_inputs_intersect_git_diff(
 }
 
 
+fn ci_upsert_step_row_in_registry(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> Bool {
+  fold(
+    rows,
+    init: false,
+    f: fn(found, row) {
+      if found {
+        true
+      } else {
+        ci_step_id_eq(left: step_id, right: row.step_id)
+      }
+    }
+  )
+}
+
+
+// Phase 2.1 interim — `affected_intersection` stays [] until T-21 wires UpsertInputRef → `AffectedDependency` evidence.
 fn ci_selection_decision_for_step(
   step_id: CiStepId,
   affected: AffectedSet,
@@ -1993,16 +2012,25 @@ fn ci_selection_decision_for_step(
       affected_intersection: [],
       decision: Run,
       cache_digest: digest,
-      reason: ci_affected_intersection_nonempty_reason
+      reason: ci_shadow_git_diff_proxy_nonempty_reason
     }
-  } else {
+  } else if ci_upsert_step_row_in_registry(step_id: step_id, rows: registry) {
     CiStepSelection {
       step_id: step_id,
       inputs_consulted: inputs,
       affected_intersection: [],
       decision: Skip,
       cache_digest: digest,
-      reason: ci_affected_intersection_empty_cache_valid_reason
+      reason: ci_shadow_git_diff_proxy_empty_skip_reason
+    }
+  } else {
+    CiStepSelection {
+      step_id: step_id,
+      inputs_consulted: inputs,
+      affected_intersection: [],
+      decision: Run,
+      cache_digest: digest,
+      reason: ci_cache_digest_projection_fail_closed_reason
     }
   }
 }
@@ -2325,58 +2353,48 @@ data ci_selection_receipt_shadow_fixture_receipt: CiSelectionReceipt = match ci_
     )
 }
 
-fn ci_step_selection_decision_is_run(row: CiStepSelection) -> Bool {
-  match row.decision {
-    Run => true
-    Skip => false
-    CarvedOut { carveout_reason: _ } => false
-  }
-}
-
-fn ci_step_selection_decision_is_carved_out(row: CiStepSelection) -> Bool {
-  match row.decision {
-    Run => false
-    Skip => false
-    CarvedOut { carveout_reason: _ } => true
-  }
-}
-
-fn ci_receipt_step_decision_matches(
-  receipt: CiSelectionReceipt,
-  step_id: CiStepId,
-  decision_pred: fn(CiStepSelection) -> Bool
-) -> Bool {
+fn ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds() -> Bool {
+  let step_id = JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 }
   fold(
-    receipt.decisions,
+    ci_selection_receipt_shadow_fixture_receipt.decisions,
     init: false,
-    f: fn(found, selection) {
-      if found {
+    f: fn(acc, selection) {
+      if acc {
         true
       } else if ci_step_id_eq(left: selection.step_id, right: step_id) {
-        decision_pred(selection)
+        match selection.decision {
+          CarvedOut { carveout_reason: _ } => true
+          Run => false
+          Skip => false
+        }
       } else {
-        false
+        acc
       }
     }
   )
 }
 
-fn ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds() -> Bool {
-  ci_receipt_step_decision_matches(
-    receipt: ci_selection_receipt_shadow_fixture_receipt,
-    step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
-    decision_pred: ci_step_selection_decision_is_carved_out
-  )
-}
-
 fn ci_selection_receipt_shadow_fixture_m1_probe_run_holds() -> Bool {
-  ci_receipt_step_decision_matches(
-    receipt: ci_selection_receipt_shadow_fixture_receipt,
-    step_id: JobStep {
-      job: m1_rust_emit_probe_execution,
-      step: m1_rust_emit_probe_execution
-    },
-    decision_pred: ci_step_selection_decision_is_run
+  let step_id = JobStep {
+    job: m1_rust_emit_probe_execution,
+    step: m1_rust_emit_probe_execution
+  }
+  fold(
+    ci_selection_receipt_shadow_fixture_receipt.decisions,
+    init: false,
+    f: fn(acc, selection) {
+      if acc {
+        true
+      } else if ci_step_id_eq(left: selection.step_id, right: step_id) {
+        match selection.decision {
+          Run => true
+          Skip => false
+          CarvedOut { carveout_reason: _ } => false
+        }
+      } else {
+        acc
+      }
+    }
   )
 }
 
