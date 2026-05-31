@@ -1024,6 +1024,205 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
 }
 
 
+// SG-7: structural Node projection for CI / T-22 cache-hash consumers — single authority (no ci.dag parallel tree).
+data byte_offset_proj_key_eligible_edge: Symbol = byte_offset_proj_key_eligible_edge
+data byte_offset_proj_key_ineligible_edge: Symbol = byte_offset_proj_key_ineligible_edge
+data byte_offset_proj_authority_edge: Symbol = byte_offset_proj_authority_edge
+data byte_offset_proj_boundary_edge: Symbol = byte_offset_proj_boundary_edge
+data byte_offset_proj_within_ceiling_edge: Symbol = byte_offset_proj_within_ceiling_edge
+data byte_offset_proj_over_ceiling_edge: Symbol = byte_offset_proj_over_ceiling_edge
+data byte_offset_proj_ineligible_authority_edge: Symbol = byte_offset_proj_ineligible_authority_edge
+data byte_offset_proj_out_of_ceiling_edge: Symbol = byte_offset_proj_out_of_ceiling_edge
+data byte_offset_proj_byte_limb_edge: Symbol = byte_offset_proj_byte_limb_edge
+data byte_offset_proj_neg_edge: Symbol = byte_offset_proj_neg_edge
+data byte_offset_proj_succ_edge: Symbol = byte_offset_proj_succ_edge
+data byte_offset_proj_pred_edge: Symbol = byte_offset_proj_pred_edge
+
+
+fn node_offset_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  }
+}
+
+
+fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+
+fn node_offset_conj(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children
+  }
+}
+
+
+// P4 bounded Peano limb tree — mirrors `byte_limb_hash_peano_digest` for B1 content_hash (no digest aliasing).
+fn byte_offset_byte_limb_projection_node(limb: Int) -> Node {
+  if limb < 0 || limb > 255 {
+    node_offset_atom(sym: canonical_tag_byte_limb_out_of_range)
+  } else if limb == 0 {
+    node_offset_atom(sym: canonical_tag_scalar_int_zero)
+  } else if limb == 1 {
+    node_offset_atom(sym: canonical_tag_scalar_int_one)
+  } else {
+    node_offset_conj(children: [
+      node_offset_named_edge(
+        name: byte_offset_proj_succ_edge,
+        target: node_offset_atom(sym: canonical_tag_scalar_int_succ)
+      ),
+      node_offset_named_edge(
+        name: byte_offset_proj_pred_edge,
+        target: byte_offset_byte_limb_projection_node(limb: limb - 1)
+      )
+    ])
+  }
+}
+
+
+// P4 bounded peel — mirrors `byte_offset_cache_digest_nonneg_bounded_authority` (limbs_remaining, not same-arg on `i`).
+fn byte_offset_digest_nonneg_projection_bounded(i: Int, limbs_remaining: Int) -> Node {
+  if limbs_remaining <= 0 {
+    if i == 0 {
+      node_offset_atom(sym: canonical_tag_byte_offset_zero)
+    } else {
+      node_offset_conj(children: [
+        node_offset_named_edge(
+          name: byte_offset_proj_out_of_ceiling_edge,
+          target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+        ),
+        node_offset_named_edge(
+          name: byte_offset_proj_authority_edge,
+          target: node_offset_atom(sym: canonical_tag_byte_offset_zero)
+        ),
+        node_offset_named_edge(
+          name: byte_offset_proj_byte_limb_edge,
+          target: byte_offset_byte_limb_projection_node(limb: i - (i / 256) * 256)
+        )
+      ])
+    }
+  } else if i == 0 {
+    node_offset_atom(sym: canonical_tag_byte_offset_zero)
+  } else if i <= 255 {
+    byte_offset_byte_limb_projection_node(limb: i)
+  } else {
+    node_offset_conj(children: [
+      node_offset_named_edge(
+        name: byte_offset_proj_out_of_ceiling_edge,
+        target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+      ),
+      node_offset_named_edge(
+        name: byte_offset_proj_authority_edge,
+        target: byte_offset_digest_nonneg_projection_bounded(
+          i: i / 256,
+          limbs_remaining: limbs_remaining - 1
+        )
+      ),
+      node_offset_named_edge(
+        name: byte_offset_proj_byte_limb_edge,
+        target: byte_offset_byte_limb_projection_node(limb: i - (i / 256) * 256)
+      )
+    ])
+  }
+}
+
+
+fn byte_offset_cache_digest_authority_projection_node(i: Int) -> Node {
+  if i < 0 {
+    node_offset_conj(children: [
+      node_offset_named_edge(
+        name: byte_offset_proj_neg_edge,
+        target: node_offset_atom(sym: canonical_tag_byte_offset_neg)
+      ),
+      node_offset_named_edge(
+        name: byte_offset_proj_authority_edge,
+        target: byte_offset_digest_nonneg_projection_bounded(
+          i: 0 - i,
+          limbs_remaining: byte_offset_cache_digest_max_limbs
+        )
+      )
+    ])
+  } else {
+    byte_offset_digest_nonneg_projection_bounded(
+      i: i,
+      limbs_remaining: byte_offset_cache_digest_max_limbs
+    )
+  }
+}
+
+
+fn byte_offset_cache_key_projection_node(i: Int) -> Node {
+  match byte_offset_cache_key(i: i) {
+    ByteOffsetCacheEligible { digest: _ } =>
+      match byte_offset_cache_digest_authority(i: i) {
+        ByteOffsetWithinCeiling { digest: _ } =>
+          node_offset_conj(children: [
+            node_offset_named_edge(
+              name: byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_within_ceiling_edge,
+              target: byte_offset_cache_digest_authority_projection_node(i: i)
+            )
+          ])
+        ByteOffsetOverCeiling { within_ceiling_digest: _, quotient: _ } =>
+          node_offset_conj(children: [
+            node_offset_named_edge(
+              name: byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_over_ceiling_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_out_of_ceiling)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_authority_edge,
+              target: byte_offset_cache_digest_authority_projection_node(i: i)
+            )
+          ])
+        ByteOffsetCacheDigestIneligible {
+          within_ceiling_digest: _,
+          boundary_tag: boundary_tag,
+          residual_quotient: _
+        } =>
+          node_offset_conj(children: [
+            node_offset_named_edge(
+              name: byte_offset_proj_key_eligible_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_eligible)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_ineligible_authority_edge,
+              target: node_offset_atom(sym: canonical_tag_byte_offset_cache_digest_ineligible)
+            ),
+            node_offset_named_edge(
+              name: byte_offset_proj_boundary_edge,
+              target: node_offset_atom(sym: boundary_tag)
+            )
+          ])
+      }
+    ByteOffsetCacheIneligible { boundary_tag: boundary_tag, witness: _ } =>
+      node_offset_conj(children: [
+        node_offset_named_edge(
+          name: byte_offset_proj_key_ineligible_edge,
+          target: node_offset_atom(sym: canonical_tag_byte_offset_cache_key_ineligible)
+        ),
+        node_offset_named_edge(
+          name: byte_offset_proj_boundary_edge,
+          target: node_offset_atom(sym: boundary_tag)
+        ),
+        node_offset_named_edge(
+          name: byte_offset_proj_ineligible_authority_edge,
+          target: node_offset_atom(sym: canonical_tag_byte_offset_cache_digest_ineligible)
+        )
+      ])
+  }
+}
+
+
 fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
   byte_offset_cache_key_from_authority(auth: byte_offset_cache_digest_authority(i: i))
 }
@@ -1080,6 +1279,12 @@ fn content_hash(n: Node) -> Hash {
   )
 }
 
+
+// RULING-1: 🟢 structural substrate node-set selector (v4-ci-schema-worksheet §2; concept home v4.std.node).
+// `Connective` is sole authority for ByConnective (`Atom { identity }` carries symbol identity).
+type NodeQuery
+  = NodeQueryByConnective { connective: Connective }
+  | NodeQueryByPath { at: Path }
 
 type Path {
   steps: List<Symbol>

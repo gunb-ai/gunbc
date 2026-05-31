@@ -143,7 +143,8 @@ import v2.compiler.emit {
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   extract_modifier_names,
   seed_bindings,
-  emit_typed_if_shared, emit_typed_let_shared
+  emit_typed_if_shared, emit_typed_let_shared,
+  wrap_shared_type
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -1411,7 +1412,13 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-    concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+    // Bare `type Symbol` is classified as a type alias (resolved name != Unit) but must
+    // emit the Ord identity carrier struct so data literals can use Symbol("…") (E0423).
+    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+      rust_nominal_identity_carrier_def(name: item_text)
+    } else {
+      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+    }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
@@ -5857,6 +5864,12 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else { raw_ty_str }
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
+  // P2: shared-type data accessors return Rc<T> when body stores Rc::new(...) (e.g. TestClaim via call).
+  let ty_str = if needs_rc && !rust_type_is_rc_wrapped(type_name: ty_str) {
+    wrap_shared_type(target: Rust, inner: ty_str)
+  } else {
+    ty_str
+  }
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || rust_nominal_identity_carrier_type_eligible(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)) {
     let val_str = match rust_nominal_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
       Some { value: identity_expr } => identity_expr

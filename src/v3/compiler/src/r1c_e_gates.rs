@@ -33,6 +33,7 @@ use crate::emit_rust_roundtrip_fixtures::{
     ProgramFixture, ReflectedExpected, GO_EMIT_EXCLUDE, PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE,
     REFLECTED_FIXTURES,
 };
+use crate::post_emit_verifier::verify_program_emitted_source_all_targets;
 
 /// `emit_generic_bounds_survive` (host receipt: `m1_3_emit_rust_test::emit_generic_bounds_survive`,
 /// PR #650 post-mortem).
@@ -322,6 +323,39 @@ pub fn check_emit_rust_fixtures_rustc_green() -> Result<(), String> {
     } else {
         Err(format!(
             "{} fixture(s) failed:\n{}",
+            failures.len(),
+            failures.join("\n")
+        ))
+    }
+}
+
+// === multi_target_emit_verification (E-5 post_emit_verifier on user programs) ===
+
+/// Every `PROGRAM_FIXTURES` row must pass each **applicable** Shape-A target's declared
+/// `post_emit_verifier` (rustc / gofmt / py_compile), honoring `GO_EMIT_EXCLUDE` /
+/// `PYTHON_EMIT_EXCLUDE`. Closes the gap where M1 only cargo-checks the self-host
+/// `src/v4` tree and `Compiles` ignores emission.
+pub fn check_program_fixtures_post_emit_clean_all_targets() -> Result<(), String> {
+    let scratch_root = std::env::temp_dir().join(format!("r1c_e_post_emit_{}", std::process::id()));
+    std::fs::create_dir_all(&scratch_root).map_err(|e| format!("create scratch: {e}"))?;
+    let mut failures = Vec::new();
+    for fixture in PROGRAM_FIXTURES {
+        let dag = compile_to_dag(fixture.source, "r1c_e_post_emit.v3")
+            .map_err(|e| format!("compile `{}`: {e:?}", fixture.name))?;
+        let scratch = scratch_root.join(fixture.name);
+        if let Err(msg) =
+            verify_program_emitted_source_all_targets(&dag, &scratch, fixture.name, fixture.name)
+        {
+            failures.push(format!("{}: {msg}", fixture.name));
+        }
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+    let _ = std::fs::remove_dir_all(&scratch_root);
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} fixture(s) failed post_emit_verifier:\n{}",
             failures.len(),
             failures.join("\n")
         ))

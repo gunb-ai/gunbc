@@ -88,6 +88,7 @@ import v2.compiler.languages {
   LanguageSpec, TestConventions, ServiceFieldTemplates,
   BlockSyntax, TcoSyntax, ExpressionSemantics, VariantPatternSyntax,
   IfValueForm, IfExpression, ConditionalTernary, IfStatement,
+  MatchValueForm, MatchExpression, MatchStatementArmReturn,
   VisibilitySpec, KeywordVisibility, CaseVisibility,
   NamingCase, PascalCase, SnakeCase, CamelCase, AsAuthored,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
@@ -1841,12 +1842,12 @@ fn emit_unified_tco_match_arm(
   let body_depth = case_depth + 1
   let guard_str = emit_arm_guard(arm: arm, target: target,
     render_guard_expr: g => emit_unified_typed_expr(texpr: g, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern))
-  let body_str = emit_unified_tco_expr(
+  let body_str = emit_match_arm_body_stmt(target: target, body_str: emit_unified_tco_expr(
     frame: TcoFrame { expr: arm_body(n: arm), scope: scope, depth: body_depth },
     fn_name: fn_name, params: params, target: target, registry: registry,
     recurse_expr: (expr, scope, depth) => emit_unified_typed_expr(texpr: expr, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
     render_match: frame => emit_unified_tco_match(frame: frame, fn_name: fn_name, params: params, target: target, registry: registry, render_pattern: render_pattern, render_init_stmts: render_init_stmts),
-    render_init_stmts: render_init_stmts)
+    render_init_stmts: render_init_stmts))
   emit_match_arm_line(arm: arm, target: target, case_depth: case_depth, body_depth: body_depth,
     body_str: body_str, guard_str: guard_str, render_pattern: render_pattern)
 }
@@ -1903,6 +1904,15 @@ fn emit_unified_typed_func_body(body: Node, target: RenderTarget, registry: Map<
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
+    ExprMatch =>
+      match es.match_value_form {
+        MatchStatementArmReturn =>
+          emit_unified_typed_expr(texpr: body, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024,
+            render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si))
+        MatchExpression =>
+          concat(prefix, "return ", emit_unified_typed_expr(texpr: body, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024,
+            render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), es.return_suffix)
+      }
     _ => concat(prefix, "return ", emit_unified_typed_expr(texpr: body, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024,
       render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), es.return_suffix)
   }
@@ -2645,6 +2655,16 @@ fn emit_unified_variant_pattern(name: String, field_bindings: List<Node>, target
   }
 }
 
+// Match arm bodies are expression-shaped in the DAG; prepend return only when the target's
+// match_value_form requires statement arms (Python match / Go switch), not expression arms (Rust).
+fn emit_match_arm_body_stmt(target: RenderTarget, body_str: String) -> String {
+  match language_spec(target: target).expression_semantics.match_value_form {
+    MatchStatementArmReturn => concat("return ", body_str)
+    MatchExpression => body_str
+  }
+}
+
+
 // Shared match-arm line rendering — single authority for case keyword, guard, indent.
 // Both emit_typed_match_unified and emit_unified_tco_match_arm delegate here.
 // guard_prefix comes from ExpressionSemantics; fails closed if guard is present
@@ -2686,7 +2706,7 @@ fn emit_typed_match_unified(scrutinee_str: String, arms: List<Node>, target: Ren
   let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
   let body_depth = case_depth + 1
   let arm_strs = arms |> map(arm =>
-    let body_str = recurse(arm_body(n: arm), body_depth)
+    let body_str = emit_match_arm_body_stmt(target: target, body_str: recurse(arm_body(n: arm), body_depth))
     let guard_str = emit_arm_guard(arm: arm, target: target, render_guard_expr: g => recurse(g, depth))
     emit_match_arm_line(arm: arm, target: target, case_depth: case_depth, body_depth: body_depth,
       body_str: body_str, guard_str: guard_str, render_pattern: render_pattern)
