@@ -158,7 +158,7 @@ data python_r2a_claim_algebra_inhabitance_fact: Symbol = python_integer_algebra_
 
 data python_r2a_happy_fixture_source: String = "def r2a_test(a: int, b: int) -> tuple[int, bool]:\n    return (a + b, a < b)\n"
 
-data python_r2a_falsification_fixture_source: String = "def r2a_test(a: int) -> int:\n    return a.log2_exact()\n"
+data python_r2a_falsification_fixture_source: String = "def r2a_test(a: int) -> int:\n    return a.log2_exact()\n\nif __name__ == \"__main__\":\n    r2a_test(1)\n"
 
 fn python_r2a_happy_fixture() -> LeafModelPythonFixture {
   LeafModelPythonFixture { source: python_r2a_happy_fixture_source }
@@ -218,9 +218,9 @@ fn python_r2b_fixture() -> LeafModelPythonFixturePair {
 // R3-external — Symbol atom realization: nominal class (happy) vs ctor arity mismatch (falsification).
 data python_r3_external_claim_atom_realization_fact: Symbol = python_atom_realization_symbol
 
-data python_r3_external_happy_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(\"x\")\n"
+data python_r3_external_happy_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(\"x\")\n\nif __name__ == \"__main__\":\n    r3_test()\n"
 
-data python_r3_external_falsification_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(1, 2)\n"
+data python_r3_external_falsification_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(1, 2)\n\nif __name__ == \"__main__\":\n    r3_test()\n"
 
 fn python_r3_external_happy_fixture() -> LeafModelPythonFixture {
   LeafModelPythonFixture { source: python_r3_external_happy_fixture_source }

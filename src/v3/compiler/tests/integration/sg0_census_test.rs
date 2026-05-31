@@ -402,6 +402,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `run_target_verification` owns target verdicts; interim host runner
     // `scripts/v4-leaf-model-python-r1-verify.sh`.
     "src/v3/compiler/tests/boundary/v4_leaf_model_python_r1_test.rs",
+    // Phase 1 leaf-model python R2a/R2b/R3-external (MW-D3 cross-target widening): boundary
+    // CPython exercise for R2a algebra ops, R2b arbitrary-precision add, R3-external Symbol
+    // projection; host runners scripts/v4-leaf-model-python-r2{a,b,r3-external}-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_r2_r3_external_test.rs",
     // Phase 1 leaf-model verification R1 (`docs/planning/v4-leaf-model-verification-2026-05-30.md` §7):
     // boundary rustc exercise for `src/v4/lens/leaf_model_verification.dag` fixtures until
     // T-22 modeled `run_target_verification` owns target verdicts.
