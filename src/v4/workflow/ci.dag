@@ -2365,8 +2365,12 @@ fn ci_step_in_carveouts(step_id: CiStepId, carveouts: List<CiCarveout>) -> Bool 
 fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) -> Bool {
   if segment == "src/v2/**" {
     ci_changed_path_affects_v2(changed: path)
+  } else if segment == "src/v3/**" {
+    ci_changed_path_affects_v3(changed: path)
   } else if segment == "src/v4/**" {
     ci_changed_path_affects_v4(changed: path)
+  } else if segment == "scripts/**" {
+    ci_repo_path_has_prefix(path: path, prefix: "scripts/")
   } else if segment == "Cargo.toml" {
     path == "Cargo.toml"
   } else if segment == "Cargo.lock" {
