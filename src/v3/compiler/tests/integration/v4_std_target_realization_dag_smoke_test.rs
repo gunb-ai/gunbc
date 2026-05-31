@@ -219,8 +219,8 @@ fn v4_translate_dag_imports_target_atom_realization_consumer() {
         "{TRANSLATE_PATH}: translate_fold_init must consult atom realization via translate_coerced_with_atom_realization (type shell via translate_coerced_shell inside)"
     );
     assert!(
-        TRANSLATE_DAG.contains("translate_atom_realization_value_from_source("),
-        "{TRANSLATE_PATH}: translate_fold_init must consult atom realization value path"
+        TRANSLATE_DAG.contains("translate_atom_realization_value_from_source_at_use_site("),
+        "{TRANSLATE_PATH}: value path must thread TargetOwnershipUseSite (facts-forward)"
     );
     assert!(
         TRANSLATE_DAG.contains("value: row.type_form.node"),

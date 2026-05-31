@@ -2265,6 +2265,7 @@ data target_value_expression_field_inner: Symbol = target_value_expression_field
 data target_use_site_ownership_lookup_miss: Symbol = target_use_site_ownership_lookup_miss
 data target_use_site_ownership_lookup_ambiguous: Symbol = target_use_site_ownership_lookup_ambiguous
 data target_use_site_ownership_catalog_row_decode_invalid: Symbol = target_use_site_ownership_catalog_row_decode_invalid
+data target_reference_layer_tokens_decode_invalid: Symbol = target_reference_layer_tokens_decode_invalid
 
 // Kernel-ambient carrier keys (Node-keyed; not spelling-keyed tables).
 data target_carrier_diagnostics: Symbol = target_carrier_diagnostics
@@ -2659,41 +2660,61 @@ fn target_use_site_ownership_catalog_node(
   }
 }
 
+fn target_reference_layer_tokens_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_reference_layer_tokens_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn target_reference_layer_tokens_from_node(node: Node) -> Outcome<TargetReferenceLayerTokens> {
-  let rc_head_node = target_atom_realization_conj_child(
-    row_node: node,
-    edge_name: target_reference_layer_tokens_field_rc_head
-  )
-  let box_head_node = target_atom_realization_conj_child(
-    row_node: node,
-    edge_name: target_reference_layer_tokens_field_box_head
-  )
-  let rc_new_node = target_atom_realization_conj_child(
-    row_node: node,
-    edge_name: target_reference_layer_tokens_field_rc_new
-  )
-  let box_new_node = target_atom_realization_conj_child(
-    row_node: node,
-    edge_name: target_reference_layer_tokens_field_box_new
-  )
-  bind_outcome(
-    o: target_model_node_atom_identity(node: rc_head_node, source_carrier: node),
-    f: fn(rc_type_head) {
+  match node.kind {
+    TypeNode { connective: Conj } =>
       bind_outcome(
-        o: target_model_node_atom_identity(node: box_head_node, source_carrier: node),
-        f: fn(box_type_head) {
+        o: target_model_node_atom_identity(
+          node: target_atom_realization_conj_child(
+            row_node: node,
+            edge_name: target_reference_layer_tokens_field_rc_head
+          ),
+          source_carrier: node
+        ),
+        f: fn(rc_type_head) {
           bind_outcome(
-            o: target_model_node_atom_identity(node: rc_new_node, source_carrier: node),
-            f: fn(rc_new_ctor) {
+            o: target_model_node_atom_identity(
+              node: target_atom_realization_conj_child(
+                row_node: node,
+                edge_name: target_reference_layer_tokens_field_box_head
+              ),
+              source_carrier: node
+            ),
+            f: fn(box_type_head) {
               bind_outcome(
-                o: target_model_node_atom_identity(node: box_new_node, source_carrier: node),
-                f: fn(box_new_ctor) {
-                  outcome_accepted(
-                    TargetReferenceLayerTokens {
-                      rc_type_head: rc_type_head,
-                      box_type_head: box_type_head,
-                      rc_new_ctor: rc_new_ctor,
-                      box_new_ctor: box_new_ctor
+                o: target_model_node_atom_identity(
+                  node: target_atom_realization_conj_child(
+                    row_node: node,
+                    edge_name: target_reference_layer_tokens_field_rc_new
+                  ),
+                  source_carrier: node
+                ),
+                f: fn(rc_new_ctor) {
+                  bind_outcome(
+                    o: target_model_node_atom_identity(
+                      node: target_atom_realization_conj_child(
+                        row_node: node,
+                        edge_name: target_reference_layer_tokens_field_box_new
+                      ),
+                      source_carrier: node
+                    ),
+                    f: fn(box_new_ctor) {
+                      outcome_accepted(
+                        TargetReferenceLayerTokens {
+                          rc_type_head: rc_type_head,
+                          box_type_head: box_type_head,
+                          rc_new_ctor: rc_new_ctor,
+                          box_new_ctor: box_new_ctor
+                        }
+                      )
                     }
                   )
                 }
@@ -2702,8 +2723,11 @@ fn target_reference_layer_tokens_from_node(node: Node) -> Outcome<TargetReferenc
           )
         }
       )
-    }
-  )
+    _ =>
+      outcome_rejected(
+        target_reference_layer_tokens_decode_invalid_diagnostic(source_carrier: node)
+      )
+  }
 }
 
 data target_reference_layer_tokens_field_rc_head: Symbol = target_reference_layer_tokens_field_rc_head

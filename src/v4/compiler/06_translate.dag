@@ -3279,18 +3279,6 @@ fn translate_atom_realization_value_from_source_at_use_site(
   }
 }
 
-fn translate_atom_realization_value_from_source(
-  source: Node,
-  coerced: Node,
-  target: TargetModel
-) -> Outcome<Optional<Node>> {
-  translate_atom_realization_value_from_source_at_use_site(
-    source: source,
-    coerced: coerced,
-    target: target,
-    use_site: OwnershipAtBindingProjection
-  )
-}
 fn translate_coerced_with_atom_realization_at_use_site(
   source: Node,
   coerced: Node,
@@ -3340,6 +3328,10 @@ fn translate_coerced_with_atom_realization_at_use_site(
   }
 }
 
+// Fold/MVP1 default coerce: binding-projection rows govern both type shell and value expr (P-RC-CONSUMER).
+// Boundary sites (return/param/struct-field) must call translate_coerced_with_atom_realization_at_use_site
+// with the matching TargetOwnershipUseSite, or use translate_apply_use_site_ownership_to_projected_type
+// for emitted type wires (value expr uses translate_apply_use_site_ownership_to_value_expression).
 fn translate_coerced_with_atom_realization(
   source: Node,
   coerced: Node,

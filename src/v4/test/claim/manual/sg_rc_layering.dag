@@ -203,9 +203,43 @@ fn sg_rc_f2_param_shell() -> Node {
   }
 }
 
+fn sg_rc_f2_return_value_holds() -> Bool {
+  match translate_apply_use_site_ownership_to_value_expression(
+    expr: sg_rc_diagnostics_identity_value(),
+    source_carrier: target_carrier_diagnostics_node(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtFunctionReturn
+  ) {
+    Accepted { value: wrapped, diagnostics: _ } =>
+      match wrapped.kind {
+        TargetValueExprReferenceRcNew => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg_rc_f2_param_value_holds() -> Bool {
+  match translate_apply_use_site_ownership_to_value_expression(
+    expr: sg_rc_diagnostics_identity_value(),
+    source_carrier: target_carrier_diagnostics_node(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtFunctionParameter
+  ) {
+    Accepted { value: wrapped, diagnostics: _ } =>
+      match wrapped.kind {
+        TargetValueExprSymbolIdentity => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn sg_rc_f2_cross_site_holds() -> Bool {
   sg_rc_serialized_type_text(emitted: sg_rc_f2_return_shell()) == sg_rc_expected_rc_diagnostics
     && sg_rc_serialized_type_text(emitted: sg_rc_f2_param_shell()) == sg_rc_expected_owned_diagnostics
+    && sg_rc_f2_return_value_holds()
+    && sg_rc_f2_param_value_holds()
 }
 
 // F3 — new carrier ProbeHeap via row only (no translate name branch).
