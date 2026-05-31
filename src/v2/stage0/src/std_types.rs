@@ -188,6 +188,35 @@ pub type Bytes = Vec<u8>;
 
 pub type Char = i64;
 
+pub type List<element> = FreeMonoid<
+    concat,
+    empty,
+    append,
+    slice,
+    length,
+    is_empty,
+    count,
+    first,
+    last,
+    map,
+    filter,
+    fold,
+    flat_map,
+    any,
+    all,
+    enumerate,
+    reverse,
+    skip,
+    take,
+    sort_by,
+    contains,
+>;
+
+pub type Set<element> = BooleanAlgebra<meet, join, complement, top, bottom>;
+
+pub type Map<key, value> =
+    PartialFunction<lookup, empty, get, insert, merge, keys, values, has, contains_key, size>;
+
 pub type CommitSha = String;
 
 pub type Sha256 = String;
