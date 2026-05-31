@@ -1,6 +1,6 @@
 // src/v4/lens/leaf_model_verification.dag
-// Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1–R3-external).
-// Status: R1 rust + R1 python + R2a + R2b (debug/release live) + R3-external rustc fixtures for rust.dag claims.
+// Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1–R3-internal).
+// Status: R1 rust + R1 python + R2a + R2b (debug/release live) + R3-external rustc + R3-internal emit-coupling fixtures.
 
 module v4.lens.leaf_model_verification
 
@@ -13,7 +13,28 @@ import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
   rust_coercion_field_i32_spelling,
   rust_integer_algebra_inhabitance_rust_facts_i32,
-  rust_surface_spelling_i32
+  rust_mvp1_target_model_staging,
+  rust_surface_spelling_i32,
+  rust_target_atom_realization_symbol,
+  rust_target_atom_type_form,
+  rust_target_atom_type_spelling_string
+}
+import v4.std.collection { optional_absent }
+import v4.std.diagnostic { Accepted, Rejected, outcome_accepted }
+import v4.std.logic { Bool }
+import v4.std.target_model {
+  TargetAtomRealization,
+  TargetValueExprKind,
+  TargetValueExprSymbolIdentity,
+  TargetValueExprSymbolToOwnedString,
+  ValueSymbolIdentityPassthrough,
+  ValueSymbolToOwnedString,
+  source_atom_symbol,
+  symbol_kernel_type_atom,
+  symbol_kernel_type_node,
+  target_atom_type_spelling,
+  target_atom_value_expression,
+  target_value_template_for_kind
 }
 import v4.std.leaf_model_verification {
   LeafModelFixturePair,
@@ -28,6 +49,8 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_rust_r2b_debug_default_overflow,
   leaf_model_claim_rust_r2b_release_default_overflow,
   leaf_model_claim_rust_r3_external_symbol_projection,
+  leaf_model_claim_rust_r3_internal_symbol_coupling,
+  LeafModelEmitCouplingReceipt,
   leaf_model_rust_crate_type_bin,
   leaf_model_rust_crate_type_lib,
   TargetCompileAccepted,
@@ -253,4 +276,67 @@ fn rust_r3_external_fixture_pair() -> LeafModelFixturePair {
 
 fn rust_r3_external_fixture() -> LeafModelFixturePair {
   rust_r3_external_fixture_pair()
+}
+
+// R3-internal — Symbol TargetAtomRealization row mutation must move type + value projections together (PR #3971 §4).
+data rust_r3_internal_claim_atom_realization_fact: Symbol = rust_atom_realization_symbol
+
+data rust_r3_internal_probe_symbol_identity: Symbol = rust_r3_internal_probe_symbol_identity
+
+data rust_r3_internal_mutated_type_spelling: Symbol = rust_r3_internal_mutated_type_spelling
+
+data rust_r3_internal_emit_kind_symbol_to_owned_string: Symbol = rust_r3_internal_emit_kind_symbol_to_owned_string
+
+data rust_r3_internal_emit_kind_symbol_identity: Symbol = rust_r3_internal_emit_kind_symbol_identity
+
+data rust_r3_internal_emit_kind_rejected: Symbol = rust_r3_internal_emit_kind_rejected
+
+data rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_mvp1_target_model_staging(),
+  type_form: rust_target_atom_type_form(spelling: rust_r3_internal_mutated_type_spelling),
+  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
+  constructor_form: optional_absent(),
+  display_name: symbol_kernel_type_atom
+}
+
+fn rust_r3_internal_value_emit_kind_label(row: TargetAtomRealization) -> Symbol {
+  let probe = source_atom_symbol(identity: rust_r3_internal_probe_symbol_identity)
+  match target_atom_value_expression(row: row, value: probe) {
+    Accepted { value: expr } =>
+      match expr.kind {
+        TargetValueExprSymbolToOwnedString => rust_r3_internal_emit_kind_symbol_to_owned_string
+        TargetValueExprSymbolIdentity => rust_r3_internal_emit_kind_symbol_identity
+        _ => rust_r3_internal_emit_kind_rejected
+      }
+    Rejected { diagnostics: _ } => rust_r3_internal_emit_kind_rejected
+  }
+}
+
+data rust_r3_internal_baseline_type_emit: Symbol = target_atom_type_spelling(row: rust_target_atom_realization_symbol)
+
+data rust_r3_internal_mutated_type_emit: Symbol = target_atom_type_spelling(row: rust_r3_internal_mutated_row)
+
+data rust_r3_internal_baseline_value_emit_kind: Symbol = rust_r3_internal_value_emit_kind_label(row: rust_target_atom_realization_symbol)
+
+data rust_r3_internal_mutated_value_emit_kind: Symbol = rust_r3_internal_value_emit_kind_label(row: rust_r3_internal_mutated_row)
+
+fn rust_r3_internal_emit_coupling_both_projections_changed(receipt: LeafModelEmitCouplingReceipt) -> Bool {
+  receipt.baseline_type_emit != receipt.mutated_type_emit
+  && receipt.baseline_value_emit_kind != receipt.mutated_value_emit_kind
+}
+
+fn rust_r3_internal_emit_coupling_receipt() -> LeafModelEmitCouplingReceipt {
+  LeafModelEmitCouplingReceipt {
+    claim_id: leaf_model_claim_rust_r3_internal_symbol_coupling,
+    atom_realization_fact: rust_r3_internal_claim_atom_realization_fact,
+    baseline_type_emit: rust_r3_internal_baseline_type_emit,
+    mutated_type_emit: rust_r3_internal_mutated_type_emit,
+    baseline_value_emit_kind: rust_r3_internal_baseline_value_emit_kind,
+    mutated_value_emit_kind: rust_r3_internal_mutated_value_emit_kind
+  }
+}
+
+fn rust_r3_internal_fixture() -> LeafModelEmitCouplingReceipt {
+  rust_r3_internal_emit_coupling_receipt()
 }
