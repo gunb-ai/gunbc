@@ -1,10 +1,13 @@
 //! **Layer:** integration
 //!
-//! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
-//! line in `sg0_census_test.rs` + `_internal/INVARIANTS_OPS.md` row land in the same PR.
-//! **This PR (+0 SG-0 paths):** same-file expansion for SG-RC-LAYERING (#4100) — parse/tokenize
-//! smokes only; no new hand-Rust logic beyond `parse_for_test` surface checks. (SG-2 smokes
-//! landed on `main` via #4124; SG-5/SG-6 via #4121.)
+//! **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST` same-path
+//! expansion):** explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test floor), same
+//! structural class as co-listed `t_gate_58_apply_lens_self_application_test.rs`: parse-surface
+//! smokes discharge until `.dag` `TestClaim` asserts the same substrate facts without this file.
+//! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` +
+//! `_internal/INVARIANTS_OPS.md` row land in the same PR. **+0 SG-0 paths** (no new census entry).
+//! SG-RC ctor `binding_spellings` receipts live in `src/v4/test/claim/manual/sg_rc_layering.dag`.
 //!
 //! SG-1 + SG-2 + SG-5/SG-6 + SG-RC receipt: `target_model.dag` carriers;
 //! `bounded_lattice_completeness` + `04_infer` gate; Rust rows in `rust.dag`;
@@ -583,9 +586,6 @@ fn v4_translate_dag_imports_use_site_ownership_consumer() {
     );
 }
 
-// P5 receipt: SG-RC follow-up (#4133) — same-path smoke expansion (parse surface + include_str
-// substring checks only; no new hand-Rust scaffold). Mechanism (b): `_internal/INVARIANTS_OPS.md`
-// row for this harness; +0 SG-0 `EXPECTED_HAND_AUTHORED_TEST` paths (file header §492).
 #[test]
 fn v4_rust_language_model_declares_use_site_ownership_rows() {
     let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
@@ -600,16 +600,6 @@ fn v4_rust_language_model_declares_use_site_ownership_rows() {
     assert!(
         RUST_LANGUAGE_DAG.contains("target_model_edge_reference_layer_tokens"),
         "{RUST_LANGUAGE_PATH}: Rc/Box surface tokens must live on TargetModel bundle"
-    );
-    assert!(
-        RUST_LANGUAGE_DAG.contains("rust_sg_rc_ctor_rc_new")
-            && RUST_LANGUAGE_DAG.contains("Rc::new"),
-        "{RUST_LANGUAGE_PATH}: value ctor symbols must have binding_spellings realization"
-    );
-    assert!(
-        RUST_LANGUAGE_DAG.contains("rust_sg_rc_ctor_box_new")
-            && RUST_LANGUAGE_DAG.contains("Box::new"),
-        "{RUST_LANGUAGE_PATH}: Box value ctor must have binding_spellings realization"
     );
     assert!(
         !RUST_LANGUAGE_DAG.contains("shared_types"),
