@@ -2828,7 +2828,7 @@ fn target_reference_layer_apply_value_expression(
   }
 }
 
-// Wrapped layers only — Owned is represented solely by ReferenceLayerProbeNotWrapped (M6).
+// 🟢 coproduct dissolution — SG-RC wrapped reference layers only (Rc|Box; Owned via ReferenceLayerProbeNotWrapped).
 type TargetReferenceLayerWrapped
   = ReferenceLayerRc
   | ReferenceLayerBox
