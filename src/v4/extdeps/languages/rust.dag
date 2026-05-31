@@ -3461,57 +3461,64 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
                             map_insert(
                               map_insert(
                                 map_insert(
-                                  map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
-                                  rust_binding_sg2_x,
-                                  "X"
+                                  map_insert(
+                                    map_insert(
+                                      map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
+                                      rust_binding_sg2_x,
+                                      "X"
+                                    ),
+                                    rust_binding_sg2_y,
+                                    "Y"
+                                  ),
+                                  rust_binding_sg2_rc,
+                                  "Rc"
                                 ),
-                                rust_binding_sg2_y,
-                                "Y"
+                                rust_binding_sg_rc_box,
+                                "Box"
                               ),
-                              rust_binding_sg2_rc,
-                              "Rc"
+                              target_carrier_diagnostics,
+                              "Diagnostics"
                             ),
-                            rust_binding_sg_rc_box,
-                            "Box"
+                            target_carrier_node,
+                            "Node"
                           ),
-                          target_carrier_diagnostics,
-                          "Diagnostics"
+                          target_carrier_test_claim,
+                          "TestClaim"
                         ),
-                        target_carrier_node,
-                        "Node"
+                        target_carrier_free_monoid,
+                        "FreeMonoid"
                       ),
-                      target_carrier_test_claim,
-                      "TestClaim"
+                      target_carrier_outcome,
+                      "Outcome"
                     ),
-                    target_carrier_free_monoid,
-                    "FreeMonoid"
+                    target_carrier_model_core,
+                    "ModelCore"
                   ),
-                  target_carrier_outcome,
-                  "Outcome"
+                  target_carrier_algebra_inhabitance_decl,
+                  "AlgebraInhabitanceDecl"
                 ),
-                target_carrier_model_core,
-                "ModelCore"
+                target_carrier_probe_heap,
+                "ProbeHeap"
               ),
-              target_carrier_algebra_inhabitance_decl,
-              "AlgebraInhabitanceDecl"
+              rust_collection_surface_btree_set,
+              "std::collections::BTreeSet"
             ),
-            target_carrier_probe_heap,
-            "ProbeHeap"
+            rust_collection_surface_hash_set,
+            "std::collections::HashSet"
           ),
-          rust_collection_surface_btree_set,
-          "std::collections::BTreeSet"
+          target_collection_set_carrier,
+          "Set"
         ),
-        rust_collection_surface_hash_set,
-        "std::collections::HashSet"
+        rust_target_atom_type_spelling_string,
+        "String"
       ),
-      target_collection_set_carrier,
-      "Set"
+      rust_sg_rc_ctor_rc_new,
+      "Rc::new"
     ),
-    rust_target_atom_type_spelling_string,
-    "String"
+    rust_sg_rc_ctor_box_new,
+    "Box::new"
   )
 }
-
 fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [

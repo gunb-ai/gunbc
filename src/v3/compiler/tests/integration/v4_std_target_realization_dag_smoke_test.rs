@@ -1,10 +1,14 @@
 //! **Layer:** integration
 //!
-//! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
-//! line in `sg0_census_test.rs` + `_internal/INVARIANTS_OPS.md` row land in the same PR.
-//! **This PR (+0 SG-0 paths):** same-file expansion for SG-RC-LAYERING (#4100) — parse/tokenize
-//! smokes only; no new hand-Rust logic beyond `parse_for_test` surface checks. (SG-2 smokes
-//! landed on `main` via #4124; SG-5/SG-6 via #4121.)
+//! **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST` same-path
+//! expansion):** explicit deferral to **`_internal/ROADMAP_OPS.md`** § **Nine lanes** row
+//! **T-PB-B** / `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test
+//! floor; `ROADMAP.md` delegates operational lanes there), same
+//! structural class as co-listed `t_gate_58_apply_lens_self_application_test.rs`: parse-surface
+//! smokes discharge until `.dag` `TestClaim` asserts the same substrate facts without this file.
+//! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` +
+//! `_internal/INVARIANTS_OPS.md` row land in the same PR. **+0 SG-0 paths** (no new census entry).
+//! SG-RC ctor `binding_spellings` receipts live in `src/v4/test/claim/manual/sg_rc_layering.dag`.
 //!
 //! SG-1 + SG-2 + SG-5/SG-6 + SG-RC receipt: `target_model.dag` carriers;
 //! `bounded_lattice_completeness` + `04_infer` gate; Rust rows in `rust.dag`;
@@ -566,8 +570,8 @@ fn v4_translate_dag_imports_use_site_ownership_consumer() {
         "{TRANSLATE_PATH}: value path must consult use_site ownership row"
     );
     assert!(
-        surface_declares_fn(&module, "translate_sg_rc_bundle_ready"),
-        "{TRANSLATE_PATH}: non-Rust bundles must skip SG-RC when edges absent"
+        !surface_declares_fn(&module, "translate_sg_rc_bundle_ready"),
+        "{TRANSLATE_PATH}: must not expose fail-open Bool SG-RC readiness beside apply_disposition"
     );
     assert!(
         surface_declares_fn(&module, "translate_sg_rc_bundle_apply_disposition"),
