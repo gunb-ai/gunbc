@@ -15,6 +15,7 @@ pub use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
 use crate::std_termination::DescentEvidence::DescentUnknown;
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
+use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
     positive_descent_count, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
     RankingDimension,

@@ -206,10 +206,8 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
-  } else if n.connective == NoConnective && n.children |> count > 0 {
-    let base = coerce_primitive_type(target: Rust, dag_name: name)
-    let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
-    concat(base, "<", args, ">")
+  } else if n.children |> count > 0 {
+    render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
   } else {
     render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
   }
