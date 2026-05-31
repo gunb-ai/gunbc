@@ -267,8 +267,8 @@ jobs:
   # receipt-only stub so required check names stay stable. MVP-1 + v4 bootstrap share the
   # v2-compiler binary; workflow_policy PRs that touch gate wiring must still build/run receipts.
   ci_v4:
-    # Run when v4 compile gates OR testclaim_corpus (T-22 + gunbc prereq) OR workflow_policy.
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true')
+    # Run when v4 compile gates OR testclaim_corpus (T-22) OR workflow_policy OR main-push (I7 T-15).
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     needs: [affected, discipline]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 40

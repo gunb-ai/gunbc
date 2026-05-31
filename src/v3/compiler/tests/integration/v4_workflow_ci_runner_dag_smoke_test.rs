@@ -22,6 +22,9 @@ const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
 const CI_DAG_PATH: &str = "src/v4/workflow/ci.dag";
 const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
 const CI_YML_PATH: &str = ".github/workflows/ci.yml";
+const CI_WORKFLOW_DAG: &str =
+    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
+const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
@@ -449,6 +452,22 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
     }
 }
 
+/// Top-level GHA job `if:` line (first `if:` after `  {job_id}:`).
+fn workflow_top_level_job_if(workflow_yml: &str, job_id: &str) -> &str {
+    let job_marker = format!("\n  {job_id}:");
+    let job_start = workflow_yml
+        .find(&job_marker)
+        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing top-level job `{job_id}`"));
+    let rest = &workflow_yml[job_start..];
+    let if_marker = "\n    if:";
+    let if_start = rest
+        .find(if_marker)
+        .unwrap_or_else(|| panic!("{CI_YML_PATH}: job `{job_id}` missing `if:`"));
+    let line = &rest[if_start + 1..];
+    let end = line.find('\n').unwrap_or(line.len());
+    &line[..end]
+}
+
 /// True when `job_id` is a deleted bankruptcy legacy *workflow job* block (not `affected` outputs).
 fn ci_yml_has_deleted_legacy_top_level_job(workflow_yml: &str, job_id: &str) -> bool {
     // Legacy jobs used `if:` before `needs:` / `runs-on:` (see main pre-bankruptcy ci.yml).
@@ -872,6 +891,19 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     assert!(
         t15_step.contains("github.event_name == 'push'") && t15_step.contains("refs/heads/main"),
         "{CI_YML_PATH}: T-15 step must include main-push disjunct paired with modeled ci_v4_t15_scheduled"
+    );
+    let ci_v4_job_if = workflow_top_level_job_if(CI_YML, "ci_v4");
+    assert!(
+        ci_v4_job_if.contains("github.event_name == 'push'") && ci_v4_job_if.contains("refs/heads/main"),
+        "{CI_YML_PATH}: ci_v4 job `if` must include main-push so I7 T-15 can run when the job is not component-selected"
+    );
+    assert!(
+        CI_WORKFLOW_DAG.contains(
+            "id: \"ci_v4\""
+        ) && CI_WORKFLOW_DAG.contains(
+            "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
+        ),
+        "{CI_WORKFLOW_DAG_PATH}: ci_v4 job if_condition must mirror ci.yml main-push disjunct (I7)"
     );
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
