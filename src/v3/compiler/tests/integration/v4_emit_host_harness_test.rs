@@ -49,8 +49,7 @@ const NAT_SEMIRING_RUNG_5_DAG: &str =
 const NAT_SEMIRING_RUNG_5_PATH: &str = "src/v4/test/claim/nat_semiring/rung_5.dag";
 const NAT_SEMIRING_RUNG5_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung5_eval.dag");
-const NAT_SEMIRING_RUNG5_EVAL_PATH: &str =
-    "src/v4/test/claim/workflow/nat_semiring_rung5_eval.dag";
+const NAT_SEMIRING_RUNG5_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung5_eval.dag";
 const NAT_SEMIRING_RUNG_6_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_6.dag");
 const NAT_SEMIRING_RUNG_6_PATH: &str = "src/v4/test/claim/nat_semiring/rung_6.dag";
@@ -579,12 +578,9 @@ fn cross_target_mvp2_stdout_parity_rust_python_go() {
         &py_dir,
     )
     .expect("python transport");
-    let go = emit_host_bridge::run_emit_host_go_transport(
-        EMIT_HOST_GO_FIXTURE_SOURCE,
-        &inputs,
-        &go_dir,
-    )
-    .expect("go transport");
+    let go =
+        emit_host_bridge::run_emit_host_go_transport(EMIT_HOST_GO_FIXTURE_SOURCE, &inputs, &go_dir)
+            .expect("go transport");
     for (label, receipt) in [("rust", &rust), ("python", &python), ("go", &go)] {
         assert!(
             emit_host_bridge::host_exit_holds(&receipt.exit),
@@ -622,7 +618,10 @@ fn v4_nat_semiring_rung_5_dag_tokenizes_and_parses_full_law_roster_three_targets
         );
     }
     assert!(
-        surface_declares_data(&module, "phase1_nat_semiring_rung5_full_law_roster_runtime_value_rows"),
+        surface_declares_data(
+            &module,
+            "phase1_nat_semiring_rung5_full_law_roster_runtime_value_rows"
+        ),
         "{NAT_SEMIRING_RUNG_5_PATH}: 6 laws × 3 targets roster"
     );
     let common = parse_module(RUNG_5_6_COMMON_DAG, RUNG_5_6_COMMON_PATH);
@@ -643,7 +642,8 @@ fn v4_nat_semiring_rung_5_dag_tokenizes_and_parses_full_law_roster_three_targets
         );
     }
     assert!(
-        NAT_SEMIRING_RUNG5_EVAL_DAG.contains("phase1_nat_semiring_rung5_full_law_roster_runtime_value_rows"),
+        NAT_SEMIRING_RUNG5_EVAL_DAG
+            .contains("phase1_nat_semiring_rung5_full_law_roster_runtime_value_rows"),
         "{NAT_SEMIRING_RUNG5_EVAL_PATH}: CorpusEvalReport must consume rung-5 roster"
     );
 }
@@ -682,7 +682,10 @@ fn v4_nat_semiring_rung_6_dag_tokenizes_and_parses_additive_monoid_emit_rows() {
         );
     }
     let common = parse_module(RUNG_5_6_COMMON_DAG, RUNG_5_6_COMMON_PATH);
-    for name in ["rung56_emit_host_python_target_model", "rung56_emit_host_go_target_model"] {
+    for name in [
+        "rung56_emit_host_python_target_model",
+        "rung56_emit_host_go_target_model",
+    ] {
         assert!(
             surface_declares_data(&common, name),
             "{RUNG_5_6_COMMON_PATH}: TargetModel {name}"
