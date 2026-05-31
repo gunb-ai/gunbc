@@ -12,16 +12,8 @@ import v4.std.algebra {
   BoundedLatticeMissingWitness,
   BoundedLatticeComplete,
   BoundedLatticePartial,
-  MissingMeet,
-  MissingJoin,
-  bounded_lattice_field_bottom,
-  bounded_lattice_field_lattice,
-  bounded_lattice_field_top,
-  bounded_lattice_instance_completeness,
-  bounded_lattice_instance_shape,
-  lattice_field_join,
-  lattice_field_meet,
-  any
+  any,
+  bounded_lattice_instance_completeness
 }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
