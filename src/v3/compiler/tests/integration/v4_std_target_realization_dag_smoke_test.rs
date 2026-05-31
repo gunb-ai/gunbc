@@ -1,8 +1,14 @@
 //! **Layer:** integration
 //!
-//! SG-1 receipt: `src/v4/std/target_model.dag` — `TargetAtomRealization` canonical
-//! carrier home (Option A per design-target-realization-canonical-home.md); Rust rows in
-//! `extdeps/languages/rust.dag`; `06_translate.dag` consumer.
+//! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
+//! line in `sg0_census_test.rs` + `_internal/INVARIANTS_OPS.md` row land in the same PR.
+//! **This PR (+0 SG-0 paths):** same-file expansion for SG-5/SG-6 collection-bounded-lattice
+//! worksheet closure (substrate on `main` #3957 / #4085) — three additional parse/tokenize
+//! smokes only; no new hand-Rust logic beyond `parse_for_test` surface checks.
+//!
+//! SG-1 + SG-5/SG-6 receipt: `src/v4/std/target_model.dag` — `TargetAtomRealization` and
+//! `TargetCollectionRealization` carriers; `bounded_lattice_completeness.dag` + `04_infer` gate;
+//! Rust rows in `extdeps/languages/rust.dag`; `06_translate.dag` consumers.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
@@ -305,6 +311,9 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
     );
 }
 
+// P5 receipt: same-path smoke expansion (SG-5 collection-bounded-lattice worksheet §6).
+// Asserts `.dag` surface shape only — substrate edits landed #3957 / #4085 on `main`.
+// Deferral: retired when `.dag` `TestClaim` / T-22 eval covers same facts (T-PB-B).
 #[test]
 fn v4_std_target_model_declares_target_collection_realization_carrier() {
     let module = parse_module(TARGET_MODEL_DAG, TARGET_MODEL_PATH);
