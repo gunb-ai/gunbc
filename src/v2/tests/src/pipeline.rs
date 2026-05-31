@@ -1615,7 +1615,7 @@ fn compile_dag_with_complexity(
 
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
-    build_complexity_report(Rc::new(func_entries), recursion_ctx, Rc::new(HashMap::new()))
+    build_complexity_report(func_entries, recursion_ctx, Rc::new(HashMap::new()))
 }
 
 #[test]
@@ -2530,7 +2530,8 @@ fn diag_parser_scc_edges() {
         .collect();
     let func_index_rc = Rc::new(func_index);
 
-    let scc_result = build_scc_index(Rc::new(func_entries.clone()),
+    let scc_result = build_scc_index(
+        func_entries.clone(),
         func_index_rc.clone(),
         Rc::new(HashMap::new()),
     );
@@ -2583,7 +2584,7 @@ fn diag_parser_scc_edges() {
         eprintln!("    {} -> {}", e.caller, e.callee);
     }
 
-    let has_cycle = same_progress_subgraph_has_cycle(scc_info.members.clone(), Rc::new(edges));
+    let has_cycle = same_progress_subgraph_has_cycle(scc_info.members.clone(), edges);
     eprintln!("\n  Same-subgraph has cycle: {}", has_cycle);
 }
 
