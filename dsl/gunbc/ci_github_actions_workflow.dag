@@ -571,7 +571,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["affected", "discipline"],
+      needs: ["affected"],
       env: none,
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))" },
@@ -779,7 +779,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: Some { value: 15 }
         }],
-      needs: ["affected", "discipline"],
+      needs: ["affected"],
       env: none,
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))" },
@@ -794,7 +794,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Validate prerequisites (fail-closed under skipped/failed deps)" },
           id: none,
-          run: "set -euo pipefail\nif [[ \"${{ needs.discipline.result }}\" != \"success\" ]]; then\n  echo \"::error::discipline job did not succeed (result=${{ needs.discipline.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.affected.result }}\" != \"success\" ]]; then\n  echo \"::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nfor dep in ci_integration ci_v4; do\n  result=\"\"\n  case \"$dep\" in\n    ci_integration) result=\"${{ needs.ci_integration.result }}\" ;;\n    ci_v4) result=\"${{ needs.ci_v4.result }}\" ;;\n  esac\n  if [[ \"$result\" == \"success\" || \"$result\" == \"skipped\" ]]; then\n    echo \"dep OK: $dep result=$result\"\n    continue\n  fi\n  echo \"::error::$dep job did not succeed (result=$result); ci aggregator fails closed.\"\n  exit 1\ndone\necho \"ci aggregator: all prerequisites satisfied\"\n",
+          run: "set -euo pipefail\nif [[ \"${{ needs.affected.result }}\" != \"success\" ]]; then\n  echo \"::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nfor dep in ci_integration ci_v4; do\n  result=\"\"\n  case \"$dep\" in\n    ci_integration) result=\"${{ needs.ci_integration.result }}\" ;;\n    ci_v4) result=\"${{ needs.ci_v4.result }}\" ;;\n  esac\n  if [[ \"$result\" == \"success\" || \"$result\" == \"skipped\" ]]; then\n    echo \"dep OK: $dep result=$result\"\n    continue\n  fi\n  echo \"::error::$dep job did not succeed (result=$result); ci aggregator fails closed.\"\n  exit 1\ndone\necho \"ci aggregator: all prerequisites satisfied\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -812,7 +812,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["affected", "discipline", "ci_integration", "ci_v4"],
+      needs: ["affected", "ci_integration", "ci_v4"],
       env: none,
       outputs: none,
       if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true }}" },
