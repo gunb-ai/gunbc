@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `20ae0436e` (`main` 2026-05-30T23:30Z) — post #4054 HEAD refresh; Wave A/D2 rung-3/4 runtime rows [#4046](https://github.com/gunb-ai/gunbc/pull/4046).  
+> **Tree HEAD:** `30512d680` (`main` 2026-05-31T02:30Z) — post #4061 citation fix; W2.3 Buckets A/B [#4055](https://github.com/gunb-ai/gunbc/pull/4055)/[#4066](https://github.com/gunb-ai/gunbc/pull/4066); dependency graph [#4058](https://github.com/gunb-ai/gunbc/pull/4058).  
 > **Wave posture:** MW-D8 **4/5 PROVEN** (C1, C2, C3, C5). **Remaining:** C4 `ci_selection_receipt_shadow` (`smart-stag-871`). Wave 2 active.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -67,7 +67,7 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | ----------- | ---------- | ----------- | ----------------------- | ------------ |
 | **W2.1** SG-1 TargetAtomRealization | Target Realization | [#3956](https://github.com/gunb-ai/gunbc/pull/3956) (held draft), [#3964](https://github.com/gunb-ai/gunbc/pull/3964) (re-dispatch) | **P3** (emit → binary) | Yes — highest-signal Wave 2 PR |
 | **W2.2** SG-5 / SG-6 | Target Realization | [#3957](https://github.com/gunb-ai/gunbc/pull/3957) **MERGED** ~22:00Z; SG-6 TBD | **P3** | Landed — carrier + translate consumer; rustc meter unchanged until emit consumes |
-| **W2.3** Phase 1.5 `CiUpsertStep<T>` | Modeling DFS + Compiler Spine | [#4045](https://github.com/gunb-ai/gunbc/pull/4045) migration worksheet **MERGED** ~22:52Z; consumer wiring TBD | **P2**, **P5** (ci.dag authority) | Partial — dispatch worksheet landed; not active migration |
+| **W2.3** Phase 1.5 `CiUpsertStep<T>` | Modeling DFS + Compiler Spine | [#4055](https://github.com/gunb-ai/gunbc/pull/4055) Bucket A **MERGED**; [#4066](https://github.com/gunb-ai/gunbc/pull/4066) Bucket B **MERGED**; [#4059](https://github.com/gunb-ai/gunbc/pull/4059) partition table; Bucket C/D in flight | **P2**, **P5** (ci.dag authority) | Partial — migration slices landing; not full W2.3 close |
 | **W2.4** Phase 1b A3–A14 + `check-*` deletion | Compiler Spine | *(dispatch TBD post-W2.3)* | **P2**, **P5** | No — post-Jun 1 |
 | **W2.5** Phase 4 fixture widening | Ladder/Fixture | [#4018](https://github.com/gunb-ai/gunbc/pull/4018) **MERGED** (branch_dispatch, loop_linear_bound); [#4028](https://github.com/gunb-ai/gunbc/pull/4028) field_patch_monoid; rung specs #4034–#4039 | **P4**, **P5** | Partial — ladder path, not T-15 fixpt |
 | **W2.6** Cross-target leaf-model (python.dag) | Modeling DFS + TR + TestClaim | [#4022](https://github.com/gunb-ai/gunbc/pull/4022) **MERGED** 21:05Z | **P3**, **P5** | Landed — python R1 mirror of rust.dag |
@@ -192,6 +192,17 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4053](https://github.com/gunb-ai/gunbc/pull/4053) | 23:21 | Maintenance | *(tracker)* | MW-D8 4/5 sync — operator burn-down aligned to #4050 ledger |
 | [#4054](https://github.com/gunb-ai/gunbc/pull/4054) | ~23:25 | Maintenance | *(tracker)* | Tree HEAD `b1ba7b8f0` + #4053 landing-log backfill |
 | [#4046](https://github.com/gunb-ai/gunbc/pull/4046) | ~23:30 | Wave A/D2 | **P4**, **P5** (ladder-adj) | YELLOW — rung-3/4 runtime value rows (empty W3 wedges per #3958); not T-15 fixpt |
+| [#4056](https://github.com/gunb-ai/gunbc/pull/4056) | 23:55 | Maintenance | *(tracker)* | Post-#4054 landing log + #4046 attribution |
+| [#4061](https://github.com/gunb-ai/gunbc/pull/4061) | ~00:30 | Maintenance | *(tracker)* | Resolve-posture bridge citation fix (`ci.yml:378-385`) |
+| [#4058](https://github.com/gunb-ai/gunbc/pull/4058) | ~01:00 | Planning | *(coordination)* | [`v4-predicate-dependency-graph`](v4-predicate-dependency-graph-2026-05-30.md) — 0/6→6/6 PROVEN path |
+| [#4060](https://github.com/gunb-ai/gunbc/pull/4060) | ~01:00 | Close/Receipt | **P1** (meta) | P1 every-other-task roster — drift-proof classification |
+| [#4065](https://github.com/gunb-ai/gunbc/pull/4065) | ~01:15 | Close/Receipt | **P1** (meta) | P1-B per-GAP manager routing (§3.5) |
+| [#4047](https://github.com/gunb-ai/gunbc/pull/4047) | ~01:20 | W3 | **P4**, **P5** | YELLOW — `run_emit_host_rust` transport + L4 verdict receipts |
+| [#4055](https://github.com/gunb-ai/gunbc/pull/4055) | ~02:00 | W2.3 Bucket A | **P2**, **P5** | YELLOW — ci_pipeline CiUpsertStep rows + shadow receipt |
+| [#4059](https://github.com/gunb-ai/gunbc/pull/4059) | ~01:30 | W2.3 planning | **P2**, **P5** | YELLOW — CiStepId partition table (buckets B/C/D) |
+| [#4066](https://github.com/gunb-ai/gunbc/pull/4066) | ~02:30 | W2.3 Bucket B | **P2**, **P5** | YELLOW — testclaim CiUpsertStep row |
+| [#4064](https://github.com/gunb-ai/gunbc/pull/4064) | ~02:15 | W3.6 | **P5** | YELLOW stronger — rung-8 nat_semiring corpus execution minimum |
+| [#4040](https://github.com/gunb-ai/gunbc/pull/4040) | ~02:00 | emit | **P3** | YELLOW — v2 Python TCO + match/if (weather, nat_semiring) |
 
 ---
 
@@ -259,7 +270,8 @@ High-signal buckets for predicate burn-down (full inventory: `docs/planning/v4-m
 - Detailed evidence rows: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md)  
 - Line anchors: [`v4-done-predicate-tasks-mapping-2026-05-30.md`](v4-done-predicate-tasks-mapping-2026-05-30.md)  
 - Wave posture: [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-and-next-waves-2026-05-30.md) §7 (MW-D1–D8)  
-- Wave 1 exit ledger: [`v4-mw-d8-wave1-exit-ledger-2026-05-30.md`](v4-mw-d8-wave1-exit-ledger-2026-05-30.md) (**4/5 PROVEN**; C2 closed [#4050](https://github.com/gunb-ai/gunbc/pull/4050); C4 open)  
+- Wave 1 exit ledger: [`v4-mw-d8-wave1-exit-ledger-2026-05-30.md`](v4-mw-d8-wave1-exit-ledger-2026-05-30.md) (**4/5 PROVEN**; C2 closed [#4050](https://github.com/gunb-ai/gunbc/pull/4050); C4 open)
+- Predicate dependency graph: [`v4-predicate-dependency-graph-2026-05-30.md`](v4-predicate-dependency-graph-2026-05-30.md) ([#4058](https://github.com/gunb-ai/gunbc/pull/4058))  
 - Close ledger: `docs/audit/v4-close-ledger-2026-05-30.md` (346 probes; 0/346 `PROVEN` on last spot-check)  
 - Public ship disposition: `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407` — SUPPORTED.md substrate)  
 - Release maintainer snapshot: `docs/RELEASE_v0.1.0.md` ([#3991](https://github.com/gunb-ai/gunbc/pull/3991) — flavor-iv consolidated snapshot landed)
