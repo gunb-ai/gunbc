@@ -551,6 +551,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
+          name: Some { value: "Phase 1 leaf-model python R2a/R2b/R3-external boundary (gunbc#846 bypass)" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_leaf_model_python_r2_r3_external_test -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
           name: Some { value: "Phase 1 leaf-model R2a/R2b/R3-external rustc boundary (gunbc#846 bypass)" },
           id: none,
           run: "cargo test -p v3-compiler --test integration v4_leaf_model_rust_r2_r3_external_rustc_test -- --quiet",
