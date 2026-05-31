@@ -1676,7 +1676,7 @@ fn ci_upsert_steps_slice_subset_of_pipeline_shadow(p: CiPipeline, slice: List<Ci
 fn ci_upsert_steps_slice_strict_subset_of_pipeline_shadow(p: CiPipeline, slice: List<CiStepId>) -> Bool {
   let shadow = ci_pipeline_step_ids_shadow(p: p)
   ci_step_ids_subset_of(xs: slice, universe: shadow)
-    && length(xs: slice) < length(xs: shadow)
+    && length(xs: slice) != length(xs: shadow)
 }
 
 
@@ -1802,9 +1802,13 @@ data ci_upsert_cache_digest_create_sensitivity_b: CiUpsertStep<Symbol> = CiUpser
   payload_type: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
 }
 
-data ci_upsert_cache_digest_create_sensitivity_witness: Bool =
+fn ci_upsert_cache_digest_create_sensitivity_witness_holds() -> Bool {
   ci_upsert_step_cache_digest(step: ci_upsert_cache_digest_create_sensitivity_a)
     != ci_upsert_step_cache_digest(step: ci_upsert_cache_digest_create_sensitivity_b)
+}
+
+data ci_upsert_cache_digest_create_sensitivity_witness: Bool =
+  ci_upsert_cache_digest_create_sensitivity_witness_holds()
 
 
 fn test_claim_typed_input_ci_pipeline(
