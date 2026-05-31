@@ -1,6 +1,6 @@
 // src/v4/test/claim/language_model/rust.dag
 // Scope: C(rust.dag) — verification OBLIGA per PR #3971 / design-rust-dag-leafmodel-instantiation.md.
-// Status: Phase-1 rows (R1, R2a, R2b×4, R3-external, R3-internal) — 8 LeafModelClaim rows; R2a/R2b(1–2)/R3-external fixture+runner live (W1.7).
+// Status: Phase-1 rows (R1, R2a, R2b×4, R3-external, R3-internal) — 8 LeafModelClaim rows; R2a/R2b(1–2)/R3-external/R3-internal fixture+runner live (W1.7).
 
 module v4.test.claim.language_model.rust
 
@@ -220,7 +220,7 @@ data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim =
   }
 }
 
-// R3-external — PLANNED until SG-1 lands TargetAtomRealization row (§4).
+// R3-external — Symbol atom realization projection vs rustc (SG-1 row on main).
 data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
@@ -236,7 +236,7 @@ data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = LeafMod
   }
 }
 
-// R3-internal — emit coupling receipt; exercisable post-SG-1 (§4).
+// R3-internal — emit coupling receipt; exercisable post-SG-1 (#3956); host runner v4-leaf-model-rust-r3-internal-verify.sh.
 data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
