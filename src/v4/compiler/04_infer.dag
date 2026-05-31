@@ -204,6 +204,8 @@ fn infer_bounded_lattice_completeness_rejects(
 }
 
 
+// SG-6: consumer-site gate only — partial declarations are tagged, not rejected here.
+// infer_bounded_lattice_instance_gate is exported for anchor/unit probes, not infer_node_facts.
 fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
   infer_bounded_lattice_completeness_rejects(
     instance: instance,
