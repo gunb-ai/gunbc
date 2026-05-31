@@ -1513,27 +1513,34 @@ fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash {
 }
 
 
-fn ci_upsert_step_row_lookup(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> Optional<CiUpsertStepRow> {
-  fold(rows, init: Absent, f: fn(acc, row) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if ci_step_id_eq(left: step_id, right: row.step_id) {
-          Present { value: row }
-        } else {
-          Absent
-        }
+fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId> {
+  fold(rows, init: Empty, f: fn(acc, row) {
+    list_snoc_item(xs: acc, item: row.step_id)
+  })
+}
+
+
+fn ci_upsert_row_inputs_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> List<UpsertInputRef> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if ci_step_id_eq(left: step_id, right: row.step_id) {
+      row.step.inputs
+    } else {
+      acc
     }
   })
 }
 
 
-fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId> {
-  fold_list(
-    xs: rows,
-    empty: Empty,
-    cons: fn(acc, row) {
-      list_snoc_item(xs: acc, item: row.step_id)
+fn ci_upsert_row_cache_digest_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> Hash {
+  fold(
+    rows,
+    init: content_hash(n: ci_step_id_projection_node(step_id: step_id)),
+    f: fn(acc, row) {
+      if ci_step_id_eq(left: step_id, right: row.step_id) {
+        ci_upsert_step_cache_digest(step: row.step)
+      } else {
+        acc
+      }
     }
   )
 }
@@ -1573,25 +1580,13 @@ fn ci_pipeline_step_ids_shadow(p: CiPipeline) -> List<CiStepId> {
 
 
 fn ci_step_selection_shadow_row(step_id: CiStepId) -> CiStepSelection {
-  match ci_upsert_step_row_lookup(step_id: step_id, rows: ci_upsert_steps) {
-    Present { value: row } =>
-      CiStepSelection {
-        step_id: step_id,
-        inputs_consulted: row.step.inputs,
-        affected_intersection: [],
-        decision: Run,
-        cache_digest: ci_upsert_step_cache_digest(step: row.step),
-        reason: ci_selection_shadow_reason
-      }
-    Absent =>
-      CiStepSelection {
-        step_id: step_id,
-        inputs_consulted: [],
-        affected_intersection: [],
-        decision: Run,
-        cache_digest: content_hash(n: ci_step_id_projection_node(step_id: step_id)),
-        reason: ci_selection_shadow_reason
-      }
+  CiStepSelection {
+    step_id: step_id,
+    inputs_consulted: ci_upsert_row_inputs_for_step_id(step_id: step_id, rows: ci_upsert_steps),
+    affected_intersection: [],
+    decision: Run,
+    cache_digest: ci_upsert_row_cache_digest_for_step_id(step_id: step_id, rows: ci_upsert_steps),
+    reason: ci_selection_shadow_reason
   }
 }
 
