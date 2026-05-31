@@ -94,6 +94,8 @@ type TargetValueExpressionKind
   | TargetValueExprSymbolToOwnedString
   | TargetValueExprBoolLiteral
   | TargetValueExprCharUnicodeScalar
+  | TargetValueExprReferenceRcNew
+  | TargetValueExprReferenceBoxNew
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -2216,4 +2218,690 @@ fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
 
 fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
+}
+
+// ═══ SG-RC — TargetUseSiteOwnershipRealization (canonical home) ═══
+
+data target_model_edge_use_site_ownership_realizations: Symbol = target_model_edge_use_site_ownership_realizations
+
+data target_model_edge_reference_layer_tokens: Symbol = target_model_edge_reference_layer_tokens
+
+// 🟢 coproduct dissolution — SG-RC ownership boundary role axis (four use sites; not Node.kind).
+type TargetOwnershipUseSite
+  = OwnershipAtFunctionReturn
+  | OwnershipAtFunctionParameter
+  | OwnershipAtStructField
+  | OwnershipAtBindingProjection
+
+// 🟢 coproduct dissolution — SG-RC reference layer axis (owned / shared / indirect).
+type TargetReferenceLayer
+  = ReferenceLayerOwned
+  | ReferenceLayerRc
+  | ReferenceLayerBox
+
+type TargetReferenceLayerTokens {
+  rc_type_head: Symbol
+  box_type_head: Symbol
+  rc_new_ctor: Symbol
+  box_new_ctor: Symbol
+}
+
+type TargetUseSiteOwnershipRealization {
+  source_carrier: Node
+  use_site: TargetOwnershipUseSite
+  reference_layer: TargetReferenceLayer
+  display_name: Symbol
+}
+
+data target_ownership_use_site_function_return: Symbol = target_ownership_use_site_function_return
+data target_ownership_use_site_function_parameter: Symbol = target_ownership_use_site_function_parameter
+data target_ownership_use_site_struct_field: Symbol = target_ownership_use_site_struct_field
+data target_ownership_use_site_binding_projection: Symbol = target_ownership_use_site_binding_projection
+
+data target_reference_layer_owned: Symbol = target_reference_layer_owned
+data target_reference_layer_rc: Symbol = target_reference_layer_rc
+data target_reference_layer_box: Symbol = target_reference_layer_box
+
+data target_use_site_ownership_field_source_carrier: Symbol = target_use_site_ownership_field_source_carrier
+data target_use_site_ownership_field_use_site: Symbol = target_use_site_ownership_field_use_site
+data target_use_site_ownership_field_reference_layer: Symbol = target_use_site_ownership_field_reference_layer
+
+data target_value_expr_kind_reference_rc_new: Symbol = target_value_expr_kind_reference_rc_new
+data target_value_expr_kind_reference_box_new: Symbol = target_value_expr_kind_reference_box_new
+data target_value_expression_field_inner: Symbol = target_value_expression_field_inner
+
+data target_use_site_ownership_lookup_miss: Symbol = target_use_site_ownership_lookup_miss
+data target_use_site_ownership_lookup_ambiguous: Symbol = target_use_site_ownership_lookup_ambiguous
+data target_use_site_ownership_catalog_row_decode_invalid: Symbol = target_use_site_ownership_catalog_row_decode_invalid
+data target_reference_layer_tokens_decode_invalid: Symbol = target_reference_layer_tokens_decode_invalid
+
+// Kernel-ambient carrier keys (Node-keyed; not spelling-keyed tables).
+data target_carrier_diagnostics: Symbol = target_carrier_diagnostics
+data target_carrier_node: Symbol = target_carrier_node
+data target_carrier_test_claim: Symbol = target_carrier_test_claim
+data target_carrier_free_monoid: Symbol = target_carrier_free_monoid
+data target_carrier_outcome: Symbol = target_carrier_outcome
+data target_carrier_model_core: Symbol = target_carrier_model_core
+data target_carrier_algebra_inhabitance_decl: Symbol = target_carrier_algebra_inhabitance_decl
+data target_carrier_probe_heap: Symbol = target_carrier_probe_heap
+
+fn target_carrier_type_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: []
+  }
+}
+
+fn target_carrier_diagnostics_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_diagnostics)
+}
+
+fn target_carrier_node_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_node)
+}
+
+fn target_carrier_test_claim_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_test_claim)
+}
+
+fn target_carrier_free_monoid_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_free_monoid)
+}
+
+fn target_carrier_outcome_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_outcome)
+}
+
+fn target_carrier_model_core_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_model_core)
+}
+
+fn target_carrier_algebra_inhabitance_decl_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_algebra_inhabitance_decl)
+}
+
+fn target_carrier_probe_heap_node() -> Node {
+  target_carrier_type_node(identity: target_carrier_probe_heap)
+}
+
+fn target_ownership_use_site_atom(use_site: TargetOwnershipUseSite) -> Symbol {
+  match use_site {
+    OwnershipAtFunctionReturn => target_ownership_use_site_function_return
+    OwnershipAtFunctionParameter => target_ownership_use_site_function_parameter
+    OwnershipAtStructField => target_ownership_use_site_struct_field
+    OwnershipAtBindingProjection => target_ownership_use_site_binding_projection
+  }
+}
+
+fn target_ownership_use_site_from_atom(id: Symbol) -> Optional<TargetOwnershipUseSite> {
+  if id == target_ownership_use_site_function_return {
+    optional_present(value: OwnershipAtFunctionReturn)
+  } else {
+    if id == target_ownership_use_site_function_parameter {
+      optional_present(value: OwnershipAtFunctionParameter)
+    } else {
+      if id == target_ownership_use_site_struct_field {
+        optional_present(value: OwnershipAtStructField)
+      } else {
+        if id == target_ownership_use_site_binding_projection {
+          optional_present(value: OwnershipAtBindingProjection)
+        } else {
+          optional_absent()
+        }
+      }
+    }
+  }
+}
+
+fn target_reference_layer_atom(layer: TargetReferenceLayer) -> Symbol {
+  match layer {
+    ReferenceLayerOwned => target_reference_layer_owned
+    ReferenceLayerRc => target_reference_layer_rc
+    ReferenceLayerBox => target_reference_layer_box
+  }
+}
+
+fn target_reference_layer_from_atom(id: Symbol) -> Optional<TargetReferenceLayer> {
+  if id == target_reference_layer_owned {
+    optional_present(value: ReferenceLayerOwned)
+  } else {
+    if id == target_reference_layer_rc {
+      optional_present(value: ReferenceLayerRc)
+    } else {
+      if id == target_reference_layer_box {
+        optional_present(value: ReferenceLayerBox)
+      } else {
+        optional_absent()
+      }
+    }
+  }
+}
+
+fn target_use_site_ownership_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_use_site_ownership_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_use_site_ownership_lookup_ambiguous_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_use_site_ownership_lookup_ambiguous,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+  source_carrier: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: target_use_site_ownership_catalog_row_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟢 coproduct dissolution — SG-RC list-catalog lookup fold state (missing / unique / ambiguous).
+type TargetUseSiteOwnershipLookup
+  = TargetUseSiteOwnershipMissing
+  | TargetUseSiteOwnershipUnique { row: TargetUseSiteOwnershipRealization }
+  | TargetUseSiteOwnershipAmbiguous
+
+// Lookup key: (content_hash(source_carrier), use_site) only — display_name is wire label, not part of the key.
+fn target_use_site_ownership_lookup_step(
+  acc: TargetUseSiteOwnershipLookup,
+  row: TargetUseSiteOwnershipRealization,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> TargetUseSiteOwnershipLookup {
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier)
+    && row.use_site == use_site
+  {
+    match acc {
+      TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipUnique { row: row }
+      TargetUseSiteOwnershipUnique { row: _ } => TargetUseSiteOwnershipAmbiguous
+      TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+fn target_use_site_ownership_lookup_in_catalog(
+  catalog: List<TargetUseSiteOwnershipRealization>,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<TargetUseSiteOwnershipRealization> {
+  match fold_list(
+    xs: catalog,
+    empty: TargetUseSiteOwnershipMissing,
+    cons: fn(acc, row) {
+      target_use_site_ownership_lookup_step(
+        acc: acc,
+        row: row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+    }
+  ) {
+    TargetUseSiteOwnershipMissing =>
+      outcome_rejected(target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier))
+    TargetUseSiteOwnershipUnique { row: row } => outcome_accepted(row)
+    TargetUseSiteOwnershipAmbiguous =>
+      outcome_rejected(target_use_site_ownership_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+  }
+}
+
+fn target_model_node_atom_identity(node: Node, source_carrier: Node) -> Outcome<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
+    _ =>
+      outcome_rejected(
+        target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+          source_carrier: source_carrier
+        )
+      )
+  }
+}
+
+fn target_use_site_ownership_row_from_node(
+  row_node: Node,
+  display_name: Symbol,
+  source_carrier: Node
+) -> Outcome<TargetUseSiteOwnershipRealization> {
+  let carrier_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_use_site_ownership_field_source_carrier
+  )
+  let use_site_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_use_site_ownership_field_use_site
+  )
+  let layer_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_use_site_ownership_field_reference_layer
+  )
+  bind_outcome(
+    o: target_model_node_atom_identity(node: use_site_node, source_carrier: source_carrier),
+    f: fn(use_site_id) {
+      match target_ownership_use_site_from_atom(id: use_site_id) {
+        Absent =>
+          outcome_rejected(
+            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+              source_carrier: source_carrier
+            )
+          )
+        Present { value: use_site } =>
+          bind_outcome(
+            o: target_model_node_atom_identity(node: layer_node, source_carrier: source_carrier),
+            f: fn(layer_id) {
+              match target_reference_layer_from_atom(id: layer_id) {
+                Absent =>
+                  outcome_rejected(
+                    target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+                      source_carrier: source_carrier
+                    )
+                  )
+                Present { value: reference_layer } =>
+                  outcome_accepted(
+                    TargetUseSiteOwnershipRealization {
+                      source_carrier: carrier_node,
+                      use_site: use_site,
+                      reference_layer: reference_layer,
+                      display_name: display_name
+                    }
+                  )
+              }
+            }
+          )
+      }
+    }
+  )
+}
+
+// 🟢 coproduct dissolution — SG-RC bundle-node catalog lookup fold state (missing / unique / ambiguous / invalid row decode).
+type TargetUseSiteOwnershipCatalogLookup
+  = TargetUseSiteOwnershipCatalogMissing
+  | TargetUseSiteOwnershipCatalogUnique { row: TargetUseSiteOwnershipRealization }
+  | TargetUseSiteOwnershipCatalogAmbiguous
+  | TargetUseSiteOwnershipCatalogInvalid
+
+fn target_use_site_ownership_catalog_lookup_step(
+  acc: TargetUseSiteOwnershipCatalogLookup,
+  edge: Edge,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> TargetUseSiteOwnershipCatalogLookup {
+  match acc {
+    TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
+    _ =>
+      match edge.label {
+    Named { name: display_name } =>
+      match target_use_site_ownership_row_from_node(
+        row_node: edge.target,
+        display_name: display_name,
+        source_carrier: source_carrier
+      ) {
+    Accepted { value: row, diagnostics: _ } =>
+      match target_use_site_ownership_lookup_step(
+        acc: match acc {
+          TargetUseSiteOwnershipCatalogMissing => TargetUseSiteOwnershipMissing
+          TargetUseSiteOwnershipCatalogUnique { row: r } =>
+            TargetUseSiteOwnershipUnique { row: r }
+          TargetUseSiteOwnershipCatalogAmbiguous => TargetUseSiteOwnershipAmbiguous
+          TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
+        },
+        row: row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      ) {
+        TargetUseSiteOwnershipMissing =>
+          TargetUseSiteOwnershipCatalogMissing
+        TargetUseSiteOwnershipUnique { row: row } =>
+          TargetUseSiteOwnershipCatalogUnique { row: row }
+        TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
+      }
+    Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid
+    }
+    Positional => TargetUseSiteOwnershipCatalogInvalid
+      }
+  }
+}
+
+fn target_use_site_ownership_lookup_in_catalog_node(
+  catalog: Node,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<TargetUseSiteOwnershipRealization> {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        catalog.children,
+        init: TargetUseSiteOwnershipCatalogMissing,
+        f: fn(acc, e) {
+          target_use_site_ownership_catalog_lookup_step(
+            acc: acc,
+            edge: e,
+            source_carrier: source_carrier,
+            use_site: use_site
+          )
+        }
+      ) {
+        TargetUseSiteOwnershipCatalogMissing =>
+          outcome_rejected(target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier))
+        TargetUseSiteOwnershipCatalogUnique { row: row } =>
+          outcome_accepted(row)
+        TargetUseSiteOwnershipCatalogAmbiguous =>
+          outcome_rejected(target_use_site_ownership_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
+        TargetUseSiteOwnershipCatalogInvalid =>
+          outcome_rejected(
+            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+              source_carrier: source_carrier
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+          source_carrier: source_carrier
+        )
+      )
+  }
+}
+
+fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipRealization) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_use_site_ownership_field_source_carrier,
+        target: row.source_carrier
+      ),
+      target_model_named_edge(
+        name: target_use_site_ownership_field_use_site,
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: target_ownership_use_site_atom(use_site: row.use_site) }
+          },
+          children: []
+        }
+      ),
+      target_model_named_edge(
+        name: target_use_site_ownership_field_reference_layer,
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: target_reference_layer_atom(layer: row.reference_layer) }
+          },
+          children: []
+        }
+      )
+    ]
+  }
+}
+
+fn target_use_site_ownership_catalog_edge(row: TargetUseSiteOwnershipRealization) -> Edge {
+  target_model_named_edge(
+    name: row.display_name,
+    target: target_use_site_ownership_realization_to_node(row: row)
+  )
+}
+
+fn target_use_site_ownership_catalog_snoc_edge(
+  acc: List<Edge>,
+  row: TargetUseSiteOwnershipRealization
+) -> List<Edge> {
+  list_snoc_item(xs: acc, item: target_use_site_ownership_catalog_edge(row: row))
+}
+
+fn target_use_site_ownership_catalog_node(
+  rows: List<TargetUseSiteOwnershipRealization>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) { target_use_site_ownership_catalog_snoc_edge(acc: acc, row: row) }
+    )
+  }
+}
+
+fn target_reference_layer_tokens_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_reference_layer_tokens_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_reference_layer_tokens_from_node(node: Node) -> Outcome<TargetReferenceLayerTokens> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: target_model_node_atom_identity(
+          node: target_atom_realization_conj_child(
+            row_node: node,
+            edge_name: target_reference_layer_tokens_field_rc_head
+          ),
+          source_carrier: node
+        ),
+        f: fn(rc_type_head) {
+          bind_outcome(
+            o: target_model_node_atom_identity(
+              node: target_atom_realization_conj_child(
+                row_node: node,
+                edge_name: target_reference_layer_tokens_field_box_head
+              ),
+              source_carrier: node
+            ),
+            f: fn(box_type_head) {
+              bind_outcome(
+                o: target_model_node_atom_identity(
+                  node: target_atom_realization_conj_child(
+                    row_node: node,
+                    edge_name: target_reference_layer_tokens_field_rc_new
+                  ),
+                  source_carrier: node
+                ),
+                f: fn(rc_new_ctor) {
+                  bind_outcome(
+                    o: target_model_node_atom_identity(
+                      node: target_atom_realization_conj_child(
+                        row_node: node,
+                        edge_name: target_reference_layer_tokens_field_box_new
+                      ),
+                      source_carrier: node
+                    ),
+                    f: fn(box_new_ctor) {
+                      outcome_accepted(
+                        TargetReferenceLayerTokens {
+                          rc_type_head: rc_type_head,
+                          box_type_head: box_type_head,
+                          rc_new_ctor: rc_new_ctor,
+                          box_new_ctor: box_new_ctor
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        target_reference_layer_tokens_decode_invalid_diagnostic(source_carrier: node)
+      )
+  }
+}
+
+data target_reference_layer_tokens_field_rc_head: Symbol = target_reference_layer_tokens_field_rc_head
+data target_reference_layer_tokens_field_box_head: Symbol = target_reference_layer_tokens_field_box_head
+data target_reference_layer_tokens_field_rc_new: Symbol = target_reference_layer_tokens_field_rc_new
+data target_reference_layer_tokens_field_box_new: Symbol = target_reference_layer_tokens_field_box_new
+
+fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_reference_layer_tokens_field_rc_head,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: tokens.rc_type_head } },
+          children: []
+        }
+      ),
+      target_model_named_edge(
+        name: target_reference_layer_tokens_field_box_head,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: tokens.box_type_head } },
+          children: []
+        }
+      ),
+      target_model_named_edge(
+        name: target_reference_layer_tokens_field_rc_new,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: tokens.rc_new_ctor } },
+          children: []
+        }
+      ),
+      target_model_named_edge(
+        name: target_reference_layer_tokens_field_box_new,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: tokens.box_new_ctor } },
+          children: []
+        }
+      )
+    ]
+  }
+}
+
+fn target_reference_layer_apply_type_emitted(
+  inner: Node,
+  layer: TargetReferenceLayer,
+  projection: TargetTypeExpressionProjection,
+  tokens: TargetReferenceLayerTokens
+) -> Node {
+  match layer {
+    ReferenceLayerOwned => inner
+    ReferenceLayerRc =>
+      target_type_expr_instantiation_emitted(
+        form: projection.instantiation_form,
+        head: target_type_expr_atom_emitted(
+          form: projection.atom_form,
+          identity: tokens.rc_type_head
+        ),
+        args: [inner]
+      )
+    ReferenceLayerBox =>
+      target_type_expr_instantiation_emitted(
+        form: projection.instantiation_form,
+        head: target_type_expr_atom_emitted(
+          form: projection.atom_form,
+          identity: tokens.box_type_head
+        ),
+        args: [inner]
+      )
+  }
+}
+
+fn target_value_expression_reference_rc_new(
+  inner: TargetValueExpression,
+  ctor: Symbol
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprReferenceRcNew,
+    node: Node {
+      kind: TypeNode { connective: Atom { identity: ctor } },
+      children: [
+        target_model_named_edge(
+          name: target_value_expression_field_inner,
+          target: target_value_expression_node(expr: inner)
+        )
+      ]
+    }
+  }
+}
+
+fn target_value_expression_reference_box_new(
+  inner: TargetValueExpression,
+  ctor: Symbol
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprReferenceBoxNew,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ctor }
+      },
+      children: [
+        target_model_named_edge(
+          name: target_value_expression_field_inner,
+          target: target_value_expression_node(expr: inner)
+        )
+      ]
+    }
+  }
+}
+
+fn target_reference_layer_apply_value_expression(
+  inner: TargetValueExpression,
+  layer: TargetReferenceLayer,
+  tokens: TargetReferenceLayerTokens
+) -> TargetValueExpression {
+  match layer {
+    ReferenceLayerOwned => inner
+    ReferenceLayerRc =>
+      target_value_expression_reference_rc_new(inner: inner, ctor: tokens.rc_new_ctor)
+    ReferenceLayerBox =>
+      target_value_expression_reference_box_new(inner: inner, ctor: tokens.box_new_ctor)
+  }
+}
+
+// 🟢 coproduct dissolution — SG-RC wrapped reference layers only (Rc|Box; Owned via ReferenceLayerProbeNotWrapped).
+type TargetReferenceLayerWrapped
+  = ReferenceLayerRc
+  | ReferenceLayerBox
+
+// 🟢 coproduct dissolution — SG-RC bidirectional read: outer instantiation head → reference layer.
+type TargetReferenceLayerProbe
+  = ReferenceLayerProbe { value: TargetReferenceLayerWrapped }
+  | ReferenceLayerProbeNotWrapped
+  | ReferenceLayerProbeInvalid
+
+fn target_reference_layer_probe_from_emitted_type(
+  emitted: Node,
+  projection: TargetTypeExpressionProjection,
+  tokens: TargetReferenceLayerTokens
+) -> TargetReferenceLayerProbe {
+  match target_type_expr_emitted_wire_decode(emitted: emitted) {
+    Accepted { value: wire, diagnostics: _ } =>
+      match wire.kind {
+        TargetTypeExprInstantiation =>
+          match list_at_optional(
+            xs: node_positional_child_targets(node: wire.node),
+            index: 0
+          ) {
+            Present { value: head } =>
+              match target_model_node_atom_identity(node: head, source_carrier: emitted) {
+                Accepted { value: head_id, diagnostics: _ } =>
+                  if head_id == tokens.rc_type_head {
+                    ReferenceLayerProbe { value: ReferenceLayerRc }
+                  } else {
+                    if head_id == tokens.box_type_head {
+                      ReferenceLayerProbe { value: ReferenceLayerBox }
+                    } else {
+                      ReferenceLayerProbeNotWrapped
+                    }
+                  }
+                Rejected { diagnostics: _ } => ReferenceLayerProbeInvalid
+              }
+            Absent => ReferenceLayerProbeInvalid
+          }
+        _ => ReferenceLayerProbeNotWrapped
+      }
+    Rejected { diagnostics: _ } => ReferenceLayerProbeInvalid
+  }
 }
