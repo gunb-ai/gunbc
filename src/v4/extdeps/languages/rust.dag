@@ -102,6 +102,11 @@ import v4.std.target_model {
   symbol_kernel_type_atom,
   symbol_kernel_type_node,
   target_atom_realization_catalog_node,
+  TargetFunctionSignatureRealization,
+  FunctionBoundaryParam,
+  FunctionBoundaryReturn,
+  target_function_signature_realization_catalog_node,
+  target_model_edge_signature_realizations,
   target_model_edge_atom_realizations,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
@@ -1784,6 +1789,32 @@ data rust_target_atom_realization_catalog: List<TargetAtomRealization> = [
   rust_target_atom_realization_char
 ]
 
+// SG-1b function-boundary signature realization rows (catalog label SG-1-FOLLOWON).
+// signature_type_form is the SG-1 Symbol atom type_form (String) BY REFERENCE — no duplicate
+// type_form/value_form data lines. Changing rust_target_atom_realization_symbol.type_form moves
+// both the fn-boundary signature annotation AND the non-boundary decl-site type alias together.
+// Scope: Symbol kernel atom × { Param, Return } only — the post-#3956 String↔Symbol residue
+// (docs/audit/v4-rustc-error-catalog-2026-05-31.md §3). Bool/Char show no post-SG-1 boundary
+// mismatch, so they are NOT speculatively expanded here.
+data rust_target_function_signature_realization_symbol_param: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
+  boundary_site: FunctionBoundaryParam,
+  signature_type_form: rust_target_atom_realization_symbol.type_form
+}
+
+data rust_target_function_signature_realization_symbol_return: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
+  boundary_site: FunctionBoundaryReturn,
+  signature_type_form: rust_target_atom_realization_symbol.type_form
+}
+
+data rust_target_function_signature_realization_catalog: List<TargetFunctionSignatureRealization> = [
+  rust_target_function_signature_realization_symbol_param,
+  rust_target_function_signature_realization_symbol_return
+]
+
 fn rust_mvp1_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -3218,30 +3249,38 @@ data rust_sg2_type_alias_literal: Symbol = rust_sg2_type_alias_literal
 data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"
 
 fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
+  // rust_target_atom_type_spelling_string is the target-side spelling token for the Rust String
+  // type (peer of "bool"/"char"), NOT a Symbol→String name-keyed coercion. The SG-1b signature
+  // realization row remains the sole authority deciding that a kernel-Symbol boundary projects to
+  // String; this entry only spells the resolved target type once it has been chosen.
   map_insert(
     map_insert(
       map_insert(
         map_insert(
           map_insert(
             map_insert(
-              map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
-              rust_binding_sg2_x,
-              "X"
+              map_insert(
+                map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
+                rust_binding_sg2_x,
+                "X"
+              ),
+              rust_binding_sg2_y,
+              "Y"
             ),
-            rust_binding_sg2_y,
-            "Y"
+            rust_binding_sg2_rc,
+            "Rc"
           ),
-          rust_binding_sg2_rc,
-          "Rc"
+          rust_collection_surface_btree_set,
+          "std::collections::BTreeSet"
         ),
-        rust_collection_surface_btree_set,
-        "std::collections::BTreeSet"
+        rust_collection_surface_hash_set,
+        "std::collections::HashSet"
       ),
-      rust_collection_surface_hash_set,
-      "std::collections::HashSet"
+      target_collection_set_carrier,
+      "Set"
     ),
-    target_collection_set_carrier,
-    "Set"
+    rust_target_atom_type_spelling_string,
+    "String"
   )
 }
 
@@ -3262,7 +3301,10 @@ fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn rust_sg2_type_expr_target_model_node() -> Node {
+// Pre-catalog SG-2 bundle core (no signature_realizations edge). Used both as the live host
+// minus its catalogs and as the host_bundle each signature realization row encodes against, so
+// target_atom_realization_bundle_matches_host accepts core(live host) on decode.
+fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -3294,6 +3336,25 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
         target: rust_set_collection_realization_bundle_node()
       )
     ]
+  }
+}
+
+fn rust_sg2_type_expr_target_model_node() -> Node {
+  match rust_sg2_type_expr_target_model_bundle_core().kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: list_snoc_item(
+          xs: rust_sg2_type_expr_target_model_bundle_core().children,
+          item: rust_named_edge(
+            name: target_model_edge_signature_realizations,
+            target: target_function_signature_realization_catalog_node(
+              rows: rust_target_function_signature_realization_catalog
+            )
+          )
+        )
+      }
+    _ => rust_sg2_type_expr_target_model_bundle_core()
   }
 }
 
@@ -3371,6 +3432,19 @@ fn rust_sg2_serialize_source_node() -> Node {
 fn rust_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
     bundle: rust_sg2_type_expr_target_model_node(),
+    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    binding_spellings: rust_sg2_binding_spellings(),
+    authority_source_text: rust_sg2_type_alias_text
+  }
+}
+
+// Staging variant of the SG-2 type-expr model whose bundle is the pre-catalog core (no
+// signature_realizations edge). SG-1b rows declare THIS as their target_model so the row's host
+// authority matches the bundle they are encoded into (single authority); using the full model
+// would be cyclic (the catalog edge encodes these very rows). Mirrors rust_mvp1_target_model_staging.
+fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_sg2_type_expr_target_model_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
     authority_source_text: rust_sg2_type_alias_text

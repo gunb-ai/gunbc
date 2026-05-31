@@ -157,6 +157,13 @@ import v4.std.target_model {
   target_atom_realization_lookup_in_catalog_node,
   target_atom_realization_lookup_miss,
   target_atom_realization_lookup_miss_diagnostic,
+  TargetFunctionSignatureRealization,
+  FunctionBoundarySite,
+  FunctionBoundaryParam,
+  FunctionBoundaryReturn,
+  target_function_signature_realization_lookup_in_catalog_node,
+  target_function_signature_realization_lookup_miss,
+  target_model_edge_signature_realizations,
   target_atom_type_spelling,
   target_atom_value_expression,
   target_model_edge_atom_realizations,
@@ -2434,10 +2441,11 @@ fn serialize_type_expr_arrow_input_wrapped(
     o: lex_rules_literal(target: target, token_class: form.open),
     f: fn(open_source) {
       bind_outcome(
-        o: serialize_type_expr_emitted_bounded(
+        o: serialize_type_expr_boundary_bounded(
           remaining: remaining - 1,
           target: target,
           projection: projection,
+          boundary_site: FunctionBoundaryParam,
           emitted: input_node
         ),
         f: fn(input_source) {
@@ -2566,10 +2574,11 @@ fn serialize_type_expr_arrow_bounded(
             o: lex_rules_literal(target: target, token_class: form.arrow),
             f: fn(arrow_source) {
               bind_outcome(
-                o: serialize_type_expr_emitted_bounded(
+                o: serialize_type_expr_boundary_bounded(
                   remaining: remaining - 1,
                   target: target,
                   projection: projection,
+                  boundary_site: FunctionBoundaryReturn,
                   emitted: split.output
                 ),
                 f: fn(output_source) {
@@ -2668,6 +2677,135 @@ fn translate_outcome_is_catalog_lookup_miss(
   diagnostics: NonEmptyDiagnostics
 ) -> Bool {
   diagnostics.head.reason == target_atom_realization_lookup_miss
+}
+
+fn translate_outcome_is_signature_realization_miss(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == target_function_signature_realization_lookup_miss
+}
+
+// Reconstruct the SG-1 source_carrier Node from a boundary atom's binding identity. Arrow
+// domain/codomain atoms are projected (06_translate project_type_expression_node_bounded) with
+// the SOURCE atom identity passed through, so for the kernel Symbol return type the binding ==
+// symbol_kernel_type_atom and this Node == symbol_kernel_type_node() — the SG-1 row key.
+fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: []
+  }
+}
+
+// Consult the per-language signature realization catalog for the fn-boundary atom at `emitted`.
+// Returns Present(row) on a (source_carrier, boundary_site) hit; Absent when the model carries no
+// signature catalog OR no row matches (both fall back to the SG-2/binding_spellings path); Rejected
+// only on a genuine decode/ambiguity error.
+fn translate_target_function_signature_realization_for_boundary(
+  target: TargetModel,
+  emitted: Node,
+  boundary_site: FunctionBoundarySite
+) -> Outcome<Optional<TargetFunctionSignatureRealization>> {
+  match target_bundle_optional_child(
+    target: target,
+    edge_name: target_model_edge_signature_realizations
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: optional_catalog, diagnostics: _ } =>
+      match optional_catalog {
+        None => outcome_accepted(optional_absent())
+        Some { value: catalog } =>
+          bind_outcome(
+            o: type_expr_atom_binding(node: emitted),
+            f: fn(binding) {
+              match target_function_signature_realization_lookup_in_catalog_node(
+                catalog: catalog,
+                source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                boundary_site: boundary_site,
+                host_target_model: target
+              ) {
+                Accepted { value: row, diagnostics: _ } =>
+                  outcome_accepted(optional_present(row))
+                Rejected { diagnostics: r } =>
+                  if translate_outcome_is_signature_realization_miss(diagnostics: r) {
+                    outcome_accepted(optional_absent())
+                  } else {
+                    Rejected { diagnostics: r }
+                  }
+              }
+            }
+          )
+      }
+  }
+}
+
+// Serialize a fn-boundary atom: emit the signature realization's signature_type_form when a row
+// matches (SG-1b authority); otherwise fall back to the SG-2 binding-spelling path. Non-boundary
+// decl/type-alias atoms never reach here, so they retain SG-1/binding_spellings authority.
+fn serialize_type_expr_boundary_atom_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  boundary_site: FunctionBoundarySite,
+  emitted: Node
+) -> Outcome<TargetSource> {
+  match translate_target_function_signature_realization_for_boundary(
+    target: target,
+    emitted: emitted,
+    boundary_site: boundary_site
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: optional_row, diagnostics: _ } =>
+      match optional_row {
+        Present { value: row } =>
+          serialize_type_expr_emitted_bounded(
+            remaining: remaining - 1,
+            target: target,
+            projection: projection,
+            emitted: row.signature_type_form.node
+          )
+        Absent =>
+          type_expr_spelling_for_atom(target: target, node: emitted)
+      }
+  }
+}
+
+// Boundary-aware type serializer used ONLY from Arrow domain (Param) and codomain (Return) sites.
+// Atom boundaries consult signature realization; composite boundary types serialize normally.
+fn serialize_type_expr_boundary_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  boundary_site: FunctionBoundarySite,
+  emitted: Node
+) -> Outcome<TargetSource> {
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
+    )
+  } else {
+    bind_outcome(
+      o: target_type_expr_emitted_wire_decode(node: emitted, projection: projection),
+      f: fn(wire) {
+        match wire.kind {
+          TargetTypeExprAtom =>
+            serialize_type_expr_boundary_atom_bounded(
+              remaining: remaining,
+              target: target,
+              projection: projection,
+              boundary_site: boundary_site,
+              emitted: emitted
+            )
+          _ =>
+            serialize_type_expr_emitted_wire_bounded(
+              remaining: remaining,
+              target: target,
+              projection: projection,
+              wire: wire
+            )
+        }
+      }
+    )
+  }
 }
 
 fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
