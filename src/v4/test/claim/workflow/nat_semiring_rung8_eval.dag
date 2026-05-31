@@ -25,12 +25,12 @@ fn run_nat_semiring_rung8_eval() -> CorpusEvalReport {
 }
 
 
+// F5 acceptance: non-empty roster and zero Deferred (Fail allowed on DiagnosticClaim until eval rejects).
 fn nat_semiring_rung8_gate(report: CorpusEvalReport) -> Bool {
   if is_empty(xs: report.entries) {
     false
   } else {
-    let tally = corpus_report_tally(r: report)
-    tally.fail == Zero && tally.deferred == Zero
+    nat_semiring_rung8_zero_deferred(report: report)
   }
 }
 

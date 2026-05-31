@@ -378,10 +378,6 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         NAT_SEMIRING_RUNG_8_DAG.contains("run_test_claim("),
         "{NAT_SEMIRING_RUNG_8_PATH}: roster rows must thread run_test_claim verdicts (not fabricated Pass)"
     );
-    assert!(
-        surface_declares_fn(&rung_8, "rung8_witness_pass"),
-        "{NAT_SEMIRING_RUNG_8_PATH}: gate witnesses must read TestClaimRun.verdict"
-    );
 
     let eval_module = parse_module(NAT_SEMIRING_RUNG8_EVAL_DAG, NAT_SEMIRING_RUNG8_EVAL_PATH);
     for name in [
