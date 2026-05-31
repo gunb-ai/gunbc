@@ -3,8 +3,8 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `30512d680` (`main` 2026-05-31T02:30Z) — post #4061 citation fix; W2.3 Buckets A/B [#4055](https://github.com/gunb-ai/gunbc/pull/4055)/[#4066](https://github.com/gunb-ai/gunbc/pull/4066); dependency graph [#4058](https://github.com/gunb-ai/gunbc/pull/4058).  
-> **Wave posture:** MW-D8 **4/5 PROVEN** (C1, C2, C3, C5). **Remaining:** C4 `ci_selection_receipt_shadow` (`smart-stag-871`). Wave 2 active.  
+> **Tree HEAD:** `01b26df8c` (`main` 2026-05-31T02:56Z) — post #4075 maintenance; W1.5 C4 shadow [#4073](https://github.com/gunb-ai/gunbc/pull/4073) landed (Close/Receipt ledger re-adjudication pending).  
+> **Wave posture:** MW-D8 **4/5 PROVEN** formal ledger; **C4 impl landed** [#4073](https://github.com/gunb-ai/gunbc/pull/4073) — operator-facing **5/5 impl complete**, awaiting Close/Receipt row flip. Wave 2 active.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
 ## Operator summary (read this first)
@@ -21,7 +21,7 @@
 **Gated on (cross-cutting):**
 
 - **Resolve-posture bridge** (INVARIANTS A3/P5 — *not* predicate P5): blocks honest **P2** close until deleted (`scripts/v4-bootstrap-resolve-posture-gate.sh`; CI step `.github/workflows/ci.yml:378-385` — "v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)").
-- **Wave 1 exit** (MW-D8): **4/5 PROVEN** (C1, C2, C3, C5). C2 closed [#4050](https://github.com/gunb-ai/gunbc/pull/4050) falsification receipt + ledger flip (`sharp-otter-407`). **C4** receipt shadow still **GAP** — unblocked structurally post-C2. Maturation signal only — not a v0.1.0 gate.
+- **Wave 1 exit** (MW-D8): **4/5 PROVEN** formal ledger (C1, C2, C3, C5). **C4 impl landed** [#4073](https://github.com/gunb-ai/gunbc/pull/4073) (`ci_selection_receipt_shadow` shadow mode) — Close/Receipt (`sharp-otter-407`) re-adjudication pending before row flips to **5/5**. Maturation signal only — not a v0.1.0 gate.
 - **D-REL-1 / v0.1.0 (flavor iv, operator 2026-05-30T20:23Z):** `src/v4` **ships public AS-IS**, labeled **alpha / WIP** — honest state documented, not gated. Prior STRIP-`src/v4` recommendation **superseded**. This burn-down feeds `SUPPORTED.md` + `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407`). Closures upgrade v0.1.1 narrative; they do **not** block v0.1.0 tag.
 
 ---
@@ -67,7 +67,7 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | ----------- | ---------- | ----------- | ----------------------- | ------------ |
 | **W2.1** SG-1 TargetAtomRealization | Target Realization | [#3956](https://github.com/gunb-ai/gunbc/pull/3956) (held draft), [#3964](https://github.com/gunb-ai/gunbc/pull/3964) (re-dispatch) | **P3** (emit → binary) | Yes — highest-signal Wave 2 PR |
 | **W2.2** SG-5 / SG-6 | Target Realization | [#3957](https://github.com/gunb-ai/gunbc/pull/3957) **MERGED** ~22:00Z; SG-6 TBD | **P3** | Landed — carrier + translate consumer; rustc meter unchanged until emit consumes |
-| **W2.3** Phase 1.5 `CiUpsertStep<T>` | Modeling DFS + Compiler Spine | [#4055](https://github.com/gunb-ai/gunbc/pull/4055) Bucket A **MERGED**; [#4066](https://github.com/gunb-ai/gunbc/pull/4066) Bucket B **MERGED**; [#4059](https://github.com/gunb-ai/gunbc/pull/4059) partition table; Bucket C/D in flight | **P2**, **P5** (ci.dag authority) | Partial — migration slices landing; not full W2.3 close |
+| **W2.3** Phase 1.5 `CiUpsertStep<T>` | Modeling DFS + Compiler Spine | [#4055](https://github.com/gunb-ai/gunbc/pull/4055) Bucket A **MERGED**; [#4066](https://github.com/gunb-ai/gunbc/pull/4066) Bucket B **MERGED**; [#4067](https://github.com/gunb-ai/gunbc/pull/4067) Bucket C **MERGED**; [#4059](https://github.com/gunb-ai/gunbc/pull/4059) partition table; Bucket D in flight | **P2**, **P5** (ci.dag authority) | Partial — migration slices landing; not full W2.3 close |
 | **W2.4** Phase 1b A3–A14 + `check-*` deletion | Compiler Spine | *(dispatch TBD post-W2.3)* | **P2**, **P5** | No — post-Jun 1 |
 | **W2.5** Phase 4 fixture widening | Ladder/Fixture | [#4018](https://github.com/gunb-ai/gunbc/pull/4018) **MERGED** (branch_dispatch, loop_linear_bound); [#4028](https://github.com/gunb-ai/gunbc/pull/4028) field_patch_monoid; rung specs #4034–#4039 | **P4**, **P5** | Partial — ladder path, not T-15 fixpt |
 | **W2.6** Cross-target leaf-model (python.dag) | Modeling DFS + TR + TestClaim | [#4022](https://github.com/gunb-ai/gunbc/pull/4022) **MERGED** 21:05Z | **P3**, **P5** | Landed — python R1 mirror of rust.dag |
@@ -203,6 +203,11 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4066](https://github.com/gunb-ai/gunbc/pull/4066) | ~02:30 | W2.3 Bucket B | **P2**, **P5** | YELLOW — testclaim CiUpsertStep row |
 | [#4064](https://github.com/gunb-ai/gunbc/pull/4064) | ~02:15 | W3.6 | **P5** | YELLOW stronger — rung-8 nat_semiring corpus execution minimum |
 | [#4040](https://github.com/gunb-ai/gunbc/pull/4040) | ~02:00 | emit | **P3** | YELLOW — v2 Python TCO + match/if (weather, nat_semiring) |
+| [#4067](https://github.com/gunb-ai/gunbc/pull/4067) | ~02:20 | W2.3 Bucket C | **P2**, **P5** | YELLOW — lens_ci_registry_execution CiUpsertStep row |
+| [#4063](https://github.com/gunb-ai/gunbc/pull/4063) | ~02:25 | W3.4 | **P5** | YELLOW — post-emit algebra-law preservation (additive-Monoid tranche-1) |
+| [#4071](https://github.com/gunb-ai/gunbc/pull/4071) | ~02:45 | Maintenance | *(tracker)* | Post-#4061 W2.3 buckets + extended landing log |
+| [#4073](https://github.com/gunb-ai/gunbc/pull/4073) | ~02:52 | W1.5 C4 | **P2**, **P5** | MW-D8 C4 impl — `ci_selection_receipt_shadow` shadow fixture (ledger flip pending) |
+| [#4075](https://github.com/gunb-ai/gunbc/pull/4075) | 02:56 | Maintenance | *(tracker)* | Post-#4071 Bucket C + landing log refresh |
 
 ---
 
@@ -212,9 +217,9 @@ For release-notes / `snappy-bee-513` — honest snapshot at v0.1.0 tag under fla
 
 ```text
 v4-done predicates: 0/6 PROVEN | 5 YELLOW | 1 GRAY (P6)
-MW-D8 Wave 1 exit:  4/5 PROVEN (C2 closed #4050; C4 receipt shadow remaining)
-Wave 2 landed:      W2.6 #4022, W2.2 #3957 (SG-5), W2.5 #4018/#4028/#4015, W1.1 #4014
-Wave 2 in flight:   W2.1 #3956/#3964 (SG-1), W1.5 C4 receipt shadow
+MW-D8 Wave 1 exit:  4/5 PROVEN formal (C4 impl #4073 landed; Close/Receipt pending)
+Wave 2 landed:      W2.6 #4022, W2.2 #3957 (SG-5), W2.5 #4018/#4028/#4015, W1.1 #4014, W1.5 #4073 (C4 shadow)
+Wave 2 in flight:   W2.1 #3956/#3964 (SG-1), W2.3 Bucket D
 Public tier:        alpha/WIP — no compile-clean guarantee on v4 surfaces
 Strongest mover:    P5 (TestClaim / leaf-model path)
 No predicate GREEN flips forecast at tag time.
