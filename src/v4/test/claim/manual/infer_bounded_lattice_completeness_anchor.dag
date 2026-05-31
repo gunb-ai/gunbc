@@ -22,7 +22,6 @@ import v4.std.algebra {
   bounded_lattice_field_lattice,
   bounded_lattice_field_top,
   bounded_lattice_instance_completeness,
-  bounded_lattice_instance_shape,
   lattice_field_join,
   lattice_field_meet,
   length
@@ -127,9 +126,15 @@ data anchor_module_with_partial_and_consumer: Node = Node {
 }
 
 
-data anchor_bounded_lattice_instance_shape_holds: Bool =
-  bounded_lattice_instance_shape(instance: anchor_complete_bounded_lattice_instance)
-    && bounded_lattice_instance_shape(instance: anchor_partial_bounded_lattice_instance)
+data anchor_bounded_lattice_completeness_classifies_instances: Bool =
+  match bounded_lattice_instance_completeness(instance: anchor_complete_bounded_lattice_instance) {
+    BoundedLatticeComplete => true
+    _ => false
+  }
+    && match bounded_lattice_instance_completeness(instance: anchor_partial_bounded_lattice_instance) {
+      BoundedLatticePartial { missing: MissingMeet } => true
+      _ => false
+    }
 
 
 data anchor_non_bl_node_is_not_complete_variant: Bool =

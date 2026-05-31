@@ -17,8 +17,8 @@ import v4.std.algebra {
   MissingJoin,
   MissingLatticeField,
   Empty,
+  any,
   bounded_lattice_instance_completeness,
-  bounded_lattice_instance_is_partial,
   list_snoc_item
 }
 import v4.compiler.resolve { ResolvedTree }
@@ -219,17 +219,11 @@ fn partial_bounded_lattice_reference(
     match acc {
       Present { value: _ } => acc
       Absent =>
-        fold(partials, init: Absent, f: fn(inner, p) {
-          match inner {
-            Present { value: _ } => inner
-            Absent =>
-              if e.target == p {
-                Present { value: p }
-              } else {
-                Absent
-              }
-          }
-        })
+        if any(xs: partials, predicate: fn(p) { e.target == p }) {
+          Present { value: e.target }
+        } else {
+          Absent
+        }
     }
   })
 }
@@ -254,10 +248,10 @@ fn infer_bounded_lattice_consumer_gate(
 
 
 fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
-  if bounded_lattice_instance_is_partial(instance: n) {
-    [n]
-  } else {
-    []
+  match bounded_lattice_instance_completeness(instance: n) {
+    BoundedLatticePartial { missing: _ } => [n]
+    NotBoundedLatticeInstance => []
+    BoundedLatticeComplete => []
   }
 }
 
