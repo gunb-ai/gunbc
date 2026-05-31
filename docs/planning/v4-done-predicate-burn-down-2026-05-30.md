@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `4ac192cd6` (`main` 2026-05-31T07:10Z) — post-cascade ([#4094](https://github.com/gunb-ai/gunbc/pull/4094)/[#4096](https://github.com/gunb-ai/gunbc/pull/4096)); Wave 1 EXIT ([#4082](https://github.com/gunb-ai/gunbc/pull/4082)); TR-lane complete; **6991** rustc residual ([#4086](https://github.com/gunb-ai/gunbc/pull/4086)).  
+> **Tree HEAD:** `0a0d721e2` (`main` 2026-05-31T07:26Z) — post-#4098 maintenance; P2-B M2 probe PASS ([#4097](https://github.com/gunb-ai/gunbc/pull/4097)); P3 tail worksheets ([#4099](https://github.com/gunb-ai/gunbc/pull/4099), SG-RC-LAYERING); P5 Layer 2 substrate ([#4095](https://github.com/gunb-ai/gunbc/pull/4095)).  
 > **Wave posture:** MW-D8 **5/5 PROVEN — Wave 1 EXIT** ([#4073](https://github.com/gunb-ai/gunbc/pull/4073) + [#4082](https://github.com/gunb-ai/gunbc/pull/4082) C4). **Wave 2 TR-lane COMPLETE** (SG-1/2/5/6 on main, keen-heron 06:52Z). W2.3 A+B+C+E landed; W2.4+ post-Jun 1.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -20,7 +20,7 @@
 
 **Gated on (cross-cutting):**
 
-- **Resolve-posture bridge** (INVARIANTS A3/P5 — *not* predicate P5): blocks honest **P2** close until deleted (`scripts/v4-bootstrap-resolve-posture-gate.sh`; CI step `.github/workflows/ci.yml:378-385` — "v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)").
+- **Resolve-posture bridge** (INVARIANTS A3/P5 — *not* predicate P5): still **live on `main`**; P2-B M2 probe **PASS** ([#4097](https://github.com/gunb-ai/gunbc/pull/4097)) is safety-net evidence — not deletion. Blocks honest **P2** close until removed (`scripts/v4-bootstrap-resolve-posture-gate.sh`; `.github/workflows/ci.yml:378-385`).
 - **Wave 1 exit** (MW-D8): **5/5 PROVEN — EXIT achieved** ([#4073](https://github.com/gunb-ai/gunbc/pull/4073) + [#4082](https://github.com/gunb-ai/gunbc/pull/4082) C4 shadow receipt). Companion ledger may lag — cascade authority [#4094](https://github.com/gunb-ai/gunbc/pull/4094). Maturation signal only — not a v0.1.0 gate.
 - **Wave 2 TR-lane:** SG-1/2/5/6 all **on main** — substrate complete; P3 tail (8 receipt-producing classes) routed per [#4086](https://github.com/gunb-ai/gunbc/pull/4086) catalog.
 - **D-REL-1 / v0.1.0 (flavor iv, operator 2026-05-30T20:23Z):** `src/v4` **ships public AS-IS**, labeled **alpha / WIP** — honest state documented, not gated. Prior STRIP-`src/v4` recommendation **superseded**. This burn-down feeds `SUPPORTED.md` + `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407`). Closures upgrade v0.1.1 narrative; they do **not** block v0.1.0 tag.
@@ -34,7 +34,7 @@
 | Predicate | Jun 1 color forecast | Rationale |
 | --------- | -------------------- | --------- |
 | **P1** | **YELLOW** (unchanged) | Meta-gate; `T-35`, `T-38`, `T-31`, `T-32`, `T-36` still open. Wave 2 CI migration does not dissolve per-task receipts. |
-| **P2** | **YELLOW** (stronger) | P2-A probe: compiler `*.dag` closure **0 diagnostics** without bridge (per [#4094](https://github.com/gunb-ai/gunbc/pull/4094)). Full PROVEN blocked on **P2-B** bridge deletion (`ci.yml:378-385`) — operator-authorization-blocked. |
+| **P2** | **YELLOW** (stronger) | P2-A + **P2-B M2 probe PASS** ([#4097](https://github.com/gunb-ai/gunbc/pull/4097)) — full v4 corpus bootstrap without bridge sim. Bridge **still live** on `main`; full PROVEN requires **P2-B deletion** (operator-authorization-blocked). |
 | **P3** | **YELLOW** (stronger) | **6991** rustc residual (was 7951; SG-1 −2978; SG-7 cleared). TR-lane **COMPLETE** (SG-1/2/5/6 on main). 8 receipt-producing classes routed per [#4086](https://github.com/gunb-ai/gunbc/pull/4086). **emit→binary PROVEN** still not. |
 | **P4** | **YELLOW** (unchanged) | T-15 runner scaffold; B1 pins open. W2.5 ladder fixtures support path only; bit-identical fixpt is Wave 3 (W3.5). |
 | **P5** | **YELLOW** (strongest Jun 1 mover) | **Layer 1 fixture/law bundle 3/3 CLOSED** (Wa-1 [#4079](https://github.com/gunb-ai/gunbc/pull/4079) + Wa-2 [#4080](https://github.com/gunb-ai/gunbc/pull/4080) + P5-D tranche-2 [#4089](https://github.com/gunb-ai/gunbc/pull/4089)). **Layer 2 OPEN** — structural bridge + deletion; [#4091](https://github.com/gunb-ai/gunbc/pull/4091) elastic CI **ratified** on main (design authority for replacement). Not GREEN. |
@@ -113,10 +113,10 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **Burn-down** | **YELLOW** (stronger) |
 | **Owner** | **Compiler Spine** (`smart-stag-871`) |
 | **Blocking receipt** | v4 compiler-of-record full pipeline; **no** resolve-posture bridge masking failure |
-| **Evidence today** | P2-A probe: compiler `*.dag` closure **0 diagnostics** without bridge (per [#4094](https://github.com/gunb-ai/gunbc/pull/4094)). Bridge **OPEN** for full PROVEN — P2-B operator-authorization-blocked (`scripts/v4-bootstrap-resolve-posture-gate.sh`; `.github/workflows/ci.yml:378-385`). |
-| **Today’s PRs** | **#4091** elastic CI **ratified** (c05a5a84). **#4074** + **#4092** CI runtime drops (~14min savings). **#4078** W2.3 Bucket E shadow bijection. |
+| **Evidence today** | P2-A (compiler closure) + **P2-B M2 probe PASS** ([#4097](https://github.com/gunb-ai/gunbc/pull/4097)) — `v4-bootstrap-viability.sh` exit 0 with bridge unset. Resolve-posture bridge **still present** in CI until deletion lands. |
+| **Today’s PRs** | **#4097** P2-B safety-net probe. **#4095** elastic compute fabric worksheets (Layer 2 substrate). Prior: **#4091**, **#4074**, **#4092**. |
 | **Wave 2 PR** | W2.3 A+B+C+E landed; W2.4 `check-*` deletion post-Jun 1 |
-| **Re-check** | **2026-06-02** — P2-B bridge deletion authorization or named follow-up receipt |
+| **Re-check** | **2026-06-02** — P2-B bridge **deletion** authorization (probe PASS ≠ bridge removed) |
 
 ### P3 — v4 emits Rust that compiles to a binary
 
@@ -125,9 +125,9 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **Burn-down** | **YELLOW** |
 | **Owner** | **Compiler Spine** + **Target Realization** (`keen-heron-687`) |
 | **Blocking receipt** | v4-emitted Rust `cargo`-clean for release binary; bootstrap `compiled:` under v4 emit |
-| **Evidence today** | **6991** rustc residual (was 7951; SG-1 −2978; SG-7 cleared). TR-lane **COMPLETE** — SG-1 [#3956](https://github.com/gunb-ai/gunbc/pull/3956), SG-2 [#3962](https://github.com/gunb-ai/gunbc/pull/3962), SG-5 [#3957](https://github.com/gunb-ai/gunbc/pull/3957), SG-6 [#4085](https://github.com/gunb-ai/gunbc/pull/4085). 8 receipt-producing classes per [#4086](https://github.com/gunb-ai/gunbc/pull/4086); **emit→binary PROVEN** still not |
-| **Today’s PRs** | **#4085** SG-6. **#4086** catalog. **#4076** Go emit fix. **#4081** Wc cross-target. Cascade per [#4094](https://github.com/gunb-ai/gunbc/pull/4094). |
-| **Wave 2 PR** | TR-lane **COMPLETE** — tail routing per #4086 (SG-RC-LAYERING, SG-1b, …) |
+| **Evidence today** | **6991** rustc residual (was 7951; SG-1 −2978; SG-7 cleared). TR-lane **COMPLETE**. Tail worksheets landing: **SG-1b** [#4099](https://github.com/gunb-ai/gunbc/pull/4099), **SG-RC-LAYERING** (§10.0 on main). **emit→binary PROVEN** still not. |
+| **Today’s PRs** | **#4099** SG-1b worksheet. SG-RC-LAYERING §10.0. Prior cascade per [#4094](https://github.com/gunb-ai/gunbc/pull/4094)/[#4098](https://github.com/gunb-ai/gunbc/pull/4098). |
+| **Wave 2 PR** | TR-lane **COMPLETE** — tail dispatch per #4086 routing (SG-RC-LAYERING, SG-1b, …) |
 | **Re-check** | **2026-06-02** — emit consumer receipts on 8-class tail (#3934 program) |
 
 ### P4 — Bit-identical self-output (stage1 == stage2)
@@ -149,8 +149,8 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **Burn-down** | **YELLOW** (strongest movement — Layer 1 closed) |
 | **Owner** | **Runtime/TestClaim** (`quick-lark` / spawn) + **Compiler Spine** |
 | **Blocking receipt** | Modeled T-22 eval + structured `TestClaimRun` verdicts in CI; delete `scripts/v4-testclaim-corpus-gate.sh` (**Layer 2** — still OPEN) |
-| **Evidence today** | **Layer 1 fixture/law bundle 3/3 CLOSED** — Wa-1 [#4079](https://github.com/gunb-ai/gunbc/pull/4079), Wa-2 [#4080](https://github.com/gunb-ai/gunbc/pull/4080), P5-D tranche-2 [#4089](https://github.com/gunb-ai/gunbc/pull/4089). Structural bridge still live. **#4091** elastic CI ratified — design authority for Layer 2 replacement. |
-| **Today’s PRs** | **#4079**, **#4080**, **#4089** (Layer 1 close). **#4091** CI redesign ratified. **#4081** Wc cross-target L5. Not GREEN — Layer 2 bridge deletion required. |
+| **Evidence today** | **Layer 1 fixture/law bundle 3/3 CLOSED**. **Layer 2 OPEN** — structural bridge live. **#4091** ratified + **#4095** elastic compute fabric / cache interface worksheets (§4.0f A/B; `dsl/std` + `v4.std` scope per #4096). Not GREEN. |
+| **Today’s PRs** | **#4095** Layer 2 substrate worksheets. **#4091** CI redesign ratified. Layer 1 prior: **#4079**, **#4080**, **#4089**. |
 | **Wave 2 PR** | W2.6 **landed** (#4022); Layer 2 structural-bridge replacement under #4091 framing |
 | **Re-check** | **2026-06-01** — Layer 2 deletion schedule + T-38 runner dispatch (MW-D2 expedite) |
 
@@ -227,6 +227,11 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4091](https://github.com/gunb-ai/gunbc/pull/4091) | ~07:04 | CI redesign | **P2**, **P5** | Elastic CI **ratified** on main (c05a5a84) — Layer 2 design authority |
 | [#4094](https://github.com/gunb-ai/gunbc/pull/4094) | ~07:05 | Planning | *(coordination)* | Post-cascade dep graph snapshot — Wave 1 EXIT + 6991 rustc |
 | [#4096](https://github.com/gunb-ai/gunbc/pull/4096) | ~07:10 | Planning | *(coordination)* | Post-#4091-ratification dep graph refresh |
+| [#4098](https://github.com/gunb-ai/gunbc/pull/4098) | ~07:26 | Maintenance | *(tracker)* | Post-cascade burn-down — Wave 1 EXIT + TR complete + 6991 rustc |
+| [#4097](https://github.com/gunb-ai/gunbc/pull/4097) | ~07:23 | Close/Receipt P2-B | **P2** | M2 probe PASS — full v4 corpus bootstrap without bridge sim; bridge still live |
+| [#4099](https://github.com/gunb-ai/gunbc/pull/4099) | ~07:20 | P3 tail | **P3** | SG-1b function-signature §10.0 worksheet |
+| [#4100](https://github.com/gunb-ai/gunbc/pull/4100) | ~07:21 | P3 tail | **P3** | SG-RC-LAYERING §10.0 worksheet (~700 errors / 10% residual) |
+| [#4095](https://github.com/gunb-ai/gunbc/pull/4095) | ~07:24 | P5 Layer 2 | **P5** | Elastic compute fabric + cache interface worksheets (§4.0f A/B) |
 
 ---
 
@@ -239,7 +244,8 @@ v4-done predicates: 0/6 PROVEN | 5 YELLOW | 1 GRAY (P6)
 MW-D8 Wave 1 exit:  5/5 PROVEN — EXIT achieved (#4073 + #4082 C4)
 Wave 2 TR-lane:     COMPLETE (SG-1/2/5/6 on main)
 Wave 2 W2.3:        A+B+C+E complete (#4078); W2.4+ post-Jun 1
-P5 Layer 1:         3/3 CLOSED (Wa-1 #4079 + Wa-2 #4080 + P5-D #4089); Layer 2 bridge OPEN
+P2 probe:           P2-B M2 PASS (#4097); bridge still live until deletion
+P5 Layer 1:         3/3 CLOSED (Wa-1 #4079 + Wa-2 #4080 + P5-D #4089); Layer 2 bridge OPEN (#4095 worksheets)
 P3 rustc meter:     ~6991 (was ~7951; SG-1 -2978; #4086 catalog)
 CI substrate:       #4091 elastic CI ratified; #4074+#4092 runtime drops
 Public tier:        alpha/WIP — no compile-clean guarantee on v4 surfaces
