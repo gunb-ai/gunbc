@@ -387,6 +387,11 @@ type CostReceipt {
   cost_class: CostClass
   amount: Option<Float>
 }
+
+type CacheOutcomeSummary {
+  hit_store: Option<CacheStoreId>
+  miss_chain: List<CacheStoreId>
+}
 ```
 
 ### 1.7 Cache substrate (`dsl/std/cache_substrate.dag`)
@@ -485,6 +490,9 @@ type StorageMedium = Nvme | Ssd | Hdd | NetworkAttached | EphemeralFs
 type LatencyClass = UltraLow | Low | Medium | High
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
 type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
+type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
+type OomSignalClass = KillProcess | Throttle | ReportOnly
+type LogicalTime = NonEmptyStr where brand("LogicalTime")   // run-scoped instant; grounding at emit
 type InstructionSet = /* landing PR: avx2, neon, … as needed for srv1/srv2 + Mac */
 type ByteSize = Measure<Memory, _>           // std.measure — single numeric authority
 type Bandwidth = Measure<DataRate, _>
