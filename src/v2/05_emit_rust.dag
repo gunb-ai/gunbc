@@ -1293,6 +1293,26 @@ fn symbol_defining_mod_filename(name: String, registry: Map<String, ItemInfo>, i
   item_defining_mod_filename(name: name, registry: registry, fallback_mod: import_mod)
 }
 
+type ImportNamesByModAcc {
+  names_by_mod: Map<String, List<String>>
+  mod_order: List<String>
+}
+
+fn fold_import_names_by_mod(acc: ImportNamesByModAcc, mod_name: String, names: List<String>) -> ImportNamesByModAcc {
+  let merged = match map_get(acc.names_by_mod, mod_name) {
+    Some { value: existing } => unique_strings(items: concat(existing, names))
+    None => unique_strings(items: names)
+  }
+  let mod_order = match map_get(acc.names_by_mod, mod_name) {
+    Some { value: _ } => acc.mod_order
+    None => list_push(acc.mod_order, mod_name)
+  }
+  ImportNamesByModAcc {
+    names_by_mod: map_insert(acc.names_by_mod, mod_name, merged),
+    mod_order: mod_order
+  }
+}
+
 fn emit_pub_use_from_module(mod_filename: String, names: List<String>, registry: Map<String, ItemInfo>) -> String {
   if names |> count == 0 {
     ""
