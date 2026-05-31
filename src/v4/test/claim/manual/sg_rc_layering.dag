@@ -38,7 +38,6 @@ import v4.std.target_model {
   target_reference_layer_apply_value_expression,
   target_reference_layer_probe_from_emitted_type,
   target_type_expr_atom_emitted,
-  target_atom_realization_conj_child,
   target_value_expression_field_inner,
   target_value_expression_symbol_identity,
   target_value_expression_node
@@ -46,6 +45,7 @@ import v4.std.target_model {
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
+import v4.std.node_query { find_named_child }
 import v4.std.text { String }
 import v4.std.verification {
   Boundary,
@@ -137,10 +137,10 @@ fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {
 }
 
 fn sg_rc_value_expr_inner_node(expr: TargetValueExpression) -> Node {
-  target_atom_realization_conj_child(
-    row_node: expr.node,
-    edge_name: target_value_expression_field_inner
-  )
+  match find_named_child(root: expr.node, name: target_value_expression_field_inner) {
+    Accepted { value: node, diagnostics: _ } => node
+    Rejected { diagnostics: _ } => sg_rc_fail_node()
+  }
 }
 
 // F1 value half — Rc wrap vs owned inner moves together with type text (§4 / §6).
