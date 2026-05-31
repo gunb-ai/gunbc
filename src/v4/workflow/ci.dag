@@ -1823,9 +1823,9 @@ fn ci_carveout_reason_for_step(step_id: CiStepId, carveouts: List<CiCarveout>) -
   fold(
     carveouts,
     init: ci_selection_shadow_reason,
-    f: fn(acc, row) {
-      if ci_step_id_eq(left: step_id, right: row.step_id) {
-        row.reason_code
+    f: fn(acc, carveout) {
+      if ci_step_id_eq(left: step_id, right: carveout.step_id) {
+        carveout.reason_code
       } else {
         acc
       }
@@ -1835,8 +1835,8 @@ fn ci_carveout_reason_for_step(step_id: CiStepId, carveouts: List<CiCarveout>) -
 
 
 fn ci_step_in_carveouts(step_id: CiStepId, carveouts: List<CiCarveout>) -> Bool {
-  count_where(xs: carveouts, predicate: fn(row) {
-    ci_step_id_eq(left: step_id, right: row.step_id)
+  count_where(xs: carveouts, predicate: fn(carveout) {
+    ci_step_id_eq(left: step_id, right: carveout.step_id)
   }) != 0
 }
 
@@ -2336,10 +2336,11 @@ fn ci_step_selection_decision_is_carved_out(row: CiStepSelection) -> Bool {
 fn ci_receipt_step_decision_matches(
   receipt: CiSelectionReceipt,
   step_id: CiStepId,
-  predicate: fn(CiStepSelection) -> Bool
+  decision_pred: fn(CiStepSelection) -> Bool
 ) -> Bool {
-  count_where(xs: receipt.decisions, predicate: fn(row) {
-    ci_step_id_eq(left: row.step_id, right: step_id) && predicate(row: row)
+  count_where(xs: receipt.decisions, predicate: fn(selection) {
+    ci_step_id_eq(left: selection.step_id, right: step_id)
+      && decision_pred(selection: selection)
   }) != 0
 }
 
@@ -2347,7 +2348,7 @@ fn ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds() -> Bool {
   ci_receipt_step_decision_matches(
     receipt: ci_selection_receipt_shadow_fixture_receipt,
     step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
-    predicate: ci_step_selection_decision_is_carved_out
+    decision_pred: ci_step_selection_decision_is_carved_out
   )
 }
 
@@ -2358,7 +2359,7 @@ fn ci_selection_receipt_shadow_fixture_m1_probe_run_holds() -> Bool {
       job: m1_rust_emit_probe_execution,
       step: m1_rust_emit_probe_execution
     },
-    predicate: ci_step_selection_decision_is_run
+    decision_pred: ci_step_selection_decision_is_run
   )
 }
 
