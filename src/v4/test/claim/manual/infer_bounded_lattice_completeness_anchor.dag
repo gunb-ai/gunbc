@@ -10,20 +10,24 @@ import v4.compiler.infer {
   InferredTree,
   infer,
   infer_bounded_lattice_consumer_gate,
-  infer_bounded_lattice_instance_gate
+  infer_bounded_lattice_instance_gate,
+  partial_bounded_lattice_instances_in_tree
 }
 import v4.std.algebra {
+  BoundedLatticeComplete,
   BoundedLatticePartial,
   MissingMeet,
+  NotBoundedLatticeInstance,
   bounded_lattice_field_bottom,
   bounded_lattice_field_lattice,
   bounded_lattice_field_top,
   bounded_lattice_instance_completeness,
   bounded_lattice_instance_shape,
   lattice_field_join,
-  lattice_field_meet
+  lattice_field_meet,
+  length
 }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic { Outcome, Rejected }
 import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 
@@ -31,6 +35,8 @@ data anchor_meet_sym: Symbol = anchor_meet_sym
 data anchor_join_sym: Symbol = anchor_join_sym
 data anchor_top_sym: Symbol = anchor_top_sym
 data anchor_bottom_sym: Symbol = anchor_bottom_sym
+data anchor_partial_decl_sym: Symbol = anchor_partial_decl_sym
+data anchor_consumer_decl_sym: Symbol = anchor_consumer_decl_sym
 
 
 fn anchor_atom_node(s: Symbol) -> Node {
@@ -106,15 +112,38 @@ data anchor_consumer_of_partial: Node = Node {
 }
 
 
+data anchor_module_with_partial_and_consumer: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    anchor_named_edge(
+      name: anchor_partial_decl_sym,
+      target: anchor_partial_bounded_lattice_instance
+    ),
+    anchor_named_edge(
+      name: anchor_consumer_decl_sym,
+      target: anchor_consumer_of_partial
+    )
+  ]
+}
+
+
 data anchor_bounded_lattice_instance_shape_holds: Bool =
   bounded_lattice_instance_shape(instance: anchor_complete_bounded_lattice_instance)
     && bounded_lattice_instance_shape(instance: anchor_partial_bounded_lattice_instance)
 
 
+data anchor_non_bl_node_is_not_complete_variant: Bool =
+  match bounded_lattice_instance_completeness(instance: anchor_atom_node(s: anchor_top_sym)) {
+    NotBoundedLatticeInstance => true
+    BoundedLatticeComplete => false
+    BoundedLatticePartial { missing: _ } => false
+  }
+
+
 data anchor_complete_bounded_lattice_completeness_ok: Bool =
   match bounded_lattice_instance_completeness(instance: anchor_complete_bounded_lattice_instance) {
-    BoundedLatticePartial { missing: _ } => false
-    _ => true
+    BoundedLatticeComplete => true
+    _ => false
   }
 
 
@@ -123,6 +152,12 @@ data anchor_partial_bounded_lattice_missing_meet: Bool =
     BoundedLatticePartial { missing: MissingMeet } => true
     _ => false
   }
+
+
+data anchor_partials_collected_from_module: Bool =
+  length(
+    xs: partial_bounded_lattice_instances_in_tree(tree: anchor_module_with_partial_and_consumer)
+  ) == 1
 
 
 data anchor_instance_gate_rejects_partial: Outcome<Node> =
@@ -140,5 +175,16 @@ data anchor_consumer_gate_rejects_partial_reference: Outcome<Node> =
   )
 
 
-data anchor_infer_rejects_partial_instance_tree: Outcome<InferredTree> =
-  infer(tree: anchor_partial_bounded_lattice_instance)
+data anchor_infer_rejects_consumer_tree: Outcome<InferredTree> =
+  infer(tree: anchor_module_with_partial_and_consumer)
+
+
+fn anchor_infer_consumer_tree_is_rejected() -> Bool {
+  match anchor_infer_rejects_consumer_tree {
+    Rejected { diagnostics: _ } => true
+    _ => false
+  }
+}
+
+
+data anchor_infer_consumer_tree_rejects: Bool = anchor_infer_consumer_tree_is_rejected()
