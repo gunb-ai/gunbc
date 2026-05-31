@@ -36,8 +36,10 @@ class** and tracked only as a derived residual meter (see §4 falsification crit
 This receipt does **not** re-run the M1 probe. The current live ratchet meter is the committed
 post-#4115 probe (`docs/audit/v4-rustc-error-catalog-2026-05-31-post-p5.m1-probe-summary.txt`,
 PR #4122, `origin/main` at `d015b76dd` — two docs/substrate commits below current HEAD `f7ce371c6`),
-which is the authoritative current measurement. The SG-3-named bands are **pinned (zero Δ)** across the
-#4086 → #4122 interval, so a fresh probe would regenerate identical numbers and add no measurement
+which is the authoritative current measurement. Four of the five SG-3-named bands are **pinned (zero Δ)**
+across the #4086 → #4122 interval; the fifth (`E0560`) ticked **+4**, and that tick is itself a
+*primary-driven* motion (new SG-2 field-projection sites from the #4105/#4107 substrate landings — see
+§2), not independent SG-3 growth. A fresh probe would regenerate the same numbers and add no measurement
 signal. (M1-probe re-run was additionally infeasible at author time — the build host was
 fork-exhausted: ~8k live processes, `fork: Resource temporarily unavailable`. This receipt is an
 analytic classification, not a new probe.)
