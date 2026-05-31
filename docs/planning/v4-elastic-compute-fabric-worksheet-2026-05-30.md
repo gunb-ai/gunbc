@@ -315,6 +315,7 @@ type StorageMount { mount_path: NonEmptyStr, device: StorageDevice, lifecycle: P
 | **P-CF-WITNESS** | `Witness<C>` from v4 mirror; dsl uses 🟡 where needed |
 | **P-CF-INGRESS** | `artifact_refs_from_upsert_inputs` types check against landed `UpsertInputRef` / `ChangeSet` |
 | **P-CF-GENERIC** | `WorkUnit<T>`, `ExecutionReceipt<T>` generics |
+| **P-CF-COST-MODEL** | `ProcessorCostModel` / `ProviderCostModel` per-provider `data` rows (§1.4) |
 
 ---
 

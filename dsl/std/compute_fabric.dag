@@ -148,7 +148,7 @@ type ComputeHost {
   network_interfaces: List<NetworkInterface>
 }
 
-// 🟡 land per-provider rows with supply facts (Worksheet A §1.4).
+// 🟡 P-CF-COST-MODEL — dissolve when per-provider `data` rows land (Worksheet A §1.4 / §7).
 type ProcessorCostModel { placeholder: Bool }
 type ProviderCostModel { placeholder: Bool }
 
