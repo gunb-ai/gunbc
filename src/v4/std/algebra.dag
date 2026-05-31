@@ -671,29 +671,10 @@ fn conj_named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
 }
 
 
-fn bounded_lattice_instance_shape(instance: Node) -> Bool {
-  conj_has_unique_named_child(root: instance, name: bounded_lattice_field_lattice)
-    && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_top)
-    && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_bottom)
-}
-
-
-fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeInstanceCompleteness {
-  match conj_named_child_lookup(root: lattice, name: lattice_field_meet) {
-    NamedChildMissing => BoundedLatticePartial { missing: MissingMeet }
-    NamedChildAmbiguous => BoundedLatticePartial { missing: MissingMeet }
-    NamedChildFound { target: _ } =>
-      match conj_named_child_lookup(root: lattice, name: lattice_field_join) {
-        NamedChildMissing => BoundedLatticePartial { missing: MissingJoin }
-        NamedChildAmbiguous => BoundedLatticePartial { missing: MissingJoin }
-        NamedChildFound { target: _ } => BoundedLatticeComplete
-      }
-  }
-}
-
-
 fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
-  if bounded_lattice_instance_shape(instance: instance) {
+  if conj_has_unique_named_child(root: instance, name: bounded_lattice_field_lattice)
+    && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_top)
+    && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_bottom) {
     match conj_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
       NamedChildFound { target: lattice } =>
         bounded_lattice_lattice_field_completeness(lattice: lattice)
@@ -702,15 +683,6 @@ fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstan
     }
   } else {
     NotBoundedLatticeInstance
-  }
-}
-
-
-fn bounded_lattice_instance_is_partial(instance: Node) -> Bool {
-  match bounded_lattice_instance_completeness(instance: instance) {
-    BoundedLatticePartial { missing: _ } => true
-    NotBoundedLatticeInstance => false
-    BoundedLatticeComplete => false
   }
 }
 
