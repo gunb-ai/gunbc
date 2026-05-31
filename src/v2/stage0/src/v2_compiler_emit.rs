@@ -3733,6 +3733,109 @@ pub fn emit_unified_init_block_stmts(
     }
 }
 
+pub fn emit_tco_match_go(
+    scrutinee_str: String,
+    arms: Rc<Vec<Rc<Node>>>,
+    depth: i64,
+    fn_name: String,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+) -> String {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        let bs = language_spec(RenderTarget::Go).block_syntax.clone();
+        let case_depth = (depth.clone() + 1);
+        let body_depth = (case_depth.clone() + 1);
+        let arm_strs = Rc::new({
+            let mut __result = Vec::new();
+            for arm in arms.iter().cloned() {
+                __result.push({
+                    let bindings =
+                        emit_go_match_arm_bindings(arm.clone(), body_depth.clone(), si.clone());
+                    let tco_body = emit_unified_tco_expr(
+                        Rc::new(TcoFrame {
+                            expr: arm_body(arm.clone()),
+                            scope: scope.clone(),
+                            depth: body_depth.clone(),
+                        }),
+                        fn_name.clone(),
+                        params.clone(),
+                        RenderTarget::Go,
+                        registry.clone(),
+                        |expr, sc, d| {
+                            emit_unified_typed_expr(
+                                expr.clone(),
+                                RenderTarget::Go,
+                                registry.clone(),
+                                sc.clone(),
+                                d.clone(),
+                                1024,
+                                render_pattern.clone(),
+                            )
+                        },
+                        |frame| {
+                            emit_unified_tco_match(
+                                frame.clone(),
+                                fn_name.clone(),
+                                params.clone(),
+                                RenderTarget::Go,
+                                registry.clone(),
+                                render_pattern.clone(),
+                                render_init_stmts.clone(),
+                            )
+                        },
+                        render_init_stmts.clone(),
+                    );
+                    let body_str = emit_match_arm_body_stmt(RenderTarget::Go, tco_body.clone());
+                    let guard_str = emit_arm_guard(arm.clone(), RenderTarget::Go, |g| {
+                        emit_unified_typed_expr(
+                            g.clone(),
+                            RenderTarget::Go,
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            1024,
+                            render_pattern.clone(),
+                        )
+                    });
+                    emit_match_arm_line(
+                        arm.clone(),
+                        RenderTarget::Go,
+                        case_depth.clone(),
+                        body_depth.clone(),
+                        v2_rt::concat(bindings.clone(), body_str.clone()),
+                        guard_str.clone(),
+                        render_pattern.clone(),
+                    )
+                });
+            }
+            __result
+        });
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat("switch __gunbcMatch := ".to_string(), scrutinee_str),
+                                ".(type)".to_string(),
+                            ),
+                            bs.block_open.clone(),
+                        ),
+                        arm_strs.join(&"\n".to_string()),
+                    ),
+                    "\n".to_string(),
+                ),
+                make_indent(depth.clone()),
+            ),
+            bs.block_close.clone(),
+        )
+    }
+}
+
 pub fn emit_unified_tco_match(
     frame: Rc<TcoFrame>,
     fn_name: String,
@@ -3755,47 +3858,62 @@ pub fn emit_unified_tco_match(
                 1024,
                 render_pattern.clone(),
             );
-            let arm_strs = Rc::new({
-                let mut __result = Vec::new();
-                for arm in arm_list.iter().cloned() {
-                    __result.push(emit_unified_tco_match_arm(
-                        arm.clone(),
-                        fn_name.clone(),
-                        params.clone(),
-                        target.clone(),
-                        registry.clone(),
-                        frame.scope.clone(),
-                        frame.depth.clone(),
-                        render_pattern.clone(),
-                        render_init_stmts.clone(),
-                    ));
-                }
-                __result
-            });
-            let arms_str = arm_strs.join(&"\n".to_string());
-            let bs = language_spec(target.clone()).block_syntax.clone();
-            if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
-                v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat(bs.match_keyword.clone(), scrut_str),
-                        bs.block_open.clone(),
-                    ),
-                    arms_str,
-                )
-            } else {
-                v2_rt::concat(
-                    v2_rt::concat(
+            match target.clone() {
+                RenderTarget::Go => emit_tco_match_go(
+                    scrut_str,
+                    arm_list,
+                    frame.depth.clone(),
+                    fn_name.clone(),
+                    params.clone(),
+                    registry.clone(),
+                    frame.scope.clone(),
+                    render_pattern.clone(),
+                    render_init_stmts.clone(),
+                ),
+                _ => {
+                    let arm_strs = Rc::new({
+                        let mut __result = Vec::new();
+                        for arm in arm_list.iter().cloned() {
+                            __result.push(emit_unified_tco_match_arm(
+                                arm.clone(),
+                                fn_name.clone(),
+                                params.clone(),
+                                target.clone(),
+                                registry.clone(),
+                                frame.scope.clone(),
+                                frame.depth.clone(),
+                                render_pattern.clone(),
+                                render_init_stmts.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let arms_str = arm_strs.join(&"\n".to_string());
+                    let bs = language_spec(target.clone()).block_syntax.clone();
+                    if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
                         v2_rt::concat(
                             v2_rt::concat(
                                 v2_rt::concat(bs.match_keyword.clone(), scrut_str),
                                 bs.block_open.clone(),
                             ),
                             arms_str,
-                        ),
-                        "\n".to_string(),
-                    ),
-                    bs.block_close.clone(),
-                )
+                        )
+                    } else {
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(bs.match_keyword.clone(), scrut_str),
+                                        bs.block_open.clone(),
+                                    ),
+                                    arms_str,
+                                ),
+                                "\n".to_string(),
+                            ),
+                            bs.block_close.clone(),
+                        )
+                    }
+                }
             }
         }
         _ => emit_error_expr(
@@ -5853,7 +5971,16 @@ pub fn emit_unified_variant_pattern(
                     }
                 }
             }
-            None => go_variant_case_type(name, parent_enum),
+            None => match target.clone() {
+                RenderTarget::Go => go_variant_case_type(name, parent_enum),
+                _ => {
+                    if ((field_bindings.clone().len() as i64) > 0) {
+                        emit_error_expr("variant patterns with field bindings are not supported for this target".to_string(), target.clone())
+                    } else {
+                        go_variant_case_type(name, parent_enum)
+                    }
+                }
+            },
         }
     }
 }

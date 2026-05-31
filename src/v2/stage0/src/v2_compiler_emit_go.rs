@@ -641,27 +641,30 @@ pub fn emit_go_imports(
     }
 }
 
+pub fn go_module_needs_v2rt_import(has_services: bool, has_functions: bool) -> bool {
+    (has_services || has_functions)
+}
+
 pub fn collect_go_std_imports(
     has_services: bool,
     has_types: bool,
     has_functions: bool,
 ) -> Rc<Vec<String>> {
     {
-        let fmt_import = if ((has_types.clone() || has_functions.clone()) || has_services.clone()) {
+        let fmt_import = if ((has_types || has_functions.clone()) || has_services.clone()) {
             Rc::new(vec!["\t\"fmt\"".to_string()])
         } else {
             Rc::new(vec![])
         };
-        let rt_import = Rc::new(vec![v2_rt::concat(
-            v2_rt::concat("\t\"".to_string(), go_v2rt_import_path()),
-            "\"".to_string(),
-        )]);
-        let strings_import =
-            if ((has_functions.clone() || has_types.clone()) || has_services.clone()) {
-                Rc::new(vec!["\t\"strings\"".to_string()])
-            } else {
-                Rc::new(vec![])
-            };
+        let rt_import = if go_module_needs_v2rt_import(has_services.clone(), has_functions.clone())
+        {
+            Rc::new(vec![v2_rt::concat(
+                v2_rt::concat("\t\"".to_string(), go_v2rt_import_path()),
+                "\"".to_string(),
+            )])
+        } else {
+            Rc::new(vec![])
+        };
         let net_imports = if has_services.clone() {
             Rc::new(vec![
                 "\t\"net/http\"".to_string(),
@@ -672,10 +675,7 @@ pub fn collect_go_std_imports(
         } else {
             Rc::new(vec![])
         };
-        v2_rt::concat(
-            v2_rt::concat(v2_rt::concat(fmt_import, rt_import), strings_import),
-            net_imports,
-        )
+        v2_rt::concat(v2_rt::concat(fmt_import, rt_import), net_imports)
     }
 }
 
