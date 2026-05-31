@@ -102,6 +102,11 @@ import v4.std.target_model {
   symbol_kernel_type_atom,
   symbol_kernel_type_node,
   target_atom_realization_catalog_node,
+  TargetFunctionSignatureRealization,
+  FunctionBoundaryParam,
+  FunctionBoundaryReturn,
+  target_function_signature_realization_catalog_node,
+  target_model_edge_signature_realizations,
   target_model_edge_atom_realizations,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
@@ -109,6 +114,37 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_type_expression_projection,
   target_model_edge_collection_realization,
+  target_model_edge_use_site_ownership_realizations,
+  target_model_edge_reference_layer_tokens,
+  TargetUseSiteOwnershipRealization,
+  TargetOwnershipUseSite,
+  TargetReferenceLayer,
+  TargetReferenceLayerTokens,
+  OwnershipAtFunctionReturn,
+  OwnershipAtFunctionParameter,
+  OwnershipAtStructField,
+  OwnershipAtBindingProjection,
+  ReferenceLayerOwned,
+  ReferenceLayerRc,
+  ReferenceLayerBox,
+  target_carrier_diagnostics,
+  target_carrier_node,
+  target_carrier_test_claim,
+  target_carrier_free_monoid,
+  target_carrier_outcome,
+  target_carrier_model_core,
+  target_carrier_algebra_inhabitance_decl,
+  target_carrier_probe_heap,
+  target_carrier_diagnostics_node,
+  target_carrier_node_node,
+  target_carrier_test_claim_node,
+  target_carrier_free_monoid_node,
+  target_carrier_outcome_node,
+  target_carrier_model_core_node,
+  target_carrier_algebra_inhabitance_decl_node,
+  target_carrier_probe_heap_node,
+  target_use_site_ownership_catalog_node,
+  target_reference_layer_tokens_node,
   TargetCollectionRealization,
   TargetCollectionReprKind,
   TargetRepresentation,
@@ -519,6 +555,29 @@ data rust_binding_sg2_y: Symbol = rust_binding_sg2_y
 data rust_binding_sg2_rc: Symbol = rust_binding_sg2_rc
 data rust_binding_sg2_bogus_meta: Symbol = rust_binding_sg2_bogus_meta
 data rust_binding_sg2_bogus_named: Symbol = rust_binding_sg2_bogus_named
+data rust_binding_sg_rc_box: Symbol = rust_binding_sg_rc_box
+data rust_sg_rc_ctor_rc_new: Symbol = rust_sg_rc_ctor_rc_new
+data rust_sg_rc_ctor_box_new: Symbol = rust_sg_rc_ctor_box_new
+
+data rust_sg_rc_diagnostics_return: Symbol = rust_sg_rc_diagnostics_return
+data rust_sg_rc_diagnostics_param: Symbol = rust_sg_rc_diagnostics_param
+data rust_sg_rc_node_return: Symbol = rust_sg_rc_node_return
+data rust_sg_rc_node_param: Symbol = rust_sg_rc_node_param
+data rust_sg_rc_node_return_box: Symbol = rust_sg_rc_node_return_box
+data rust_sg_rc_test_claim_return: Symbol = rust_sg_rc_test_claim_return
+data rust_sg_rc_free_monoid_return: Symbol = rust_sg_rc_free_monoid_return
+data rust_sg_rc_outcome_return: Symbol = rust_sg_rc_outcome_return
+data rust_sg_rc_model_core_return: Symbol = rust_sg_rc_model_core_return
+data rust_sg_rc_algebra_inhabitance_return: Symbol = rust_sg_rc_algebra_inhabitance_return
+data rust_sg_rc_probe_heap_return: Symbol = rust_sg_rc_probe_heap_return
+data rust_sg_rc_diagnostics_binding: Symbol = rust_sg_rc_diagnostics_binding
+data rust_sg_rc_node_binding: Symbol = rust_sg_rc_node_binding
+data rust_sg_rc_test_claim_binding: Symbol = rust_sg_rc_test_claim_binding
+data rust_sg_rc_free_monoid_binding: Symbol = rust_sg_rc_free_monoid_binding
+data rust_sg_rc_outcome_binding: Symbol = rust_sg_rc_outcome_binding
+data rust_sg_rc_model_core_binding: Symbol = rust_sg_rc_model_core_binding
+data rust_sg_rc_algebra_inhabitance_binding: Symbol = rust_sg_rc_algebra_inhabitance_binding
+data rust_sg_rc_probe_heap_binding: Symbol = rust_sg_rc_probe_heap_binding
 
 data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
 
@@ -1784,6 +1843,32 @@ data rust_target_atom_realization_catalog: List<TargetAtomRealization> = [
   rust_target_atom_realization_char
 ]
 
+// SG-1b function-boundary signature realization rows (catalog label SG-1-FOLLOWON).
+// signature_type_form is the SG-1 Symbol atom type_form (String) BY REFERENCE — no duplicate
+// type_form/value_form data lines. Changing rust_target_atom_realization_symbol.type_form moves
+// both the fn-boundary signature annotation AND the non-boundary decl-site type alias together.
+// Scope: Symbol kernel atom × { Param, Return } only — the post-#3956 String↔Symbol residue
+// (docs/audit/v4-rustc-error-catalog-2026-05-31.md §3). Bool/Char show no post-SG-1 boundary
+// mismatch, so they are NOT speculatively expanded here.
+data rust_target_function_signature_realization_symbol_param: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
+  boundary_site: FunctionBoundaryParam,
+  signature_type_form: rust_target_atom_realization_symbol.type_form
+}
+
+data rust_target_function_signature_realization_symbol_return: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
+  boundary_site: FunctionBoundaryReturn,
+  signature_type_form: rust_target_atom_realization_symbol.type_form
+}
+
+data rust_target_function_signature_realization_catalog: List<TargetFunctionSignatureRealization> = [
+  rust_target_function_signature_realization_symbol_param,
+  rust_target_function_signature_realization_symbol_return
+]
+
 fn rust_mvp1_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1813,6 +1898,16 @@ fn rust_mvp1_target_model_node() -> Node {
         target: target_atom_realization_catalog_node(
           rows: rust_target_atom_realization_catalog,
           host_bundle: rust_mvp1_target_model_bundle_core()
+        )
+      ),
+      rust_named_edge(
+        name: target_model_edge_reference_layer_tokens,
+        target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      ),
+      rust_named_edge(
+        name: target_model_edge_use_site_ownership_realizations,
+        target: target_use_site_ownership_catalog_node(
+          rows: rust_sg_rc_use_site_ownership_catalog()
         )
       )
     ]
@@ -3217,31 +3312,203 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
 data rust_sg2_type_alias_literal: Symbol = rust_sg2_type_alias_literal
 data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"
 
+fn rust_reference_layer_tokens() -> TargetReferenceLayerTokens {
+  TargetReferenceLayerTokens {
+    rc_type_head: rust_binding_sg2_rc,
+    box_type_head: rust_binding_sg_rc_box,
+    rc_new_ctor: rust_sg_rc_ctor_rc_new,
+    box_new_ctor: rust_sg_rc_ctor_box_new
+  }
+}
+
+fn rust_sg_rc_use_site_ownership_catalog() -> List<TargetUseSiteOwnershipRealization> {
+  [
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_diagnostics_node(),
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_diagnostics_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_diagnostics_node(),
+      use_site: OwnershipAtFunctionParameter,
+      reference_layer: ReferenceLayerOwned,
+      display_name: rust_sg_rc_diagnostics_param
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_node_node(),
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_node_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_node_node(),
+      use_site: OwnershipAtFunctionParameter,
+      reference_layer: ReferenceLayerOwned,
+      display_name: rust_sg_rc_node_param
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_node_node(),
+      use_site: OwnershipAtStructField,
+      reference_layer: ReferenceLayerBox,
+      display_name: rust_sg_rc_node_return_box
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_test_claim_node(),
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_test_claim_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_free_monoid_node(),
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_free_monoid_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_outcome_node(),
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_outcome_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_model_core_node(),
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_model_core_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_algebra_inhabitance_decl_node(),
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_algebra_inhabitance_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_probe_heap_node(),
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_probe_heap_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_diagnostics_node(),
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_diagnostics_binding
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_node_node(),
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_node_binding
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_test_claim_node(),
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_test_claim_binding
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_free_monoid_node(),
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_free_monoid_binding
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_outcome_node(),
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_outcome_binding
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_model_core_node(),
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_model_core_binding
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_algebra_inhabitance_decl_node(),
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_algebra_inhabitance_binding
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_probe_heap_node(),
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerRc,
+      display_name: rust_sg_rc_probe_heap_binding
+    }
+  ]
+}
+
 fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
+  // rust_target_atom_type_spelling_string is the target-side spelling token for the Rust String
+  // type (peer of "bool"/"char"), NOT a Symbol→String name-keyed coercion. The SG-1b signature
+  // realization row remains the sole authority deciding that a kernel-Symbol boundary projects to
+  // String; this entry only spells the resolved target type once it has been chosen.
   map_insert(
     map_insert(
       map_insert(
         map_insert(
           map_insert(
             map_insert(
-              map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
-              rust_binding_sg2_x,
-              "X"
+              map_insert(
+                map_insert(
+                  map_insert(
+                    map_insert(
+                      map_insert(
+                        map_insert(
+                          map_insert(
+                            map_insert(
+                              map_insert(
+                                map_insert(
+                                  map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
+                                  rust_binding_sg2_x,
+                                  "X"
+                                ),
+                                rust_binding_sg2_y,
+                                "Y"
+                              ),
+                              rust_binding_sg2_rc,
+                              "Rc"
+                            ),
+                            rust_binding_sg_rc_box,
+                            "Box"
+                          ),
+                          target_carrier_diagnostics,
+                          "Diagnostics"
+                        ),
+                        target_carrier_node,
+                        "Node"
+                      ),
+                      target_carrier_test_claim,
+                      "TestClaim"
+                    ),
+                    target_carrier_free_monoid,
+                    "FreeMonoid"
+                  ),
+                  target_carrier_outcome,
+                  "Outcome"
+                ),
+                target_carrier_model_core,
+                "ModelCore"
+              ),
+              target_carrier_algebra_inhabitance_decl,
+              "AlgebraInhabitanceDecl"
             ),
-            rust_binding_sg2_y,
-            "Y"
+            target_carrier_probe_heap,
+            "ProbeHeap"
           ),
-          rust_binding_sg2_rc,
-          "Rc"
+          rust_collection_surface_btree_set,
+          "std::collections::BTreeSet"
         ),
-        rust_collection_surface_btree_set,
-        "std::collections::BTreeSet"
+        rust_collection_surface_hash_set,
+        "std::collections::HashSet"
       ),
-      rust_collection_surface_hash_set,
-      "std::collections::HashSet"
+      target_collection_set_carrier,
+      "Set"
     ),
-    target_collection_set_carrier,
-    "Set"
+    rust_target_atom_type_spelling_string,
+    "String"
   )
 }
 
@@ -3262,7 +3529,10 @@ fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn rust_sg2_type_expr_target_model_node() -> Node {
+// Pre-catalog SG-2 bundle core (no signature_realizations edge). Used both as the live host
+// minus its catalogs and as the host_bundle each signature realization row encodes against, so
+// target_atom_realization_bundle_matches_host accepts core(live host) on decode.
+fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -3292,8 +3562,37 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
       rust_named_edge(
         name: target_model_edge_collection_realization,
         target: rust_set_collection_realization_bundle_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_reference_layer_tokens,
+        target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+      ),
+      rust_named_edge(
+        name: target_model_edge_use_site_ownership_realizations,
+        target: target_use_site_ownership_catalog_node(
+          rows: rust_sg_rc_use_site_ownership_catalog()
+        )
       )
     ]
+  }
+}
+
+fn rust_sg2_type_expr_target_model_node() -> Node {
+  match rust_sg2_type_expr_target_model_bundle_core().kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: list_snoc_item(
+          xs: rust_sg2_type_expr_target_model_bundle_core().children,
+          item: rust_named_edge(
+            name: target_model_edge_signature_realizations,
+            target: target_function_signature_realization_catalog_node(
+              rows: rust_target_function_signature_realization_catalog
+            )
+          )
+        )
+      }
+    _ => rust_sg2_type_expr_target_model_bundle_core()
   }
 }
 
@@ -3371,6 +3670,19 @@ fn rust_sg2_serialize_source_node() -> Node {
 fn rust_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
     bundle: rust_sg2_type_expr_target_model_node(),
+    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    binding_spellings: rust_sg2_binding_spellings(),
+    authority_source_text: rust_sg2_type_alias_text
+  }
+}
+
+// Staging variant of the SG-2 type-expr model whose bundle is the pre-catalog core (no
+// signature_realizations edge). SG-1b rows declare THIS as their target_model so the row's host
+// authority matches the bundle they are encoded into (single authority); using the full model
+// would be cyclic (the catalog edge encodes these very rows). Mirrors rust_mvp1_target_model_staging.
+fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_sg2_type_expr_target_model_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
     authority_source_text: rust_sg2_type_alias_text
