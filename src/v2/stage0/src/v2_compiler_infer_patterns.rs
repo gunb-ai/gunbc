@@ -3,7 +3,9 @@
 
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
+pub use crate::std_syntax::LiteralValue;
 pub use crate::std_types::SourceSpan;
+pub use crate::v2_compiler_infer::kernel_span;
 pub use crate::v2_compiler_infer_env::{lookup_type, lookup_type_by_name, TypeEnv};
 pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
@@ -14,13 +16,12 @@ use crate::v2_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, 
 use crate::v2_std_core::Connective::{Disj, NoConnective};
 use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::LitBool;
 use crate::v2_std_core::MatchPattern::LitPattern;
 pub use crate::v2_std_core::{
-    arm_pattern, authored_name_at, error_type, find_child_named, is_compiler_error, kernel_span,
+    arm_pattern, authored_name_at, error_type, find_child_named, is_compiler_error,
     make_error_node, no_span, none_type, with_optional_cardinality, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, LiteralValue, MatchPattern,
-    NewlineIndex, Node,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern, NewlineIndex,
+    Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

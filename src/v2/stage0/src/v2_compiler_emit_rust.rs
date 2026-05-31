@@ -9,7 +9,12 @@ pub use crate::extdeps_languages_rust_emit::{
 pub use crate::generated_method_template_projection::rust_method_template_emit;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+use crate::std_syntax::AlgebraFieldKind::*;
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::LiteralValue::*;
+pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::is_container_type;
+pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
@@ -32,8 +37,8 @@ pub use crate::v2_compiler_emit::{
     scope_after_expr, seed_bindings, service_fallback_transport, service_field_ctors,
     service_field_decls, service_var_name, tco_reassign_core, test_function_name, to_lower_char,
     to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
-    typed_named_arg_matches, unique_strings, wrap_shared_type, BlockEmitState, EmitResult,
-    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput, TestProjection,
+    typed_named_arg_matches, unique_strings, BlockEmitState, EmitResult, InterpPart,
+    ServiceFieldSet, TcoFrame, TcoReassignInput, TestProjection,
 };
 pub use crate::v2_compiler_infer::{
     build_emit_graph_info, build_params_scope, expr_span, extend_scope, InferScope,
@@ -55,6 +60,7 @@ pub use crate::v2_compiler_infer_types::{
     is_unit_like, node_is_collection, node_is_element_collection, node_is_keyed_collection,
     node_is_set_collection, normalize_access_type_node, resolved_type,
 };
+pub use crate::v2_compiler_languages::wrap_shared_type;
 use crate::v2_compiler_languages::VisibilitySpec::KeywordVisibility;
 pub use crate::v2_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, sharing_for_target,
@@ -67,8 +73,6 @@ pub use crate::v2_compiler_ownership::{
 };
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
-use crate::v2_std_core::AlgebraFieldKind::*;
-use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
@@ -83,13 +87,10 @@ use crate::v2_std_core::FieldAccessStyle::{
 };
 use crate::v2_std_core::FieldValueShape::OptionalValue;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v2_std_core::LiteralValue::*;
-use crate::v2_std_core::MatchPattern::*;
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v2_std_core::StringPart::{Interpolation, Text};
-use crate::v2_std_core::UnaryOpKind::*;
 use crate::v2_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
@@ -111,11 +112,10 @@ pub use crate::v2_std_core::{
     service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
     transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
     transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp,
-    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
-    VarBindingKind,
+    transport_response_format, transport_stdin, with_required_cardinality, CallSemantics,
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2588,6 +2588,33 @@ pub fn symbol_defining_mod_filename(
     item_defining_mod_filename(name, registry, import_mod)
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportNamesByModAcc {
+    pub names_by_mod: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub mod_order: Rc<Vec<String>>,
+}
+
+pub fn fold_import_names_by_mod(
+    acc: Rc<ImportNamesByModAcc>,
+    mod_name: String,
+    names: Rc<Vec<String>>,
+) -> Rc<ImportNamesByModAcc> {
+    {
+        let merged = match v2_rt::map_get(&acc.names_by_mod.clone(), mod_name.clone()) {
+            Some(existing) => unique_strings(v2_rt::concat(existing.clone(), names)),
+            None => unique_strings(names),
+        };
+        let mod_order = match v2_rt::map_get(&acc.names_by_mod.clone(), mod_name.clone()) {
+            Some(_) => acc.mod_order.clone(),
+            None => v2_rt::rc_list_push(acc.mod_order.clone(), mod_name.clone()),
+        };
+        Rc::new(ImportNamesByModAcc {
+            names_by_mod: v2_rt::rc_map_insert(acc.names_by_mod.clone(), mod_name.clone(), merged),
+            mod_order: mod_order,
+        })
+    }
+}
+
 pub fn emit_pub_use_from_module(
     mod_filename: String,
     names: Rc<Vec<String>>,
@@ -3001,7 +3028,7 @@ pub fn emit_imports(
                 }
                 __result
             });
-            let names_by_mod = Rc::new({
+            let import_acc = Rc::new({
                 let mut __result = Vec::new();
                 for imp in imports.clone().iter().cloned() {
                     if (import_is_all(imp.clone()) == false) {
@@ -3013,8 +3040,11 @@ pub fn emit_imports(
             .iter()
             .cloned()
             .fold(
-                v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-                |acc: Rc<HashMap<String, Rc<Vec<String>>>>, imp: Rc<Node>| {
+                Rc::new(ImportNamesByModAcc {
+                    names_by_mod: v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+                    mod_order: Rc::new(vec![]),
+                }),
+                |acc: Rc<ImportNamesByModAcc>, imp: Rc<Node>| {
                     let mod_name =
                         module_to_filename(authored_name_at(source_indices.clone(), imp.clone()));
                     let names = Rc::new({
@@ -3038,37 +3068,16 @@ pub fn emit_imports(
                         }
                         __result
                     });
-                    match v2_rt::map_get(&acc, mod_name.clone()) {
-                        Some(existing) => v2_rt::rc_map_insert(
-                            acc.clone(),
-                            mod_name.clone(),
-                            unique_strings(v2_rt::concat(existing.clone(), names.clone())),
-                        ),
-                        None => v2_rt::rc_map_insert(
-                            acc.clone(),
-                            mod_name.clone(),
-                            unique_strings(names.clone()),
-                        ),
-                    }
+                    fold_import_names_by_mod(acc, mod_name.clone(), names.clone())
                 },
             );
             let specific_lines = Rc::new({
                 let mut __result = Vec::new();
-                for mod_name in Rc::new(v2_rt::map_keys(&names_by_mod)).iter().cloned() {
-                    __result.extend(
-                        (*match v2_rt::map_get(&names_by_mod, mod_name.clone()) {
-                            Some(deduped) => Rc::new(vec![emit_specific_import_block(
-                                mod_name.clone(),
-                                deduped.clone(),
-                                emit_info.clone(),
-                                registry.clone(),
-                                type_summaries.clone(),
-                            )]),
-                            None => Rc::new(vec![]),
-                        })
-                        .iter()
-                        .cloned(),
-                    );
+                for mod_name in import_acc.mod_order.clone().iter().cloned() {
+                    __result.extend((*match v2_rt::map_get(&import_acc.names_by_mod.clone(), mod_name.clone()) {
+    Some(deduped) => Rc::new(vec![emit_specific_import_block(mod_name.clone(), deduped.clone(), emit_info.clone(), registry.clone(), type_summaries.clone())]),
+    None => Rc::new(vec![]),
+}).iter().cloned());
                 }
                 __result
             });
