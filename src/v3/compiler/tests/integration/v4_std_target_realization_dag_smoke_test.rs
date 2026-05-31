@@ -1,8 +1,9 @@
 //! **Layer:** integration
 //!
 //! **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST` same-path
-//! expansion):** explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-//! `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test floor), same
+//! expansion):** explicit deferral to **`_internal/ROADMAP_OPS.md`** § **Nine lanes** row
+//! **T-PB-B** / `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test
+//! floor; `ROADMAP.md` delegates operational lanes there), same
 //! structural class as co-listed `t_gate_58_apply_lens_self_application_test.rs`: parse-surface
 //! smokes discharge until `.dag` `TestClaim` asserts the same substrate facts without this file.
 //! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` +

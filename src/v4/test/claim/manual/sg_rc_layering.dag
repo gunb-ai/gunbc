@@ -41,14 +41,12 @@ import v4.std.target_model {
   target_reference_layer_apply_value_expression,
   target_reference_layer_probe_from_emitted_type,
   target_type_expr_atom_emitted,
-  target_value_expression_field_inner,
   target_value_expression_symbol_identity,
   target_value_expression_node
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
-import v4.std.node_query { find_named_child }
 import v4.std.text { String }
 import v4.std.verification {
   Boundary,
@@ -147,13 +145,6 @@ fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {
   match expr.node.kind {
     TypeNode { connective: Atom { identity: id } } => id
     _ => sg_rc_fail_sym
-  }
-}
-
-fn sg_rc_value_expr_inner_node(expr: TargetValueExpression) -> Node {
-  match find_named_child(root: expr.node, name: target_value_expression_field_inner) {
-    Accepted { value: node, diagnostics: _ } => node
-    Rejected { diagnostics: _ } => sg_rc_fail_node()
   }
 }
 
@@ -333,11 +324,15 @@ fn sg_rc_f6_round_trip_owned() -> Bool {
   }
 }
 
-// Value path coupling — translate/catalog consumer preserves inner expr + target ctor (P3).
+// Value path coupling — translate/catalog consumer preserves full TargetValueExpression (P3).
 fn sg_rc_value_rc_wrap_tagged() -> Bool {
   let inner = sg_rc_diagnostics_identity_value()
   let tokens = rust_reference_layer_tokens()
-  let inner_node = target_value_expression_node(expr: inner)
+  let expected = target_reference_layer_apply_value_expression(
+    inner: inner,
+    layer: ReferenceLayerRc,
+    tokens: tokens
+  )
   match translate_apply_use_site_ownership_to_value_expression(
     expr: inner,
     source_carrier: target_carrier_diagnostics_node(),
@@ -348,7 +343,8 @@ fn sg_rc_value_rc_wrap_tagged() -> Bool {
       match wrapped.kind {
         TargetValueExprReferenceRcNew =>
           sg_rc_value_expr_ctor_identity(expr: wrapped) == tokens.rc_new_ctor
-            && content_hash(n: sg_rc_value_expr_inner_node(expr: wrapped)) == content_hash(n: inner_node)
+            && content_hash(n: target_value_expression_node(expr: wrapped)) ==
+              content_hash(n: target_value_expression_node(expr: expected))
         _ => false
       }
     Rejected { diagnostics: _ } => false
