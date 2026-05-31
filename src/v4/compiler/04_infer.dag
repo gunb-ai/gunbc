@@ -23,7 +23,7 @@ import v4.std.algebra {
 }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v4.std.collection { Absent, List, Map, Optional, Present }
+import v4.std.collection { List, Map }
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -48,6 +48,7 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   outcome_rejected,
+  outcome_accepted,
   rejected_with_pending
 }
 import v4.std.logic { Bool }
@@ -211,38 +212,29 @@ fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
 }
 
 
-fn partial_bounded_lattice_reference(
-  consumer: Node,
-  partials: List<Node>,
-) -> Optional<Node> {
-  fold(consumer.children, init: Absent, f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if any(xs: partials, predicate: fn(p) { e.target == p }) {
-          Present { value: e.target }
-        } else {
-          Absent
-        }
-    }
-  })
-}
-
-
 fn infer_bounded_lattice_consumer_gate(
   consumer: Node,
   partials: List<Node>,
 ) -> Outcome<Node> {
-  match partial_bounded_lattice_reference(consumer: consumer, partials: partials) {
-    Present { value: instance } =>
-      outcome_rejected(
-        infer_bounded_lattice_consumer_partial_diagnostic(
-          consumer: consumer,
-          instance: instance
-        )
-      )
-    Absent =>
-      Accepted { value: consumer, diagnostics: None }
+  match fold(consumer.children, init: outcome_accepted(value: consumer), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: _, diagnostics: d } =>
+        if any(xs: partials, predicate: fn(p) { e.target == p }) {
+          outcome_rejected(
+            infer_bounded_lattice_consumer_partial_diagnostic(
+              consumer: consumer,
+              instance: e.target
+            )
+          )
+        } else {
+          Accepted { value: consumer, diagnostics: d }
+        }
+    }
+  }) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: d } =>
+      Accepted { value: consumer, diagnostics: d }
   }
 }
 
