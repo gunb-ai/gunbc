@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `01b26df8c` (`main` 2026-05-31T02:56Z) — post #4075 maintenance; W1.5 C4 shadow [#4073](https://github.com/gunb-ai/gunbc/pull/4073) landed (Close/Receipt ledger re-adjudication pending).  
+> **Tree HEAD:** `17a9ac4c3` (`main` 2026-05-31T03:42Z) — post #4077 burn-down maintenance (MW-D8 C4 #4073 framing + landing log).  
 > **Wave posture:** MW-D8 **4/5 PROVEN** formal ledger; **C4 impl landed** [#4073](https://github.com/gunb-ai/gunbc/pull/4073) — operator-facing **5/5 impl complete**, awaiting Close/Receipt row flip. Wave 2 active.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -208,6 +208,7 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4071](https://github.com/gunb-ai/gunbc/pull/4071) | ~02:45 | Maintenance | *(tracker)* | Post-#4061 W2.3 buckets + extended landing log |
 | [#4073](https://github.com/gunb-ai/gunbc/pull/4073) | ~02:52 | W1.5 C4 | **P2**, **P5** | MW-D8 C4 impl — `ci_selection_receipt_shadow` shadow fixture (ledger flip pending) |
 | [#4075](https://github.com/gunb-ai/gunbc/pull/4075) | 02:56 | Maintenance | *(tracker)* | Post-#4071 Bucket C + landing log refresh |
+| [#4077](https://github.com/gunb-ai/gunbc/pull/4077) | 03:42 | Maintenance | *(tracker)* | Post-#4075 C4 #4073 formal/operator split + landing log |
 
 ---
 
