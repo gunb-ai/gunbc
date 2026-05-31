@@ -112,12 +112,27 @@ Reuses the §5 elastic-core table from PR #4086. **No new §10.0 worksheets need
 | **SG-RC-LAYERING** (Rc/Box/raw at boundaries) | ~780 | ~700 | +80 | **WORKSHEET LANDED** (#4100 per proud-pike) |
 | **SG-COLLECTION-PROJECTION** (FreeMonoid vs Vec) | ~170 | ~170 | 0 | **EXTEND SG-5/SG-6** (routing per proud-pike); no urgency change |
 | **SG-8** (E0425 + E0432 + E0433) | 804 | 796 | +8 | **EXISTS — worker dispatch needed** |
-| **SG-3-CASCADE** (E0277 + E0573 + E0560 + E0369 + E0121) | 765 | 1,191 (was wrong-arithmetic'd) — **corrected** to 761 in this catalog | +4 | **EXISTING — mop-up after primaries** |
-| **Long tail** (E0391 / E0599 / + 12 other codes) | 58 | 58 | 0 | Naturally bounded, no worksheet |
+| **SG-3-CASCADE** (E0277 + E0573 + E0560 + E0369 + E0121 + **unclassified-E0308 mop-up**) | **~1,390** | ~1,386 (corrected vs #4086's stated 1,191) | +4 | **EXISTING — mop-up after primaries** |
+| **Long tail** (E0391 29 + E0599 28 + other 12 codes 58) | **115** | 115 (same shape, was mis-stated as 58 in §6 mid-edit) | 0 | Naturally bounded, no worksheet |
 
 **P3-D elastic core count (unchanged from #4086):** **8 active receipt-producing classes** + 2 closed. The +184 delta does not change the number of dispatchable classes.
 
-*(Spot-correction: the #4086 SG-3-CASCADE row listed `~1191` errors, conflating the SG-3 grand-total `1,221` with E0277+E0573+E0560+E0369+E0121 actually summing to 761. This catalog re-tallies to **765** post-delta; the routing decision is unchanged.)*
+**Arithmetic reconciliation (response to openai-pro review of `a2d0c71d`):**
+
+| Bucket | Count | Code coverage |
+| ------ | -----:| ------------- |
+| SG-1-FOLLOWON | 1,330 | E0308 subset (`expected String, found Symbol`) |
+| SG-2 | 2,586 | E0107 (1,629) + E0282 (957) |
+| SG-RC-LAYERING | ~780 | E0308 subset (Rc/Box/raw boundary mismatches) |
+| SG-COLLECTION-PROJECTION | ~170 | E0308 subset (FreeMonoid vs Vec) |
+| SG-8 | 804 | E0425 (485) + E0432 (238) + E0433 (81) |
+| SG-3-CASCADE | ~1,390 | E0277 (330) + E0573 (159) + E0560 (122) + E0369 (110) + E0121 (44) + remaining-E0308 (~625) |
+| Long tail | 115 | E0391 (29) + E0599 (28) + 12 other codes (58) |
+| **Sum** | **~7,175** | reconciles to the §1 headline within ±1 rounding band |
+
+*(Spot-correction of two arithmetic slips: (a) #4086's SG-3-CASCADE row's `~1,191` figure conflated the SG-3 grand-total `1,221` with the E0277+E0573+E0560+E0369+E0121 sum `761` — the live live figure for this row is the E0277..E0121 sum **plus the unclassified-E0308 mop-up**, since by definition the cascade soaks up E0308 not picked up by SG-1-FOLLOWON / SG-RC-LAYERING / SG-COLLECTION-PROJECTION. (b) The mid-draft §6 long-tail row listed `58` (the "other 12 codes" sub-bucket only) instead of the full long-tail `115`. Both fixed here.)*
+
+**Probe-summary footnote.** The raw probe summary's top-25 histogram sums to 7,174 vs §1's 7,175 — a single error in a code outside the top-25 (the probe script displays only the top-25 codes; the rustc log carries the full population). The catalog uses the full population (7,175) consistently.
 
 ---
 
