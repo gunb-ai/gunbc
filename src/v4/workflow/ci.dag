@@ -647,8 +647,7 @@ fn ci_upsert_testclaim_corpus_eval_execution_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_testclaim_corpus_eval_execution: CiUpsertStepSymbol = ci_upsert_testclaim_corpus_eval_execution_mk()
 
-data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> =
-  ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses)
+data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses)
 
 fn ci_upsert_lens_ci_registry_execution_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
