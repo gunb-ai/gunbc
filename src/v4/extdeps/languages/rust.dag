@@ -74,6 +74,11 @@ import v4.std.model_core {
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model {
   TargetAtomRealization,
+  TargetFunctionSignatureRealization,
+  FunctionBoundaryParam,
+  FunctionBoundaryReturn,
+  target_function_signature_realization_catalog_node,
+  target_model_edge_signature_realizations,
   TargetAtomTypeShape,
   TargetTypeExpression,
   TargetTypeExprAtom,
@@ -1782,6 +1787,28 @@ data rust_target_atom_realization_catalog: List<TargetAtomRealization> = [
   rust_target_atom_realization_symbol,
   rust_target_atom_realization_bool,
   rust_target_atom_realization_char
+]
+
+// SG-1b — function-boundary signature realization rows (sibling to SG-1; catalog SG-1-FOLLOWON).
+// signature_type_form is the type rustc expects at fn entry/exit for values shipped by the paired
+// SG-1 row.value_form (ValueSymbolToOwnedString → String). Keyed by the SAME source_carrier as
+// rust_target_atom_realization_symbol — the translate consumer requires that SG-1 atom row present
+// before consulting these (coupling); these rows duplicate NO atom catalog field.
+data rust_target_function_signature_realization_symbol_param: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
+  source_carrier: symbol_kernel_type_node(),
+  boundary_site: FunctionBoundaryParam,
+  signature_type_form: rust_target_atom_type_form(spelling: rust_target_atom_type_spelling_string)
+}
+
+data rust_target_function_signature_realization_symbol_return: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
+  source_carrier: symbol_kernel_type_node(),
+  boundary_site: FunctionBoundaryReturn,
+  signature_type_form: rust_target_atom_type_form(spelling: rust_target_atom_type_spelling_string)
+}
+
+data rust_target_function_signature_realization_catalog: List<TargetFunctionSignatureRealization> = [
+  rust_target_function_signature_realization_symbol_param,
+  rust_target_function_signature_realization_symbol_return
 ]
 
 fn rust_mvp1_target_model_node() -> Node {

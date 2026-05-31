@@ -73,6 +73,8 @@ data serialize_source_field_source_text: Symbol = serialize_source_field_source_
 data serialize_source_field_source_grammar: Symbol = serialize_source_field_source_grammar
 
 data target_model_edge_atom_realizations: Symbol = target_model_edge_atom_realizations
+// SG-1b — function-boundary signature realization catalog edge (sibling to atom_realizations).
+data target_model_edge_signature_realizations: Symbol = target_model_edge_signature_realizations
 
 // --- SG-1 atom realization vocabulary (M6 product carriers on kind+payload axes) ---
 
@@ -625,9 +627,14 @@ fn target_constructor_template_from_node(
 fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
   match edge.label {
     Named { name: n } =>
-      match n == target_model_edge_atom_realizations {
-        true => acc
-        false => list_snoc_item(xs: acc, item: edge)
+      // SG-1b: signature_realizations is a live-host catalog edge keyed by source_carrier
+      // (no per-row target_model staging); strip it alongside atom_realizations so SG-1
+      // catalog rows encoded with the staging core still match target_model_bundle_core(host).
+      if n == target_model_edge_atom_realizations
+        || n == target_model_edge_signature_realizations {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: edge)
       }
     Positional => list_snoc_item(xs: acc, item: edge)
   }
@@ -1871,4 +1878,249 @@ fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
 
 fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
+}
+
+// ═══ SG-1b — TargetFunctionSignatureRealization (function-boundary signature realization) ═══
+//
+// Sibling to SG-1 TargetAtomRealization. SG-1 supplies the decl-site type_form and the value
+// ship value_form keyed by source_carrier (Node identity). At function entry/exit (Arrow
+// domain/codomain) the type-expression projection passes the raw carrier atom identity through
+// to serialization, bypassing the SG-1 catalog and falling back to binding_spellings. This
+// carrier supplies the type rustc expects at those boundary sites — the String↔Symbol
+// alignment for the Symbol kernel atom on Rust — WITHOUT duplicating the atom catalog: rows are
+// keyed by the same source_carrier the SG-1 row uses, and the translate consumer requires the
+// SG-1 atom row to be present (coupling) before consulting a signature realization row.
+//
+// FunctionBoundarySite limits this authority to fn entry/exit; non-boundary decl/type-alias
+// sites keep SG-1 type_form authority.
+
+type FunctionBoundarySite
+  = FunctionBoundaryParam
+  | FunctionBoundaryReturn
+
+// Owning TargetModel is the translate caller's parameter (SG-5 discipline) — NOT stored on the
+// row, so signature rows need no per-row bundle staging and never duplicate SG-1 fields.
+type TargetFunctionSignatureRealization {
+  source_carrier: Node
+  boundary_site: FunctionBoundarySite
+  signature_type_form: TargetTypeExpression
+}
+
+data target_function_signature_realization_field_source_carrier: Symbol = target_function_signature_realization_field_source_carrier
+data target_function_signature_realization_field_boundary_site: Symbol = target_function_signature_realization_field_boundary_site
+data target_function_signature_realization_field_signature_type_form: Symbol = target_function_signature_realization_field_signature_type_form
+data target_function_signature_boundary_param: Symbol = target_function_signature_boundary_param
+data target_function_signature_boundary_return: Symbol = target_function_signature_boundary_return
+data target_function_signature_realization_lookup_miss: Symbol = target_function_signature_realization_lookup_miss
+data target_function_signature_realization_lookup_ambiguous: Symbol = target_function_signature_realization_lookup_ambiguous
+data target_function_signature_realization_row_decode_invalid: Symbol = target_function_signature_realization_row_decode_invalid
+
+fn function_boundary_site_atom(site: FunctionBoundarySite) -> Symbol {
+  match site {
+    FunctionBoundaryParam => target_function_signature_boundary_param
+    FunctionBoundaryReturn => target_function_signature_boundary_return
+  }
+}
+
+fn function_boundary_site_from_atom(id: Symbol) -> Optional<FunctionBoundarySite> {
+  if id == target_function_signature_boundary_param {
+    optional_present(value: FunctionBoundaryParam)
+  } else {
+    if id == target_function_signature_boundary_return {
+      optional_present(value: FunctionBoundaryReturn)
+    } else {
+      optional_absent()
+    }
+  }
+}
+
+fn function_boundary_site_equal(a: FunctionBoundarySite, b: FunctionBoundarySite) -> Bool {
+  function_boundary_site_atom(site: a) == function_boundary_site_atom(site: b)
+}
+
+fn target_function_signature_realization_to_node(
+  row: TargetFunctionSignatureRealization
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: target_function_signature_realization_field_source_carrier,
+        target: row.source_carrier
+      ),
+      target_model_named_edge(
+        name: target_function_signature_realization_field_boundary_site,
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: function_boundary_site_atom(site: row.boundary_site) }
+          },
+          children: []
+        }
+      ),
+      target_model_named_edge(
+        name: target_function_signature_realization_field_signature_type_form,
+        target: row.signature_type_form.node
+      )
+    ]
+  }
+}
+
+fn target_function_signature_realization_catalog_node(
+  rows: List<TargetFunctionSignatureRealization>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge {
+            label: Positional,
+            target: target_function_signature_realization_to_node(row: row)
+          }
+        )
+      }
+    )
+  }
+}
+
+fn target_function_signature_realization_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_function_signature_realization_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_function_signature_realization_lookup_ambiguous_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_function_signature_realization_lookup_ambiguous,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_function_signature_realization_row_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_function_signature_realization_row_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_function_signature_realization_from_row_node(
+  row_node: Node
+) -> Outcome<TargetFunctionSignatureRealization> {
+  let source_carrier = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_function_signature_realization_field_source_carrier
+  )
+  let site_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_function_signature_realization_field_boundary_site
+  )
+  match site_node.kind {
+    TypeNode { connective: Atom { identity: site_id } } =>
+      match function_boundary_site_from_atom(id: site_id) {
+        Present { value: boundary_site } =>
+          match target_type_expression_from_node(
+            n: target_atom_realization_conj_child(
+              row_node: row_node,
+              edge_name: target_function_signature_realization_field_signature_type_form
+            ),
+            source_carrier: source_carrier
+          ) {
+            Accepted { value: signature_type_form, diagnostics: d } =>
+              Accepted {
+                value: TargetFunctionSignatureRealization {
+                  source_carrier: source_carrier,
+                  boundary_site: boundary_site,
+                  signature_type_form: signature_type_form
+                },
+                diagnostics: d
+              }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Absent =>
+          outcome_rejected(
+            target_function_signature_realization_row_decode_invalid_diagnostic(
+              source_carrier: source_carrier
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        target_function_signature_realization_row_decode_invalid_diagnostic(
+          source_carrier: source_carrier
+        )
+      )
+  }
+}
+
+type TargetFunctionSignatureRealizationLookup
+  = TargetFunctionSignatureRealizationMissing
+  | TargetFunctionSignatureRealizationUnique { row: TargetFunctionSignatureRealization }
+  | TargetFunctionSignatureRealizationAmbiguous
+  | TargetFunctionSignatureRealizationInvalid
+
+fn target_function_signature_realization_lookup_step(
+  acc: TargetFunctionSignatureRealizationLookup,
+  row_node: Node,
+  source_carrier: Node,
+  boundary_site: FunctionBoundarySite
+) -> TargetFunctionSignatureRealizationLookup {
+  match target_function_signature_realization_from_row_node(row_node: row_node) {
+    Accepted { value: row, diagnostics: _ } =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_carrier)
+        && function_boundary_site_equal(a: row.boundary_site, b: boundary_site) {
+        match acc {
+          TargetFunctionSignatureRealizationMissing =>
+            TargetFunctionSignatureRealizationUnique { row: row }
+          TargetFunctionSignatureRealizationUnique { row: _ } =>
+            TargetFunctionSignatureRealizationAmbiguous
+          TargetFunctionSignatureRealizationAmbiguous =>
+            TargetFunctionSignatureRealizationAmbiguous
+          TargetFunctionSignatureRealizationInvalid =>
+            TargetFunctionSignatureRealizationInvalid
+        }
+      } else {
+        acc
+      }
+    Rejected { diagnostics: _ } => TargetFunctionSignatureRealizationInvalid
+  }
+}
+
+fn target_function_signature_realization_lookup_in_catalog_node(
+  catalog: Node,
+  source_carrier: Node,
+  boundary_site: FunctionBoundarySite
+) -> Outcome<TargetFunctionSignatureRealization> {
+  match fold(
+    catalog.children,
+    init: TargetFunctionSignatureRealizationMissing,
+    f: fn(acc, e) {
+      target_function_signature_realization_lookup_step(
+        acc: acc,
+        row_node: e.target,
+        source_carrier: source_carrier,
+        boundary_site: boundary_site
+      )
+    }
+  ) {
+    TargetFunctionSignatureRealizationMissing =>
+      outcome_rejected(
+        target_function_signature_realization_lookup_miss_diagnostic(source_carrier: source_carrier)
+      )
+    TargetFunctionSignatureRealizationUnique { row: row } => outcome_accepted(row)
+    TargetFunctionSignatureRealizationAmbiguous =>
+      outcome_rejected(
+        target_function_signature_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier)
+      )
+    TargetFunctionSignatureRealizationInvalid =>
+      outcome_rejected(
+        target_function_signature_realization_row_decode_invalid_diagnostic(source_carrier: source_carrier)
+      )
+  }
 }
