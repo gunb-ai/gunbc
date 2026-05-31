@@ -521,6 +521,14 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
         surface_declares_fn(&module, "target_reference_layer_apply_value_expression"),
         "{TARGET_MODEL_PATH}: value emit must consult the same reference_layer row"
     );
+    assert!(
+        surface_declares_fn(&module, "target_reference_layer_tokens_from_node"),
+        "{TARGET_MODEL_PATH}: token bundle decode must be structural Outcome"
+    );
+    assert!(
+        surface_declares_data(&module, "target_reference_layer_tokens_decode_invalid"),
+        "{TARGET_MODEL_PATH}: non-Conj token bundle must fail-closed"
+    );
 }
 
 #[test]
