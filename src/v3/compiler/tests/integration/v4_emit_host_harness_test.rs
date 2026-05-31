@@ -681,7 +681,8 @@ fn v4_loop_linear_bound_rung8_dag_tokenizes_and_parses_full_fixture_roster() {
         "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster in eval body"
     );
     assert!(
-        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains("corpus_report_tally(r: report).deferred == Zero"),
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG
+            .contains("corpus_report_tally(r: report).deferred == Zero"),
         "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: VerdictTally deferred check in zero_deferred helper"
     );
 }
