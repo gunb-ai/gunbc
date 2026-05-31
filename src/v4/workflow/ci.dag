@@ -536,7 +536,7 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     CiJob {
       id: testclaim_corpus_eval_execution,
       command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn },
-      needs: [v2_compile_src_v4]
+      needs: [v2_compile_src_v4, m1_rust_emit_probe_execution]
     },
     CiJob {
       id: phase1_nat_semiring_rung_gate_execution,
@@ -3255,14 +3255,15 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: true
         release_distribution: false
       }
+    // I8: testclaim_corpus + release_distribution — upstream for T-22 via Upsert; mask must match YAML step if.
     M1RustEmitProbeCommand =>
       CiComponentAffected {
         v2: false
         v3: false
         v4: true
-        testclaim_corpus: false
+        testclaim_corpus: true
         workflow_policy: true
-        release_distribution: false
+        release_distribution: true
       }
     Phase1NatSemiringRungGateCommand =>
       CiComponentAffected {

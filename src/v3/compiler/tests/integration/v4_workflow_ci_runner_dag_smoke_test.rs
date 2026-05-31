@@ -667,8 +667,15 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         m1_step.contains("needs.affected.outputs.v4 == 'true'")
             && m1_step.contains("needs.affected.outputs.workflow_policy == 'true'")
-            && m1_step.contains("needs.affected.outputs.testclaim_corpus == 'true'"),
-        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, and workflow-policy changes (M1 is upstream rust emit for corpus eval per #4091 §1.2)"
+            && m1_step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
+            && m1_step.contains("needs.affected.outputs.release_distribution == 'true'"),
+        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, workflow-policy, and release_distribution (M1 is upstream rust emit for corpus eval per #4091 §1.2)"
+    );
+    assert!(
+        CI_DAG.contains(
+            "M1RustEmitProbeCommand =>\n      CiComponentAffected {\n        v2: false\n        v3: false\n        v4: true\n        testclaim_corpus: true\n        workflow_policy: true\n        release_distribution: true"
+        ),
+        "{CI_DAG_PATH}: M1RustEmitProbeCommand mask must match ci.yml step if (I8 / T-22 upstream)"
     );
     if non_blocking {
         assert!(
@@ -735,8 +742,12 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         CI_DAG.contains("ci_upsert_testclaim_corpus_eval_upstream_inputs")
-            && CI_DAG.contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
+            &&         CI_DAG.contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
         "{CI_DAG_PATH}: testclaim corpus eval execution must consume M1 rust emit via UpstreamUpsert (#4091 §1.2)"
+    );
+    assert!(
+        CI_DAG.contains("needs: [v2_compile_src_v4, m1_rust_emit_probe_execution]"),
+        "{CI_DAG_PATH}: testclaim corpus eval must declare M1 in needs for selector needs-closure (I8)"
     );
     let live_signal = data_body(&module, "testclaim_corpus_eval_ci_live_workflow_signal");
     let step_name = expr_string(record_body_field(live_signal, "step_name"));
