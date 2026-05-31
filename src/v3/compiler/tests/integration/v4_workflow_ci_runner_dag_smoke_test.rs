@@ -896,7 +896,8 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         ),
         "{CI_DAG_PATH}: BootstrapStageCompile mask must not select on v2-only (I2 is ci_integration; gunbc build is ci_v4 v4-axis)"
     );
-    let v2_bootstrap_build = workflow_step_block(CI_YML, "Build v2 compiler (v4 bootstrap / host eval gate)");
+    let v2_bootstrap_build =
+        workflow_step_block(CI_YML, "Build v2 compiler (v4 bootstrap / host eval gate)");
     assert!(
         v2_bootstrap_build.contains("needs.affected.outputs.v4 == 'true'")
             && !v2_bootstrap_build.contains("needs.affected.outputs.v2 == 'true'"),
