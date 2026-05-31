@@ -188,12 +188,6 @@ pub type Bytes = Vec<u8>;
 
 pub type Char = i64;
 
-pub type List<element> = Rc<Vec<_>>;
-
-pub type Set<element> = Rc<std::collections::BTreeSet<_>>;
-
-pub type Map<key, value> = Rc<HashMap<_, { 1 }>>;
-
 pub type CommitSha = String;
 
 pub type Sha256 = String;
