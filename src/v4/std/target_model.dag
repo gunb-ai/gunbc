@@ -622,18 +622,6 @@ fn target_constructor_template_from_node(
   }
 }
 
-fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
-  match edge.label {
-    Named { name: n } =>
-      if n == target_model_edge_atom_realizations {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: edge)
-      }
-    Positional => list_snoc_item(xs: acc, item: edge)
-  }
-}
-
 fn target_model_bundle_core(host: TargetModel) -> Node {
   match host.bundle.kind {
     TypeNode { connective: Conj } =>
@@ -643,7 +631,14 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
           xs: host.bundle.children,
           empty: Empty,
           cons: fn(acc, edge) {
-            target_model_bundle_core_keep_edge(acc: acc, edge: edge)
+            match edge.label {
+              Named { name: n } =>
+                match n == target_model_edge_atom_realizations {
+                  true => acc
+                  false => list_snoc_item(xs: acc, item: edge)
+                }
+              Positional => list_snoc_item(xs: acc, item: edge)
+            }
           }
         )
       }
