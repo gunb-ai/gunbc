@@ -2,7 +2,7 @@
 
 > **Status:** WORKSHEET COMPLETE (content) — Modeling DFS §8 sign-off **OPEN**. Worksheet PR [#4127](https://github.com/gunb-ai/gunbc/pull/4127) is **docs-only** (same split as SG-RC [#4100](https://github.com/gunb-ai/gunbc/pull/4100)). Target Realization implementation (`keen-heron-687`) is **authorized only after** §8 closes **and** #4127 is on `main` — merge alone does not authorize emitter work.
 > **Date:** 2026-05-31
-> **Dispatch anchor:** `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §5 (SG-8 ~796 E0425+E0432+E0433); `#4086` routing; fresh probe `7181` lines / **808** SG-8-family (`485+240+83`).
+> **Dispatch anchor (on `main`, not re-committed here):** [`docs/audit/v4-rustc-error-catalog-2026-05-31.md`](https://github.com/gunb-ai/gunbc/blob/main/docs/audit/v4-rustc-error-catalog-2026-05-31.md) §5 — SG-8 **~796** (E0425+E0432+E0433) per [#4086](https://github.com/gunb-ai/gunbc/pull/4086). Fresh M1 probe histogram is **implementation-PR evidence only** (not worksheet authority).
 > **Primary consumer (implementation worker):** `src/v2/05_emit_rust.dag` `emit_imports` + generic type-alias emission (M1 v2 Rust emit path over full `src/v4` tree).
 > **Canonical modeling home (export facts):** `src/v4/std/target_model.dag` (`v4.std.target_model`) for cross-target export-surface vocabulary; **live M1 fix lands in v2 emit** until `06_translate` owns Rust module files.
 
@@ -88,7 +88,7 @@ Falsification probe:
   (F3) `import v4.std.collection { List }` — `v4_std_collection.rs` contains `pub type List<…>`.
   (F4) New generic alias `type Pair<T> = FreeMonoid<T>` in std test module — emits without v2 emitter edit.
 Metric allowed only as secondary:
-  ~808 SG-8-family lines on 2026-05-31 probe (485 E0425 + 240 E0432 + 83 E0433).
+  ~796 SG-8-family per committed catalog §5 (#4086); implementation PR attaches fresh probe receipt (not worksheet authority).
 ```
 
 ---
@@ -132,8 +132,8 @@ Implement §10.0 systemic fix (1)+(2) in `src/v2/05_emit_rust.dag` on `main` aft
 - [ ] Falsification probes F1–F4 accepted
 - [ ] Modeling DFS §8 sign-off
 
-## Related artifacts
+## Related artifacts (committed on `main` — navigation only)
 
-- `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §5
-- `docs/planning/v4-correctness-ladder-2026-05-30.md` §10.0 template
-- `src/v4/TASKS.md` T-28 / T-28-B / PubInPath residual
+- [`docs/audit/v4-rustc-error-catalog-2026-05-31.md`](https://github.com/gunb-ai/gunbc/blob/main/docs/audit/v4-rustc-error-catalog-2026-05-31.md) §5 — landed [#4086](https://github.com/gunb-ai/gunbc/pull/4086)
+- [`docs/planning/v4-correctness-ladder-2026-05-30.md`](https://github.com/gunb-ai/gunbc/blob/main/docs/planning/v4-correctness-ladder-2026-05-30.md) §10.0 template — landed [#4120](https://github.com/gunb-ai/gunbc/pull/4120)
+- `src/v4/TASKS.md` T-28 / T-28-B / PubInPath residual (on `main`)
