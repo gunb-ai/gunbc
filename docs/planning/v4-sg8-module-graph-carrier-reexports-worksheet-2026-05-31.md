@@ -1,6 +1,6 @@
 # v4 SG-8 Worksheet — Module graph + carrier re-exports
 
-> **Status:** WORKSHEET DRAFT — worker session `sunny-cat-161` (Target Realization lane under `keen-heron-687`); Modeling DFS §8 sign-off pending.
+> **Status:** WORKSHEET COMPLETE (content) — Modeling DFS §8 sign-off **OPEN**; #4127 co-delivers §10.0 + emitter fix (1)+(2) for falsification review under Target Realization dispatch (`keen-heron-687`). Merge blocked on §8 ratification per mechanical dispatch rule below.
 > **Date:** 2026-05-31
 > **Dispatch anchor:** `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §5 (SG-8 ~796 E0425+E0432+E0433); `#4086` routing; fresh probe `7181` lines / **808** SG-8-family (`485+240+83`).
 > **Primary consumer:** `src/v2/05_emit_rust.dag` `emit_imports` + generic type-alias emission (M1 v2 Rust emit path over full `src/v4` tree).
@@ -99,6 +99,13 @@ Metric allowed only as secondary:
 Implement §10.0 systemic fix (1)+(2) in `src/v2/05_emit_rust.dag`. Re-run `scripts/v4-m1-rust-emit-probe.sh`; attach probe summary + forbidden-pattern greps as PR evidence. Do not claim SG-8 PROVEN on error count alone.
 
 ---
+
+## §8 Manager approval checklist — OPEN
+
+- [ ] Single-authority fact: defining-module `pub use` + graph-type variant isolation (not import-site parent tables)
+- [ ] Spot-fix forbidden: per-error `pub use` patch tables / shim re-exports
+- [ ] Falsification probes F1–F4 accepted
+- [ ] Modeling DFS §8 sign-off
 
 ## Related artifacts
 
