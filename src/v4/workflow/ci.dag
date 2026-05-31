@@ -100,8 +100,7 @@ import v4.std.algebra {
   for_all,
   is_prefix_of,
   length,
-  unique,
-  concat
+  unique
 }
 import v4.std.verification {
   TestClaim,
@@ -3221,6 +3220,14 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         release_distribution: true
       }
     M1RustEmitProbeCommand =>
+      CiComponentAffected {
+        v2: false
+        v3: false
+        v4: true
+        workflow_policy: true
+        release_distribution: false
+      }
+    Phase1NatSemiringRungGateCommand =>
       CiComponentAffected {
         v2: false
         v3: false
