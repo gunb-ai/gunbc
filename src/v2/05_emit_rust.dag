@@ -1415,19 +1415,16 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
       let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
       concat("use crate::", mod_name, "::*;")
     )
-    let names_by_mod = imports |> filter(imp => import_is_all(n: imp) == false) |> fold(init: empty_map(), f: (acc, imp) =>
-      let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
-      let names = import_specific_names_at(n: imp, source_indices: source_indices)
-        |> filter(n => local_names |> all(ln => ln != n))
-      match map_get(acc, mod_name) {
-        Some { value: existing } =>
-          map_insert(acc, mod_name, unique_strings(items: concat(existing, names)))
-        None =>
-          map_insert(acc, mod_name, unique_strings(items: names))
-      }
+    let import_acc = imports |> filter(imp => import_is_all(n: imp) == false) |> fold(
+      init: ImportNamesByModAcc { names_by_mod: empty_map(), mod_order: [] },
+      f: (acc, imp) =>
+        let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
+        let names = import_specific_names_at(n: imp, source_indices: source_indices)
+          |> filter(n => local_names |> all(ln => ln != n))
+        fold_import_names_by_mod(acc: acc, mod_name: mod_name, names: names)
     )
-    let specific_lines = map_keys(names_by_mod) |> flat_map(mod_name =>
-      match map_get(names_by_mod, mod_name) {
+    let specific_lines = import_acc.mod_order |> flat_map(mod_name =>
+      match map_get(import_acc.names_by_mod, mod_name) {
         Some { value: deduped } =>
           [emit_specific_import_block(mod_name: mod_name, deduped_names: deduped, emit_info: emit_info, registry: registry, type_summaries: type_summaries)]
         None => []
