@@ -8,7 +8,7 @@ Forward projection of remaining work to v4-done. Supersedes the 2026-05-30 snaps
 |---|---|---|
 | P1 | Every other scheduled task complete | YELLOW (8/53 PROVEN per sharp-otter #4065 roster + #4060 distribution; 45 GAP items remain) |
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **TECHNICAL-PROVEN / AUTHORITY-BLOCKED**: scope (a) PROVEN per valiant-moth-559 probe (44-source compiler closure, 0 dag+rust diagnostics, no resolve-posture bridge needed). Full predicate gated on P2-B bridge deletion (`ci.yml:378-385` + `scripts/v4-bootstrap-resolve-posture-gate.sh`) — operator-authorization-blocked. |
-| P3 | v4 emits Rust source that compiles to a binary | YELLOW. Post-SG-1 #3956 measurement: 6991 rustc errors (was 7951; SG-1 dissolved E0423 class -2978; SG-7 cleared). 8 receipt-producing classes per #4086 catalog — 7 active across routing states + SG-3-CASCADE retired cascade-residual (see §3.3). |
+| P3 | v4 emits Rust source that compiles to a binary | YELLOW. Live ratchet (#4122 post-#4115 probe, `docs/audit/v4-rustc-error-catalog-2026-05-31-post-p5.md`): **7,175** rustc errors (post-SG-1 baseline #4086 was 6,991; pre-SG-1 7,951 — SG-1 dissolved E0423 −2,978, SG-7 cleared; #4086 is retained only as the delta baseline). 8 receipt-producing classes per #4086 catalog — 7 active across routing states + SG-3-CASCADE retired cascade-residual (see §3.3). |
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | RED — hard-gated on P2 full deletion + P3 PROVEN |
 | P5 | TestClaim suite passes | YELLOW. **P5-minimum-viable LANDED** (#4063 + #4064). **P5-PROVEN gates split into two bundles. Layer 1 fixture/law bundle: 3/3 CLOSED** (Wa-1 #4079 + Wa-2 #4080 + P5-D tranche-2 #4089). **Layer 2 authority gate: OPEN** (structural-bridge `scripts/v4-testclaim-corpus-gate.sh` replacement+deletion). **P5 PROVEN requires BOTH layers closed.** Don't read "Wa-2 LANDED → P5 GREEN". |
 | P6 | Hand-authored Rust not editable authority (proven by REPRODUCTION) | RED — hard-gated on P4 + P3 PROVEN |
@@ -47,7 +47,7 @@ Per #4086 catalog + proud-pike routing (msg_6db2dc9e):
 
 | Class | ~Errors | State | Routing |
 |---|---|---|---|
-| SG-1b function-signature String↔Symbol | (subset of 6991) | worksheet-needed | NEW sibling worksheet — TR lane (keen-heron) implements |
+| SG-1b function-signature String↔Symbol | (subset of 7,175) | worksheet-needed | NEW sibling worksheet — TR lane (keen-heron) implements |
 | SG-RC-LAYERING | ~700 (10%) | authoring | NEW §10.0 worksheet — **proud-pike authoring** |
 | SG-2 | (extend existing) | routed | proud-pike's SG-2 worksheet; worker dispatch when ready |
 | SG-8 | (extend existing) | routed | extend existing worksheet |
@@ -156,7 +156,7 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 - **Structural-bridge replacement is unstaffed.** Per quick-tern's no-new-shell-substrate read, it needs DFS authoring before worker dispatch. This is the latent gate that could surprise — and per operator framing it should be the **first concrete CiUpsertStep replacement under #4091** rather than a one-off shell swap.
 - **P2-B bridge deletion is operator-gated and not authorized.** Without it, P2 stays YELLOW even though scope (a) is PROVEN.
 - **#4092 saved ~14m CI runtime** but ci_v4 step still sometimes times out (#4074 rerun was a 32min nailbiter); CI overhaul gap is partially closing at the per-step level. The full elastic redesign **landed in [#4091](https://github.com/gunb-ai/gunbc/pull/4091)** (squash c05a5a84, merged 2026-05-31T07:04Z), anchored on the same #4074 run profile that surfaced the four-compile-redundancy (M1 rust emit + v2→v4 bootstrap + T-22 corpus rust + T-22 corpus dag, all on the same 332-source closure). #4091 is now substrate authority for downstream CI substrate work; the structural overhaul timeline now depends on #4095-class DFS worksheets landing + implementation workers shipping.
-- **6991 rustc errors → 0 is a long-horizon path.** Per-class closures (SG-RC-LAYERING ~700, SG-COLLECTION-PROJECTION ~170, etc.) accumulate — the visible single-class wins from SG-1 (~37%) won't recur at that magnitude.
+- **7,175 rustc errors → 0 is a long-horizon path.** (#4122 live ratchet; #4086's 6,991 was the post-SG-1 baseline.) Per-class closures (SG-RC-LAYERING ~700, SG-COLLECTION-PROJECTION ~170, etc.) accumulate — the visible single-class wins from SG-1 (~37%) won't recur at that magnitude.
 
 ## §9. Cross-refs (authoritative state)
 
