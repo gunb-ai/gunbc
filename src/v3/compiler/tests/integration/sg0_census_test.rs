@@ -397,6 +397,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
+    // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
+    // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
+    // `run_target_verification` owns target verdicts; interim host runner
+    // `scripts/v4-leaf-model-python-r1-verify.sh`.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_r1_test.rs",
     // Phase 1 leaf-model verification R1 (`docs/planning/v4-leaf-model-verification-2026-05-30.md` §7):
     // boundary rustc exercise for `src/v4/lens/leaf_model_verification.dag` fixtures until
     // T-22 modeled `run_target_verification` owns target verdicts.
@@ -408,15 +413,20 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolution: delete when modeled runner exercises
     // `src/v4/test/claim/language_model/rust_r1.dag` without this hand-Rust bridge.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r1_rustc_test.rs",
-    // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
-    // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
-    // `run_target_verification` owns target verdicts; interim host runner
-    // `scripts/v4-leaf-model-python-r1-verify.sh`.
-    "src/v3/compiler/tests/boundary/v4_leaf_model_python_r1_test.rs",
     // Phase 1 leaf-model R2a/R2b(1–2)/R3-external (W1.7): boundary rustc for algebra inhabitance,
     // overflow runtime behavior, Symbol projection; host runners v4-leaf-model-rust-r2{,a,b}-verify.sh
     // and v4-leaf-model-rust-r3-external-verify.sh.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r2_r3_external_rustc_test.rs",
+    // Phase 1 leaf-model R3-internal (post-SG-1 #3956): emit coupling receipt for Symbol row mutation;
+    // boundary projection replay for `target_atom_type_spelling` + value kind until T-22 eval.
+    //
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+    // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` + **TASKS.md** T-22/T-38 (Runtime/TestClaim
+    // verdict surface; interim host runner `scripts/v4-leaf-model-rust-r3-internal-verify.sh`).
+    // Dissolution: delete when modeled runner exercises
+    // `RustEmitProjectionEqualityExpectation` without this hand-Rust bridge.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r3_internal_emit_coupling_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
