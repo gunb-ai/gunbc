@@ -212,18 +212,15 @@ mod tests {
         ));
     }
 
-    const PYTHON_FIXTURE_SOURCE_PASS: &str =
-        "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
+    const PYTHON_FIXTURE_SOURCE_PASS: &str = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
 
     #[test]
     fn bridge_python_transport_builds_runs_and_parses_stdout() {
-        let work_dir = default_work_dir(&format!("gunbc_emit_host_py_bridge_{}", std::process::id()));
-        let receipt = run_emit_host_python_transport(
-            PYTHON_FIXTURE_SOURCE_PASS,
-            &mvp2_inputs(),
-            &work_dir,
-        )
-        .expect("transport");
+        let work_dir =
+            default_work_dir(&format!("gunbc_emit_host_py_bridge_{}", std::process::id()));
+        let receipt =
+            run_emit_host_python_transport(PYTHON_FIXTURE_SOURCE_PASS, &mvp2_inputs(), &work_dir)
+                .expect("transport");
         assert!(host_exit_holds(&receipt.exit));
         let stdout =
             host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()).expect("logical stdout");
@@ -232,8 +229,10 @@ mod tests {
 
     #[test]
     fn emit_vs_eval_mvp2_python_transport_passes_for_five_zero_bytes() {
-        let work_dir =
-            default_work_dir(&format!("gunbc_emit_vs_eval_py_pass_{}", std::process::id()));
+        let work_dir = default_work_dir(&format!(
+            "gunbc_emit_vs_eval_py_pass_{}",
+            std::process::id()
+        ));
         let verdict = run_emit_vs_eval_mvp2_python_transport(
             PYTHON_FIXTURE_SOURCE_PASS,
             &mvp2_inputs(),

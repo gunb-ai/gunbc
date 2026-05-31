@@ -40,7 +40,8 @@ const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
 const NAT_SEMIRING_RUNG_3_4_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
 const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
-const NAT_SEMIRING_RUNG_6_DAG: &str = include_str!("../../../../v4/test/claim/nat_semiring/rung_6.dag");
+const NAT_SEMIRING_RUNG_6_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_6.dag");
 const NAT_SEMIRING_RUNG_6_PATH: &str = "src/v4/test/claim/nat_semiring/rung_6.dag";
 const NAT_SEMIRING_RUNG56_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung56_eval.dag");
@@ -370,12 +371,9 @@ fn emit_host_runner_python_row_runs_and_parses_stdout() {
         claim_input_root: "w34_py_claim_input".to_string(),
         expected_eval_root: "w34_py_expected_eval".to_string(),
     };
-    let receipt = emit_host_runner::run_emit_host_python(
-        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
-        &inputs,
-        &work_dir,
-    )
-    .expect("run_emit_host_python");
+    let receipt =
+        emit_host_runner::run_emit_host_python(EMIT_HOST_PYTHON_FIXTURE_SOURCE, &inputs, &work_dir)
+            .expect("run_emit_host_python");
     assert!(receipt.exit.exit_holds());
     emit_host_runner::runtime_value_parse_python(&receipt.stdout_bytes).expect("parse");
 }
@@ -417,7 +415,10 @@ fn v4_nat_semiring_rung56_eval_dag_tokenizes_and_parses_rung6_gate() {
         );
     }
     assert!(
-        surface_declares_data(&module, "nat_semiring_rung6_additive_monoid_runtime_value_rows"),
+        surface_declares_data(
+            &module,
+            "nat_semiring_rung6_additive_monoid_runtime_value_rows"
+        ),
         "{NAT_SEMIRING_RUNG56_EVAL_PATH}: tranche-1 additive-Monoid roster"
     );
 }
