@@ -28,6 +28,8 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  Diagnostics,
+  NonEmptyDiagnostics,
   node_locus,
   Outcome,
   None,
@@ -147,7 +149,32 @@ import v4.std.target_model {
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted
 }
-import v4.std.collection { List, Map, Optional, empty_map, list_at_optional, optional_absent, optional_present }
+import v4.std.target_model {
+  TargetAtomRealization,
+  TargetValueExpression,
+  SourceAtomValue,
+  source_atom_symbol,
+  target_atom_realization_lookup_in_catalog_node,
+  target_atom_realization_lookup_miss,
+  target_atom_realization_lookup_miss_diagnostic,
+  target_atom_type_spelling,
+  target_atom_value_expression,
+  target_model_edge_atom_realizations,
+  target_model_edge_value_expression,
+  target_model_named_edge,
+  target_value_expression_node
+}
+import v4.std.collection {
+  Absent,
+  List,
+  Map,
+  Optional,
+  Present,
+  empty_map,
+  list_at_optional,
+  optional_absent,
+  optional_present
+}
 import v4.std.algebra {
   Cons,
   Empty,
@@ -183,6 +210,7 @@ data translate_binding_spelling_not_found: Symbol = translate_binding_spelling_n
 data translate_concrete_token_class_missing: Symbol = translate_concrete_token_class_missing
 data translate_concrete_token_kind_invalid: Symbol = translate_concrete_token_kind_invalid
 data translate_serialize_recursion_limit_exhausted: Symbol = translate_serialize_recursion_limit_exhausted
+data translate_target_atom_realization_not_found: Symbol = translate_target_atom_realization_not_found
 data translate_type_expression_shape_missing: Symbol = translate_type_expression_shape_missing
 data translate_type_expr_kind_authority_invalid: Symbol = translate_type_expr_kind_authority_invalid
 // node_subtree_count + translation_rules subtree — initial measure for grammar-inverse serialize.
@@ -1882,8 +1910,12 @@ fn project_type_expression_conj_fields(
       projection: projection
     ),
     f: fn(fields) {
-      if is_empty(xs: fields) && !is_empty(xs: node.children) {
-        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+      if is_empty(xs: fields) {
+        if is_empty(xs: node.children) {
+          Accepted { value: fields, diagnostics: None }
+        } else {
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        }
       } else {
         Accepted { value: fields, diagnostics: None }
       }
@@ -1904,8 +1936,12 @@ fn project_type_expression_disj_variants(
       projection: projection
     ),
     f: fn(variants) {
-      if is_empty(xs: variants) && !is_empty(xs: node.children) {
-        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+      if is_empty(xs: variants) {
+        if is_empty(xs: node.children) {
+          Accepted { value: variants, diagnostics: None }
+        } else {
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        }
       } else {
         Accepted { value: variants, diagnostics: None }
       }
@@ -2628,12 +2664,182 @@ fn serialize_type_expr_emitted_bounded(
     )
   }
 }
-fn translate_coerced_shell(coerced: Node) -> Node {
+fn translate_coerced_node_pass_through(coerced: Node) -> Node {
   Node {
     kind: coerced.kind,
     children: []
   }
 }
+fn translate_outcome_is_catalog_lookup_miss(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == target_atom_realization_lookup_miss
+}
+
+fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
+  match translate_target_atom_realization_for_carrier(
+    target: target,
+    source_carrier: coerced
+  ) {
+    Accepted { value: row, diagnostics: d } =>
+      Accepted {
+        value: row.type_form.node,
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } =>
+      if translate_outcome_is_catalog_lookup_miss(diagnostics: r) {
+        outcome_accepted(Node { kind: coerced.kind, children: [] })
+      } else {
+        Rejected { diagnostics: r }
+      }
+  }
+}
+fn target_atom_realizations_catalog_from_model(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<Node> {
+  match target_bundle_optional_child(
+    target: target,
+    edge_name: target_model_edge_atom_realizations
+  ) {
+    Accepted { value: optional_catalog, diagnostics: d } =>
+      match optional_catalog {
+        None =>
+          outcome_rejected(
+            target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier)
+          )
+        Some { value: catalog } =>
+          Accepted { value: catalog, diagnostics: d }
+      }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+fn translate_target_atom_realization_for_carrier(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<TargetAtomRealization> {
+  bind_outcome(
+    o: target_atom_realizations_catalog_from_model(
+      target: target,
+      source_carrier: source_carrier
+    ),
+    f: fn(catalog) {
+      target_atom_realization_lookup_in_catalog_node(
+        catalog: catalog,
+        source_carrier: source_carrier,
+        host_target_model: target
+      )
+    }
+  )
+}
+fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
+  match shell.kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: shell.kind,
+        children: list_snoc_item(
+          xs: shell.children,
+          item: target_model_named_edge(
+            name: target_model_edge_value_expression,
+            target: value
+          )
+        )
+      }
+    _ => shell
+  }
+}
+fn source_atom_value_for_realization_row(
+  source: Node,
+  row: TargetAtomRealization
+) -> Optional<SourceAtomValue> {
+  if content_hash(n: row.source_carrier) == content_hash(n: symbol_kernel_type_node()) {
+    match source.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        optional_present(source_atom_symbol(identity: id))
+      _ => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+fn translate_atom_realization_value_from_source(
+  source: Node,
+  coerced: Node,
+  target: TargetModel
+) -> Outcome<Optional<Node>> {
+  match translate_target_atom_realization_for_carrier(
+    target: target,
+    source_carrier: coerced
+  ) {
+    Accepted { value: row, diagnostics: d } =>
+      match source_atom_value_for_realization_row(source: source, row: row) {
+        Absent =>
+          Accepted {
+            value: optional_absent(),
+            diagnostics: d
+          }
+        Present { value: atom_value } =>
+          bind_outcome(
+            o: target_atom_value_expression(row: row, value: atom_value),
+            f: fn(expr) {
+              outcome_accepted(
+                optional_present(target_value_expression_node(expr: expr))
+              )
+            }
+          )
+      }
+    Rejected { diagnostics: r } =>
+      if translate_outcome_is_catalog_lookup_miss(diagnostics: r) {
+        outcome_accepted(optional_absent())
+      } else {
+        Rejected { diagnostics: r }
+      }
+  }
+}
+fn translate_coerced_with_atom_realization(
+  source: Node,
+  coerced: Node,
+  target: TargetModel,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match translate_coerced_shell(coerced: coerced, target: target) {
+    Accepted { value: shell, diagnostics: sd } =>
+      match translate_atom_realization_value_from_source(
+        source: source,
+        coerced: coerced,
+        target: target
+      ) {
+        Accepted { value: value_projection, diagnostics: vd } =>
+          Accepted {
+            value: match value_projection {
+              Absent => shell
+              Present { value: value_node } =>
+                translate_shell_attach_value_expression(
+                  shell: shell,
+                  value: value_node
+                )
+            },
+            diagnostics: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: sd),
+              inner: vd
+            )
+          }
+        Rejected { diagnostics: r } =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: diagnostics_merge(outer: pending, inner: sd),
+              rejected: r
+            )
+          }
+      }
+    Rejected { diagnostics: r } =>
+      Rejected {
+        diagnostics: rejected_with_pending(pending: pending, rejected: r)
+      }
+  }
+}
+
 fn translate_type_fold_init(node: Node) -> Outcome<Node> {
   Accepted {
     value: Node { kind: node.kind, children: [] },
@@ -2650,10 +2856,12 @@ fn translate_fold_init(
     ComputationNode { behavior: _ } =>
       match coerce_grounded_node(source: node, tree: tree, target: target) {
         Accepted { value: coerced, diagnostics: d } =>
-          Accepted {
-            value: translate_coerced_shell(coerced: coerced.target),
-            diagnostics: d
-          }
+          translate_coerced_with_atom_realization(
+            source: node,
+            coerced: coerced.target,
+            target: target,
+            pending: d
+          )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
@@ -2667,19 +2875,23 @@ fn translate_mvp1_fold_init(
     TypeNode { connective: _ } =>
       match coerce_grounded_node(source: node, tree: tree, target: target) {
         Accepted { value: coerced, diagnostics: d } =>
-          Accepted {
-            value: translate_coerced_shell(coerced: coerced.target),
-            diagnostics: d
-          }
+          translate_coerced_with_atom_realization(
+            source: node,
+            coerced: coerced.target,
+            target: target,
+            pending: d
+          )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     ComputationNode { behavior: _ } =>
       match coerce_grounded_node(source: node, tree: tree, target: target) {
         Accepted { value: coerced, diagnostics: d } =>
-          Accepted {
-            value: translate_coerced_shell(coerced: coerced.target),
-            diagnostics: d
-          }
+          translate_coerced_with_atom_realization(
+            source: node,
+            coerced: coerced.target,
+            target: target,
+            pending: d
+          )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
