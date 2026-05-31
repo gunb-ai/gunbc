@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `f8dabe7a1` (`main` 2026-05-31T07:56Z) — post-#4109 maintenance; P2-B probe PASS + tail worksheets ([#4097](https://github.com/gunb-ai/gunbc/pull/4097)/[#4099](https://github.com/gunb-ai/gunbc/pull/4099)/[#4100](https://github.com/gunb-ai/gunbc/pull/4100)); P5 Layer 2 substrate ([#4095](https://github.com/gunb-ai/gunbc/pull/4095)).  
+> **Tree HEAD:** `084005699` (`main` 2026-05-31T08:56Z) — post-#4110 maintenance; R3-internal [#4102](https://github.com/gunb-ai/gunbc/pull/4102); `compute_fabric.dag` Worksheet A landed (`8c01c15c1`).  
 > **Wave posture:** MW-D8 **5/5 PROVEN — Wave 1 EXIT** ([#4073](https://github.com/gunb-ai/gunbc/pull/4073) + [#4082](https://github.com/gunb-ai/gunbc/pull/4082) C4). **Wave 2 TR-lane COMPLETE** (SG-1/2/5/6 on main, keen-heron 06:52Z). W2.3 A+B+C+E landed; W2.4+ post-Jun 1.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -149,8 +149,8 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **Burn-down** | **YELLOW** (strongest movement — Layer 1 closed) |
 | **Owner** | **Runtime/TestClaim** (`quick-lark` / spawn) + **Compiler Spine** |
 | **Blocking receipt** | Modeled T-22 eval + structured `TestClaimRun` verdicts in CI; delete `scripts/v4-testclaim-corpus-gate.sh` (**Layer 2** — still OPEN) |
-| **Evidence today** | **Layer 1 fixture/law bundle 3/3 CLOSED**. **Layer 2 OPEN** — structural bridge live. **#4091** ratified + **#4095** elastic compute fabric / cache interface worksheets (§4.0f A/B; `dsl/std` + `v4.std` scope per #4096). Not GREEN. |
-| **Today’s PRs** | **#4095** Layer 2 substrate worksheets. **#4091** CI redesign ratified. Layer 1 prior: **#4079**, **#4080**, **#4089**. |
+| **Evidence today** | **Layer 1 fixture/law bundle 3/3 CLOSED**. **Layer 2 OPEN** — structural bridge live. **#4091** ratified + **#4095** worksheets; **`compute_fabric.dag`** Worksheet A impl landed (`8c01c15c1`). Not GREEN. |
+| **Today’s PRs** | **#4102** R3-internal Symbol emit-coupling (leaf-model). **compute_fabric.dag** Worksheet A substrate. Prior: **#4095**, **#4091**. |
 | **Wave 2 PR** | W2.6 **landed** (#4022); Layer 2 structural-bridge replacement under #4091 framing |
 | **Re-check** | **2026-06-01** — Layer 2 deletion schedule + T-38 runner dispatch (MW-D2 expedite) |
 
@@ -233,6 +233,9 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4100](https://github.com/gunb-ai/gunbc/pull/4100) | ~07:21 | P3 tail | **P3** | SG-RC-LAYERING §10.0 worksheet (~700 errors / 10% residual) |
 | [#4095](https://github.com/gunb-ai/gunbc/pull/4095) | ~07:24 | P5 Layer 2 | **P5** | Elastic compute fabric + cache interface worksheets (§4.0f A/B) |
 | [#4109](https://github.com/gunb-ai/gunbc/pull/4109) | ~07:56 | Maintenance | *(tracker)* | Post-#4098 burn-down — P2-B probe PASS + tail worksheets landing log |
+| [#4110](https://github.com/gunb-ai/gunbc/pull/4110) | ~08:56 | Maintenance | *(tracker)* | Post-#4109 HEAD refresh + #4109 landing-log row |
+| [#4102](https://github.com/gunb-ai/gunbc/pull/4102) | ~08:35 | Leaf-model R3-int | **P5** | R3-internal Symbol emit-coupling exercise post-SG-1; not GREEN |
+| `8c01c15c1` | ~08:40 | P5 Layer 2 | **P5** | `dsl/std/compute_fabric.dag` Worksheet A §6 landed — Layer 2 substrate |
 
 ---
 
