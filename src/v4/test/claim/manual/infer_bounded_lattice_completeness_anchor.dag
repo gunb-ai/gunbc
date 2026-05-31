@@ -173,10 +173,7 @@ data anchor_partial_missing_lattice_field: Bool = match bounded_lattice_instance
 }
 
 
-data anchor_bounded_lattice_completeness_classifies_instances: Bool =
-  anchor_complete_bounded_lattice_completeness_ok
-    && anchor_partial_bounded_lattice_missing_meet
-    && anchor_partial_missing_lattice_field
+data anchor_bounded_lattice_completeness_classifies_instances: Bool = anchor_complete_bounded_lattice_completeness_ok && anchor_partial_bounded_lattice_missing_meet && anchor_partial_missing_lattice_field
 
 
 data anchor_partials_collected_from_module: Bool = length(
