@@ -148,8 +148,9 @@ type ComputeHost {
   network_interfaces: List<NetworkInterface>
 }
 
-type ProcessorCostModel { /* data rows per provider — land with supply rows */ }
-type ProviderCostModel { /* provider-indexed */ }
+// 🟡 land per-provider rows with supply facts (Worksheet A §1.4).
+type ProcessorCostModel { placeholder: Bool }
+type ProviderCostModel { placeholder: Bool }
 
 type CostModel {
   cost_class: CostClass
@@ -309,8 +310,8 @@ type ComputeLease {
   eligibility: Witness<ComputeLeaseEligibility>
 }
 
-// 🟡 P-CF-WITNESS — `satisfies` witness derivation lands with supply proofs (cases 7–8).
-fn satisfies(_supply: ComputeSupplyFacts, _demand: WorkDemand) -> Witness<ComputeLeaseEligibility>
+// 🟡 P-CF-WITNESS — `satisfies` signature + body land with supply row proofs (cases 7–8).
+// fn satisfies(supply: ComputeSupplyFacts, demand: WorkDemand) -> Witness<ComputeLeaseEligibility>
 
 // --- §1.1 executable unit + ingress --------------------------------------------
 
@@ -318,20 +319,20 @@ type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
 
 type WorkUnit<T> {
   id: WorkUnitId
-  inputs: List<ArtifactRef>
+  inputs: List<ArtifactRef<T>>
   action: WorkAction
   output: ArtifactSpec<T>
   requirements: WorkDemand
 }
 
-fn artifact_refs_from_upsert_inputs(
+fn artifact_refs_from_upsert_inputs<T>(
   _inputs: List<UpsertInputRef>,
   _change: ChangeSet,
-) -> List<ArtifactRef> {
-  artifact_refs_from_upsert_inputs_empty()
+) -> List<ArtifactRef<T>> {
+  artifact_refs_from_upsert_inputs_empty<T>()
 }
 
-fn artifact_refs_from_upsert_inputs_empty() -> List<ArtifactRef> {
+fn artifact_refs_from_upsert_inputs_empty<T>() -> List<ArtifactRef<T>> {
   []
 }
 
