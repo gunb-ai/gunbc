@@ -330,7 +330,240 @@ set is *the intersection that turns out to actually matter*.
 sketches for shared understanding, not modeled authority. Authority belongs to
 the intricate srv1/srv2 substrate, landed first.
 
-### 4.0a (provisional) Frame: one pattern, every layer; workloads ask the network for compute
+### 4.0a Canonical schema: the five-layer execution chain
+
+The abstraction is **five named layers**, each with a distinct type and a single
+job. The chain is unidirectional (each layer projects to the next); reasoning
+about cost, parallelism, or scheduling at the wrong layer is the root cause of
+most CI design drift.
+
+```text
+CiUpsertStep<T>      — what RESULT is needed (CI semantics)
+       │
+       ▼
+WorkUnit<T>           — what must EXECUTE to produce that result
+       │
+       ▼
+ComputeDemand         — what RESOURCES + LAWS the execution requires
+       │
+       ▼
+ComputeProvider       — what a backend (srv1/srv2, Mac mini, gcloud, …) can OFFER
+       │
+       ▼
+ComputeLease          — the chosen allocation (provider + envelope + scope)
+       │
+       ▼
+ExecutionReceipt<T>   — what HAPPENED (output, verdict, cost, perf)
+```
+
+Each layer is itself an `Upsert<T>` (fractal — §4.0 methodology applies
+recursively): `verify` reads the layer's cache identity; `satisfy` recurses to
+the layer above; `create` performs the layer-specific action; `resolve` returns
+a stable handle the next layer hashes.
+
+#### Layer 1 — `CiUpsertStep<T>` (CI semantics)
+
+Already landed in `ci.dag:173-179` and being rolled out across W2.3 buckets A–E:
+
+```dag
+type CiUpsertStep<T> {
+  inputs: List<UpsertInputRef>
+  verify: VerifyCheck
+  create: CreateAction
+  resolve: ResolveExpr<T>
+  payload_type: Node
+}
+```
+
+**What it says:** "this CI gate is satisfied when these declared inputs produce
+this verified outcome." Nothing about hosts, cores, runners, or wall-time. CI
+authors write at this layer and only this layer.
+
+#### Layer 2 — `WorkUnit<T>` (executable unit)
+
+```dag
+type WorkUnit<T> {
+  id: WorkUnitId
+  inputs: List<ArtifactRef>
+  action: WorkAction
+  output: ArtifactSpec<T>
+  requirements: ComputeDemand
+}
+```
+
+A `WorkUnit` is what a `CiUpsertStep<T>` projects to when scheduled. Inputs are
+content-addressed `ArtifactRef`s (not file paths). Outputs are typed
+`ArtifactSpec<T>` claims. The same `WorkUnit` produced by two different
+`CiUpsertStep<T>`s can share results — this is the dedup substrate.
+
+#### Layer 3 — Demand: orthogonal coordinates, not modes
+
+```dag
+type WorkDemand {
+  compute: ComputeRequirement
+  memory: MemoryRequirement
+  storage: StorageRequirement
+  network: NetworkRequirement
+  os: Option<OperatingSystemRequirement>
+  isolation: IsolationRequirement
+  toolchains: List<ToolchainRequirement>
+  parallelism: ParallelismShape
+  data_locality: List<ArtifactLocalityRequirement>
+  effects: List<EffectBoundary>
+}
+
+type ResourceEnvelope {
+  cpu: Option<CpuRequirement>
+  gpu: Option<GpuRequirement>
+  memory: Option<MemoryRequirement>
+  storage: Option<StorageRequirement>
+  network: Option<NetworkRequirement>
+}
+```
+
+**Crucial discipline (per MODELING.md coproduct-vs-coordinate check):**
+resources are **orthogonal coordinates of a record**, not variants of a sum.
+A real workload inhabits multiple dimensions simultaneously — a GPU training
+job needs `gpu + cpu + memory + storage + network`; a Rust build job needs
+`cpu + memory + filesystem + artifact cache`; a data-transfer job needs
+`network + storage`. Modeling resources as
+`ComputeKind = CPU | GPU | Storage | Network` (an exclusive variant) is
+**forbidden** (§4.0d): a single inhabitant carries values across all
+dimensions, so they're record coordinates, not sum cases.
+
+The demand says **what the work requires**, never **what hardware to use**.
+"arm64 Linux + Rust toolchain + ≥4GiB RAM + hermetic-fs isolation + no
+ambient network" — yes. "srv1, 20 workers" — no (authored tuning, forbidden).
+
+#### Layer 4 — `ComputeProvider` / `ComputeOffer` / `ComputeLease` (supply)
+
+```dag
+type ComputeProvider {
+  identity: ProviderId
+  machines: List<ComputeMachine>
+  execution_surfaces: List<ExecutionSurface>
+  cache_surfaces: List<CacheSurface>
+  network_surfaces: List<NetworkSurface>
+  cost_model: CostModel
+  performance_receipts: List<PerformanceReceipt>
+}
+
+type ComputeOffer {
+  provider: ProviderId
+  surface: ExecutionSurface
+  available_resources: ResourceEnvelope
+  cache_locality: CacheLocality
+  estimated_cost: CostEstimate
+  performance_model: PerformanceModel
+}
+
+type ComputeLease {
+  offer: ComputeOffer
+  allocated_resources: ResourceEnvelope
+  lease_id: LeaseId
+  cache_scope: CacheScope
+}
+```
+
+srv1/srv2 are **one provider** today (`self_hosted_provider`); Mac mini, WSL,
+ubicloud, gcloud are additional `ComputeProvider` rows. Provider rows are
+where physical-substrate detail lives — `ExecutionSurface` distinguishes
+Linux-self-hosted / macOS-host / WSL-guest / ephemeral-container; `CacheSurface`
+distinguishes per-host L1 / shared-CAS / ephemeral / none.
+
+#### Layer 5 — `ExecutionReceipt<T>` (what happened)
+
+```dag
+type ExecutionReceipt<T> {
+  work: WorkUnit<T>
+  lease: ComputeLease
+  output: Outcome<ArtifactRef<T>>
+  performance: PerformanceReceipt
+  cost: CostReceipt
+  started_at: LogicalTime
+  finished_at: LogicalTime
+}
+```
+
+Receipts are the **only substrate the scheduler reads** to make
+perf-per-cost decisions in the future. "This shape of work on srv1 took X;
+on gcloud took Y; cache hit on srv2 saved Z" — those facts come from receipts,
+not from heuristics. If no receipt evidence exists for a class of work, the
+scheduler reports `insufficient evidence` rather than silently guessing.
+
+### 4.0b Parallelism is algebraic, not numerical
+
+Per-step `worker_count: Int` as an authored field is the wrong shape — it bakes
+physical-capacity assumptions into the step and forces re-tuning whenever
+providers change. Parallelism belongs in `ComputeDemand` as a **declared
+algebra**:
+
+```dag
+type ParallelismShape
+  = SingleWorkItem
+  | IndependentShards { shard_count: Int }
+  | DependencyGraphParallel { graph: WorkGraph }
+  | PartitionedReduce {
+      partitioner: Partitioner
+      map: WorkAction
+      reduce: Reducer
+      laws: ReducerLaws
+    }
+
+type ReducerLaws {
+  associative: Witness<Associativity>
+  commutative: Option<Witness<Commutativity>>
+  identity: Option<IdentityElement>
+  idempotent: Option<Witness<Idempotency>>
+}
+```
+
+The scheduler derives worker count from `(parallelism_shape × provider_capacity ×
+cache_locality)`. MapReduce / batch fan-out is *only* available when
+`ReducerLaws.associative` (at minimum) is witnessed; absent laws mean the
+scheduler must run a narrower plan or fail closed. This matches the lawful-
+rewrite discipline elsewhere in the codebase (parallel-map / tree-reduce /
+CUDA lowerings all require `LawfulRewriteWitness`).
+
+### 4.0c Watchdog ≠ cost (operational vs semantic)
+
+The doc previously named per-step `timeout: Duration` as a missing field. That
+conflates two distinct concerns:
+
+```dag
+type ExecutionBudget {
+  expected_cost: SymbolicCost       // semantic — derived from work complexity
+  provider_model: ProviderCostModel  // per-provider rate / capacity
+  watchdog: WatchdogLimit            // operational kill-switch, conservative
+}
+```
+
+`watchdog` is the runaway-process kill-switch — operational safety, not
+program complexity. `expected_cost` is the modeled complexity claim. Mixing
+the two (today's hardcoded `timeout-minutes: 35` in YAML) is what makes
+timeouts feel arbitrary and brittle.
+
+### 4.0d Forbidden — substrate violations that re-introduce the old shape
+
+The closed-system discipline (per
+`feedback_heuristics_recoverable_to_substrate`) names the failure mode: when
+a heuristic or shortcut is added in place of a structural fact, future
+divergence is silent. The following are forbidden anywhere in the chain:
+
+- **Host-specific fields on `CiUpsertStep<T>`** (`host: srv1`, `runner_label: arm64-self-hosted`). CI steps describe results, not placement.
+- **`worker_count: Int` as authored tuning metadata**. Parallelism is declared as `ParallelismShape`; counts are scheduler-derived.
+- **Scheduler-policy / run-mode enums** that compress unknowns into named cases (`CiRunPolicy = Eager | Conservative | Aggressive`). Heuristics are symptoms of missing structural facts.
+- **Cache identity from filesystem residue** ("the file was at this path last run"). Cache identity is `content_hash(complete subgraph)`, projected at lookup time.
+- **Provider-specific assumptions outside `ComputeProvider` rows** (e.g., `ctrl-jobserver` FIFO path hardcoded in a step's `create`). Provider-private facts stay in provider rows.
+- **`timeout: Duration` as the sole budget carrier**. Split into modeled `ExecutionBudget` (`expected_cost`, `provider_model`, `watchdog`).
+- **Authored cache keys** (`cache_key: "..."`). Already forbidden in `ci.dag:163-166` — cache identity is derived from `content_hash(complete CiUpsertStep<T>)`.
+
+Anything in this list is a re-introduction of the substrate gap the chain is
+meant to dissolve.
+
+### 4.0e (provisional, superseded by §4.0a above) Frame: one pattern, every layer
+
+> Retained as historical context — §4.0a is the canonical schema.
 
 **The pattern is Upsert<T>.** Not "Upsert<T> for CI steps, plus a separate cache
 design, plus a separate runner-pool design, plus a separate compiler-internals
@@ -637,18 +870,20 @@ is the projection of that fold. No string-comparison shell.
 
 ## 5. Mapping today → elastic
 
-| Profile bottleneck (§1) | Today | Elastic shape |
-|---|---|---|
-| 4× full-tree compile redundancy | Sequential gunbc invocations in one job | 1 emit per (source, target) → L2 → 3 consumers read via `UpstreamUpsert` |
-| 33m `ci_v4` wall (sequential) | One runner, 26 steps | Each `CiUpsertStep<T>` = own runner; DAG-parallel |
-| v3's 5 overlapping cargo builds | Per-job cargo target/ ; clippy & test rebuild same modules | L1-cached target/, shared via cargo-fingerprint content-hashing |
-| T-22 cache 9-glob fragility | `hashFiles(...)` over `src/v4/**` etc. | `content_hash(whole CiUpsertStep<T>)` — busts only on actual node mutation |
-| Shared `$HOME` race | Per-job env-var workaround | Each step = ephemeral runner; never assumes filesystem persistence |
-| srv2 jobserver FIFO incident | Host-wide FIFO in `/var/lib/ctrl/jobserver/` | Per-runner ephemeral jobserver in `$RUNNER_TEMP` |
-| 20m / 35m hard timeouts in YAML | Hardcoded `timeout-minutes:` | Per-step modeled `timeout: Duration` field |
-| Coarse `if: v4 \|\| testclaim_corpus` bucket gating | Component-level bucket booleans | Per-step `inputs ∩ affected_set` selection (Phase 2.5) |
-| Static `Symbol` cache tags (`ci_cache_cmd_m1_probe_tag`) | `cache_digest` is a constant symbol | `cache_digest = content_hash(whole CiUpsertStep<T> node)` projection |
-| `continue-on-error: true` on M1 / phase1 | Modeled `non_blocking: true` but YAML drift risk | Single source: `CiGate.run_policy` / step `non_blocking` projected to YAML |
+| Profile bottleneck (§1) | Today | Elastic shape | Required substrate fact |
+|---|---|---|---|
+| 4× full-tree compile redundancy | Sequential gunbc invocations in one job | 1 emit per (source, target) → L2 → 3 consumers read via `UpstreamUpsert` | `ArtifactRef` + `content_hash` output identity (§4.0a Layer 2) |
+| 33m `ci_v4` wall (sequential) | One runner, 26 steps | Each `CiUpsertStep<T>` = own `WorkUnit`; DAG-parallel | `CiStepId → WorkUnit` projection (§4.0a Layer 1→2) |
+| v3's 5 overlapping cargo builds | Per-job cargo target/ ; clippy & test rebuild same modules | Shared `ArtifactRef` via cargo-fingerprint content-hashing | `CacheSurface` declared on provider; `ArtifactRef` content-addressing |
+| T-22 cache 9-glob fragility | `hashFiles(...)` over `src/v4/**` etc. | `content_hash(whole CiUpsertStep<T>)` — busts only on actual node mutation | Derived cache-key projection (already in `ci.dag:163-166`) |
+| Shared `$HOME` race | Per-job env-var workaround | `IsolationContract = HermeticPerWork` in `ComputeDemand` | `IsolationContract` substrate; provider declares `IsolationModel` capability |
+| srv2 jobserver FIFO incident | Host-wide FIFO in `/var/lib/ctrl/jobserver/` | Per-runner ephemeral jobserver; provider-private | `ExecutionSurface.process_model` substrate; provider isolates jobserver per-lease |
+| 20m / 35m hard timeouts in YAML | Hardcoded `timeout-minutes:` | `ExecutionBudget { expected_cost, provider_model, watchdog }` (§4.0c) | `SymbolicCost` + `ProviderCostModel` substrate; `WatchdogLimit` separate carrier |
+| Coarse `if: v4 \|\| testclaim_corpus` bucket gating | Component-level bucket booleans | Per-step `inputs ∩ affected_set` selection (Phase 2.5) | `UpsertInputRef` typed inputs (Phase 1.5 — landing) |
+| Static `Symbol` cache tags (`ci_cache_cmd_m1_probe_tag`) | `cache_digest` is a constant symbol | `cache_digest = content_hash(whole CiUpsertStep<T> node)` projection | Dissolve static cache-tag symbols; project from whole-node hash |
+| Authored `worker_count: 20` per step | Would-be hardcoded tuning | `ParallelismShape = IndependentShards / DependencyGraphParallel / PartitionedReduce { laws }` | `ParallelismShape` coproduct + `ReducerLaws` (§4.0b) |
+| MapReduce / batch fan-out (future) | Not yet attempted | Scheduler fans out when `ReducerLaws.associative` is witnessed; falls back to narrow plan otherwise | `Witness<Associativity>` + `Witness<Idempotency>` substrate |
+| `continue-on-error: true` on M1 / phase1 | Modeled `non_blocking: true` but YAML drift risk | Single source: `CiGate.run_policy` / step `non_blocking` projected to YAML | `CiGateRunPolicy` already typed (`ci.dag:153-156`); dissolve YAML drift via Phase 2 Shape-B emission |
 
 ---
 
