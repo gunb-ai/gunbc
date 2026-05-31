@@ -13,7 +13,7 @@ use v2_compiler::v2_compiler_tokenize::tokenize;
 use v2_compiler::v2_std_core::{build_newline_index, NewlineIndex, Node};
 
 fn parse_ok(path: &str) -> Rc<PathTemplate> {
-    match &*parse_path_template(&path.to_string()) {
+    match &*parse_path_template(path.to_string()) {
         PathTemplateParseResult::ParsedPathTemplate { template } => template.clone(),
         other => panic!("expected parsed path template, got {other:?}"),
     }
@@ -38,7 +38,7 @@ fn method_ok(method: &str) -> HttpMethod {
 }
 
 fn derive_result(name: &str, method: HttpMethod, path: &str) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(name.to_string(), &method, &parse_ok(path))
+    derive_op_effect(name.to_string(), method, parse_ok(path))
 }
 
 fn derive(name: &str, method: HttpMethod, path: &str) -> Rc<DerivedOpEffect> {
@@ -49,7 +49,7 @@ fn derive(name: &str, method: HttpMethod, path: &str) -> Rc<DerivedOpEffect> {
 }
 
 fn check(op: &Rc<DerivedOpEffect>, idempotent: bool, readonly: bool) -> Rc<ModifierCheck> {
-    check_modifier_vs_derivation(op, &idempotent, &readonly)
+    check_modifier_vs_derivation(op.clone(), idempotent, readonly)
 }
 
 fn is_read(shape: &EffectShape) -> bool {
@@ -257,7 +257,7 @@ fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("file.dag");
-    let tokens = tokenize(&source.to_string(), filename.to_string());
+    let tokens = tokenize(source.to_string(), filename.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(
         filename.to_string(),
