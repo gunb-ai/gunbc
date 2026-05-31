@@ -207,7 +207,7 @@ fn delete_without_path_key_fails_closed() {
 #[test]
 fn derivation_consumes_typed_method_and_path_template_without_parsing_strings() {
     let path = parse_ok("/repos/{owner}/{repo}");
-    let result = derive_op_effect("TypedBoundary".to_string(), &HttpMethod::PUT, &path);
+    let result = derive_op_effect("TypedBoundary".to_string(), HttpMethod::PUT, path.clone());
     assert!(matches!(
         &*result,
         DeriveOpEffectResult::DerivedEffect { .. }

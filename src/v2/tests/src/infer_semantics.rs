@@ -462,8 +462,7 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
     ];
     for method_name in &expected_methods {
         assert!(
-            v2_compiler_infer_lookup::lookup_structural_method(
-                &list_int,
+            v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
                 method_name.to_string(),
                 empty_source_indices(),
             )
@@ -478,8 +477,7 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
 #[test]
 fn structural_method_any_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        &list_int,
+    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
         "any".to_string(),
         empty_source_indices(),
     )
@@ -496,8 +494,7 @@ fn structural_method_any_on_list_returns_bool() {
 #[test]
 fn structural_method_all_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        &list_int,
+    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
         "all".to_string(),
         empty_source_indices(),
     )
@@ -514,8 +511,7 @@ fn structural_method_all_on_list_returns_bool() {
 #[test]
 fn structural_method_sort_by_on_list_returns_self() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        &list_int,
+    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
         "sort_by".to_string(),
         empty_source_indices(),
     )
@@ -532,8 +528,7 @@ fn structural_method_sort_by_on_list_returns_self() {
 #[test]
 fn structural_method_first_on_list_returns_optional_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        &list_int,
+    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int.clone(),
         "first".to_string(),
         empty_source_indices(),
     )
@@ -726,7 +721,7 @@ fn keyed_collection_parts_extracts_key_and_value() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let parts = v2_compiler_infer_access::keyed_collection_parts(&m, empty_source_indices());
+    let parts = v2_compiler_infer_access::keyed_collection_parts(m, empty_source_indices());
     let parts = parts.expect("Map<String,Int> should decompose to keyed parts");
     assert_eq!(parts.key_type.name, "String");
     assert_eq!(parts.value_type.name, "Int");
@@ -735,7 +730,7 @@ fn keyed_collection_parts_extracts_key_and_value() {
 #[test]
 fn keyed_collection_parts_returns_none_for_element_collection() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let parts = v2_compiler_infer_access::keyed_collection_parts(&list, empty_source_indices());
+    let parts = v2_compiler_infer_access::keyed_collection_parts(list, empty_source_indices());
     assert!(
         parts.is_none(),
         "List<Int> is not a keyed collection, should return None"
@@ -746,7 +741,7 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 fn keyed_collection_parts_returns_type_variables_for_bare_map() {
     // bare_map_node() now has K/V wrapper children with TypeVariable inferred
     let bare = bare_map_node().expect("Map kernel container profile");
-    let parts = v2_compiler_infer_access::keyed_collection_parts(&bare, empty_source_indices());
+    let parts = v2_compiler_infer_access::keyed_collection_parts(bare, empty_source_indices());
     assert!(
         parts.is_some(),
         "bare Map has K/V children (TypeVariable inferred)"

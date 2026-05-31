@@ -1605,7 +1605,7 @@ fn compile_dag_with_complexity(
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
     let source_indices = Rc::new(HashMap::new());
     let typed = reconcile(
         norm.graph.clone(),
@@ -1615,7 +1615,7 @@ fn compile_dag_with_complexity(
 
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
-    build_complexity_report(&func_entries, recursion_ctx, Rc::new(HashMap::new()))
+    build_complexity_report(Rc::new(func_entries), recursion_ctx, Rc::new(HashMap::new()))
 }
 
 #[test]
@@ -2515,7 +2515,7 @@ fn diag_parser_scc_edges() {
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
     let typed = reconcile(
         norm.graph.clone(),
         Rc::new(HashMap::new()),
@@ -2530,8 +2530,7 @@ fn diag_parser_scc_edges() {
         .collect();
     let func_index_rc = Rc::new(func_index);
 
-    let scc_result = build_scc_index(
-        &func_entries,
+    let scc_result = build_scc_index(Rc::new(func_entries.clone()),
         func_index_rc.clone(),
         Rc::new(HashMap::new()),
     );
@@ -2550,9 +2549,7 @@ fn diag_parser_scc_edges() {
         .cloned()
         .map(|n| (n, true))
         .collect();
-    let edges = collect_parser_edges_for_scc(
-        &scc_info.members,
-        &func_index_rc,
+    let edges = collect_parser_edges_for_scc(scc_info.members.clone(), func_index_rc.clone(),
         Rc::new(scc_name_set),
         Rc::new(HashMap::new()),
     );
@@ -2586,7 +2583,7 @@ fn diag_parser_scc_edges() {
         eprintln!("    {} -> {}", e.caller, e.callee);
     }
 
-    let has_cycle = same_progress_subgraph_has_cycle(&scc_info.members, edges.clone());
+    let has_cycle = same_progress_subgraph_has_cycle(scc_info.members.clone(), Rc::new(edges));
     eprintln!("\n  Same-subgraph has cycle: {}", has_cycle);
 }
 
@@ -2610,7 +2607,7 @@ fn diag_parse_node_decl_env() {
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
     let typed = reconcile(
         norm.graph.clone(),
         Rc::new(HashMap::new()),
@@ -2633,15 +2630,14 @@ fn diag_parse_node_decl_env() {
 
     // Build parser_always_advancing exactly as the SCC analysis does
     let si = Rc::new(HashMap::new());
-    let parser_always_advancing = infer_parser_always_advancing_members(
-        &parser_function_names(&func_index_rc, Rc::new(HashMap::new())),
+    let parser_always_advancing = infer_parser_always_advancing_members(parser_function_names(func_index_rc.clone(), Rc::new(HashMap::new())),
         &func_index_rc,
         &si,
     );
 
     // Build scc_name_set for the parser SCC containing parse_node_decl
     use v2_compiler::v2_compiler_complexity::build_scc_index;
-    let scc_result = build_scc_index(&func_entries, func_index_rc.clone(), &si);
+    let scc_result = build_scc_index(Rc::new(func_entries.clone()), func_index_rc.clone(), si);
     let scc_info = scc_result
         .index
         .get("parse_node_decl")
@@ -2660,13 +2656,7 @@ fn diag_parse_node_decl_env() {
     eprintln!("body children count: {}", pnd.body.children.len());
 
     // Call exactly what the SCC analysis calls
-    let edges = collect_parser_progress_edges(
-        "parse_node_decl".to_string(),
-        &pnd.body,
-        &state_param,
-        &scc_name_set,
-        &empty_parser_progress_env(),
-        &parser_always_advancing,
+    let edges = collect_parser_progress_edges("parse_node_decl".to_string(), pnd.body.clone(), state_param.clone(), scc_name_set, empty_parser_progress_env(), parser_always_advancing,
         Rc::new(HashMap::new()),
         Rc::new(HashMap::new()),
     );
@@ -5236,10 +5226,7 @@ fn type_rendering_bare_list_not_map() {
     let list_node = test_leaf_node("List");
     let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
 
-    let rendered = render_node_type(
-        &list_node,
-        &RenderTarget::Rust,
-        &shared_types,
+    let rendered = render_node_type(list_node, RenderTarget::Rust, shared_types,
         Rc::new(HashMap::new()),
     );
 
@@ -5262,10 +5249,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     let map_node = test_leaf_node("Map");
     let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
 
-    let rendered = render_node_type(
-        &map_node,
-        &RenderTarget::Rust,
-        &shared_types,
+    let rendered = render_node_type(map_node, RenderTarget::Rust, shared_types,
         Rc::new(HashMap::new()),
     );
 
@@ -5293,10 +5277,7 @@ fn type_rendering_named_conj_with_container_template() {
     });
     let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
 
-    let rendered = render_node_type(
-        &free_monoid_conj,
-        &RenderTarget::Rust,
-        &shared_types,
+    let rendered = render_node_type(free_monoid_conj, RenderTarget::Rust, shared_types,
         Rc::new(HashMap::new()),
     );
 
@@ -10642,7 +10623,7 @@ fn diag_render_node_type_evidence() {
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
     let typed = reconcile(
         norm.graph.clone(),
         Rc::new(HashMap::new()),
@@ -10733,7 +10714,7 @@ fn diag_emitter_scc() {
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
     let typed = reconcile(
         norm.graph.clone(),
         Rc::new(HashMap::new()),
@@ -10770,9 +10751,7 @@ fn diag_emitter_scc() {
                 .map(|m| (m.clone(), true))
                 .collect::<HashMap<String, bool>>(),
         );
-        let edges = collect_scc_cx_l2_tree_edges(
-            &info.members,
-            &func_index,
+        let edges = collect_scc_cx_l2_tree_edges(info.members.clone(), func_index.clone(),
             scc_name_set,
             Rc::new(HashMap::new()),
         );
