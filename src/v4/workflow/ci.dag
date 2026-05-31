@@ -496,12 +496,14 @@ fn ci_upsert_m1_rust_emit_probe_execution_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_m1_rust_emit_probe_execution: CiUpsertStepSymbol = ci_upsert_m1_rust_emit_probe_execution_mk()
 
+data ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
+  ci_upsert_file_set_input(segment: "src/v4/**")
+]
+
 fn ci_upsert_phase1_nat_semiring_rung_gate_execution_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
-  inputs: [
-    ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
-    ci_upsert_file_set_input(segment: "src/v4/**")
-  ]
+  inputs: ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs
   verify: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
   create: ci_job_projection_node(
     j: CiJob {
@@ -520,18 +522,21 @@ data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStepSymbol = ci_
 data ci_upsert_steps: List<CiUpsertStepRow> = [
   CiUpsertStepRow {
     step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
-    step: ci_upsert_v2_compile_src_v4
+    step: ci_upsert_v2_compile_src_v4,
+    inputs: ci_upsert_v2_compile_src_v4_inputs
   },
   CiUpsertStepRow {
     step_id: JobStep { job: m1_rust_emit_probe_execution, step: m1_rust_emit_probe_execution },
-    step: ci_upsert_m1_rust_emit_probe_execution
+    step: ci_upsert_m1_rust_emit_probe_execution,
+    inputs: ci_upsert_m1_rust_emit_probe_execution_inputs
   },
   CiUpsertStepRow {
     step_id: JobStep {
       job: phase1_nat_semiring_rung_gate_execution,
       step: phase1_nat_semiring_rung_gate_execution
     },
-    step: ci_upsert_phase1_nat_semiring_rung_gate_execution
+    step: ci_upsert_phase1_nat_semiring_rung_gate_execution,
+    inputs: ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs
   }
 ]
 
@@ -1519,12 +1524,6 @@ fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash {
 }
 
 
-// v4 `gunbc compile` does not project fields through `CiUpsertStepSymbol` inside `fold` callbacks.
-fn ci_upsert_step_symbol_inputs(step: CiUpsertStepSymbol) -> List<UpsertInputRef> {
-  step.inputs
-}
-
-
 fn ci_upsert_step_symbol_cache_digest(step: CiUpsertStepSymbol) -> Hash {
   ci_upsert_step_cache_digest(step: step)
 }
@@ -1539,8 +1538,10 @@ fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId>
 
 fn ci_upsert_row_inputs_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> List<UpsertInputRef> {
   fold(rows, init: [], f: fn(acc, row) {
-    if ci_step_id_eq(left: step_id, right: row.step_id) {
-      ci_upsert_step_symbol_inputs(step: row.step)
+    if length(xs: acc) > 0 {
+      acc
+    } else if ci_step_id_eq(left: step_id, right: row.step_id) {
+      row.inputs
     } else {
       acc
     }
@@ -1549,17 +1550,15 @@ fn ci_upsert_row_inputs_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRo
 
 
 fn ci_upsert_row_cache_digest_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> Hash {
-  fold(
-    rows,
-    init: content_hash(n: ci_step_id_projection_node(step_id: step_id)),
-    f: fn(acc, row) {
-      if ci_step_id_eq(left: step_id, right: row.step_id) {
-        ci_upsert_step_symbol_cache_digest(step: row.step)
-      } else {
-        acc
-      }
+  fold(rows, init: [], f: fn(acc, row) {
+    if length(xs: acc) > 0 {
+      acc
+    } else if ci_step_id_eq(left: step_id, right: row.step_id) {
+      [ci_upsert_step_symbol_cache_digest(step: row.step)]
+    } else {
+      acc
     }
-  )
+  })
 }
 
 
