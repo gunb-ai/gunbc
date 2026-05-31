@@ -1283,8 +1283,13 @@ fn item_defining_mod_filename(name: String, registry: Map<String, ItemInfo>, fal
 fn is_graph_type_import(name: String, import_mod: String, registry: Map<String, ItemInfo>) -> Bool {
   match map_get(registry, name) {
     Some { value: info } =>
-      info.kind == TypeItem
-      && module_to_filename(name: info.module_name) == import_mod
+      module_to_filename(name: info.module_name) == import_mod
+      && (
+        info.kind == TypeItem
+        // Parametric/bare type aliases (`type String = …`, `type List<T> = …`) are OtherItem
+        // in item_kind (04_items.dag) but must still pub-use from the defining module (F1).
+        || info.kind == OtherItem
+      )
     None => false
   }
 }
