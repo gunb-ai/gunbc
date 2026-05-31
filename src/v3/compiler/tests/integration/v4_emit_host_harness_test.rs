@@ -13,14 +13,16 @@
 //! `HostExit` Holds witness + five-byte stdout parse) plus **tokenize/parse** surface receipts
 //! for W2 `.dag` modules (not `str::contains` source probes per TESTING.md).
 //!
-//! **Dissolution trigger:** W3 populates `nat_semiring_rung34_runtime_value_rows`
-//! and wires `run_emit_host_rust` in `emit_host.dag` to invoke `tools/emit_host_runner` (removes
-//! `emit_host_transport_not_wired` on the Rust row); delete this file when rung-3/4 claims +
-//! generated harness replace hand-Rust probes (see `nat_semiring_rung34_eval.dag` roster comment).
+//! **W3:** substrate `run_emit_host_rust` stays `transport_not_wired` (fail-closed); real cargo+run
+//! via `emit_host_bridge` / `emit_host_runner`. Rosters authored in #4046 (`rung_3_4`).
+//! Behavior receipts: real cargo compile+run transport, MVP-2 emit-vs-eval `Pass`/`Fail` verdicts
+//! (host `FalsificationReceipt` path on value mismatch / parse reject). Dissolution: delete when
+//! T-22 generated harness replaces hand-Rust probes.
 //!
-//! **TESTING.md:** substrate `.dag` eval remains hermetic (`run_emit_host_rust` → `Rejected` until
-//! W3/CI wiring); this test exercises the Rust transport the `.dag` row models, not substrate eval.
+//! **TESTING.md:** substrate `.dag` models receipt assembly; behavior tests exercise
+//! `tools/emit_host_runner` / `emit_host_bridge` (real cargo + run).
 
+use v3_compiler::emit_host_bridge;
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceVariant};
 use v3_compiler::tokenize_for_test;
@@ -35,6 +37,15 @@ const NAT_SEMIRING_RUNG34_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung34_eval.dag");
 const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
     "src/v4/test/claim/workflow/nat_semiring_rung34_eval.dag";
+const NAT_SEMIRING_RUNG_3_4_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
+const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
+const NAT_SEMIRING_RUNG_8_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_8.dag");
+const NAT_SEMIRING_RUNG_8_PATH: &str = "src/v4/test/claim/nat_semiring/rung_8.dag";
+const NAT_SEMIRING_RUNG8_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung8_eval.dag");
+const NAT_SEMIRING_RUNG8_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung8_eval.dag";
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
@@ -55,6 +66,15 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
             name: item_name, ..
         } => item_name == name,
         _ => false,
+    })
+}
+
+fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Data { name: decl_name, .. } if decl_name == name
+        )
     })
 }
 
@@ -105,6 +125,82 @@ fn type_sum_variant<'a>(
             _ => None,
         })
         .unwrap_or_else(|| panic!("missing `{type_name}.{variant_name}` variant"))
+}
+
+/// Nat-semiring / branch_dispatch rung-4 row uses the same MVP-2 eval pins; one transport proof
+/// covers both fixtures until per-fixture emit lands.
+#[test]
+fn nat_semiring_rung4_emit_vs_eval_wired_transport_passes() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_nat_semiring_rung4_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "phase1_nat_semiring_claim_input".to_string(),
+        expected_eval_root: "phase1_nat_semiring_expected_eval".to_string(),
+    };
+    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_transport(
+        EMIT_HOST_FIXTURE_SOURCE,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("run_emit_vs_eval_mvp2_transport");
+    assert_eq!(verdict, emit_host_bridge::EmitHostEmitVsEvalVerdict::Pass);
+}
+
+#[test]
+fn nat_semiring_rung4_emit_vs_eval_falsification_on_host_value_mismatch() {
+    const MISMATCH_SOURCE: &str =
+        "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[1,2,3,4,5]); }";
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_nat_semiring_rung4_fail_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "phase1_nat_semiring_claim_input".to_string(),
+        expected_eval_root: "phase1_nat_semiring_expected_eval".to_string(),
+    };
+    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_transport(
+        MISMATCH_SOURCE,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("run_emit_vs_eval_mvp2_transport");
+    assert!(
+        matches!(
+            verdict,
+            emit_host_bridge::EmitHostEmitVsEvalVerdict::FailValueMismatch { .. }
+        ),
+        "expected structured Fail with Host receipt evidence, got {verdict:?}"
+    );
+}
+
+#[test]
+fn emit_host_bridge_rust_transport_builds_runs_and_parses_stdout() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_emit_host_bridge_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "w3_bridge_claim_input".to_string(),
+        expected_eval_root: "w3_bridge_expected_eval".to_string(),
+    };
+    let receipt = emit_host_bridge::run_emit_host_rust_transport(
+        EMIT_HOST_FIXTURE_SOURCE,
+        &inputs,
+        &work_dir,
+    )
+    .expect("run_emit_host_rust_transport");
+    assert!(
+        emit_host_bridge::host_exit_holds(&receipt.exit),
+        "expected Holds exit, got {:?}",
+        receipt.exit
+    );
+    let stdout = emit_host_bridge::host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone())
+        .expect("logical stdout");
+    emit_host_runner::runtime_value_parse_rust(&stdout).expect("parse five-byte stdout");
 }
 
 #[test]
@@ -189,11 +285,35 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
         );
     }
     assert!(
+        surface_declares_fn(&module, "emit_host_transport_not_wired_diagnostic"),
+        "{EMIT_HOST_PATH}: transport_not_wired diagnostic (fail-closed substrate row)"
+    );
+    assert!(
+        surface_declares_data(&module, "emit_host_transport_not_wired"),
+        "{EMIT_HOST_PATH}: transport_not_wired reason symbol"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung_3_4_dag_tokenizes_and_parses_emit_vs_eval_row() {
+    let module = parse_module(NAT_SEMIRING_RUNG_3_4_DAG, NAT_SEMIRING_RUNG_3_4_PATH);
+    assert!(
         module.items.iter().any(|item| matches!(
             item,
-            SurfaceItem::Data { name, .. } if name == "emit_host_transport_not_wired"
+            SurfaceItem::Data { name, .. }
+                if name == "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
         )),
-        "{EMIT_HOST_PATH}: transport_not_wired symbol"
+        "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 TestClaimRun row (#4046 roster)"
+    );
+}
+
+#[test]
+fn emit_host_runtime_value_parse_rust_falsification_on_wrong_stdout_len() {
+    let err = emit_host_runner::runtime_value_parse_rust(&[0u8; 3])
+        .expect_err("three-byte stdout must fail parse");
+    assert!(
+        err.to_string().contains("expected 5"),
+        "structured parse failure: {err}"
     );
 }
 
@@ -212,10 +332,77 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
         );
     }
     assert!(
-        module.items.iter().any(|item| matches!(
-            item,
-            SurfaceItem::Data { name, .. } if name == "nat_semiring_rung34_runtime_value_rows"
-        )),
+        surface_declares_data(&module, "nat_semiring_rung34_runtime_value_rows"),
         "{NAT_SEMIRING_RUNG34_EVAL_PATH}: runtime roster carrier"
+    );
+    let rung_3_4 = parse_module(NAT_SEMIRING_RUNG_3_4_DAG, NAT_SEMIRING_RUNG_3_4_PATH);
+    assert!(
+        surface_declares_data(&rung_3_4, "run_phase1_nat_semiring_rung3_module_roundtrip"),
+        "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-3 roster row (#4046)"
+    );
+    assert!(
+        surface_declares_data(
+            &rung_3_4,
+            "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
+        ),
+        "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
+    let rung_8 = parse_module(NAT_SEMIRING_RUNG_8_DAG, NAT_SEMIRING_RUNG_8_PATH);
+    for name in [
+        "run_claim_nat_add_left_identity",
+        "run_claim_nat_add_right_identity",
+        "run_claim_nat_add_associativity",
+        "run_claim_nat_mul_left_identity",
+        "run_claim_nat_mul_annihilator",
+        "run_claim_nat_mul_associativity",
+        "run_claim_nat_add_wrong_identity_falsifies_law",
+    ] {
+        assert!(
+            surface_declares_data(&rung_8, name),
+            "{NAT_SEMIRING_RUNG_8_PATH}: missing run row {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(&rung_8, "phase1_nat_semiring_rung8_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG_8_PATH}: runtime roster carrier (7 rows)"
+    );
+    assert!(
+        surface_declares_fn(&rung_8, "rung8_tier1_eval_run"),
+        "{NAT_SEMIRING_RUNG_8_PATH}: T-22 eval constructor must call run_test_claim"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG_8_DAG.contains("run_test_claim("),
+        "{NAT_SEMIRING_RUNG_8_PATH}: roster rows must thread run_test_claim verdicts (not fabricated Pass)"
+    );
+
+    let eval_module = parse_module(NAT_SEMIRING_RUNG8_EVAL_DAG, NAT_SEMIRING_RUNG8_EVAL_PATH);
+    for name in [
+        "run_nat_semiring_rung8_eval",
+        "nat_semiring_rung8_gate",
+        "nat_semiring_rung8_zero_deferred",
+    ] {
+        assert!(
+            surface_declares_fn(&eval_module, name),
+            "{NAT_SEMIRING_RUNG8_EVAL_PATH}: missing fn {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(
+            &eval_module,
+            "witness_nat_semiring_rung8_zero_deferred_closed"
+        ),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: authoring-time zero-deferred witness (data binding)"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG8_EVAL_DAG.contains("phase1_nat_semiring_rung8_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG8_EVAL_DAG.contains("corpus_report_tally"),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: VerdictTally via corpus_report_tally"
     );
 }

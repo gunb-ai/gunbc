@@ -4,6 +4,7 @@
 use self::IfValueForm::*;
 use self::ImportTrigger::*;
 use self::InterpStyle::*;
+use self::MatchValueForm::*;
 use self::NamingCase::*;
 use self::ReservedWordStrategy::*;
 use self::ServiceMethodStrategy::*;
@@ -215,9 +216,17 @@ pub enum IfValueForm {
     IfStatement,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum MatchValueForm {
+    MatchExpression,
+    MatchStatementArmReturn,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
+    pub match_value_form: MatchValueForm,
     pub wildcard_case: Option<String>,
     pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
     pub guard_prefix: Option<String>,
@@ -571,6 +580,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
+            match_value_form: MatchValueForm::MatchExpression,
             wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
@@ -719,7 +729,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             match_keyword: "match ".to_string(),
             case_keyword: "case ".to_string(),
             arm_separator: "\n".to_string(),
-            stmt_terminator: "".to_string(),
+            stmt_terminator: "\n".to_string(),
             significant_whitespace: true,
         }),
         for_each_syntax: Rc::new(ForEachSyntax {
@@ -729,7 +739,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         tco: Rc::new(TcoSyntax {
             loop_keyword: "while True".to_string(),
             break_return: "return".to_string(),
-            continue_str: "continue".to_string(),
+            continue_str: "continue\n".to_string(),
             temp_var_prefix: "__tco_".to_string(),
             temp_decl_prefix: "".to_string(),
             temp_assign_op: " = ".to_string(),
@@ -752,6 +762,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
+            match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: "(".to_string(),
@@ -932,6 +943,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfStatement,
+            match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: Some("default".to_string()),
             variant_pattern: None,
             guard_prefix: None,
@@ -1099,6 +1111,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
+            match_value_form: MatchValueForm::MatchExpression,
             wildcard_case: None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
