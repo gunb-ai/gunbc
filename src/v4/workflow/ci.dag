@@ -2346,10 +2346,19 @@ fn ci_receipt_step_decision_matches(
   step_id: CiStepId,
   decision_pred: fn(CiStepSelection) -> Bool
 ) -> Bool {
-  any(xs: receipt.decisions, predicate: fn(selection) {
-    ci_step_id_eq(left: selection.step_id, right: step_id)
-      && decision_pred(selection)
-  })
+  fold(
+    receipt.decisions,
+    init: false,
+    f: fn(found, selection) {
+      if found {
+        true
+      } else if ci_step_id_eq(left: selection.step_id, right: step_id) {
+        decision_pred(selection)
+      } else {
+        false
+      }
+    }
+  )
 }
 
 fn ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds() -> Bool {
