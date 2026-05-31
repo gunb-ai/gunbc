@@ -310,18 +310,10 @@ fn sg_rc_f6_round_trip_owned() -> Bool {
   }
 }
 
-fn sg_rc_expected_binding_rc_value() -> TargetValueExpression {
-  target_reference_layer_apply_value_expression(
-    inner: sg_rc_diagnostics_identity_value(),
-    layer: ReferenceLayerRc,
-    tokens: rust_reference_layer_tokens()
-  )
-}
-
 // Value path coupling — translate/catalog consumer emits target-specific Rc ctor wrapper.
 fn sg_rc_value_rc_wrap_tagged() -> Bool {
   let inner = sg_rc_diagnostics_identity_value()
-  let expected = sg_rc_expected_binding_rc_value()
+  let tokens = rust_reference_layer_tokens()
   match translate_apply_use_site_ownership_to_value_expression(
     expr: inner,
     source_carrier: target_carrier_diagnostics_node(),
@@ -331,8 +323,7 @@ fn sg_rc_value_rc_wrap_tagged() -> Bool {
     Accepted { value: wrapped, diagnostics: _ } =>
       match wrapped.kind {
         TargetValueExprReferenceRcNew =>
-          content_hash(n: target_value_expression_node(expr: wrapped)) ==
-            content_hash(n: target_value_expression_node(expr: expected))
+          sg_rc_value_expr_ctor_identity(expr: wrapped) == tokens.rc_new_ctor
         _ => false
       }
     Rejected { diagnostics: _ } => false

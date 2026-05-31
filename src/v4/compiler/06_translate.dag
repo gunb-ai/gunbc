@@ -2760,24 +2760,6 @@ fn translate_sg_rc_bundle_apply_disposition(
   )
 }
 
-// SG-RC edges are Rust-bundle-only in wave 1; both edges required when either is present.
-fn translate_sg_rc_bundle_ready(target: TargetModel) -> Bool {
-  match translate_sg_rc_bundle_edge_present(
-    target: target,
-    edge_name: target_model_edge_use_site_ownership_realizations
-  ) {
-    Accepted { value: has_catalog, diagnostics: _ } =>
-      match translate_sg_rc_bundle_edge_present(
-        target: target,
-        edge_name: target_model_edge_reference_layer_tokens
-      ) {
-        Accepted { value: has_tokens, diagnostics: _ } => has_catalog && has_tokens
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn translate_reference_layer_tokens_from_target(
   target: TargetModel
 ) -> Outcome<TargetReferenceLayerTokens> {

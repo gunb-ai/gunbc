@@ -566,8 +566,8 @@ fn v4_translate_dag_imports_use_site_ownership_consumer() {
         "{TRANSLATE_PATH}: value path must consult use_site ownership row"
     );
     assert!(
-        surface_declares_fn(&module, "translate_sg_rc_bundle_ready"),
-        "{TRANSLATE_PATH}: non-Rust bundles must skip SG-RC when edges absent"
+        !surface_declares_fn(&module, "translate_sg_rc_bundle_ready"),
+        "{TRANSLATE_PATH}: must not expose fail-open Bool SG-RC readiness beside apply_disposition"
     );
     assert!(
         surface_declares_fn(&module, "translate_sg_rc_bundle_apply_disposition"),
@@ -597,6 +597,15 @@ fn v4_rust_language_model_declares_use_site_ownership_rows() {
     assert!(
         RUST_LANGUAGE_DAG.contains("target_model_edge_reference_layer_tokens"),
         "{RUST_LANGUAGE_PATH}: Rc/Box surface tokens must live on TargetModel bundle"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("rust_sg_rc_ctor_rc_new") && RUST_LANGUAGE_DAG.contains("Rc::new"),
+        "{RUST_LANGUAGE_PATH}: value ctor symbols must have binding_spellings realization"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("rust_sg_rc_ctor_box_new")
+            && RUST_LANGUAGE_DAG.contains("Box::new"),
+        "{RUST_LANGUAGE_PATH}: Box value ctor must have binding_spellings realization"
     );
     assert!(
         !RUST_LANGUAGE_DAG.contains("shared_types"),
