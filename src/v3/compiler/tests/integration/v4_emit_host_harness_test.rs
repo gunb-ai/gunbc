@@ -335,7 +335,10 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
         "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-3 roster row (#4046)"
     );
     assert!(
-        surface_declares_data(&rung_3_4, "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"),
+        surface_declares_data(
+            &rung_3_4,
+            "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
+        ),
         "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
     );
 }

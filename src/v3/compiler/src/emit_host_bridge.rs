@@ -62,11 +62,17 @@ pub fn run_emit_vs_eval_mvp2_transport(
 ) -> Result<EmitHostEmitVsEvalVerdict, emit_host_runner::HostSetupFailure> {
     let receipt = run_emit_host_rust_transport(emitted_source, inputs, work_dir)?;
     if !host_exit_holds(&receipt.exit) {
-        return Ok(EmitHostEmitVsEvalVerdict::FailHostExit { host_receipt: receipt });
+        return Ok(EmitHostEmitVsEvalVerdict::FailHostExit {
+            host_receipt: receipt,
+        });
     }
     let stdout = match host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()) {
         Some(bytes) => bytes,
-        None => return Ok(EmitHostEmitVsEvalVerdict::FailHostExit { host_receipt: receipt }),
+        None => {
+            return Ok(EmitHostEmitVsEvalVerdict::FailHostExit {
+                host_receipt: receipt,
+            })
+        }
     };
     if let Err(parse) = emit_host_runner::runtime_value_parse_rust(&stdout) {
         return Ok(EmitHostEmitVsEvalVerdict::FailParse {
@@ -110,18 +116,15 @@ mod tests {
         let receipt = run_emit_host_rust_transport(FIXTURE_SOURCE_PASS, &mvp2_inputs(), &work_dir)
             .expect("transport");
         assert!(host_exit_holds(&receipt.exit));
-        let stdout = host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone())
-            .expect("logical stdout");
+        let stdout =
+            host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()).expect("logical stdout");
         assert_eq!(stdout.len(), 5);
         emit_host_runner::runtime_value_parse_rust(&stdout).expect("parse");
     }
 
     #[test]
     fn emit_vs_eval_mvp2_transport_passes_for_five_zero_bytes() {
-        let work_dir = default_work_dir(&format!(
-            "gunbc_emit_vs_eval_pass_{}",
-            std::process::id()
-        ));
+        let work_dir = default_work_dir(&format!("gunbc_emit_vs_eval_pass_{}", std::process::id()));
         let verdict = run_emit_vs_eval_mvp2_transport(
             FIXTURE_SOURCE_PASS,
             &mvp2_inputs(),
@@ -134,10 +137,7 @@ mod tests {
 
     #[test]
     fn emit_vs_eval_mvp2_transport_fails_with_host_receipt_on_value_mismatch() {
-        let work_dir = default_work_dir(&format!(
-            "gunbc_emit_vs_eval_fail_{}",
-            std::process::id()
-        ));
+        let work_dir = default_work_dir(&format!("gunbc_emit_vs_eval_fail_{}", std::process::id()));
         let verdict = run_emit_vs_eval_mvp2_transport(
             FIXTURE_SOURCE_MISMATCH,
             &mvp2_inputs(),
@@ -161,10 +161,8 @@ mod tests {
 
     #[test]
     fn emit_vs_eval_mvp2_transport_fails_on_unparsable_stdout() {
-        let work_dir = default_work_dir(&format!(
-            "gunbc_emit_vs_eval_parse_{}",
-            std::process::id()
-        ));
+        let work_dir =
+            default_work_dir(&format!("gunbc_emit_vs_eval_parse_{}", std::process::id()));
         let verdict = run_emit_vs_eval_mvp2_transport(
             FIXTURE_SOURCE_PARSE_FAIL,
             &mvp2_inputs(),
