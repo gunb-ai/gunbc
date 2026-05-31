@@ -663,17 +663,26 @@ fn v4_loop_linear_bound_rung8_dag_tokenizes_and_parses_full_fixture_roster() {
         "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: authoring-time closed witness (data binding)"
     );
     assert!(
-        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains("loop_linear_bound_rung8_gate(report:"),
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains(
+            "witness_loop_linear_bound_rung8_zero_deferred_closed: Bool = loop_linear_bound_rung8_gate(report: run_loop_linear_bound_rung8_eval())"
+        ),
         "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: closed witness must bind full gate (non-empty roster + zero deferred)"
     );
     assert!(
-        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG
-            .contains("phase4_loop_linear_bound_rung8_runtime_value_rows"),
-        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster"
+        !LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains(
+            "witness_loop_linear_bound_rung8_zero_deferred_closed: Bool = loop_linear_bound_rung8_zero_deferred"
+        ),
+        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: witness must not bypass gate via zero_deferred alone"
     );
     assert!(
-        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains("corpus_report_tally"),
-        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: VerdictTally via corpus_report_tally"
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains(
+            "corpus_entries_from_node_runtime_value_runs(\n      runs: phase4_loop_linear_bound_rung8_runtime_value_rows"
+        ),
+        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster in eval body"
+    );
+    assert!(
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains("corpus_report_tally(r: report).deferred == Zero"),
+        "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: VerdictTally deferred check in zero_deferred helper"
     );
 }
 
