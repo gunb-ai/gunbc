@@ -58,6 +58,8 @@ import v4.std.leaf_model_verification {
   leaf_model_rust_crate_type_lib,
   TargetCompileAccepted,
   TargetCompileRejected,
+  TargetPythonExerciseAccepted,
+  TargetPythonExecRejected,
   target_diagnostic_e0308_type_mismatch,
   target_diagnostic_e0423_expected_value_found_type,
   target_diagnostic_e0599_method_not_found,
@@ -139,10 +141,10 @@ fn python_r1_fixture_pair() -> LeafModelPythonFixturePair {
     surface_spelling_fact: python_r1_claim_surface_spelling_fact,
     encoding_spelling_fact: python_r1_claim_encoding_spelling_fact,
     happy: python_r1_happy_fixture(),
-    expected_happy_verdict: TargetCompileAccepted,
+    expected_happy_verdict: TargetPythonExerciseAccepted,
     falsification: LeafModelPythonFalsificationCase {
       fixture: python_r1_falsification_fixture(),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: TargetPythonExecRejected {
         diagnostic_code: target_diagnostic_python_name_error_undefined_name
       }
     }
@@ -174,10 +176,10 @@ fn python_r2a_fixture_pair() -> LeafModelPythonFixturePair {
     surface_spelling_fact: python_r2a_claim_algebra_inhabitance_fact,
     encoding_spelling_fact: python_r2a_claim_algebra_inhabitance_fact,
     happy: python_r2a_happy_fixture(),
-    expected_happy_verdict: TargetCompileAccepted,
+    expected_happy_verdict: TargetPythonExerciseAccepted,
     falsification: LeafModelPythonFalsificationCase {
       fixture: python_r2a_falsification_fixture(),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: TargetPythonExecRejected {
         diagnostic_code: target_diagnostic_python_attribute_error_method_not_found
       }
     }
@@ -203,10 +205,10 @@ fn python_r2b_fixture_pair() -> LeafModelPythonFixturePair {
     surface_spelling_fact: python_r2b_claim_algebra_inhabitance_fact,
     encoding_spelling_fact: python_r2b_claim_algebra_inhabitance_fact,
     happy: python_r2b_runtime_fixture(),
-    expected_happy_verdict: TargetCompileAccepted,
+    expected_happy_verdict: TargetPythonExerciseAccepted,
     falsification: LeafModelPythonFalsificationCase {
       fixture: python_r2b_runtime_fixture(),
-      expected_verdict: TargetCompileAccepted
+      expected_verdict: TargetPythonExerciseAccepted
     }
   }
 }
@@ -236,10 +238,10 @@ fn python_r3_external_fixture_pair() -> LeafModelPythonFixturePair {
     surface_spelling_fact: python_r3_external_claim_atom_realization_fact,
     encoding_spelling_fact: python_r3_external_claim_atom_realization_fact,
     happy: python_r3_external_happy_fixture(),
-    expected_happy_verdict: TargetCompileAccepted,
+    expected_happy_verdict: TargetPythonExerciseAccepted,
     falsification: LeafModelPythonFalsificationCase {
       fixture: python_r3_external_falsification_fixture(),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: TargetPythonExecRejected {
         diagnostic_code: target_diagnostic_python_type_error_init_arity_mismatch
       }
     }
