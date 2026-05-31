@@ -25,9 +25,6 @@ fn run_loop_linear_bound_rung8_eval() -> CorpusEvalReport {
 }
 
 
-// F5 acceptance (operator ratification): non-empty roster and zero Deferred only — mirrors
-// nat_semiring_rung8_eval.dag (#4064); Fail is not gated here (DiagnosticClaim tranche uses
-// zero-deferred-only until eval rejects falsifiers; this fixture roster has no DiagnosticClaim).
 fn loop_linear_bound_rung8_gate(report: CorpusEvalReport) -> Bool {
   if is_empty(xs: report.entries) {
     false
