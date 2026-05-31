@@ -605,15 +605,8 @@ fn bounded_lattice_node(inhabitant: Node) -> Node {
 }
 
 
-// BoundedLattice instance completeness: meet/join witnesses must be populated on the
-// nested lattice field (std authority for field paths; infer gate consumes this).
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL (internal NamedChildLookup for BL completeness fold).
-type NamedChildLookup
-  = NamedChildFound { target: Node }
-  | NamedChildMissing
-  | NamedChildAmbiguous
-
-
+// BoundedLattice instance completeness types and field paths (query lives in
+// bounded_lattice_completeness.dag — cycle-breaker for node_query authority).
 // 🟢 coproduct dissolution — CP-AI1-BL-MISSING-WITNESS (MissingMeet/Join/LatticeField distinguish partial-instance gaps).
 type BoundedLatticeMissingWitness
   = MissingMeet
@@ -626,73 +619,6 @@ type BoundedLatticeInstanceCompleteness
   = NotBoundedLatticeInstance
   | BoundedLatticeComplete
   | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
-
-
-fn conj_named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      match name_occurrences(name: name, children: root.children) {
-        0 => NamedChildMissing
-        1 =>
-          fold(
-            root.children,
-            init: NamedChildMissing,
-            f: fn(acc, e) {
-              match acc {
-                NamedChildFound { target: _ } => acc
-                NamedChildMissing =>
-                  match e.label {
-                    Named { name: edge_name } =>
-                      if edge_name == name {
-                        NamedChildFound { target: e.target }
-                      } else {
-                        acc
-                      }
-                    Positional => acc
-                  }
-                NamedChildAmbiguous => acc
-              }
-            }
-          )
-        _ => NamedChildAmbiguous
-      }
-    _ => NamedChildMissing
-  }
-}
-
-
-fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeInstanceCompleteness {
-  match conj_named_child_lookup(root: lattice, name: lattice_field_meet) {
-    NamedChildMissing => BoundedLatticePartial { missing: MissingMeet }
-    NamedChildAmbiguous => BoundedLatticePartial { missing: MissingMeet }
-    NamedChildFound { target: _ } =>
-      match conj_named_child_lookup(root: lattice, name: lattice_field_join) {
-        NamedChildMissing => BoundedLatticePartial { missing: MissingJoin }
-        NamedChildAmbiguous => BoundedLatticePartial { missing: MissingJoin }
-        NamedChildFound { target: _ } => BoundedLatticeComplete
-      }
-  }
-}
-
-
-fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
-  match conj_named_child_lookup(root: instance, name: bounded_lattice_field_top) {
-    NamedChildFound { target: _ } =>
-      match conj_named_child_lookup(root: instance, name: bounded_lattice_field_bottom) {
-        NamedChildFound { target: _ } =>
-          match conj_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
-            NamedChildFound { target: lattice } =>
-              bounded_lattice_lattice_field_completeness(lattice: lattice)
-            NamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
-            NamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
-          }
-        NamedChildMissing => NotBoundedLatticeInstance
-        NamedChildAmbiguous => NotBoundedLatticeInstance
-      }
-    NamedChildMissing => NotBoundedLatticeInstance
-    NamedChildAmbiguous => NotBoundedLatticeInstance
-  }
-}
 
 
 fn boolean_algebra_node(inhabitant: Node) -> Node {

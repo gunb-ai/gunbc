@@ -22,12 +22,12 @@ import v4.std.algebra {
   bounded_lattice_field_bottom,
   bounded_lattice_field_lattice,
   bounded_lattice_field_top,
-  bounded_lattice_instance_completeness,
   inhabitant_edge,
   lattice_field_join,
   lattice_field_meet,
   length
 }
+import v4.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode }
 
