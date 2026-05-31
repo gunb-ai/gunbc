@@ -97,12 +97,12 @@ This roster classifies the live `src/v4/TASKS.md` task list against the P1 close
 | ----------- | -----:| ----- |
 | `PROVEN` | **8** | T-17, T-19, T-28 (via dissolution), T-29, T-33, T-34, T-QN-1, T-37 |
 | `GAP` | **45** | the in-flight / scheduled / active corpus |
-| `ODR` | **2** | T-5 (REMOVED), T-27 (DROPPED) — both operator-ratified-already, no fresh proposals |
+| `ODR` (in §2; out of P1 scope per `in_v4_done_scope: no`) | **0 in scope** | T-5 and T-27 carry `ship_disposition: ODR` in §2 but are `in_v4_done_scope: no`, so they fall into the **excluded** bucket below, not into in-scope ODR. |
 | `NOT-PROMISED` | **0** | none surfaced on this HEAD |
-| **excluded** | **1** | T-15 (P1's own text excepts it) |
-| **Total** | **55 in P1 scope + 1 excluded = 56** | |
+| **excluded** (`in_v4_done_scope: no`) | **3** | T-15 (P1's own text excepts it); T-5 (REMOVED 2026-05-15); T-27 (DROPPED 2026-05-15) |
+| **Total** | **53 in P1 scope + 3 excluded = 56** | |
 
-**P1-headline:** **8 / 55 PROVEN** in P1 scope on this HEAD. 45 GAP rows are the in-flight corpus the live PR / sub-task waves are working through. No row stays GAP for "no owner" reasons; every GAP row's `blocking_receipt` cites a named substrate / consumer / activation receipt or a `[SCHEDULED]` / `[ACTIVE]` header.
+**P1-headline:** **8 / 53 PROVEN** in P1 scope on this HEAD. 45 GAP rows are the in-flight corpus the live PR / sub-task waves are working through. No row stays GAP for "no owner" reasons; every GAP row's `blocking_receipt` cites a named substrate / consumer / activation receipt or a `[SCHEDULED]` / `[ACTIVE]` header.
 
 ---
 
