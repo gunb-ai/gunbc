@@ -453,7 +453,7 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
 }
 
 /// Top-level GHA job `if:` line (first `if:` after `  {job_id}:`).
-fn workflow_top_level_job_if(workflow_yml: &str, job_id: &str) -> &str {
+fn workflow_top_level_job_if<'a>(workflow_yml: &'a str, job_id: &str) -> &'a str {
     let job_marker = format!("\n  {job_id}:");
     let job_start = workflow_yml
         .find(&job_marker)
