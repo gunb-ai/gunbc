@@ -42,7 +42,7 @@ Why forbidden:           §4.0d; P2 — backend rows must land as CacheInterface
 DFS path:
   NEW: dsl/std/cache_interface.dag
   CONSUME: types.dag ContentHash, patterns.dag Upsert<T> (projection discipline only)
-  COMPOSITION: ExecutionReceipt<T> from compute_fabric (type name only — no import)
+  COMPOSITION: ProducerReceipt<T> / ExecutionReceiptRef<T> (no import compute_fabric)
 Falsification probe:   §5 cases 9–19 only.
 ```
 
@@ -297,7 +297,7 @@ Implementation guardrails (dispatch):
 | **P-CI-TYPE** | `cache_interface.dag` parses §1 |
 | **P-CI-GENERIC** | `ArtifactIdentity<T>`, `CachedArtifactReceipt<T>` |
 | **P-CI-NO-IMPORT** | Module does not `import` compute_fabric |
-| **P-CI-EVIDENCE** | `data` rows require `evidence` field at parse time (or 🟡 gate until data-body syntax lands) |
+| **P-CI-EVIDENCE** | `data` rows require non-empty `evidence: List<CacheEvidence>` (or 🟡 gate until data-body syntax lands) |
 
 ---
 

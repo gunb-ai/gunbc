@@ -14,7 +14,7 @@
 Compose with cache substrate **only** through:
 
 - `ExecutionReceipt<T>.output: Outcome<ArtifactRef<T>>` (compute → artifact handle)
-- Worksheet B's `CachedArtifactReceipt<T>.producer: ExecutionReceipt<T>` (cache → compute proof chain)
+- Worksheet B's `CachedArtifactReceipt<T>.producer: ProducerReceipt<T>` citing `ExecutionReceiptRef<T>` on internal hits (no `import` of compute module in cache_interface)
 
 **Forbidden:** `dsl/std/compute_fabric.dag` importing `cache_interface.dag` (or vice versa). `PerformanceReceipt` must not name `CacheInterfaceFacts` / `CacheStoreView` — cache state is an opaque summary string or lands in Worksheet B receipts.
 
