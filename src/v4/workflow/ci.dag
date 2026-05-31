@@ -2677,6 +2677,8 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/manual/")
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/generated/")
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/fixture/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/v2_run_preflight/")
+    || changed == "src/v4/test/coercion_fold_int_rust_fixture.dag"
     || ci_repo_path_has_prefix(path: changed, prefix: "fixtures/v4-mvp1/")
     || changed == "scripts/v4-mvp1-e2e-gate.sh"
     || changed == "scripts/v4-m1-rust-emit-probe.sh"
@@ -2718,6 +2720,7 @@ fn ci_changed_path_triggers_ci_component(changed: RepoPath) -> Bool {
   ci_changed_path_affects_v2(changed: changed)
     || ci_changed_path_affects_v3(changed: changed)
     || ci_changed_path_affects_v4(changed: changed)
+    || ci_changed_path_affects_testclaim_corpus(changed: changed)
     || ci_changed_path_affects_workflow_policy(changed: changed)
     || ci_changed_path_affects_release_distribution(changed: changed)
 }

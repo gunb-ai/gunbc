@@ -123,6 +123,8 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
         || path.starts_with("src/v4/test/claim/manual/")
         || path.starts_with("src/v4/test/claim/generated/")
         || path.starts_with("src/v4/test/fixture/")
+        || path.starts_with("src/v4/test/v2_run_preflight/")
+        || path == "src/v4/test/coercion_fold_int_rust_fixture.dag"
         || path.starts_with("fixtures/v4-mvp1/")
         || path == "scripts/v4-mvp1-e2e-gate.sh"
         || path == "scripts/v4-m1-rust-emit-probe.sh"
@@ -261,6 +263,26 @@ mod tests {
     }
 
     #[test]
+    fn v4_compile_harness_paths_outside_claim_bucket() {
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/test/coercion_fold_int_rust_fixture.dag"
+        ));
+        assert!(ci_changed_path_affects_v4(
+            "src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
+        ));
+        assert!(!ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/coercion_fold_int_rust_fixture.dag"
+        ));
+    }
+
+    #[test]
+    fn triggers_ci_component_includes_testclaim_corpus() {
+        assert!(ci_changed_path_triggers_ci_component(
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
+        ));
+    }
+
+    #[test]
     fn release_distribution_only_excludes_mixed_fixture_paths() {
         assert!(ci_release_distribution_only_from_changed_paths([
             "install.sh",
@@ -269,6 +291,10 @@ mod tests {
         assert!(!ci_release_distribution_only_from_changed_paths([
             "install.sh",
             "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+        ]));
+        assert!(!ci_release_distribution_only_from_changed_paths([
+            "install.sh",
+            "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
         ]));
         assert!(!ci_release_distribution_only_from_changed_paths([
             "src/v4/install/install.dag",

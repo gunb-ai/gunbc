@@ -133,6 +133,15 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         release_distribution: false,
     },
     CiAffectedFixture {
+        path: "src/v4/test/coercion_fold_int_rust_fixture.dag",
+        v2: false,
+        v3: false,
+        v4: true,
+        testclaim_corpus: false,
+        workflow_policy: false,
+        release_distribution: false,
+    },
+    CiAffectedFixture {
         path: "install.sh",
         v2: false,
         v3: false,
@@ -270,6 +279,10 @@ fn assert_ci_dag_rust_mirror_release_distribution_only_parity() {
     assert!(!ci_release_distribution_only_from_changed_paths([
         "install.sh",
         "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+    ]));
+    assert!(!ci_release_distribution_only_from_changed_paths([
+        "install.sh",
+        "src/v4/test/claim/workflow/affected_set_ci_runner.dag",
     ]));
     let mixed = ci_component_affected_from_changed_paths([
         "install.sh",
