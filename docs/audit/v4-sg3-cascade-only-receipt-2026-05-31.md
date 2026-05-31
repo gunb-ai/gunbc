@@ -57,8 +57,10 @@ SG-3-CASCADE bands, from the #4122 §2 histogram (the "trait/field/binary mop-up
 | unclassified-E0308 mop-up | `E0308` (residual) | ~625 | (residual) |
 | **SG-3-CASCADE total** | | **~1,390** | −46 |
 
-The named bands are essentially flat; the only motion is the residual-E0308 mop-up, which **shrank −46**
-*because* SG-RC-LAYERING absorbed +80 of what was previously counted as E0308 mop-up. That motion is
+Both motions in this table are primary-driven, not SG-3-intrinsic: the named bands are flat except
+`E0560 +4` (new SG-2 projection surface from substrate landings), and the residual-E0308 mop-up
+**shrank −46** *because* SG-RC-LAYERING absorbed +80 of what was previously counted as E0308 mop-up
+(the −46 is net of the +4 E0560 tick and other re-bucketing). That motion is
 itself the signature of a derived class: SG-3-CASCADE's count moves as a *function of the primaries'
 reclassification*, not on its own.
 
