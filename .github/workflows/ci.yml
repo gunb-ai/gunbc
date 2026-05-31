@@ -267,8 +267,8 @@ jobs:
   # receipt-only stub so required check names stay stable. MVP-1 + v4 bootstrap share the
   # v2-compiler binary; workflow_policy PRs that touch gate wiring must still build/run receipts.
   ci_v4:
-    # Run when v4 compile gates OR testclaim_corpus (T-22) OR workflow_policy OR main-push (I7 T-15).
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    # Run when v4 compile gates OR testclaim_corpus (T-22) OR workflow_policy OR release_distribution OR main-push (I7 T-15).
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     needs: [affected, discipline]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 40
@@ -304,14 +304,14 @@ jobs:
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Cache gunbc binary (v4 bootstrap / host eval gate)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       id: v4-v2-bin
       uses: actions/cache@v4
       with:
         path: target/release/gunbc
         key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: Build v2 compiler (v4 bootstrap / host eval gate)
-      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && steps.v4-v2-bin.outputs.cache-hit != 'true'
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
     - name: T-15 self-host fixed-point harness (stage1==stage2)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -334,7 +334,7 @@ jobs:
     # Modeled authority: src/v4/workflow/ci.dag `m1_rust_emit_probe_signal` +
     # `m1_ci_live_workflow_signal` (feature:project-github-actions-landed; Tier-0 fail-closed).
     - name: M1 v4 full-tree rust emit probe (v2 emit + cargo check)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true'
       timeout-minutes: 20
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
@@ -381,7 +381,7 @@ jobs:
         V4_PHASE1_NAT_SEMIRING_STRICT: "1"
       run: bash scripts/v4-phase1-nat-semiring-rung-gate.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true'
       id: v4_bootstrap_compile
       timeout-minutes: 35
       continue-on-error: true
@@ -396,7 +396,7 @@ jobs:
         echo "exitcode=${ec}" >> "$GITHUB_OUTPUT"
         exit "${ec}"
     - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
-      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
       id: v4_bootstrap_resolve_posture
       env:
         V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
@@ -406,7 +406,7 @@ jobs:
         V4_BOOTSTRAP_COMPILER_EXIT="${{ steps.v4_bootstrap_compile.outputs.exitcode }}" \
           bash scripts/v4-bootstrap-resolve-posture-gate.sh
     - name: v4 bootstrap gate result (compile or tracked bridge)
-      if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'
+      if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'
       run: |
         set -euo pipefail
         if [[ "${{ steps.v4_bootstrap_compile.outcome }}" == "success" ]]; then
@@ -423,7 +423,7 @@ jobs:
     # Modeled authority: src/v4/workflow/ci.dag `testclaim_corpus_eval_execution` +
     # `testclaim_corpus_eval_signal` + `testclaim_corpus_eval_ci_live_workflow_signal`.
     - name: T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true'
       timeout-minutes: 15
       env:
         V2_COMPILER: target/release/gunbc

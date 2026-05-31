@@ -747,8 +747,9 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     assert!(
         eval_step.contains("needs.affected.outputs.v4 == 'true'")
             && eval_step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
-            && eval_step.contains("needs.affected.outputs.workflow_policy == 'true'"),
-        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, and workflow-policy changes"
+            && eval_step.contains("needs.affected.outputs.workflow_policy == 'true'")
+            && eval_step.contains("needs.affected.outputs.release_distribution == 'true'"),
+        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, workflow-policy, and release_distribution changes"
     );
     assert!(
         !eval_step.contains("v4-testclaim-corpus-gate.sh")
@@ -963,12 +964,16 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         "{CI_YML_PATH}: ci_v4 job `if` must include main-push so I7 T-15 can run when the job is not component-selected"
     );
     assert!(
+        ci_v4_job_if.contains("needs.affected.outputs.release_distribution == 'true'"),
+        "{CI_YML_PATH}: ci_v4 job `if` must include release_distribution (TestClaimCorpusEvalCommand mask axis)"
+    );
+    assert!(
         CI_WORKFLOW_DAG.contains(
             "id: \"ci_v4\""
         ) && CI_WORKFLOW_DAG.contains(
-            "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
+            "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
         ),
-        "{CI_WORKFLOW_DAG_PATH}: ci_v4 job if_condition must mirror ci.yml main-push disjunct (I7)"
+        "{CI_WORKFLOW_DAG_PATH}: ci_v4 job if_condition must mirror ci.yml (main-push + release_distribution)"
     );
     let t15_workflow_marker = format!("name: Some {{ value: \"{T15_SELF_HOST_STEP_NAME}\" }}");
     let t15_workflow_idx = CI_WORKFLOW_DAG
