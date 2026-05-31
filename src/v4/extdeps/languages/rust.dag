@@ -3510,11 +3510,11 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
     rust_collection_surface_hash_set,
     "std::collections::HashSet"
   ),
-      target_collection_set_carrier,
-      "Set"
-    ),
-    rust_target_atom_type_spelling_string,
-    "String"
+  target_collection_set_carrier,
+  "Set"
+),
+rust_target_atom_type_spelling_string,
+"String"
   )
 }
 
