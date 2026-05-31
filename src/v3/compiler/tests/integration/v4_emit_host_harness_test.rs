@@ -370,17 +370,18 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         surface_declares_data(&rung_8, "phase1_nat_semiring_rung8_runtime_value_rows"),
         "{NAT_SEMIRING_RUNG_8_PATH}: runtime roster carrier (7 rows)"
     );
-    for name in [
-        "rung8_tier1_eval_run",
-        "rung8_tier1_assert_passes",
-        "witness_rung8_nat_add_left_identity",
-        "witness_rung8_nat_add_wrong_identity_falsifies_law",
-    ] {
-        assert!(
-            surface_declares_fn(&rung_8, name) || surface_declares_data(&rung_8, name),
-            "{NAT_SEMIRING_RUNG_8_PATH}: missing T-22 witness {name}"
-        );
-    }
+    assert!(
+        surface_declares_fn(&rung_8, "rung8_tier1_eval_run"),
+        "{NAT_SEMIRING_RUNG_8_PATH}: T-22 eval constructor must call run_test_claim"
+    );
+    assert!(
+        rung_8.contains("run_test_claim("),
+        "{NAT_SEMIRING_RUNG_8_PATH}: roster rows must thread run_test_claim verdicts (not fabricated Pass)"
+    );
+    assert!(
+        surface_declares_fn(&rung_8, "rung8_witness_pass"),
+        "{NAT_SEMIRING_RUNG_8_PATH}: gate witnesses must read TestClaimRun.verdict"
+    );
 
     let eval_module = parse_module(NAT_SEMIRING_RUNG8_EVAL_DAG, NAT_SEMIRING_RUNG8_EVAL_PATH);
     for name in [
