@@ -256,6 +256,32 @@ data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = LeafModel
   }
 }
 
+// SG-1b (SG-1-FOLLOWON) — fn-boundary signature coupling receipt.
+// docs/planning/v4-sg-1b-function-signature-realization-worksheet-2026-05-30.md falsification (1)–(3):
+// the Symbol kernel atom's fn entry/exit type emit (TargetFunctionSignatureRealization.signature_type_form)
+// must track the shared source_carrier row — changing the signature row moves the `-> T` / `(x: T)`
+// boundary emit WITHOUT mutating non-boundary decl-site type_form, and the boundary remains coupled to
+// the SG-1 value path via source_carrier. Reuses RustEmitProjectionEqualityExpectation (no new gated
+// expectation arm); a dedicated signature_must_track_value_form arm is escalation-gated follow-on.
+data claim_rust_leaf_sg1b_symbol_signature_coupling: RustLeafModelClaim = LeafModelClaim {
+  model: rust_language_model_wave1(),
+  fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
+  subject: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+  expectation: RustEmitProjectionEqualityExpectation {
+    atom_realization_row: rust_atom_realization_symbol_node,
+    type_emit_must_change: true,
+    value_emit_must_change: false
+  },
+  falsification_case: FalsificationCase {
+    subject_variant: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+    expected_failure_mode: RustEmitProjectionEqualityExpectation {
+      atom_realization_row: rust_atom_realization_symbol_node,
+      type_emit_must_change: false,
+      value_emit_must_change: false
+    }
+  }
+}
+
 data rust_leaf_model_claim_corpus_phase1: List<RustLeafModelClaim> = [
   claim_rust_leaf_r1_i32_type,
   claim_rust_leaf_r2a_i32_algebra_operations,
@@ -264,5 +290,6 @@ data rust_leaf_model_claim_corpus_phase1: List<RustLeafModelClaim> = [
   claim_rust_leaf_r2b_overflow_checks_enabled_overflow,
   claim_rust_leaf_r2b_overflow_checks_disabled_overflow,
   claim_rust_leaf_r3_external_symbol_projection,
-  claim_rust_leaf_r3_internal_symbol_coupling
+  claim_rust_leaf_r3_internal_symbol_coupling,
+  claim_rust_leaf_sg1b_symbol_signature_coupling
 ]

@@ -162,7 +162,15 @@ import v4.std.target_model {
   target_model_edge_atom_realizations,
   target_model_edge_value_expression,
   target_model_named_edge,
-  target_value_expression_node
+  target_value_expression_node,
+  TargetFunctionSignatureRealization,
+  FunctionBoundarySite,
+  FunctionBoundaryParam,
+  FunctionBoundaryReturn,
+  target_model_edge_signature_realizations,
+  target_function_signature_realization_lookup_in_catalog_node,
+  target_function_signature_realization_lookup_miss,
+  target_function_signature_realization_lookup_miss_diagnostic
 }
 import v4.std.collection {
   Absent,
@@ -2060,26 +2068,43 @@ fn project_type_expression_node_bounded(
         }
       )
     TypeNode { connective: Arrow } =>
+      // SG-1b: split raw carrier children FIRST so each boundary site (Param inputs, Return
+      // output) is projected through the signature realization consumer before the raw atom
+      // fallback. Non-boundary atoms (decl/type-alias sites) keep the raw-identity arm below.
       bind_outcome(
-        o: project_type_expression_children(
-          remaining: remaining - 1,
-          anchor: node,
-          children: node_positional_child_targets(node: node),
-          target: target,
-          projection: projection
+        o: type_expr_arrow_split_from_types(
+          types: node_positional_child_targets(node: node),
+          node: node
         ),
-        f: fn(projected) {
+        f: fn(raw_split) {
           bind_outcome(
-            o: type_expr_arrow_split_from_types(types: projected, node: node),
-            f: fn(split) {
-              Accepted {
-                value: target_type_expr_arrow_emitted(
-                  form: projection.arrow_form,
-                  inputs: split.inputs,
-                  output: split.output
+            o: project_arrow_boundary_inputs(
+              remaining: remaining - 1,
+              anchor: node,
+              inputs: raw_split.inputs,
+              target: target,
+              projection: projection
+            ),
+            f: fn(projected_inputs) {
+              bind_outcome(
+                o: project_arrow_boundary_child(
+                  remaining: remaining - 1,
+                  node: raw_split.output,
+                  boundary_site: FunctionBoundaryReturn,
+                  target: target,
+                  projection: projection
                 ),
-                diagnostics: None
-              }
+                f: fn(projected_output) {
+                  Accepted {
+                    value: target_type_expr_arrow_emitted(
+                      form: projection.arrow_form,
+                      inputs: projected_inputs,
+                      output: projected_output
+                    ),
+                    diagnostics: None
+                  }
+                }
+              )
             }
           )
         }
@@ -2725,6 +2750,149 @@ fn translate_target_atom_realization_for_carrier(
         host_target_model: target
       )
     }
+  )
+}
+// ── SG-1b — function-boundary signature realization consumer ──
+// At fn entry/exit (Arrow domain/codomain) the type-expression projection (atom arm) passes the
+// raw carrier identity straight to serialization, bypassing the SG-1 catalog. This consumer
+// consults TargetFunctionSignatureRealization (keyed by source_carrier, scoped to boundary site)
+// BEFORE that fallback, requiring the SG-1 atom row present for the same carrier (coupling).
+fn target_function_signature_realizations_catalog_from_model(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<Node> {
+  match target_bundle_optional_child(
+    target: target,
+    edge_name: target_model_edge_signature_realizations
+  ) {
+    Accepted { value: optional_catalog, diagnostics: d } =>
+      match optional_catalog {
+        None =>
+          outcome_rejected(
+            target_function_signature_realization_lookup_miss_diagnostic(source_carrier: source_carrier)
+          )
+        Some { value: catalog } =>
+          Accepted { value: catalog, diagnostics: d }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+fn translate_function_signature_realization_for_boundary(
+  target: TargetModel,
+  source_carrier: Node,
+  boundary_site: FunctionBoundarySite
+) -> Outcome<TargetFunctionSignatureRealization> {
+  bind_outcome(
+    o: target_function_signature_realizations_catalog_from_model(
+      target: target,
+      source_carrier: source_carrier
+    ),
+    f: fn(catalog) {
+      // SG-1 coupling: a signature row fires only when the SG-1 atom row exists for the SAME
+      // source_carrier — atom-row miss propagates as a lookup_miss and the boundary site falls
+      // back to the raw projection (carrier with no realization keeps current behavior).
+      bind_outcome(
+        o: translate_target_atom_realization_for_carrier(
+          target: target,
+          source_carrier: source_carrier
+        ),
+        f: fn(_atom_row) {
+          target_function_signature_realization_lookup_in_catalog_node(
+            catalog: catalog,
+            source_carrier: source_carrier,
+            boundary_site: boundary_site
+          )
+        }
+      )
+    }
+  )
+}
+fn translate_outcome_is_signature_realization_lookup_miss(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == target_function_signature_realization_lookup_miss
+    || diagnostics.head.reason == target_atom_realization_lookup_miss
+}
+fn project_arrow_boundary_child(
+  remaining: Int,
+  node: Node,
+  boundary_site: FunctionBoundarySite,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match translate_function_signature_realization_for_boundary(
+    target: target,
+    source_carrier: node,
+    boundary_site: boundary_site
+  ) {
+    Accepted { value: row, diagnostics: d } =>
+      Accepted { value: row.signature_type_form.node, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      if translate_outcome_is_signature_realization_lookup_miss(diagnostics: r) {
+        project_type_expression_node_bounded(
+          remaining: remaining,
+          node: node,
+          target: target,
+          projection: projection
+        )
+      } else {
+        Rejected { diagnostics: r }
+      }
+  }
+}
+fn project_arrow_boundary_inputs_go(
+  remaining: Int,
+  anchor: Node,
+  inputs: List<Node>,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  acc: List<Node>
+) -> Outcome<List<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor))
+  } else if is_empty(xs: inputs) {
+    Accepted { value: acc, diagnostics: None }
+  } else {
+    bind_outcome(
+      o: list_head_and_tail(xs: inputs, node: anchor),
+      f: fn(split) {
+        bind_outcome(
+          o: project_arrow_boundary_child(
+            remaining: remaining - 1,
+            node: split.head,
+            boundary_site: FunctionBoundaryParam,
+            target: target,
+            projection: projection
+          ),
+          f: fn(projected_head) {
+            project_arrow_boundary_inputs_go(
+              remaining: remaining - 1,
+              anchor: anchor,
+              inputs: split.tail,
+              target: target,
+              projection: projection,
+              acc: list_snoc_item(xs: acc, item: projected_head)
+            )
+          }
+        )
+      }
+    )
+  }
+}
+fn project_arrow_boundary_inputs(
+  remaining: Int,
+  anchor: Node,
+  inputs: List<Node>,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<List<Node>> {
+  project_arrow_boundary_inputs_go(
+    remaining: remaining,
+    anchor: anchor,
+    inputs: inputs,
+    target: target,
+    projection: projection,
+    acc: Empty
   )
 }
 fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {

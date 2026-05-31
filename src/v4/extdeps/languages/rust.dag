@@ -1841,6 +1841,12 @@ fn rust_mvp1_target_model_node() -> Node {
           rows: rust_target_atom_realization_catalog,
           host_bundle: rust_mvp1_target_model_bundle_core()
         )
+      ),
+      rust_named_edge(
+        name: target_model_edge_signature_realizations,
+        target: target_function_signature_realization_catalog_node(
+          rows: rust_target_function_signature_realization_catalog
+        )
       )
     ]
   }

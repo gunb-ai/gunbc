@@ -1894,6 +1894,9 @@ fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
 // FunctionBoundarySite limits this authority to fn entry/exit; non-boundary decl/type-alias
 // sites keep SG-1 type_form authority.
 
+// 🟢 coproduct dissolution — irreducible fn-boundary position axis (Arrow domain vs codomain).
+// Param/Return is the exhaustive structural partition of a function type's entry/exit sites; the
+// arms carry no payload and are not a heuristic enum — nothing to dissolve to a deeper fact.
 type FunctionBoundarySite
   = FunctionBoundaryParam
   | FunctionBoundaryReturn
@@ -2059,6 +2062,9 @@ fn target_function_signature_realization_from_row_node(
   }
 }
 
+// 🟢 coproduct dissolution — internal fold state for the signature-realization catalog scan
+// (Missing/Unique/Ambiguous/Invalid accumulator; mirrors TargetAtomRealizationCatalogLookup).
+// Fail-closed: any row decode failure collapses to Invalid; duplicate boundary rows to Ambiguous.
 type TargetFunctionSignatureRealizationLookup
   = TargetFunctionSignatureRealizationMissing
   | TargetFunctionSignatureRealizationUnique { row: TargetFunctionSignatureRealization }
