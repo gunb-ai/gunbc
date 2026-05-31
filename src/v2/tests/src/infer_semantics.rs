@@ -309,7 +309,8 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
 #[test]
 fn optional_pattern_lookup_still_resolves_some_variant() {
     let subject = v2_compiler_infer_patterns::pattern_subject_from_node(
-        &with_optional_cardinality(&leaf_node("String".to_string())),
+        &with_optional_cardinality(leaf_node("String".to_string())),
+     |
     );
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
@@ -332,7 +333,8 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
 #[test]
 fn optional_match_exhaustiveness_reports_missing_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
-        &with_optional_cardinality(&leaf_node("String".to_string())),
+        &with_optional_cardinality(leaf_node("String".to_string())),
+     |
         &Rc::new(vec![variant_arm("Some")]),
         &Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
@@ -355,7 +357,8 @@ fn optional_match_exhaustiveness_reports_missing_none() {
 #[test]
 fn optional_match_exhaustiveness_accepts_some_and_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
-        &with_optional_cardinality(&leaf_node("String".to_string())),
+        &with_optional_cardinality(leaf_node("String".to_string())),
+     |
         &Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         &Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
@@ -884,7 +887,8 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         ..(*leaf_node("".to_string())).clone()
     });
 
-    let outputs = v2_compiler_parse::node_inferred_to_outputs(&conj_node, empty_source_indices());
+    let outputs = v2_compiler_parse::node_inferred_to_outputs(conj_node, empty_source_indices());
+     |
     assert!(
         outputs.is_empty(),
         "fail-closed gate: Conj with error child must produce 0 outputs, got {}",

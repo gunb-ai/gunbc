@@ -72,7 +72,8 @@ fn full_dsl_compiles() {
                 .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
             let result = v2_compiler::v2_compiler_parse::parse(
                 v2_compiler::v2_compiler_tokenize::tokenize(
-                    &content,
+                    content,
+    |
                     path.to_string_lossy().to_string(),
                 ),
                 Rc::new(HashMap::new()),

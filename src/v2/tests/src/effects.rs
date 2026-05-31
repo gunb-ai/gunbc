@@ -261,7 +261,8 @@ fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<
     let mut source_indices = HashMap::new();
     source_indices.insert(
         filename.to_string(),
-        build_newline_index(filename.to_string(), &source.to_string()),
+        build_newline_index(filename.to_string(), source.to_string()),
+     |
     );
     let source_indices = Rc::new(source_indices);
     let result = parse(tokens, source_indices.clone());
