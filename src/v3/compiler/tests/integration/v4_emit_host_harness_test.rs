@@ -51,6 +51,12 @@ const NAT_SEMIRING_RUNG56_EVAL_PATH: &str =
     "src/v4/test/claim/workflow/nat_semiring_rung56_eval.dag";
 const RUNG_5_6_COMMON_DAG: &str = include_str!("../../../../v4/test/claim/rung_5_6_common.dag");
 const RUNG_5_6_COMMON_PATH: &str = "src/v4/test/claim/rung_5_6_common.dag";
+const NAT_SEMIRING_RUNG_8_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_8.dag");
+const NAT_SEMIRING_RUNG_8_PATH: &str = "src/v4/test/claim/nat_semiring/rung_8.dag";
+const NAT_SEMIRING_RUNG8_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung8_eval.dag");
+const NAT_SEMIRING_RUNG8_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung8_eval.dag";
 
 /// Minimal python host fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_PYTHON_FIXTURE_SOURCE: &str = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
@@ -454,6 +460,64 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
             "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
         ),
         "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
+    let rung_8 = parse_module(NAT_SEMIRING_RUNG_8_DAG, NAT_SEMIRING_RUNG_8_PATH);
+    for name in [
+        "run_claim_nat_add_left_identity",
+        "run_claim_nat_add_right_identity",
+        "run_claim_nat_add_associativity",
+        "run_claim_nat_mul_left_identity",
+        "run_claim_nat_mul_annihilator",
+        "run_claim_nat_mul_associativity",
+        "run_claim_nat_add_wrong_identity_falsifies_law",
+    ] {
+        assert!(
+            surface_declares_data(&rung_8, name),
+            "{NAT_SEMIRING_RUNG_8_PATH}: missing run row {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(&rung_8, "phase1_nat_semiring_rung8_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG_8_PATH}: runtime roster carrier (7 rows)"
+    );
+    assert!(
+        surface_declares_fn(&rung_8, "rung8_tier1_eval_run"),
+        "{NAT_SEMIRING_RUNG_8_PATH}: T-22 eval constructor must call run_test_claim"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG_8_DAG.contains("run_test_claim("),
+        "{NAT_SEMIRING_RUNG_8_PATH}: roster rows must thread run_test_claim verdicts (not fabricated Pass)"
+    );
+
+    let eval_module = parse_module(NAT_SEMIRING_RUNG8_EVAL_DAG, NAT_SEMIRING_RUNG8_EVAL_PATH);
+    for name in [
+        "run_nat_semiring_rung8_eval",
+        "nat_semiring_rung8_gate",
+        "nat_semiring_rung8_zero_deferred",
+    ] {
+        assert!(
+            surface_declares_fn(&eval_module, name),
+            "{NAT_SEMIRING_RUNG8_EVAL_PATH}: missing fn {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(
+            &eval_module,
+            "witness_nat_semiring_rung8_zero_deferred_closed"
+        ),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: authoring-time zero-deferred witness (data binding)"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG8_EVAL_DAG.contains("phase1_nat_semiring_rung8_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG8_EVAL_DAG.contains("corpus_report_tally"),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: VerdictTally via corpus_report_tally"
     );
 }
 

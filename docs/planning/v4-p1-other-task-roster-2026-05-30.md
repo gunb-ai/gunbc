@@ -106,6 +106,87 @@ This roster classifies the live `src/v4/TASKS.md` task list against the P1 close
 
 ---
 
+## §3.5. P1-B per-GAP manager routing (forced dispatch 2026-05-31)
+
+Per PM dispatch 2026-05-31 00:30Z (forced-dispatch item 2 of receipt-unblock wave). For each of the 45 in-scope GAP rows in §2, this section names the responsible manager (per PR #3938 §11.3 lane map) and a concrete close-receipt shape that would flip the row to `PROVEN` under PR #3949 §1's closure invariant. **No fresh `ODR` / `NOT-PROMISED` proposals** — those remain operator-ratification territory per the §1 safety rule.
+
+**Per-row re-adjudication (PROVEN re-pass):** walked the 45 GAP rows against `origin/main` post-#4060 for any DONE-evidence missed in the original roster pass. Result: **0 GAP-to-PROVEN flips**. Every GAP row's `[SCHEDULED]` / `[ACTIVE]` / "no DONE tag" status from §2 holds on current `main`; no rows had stealth-DONE evidence.
+
+### §3.5.1 Routing table
+
+Columns: `task_id` × `primary manager (PR #3938 §11.3 lane)` × `secondary manager` × `close-receipt shape` (what would flip this row to `PROVEN`).
+
+| task_id | primary | secondary | close-receipt shape (would flip to PROVEN) |
+| ------- | ------- | --------- | ------------------------------------------ |
+| `T-1` | Modeling DFS | Compiler Spine | std/node.dag fact-fill complete + consumers wired; receipt = §T-1 wave-close PR with no `🟡` substrate-fill markers remaining. |
+| `T-2` | Modeling DFS | Compiler Spine | std/algebra.dag fact-fill + consumer activation receipt. |
+| `T-3` | Modeling DFS | Runtime/TestClaim | std/* sub-substrates (`cardinality`, `witness`, `diagnostic`, `collection`, `verification`, scalar+numeric stack) all filled + verification.dag scaffold dissolved. |
+| `T-4` | Modeling DFS | Target Realization | T-4 Wave-2 fact-bundles complete for {rust,python,go,cpp,typescript} per-language; per-language LanguageModel sections close. |
+| `T-4.5` | Modeling DFS | Self-host/Release | posix.dag + file_system.dag activation receipts (consumers wired beyond the SUBSTRATE_LANDED marker). |
+| `T-4.6` | Modeling DFS | Target Realization | All 7 format substrates (`json`, `yaml`, `csv`, `toml`, `json_schema`, `openapi`, `sql`) at full-fill; per-format parse/emit consumer wiring. |
+| `T-4.7` | Modeling DFS | Target Realization | react.dag substrate fill; loadability for T-16 omni-emission demo. |
+| `T-4.8` | Modeling DFS | Target Realization | coordination.dag substrate fill; T-16 demo consumes. |
+| `T-4.9` | Modeling DFS | Target Realization | verilog.dag substrate fill; `SL-3229-VERILOG-D3200` dissolution-arrival receipt. |
+| `T-4.10` | Modeling DFS | Target Realization | spice.dag substrate fill; B2-OMNI falsification probe receipt. |
+| `T-4.11` | Runtime/TestClaim | Modeling DFS | boundary claim receipt; gates on T-3 verification.dag + T-4.19 english.dag landings. |
+| `T-4.12` | Modeling DFS | Target Realization | llvm_ir.dag substrate fill; B2-OMNI down-stack probe receipt. |
+| `T-4.13` | Modeling DFS | Target Realization | machine_code.dag substrate fill; bottom-of-stack fail-closed probe receipt. |
+| `T-4.14` | Modeling DFS | Target Realization | ptx.dag substrate fill; SIMT data-parallel probe receipt. |
+| `T-4.15` | Modeling DFS | Target Realization | rest/graphql/grpc.dag transport substrate fill (SCHEDULED → ACTIVE → DONE arc). |
+| `T-4.16` | Modeling DFS | Target Realization | per-formatter config substrates complete (ACTIVE landings ongoing per §T-4.16 body). |
+| `T-4.17` | Target Realization | Modeling DFS | Per-language full bidirectional ingest receipts (Wave 2a + 2b) — per-language emit + parse round-trip. |
+| `T-4.18` | Target Realization | Modeling DFS | verilog/spice/llvm_ir/machine_code/ptx ingest completion; #3796 closed an early slice but full set pending. |
+| `T-4.19` | Modeling DFS | Runtime/TestClaim | english.dag formal-subset substrate + boundary claim wire-up per §T-4.19 reversal. |
+| `T-6` | Compiler Spine | Modeling DFS | 01_tokenize.dag fact-fill + T-6.1 LexRule token-class query dissolution receipt. |
+| `T-7` | Compiler Spine | Modeling DFS | 02_parse.dag grammar substrate + T-7.1 GrammarExpr node projection dissolution. |
+| `T-8` | Compiler Spine | Modeling DFS | 03_normalize.dag + 03_resolve.dag wave-close; SG-1 / SG-2 dissolutions land at this stage. |
+| `T-9` | Compiler Spine | Modeling DFS | 04_infer.dag wave-close. |
+| `T-10` | Compiler Spine | Target Realization | 05_emit.dag + 00_compile.dag wave-close; cross-cuts P3 burn-down. |
+| `T-11` | Target Realization | Compiler Spine | Per-target emit specialization receipts (Rust + Python + Go for v0.1.0 supported tier; others for alpha/WIP). |
+| `T-12` | Compiler Spine | Modeling DFS | complexity.dag + cost.dag lens-fact-fill + first executed lens receipt against fixture. |
+| `T-13` | Compiler Spine | Modeling DFS | parallelism/effect/ownership/idempotency/structural_resolution.dag lens substrate fill. |
+| `T-14` | Runtime/TestClaim | Modeling DFS | Full TestClaim corpus execution via T-22 + T-38 (currently CORPUS_FILLED engineering state only). |
+| `T-16` | Target Realization | Self-host/Release | Full-stack omni-emission demo runnable end-to-end with T-4.7 React + T-4.8 coordination cross-deps. |
+| `T-18` | Compiler Spine | Modeling DFS | coverage.dag meta-lens substrate + first coverage-disciplined claim receipt. |
+| `T-20` | Self-host/Release | Compiler Spine | bootstrap.dag as-data; resolves the resolve-posture bridge per P2 close path. |
+| `T-21` | Compiler Spine | Close/Receipt | affected_set.dag substrate + executable incremental-frontier receipt (also relevant to F2 active-skip per `m1_rust_emit_probe_execution` proposal). |
+| `T-22` | Runtime/TestClaim | Compiler Spine | 05_eval.dag full execution path; runner harness wiring (cross-cuts P5 close); typed-input bridge landed #3905, runner still scheduled per T-38. |
+| `T-23` | Compiler Spine | Modeling DFS | application.dag apply_lens surface + opt-in depth fact-fill. |
+| `T-24` | Compiler Spine | Self-host/Release | ci.dag as-data wave-close; SG-7 dissolution landed via #4014 + PR #4050 but T-24 broader scope (CI step substrates) ongoing. |
+| `T-25` | Modeling DFS | Close/Receipt | Refinement substrate consumer activation (PR #3949 §4 anti-shelfware deadline applies to this row's SUBSTRATE_LANDED state). |
+| `T-26` | Modeling DFS | Close/Receipt | Boundary-carrier consumer activation (`net-address` / `URL` / `HttpMethod` wired in extdeps consumers). |
+| `T-28-B` | Modeling DFS | Compiler Spine | Module-root admission extraction from 03_resolve.dag executable receipt (currently MODELED only). |
+| `T-30` | Compiler Spine | Modeling DFS | Structural fact-density gate firing on PRs without the resolve-posture bridge — gate-landed but bridge-masked; honest activation requires bridge dissolution per P2. |
+| `T-31` | Self-host/Release | Modeling DFS | de-prose / de-templating backward sweep — corpus-level census plus per-pass receipts. |
+| `T-32` | Self-host/Release | Compiler Spine | Minimum never-hand-edited bootstrap seed (cross-cuts P6 burn-down GRAY; gated on T-15 fixed-point + emit authority). |
+| `T-33-Q10` | Modeling DFS | Runtime/TestClaim | std/model_core.dag effect + partiality carrier substrate fill (Wave-2b ongoing). |
+| `T-35` | Compiler Spine | Modeling DFS | Virtual module-loader + ModuleBatch substrate (T-QN-1 prerequisite now PROVEN, removing one blocker). |
+| `T-36` | Target Realization | Runtime/TestClaim | Omni ingest demo round-trip fidelity claim — round-trip eval now live at `05_eval.dag:1895-1907` (per PR #4032); full claim receipt pending. |
+| `T-38` | Runtime/TestClaim | Compiler Spine | TestClaim execution harness wave-close; #3902 wedge landed but full harness blocked per §T-38; unblock path for MW-D8 C4 + P5 close. |
+
+### §3.5.2 Routing summary by manager (45 GAP rows distributed)
+
+| Primary manager | GAP rows owned | Tasks |
+| --------------- | -------------- | ----- |
+| **Modeling DFS** | 20 | T-1, T-2, T-3, T-4, T-4.5, T-4.6, T-4.7, T-4.8, T-4.9, T-4.10, T-4.12, T-4.13, T-4.14, T-4.15, T-4.16, T-4.19, T-25, T-26, T-28-B, T-33-Q10 |
+| **Compiler Spine** | 13 | T-6, T-7, T-8, T-9, T-10, T-12, T-13, T-18, T-21, T-23, T-24, T-30, T-35 |
+| **Target Realization** | 5 | T-11, T-4.17, T-4.18, T-16, T-36 |
+| **Runtime/TestClaim** | 4 | T-4.11, T-14, T-22, T-38 |
+| **Self-host/Release** | 3 | T-20, T-31, T-32 |
+| **Close/Receipt** (none primary) | 0 | (secondary only — T-21, T-25, T-26) |
+| **Ladder/Fixture** (none) | 0 | |
+| **TOTAL** | **45** | matches the §2 GAP count |
+
+Modeling DFS carries the largest load (~44% of GAP rows). This matches PR #3938 §11's expectation that substrate-fill is the dominant front. Compiler Spine is the second-largest concentration (~29% — compiler stage + lens substrate). Target Realization, Runtime/TestClaim, and Self-host/Release split the remaining smaller slices.
+
+### §3.5.3 Cross-receipt notes (informational)
+
+- **MW-D8 C4** (`ci_selection_receipt_shadow`, MW-D8 ledger PR #4017+#4050) is owned by `smart-stag-871` post-#4014. Closing it does NOT directly close any §3.5.1 row but relates to **T-21** (affected_set.dag) and **T-24** (ci.dag as-data) — its receipt strengthens both rows' progress, though neither flips PROVEN from C4 alone.
+- **F2 active-skip** (`m1_rust_emit_probe_execution`, this lane ratified 2026-05-31) is also primary-related to **T-21** (affected_set.dag) — the receipt-generator IS the affected-set lens' first PROVEN public-facing application.
+- **T-15** explicitly excluded by P1 text but, per PR #3973 mapping, its closure path (P4 + P6) interacts with **T-20**, **T-31**, and **T-32**; T-15's progress accelerates those rows but does NOT close them in P1 terms.
+
+---
+
 ## §4. Out-of-scope dispositions PROPOSED (operator ratification)
 
 This roster does NOT propose any new `ODR` rows beyond the two operator-already-ratified entries (T-5 REMOVED 2026-05-15; T-27 DROPPED 2026-05-15). Per the safety rule (classify-don't-expand), proposing fresh removals is outside this lane's authority.
