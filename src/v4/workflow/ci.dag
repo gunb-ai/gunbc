@@ -275,14 +275,11 @@ type DissolutionTarget
 data ci_receipt_inputs_fail_closed_reason: Symbol = ci_receipt_inputs_fail_closed_reason
 data ci_carveout_matched_reason: Symbol = ci_carveout_matched_reason
 data ci_affected_intersection_nonempty_reason: Symbol = ci_affected_intersection_nonempty_reason
-data ci_affected_intersection_empty_cache_valid_reason: Symbol =
-  ci_affected_intersection_empty_cache_valid_reason
-data ci_cache_digest_projection_fail_closed_reason: Symbol =
-  ci_cache_digest_projection_fail_closed_reason
+data ci_affected_intersection_empty_cache_valid_reason: Symbol = ci_affected_intersection_empty_cache_valid_reason
+data ci_cache_digest_projection_fail_closed_reason: Symbol = ci_cache_digest_projection_fail_closed_reason
 data v2_substrate_circular_dep: Symbol = v2_substrate_circular_dep
 data integrity_always_run_interim: Symbol = integrity_always_run_interim
-data v2_substrate_dependency_modeled_in_affected_set: Symbol =
-  v2_substrate_dependency_modeled_in_affected_set
+data v2_substrate_dependency_modeled_in_affected_set: Symbol = v2_substrate_dependency_modeled_in_affected_set
 data ci_gate_run_policy_dissolved_to_receipt: Symbol = ci_gate_run_policy_dissolved_to_receipt
 
 // Phase 2.1 shadow seed — docs/planning/compiler-spine-ci-selection-receipt-shadow-2026-05-30.md §7.
@@ -2365,11 +2362,9 @@ fn ci_selection_receipt_shadow_fixture_m1_probe_run_holds() -> Bool {
   )
 }
 
-data ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok: Bool =
-  ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds()
+data ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok: Bool = ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds()
 
-data ci_selection_receipt_shadow_fixture_m1_probe_run_ok: Bool =
-  ci_selection_receipt_shadow_fixture_m1_probe_run_holds()
+data ci_selection_receipt_shadow_fixture_m1_probe_run_ok: Bool = ci_selection_receipt_shadow_fixture_m1_probe_run_holds()
 
 data ci_selection_receipt_shadow_fixture_well_formed_ok: Bool = match ci_pipeline {
   Accepted { value: pl, diagnostics: _ } =>
@@ -2381,10 +2376,7 @@ data ci_selection_receipt_shadow_fixture_well_formed_ok: Bool = match ci_pipelin
 }
 
 // C4 generatability — fixture receipt is well-formed and encodes carveout + affected Run evidence.
-data ci_selection_receipt_shadow_generatable_ok: Bool =
-  ci_selection_receipt_shadow_fixture_well_formed_ok
-    && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok
-    && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
+data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 
 // Shadow heartbeat data — NOT evidence that affected-set dependency selection works.
 data ci_selection_receipt_shadow_heartbeat_mode: CiSelectionReceipt = match ci_pipeline {
