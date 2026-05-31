@@ -215,23 +215,26 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
 }
 
+fn node_is_alias_rhs_type_argument_non_typevar(child: Node, generic_param_names: List<String>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if child.connective != NoConnective {
+    false
+  } else {
+    if child.children |> count > 0 {
+      true
+    } else {
+      let cname = authored_name_at(source_indices: source_indices, node: child)
+      match map_get(registry, cname) {
+        Some { value: info } => info.kind == TypeItem || info.kind == OtherItem
+        None => generic_param_names |> any(g => g == cname)
+      }
+    }
+  }
+}
+
 fn node_is_alias_rhs_type_argument(child: Node, generic_param_names: List<String>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
   match child.inferred {
     Some { value: TypeVariable { id: _ } } => true
-    _ =>
-      if child.connective != NoConnective {
-        false
-      } else {
-        if child.children |> count > 0 {
-          true
-        } else {
-          let cname = authored_name_at(source_indices: source_indices, node: child)
-          match map_get(registry, cname) {
-            Some { value: info } => info.kind == TypeItem || info.kind == OtherItem
-            None => generic_param_names |> any(g => g == cname)
-          }
-        }
-      }
+    _ => node_is_alias_rhs_type_argument_non_typevar(child: child, generic_param_names: generic_param_names, registry: registry, source_indices: source_indices)
   }
 }
 
