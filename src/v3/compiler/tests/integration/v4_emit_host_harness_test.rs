@@ -13,8 +13,8 @@
 //! `HostExit` Holds witness + five-byte stdout parse) plus **tokenize/parse** surface receipts
 //! for W2 `.dag` modules (not `str::contains` source probes per TESTING.md).
 //!
-//! **W3 landed:** `run_emit_host_rust` substrate row wired; rosters authored in #4046 (`rung_3_4`).
-//! Executable host via `emit_host_bridge` / `emit_host_runner`.
+//! **W3:** substrate `run_emit_host_rust` stays `transport_not_wired` (fail-closed); real cargo+run
+//! via `emit_host_bridge` / `emit_host_runner`. Rosters authored in #4046 (`rung_3_4`).
 //! Behavior receipts: real cargo compile+run transport, MVP-2 emit-vs-eval `Pass`/`Fail` verdicts
 //! (host `FalsificationReceipt` path on value mismatch / parse reject). Dissolution: delete when
 //! T-22 generated harness replaces hand-Rust probes.
@@ -60,6 +60,15 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
             name: item_name, ..
         } => item_name == name,
         _ => false,
+    })
+}
+
+fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Data { name: decl_name, .. } if decl_name == name
+        )
     })
 }
 
@@ -270,12 +279,12 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
         );
     }
     assert!(
-        surface_declares_fn(&module, "emit_host_w3_host_exit_holds"),
-        "{EMIT_HOST_PATH}: W3 transport helpers landed"
+        surface_declares_fn(&module, "emit_host_transport_not_wired_diagnostic"),
+        "{EMIT_HOST_PATH}: transport_not_wired diagnostic (fail-closed substrate row)"
     );
     assert!(
-        !EMIT_HOST_DAG.contains("emit_host_transport_not_wired_diagnostic()"),
-        "{EMIT_HOST_PATH}: run_emit_host_rust must not call transport_not_wired"
+        surface_declares_data(&module, "emit_host_transport_not_wired"),
+        "{EMIT_HOST_PATH}: transport_not_wired reason symbol"
     );
 }
 
@@ -317,18 +326,16 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
         );
     }
     assert!(
-        module.items.iter().any(|item| matches!(
-            item,
-            SurfaceItem::Data { name, .. } if name == "nat_semiring_rung34_runtime_value_rows"
-        )),
+        surface_declares_data(&module, "nat_semiring_rung34_runtime_value_rows"),
         "{NAT_SEMIRING_RUNG34_EVAL_PATH}: runtime roster carrier"
     );
+    let rung_3_4 = parse_module(NAT_SEMIRING_RUNG_3_4_DAG, NAT_SEMIRING_RUNG_3_4_PATH);
     assert!(
-        NAT_SEMIRING_RUNG34_EVAL_DAG.contains("run_phase1_nat_semiring_rung3_module_roundtrip"),
-        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: W3 roster imports rung-3 row"
+        surface_declares_data(&rung_3_4, "run_phase1_nat_semiring_rung3_module_roundtrip"),
+        "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-3 roster row (#4046)"
     );
     assert!(
-        NAT_SEMIRING_RUNG34_EVAL_DAG.contains("run_phase1_nat_semiring_rung4_rust_emit_equals_eval"),
-        "{NAT_SEMIRING_RUNG34_EVAL_PATH}: W3 roster imports rung-4 row"
+        surface_declares_data(&rung_3_4, "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"),
+        "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
     );
 }

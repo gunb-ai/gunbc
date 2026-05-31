@@ -292,6 +292,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // Dissolution: delete when PB-Runtime owns bounded host-child policy for all
     // post-emit / ExecuteCommand paths without this hand module.
     "src/v3/compiler/src/bounded_host_command.rs",
+    // W3 / T-38: executable `run_emit_host_rust` bridge until T-22 substrate eval dispatches
+    // host transport (`emit_host.dag` row stays `transport_not_wired` — P3 fail-closed).
+    // **P5 receipt (Mechanism (b)):** pairs with `v4_emit_host_harness_test.rs` (+0 test paths).
+    // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
+    "src/v3/compiler/src/emit_host_bridge.rs",
     // R3 gate #87 / T-Tests-As-Data-Completeness: `CementingDispatchMatchesProjection` host
     // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
     // predicate substrate owns the walk without host FS coupling).
@@ -885,8 +890,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
-    // SG-0 + INVARIANTS §P5(b) receipt (+1 census path). Dissolves when W3 wires transport
-    // into `run_emit_host_rust` and rung-3/4 TestClaim rows replace hand-Rust probes.
+    // SG-0 + INVARIANTS §P5(b) receipt (+0 paths; bridge registered in NON_TEST). Dissolves when
+    // T-22 substrate eval dispatches host transport and replaces hand-Rust probes.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.

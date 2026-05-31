@@ -1,8 +1,8 @@
 // src/v4/compiler/emit_host.dag
 // Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
-// Status: W3 — `run_emit_host_rust` substrate row wired (modeled receipt for rust authority pin);
-//   executable boundary remains `tools/emit_host_runner` (see `emit_host_bridge.rs` integration).
-//   Python/Go rows Phase 3.
+// Status: W3 — substrate `run_emit_host_rust` remains fail-closed (`transport_not_wired`);
+//   executable transport is `tools/emit_host_runner` via `emit_host_bridge.rs` until T-22 eval
+//   dispatches host rows. Python/Go rows Phase 3.
 // Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
 
@@ -37,7 +37,6 @@ import v4.std.host_run {
   BuildLog,
   ByteString,
   EmitHostRunReceipt,
-  ExitOk,
   HostExit,
   HostLogicalRun,
   HostRunStdout,
@@ -71,7 +70,7 @@ data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
 data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
 data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
 // 🟡 coproduct dissolution — feature:emit-host-rust-authority-pin (joint spec §4.2 A3);
-// W3: `run_emit_host_rust` wired; `nat_semiring_rung34_runtime_value_rows` populated (rung_4_emit_eval.dag).
+// W3: executable transport in `emit_host_bridge.rs`; substrate row defers until T-22 dispatch.
 // dissolve-on: structural `runtime_row` on TargetModel replaces `authority_source_text` pin match.
 data emit_host_rust_authority_pin: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
@@ -177,52 +176,15 @@ fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<Ru
   }
 }
 
-// W3 transport row: assemble `EmitHostRunReceipt` for the rust authority pin (aligned with
-// `tools/emit_host_runner` five-byte stdout + Holds exit; executable host via emit_host_bridge.rs).
-fn emit_host_w3_zero_byte() -> Byte {
-  Byte { bits: [false] }
-}
-
-fn emit_host_w3_five_byte_stdout() -> ByteString {
-  [
-    emit_host_w3_zero_byte(),
-    emit_host_w3_zero_byte(),
-    emit_host_w3_zero_byte(),
-    emit_host_w3_zero_byte(),
-    emit_host_w3_zero_byte()
-  ]
-}
-
-fn emit_host_w3_host_exit_holds() -> HostExit {
-  HostExit {
-    outcome: Accepted {
-      value: Holds { value: ExitOk { code: 0 } },
-      diagnostics: None
-    }
-  }
-}
-
+// Substrate row: fail-closed until T-22 eval dispatches `tools/emit_host_runner` (P3 — no
+// fabricated host receipt). Executable proof: `emit_host_bridge.rs` integration tests.
 fn run_emit_host_rust(
   target: TargetModel,
   source: TargetSource,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
-  if target.authority_source_text == emit_host_rust_authority_pin {
-    Accepted {
-      value: emit_host_receipt_from_source(
-        target: target,
-        source: source,
-        exit: emit_host_w3_host_exit_holds(),
-        stdout_bytes: emit_host_w3_five_byte_stdout(),
-        stderr_bytes: [],
-        build_log: BuildLog { lines: [] }
-      ),
-      diagnostics: None
-    }
-  } else {
-    Rejected {
-      diagnostics: diagnostics_singleton(d: emit_host_run_unsupported_target_diagnostic())
-    }
+  Rejected {
+    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
   }
 }
 
