@@ -432,9 +432,8 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
 
 
 // ── W2.3 Phase 1.5 — CiUpsertStep rows (Bucket A FileSet slice) ─────────────────────────────
-// In-scope: job steps expressible with `FileSet` inputs only (§2.1 bucket A).
-// Out-of-scope (later buckets): lens_ci_registry_execution (LensOutputRef), testclaim_corpus_eval_execution
-// (TestClaimRef), all five `GateStep` rows (UpstreamUpsert — bucket E).
+// In-scope: `ci_upsert_steps_bucket_a_slice_step_ids` (FileSet-only job steps, bucket A).
+// Out-of-scope: `ci_upsert_steps_bucket_a_out_of_scope_step_ids` (buckets B/C/E; §2.1 partial close).
 
 type CiUpsertStepRow {
   step_id: CiStepId
@@ -522,6 +521,20 @@ data ci_upsert_steps_bucket_a_slice_step_ids: List<CiStepId> = [
   JobStep {
     job: phase1_nat_semiring_rung_gate_execution,
     step: phase1_nat_semiring_rung_gate_execution
+  }
+]
+
+// Deferred buckets B/C/E — complement of slice within `ci_pipeline_step_ids_shadow(ci_pipeline)`.
+data ci_upsert_steps_bucket_a_out_of_scope_step_ids: List<CiStepId> = [
+  JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution },
+  JobStep { job: testclaim_corpus_eval_execution, step: testclaim_corpus_eval_execution },
+  GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
+  GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
+  GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+  GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
+  GateStep {
+    job: phase1_nat_semiring_rung_gate_execution,
+    gate: phase1_nat_semiring_rung_gate_signal
   }
 ]
 
@@ -1680,6 +1693,50 @@ fn ci_upsert_steps_slice_strict_subset_of_pipeline_shadow(p: CiPipeline, slice: 
 }
 
 
+fn ci_step_id_list_append_items(base: List<CiStepId>, more: List<CiStepId>) -> List<CiStepId> {
+  fold_list(
+    xs: more,
+    empty: base,
+    cons: fn(acc, step_id) {
+      list_snoc_item(xs: acc, item: step_id)
+    }
+  )
+}
+
+
+fn ci_step_id_lists_disjoint(left: List<CiStepId>, right: List<CiStepId>) -> Bool {
+  for_all(xs: left, predicate: fn(id) {
+    count_where(xs: right, predicate: fn(candidate) {
+      ci_step_id_eq(left: id, right: candidate)
+    }) == 0
+  })
+}
+
+
+fn ci_upsert_steps_slice_partition_covers_pipeline_shadow(
+  p: CiPipeline,
+  slice: List<CiStepId>,
+  out_of_scope: List<CiStepId>
+) -> Bool {
+  let shadow = ci_pipeline_step_ids_shadow(p: p)
+  let partition = ci_step_id_list_append_items(base: slice, more: out_of_scope)
+  ci_step_id_lists_biject(left: partition, right: shadow)
+}
+
+
+fn ci_upsert_steps_out_of_scope_disjoint_from_registry(
+  rows: List<CiUpsertStepRow>,
+  out_of_scope: List<CiStepId>
+) -> Bool {
+  let registry_ids = ci_upsert_steps_slice_step_ids(rows: rows)
+  for_all(xs: out_of_scope, predicate: fn(id) {
+    count_where(xs: registry_ids, predicate: fn(reg_id) {
+      ci_step_id_eq(left: id, right: reg_id)
+    }) == 0
+  })
+}
+
+
 fn ci_upsert_step_row_job_shadow_step_id_ok_for_job(row: CiUpsertStepRow, ci_job: CiJob) -> Bool {
   ci_step_id_eq(left: row.step_id, right: ci_job_shadow_step_id(ci_job: ci_job))
 }
@@ -1701,11 +1758,20 @@ fn ci_upsert_rows_match_job_shadow_ids(rows: List<CiUpsertStepRow>, jobs: List<C
 
 fn ci_upsert_steps_slice_bijection_for_pipeline(p: CiPipeline, rows: List<CiUpsertStepRow>) -> Bool {
   let slice = ci_upsert_steps_bucket_a_slice_step_ids
+  let out_of_scope = ci_upsert_steps_bucket_a_out_of_scope_step_ids
   ci_upsert_steps_registry_ids_unique(rows: rows)
     && ci_upsert_steps_registry_matches_declared_slice(rows: rows, slice: slice)
     && ci_upsert_steps_slice_subset_of_pipeline_shadow(p: p, slice: slice)
     && ci_upsert_steps_slice_strict_subset_of_pipeline_shadow(p: p, slice: slice)
     && ci_upsert_rows_match_job_shadow_ids(rows: rows, jobs: p.jobs)
+    && ci_step_ids_subset_of(xs: out_of_scope, universe: ci_pipeline_step_ids_shadow(p: p))
+    && ci_step_id_lists_disjoint(left: slice, right: out_of_scope)
+    && ci_upsert_steps_slice_partition_covers_pipeline_shadow(
+      p: p,
+      slice: slice,
+      out_of_scope: out_of_scope
+    )
+    && ci_upsert_steps_out_of_scope_disjoint_from_registry(rows: rows, out_of_scope: out_of_scope)
 }
 
 
