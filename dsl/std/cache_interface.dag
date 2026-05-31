@@ -413,7 +413,23 @@ fn cache_key_projection_transport<T>(artifact: ArtifactIdentity<T>, backend: Cac
 }
 
 fn cache_key_projection_provider_key<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> ProviderKey {
-  match backend.key_derivation.classification {
+  // Per-backend transport encoding (exploration §4.0g ~830–832) — store identity,
+  // not KeyDerivationClass alone; preserves falsification cases 12 / 17.
+  match backend.identity {
+    "gha_actions_cache" => OpaqueStringKey { key: artifact.subject_digest }
+    "buildbuddy_cas" => CasContentDigest { digest: artifact.subject_digest }
+    "sccache_local" => SccacheInternalHash { digest: artifact.subject_digest }
+    "cargo_target_dir" => CargoFingerprint { digest: artifact.subject_digest }
+    "rustup_toolchain_store" => OpaqueStringKey { key: artifact.subject_digest }
+    _ => cache_key_projection_provider_key_from_classification(
+      artifact: artifact,
+      kd: backend.key_derivation,
+    )
+  }
+}
+
+fn cache_key_projection_provider_key_from_classification<T>(artifact: ArtifactIdentity<T>, kd: KeyDerivationFacts) -> ProviderKey {
+  match kd.classification {
     ContentAddressedByValue => CasContentDigest { digest: artifact.subject_digest }
     HandAuthoredString => OpaqueStringKey { key: artifact.subject_digest }
     NativeInternalHash => SccacheInternalHash { digest: artifact.subject_digest }
