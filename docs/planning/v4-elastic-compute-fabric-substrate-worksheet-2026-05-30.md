@@ -128,6 +128,8 @@ type ResourceEnvelope {
 }
 
 // Per-dimension requirement records (minimal landing — extend only with named consumer):
+type CpuRequirement { min_cores: Int, architecture: Option<CpuArchitecture> }
+type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
 type ComputeRequirement { min_cores: Int, architecture: Option<CpuArchitecture> }
 type MemoryRequirement { min_bytes: ByteSize }
 type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
@@ -136,6 +138,21 @@ type OperatingSystemRequirement { surface: OperatingSystemSurface }
 type IsolationRequirement { boundary: IsolationBoundary }
 type ToolchainRequirement { name: NonEmptyStr, version: NonEmptyStr }
 type ArtifactLocalityRequirement { artifact_kind: NonEmptyStr, locality: PersistenceLocality }
+
+// Supply-side toolchain wiring (§7 srv1/srv2 facts — ctrl-build, CARGO_HOME indirection).
+type ToolchainCapability {
+  name: NonEmptyStr
+  version: NonEmptyStr
+  env_isolation: ToolchainEnvIsolation
+  build_wrapper: Option<BuildWrapperKind>
+}
+
+type ToolchainEnvIsolation
+  = SharedHomeAcrossJobs
+  | PerJobCargoHome { cargo_home_var: NonEmptyStr, rustup_home_var: NonEmptyStr }
+  | HermeticContainer
+
+type BuildWrapperKind = CtrlBuild | BakedInImage | NoBuildWrapper
 ```
 
 ### 1.3 Layer 3b — parallelism + budget (algebraic, not numeric tuning)
@@ -413,13 +430,27 @@ type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
 type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
 type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
 type NetworkLocality = Loopback | Lan | Internet | WslNat | WslBridged
+type NetworkAddressability = Unicast | Multicast | Broadcast
+type NetworkEgressClass = None | CratesIo | InternalMirror | Unrestricted
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
+type PersistenceKind = Ephemeral | Persistent | CachedMirror
+type MemoryKind = Dram | Hbm | UnifiedShared
+type StorageMedium = Nvme | Ssd | Hdd | NetworkAttached | EphemeralFs
+type LatencyClass = UltraLow | Low | Medium | High
+type GpuRuntime = Cuda | Rocm | Metal | OpenCl
+type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 type InstructionSet = /* landing PR: avx2, neon, … as needed for srv1/srv2 + Mac */
 type ByteSize = Measure<Memory, _>           // std.measure — single numeric authority
 type Bandwidth = Measure<DataRate, _>
 type Duration = Measure<Time, _>
 type HostIdentity = NonEmptyStr where brand("HostIdentity")
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
+
+type StorageMount {
+  mount_path: NonEmptyStr
+  device: StorageDevice
+  lifecycle: PersistenceKind
+}
 ```
 
 ---
