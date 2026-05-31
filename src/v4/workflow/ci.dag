@@ -31,6 +31,7 @@ import v4.std.change {
   AffectedDependency,
   AffectedSet,
   AffectedSetFailClosed,
+  AffectedSetProduced,
   AffectedSetReason,
   ChangeSet
 }
@@ -271,7 +272,39 @@ type DissolutionTarget
       required_dfs_receipt: DfsWorksheetRef
     }
 
-data ci_always_run_carveouts: List<CiCarveout> = []
+data ci_receipt_inputs_fail_closed_reason: Symbol = ci_receipt_inputs_fail_closed_reason
+data ci_carveout_matched_reason: Symbol = ci_carveout_matched_reason
+data ci_affected_intersection_nonempty_reason: Symbol = ci_affected_intersection_nonempty_reason
+data ci_affected_intersection_empty_cache_valid_reason: Symbol = ci_affected_intersection_empty_cache_valid_reason
+data ci_cache_digest_projection_fail_closed_reason: Symbol = ci_cache_digest_projection_fail_closed_reason
+data v2_substrate_circular_dep: Symbol = v2_substrate_circular_dep
+data integrity_always_run_interim: Symbol = integrity_always_run_interim
+data v2_substrate_dependency_modeled_in_affected_set: Symbol = v2_substrate_dependency_modeled_in_affected_set
+data ci_gate_run_policy_dissolved_to_receipt: Symbol = ci_gate_run_policy_dissolved_to_receipt
+
+// Phase 2.1 shadow seed — docs/planning/compiler-spine-ci-selection-receipt-shadow-2026-05-30.md §7.
+data ci_always_run_carveouts: List<CiCarveout> = [
+  CiCarveout {
+    step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
+    reason_code: v2_substrate_circular_dep,
+    reason_detail: "v2 compile gate; affected-set lens imports v2 substrate — circular dependency unmodeled",
+    dissolution_target: ModelMissingSubstrate {
+      what: v2_substrate_dependency_modeled_in_affected_set
+    }
+  },
+  CiCarveout {
+    step_id: GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
+    reason_code: integrity_always_run_interim,
+    reason_detail: "interim Always gate policy until Phase 2.5 activates receipt-driven gating",
+    dissolution_target: ModelMissingSubstrate { what: ci_gate_run_policy_dissolved_to_receipt }
+  },
+  CiCarveout {
+    step_id: GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+    reason_code: integrity_always_run_interim,
+    reason_detail: "interim Always gate policy; non-blocking probe",
+    dissolution_target: ModelMissingSubstrate { what: ci_gate_run_policy_dissolved_to_receipt }
+  }
+]
 
 type CiSelectionReceipt {
   pr: ChangeSet
@@ -611,8 +644,7 @@ fn ci_upsert_testclaim_corpus_eval_execution_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_testclaim_corpus_eval_execution: CiUpsertStepSymbol = ci_upsert_testclaim_corpus_eval_execution_mk()
 
-data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> =
-  ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses)
+data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses)
 
 fn ci_upsert_lens_ci_registry_execution_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
@@ -1779,6 +1811,256 @@ fn ci_pipeline_step_ids_shadow(p: CiPipeline) -> List<CiStepId> {
 }
 
 
+fn ci_affected_set_is_fail_closed(affected: AffectedSet) -> Bool {
+  match affected {
+    AffectedSetFailClosed { changes: _, evidence: _ } => true
+    AffectedSetProduced { changes: _, affected: _, exclusions: _, restricted_to: _ } => false
+  }
+}
+
+
+fn ci_carveout_reason_for_step(step_id: CiStepId, carveouts: List<CiCarveout>) -> Symbol {
+  fold(
+    carveouts,
+    init: ci_selection_shadow_reason,
+    f: fn(acc, carveout) {
+      if ci_step_id_eq(left: step_id, right: carveout.step_id) {
+        carveout.reason_code
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+
+fn ci_step_in_carveouts(step_id: CiStepId, carveouts: List<CiCarveout>) -> Bool {
+  fold(
+    carveouts,
+    init: false,
+    f: fn(found, entry) {
+      if found {
+        true
+      } else {
+        ci_step_id_eq(left: step_id, right: entry.step_id)
+      }
+    }
+  )
+}
+
+
+// W1.5 shadow bridge — `GlobSegment` mirrors `ci_changed_path_affects_*` until Q-Regex-Primitive.
+fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) -> Bool {
+  if segment == "src/v2/**" {
+    ci_changed_path_affects_v2(changed: path)
+  } else if segment == "src/v4/**" {
+    ci_changed_path_affects_v4(changed: path)
+  } else if segment == "Cargo.toml" {
+    path == "Cargo.toml"
+  } else if segment == "Cargo.lock" {
+    path == "Cargo.lock"
+  } else if segment == "scripts/v4-m1*" {
+    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-m1")
+  } else if segment == "scripts/v4-phase1-nat-semiring*" {
+    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-phase1-nat-semiring")
+  } else if segment == "src/v4/test/claim/manual/**" {
+    ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/manual/")
+  } else if segment == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag" {
+    path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
+  } else if segment == "scripts/v4-testclaim-*" {
+    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-testclaim-")
+  } else {
+    false
+  }
+}
+
+
+fn ci_glob_segment_matches_any_changed_path(
+  segment: GlobSegment,
+  paths: List<RepoPath>
+) -> Bool {
+  any(xs: paths, predicate: fn(path) {
+    ci_glob_segment_matches_changed_path(segment: segment, path: path)
+  })
+}
+
+
+fn ci_file_set_selector_primary_segment(selector: FileSetSelector) -> GlobSegment {
+  fold(selector.pattern.segments, init: "", f: fn(acc, segment) {
+    if acc == "" {
+      segment
+    } else {
+      acc
+    }
+  })
+}
+
+
+fn ci_upsert_file_set_input_touches_git_diff(
+  selector: FileSetSelector,
+  git_diff: GitDiffNameOnly
+) -> Bool {
+  ci_glob_segment_matches_any_changed_path(
+    segment: ci_file_set_selector_primary_segment(selector: selector),
+    paths: git_diff.changed_paths
+  )
+}
+
+
+fn ci_upsert_input_ref_touches_git_diff(
+  input_ref: UpsertInputRef,
+  git_diff: GitDiffNameOnly,
+  affected: AffectedSet
+) -> Bool {
+  match input_ref {
+    FileSet { selector: selector } =>
+      ci_upsert_file_set_input_touches_git_diff(selector: selector, git_diff: git_diff)
+    TestClaimRef { claim_id: _ } =>
+      ci_glob_segment_matches_any_changed_path(
+        segment: "src/v4/test/claim/manual/**",
+        paths: git_diff.changed_paths
+      )
+        || ci_glob_segment_matches_any_changed_path(
+          segment: "scripts/v4-testclaim-*",
+          paths: git_diff.changed_paths
+        )
+    LensOutputRef { lens: _, ports: _ } =>
+      ci_glob_segment_matches_any_changed_path(segment: "src/v4/**", paths: git_diff.changed_paths)
+        || ci_glob_segment_matches_any_changed_path(segment: "dsl/std/**", paths: git_diff.changed_paths)
+    SubstrateNodeSet { selector: _ } => ci_affected_set_is_fail_closed(affected: affected)
+    UpstreamUpsert { step_id: _ } => false
+  }
+}
+
+
+fn ci_upsert_inputs_intersect_git_diff(
+  inputs: List<UpsertInputRef>,
+  git_diff: GitDiffNameOnly,
+  affected: AffectedSet
+) -> Bool {
+  if ci_affected_set_is_fail_closed(affected: affected) {
+    true
+  } else {
+    any(xs: inputs, predicate: fn(input_ref) {
+      ci_upsert_input_ref_touches_git_diff(
+        input_ref: input_ref,
+        git_diff: git_diff,
+        affected: affected
+      )
+    })
+  }
+}
+
+
+fn ci_selection_decision_for_step(
+  step_id: CiStepId,
+  affected: AffectedSet,
+  git_diff: GitDiffNameOnly,
+  carveouts: List<CiCarveout>,
+  registry: List<CiUpsertStepRow>,
+  superset: Bool
+) -> CiStepSelection {
+  let inputs = ci_upsert_row_inputs_for_step_id(step_id: step_id, rows: registry)
+  let digest = ci_upsert_row_cache_digest_for_step_id(step_id: step_id, rows: registry)
+  if superset {
+    CiStepSelection {
+      step_id: step_id,
+      inputs_consulted: inputs,
+      affected_intersection: [],
+      decision: Run,
+      cache_digest: digest,
+      reason: ci_receipt_inputs_fail_closed_reason
+    }
+  } else if ci_step_in_carveouts(step_id: step_id, carveouts: carveouts) {
+    CiStepSelection {
+      step_id: step_id,
+      inputs_consulted: inputs,
+      affected_intersection: [],
+      decision: CarvedOut {
+        carveout_reason: ci_carveout_reason_for_step(step_id: step_id, carveouts: carveouts)
+      },
+      cache_digest: digest,
+      reason: ci_carveout_matched_reason
+    }
+  } else if ci_upsert_inputs_intersect_git_diff(
+    inputs: inputs,
+    git_diff: git_diff,
+    affected: affected
+  ) {
+    CiStepSelection {
+      step_id: step_id,
+      inputs_consulted: inputs,
+      affected_intersection: [],
+      decision: Run,
+      cache_digest: digest,
+      reason: ci_affected_intersection_nonempty_reason
+    }
+  } else {
+    CiStepSelection {
+      step_id: step_id,
+      inputs_consulted: inputs,
+      affected_intersection: [],
+      decision: Skip,
+      cache_digest: digest,
+      reason: ci_affected_intersection_empty_cache_valid_reason
+    }
+  }
+}
+
+
+fn ci_selection_receipt_shadow_rows(
+  pr: ChangeSet,
+  affected: AffectedSet,
+  git_diff: GitDiffNameOnly,
+  pipeline: CiPipeline,
+  carveouts: List<CiCarveout>,
+  registry: List<CiUpsertStepRow>
+) -> List<CiStepSelection> {
+  let superset = ci_affected_set_is_fail_closed(affected: affected)
+  fold_list(
+    xs: ci_pipeline_step_ids_shadow(p: pipeline),
+    empty: Empty,
+    cons: fn(acc, step_id) {
+      list_snoc_item(
+        xs: acc,
+        item: ci_selection_decision_for_step(
+          step_id: step_id,
+          affected: affected,
+          git_diff: git_diff,
+          carveouts: carveouts,
+          registry: registry,
+          superset: superset
+        )
+      )
+    }
+  )
+}
+
+
+// Shadow selection receipt — `git_diff` is host transport for ChangeSet paths until T-21 wires RepoPath edits.
+fn ci_selection_receipt_shadow(
+  pr: ChangeSet,
+  affected: AffectedSet,
+  git_diff: GitDiffNameOnly,
+  pipeline: CiPipeline,
+  carveouts: List<CiCarveout>,
+  registry: List<CiUpsertStepRow>
+) -> CiSelectionReceipt {
+  CiSelectionReceipt {
+    pr: pr,
+    affected: affected,
+    decisions: ci_selection_receipt_shadow_rows(
+      pr: pr,
+      affected: affected,
+      git_diff: git_diff,
+      pipeline: pipeline,
+      carveouts: carveouts,
+      registry: registry
+    )
+  }
+}
+
+
 fn ci_step_selection_shadow_row(step_id: CiStepId) -> CiStepSelection {
   CiStepSelection {
     step_id: step_id,
@@ -2009,6 +2291,110 @@ data ci_selection_receipt_shadow_fail_closed_affected: AffectedSet = AffectedSet
   changes: ci_selection_receipt_shadow_empty_pr,
   evidence: AffectedSetReason { reason: ci_selection_shadow_reason }
 }
+
+// MW-D8 C4 fixture — v4 workflow touch selects m1 probe Run; v2 compile is carveout CarvedOut.
+data ci_selection_receipt_shadow_fixture_git_diff: GitDiffNameOnly = GitDiffNameOnly {
+  changed_paths: ["src/v4/workflow/ci.dag"]
+}
+
+data ci_selection_receipt_shadow_fixture_affected: AffectedSet = AffectedSetProduced {
+  changes: ci_selection_receipt_shadow_empty_pr,
+  affected: [],
+  exclusions: [],
+  restricted_to: []
+}
+
+data ci_selection_receipt_shadow_fixture_receipt: CiSelectionReceipt = match ci_pipeline {
+  Accepted { value: pl, diagnostics: _ } =>
+    ci_selection_receipt_shadow(
+      pr: ci_selection_receipt_shadow_empty_pr,
+      affected: ci_selection_receipt_shadow_fixture_affected,
+      git_diff: ci_selection_receipt_shadow_fixture_git_diff,
+      pipeline: pl,
+      carveouts: ci_always_run_carveouts,
+      registry: ci_upsert_steps
+    )
+  Rejected { diagnostics: _ } =>
+    ci_selection_receipt_shadow(
+      pr: ci_selection_receipt_shadow_empty_pr,
+      affected: ci_selection_receipt_shadow_fail_closed_affected,
+      git_diff: ci_selection_receipt_shadow_fixture_git_diff,
+      pipeline: CiPipeline { jobs: [], gates: [] },
+      carveouts: ci_always_run_carveouts,
+      registry: ci_upsert_steps
+    )
+}
+
+fn ci_step_selection_decision_is_run(row: CiStepSelection) -> Bool {
+  match row.decision {
+    Run => true
+    Skip => false
+    CarvedOut { carveout_reason: _ } => false
+  }
+}
+
+fn ci_step_selection_decision_is_carved_out(row: CiStepSelection) -> Bool {
+  match row.decision {
+    Run => false
+    Skip => false
+    CarvedOut { carveout_reason: _ } => true
+  }
+}
+
+fn ci_receipt_step_decision_matches(
+  receipt: CiSelectionReceipt,
+  step_id: CiStepId,
+  decision_pred: fn(CiStepSelection) -> Bool
+) -> Bool {
+  fold(
+    receipt.decisions,
+    init: false,
+    f: fn(found, selection) {
+      if found {
+        true
+      } else if ci_step_id_eq(left: selection.step_id, right: step_id) {
+        decision_pred(selection)
+      } else {
+        false
+      }
+    }
+  )
+}
+
+fn ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds() -> Bool {
+  ci_receipt_step_decision_matches(
+    receipt: ci_selection_receipt_shadow_fixture_receipt,
+    step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
+    decision_pred: ci_step_selection_decision_is_carved_out
+  )
+}
+
+fn ci_selection_receipt_shadow_fixture_m1_probe_run_holds() -> Bool {
+  ci_receipt_step_decision_matches(
+    receipt: ci_selection_receipt_shadow_fixture_receipt,
+    step_id: JobStep {
+      job: m1_rust_emit_probe_execution,
+      step: m1_rust_emit_probe_execution
+    },
+    decision_pred: ci_step_selection_decision_is_run
+  )
+}
+
+data ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok: Bool = ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds()
+
+data ci_selection_receipt_shadow_fixture_m1_probe_run_ok: Bool = ci_selection_receipt_shadow_fixture_m1_probe_run_holds()
+
+data ci_selection_receipt_shadow_fixture_well_formed_ok: Bool = match ci_pipeline {
+  Accepted { value: pl, diagnostics: _ } =>
+    ci_selection_receipt_well_formed(
+      receipt: ci_selection_receipt_shadow_fixture_receipt,
+      pipeline: pl
+    )
+  Rejected { diagnostics: _ } => false
+}
+
+// C4 generatability — fixture receipt is well-formed and encodes carveout + affected Run evidence.
+data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 
 // Shadow heartbeat data — NOT evidence that affected-set dependency selection works.
 data ci_selection_receipt_shadow_heartbeat_mode: CiSelectionReceipt = match ci_pipeline {
