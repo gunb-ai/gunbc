@@ -16,19 +16,16 @@ import v4.extdeps.languages.rust {
   rust_mvp1_target_model_staging,
   rust_surface_spelling_i32,
   rust_target_atom_realization_symbol,
-  rust_target_atom_type_form,
-  rust_target_atom_type_spelling_string
+  rust_target_atom_type_form
 }
 import v4.std.collection { optional_absent }
-import v4.std.diagnostic { Accepted, Rejected, outcome_accepted }
+import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.target_model {
   TargetAtomRealization,
-  TargetValueExprKind,
   TargetValueExprSymbolIdentity,
   TargetValueExprSymbolToOwnedString,
   ValueSymbolIdentityPassthrough,
-  ValueSymbolToOwnedString,
   source_atom_symbol,
   symbol_kernel_type_atom,
   symbol_kernel_type_node,

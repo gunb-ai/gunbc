@@ -127,6 +127,16 @@ type LeafModelFixturePair {
   falsification: LeafModelFalsificationCase
 }
 
+// Phase 1 R3-internal — row mutation must change both type and value emit projections (not rustc).
+type LeafModelEmitCouplingReceipt {
+  claim_id: LeafModelClaimId
+  atom_realization_fact: Symbol
+  baseline_type_emit: Symbol
+  mutated_type_emit: Symbol
+  baseline_value_emit_kind: Symbol
+  mutated_value_emit_kind: Symbol
+}
+
 // 🟡 gated — feature:leaf-model-r1-python-bridge — bind W2.6 / PR #3938 §11.4 —
 // dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
 // forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands.

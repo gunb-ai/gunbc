@@ -417,6 +417,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // overflow runtime behavior, Symbol projection; host runners v4-leaf-model-rust-r2{,a,b}-verify.sh
     // and v4-leaf-model-rust-r3-external-verify.sh.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r2_r3_external_rustc_test.rs",
+    // Phase 1 leaf-model R3-internal (post-SG-1 #3956): emit coupling receipt for Symbol row mutation;
+    // host runner scripts/v4-leaf-model-rust-r3-internal-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r3_internal_emit_coupling_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
