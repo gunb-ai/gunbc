@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `30512d680` (`main` 2026-05-31T02:30Z) — post #4061 citation fix; W2.3 Buckets A/B [#4055](https://github.com/gunb-ai/gunbc/pull/4055)/[#4066](https://github.com/gunb-ai/gunbc/pull/4066); dependency graph [#4058](https://github.com/gunb-ai/gunbc/pull/4058).  
+> **Tree HEAD:** `586b5f8ea` (`main` 2026-05-31T02:45Z) — post #4071 burn-down maintenance (W2.3 buckets + landing log refresh).  
 > **Wave posture:** MW-D8 **4/5 PROVEN** (C1, C2, C3, C5). **Remaining:** C4 `ci_selection_receipt_shadow` (`smart-stag-871`). Wave 2 active.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -67,7 +67,7 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | ----------- | ---------- | ----------- | ----------------------- | ------------ |
 | **W2.1** SG-1 TargetAtomRealization | Target Realization | [#3956](https://github.com/gunb-ai/gunbc/pull/3956) (held draft), [#3964](https://github.com/gunb-ai/gunbc/pull/3964) (re-dispatch) | **P3** (emit → binary) | Yes — highest-signal Wave 2 PR |
 | **W2.2** SG-5 / SG-6 | Target Realization | [#3957](https://github.com/gunb-ai/gunbc/pull/3957) **MERGED** ~22:00Z; SG-6 TBD | **P3** | Landed — carrier + translate consumer; rustc meter unchanged until emit consumes |
-| **W2.3** Phase 1.5 `CiUpsertStep<T>` | Modeling DFS + Compiler Spine | [#4055](https://github.com/gunb-ai/gunbc/pull/4055) Bucket A **MERGED**; [#4066](https://github.com/gunb-ai/gunbc/pull/4066) Bucket B **MERGED**; [#4059](https://github.com/gunb-ai/gunbc/pull/4059) partition table; Bucket C/D in flight | **P2**, **P5** (ci.dag authority) | Partial — migration slices landing; not full W2.3 close |
+| **W2.3** Phase 1.5 `CiUpsertStep<T>` | Modeling DFS + Compiler Spine | [#4055](https://github.com/gunb-ai/gunbc/pull/4055) Bucket A **MERGED**; [#4066](https://github.com/gunb-ai/gunbc/pull/4066) Bucket B **MERGED**; [#4067](https://github.com/gunb-ai/gunbc/pull/4067) Bucket C **MERGED**; [#4059](https://github.com/gunb-ai/gunbc/pull/4059) partition table; Bucket D in flight | **P2**, **P5** (ci.dag authority) | Partial — migration slices landing; not full W2.3 close |
 | **W2.4** Phase 1b A3–A14 + `check-*` deletion | Compiler Spine | *(dispatch TBD post-W2.3)* | **P2**, **P5** | No — post-Jun 1 |
 | **W2.5** Phase 4 fixture widening | Ladder/Fixture | [#4018](https://github.com/gunb-ai/gunbc/pull/4018) **MERGED** (branch_dispatch, loop_linear_bound); [#4028](https://github.com/gunb-ai/gunbc/pull/4028) field_patch_monoid; rung specs #4034–#4039 | **P4**, **P5** | Partial — ladder path, not T-15 fixpt |
 | **W2.6** Cross-target leaf-model (python.dag) | Modeling DFS + TR + TestClaim | [#4022](https://github.com/gunb-ai/gunbc/pull/4022) **MERGED** 21:05Z | **P3**, **P5** | Landed — python R1 mirror of rust.dag |
@@ -203,6 +203,9 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4066](https://github.com/gunb-ai/gunbc/pull/4066) | ~02:30 | W2.3 Bucket B | **P2**, **P5** | YELLOW — testclaim CiUpsertStep row |
 | [#4064](https://github.com/gunb-ai/gunbc/pull/4064) | ~02:15 | W3.6 | **P5** | YELLOW stronger — rung-8 nat_semiring corpus execution minimum |
 | [#4040](https://github.com/gunb-ai/gunbc/pull/4040) | ~02:00 | emit | **P3** | YELLOW — v2 Python TCO + match/if (weather, nat_semiring) |
+| [#4067](https://github.com/gunb-ai/gunbc/pull/4067) | ~02:20 | W2.3 Bucket C | **P2**, **P5** | YELLOW — lens_ci_registry_execution CiUpsertStep row |
+| [#4063](https://github.com/gunb-ai/gunbc/pull/4063) | ~02:25 | W3.4 | **P5** | YELLOW — post-emit algebra-law preservation (additive-Monoid tranche-1) |
+| [#4071](https://github.com/gunb-ai/gunbc/pull/4071) | ~02:45 | Maintenance | *(tracker)* | Post-#4061 W2.3 buckets + extended landing log |
 
 ---
 
