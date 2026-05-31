@@ -258,7 +258,53 @@ verdict(step) = cached_verdict(content_hash(whole CiUpsertStep<T> node))
 
 ## 4. Elastic CI — target shape under "infinite compute, stateless runners"
 
-### 4.0 Framing: one pattern, every layer; one logical computer, locality-aware below
+### 4.0 Methodology: model srv1/srv2 intricately first; the abstraction emerges
+
+**Bottom-up, not top-down.** Per MODELING.md M9 (DFS the concept DAG before
+defining new types) and CLAUDE.md "Cost of Change = 1" — abstractions are
+*emergent from concrete instances*, not pre-designed against one. The
+`ComputeFabric` / `ComputeProvider` shape sketched in this section is
+**provisional**: it's what the abstraction *would* look like if today's srv1/srv2
+were the right factoring. It probably isn't — the right factoring becomes visible
+only when ubicloud, gcloud, and other providers are modeled concretely alongside.
+
+**Rule of three.** Don't lock in the abstraction with one provider modeled. Land
+the intricate srv1/srv2 substrate first; add ubicloud (Ubicloud container instance,
+operator roadmap) next; add gcloud (GKE / Cloud Run container) third; only then
+should the cross-provider `ComputeFabric` shape be canonical. Anything earlier is
+candidate-vocabulary, not authority.
+
+**What "model srv1/srv2 intricately" means concretely (the agenda):** today's
+`SelfHostedRunnerPool` (`ci.dag:364-370`) captures 5 fields — `host`, `arch`,
+`core_count`, `runner_count`, `jobserver_token_cap`. That's the tip. The rest of
+the structural reality is unmodeled and lives in shell-comments, audit docs, and
+incident postmortems. Land it as substrate:
+
+| Fact | Today's authority | Why it matters for the abstraction |
+|------|-------------------|-----------------------------------|
+| **Shared `$HOME=/home/briansrls/`** across ephemeral worker instances per host | `ci.yml:27-35` comments | srv1/srv2 architectural quirk; ubicloud containers won't share `$HOME` → abstraction must accommodate "no shared root" |
+| **Per-job `CARGO_HOME` / `RUSTUP_HOME` indirection** (the rustup race workaround) | `ci.yml:42-45` first step of every Rust job | A workaround for the prior row. In hermetic-container providers this just disappears — the abstraction needs to express "Yes/No: filesystem isolation between jobs is automatic" |
+| **`ctrl-build` wrapper** (sccache, dynamic `CARGO_BUILD_JOBS`, memory caps, BuildBuddy opt-in) | `/usr/local/bin/ctrl-build`; session brief | Provider-specific build-environment wrapper. Other providers may have analogues (Cloud Run container image bakes them in; ubicloud may be similar). |
+| **`ctrl-jobserver` daemon + host-wide FIFO** at `/var/lib/ctrl/jobserver/host.fifo` | Operator infra; srv2 incident audit doc §5.1 | Currently a host-wide singleton — exactly the "load-bearing-by-luck" pattern (one FIFO misconfigured → silent 20m hang). Stateless providers don't have this layer at all. |
+| **sccache identity & location** | Implicit in `ctrl-build` | Per-host? Per-runner? Where exactly? This is L1-cache substrate; needs naming. |
+| **Storage topology** (local NVMe? network FS? per-runner `$RUNNER_TEMP` lifecycle?) | Implicit | Determines L1 affinity semantics. Containers' ephemeral FS makes the answer different. |
+| **Runner instance lifecycle** (named like `srv2-27-1780203011-420094` — ephemeral?) | GHA actions-runner config | Differs sharply across providers (long-lived pool vs one-shot container). |
+| **Memory pressure / cgroup model** | `ctrl-build`'s "container memory caps" mention | What constitutes overcommit, what triggers OOM, what observable signal does the workload get? |
+| **OS / kernel / glibc / arch** | implicit; runner labels `[self-hosted, linux, arm64]` | For srv1/srv2, fixed. For container providers, this is *data* (image declares it). |
+| **Failure modes catalog** | scattered (audit §5; incidents) | FIFO race, $HOME rustup clobber, swap-on-cap. Each is a `SelfHostedFailureMode` substrate row; the abstraction needs to express which failure modes a provider can exhibit. |
+
+Once these land for srv1/srv2 as `.dag` data — *not as shell comments or audit
+prose* — the same exercise on ubicloud and gcloud will surface what's stable
+(input declaration, content-hash addressing, slot lifecycle) vs accidental
+(shared `$HOME`, host-wide FIFO, locality-aware L1). The abstraction's field
+set is *the intersection that turns out to actually matter*.
+
+**Until then, treat §4.0–§4.10 below as candidate-vocabulary.** The
+`ComputeFabric` Node + `ComputeProvider` interface + `locality_hint` are useful
+sketches for shared understanding, not modeled authority. Authority belongs to
+the intricate srv1/srv2 substrate, landed first.
+
+### 4.0a (provisional) Frame: one pattern, every layer; workloads ask the network for compute
 
 **The pattern is Upsert<T>.** Not "Upsert<T> for CI steps, plus a separate cache
 design, plus a separate runner-pool design, plus a separate compiler-internals
