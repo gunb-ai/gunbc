@@ -1,0 +1,350 @@
+// src/v4/test/claim/manual/sg_rc_layering.dag
+// Scope: SG-RC-LAYERING falsification F1–F6 per docs/planning/v4-sg-rc-layering-worksheet-2026-05-31.md §4.
+// Status: structural receipts — per-use-site reference_layer drives type + value emit together.
+
+module v4.test.claim.manual.sg_rc_layering
+
+import v4.compiler.translate {
+  target_serialize_source_from_model,
+  translate_apply_use_site_ownership_to_value_expression,
+  translate_coerced_shell,
+  translate_coerced_shell_at_use_site
+}
+import v4.extdeps.languages.rust {
+  rust_reference_layer_tokens,
+  rust_sg2_type_expr_target_model,
+  rust_type_expression_projection
+}
+import v4.std.target_model {
+  TargetModel,
+  TargetReferenceLayer,
+  TargetValueExpression,
+  TargetValueExprReferenceRcNew,
+  TargetValueExprSymbolIdentity,
+  OwnershipAtBindingProjection,
+  OwnershipAtFunctionParameter,
+  OwnershipAtFunctionReturn,
+  OwnershipAtStructField,
+  ReferenceLayerOwned,
+  ReferenceLayerProbe,
+  ReferenceLayerProbeNotWrapped,
+  ReferenceLayerRc,
+  target_carrier_diagnostics,
+  target_carrier_diagnostics_node,
+  target_carrier_node_node,
+  target_carrier_probe_heap,
+  target_carrier_probe_heap_node,
+  target_reference_layer_apply_type_emitted,
+  target_reference_layer_apply_value_expression,
+  target_reference_layer_probe_from_emitted_type,
+  target_type_expr_atom_emitted,
+  target_value_expression_symbol_identity,
+  target_value_expression_node
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
+import v4.std.text { String }
+import v4.std.verification {
+  Boundary,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  manual_claim_anchor
+}
+
+data sg_rc_pass_sym: Symbol = sg_rc_pass_sym
+data sg_rc_fail_sym: Symbol = sg_rc_fail_sym
+data sg_rc_fail_text: String = ""
+data sg_rc_expected_rc_diagnostics: String = "Rc<Diagnostics>"
+data sg_rc_expected_owned_diagnostics: String = "Diagnostics"
+data sg_rc_expected_rc_node: String = "Rc<Node>"
+data sg_rc_expected_owned_node: String = "Node"
+data sg_rc_expected_box_node: String = "Box<Node>"
+data sg_rc_expected_rc_probe_heap: String = "Rc<ProbeHeap>"
+
+fn sg_rc_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sg_rc_pass_sym } },
+    children: []
+  }
+}
+
+fn sg_rc_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sg_rc_fail_sym } },
+    children: []
+  }
+}
+
+fn sg_rc_claim_input(ok: Bool) -> Node {
+  if ok {
+    sg_rc_pass_node()
+  } else {
+    sg_rc_fail_node()
+  }
+}
+
+fn sg_rc_target() -> TargetModel {
+  rust_sg2_type_expr_target_model()
+}
+
+fn sg_rc_diagnostics_inner_emitted() -> Node {
+  target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: target_carrier_diagnostics
+  )
+}
+
+fn sg_rc_apply_layer_to_diagnostics(layer: TargetReferenceLayer) -> Node {
+  target_reference_layer_apply_type_emitted(
+    inner: sg_rc_diagnostics_inner_emitted(),
+    layer: layer,
+    projection: rust_type_expression_projection(),
+    tokens: rust_reference_layer_tokens()
+  )
+}
+
+fn sg_rc_serialized_type_text(emitted: Node) -> String {
+  match target_serialize_source_from_model(target: sg_rc_target(), emitted: emitted) {
+    Accepted { value: source, diagnostics: _ } => source
+    Rejected { diagnostics: _ } => sg_rc_fail_text
+  }
+}
+
+// F1 — dual-boundary: Rc vs owned moves type text together (no mixed Rc<T> / T).
+fn sg_rc_f1_rc_type_text() -> String {
+  sg_rc_serialized_type_text(emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc))
+}
+
+fn sg_rc_f1_owned_type_text() -> String {
+  sg_rc_serialized_type_text(emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerOwned))
+}
+
+fn sg_rc_diagnostics_identity_value() -> TargetValueExpression {
+  target_value_expression_symbol_identity(identity: target_carrier_diagnostics)
+}
+
+fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {
+  match expr.node.kind {
+    TypeNode { connective: Atom { identity: id } } => id
+    _ => sg_rc_fail_sym
+  }
+}
+
+// F1 value half — Rc wrap vs owned inner moves together with type text (§4 / §6).
+fn sg_rc_f1_value_dual_boundary_holds() -> Bool {
+  let inner = sg_rc_diagnostics_identity_value()
+  let tokens = rust_reference_layer_tokens()
+  let rc = target_reference_layer_apply_value_expression(
+    inner: inner,
+    layer: ReferenceLayerRc,
+    tokens: tokens
+  )
+  let owned = target_reference_layer_apply_value_expression(
+    inner: inner,
+    layer: ReferenceLayerOwned,
+    tokens: tokens
+  )
+  match rc.kind {
+    TargetValueExprReferenceRcNew =>
+      sg_rc_value_expr_ctor_identity(expr: rc) == tokens.rc_new_ctor
+    _ => false
+  } && match owned.kind {
+    TargetValueExprSymbolIdentity => true
+    _ => false
+  }
+}
+
+fn sg_rc_f1_dual_boundary_holds() -> Bool {
+  sg_rc_f1_rc_type_text() == sg_rc_expected_rc_diagnostics
+    && sg_rc_f1_owned_type_text() == sg_rc_expected_owned_diagnostics
+    && sg_rc_f1_value_dual_boundary_holds()
+}
+
+// P-RC-CONSUMER — default fold path uses OwnershipAtBindingProjection rows (not lookup miss passthrough).
+fn sg_rc_binding_projection_fold_shell() -> Node {
+  match translate_coerced_shell(
+    coerced: target_carrier_diagnostics_node(),
+    target: sg_rc_target()
+  ) {
+    Accepted { value: shell, diagnostics: _ } => shell
+    Rejected { diagnostics: _ } => sg_rc_fail_node()
+  }
+}
+
+fn sg_rc_binding_projection_fold_holds() -> Bool {
+  sg_rc_serialized_type_text(emitted: sg_rc_binding_projection_fold_shell()) ==
+    sg_rc_expected_rc_diagnostics
+}
+
+// F2 — cross-site: return Rc, parameter owned for same carrier.
+fn sg_rc_f2_return_shell() -> Node {
+  match translate_coerced_shell_at_use_site(
+    coerced: target_carrier_diagnostics_node(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtFunctionReturn
+  ) {
+    Accepted { value: shell, diagnostics: _ } => shell
+    Rejected { diagnostics: _ } => sg_rc_fail_node()
+  }
+}
+
+fn sg_rc_f2_param_shell() -> Node {
+  match translate_coerced_shell_at_use_site(
+    coerced: target_carrier_diagnostics_node(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtFunctionParameter
+  ) {
+    Accepted { value: shell, diagnostics: _ } => shell
+    Rejected { diagnostics: _ } => sg_rc_fail_node()
+  }
+}
+
+fn sg_rc_f2_cross_site_holds() -> Bool {
+  sg_rc_serialized_type_text(emitted: sg_rc_f2_return_shell()) == sg_rc_expected_rc_diagnostics
+    && sg_rc_serialized_type_text(emitted: sg_rc_f2_param_shell()) == sg_rc_expected_owned_diagnostics
+}
+
+// F3 — new carrier ProbeHeap via row only (no translate name branch).
+fn sg_rc_f3_probe_heap_return_shell() -> Node {
+  match translate_coerced_shell_at_use_site(
+    coerced: target_carrier_probe_heap_node(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtFunctionReturn
+  ) {
+    Accepted { value: shell, diagnostics: _ } => shell
+    Rejected { diagnostics: _ } => sg_rc_fail_node()
+  }
+}
+
+fn sg_rc_f3_new_carrier_holds() -> Bool {
+  sg_rc_serialized_type_text(emitted: sg_rc_f3_probe_heap_return_shell()) ==
+    sg_rc_expected_rc_probe_heap
+}
+
+// F4 — Box layer at struct-field site for Node carrier.
+fn sg_rc_f4_box_node_shell() -> Node {
+  match translate_coerced_shell_at_use_site(
+    coerced: target_carrier_node_node(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtStructField
+  ) {
+    Accepted { value: shell, diagnostics: _ } => shell
+    Rejected { diagnostics: _ } => sg_rc_fail_node()
+  }
+}
+
+fn sg_rc_f4_box_layer_holds() -> Bool {
+  sg_rc_serialized_type_text(emitted: sg_rc_f4_box_node_shell()) == sg_rc_expected_box_node
+}
+
+// F6 — bidirectional read: emitted wire decodes to authored reference_layer.
+fn sg_rc_f6_round_trip_rc() -> Bool {
+  match target_reference_layer_probe_from_emitted_type(
+    emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc),
+    projection: rust_type_expression_projection(),
+    tokens: rust_reference_layer_tokens()
+  ) {
+    ReferenceLayerProbe { value: ReferenceLayerRc } => true
+    _ => false
+  }
+}
+
+fn sg_rc_f6_round_trip_owned() -> Bool {
+  match target_reference_layer_probe_from_emitted_type(
+    emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerOwned),
+    projection: rust_type_expression_projection(),
+    tokens: rust_reference_layer_tokens()
+  ) {
+    ReferenceLayerProbeNotWrapped => true
+    _ => false
+  }
+}
+
+fn sg_rc_expected_binding_rc_value() -> TargetValueExpression {
+  target_reference_layer_apply_value_expression(
+    inner: sg_rc_diagnostics_identity_value(),
+    layer: ReferenceLayerRc,
+    tokens: rust_reference_layer_tokens()
+  )
+}
+
+// Value path coupling — translate/catalog consumer emits target-specific Rc ctor wrapper.
+fn sg_rc_value_rc_wrap_tagged() -> Bool {
+  let inner = sg_rc_diagnostics_identity_value()
+  let expected = sg_rc_expected_binding_rc_value()
+  match translate_apply_use_site_ownership_to_value_expression(
+    expr: inner,
+    source_carrier: target_carrier_diagnostics_node(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtBindingProjection
+  ) {
+    Accepted { value: wrapped, diagnostics: _ } =>
+      match wrapped.kind {
+        TargetValueExprReferenceRcNew =>
+          content_hash(n: target_value_expression_node(expr: wrapped)) ==
+            content_hash(n: target_value_expression_node(expr: expected))
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data claim_sg_rc_f1_dual_boundary: TestClaim = EqualsClaim {
+  label: "manual/sg-rc: Diagnostics Rc vs owned type + value expr move together (F1)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg_rc_claim_input(ok: sg_rc_f1_dual_boundary_holds()),
+  rhs: sg_rc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data claim_sg_rc_binding_projection_fold: TestClaim = EqualsClaim {
+  label: "manual/sg-rc: default translate_coerced_shell applies binding-projection Rc row (P-RC-CONSUMER)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg_rc_claim_input(ok: sg_rc_binding_projection_fold_holds()),
+  rhs: sg_rc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data claim_sg_rc_f2_cross_site: TestClaim = EqualsClaim {
+  label: "manual/sg-rc: Diagnostics return Rc and parameter owned (F2)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg_rc_claim_input(ok: sg_rc_f2_cross_site_holds()),
+  rhs: sg_rc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data claim_sg_rc_f3_probe_heap: TestClaim = EqualsClaim {
+  label: "manual/sg-rc: ProbeHeap return Rc without emitter name branch (F3)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg_rc_claim_input(ok: sg_rc_f3_new_carrier_holds()),
+  rhs: sg_rc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data claim_sg_rc_f4_box_layer: TestClaim = EqualsClaim {
+  label: "manual/sg-rc: Node struct-field Box layer (F4)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg_rc_claim_input(ok: sg_rc_f4_box_layer_holds()),
+  rhs: sg_rc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data claim_sg_rc_f6_bidir: TestClaim = EqualsClaim {
+  label: "manual/sg-rc: emitted type wire decodes reference_layer (F6)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg_rc_claim_input(ok: sg_rc_f6_round_trip_rc() && sg_rc_f6_round_trip_owned()),
+  rhs: sg_rc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data claim_sg_rc_value_coupling: TestClaim = EqualsClaim {
+  label: "manual/sg-rc: translate value path matches catalog-driven Rc wrapper node (P-RC-BIDIR)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg_rc_claim_input(ok: sg_rc_value_rc_wrap_tagged()),
+  rhs: sg_rc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}

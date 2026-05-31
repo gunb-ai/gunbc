@@ -157,19 +157,30 @@ import v4.std.target_model {
   target_atom_realization_lookup_in_catalog_node,
   target_atom_realization_lookup_miss,
   target_atom_realization_lookup_miss_diagnostic,
-  TargetFunctionSignatureRealization,
-  FunctionBoundarySite,
-  FunctionBoundaryParam,
-  FunctionBoundaryReturn,
-  target_function_signature_realization_lookup_in_catalog_node,
-  target_function_signature_realization_lookup_miss,
-  target_model_edge_signature_realizations,
   target_atom_type_spelling,
   target_atom_value_expression,
   target_model_edge_atom_realizations,
   target_model_edge_value_expression,
   target_model_named_edge,
-  target_value_expression_node
+  target_value_expression_node,
+  TargetOwnershipUseSite,
+  TargetReferenceLayer,
+  TargetReferenceLayerTokens,
+  OwnershipAtBindingProjection,
+  OwnershipAtFunctionReturn,
+  OwnershipAtFunctionParameter,
+  OwnershipAtStructField,
+  target_model_edge_use_site_ownership_realizations,
+  target_model_edge_reference_layer_tokens,
+  target_use_site_ownership_lookup_in_catalog_node,
+  target_use_site_ownership_lookup_miss,
+  target_use_site_ownership_lookup_miss_diagnostic,
+  target_reference_layer_tokens_from_node,
+  target_reference_layer_apply_type_emitted,
+  target_reference_layer_apply_value_expression,
+  target_reference_layer_probe_from_emitted_type,
+  ReferenceLayerProbe,
+  ReferenceLayerProbeNotWrapped
 }
 import v4.std.collection {
   Absent,
@@ -208,6 +219,7 @@ type TargetBundleChildLookup
   | BundleChildInvalidEdge
 data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
 data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
+data translate_sg_rc_bundle_partial: Symbol = translate_sg_rc_bundle_partial
 data translate_grammar_inverse_not_realized: Symbol = translate_grammar_inverse_not_realized
 data translate_grammar_relation_row_not_found: Symbol = translate_grammar_relation_row_not_found
 data translate_conj_invalid_edge: Symbol = translate_conj_invalid_edge
@@ -302,6 +314,13 @@ fn translate_target_bundle_duplicate_edge_diagnostic(
   Diagnostic {
     reason: translate_target_bundle_duplicate_edge,
     at: node_locus(node: target.bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_sg_rc_bundle_partial,
+    at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -1807,16 +1826,26 @@ fn project_type_expression_field_slots_go(
                 projection: projection
               ),
               f: fn(projected) {
-                project_type_expression_field_slots_go(
-                  remaining: remaining - 1,
-                  node: node,
-                  target: target,
-                  projection: projection,
-                  edges: split.tail,
-                  acc: list_snoc_item(
-                    xs: acc,
-                    item: TargetTypeExprFieldSlot { label: label, type_expr: projected }
-                  )
+                bind_outcome(
+                  o: translate_apply_use_site_ownership_to_projected_type(
+                    projected: projected,
+                    source_carrier: split.head.target,
+                    target: target,
+                    use_site: OwnershipAtStructField
+                  ),
+                  f: fn(wrapped) {
+                    project_type_expression_field_slots_go(
+                      remaining: remaining - 1,
+                      node: node,
+                      target: target,
+                      projection: projection,
+                      edges: split.tail,
+                      acc: list_snoc_item(
+                        xs: acc,
+                        item: TargetTypeExprFieldSlot { label: label, type_expr: wrapped }
+                      )
+                    )
+                  }
                 )
               }
             )
@@ -2068,16 +2097,18 @@ fn project_type_expression_node_bounded(
       )
     TypeNode { connective: Arrow } =>
       bind_outcome(
-        o: project_type_expression_children(
-          remaining: remaining - 1,
-          anchor: node,
-          children: node_positional_child_targets(node: node),
-          target: target,
-          projection: projection
+        o: type_expr_arrow_split_from_types(
+          types: node_positional_child_targets(node: node),
+          node: node
         ),
-        f: fn(projected) {
+        f: fn(original_split) {
           bind_outcome(
-            o: type_expr_arrow_split_from_types(types: projected, node: node),
+            o: translate_project_arrow_split_types(
+              original_split: original_split,
+              target: target,
+              projection: projection,
+              anchor: node
+            ),
             f: fn(split) {
               Accepted {
                 value: target_type_expr_arrow_emitted(
@@ -2574,11 +2605,10 @@ fn serialize_type_expr_arrow_bounded(
             o: lex_rules_literal(target: target, token_class: form.arrow),
             f: fn(arrow_source) {
               bind_outcome(
-                o: serialize_type_expr_boundary_bounded(
+                o: serialize_type_expr_emitted_bounded(
                   remaining: remaining - 1,
                   target: target,
                   projection: projection,
-                  boundary_site: FunctionBoundaryReturn,
                   emitted: split.output
                 ),
                 f: fn(output_source) {
@@ -2677,6 +2707,247 @@ fn translate_outcome_is_catalog_lookup_miss(
   diagnostics: NonEmptyDiagnostics
 ) -> Bool {
   diagnostics.head.reason == target_atom_realization_lookup_miss
+}
+
+fn translate_outcome_is_use_site_ownership_lookup_miss(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == target_use_site_ownership_lookup_miss
+}
+
+fn translate_sg_rc_bundle_has_edge(target: TargetModel, edge_name: Symbol) -> Bool {
+  match target_bundle_optional_child(target: target, edge_name: edge_name) {
+    Accepted { value: optional_child, diagnostics: _ } =>
+      match optional_child {
+        None => false
+        Some { value: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Accepted false => no SG-RC edges (passthrough Owned); true => apply; Rejected => partial bundle.
+fn translate_sg_rc_bundle_apply_disposition(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<Bool> {
+  let has_catalog = translate_sg_rc_bundle_has_edge(target: target, edge_name: target_model_edge_use_site_ownership_realizations)
+  let has_tokens = translate_sg_rc_bundle_has_edge(target: target, edge_name: target_model_edge_reference_layer_tokens)
+  if !has_catalog && !has_tokens {
+    outcome_accepted(false)
+  } else {
+    if has_catalog && has_tokens {
+      outcome_accepted(true)
+    } else {
+      outcome_rejected(translate_sg_rc_bundle_partial_diagnostic(source_carrier: source_carrier))
+    }
+  }
+}
+
+// SG-RC edges are Rust-bundle-only in wave 1; both edges required when either is present.
+fn translate_sg_rc_bundle_ready(target: TargetModel) -> Bool {
+  translate_sg_rc_bundle_has_edge(
+    target: target,
+    edge_name: target_model_edge_use_site_ownership_realizations
+  ) && translate_sg_rc_bundle_has_edge(
+    target: target,
+    edge_name: target_model_edge_reference_layer_tokens
+  )
+}
+
+fn translate_reference_layer_tokens_from_target(
+  target: TargetModel
+) -> Outcome<TargetReferenceLayerTokens> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_reference_layer_tokens),
+    f: fn(bundle) { target_reference_layer_tokens_from_node(node: bundle) }
+  )
+}
+
+fn translate_use_site_ownership_catalog_from_model(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<Node> {
+  match target_bundle_optional_child(
+    target: target,
+    edge_name: target_model_edge_use_site_ownership_realizations
+  ) {
+    Accepted { value: optional_catalog, diagnostics: d } =>
+      match optional_catalog {
+        None =>
+          outcome_rejected(
+            target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier)
+          )
+        Some { value: catalog } => Accepted { value: catalog, diagnostics: d }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn translate_apply_use_site_ownership_to_projected_type(
+  projected: Node,
+  source_carrier: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  translate_apply_use_site_ownership_to_type_shell(
+    shell: projected,
+    source_carrier: source_carrier,
+    target: target,
+    use_site: use_site
+  )
+}
+
+fn translate_project_arrow_input_types_go(
+  remaining: Int,
+  anchor: Node,
+  original_inputs: List<Node>,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  acc: List<Node>
+) -> Outcome<List<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+  } else if is_empty(xs: original_inputs) {
+    Accepted { value: acc, diagnostics: None }
+  } else {
+    bind_outcome(
+      o: list_head_and_tail(xs: original_inputs, node: anchor),
+      f: fn(split) {
+        bind_outcome(
+          o: project_type_expression_node_bounded(
+            remaining: node_subtree_count(n: split.head),
+            node: split.head,
+            target: target,
+            projection: projection
+          ),
+          f: fn(projected) {
+            bind_outcome(
+              o: translate_apply_use_site_ownership_to_projected_type(
+                projected: projected,
+                source_carrier: split.head,
+                target: target,
+                use_site: OwnershipAtFunctionParameter
+              ),
+              f: fn(wrapped) {
+                translate_project_arrow_input_types_go(
+                  remaining: remaining - 1,
+                  anchor: anchor,
+                  original_inputs: split.tail,
+                  target: target,
+                  projection: projection,
+                  acc: list_snoc_item(xs: acc, item: wrapped)
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  }
+}
+
+fn translate_project_arrow_split_types(
+  original_split: TypeExprArrowSplit,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  anchor: Node
+) -> Outcome<TypeExprArrowSplit> {
+  bind_outcome(
+    o: translate_project_arrow_input_types_go(
+      remaining: node_subtree_count(n: anchor),
+      anchor: anchor,
+      original_inputs: original_split.inputs,
+      target: target,
+      projection: projection,
+      acc: Empty
+    ),
+    f: fn(wrapped_inputs) {
+      bind_outcome(
+        o: project_type_expression_node_bounded(
+          remaining: node_subtree_count(n: original_split.output),
+          node: original_split.output,
+          target: target,
+          projection: projection
+        ),
+        f: fn(projected_output) {
+          bind_outcome(
+            o: translate_apply_use_site_ownership_to_projected_type(
+              projected: projected_output,
+              source_carrier: original_split.output,
+              target: target,
+              use_site: OwnershipAtFunctionReturn
+            ),
+            f: fn(wrapped_output) {
+              outcome_accepted(
+                TypeExprArrowSplit {
+                  inputs: wrapped_inputs,
+                  output: wrapped_output
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn translate_apply_use_site_ownership_to_type_shell(
+  shell: Node,
+  source_carrier: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  match translate_sg_rc_bundle_apply_disposition(
+    target: target,
+    source_carrier: source_carrier
+  ) {
+    Accepted { value: false, diagnostics: _ } => outcome_accepted(shell)
+    Accepted { value: true, diagnostics: _ } =>
+  bind_outcome(
+    o: type_expression_projection_from_target(target: target),
+    f: fn(projection) {
+      bind_outcome(
+        o: translate_reference_layer_tokens_from_target(target: target),
+        f: fn(tokens) {
+          bind_outcome(
+            o: translate_use_site_ownership_catalog_from_model(
+              target: target,
+              source_carrier: source_carrier
+            ),
+            f: fn(catalog) {
+              match target_use_site_ownership_lookup_in_catalog_node(
+                catalog: catalog,
+                source_carrier: source_carrier,
+                use_site: use_site
+              ) {
+                Accepted { value: row, diagnostics: d } =>
+                  outcome_accepted(
+                    target_reference_layer_apply_type_emitted(
+                      inner: shell,
+                      layer: row.reference_layer,
+                      projection: projection,
+                      tokens: tokens
+                    )
+                  )
+                Rejected { diagnostics: r } =>
+                  // SG-RC miss contract (mirrors SG-1 atom catalog_lookup_miss): no row for
+                  // (source_carrier, use_site) → passthrough inner shell unwrapped (= Owned layer).
+                  if translate_outcome_is_use_site_ownership_lookup_miss(diagnostics: r) {
+                    outcome_accepted(shell)
+                  } else {
+                    Rejected { diagnostics: r }
+                  }
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }
 
 fn translate_outcome_is_signature_realization_miss(
@@ -2808,7 +3079,7 @@ fn serialize_type_expr_boundary_bounded(
   }
 }
 
-fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
+fn translate_coerced_shell_base(coerced: Node, target: TargetModel) -> Outcome<Node> {
   match translate_target_atom_realization_for_carrier(
     target: target,
     source_carrier: coerced
@@ -2825,6 +3096,34 @@ fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> 
         Rejected { diagnostics: r }
       }
   }
+}
+
+fn translate_coerced_shell_at_use_site(
+  coerced: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  match translate_coerced_shell_base(coerced: coerced, target: target) {
+    Accepted { value: shell, diagnostics: d } =>
+      bind_outcome(
+        o: translate_apply_use_site_ownership_to_type_shell(
+          shell: shell,
+          source_carrier: coerced,
+          target: target,
+          use_site: use_site
+        ),
+        f: fn(wrapped) { Accepted { value: wrapped, diagnostics: d } }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
+  translate_coerced_shell_at_use_site(
+    coerced: coerced,
+    target: target,
+    use_site: OwnershipAtBindingProjection
+  )
 }
 fn target_atom_realizations_catalog_from_model(
   target: TargetModel,
@@ -2881,10 +3180,61 @@ fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
     _ => shell
   }
 }
-fn translate_atom_realization_value_from_source(
+fn translate_apply_use_site_ownership_to_value_expression(
+  expr: TargetValueExpression,
+  source_carrier: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<TargetValueExpression> {
+  match translate_sg_rc_bundle_apply_disposition(
+    target: target,
+    source_carrier: source_carrier
+  ) {
+    Accepted { value: false, diagnostics: _ } => outcome_accepted(expr)
+    Accepted { value: true, diagnostics: _ } =>
+  bind_outcome(
+    o: translate_reference_layer_tokens_from_target(target: target),
+    f: fn(tokens) {
+      bind_outcome(
+        o: translate_use_site_ownership_catalog_from_model(
+          target: target,
+          source_carrier: source_carrier
+        ),
+        f: fn(catalog) {
+          match target_use_site_ownership_lookup_in_catalog_node(
+            catalog: catalog,
+            source_carrier: source_carrier,
+            use_site: use_site
+          ) {
+            Accepted { value: row, diagnostics: d } =>
+              outcome_accepted(
+                target_reference_layer_apply_value_expression(
+                  inner: expr,
+                  layer: row.reference_layer,
+                  tokens: tokens
+                )
+              )
+            Rejected { diagnostics: r } =>
+              // SG-RC miss contract: lookup miss → passthrough inner value expr (= Owned).
+              if translate_outcome_is_use_site_ownership_lookup_miss(diagnostics: r) {
+                outcome_accepted(expr)
+              } else {
+                Rejected { diagnostics: r }
+              }
+          }
+        }
+      )
+    }
+  )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn translate_atom_realization_value_from_source_at_use_site(
   source: Node,
   coerced: Node,
-  target: TargetModel
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
 ) -> Outcome<Optional<Node>> {
   match translate_target_atom_realization_for_carrier(
     target: target,
@@ -2901,8 +3251,18 @@ fn translate_atom_realization_value_from_source(
           bind_outcome(
             o: target_atom_value_expression(row: row, value: atom_value),
             f: fn(expr) {
-              outcome_accepted(
-                optional_present(target_value_expression_node(expr: expr))
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_value_expression(
+                  expr: expr,
+                  source_carrier: coerced,
+                  target: target,
+                  use_site: use_site
+                ),
+                f: fn(wrapped) {
+                  outcome_accepted(
+                    optional_present(target_value_expression_node(expr: wrapped))
+                  )
+                }
               )
             }
           )
@@ -2915,18 +3275,37 @@ fn translate_atom_realization_value_from_source(
       }
   }
 }
-fn translate_coerced_with_atom_realization(
+
+fn translate_atom_realization_value_from_source(
+  source: Node,
+  coerced: Node,
+  target: TargetModel
+) -> Outcome<Optional<Node>> {
+  translate_atom_realization_value_from_source_at_use_site(
+    source: source,
+    coerced: coerced,
+    target: target,
+    use_site: OwnershipAtBindingProjection
+  )
+}
+fn translate_coerced_with_atom_realization_at_use_site(
   source: Node,
   coerced: Node,
   target: TargetModel,
+  use_site: TargetOwnershipUseSite,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match translate_coerced_shell(coerced: coerced, target: target) {
+  match translate_coerced_shell_at_use_site(
+    coerced: coerced,
+    target: target,
+    use_site: use_site
+  ) {
     Accepted { value: shell, diagnostics: sd } =>
-      match translate_atom_realization_value_from_source(
+      match translate_atom_realization_value_from_source_at_use_site(
         source: source,
         coerced: coerced,
-        target: target
+        target: target,
+        use_site: use_site
       ) {
         Accepted { value: value_projection, diagnostics: vd } =>
           Accepted {
@@ -2956,6 +3335,21 @@ fn translate_coerced_with_atom_realization(
         diagnostics: rejected_with_pending(pending: pending, rejected: r)
       }
   }
+}
+
+fn translate_coerced_with_atom_realization(
+  source: Node,
+  coerced: Node,
+  target: TargetModel,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  translate_coerced_with_atom_realization_at_use_site(
+    source: source,
+    coerced: coerced,
+    target: target,
+    use_site: OwnershipAtBindingProjection,
+    pending: pending
+  )
 }
 
 fn translate_type_fold_init(node: Node) -> Outcome<Node> {
