@@ -128,7 +128,16 @@ ci_upsert_testclaim_corpus_eval_signal
 ci_testclaim_corpus_eval_claim_ids + FileSet inputs (manual/**, runner.dag, scripts/v4-testclaim-*)
 ```
 
-Dissolution marks at `ci.dag` L135–136 and `testclaim_corpus_runner.dag` L4–5 fire when F1–F6 pass — implementation PR removes 🟡 by deletion + projection, not comment-only edits.
+### 1.4 Dissolution marks — Layer 2 slice vs T-38-PR2 (do not conflate)
+
+Authoritative 🟡 on `ci.dag` L135–136 and `testclaim_corpus_runner.dag` L4–5 today cite **full** T-38 closeout (T-22 eval **and** structured `TestClaimRun` verdicts in CI — T-38-PR2). **P5 Layer 2 falsification (F1–F6) does not satisfy those marks as written** (§7 — structural authority only).
+
+Implementation PR **must**:
+
+1. Delete the shell + paired workflow step and wire positive-Y authority (F1–F3, F5).
+2. **Amend** the in-tree dissolution comments to a **structural-slice** trigger (shell + negative-Y workflow gone; positive-Y `CiUpsertStep` sole structural authority), with an explicit forward clause that **T-38-PR2** amends the same marks again when runtime verdict CI lands.
+
+**Forbidden:** Stripping 🟡 or claiming “dissolve-on-arrival satisfied” without amending mark text — that implies full T-38 closeout while only Layer 2 structural receipt is in scope.
 
 ---
 
@@ -189,7 +198,7 @@ t22_testclaim_corpus_cache
 ci_cache_cmd_testclaim_corpus_eval_tag
 ```
 
-Allowed: references in **deleted** file history, worksheet citations, or 🟡 dissolution comments that cite this worksheet and are removed when marks fire.
+Allowed: references in **deleted** file history, worksheet citations, or 🟡 dissolution comments amended per §1.4 (structural-slice wording — not removed on full T-38 criteria until T-38-PR2).
 
 Escalate to Modeling DFS: need for a second corpus gate command; bootstrap cannot be expressed as `UpstreamUpsert` without new `CiJob`; any forbidden grep hit.
 
@@ -219,7 +228,8 @@ Escalate to Modeling DFS: need for a second corpus gate command; bootstrap canno
 2. Compiler Spine — amend ci_upsert_testclaim_corpus_eval_* inputs (UpstreamUpsert to M1; bootstrap edge
    per §1.2); migrate cache_digest off static tag where projection helpers exist on main.
 3. Compiler Spine — project ci_github_actions_workflow.dag + regenerate ci.yml from modeled authority;
-   delete scripts/v4-testclaim-corpus-gate.sh; remove hashFiles cache step.
+   delete scripts/v4-testclaim-corpus-gate.sh; remove hashFiles cache step; **amend** `ci.dag` L135–136 and
+   `testclaim_corpus_runner.dag` L4–5 dissolution marks per §1.4 (structural-slice — not full T-38-PR2).
 4. Runtime/TestClaim — host transport for TestClaimCorpusEvalCommand (evolve v4-testclaim-corpus-eval.sh
    or successor): invoke modeled path only; emit structural JSON receipt for CI.
 5. Integration — extend v4_workflow_ci_runner_dag_smoke_test.rs (binding parity, grep negatives).
@@ -237,6 +247,7 @@ Implement P5 structural-bridge replacement per approved worksheet.
 
 MUST:
   - Delete scripts/v4-testclaim-corpus-gate.sh in same PR that wires positive-Y authority.
+  - Amend in-tree dissolution marks per §1.4 (structural-slice); do not strip 🟡 without mark amendment.
   - Project live workflow from ci_upsert_testclaim_corpus_eval_execution + signal gate (no bridge RunStep).
   - Preserve selection_fn == ci_testclaim_corpus_selection_fn (IRT-1).
   - Pass falsification F1–F6 (§4); cite worksheet in PR body step-id → CiUpsertStep table.
@@ -245,6 +256,7 @@ MUST:
 MUST NOT:
   - Any §3 forbidden pattern (uncited).
   - Land worksheet-only scope in implementation PR (no retroactive ci.dag edits in worksheet PR).
+  - Remove 🟡 dissolution marks or claim full T-38-PR2 satisfied while only Layer 2 structural receipt ships.
   - Claim P5 GREEN / full T-38 CI verdict execution without Close/Receipt transcript.
   - Touch INVARIANTS.md / THESIS.md / MODELING.md unless escalated.
 
