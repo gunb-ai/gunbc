@@ -73,6 +73,8 @@ data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
 // W3: executable transport in `emit_host_bridge.rs`; substrate row defers until T-22 dispatch.
 // dissolve-on: structural `runtime_row` on TargetModel replaces `authority_source_text` pin match.
 data emit_host_rust_authority_pin: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
+// Aligns with `python_mvp1_source_text` in `v4.extdeps.languages.python` (W3.4 python host row).
+data emit_host_python_authority_pin: String = "def add(x, y): return x + y"
 
 fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -166,9 +168,15 @@ fn runtime_value_parse_rust(bytes: ByteString) -> Outcome<RuntimeValue> {
   }
 }
 
+fn runtime_value_parse_python(bytes: ByteString) -> Outcome<RuntimeValue> {
+  runtime_value_parse_rust(bytes: bytes)
+}
+
 fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<RuntimeValue> {
   if target.authority_source_text == emit_host_rust_authority_pin {
     runtime_value_parse_rust(bytes: stdout.bytes)
+  } else if target.authority_source_text == emit_host_python_authority_pin {
+    runtime_value_parse_python(bytes: stdout.bytes)
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(d: emit_host_parse_unsupported_target_diagnostic())
@@ -188,6 +196,16 @@ fn run_emit_host_rust(
   }
 }
 
+fn run_emit_host_python(
+  target: TargetModel,
+  source: TargetSource,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
+  }
+}
+
 fn run_emit_host(
   target: TargetModel,
   source: TargetSource,
@@ -195,6 +213,8 @@ fn run_emit_host(
 ) -> Outcome<EmitHostRunReceipt> {
   if target.authority_source_text == emit_host_rust_authority_pin {
     run_emit_host_rust(target: target, source: source, fixture_inputs: fixture_inputs)
+  } else if target.authority_source_text == emit_host_python_authority_pin {
+    run_emit_host_python(target: target, source: source, fixture_inputs: fixture_inputs)
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(d: emit_host_run_unsupported_target_diagnostic())

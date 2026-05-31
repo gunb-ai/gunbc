@@ -196,6 +196,13 @@ impl fmt::Display for RuntimeValueParseFailure {
     }
 }
 
+/// MVP-2 / eval_runtime_mvp alignment: five stdout bytes denote runtime value `5` (shared rust/python row).
+/// Tranche-1: byte contract matches rust; `emit_host.dag` `runtime_value_parse` branches on authority pin
+/// so python-specific parsing can land without changing transport callers.
+pub fn runtime_value_parse_python(bytes: &[u8]) -> Result<(), RuntimeValueParseFailure> {
+    runtime_value_parse_rust(bytes)
+}
+
 /// MVP-2 / eval_runtime_mvp alignment: five stdout bytes denote runtime value `5`.
 pub fn runtime_value_parse_rust(bytes: &[u8]) -> Result<(), RuntimeValueParseFailure> {
     const EXPECTED: usize = 5;
@@ -460,6 +467,35 @@ pub fn run_emit_host_rust(
         stdout_bytes: run.stdout,
         stderr_bytes: run.stderr,
         build_log: BuildLog { lines },
+    })
+}
+
+/// Run `source` as a Python script in `work_dir` via `python3`, capture stdout/stderr.
+pub fn run_emit_host_python(
+    source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+    validate_emit_host_fixture_inputs(inputs)?;
+    fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
+        source: e.to_string(),
+    })?;
+
+    let script_path = work_dir.join("fixture.py");
+    fs::write(&script_path, source).map_err(|e| HostSetupFailure::SourceWriteFailed {
+        source: e.to_string(),
+    })?;
+
+    let mut run_cmd = Command::new("python3");
+    run_cmd.arg(&script_path);
+    let run = run_command_bounded(run_cmd, HOST_RUN_TIMEOUT, HostPhase::FixtureRun)?;
+    let build_log = bounded_output_to_log(&run, "run");
+    Ok(EmitHostRunReceipt {
+        source_text: source.to_string(),
+        exit: host_exit_from_bounded(&run, HostPhase::FixtureRun),
+        stdout_bytes: run.stdout,
+        stderr_bytes: run.stderr,
+        build_log,
     })
 }
 

@@ -20,7 +20,7 @@
 
 **Gated on (cross-cutting):**
 
-- **Resolve-posture bridge** (INVARIANTS A3/P5 — *not* predicate P5): blocks honest **P2** close until deleted (`.github/workflows/ci.yml:293-300`).
+- **Resolve-posture bridge** (INVARIANTS A3/P5 — *not* predicate P5): blocks honest **P2** close until deleted (`scripts/v4-bootstrap-resolve-posture-gate.sh`; CI step `.github/workflows/ci.yml:378-385` — "v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)").
 - **Wave 1 exit** (MW-D8): **4/5 PROVEN** (C1, C2, C3, C5). C2 closed [#4050](https://github.com/gunb-ai/gunbc/pull/4050) falsification receipt + ledger flip (`sharp-otter-407`). **C4** receipt shadow still **GAP** — unblocked structurally post-C2. Maturation signal only — not a v0.1.0 gate.
 - **D-REL-1 / v0.1.0 (flavor iv, operator 2026-05-30T20:23Z):** `src/v4` **ships public AS-IS**, labeled **alpha / WIP** — honest state documented, not gated. Prior STRIP-`src/v4` recommendation **superseded**. This burn-down feeds `SUPPORTED.md` + `docs/release/v0.1.0-v4-ship-disposition.md` (Close/Receipt `sharp-otter-407`). Closures upgrade v0.1.1 narrative; they do **not** block v0.1.0 tag.
 
@@ -112,7 +112,7 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **Burn-down** | **YELLOW** |
 | **Owner** | **Compiler Spine** (`smart-stag-871`) |
 | **Blocking receipt** | v4 compiler-of-record full pipeline; **no** resolve-posture bridge masking failure |
-| **Evidence today** | T-37 landed (#3791); bridge **OPEN** (`ci.yml:293-300`, `v4-bootstrap-resolve-posture-gate.sh`) |
+| **Evidence today** | T-37 landed (#3791); bridge **OPEN** (`scripts/v4-bootstrap-resolve-posture-gate.sh`; `.github/workflows/ci.yml:378-385` — resolve-posture gate step; line numbers drift-prone) |
 | **Today’s PRs** | **#4014** SG-7 ci.dag dissolve **MERGED** 21:01Z (MW-D8 C2 impl). **#3981**, **#3989** Upsert substrate. |
 | **Wave 2 PR** | W2.3 consumer PR TBD; W2.4 `check-*` deletion TBD |
 | **Re-check** | **2026-06-02** — bridge + SG-7 dissolution (W1.1) status |
