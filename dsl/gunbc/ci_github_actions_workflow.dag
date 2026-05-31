@@ -666,7 +666,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {

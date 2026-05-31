@@ -328,7 +328,7 @@ jobs:
     # edits; scope-detector / if-routing narrowing uses policy_check (Gate #103 ratchet).
     - name: Detect phase1/nat_semiring fixture scope (PR diff)
       id: phase1_nat_semiring_fixture_scope
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: bash scripts/detect-phase1-nat-semiring-gate-scope.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
     - name: phase1/nat_semiring gate policy ratchet (workflow-policy edits)
       if: steps.phase1_nat_semiring_fixture_scope.outputs.policy_check == 'true'
