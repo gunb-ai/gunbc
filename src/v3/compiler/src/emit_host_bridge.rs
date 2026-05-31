@@ -1,4 +1,4 @@
-//! Host transport rows for `v4.compiler.emit_host` (`run_emit_host_rust` / `run_emit_host_python`).
+//! Host transport rows for `v4.compiler.emit_host` (`run_emit_host_rust` / `run_emit_host_python` / `run_emit_host_go`).
 //!
 //! **Modeled authority:** `src/v4/compiler/emit_host.dag` — executable host-process boundary is
 //! `tools/emit_host_runner`; substrate `.dag` assembles `EmitHostRunReceipt` from typed host facts.
@@ -6,8 +6,8 @@
 //! host transport directly (dissolves `emit_host_transport_not_wired`).
 
 use emit_host_runner::{
-    host_logical_run_from_exit, run_emit_host_python, run_emit_host_rust, EmitHostFixtureInputs,
-    EmitHostRunReceipt, HostExit, RuntimeValueParseFailure,
+    host_logical_run_from_exit, run_emit_host_go, run_emit_host_python, run_emit_host_rust,
+    EmitHostFixtureInputs, EmitHostRunReceipt, HostExit, RuntimeValueParseFailure,
 };
 
 /// MVP-2 / `eval_runtime_mvp` alignment: five stdout bytes denote runtime value `5`.
@@ -47,6 +47,15 @@ pub fn run_emit_host_python_transport(
     work_dir: &std::path::Path,
 ) -> Result<EmitHostRunReceipt, emit_host_runner::HostSetupFailure> {
     run_emit_host_python(source, inputs, work_dir)
+}
+
+/// Host-process transport: run emitted Go via `go run`, returning the runner receipt.
+pub fn run_emit_host_go_transport(
+    source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &std::path::Path,
+) -> Result<EmitHostRunReceipt, emit_host_runner::HostSetupFailure> {
+    run_emit_host_go(source, inputs, work_dir)
 }
 
 /// True when the host exit witness is `Holds` (logical child succeeded).
@@ -125,6 +134,21 @@ pub fn run_emit_vs_eval_mvp2_python_transport(
         receipt,
         expected_bytes,
         emit_host_runner::runtime_value_parse_python,
+    ))
+}
+
+/// W3.3: real `run_emit_host_go` transport + MVP-2 five-byte stdout (cross-target parity row).
+pub fn run_emit_vs_eval_mvp2_go_transport(
+    emitted_source: &str,
+    inputs: &EmitHostFixtureInputs,
+    work_dir: &std::path::Path,
+    expected_bytes: [u8; 5],
+) -> Result<EmitHostEmitVsEvalVerdict, emit_host_runner::HostSetupFailure> {
+    let receipt = run_emit_host_go_transport(emitted_source, inputs, work_dir)?;
+    Ok(emit_vs_eval_mvp2_verdict_from_receipt(
+        receipt,
+        expected_bytes,
+        emit_host_runner::runtime_value_parse_go,
     ))
 }
 
@@ -236,6 +260,37 @@ mod tests {
         ));
         let verdict = run_emit_vs_eval_mvp2_python_transport(
             PYTHON_FIXTURE_SOURCE_PASS,
+            &mvp2_inputs(),
+            &work_dir,
+            MVP2_RUNTIME_VALUE_FIVE_BYTES,
+        )
+        .expect("transport setup");
+        assert_eq!(verdict, EmitHostEmitVsEvalVerdict::Pass);
+    }
+
+    const GO_FIXTURE_SOURCE_PASS: &str =
+        "package main\nimport \"os\"\nfunc main() { _, _ = os.Stdout.Write(make([]byte, 5)) }\n";
+
+    #[test]
+    fn bridge_go_transport_builds_runs_and_parses_stdout() {
+        let work_dir =
+            default_work_dir(&format!("gunbc_emit_host_go_bridge_{}", std::process::id()));
+        let receipt = run_emit_host_go_transport(GO_FIXTURE_SOURCE_PASS, &mvp2_inputs(), &work_dir)
+            .expect("transport");
+        assert!(host_exit_holds(&receipt.exit));
+        let stdout =
+            host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()).expect("logical stdout");
+        emit_host_runner::runtime_value_parse_go(&stdout).expect("parse");
+    }
+
+    #[test]
+    fn emit_vs_eval_mvp2_go_transport_passes_for_five_zero_bytes() {
+        let work_dir = default_work_dir(&format!(
+            "gunbc_emit_vs_eval_go_pass_{}",
+            std::process::id()
+        ));
+        let verdict = run_emit_vs_eval_mvp2_go_transport(
+            GO_FIXTURE_SOURCE_PASS,
             &mvp2_inputs(),
             &work_dir,
             MVP2_RUNTIME_VALUE_FIVE_BYTES,

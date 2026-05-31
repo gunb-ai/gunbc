@@ -15,7 +15,9 @@
 //!
 //! **W3:** substrate `run_emit_host_rust` stays `transport_not_wired` (fail-closed); real cargo+run
 //! via `emit_host_bridge` / `emit_host_runner`. Rosters authored in #4046 (`rung_3_4`).
-//! **W3.4 (this PR, +0 SG-0 paths):** extends bridge with python transport + rung-6 additive-Monoid
+//! **W3.3 (+0 SG-0 paths):** go transport + rung-5 full law roster × rust/python/go
+//! (`rung_5.dag`, `nat_semiring_rung5_eval.dag`); cross-target MVP-2 stdout parity via bridge.
+//! **W3.4 (+0 SG-0 paths):** extends bridge with python transport + rung-6 additive-Monoid
 //! roster (`rung_6.dag`, `rung_5_6_common.dag`, `nat_semiring_rung56_eval.dag`). Behavior receipts:
 //! MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte stdout contract;
 //! not per-law emitted artifacts until emit pipeline wires law subjects). Substrate rows stay
@@ -42,6 +44,12 @@ const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
 const NAT_SEMIRING_RUNG_3_4_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
 const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
+const NAT_SEMIRING_RUNG_5_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_5.dag");
+const NAT_SEMIRING_RUNG_5_PATH: &str = "src/v4/test/claim/nat_semiring/rung_5.dag";
+const NAT_SEMIRING_RUNG5_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung5_eval.dag");
+const NAT_SEMIRING_RUNG5_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung5_eval.dag";
 const NAT_SEMIRING_RUNG_6_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_6.dag");
 const NAT_SEMIRING_RUNG_6_PATH: &str = "src/v4/test/claim/nat_semiring/rung_6.dag";
@@ -67,6 +75,10 @@ const LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH: &str =
 
 /// Minimal python host fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_PYTHON_FIXTURE_SOURCE: &str = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
+
+/// Minimal go host fixture: five stdout bytes (MVP runtime value `5` alignment).
+const EMIT_HOST_GO_FIXTURE_SOURCE: &str =
+    "package main\nimport \"os\"\nfunc main() { _, _ = os.Stdout.Write(make([]byte, 5)) }\n";
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
@@ -390,8 +402,10 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
     for name in [
         "run_emit_host_rust",
         "run_emit_host_python",
+        "run_emit_host_go",
         "run_emit_host",
         "runtime_value_parse_python",
+        "runtime_value_parse_go",
         "host_exit_failure_outcome",
         "run_test_claim_emit_vs_eval_for_claim",
         "run_test_claim_emit_vs_eval",
@@ -412,6 +426,10 @@ fn v4_emit_host_dag_tokenizes_and_parses_fail_closed_surface() {
     assert!(
         surface_declares_data(&module, "emit_host_python_authority_pin"),
         "{EMIT_HOST_PATH}: python authority pin (W3.4)"
+    );
+    assert!(
+        surface_declares_data(&module, "emit_host_go_authority_pin"),
+        "{EMIT_HOST_PATH}: go authority pin (W3.3)"
     );
 }
 
@@ -591,6 +609,115 @@ fn v4_loop_linear_bound_rung8_dag_tokenizes_and_parses_full_fixture_roster() {
 }
 
 #[test]
+fn emit_host_runner_go_row_runs_and_parses_stdout() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_v4_emit_host_go_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "w5_go_claim_input".to_string(),
+        expected_eval_root: "w5_go_expected_eval".to_string(),
+    };
+    let receipt =
+        emit_host_runner::run_emit_host_go(EMIT_HOST_GO_FIXTURE_SOURCE, &inputs, &work_dir)
+            .expect("run_emit_host_go");
+    assert!(receipt.exit.exit_holds());
+    emit_host_runner::runtime_value_parse_go(&receipt.stdout_bytes).expect("parse");
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go() {
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "cross_target_claim_input".to_string(),
+        expected_eval_root: "cross_target_expected_eval".to_string(),
+    };
+    let pid = std::process::id();
+    let rust_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_rust_{pid}"));
+    let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_py_{pid}"));
+    let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_go_{pid}"));
+    let rust = emit_host_bridge::run_emit_host_rust_transport(
+        EMIT_HOST_FIXTURE_SOURCE,
+        &inputs,
+        &rust_dir,
+    )
+    .expect("rust transport");
+    let python = emit_host_bridge::run_emit_host_python_transport(
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+        &inputs,
+        &py_dir,
+    )
+    .expect("python transport");
+    let go =
+        emit_host_bridge::run_emit_host_go_transport(EMIT_HOST_GO_FIXTURE_SOURCE, &inputs, &go_dir)
+            .expect("go transport");
+    for (label, receipt) in [("rust", &rust), ("python", &python), ("go", &go)] {
+        assert!(
+            emit_host_bridge::host_exit_holds(&receipt.exit),
+            "{label}: expected Holds exit"
+        );
+    }
+    let rust_stdout = emit_host_bridge::host_stdout_bytes(&rust.exit, rust.stdout_bytes)
+        .expect("rust logical stdout");
+    let python_stdout = emit_host_bridge::host_stdout_bytes(&python.exit, python.stdout_bytes)
+        .expect("python logical stdout");
+    let go_stdout =
+        emit_host_bridge::host_stdout_bytes(&go.exit, go.stdout_bytes).expect("go logical stdout");
+    assert_eq!(
+        rust_stdout, python_stdout,
+        "rust/python MVP-2 stdout must agree for cross-target equivalence"
+    );
+    assert_eq!(
+        rust_stdout, go_stdout,
+        "rust/go MVP-2 stdout must agree for cross-target equivalence"
+    );
+    assert_eq!(rust_stdout.len(), 5);
+}
+
+#[test]
+fn v4_nat_semiring_rung_5_dag_tokenizes_and_parses_full_law_roster_three_targets() {
+    let module = parse_module(NAT_SEMIRING_RUNG_5_DAG, NAT_SEMIRING_RUNG_5_PATH);
+    for name in [
+        "run_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung5_python_mul_associativity_emit_equals_eval",
+        "run_phase1_nat_semiring_rung5_go_mul_annihilator_emit_equals_eval",
+    ] {
+        assert!(
+            surface_declares_data(&module, name),
+            "{NAT_SEMIRING_RUNG_5_PATH}: sample rung-5 row {name}"
+        );
+    }
+    assert!(
+        surface_declares_data(
+            &module,
+            "phase1_nat_semiring_rung5_full_law_roster_runtime_value_rows"
+        ),
+        "{NAT_SEMIRING_RUNG_5_PATH}: 6 laws × 3 targets roster"
+    );
+    let common = parse_module(RUNG_5_6_COMMON_DAG, RUNG_5_6_COMMON_PATH);
+    assert!(
+        surface_declares_data(&common, "rung56_emit_host_go_target_model"),
+        "{RUNG_5_6_COMMON_PATH}: go TargetModel (W3.3)"
+    );
+
+    let eval_module = parse_module(NAT_SEMIRING_RUNG5_EVAL_DAG, NAT_SEMIRING_RUNG5_EVAL_PATH);
+    for name in [
+        "run_nat_semiring_rung5_eval",
+        "nat_semiring_rung5_gate",
+        "nat_semiring_rung5_report_has_evidence",
+    ] {
+        assert!(
+            surface_declares_fn(&eval_module, name),
+            "{NAT_SEMIRING_RUNG5_EVAL_PATH}: missing fn {name}"
+        );
+    }
+    assert!(
+        NAT_SEMIRING_RUNG5_EVAL_DAG
+            .contains("phase1_nat_semiring_rung5_full_law_roster_runtime_value_rows"),
+        "{NAT_SEMIRING_RUNG5_EVAL_PATH}: CorpusEvalReport must consume rung-5 roster"
+    );
+}
+
+#[test]
 fn emit_host_runner_python_row_runs_and_parses_stdout() {
     let work_dir = emit_host_runner::default_work_dir(&format!(
         "gunbc_v4_emit_host_py_{}",
@@ -624,10 +751,15 @@ fn v4_nat_semiring_rung_6_dag_tokenizes_and_parses_additive_monoid_emit_rows() {
         );
     }
     let common = parse_module(RUNG_5_6_COMMON_DAG, RUNG_5_6_COMMON_PATH);
-    assert!(
-        surface_declares_data(&common, "rung56_emit_host_python_target_model"),
-        "{RUNG_5_6_COMMON_PATH}: python TargetModel"
-    );
+    for name in [
+        "rung56_emit_host_python_target_model",
+        "rung56_emit_host_go_target_model",
+    ] {
+        assert!(
+            surface_declares_data(&common, name),
+            "{RUNG_5_6_COMMON_PATH}: TargetModel {name}"
+        );
+    }
 }
 
 #[test]
