@@ -3208,6 +3208,8 @@ fn ci_changed_path_affects_v2(changed: RepoPath) -> Bool {
 fn ci_changed_path_affects_v3(changed: RepoPath) -> Bool {
   ci_repo_path_has_prefix(path: changed, prefix: "src/v3/")
     || ci_repo_path_has_prefix(path: changed, prefix: "dsl/")
+    || changed == "Cargo.toml"
+    || changed == "Cargo.lock"
 }
 
 

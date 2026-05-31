@@ -967,6 +967,32 @@ fn v4_workflow_ci_bankruptcy_tier0_legacy_top_level_jobs_deleted() {
 }
 
 #[test]
+fn v4_workflow_ci_bankruptcy_tier0_ci_integration_job_if_includes_release_distribution() {
+    let ci_integration_job_if = CI_YML
+        .lines()
+        .skip_while(|line| !line.starts_with("  ci_integration:"))
+        .skip(1)
+        .find(|line| line.trim_start().starts_with("if:"))
+        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing ci_integration job `if`"));
+    assert!(
+        ci_integration_job_if.contains("needs.affected.outputs.release_distribution == 'true'"),
+        "{CI_YML_PATH}: ci_integration job `if` must include release_distribution (RELEASE §5 binding step at :251 is inside this job)"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
+    let v3_body = extract_fn_body(CI_DAG, "ci_changed_path_affects_v3");
+    for path in ["Cargo.toml", "Cargo.lock"] {
+        assert!(
+            v3_body.contains(&format!("changed == \"{path}\"")),
+            "{CI_DAG_PATH}: ci_changed_path_affects_v3 must include `{path}` (V3DeterminismCommand Upsert inputs at ci_upsert_v3_determinism_execution_inputs)"
+        );
+    }
+    assert_ci_dag_rust_bucket_parity("ci_changed_path_affects_v3");
+}
+
+#[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
         CI_YML.contains("needs: [affected, ci_integration, ci_v4]")
@@ -1235,6 +1261,12 @@ fn v4_workflow_ci_bankruptcy_tier0_binding_step_matches_generated_workflow() {
             "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
         )),
         "{CI_WORKFLOW_DAG_PATH}: M1 binding step run must use bankruptcy D3 prefix filter (P2 parity with {CI_YML_PATH})"
+    );
+    assert!(
+        CI_WORKFLOW_DAG.contains(
+            "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
+        ),
+        "{CI_WORKFLOW_DAG_PATH}: ci_integration job if_condition must mirror ci.yml (release_distribution for RELEASE §5 step)"
     );
 }
 

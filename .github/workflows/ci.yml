@@ -162,7 +162,7 @@ jobs:
   # v3 integration receipts + bootstrap verify — parallel with ci_v4 on the v4 critical path.
   # I2 (v2 stage0) folded here from deleted `v2` job — must schedule on v2-only PRs (bankruptcy §2.1).
   ci_integration:
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     needs: [affected]
     runs-on: [self-hosted, linux, arm64]
     # Tier-0 I3 `determinism_test --release` alone is ~25m on srv1/srv2; 25m job budget cancelled mid-step (run 26707018679).
