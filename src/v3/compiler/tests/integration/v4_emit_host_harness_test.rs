@@ -40,12 +40,12 @@ const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
 const NAT_SEMIRING_RUNG_3_4_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
 const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
-const NAT_SEMIRING_RUNG_8_DAG: &str = include_str!("../../../../v4/test/claim/nat_semiring/rung_8.dag");
+const NAT_SEMIRING_RUNG_8_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_8.dag");
 const NAT_SEMIRING_RUNG_8_PATH: &str = "src/v4/test/claim/nat_semiring/rung_8.dag";
 const NAT_SEMIRING_RUNG8_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung8_eval.dag");
-const NAT_SEMIRING_RUNG8_EVAL_PATH: &str =
-    "src/v4/test/claim/workflow/nat_semiring_rung8_eval.dag";
+const NAT_SEMIRING_RUNG8_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung8_eval.dag";
 
 /// Minimal fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_FIXTURE_SOURCE: &str =
@@ -377,8 +377,7 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         "witness_rung8_nat_add_wrong_identity_falsifies_law",
     ] {
         assert!(
-            surface_declares_fn(&rung_8, name)
-                || surface_declares_data(&rung_8, name),
+            surface_declares_fn(&rung_8, name) || surface_declares_data(&rung_8, name),
             "{NAT_SEMIRING_RUNG_8_PATH}: missing T-22 witness {name}"
         );
     }

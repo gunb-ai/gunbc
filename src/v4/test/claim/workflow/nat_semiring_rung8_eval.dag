@@ -71,5 +71,4 @@ fn nat_semiring_rung8_all_rows_not_deferred() -> Bool {
 
 
 // Authoring-time receipt: full §7 roster executes with Pass (never Deferred).
-data witness_nat_semiring_rung8_gate_closed: Bool =
-  nat_semiring_rung8_gate(report: run_nat_semiring_rung8_eval())
+data witness_nat_semiring_rung8_gate_closed: Bool = nat_semiring_rung8_gate(report: run_nat_semiring_rung8_eval())
