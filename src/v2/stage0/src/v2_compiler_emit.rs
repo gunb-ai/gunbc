@@ -4061,7 +4061,7 @@ pub fn emit_unified_typed_func_body(
                     }
                 }
             }
-            ExprData::ExprMatch => match es.match_value_form {
+            ExprData::ExprMatch => match es.match_value_form.clone() {
                 MatchValueForm::MatchStatementArmReturn => emit_unified_typed_expr(
                     body.clone(),
                     target.clone(),
@@ -5797,7 +5797,12 @@ pub fn emit_unified_variant_pattern(
 }
 
 pub fn emit_match_arm_body_stmt(target: RenderTarget, body_str: String) -> String {
-    match language_spec(target).expression_semantics.match_value_form {
+    match language_spec(target)
+        .expression_semantics
+        .clone()
+        .match_value_form
+        .clone()
+    {
         MatchValueForm::MatchStatementArmReturn => v2_rt::concat("return ".to_string(), body_str),
         MatchValueForm::MatchExpression => body_str,
     }
