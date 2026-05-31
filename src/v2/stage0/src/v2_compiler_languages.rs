@@ -58,23 +58,23 @@ pub use crate::extdeps_languages_rust_emit::{
 };
 pub use crate::extdeps_languages_rust_syntax::{rust_item_forms, rust_operators};
 use crate::std_syntax::AlgebraFieldKind::*;
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
 use crate::std_syntax::BodyKind::{
     BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
 };
 use crate::std_syntax::ItemFormKind::{
     EnumForm, FuncForm, ModuleForm, OtherForm, StructForm, TypeAliasForm,
 };
-use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{
     AlgebraFieldKind, BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
 };
-pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v2_rt;
+use crate::v2_std_core::BinOp::{
+    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
+};
+use crate::v2_std_core::LiteralValue::*;
+pub use crate::v2_std_core::{BinOp, LiteralValue};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

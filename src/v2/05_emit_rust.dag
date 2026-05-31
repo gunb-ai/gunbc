@@ -1296,6 +1296,13 @@ fn emit_pub_use_from_module(mod_filename: String, names: List<String>, registry:
   }
 }
 
+fn enum_names_defining_in_module(type_summaries: Map<String, TypeSummary>, registry: Map<String, ItemInfo>, mod_filename: String) -> List<String> {
+  map_keys(type_summaries) |> filter(n =>
+    is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
+    && symbol_defining_mod_filename(name: n, registry: registry, import_mod: mod_filename) == mod_filename
+  )
+}
+
 fn emit_specific_import_block(mod_name: String, deduped_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>) -> String {
   if deduped_names |> count == 0 {
     ""
@@ -1309,7 +1316,7 @@ fn emit_specific_import_block(mod_name: String, deduped_names: List<String>, emi
                 is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
               } else { true }
             )
-            let all_enum_names = map_keys(type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+            let enums_in_import_mod = enum_names_defining_in_module(type_summaries: type_summaries, registry: registry, mod_filename: mod_name)
             let imported_enums = non_graph_imports |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
             let all_parents = non_graph_imports |> map(n =>
               if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { "" }
@@ -1317,7 +1324,7 @@ fn emit_specific_import_block(mod_name: String, deduped_names: List<String>, emi
                 match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: imported_enums) {
                   Some { value: parent } => parent
                   None =>
-                    match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: all_enum_names) {
+                    match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: enums_in_import_mod) {
                       Some { value: parent } => parent
                       None => ""
                     }
