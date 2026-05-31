@@ -191,7 +191,7 @@ honest framing of that trust is itself one of our principles.
 
 ## 6. What's already been decided for you
 
-These were settled in operator-ratified design sessions *specifically so
+These were settled in ratified design sessions *specifically so
 you don't have to litigate them* and so you're never handed ambiguity.
 Read the contract; you don't need to re-derive it. If one genuinely
 looks wrong to you, that is a STOP and a respected signal — not

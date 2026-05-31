@@ -197,7 +197,7 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 // (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink
 // and lattice bottom; `NonIncreasingValue` / `StrictAxisErased` / `MixedTop` close the lattice so
 // meet/join over the seven lawful inhabitants are projection-sound merge helpers only — not a
-// `std/algebra` inhabitance (operator-ratified option-(A) split, 2026-05-21; see Inc-split below).
+// `std/algebra` inhabitance (option-(A) split, 2026-05-21; see Inc-split below).
 // The split satisfies:
 //   - codex #15942 join-projection-safety FULLY: `join(PreservedValue, StrictSubValue{f}) = MixedTop`,
 //     `proj(MixedTop) = NonIncreasing`, never fabricates Strict from a non-strict join operand.

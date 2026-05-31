@@ -1,0 +1,172 @@
+// src/v4/std/leaf_model_verification.dag
+// Scope: Leaf-model verification carriers — claim / falsification / fixture / report.
+// Status: Phase 1 substrate (docs/planning/v4-leaf-model-verification-2026-05-30.md §5).
+// Authority: leaf model owns FACTS (stable fact_id in extdeps); this module owns OBLIGA shape.
+// Co-authored with Modeling DFS (proud-pike-680) — consume Verdict<Subj,T> from verdict.dag (PR #3961).
+// R1 rustc slice: concrete fixture-pair + compile verdict carriers (PR #3972).
+// R1 python slice: concrete fixture-pair + exec verdict carriers (W2.6 / PR #3938 §11.4).
+
+module v4.std.leaf_model_verification
+
+import v4.std.collection { List }
+import v4.std.nat { Nat }
+import v4.std.node { Node, Symbol }
+import v4.std.text { String }
+import v4.std.verdict { Verdict, verdict_combine }
+
+// Layer A boundary: OBLIGA rows reference model facts structurally (Node projection of declared bindings).
+type LeafModelClaim<M, Subject, Expectation> {
+  model: M
+  fact_id: Node
+  subject: Subject
+  expectation: Expectation
+  falsification_case: FalsificationCase<Subject, Expectation>
+}
+
+// REQUIRED paired probe — claim without falsification is not verifiable (planning doc §5).
+type FalsificationCase<Subject, Expectation> {
+  subject_variant: Subject
+  expected_failure_mode: Expectation
+}
+
+// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
+// dissolve-on: testgen emits LeafModelFixture rows and runner exercises target toolchain;
+// forbidden: parallel fixture vocabulary outside this carrier.
+type TargetArtifact {
+  source_text: String
+}
+
+// 🟡 gated — feature:leaf-model-fixture-runner — bind TASKS.md T-19/T-22 follow-up —
+// dissolve-on: TargetToolchain / TargetEdition / TargetBuildProfile / TargetOverflowDispositionField coproducts replace these Symbol scaffolds;
+// forbidden: parallel invocation vocab outside this carrier.
+type TargetInvocation {
+  toolchain: Symbol
+  edition: Symbol
+  build_profile: Symbol
+  overflow_disposition_field: Symbol
+}
+
+type LeafModelFixture<C> {
+  claim: C
+  artifact: TargetArtifact
+  invocation: TargetInvocation
+  expected_verdict: Verdict<Symbol, Symbol>
+  falsification_artifact: TargetArtifact
+  expected_falsification_verdict: Verdict<Symbol, Symbol>
+}
+
+type LeafModelClaimVerdictRow {
+  claim_id: Symbol
+  verdict: Verdict<Symbol, Symbol>
+  falsification_verdict: Verdict<Symbol, Symbol>
+}
+
+type LeafModelVerificationTotals {
+  proven: Nat
+  model_failed: Nat
+  falsification_caught: Nat
+  falsification_missed: Nat
+  not_checked: Nat
+}
+
+// 🟡 gated — feature:leaf-model-verification-report — dissolve-on: runner fold over report.claims.
+type LeafModelVerificationReport<M> {
+  model: M
+  claims: List<LeafModelClaimVerdictRow>
+}
+
+// --- PR #3972 R1 rustc compile slice (happy/falsification fixtures + boundary runner) ---
+
+// 🟢 coproduct dissolution — CP-LMV-TARGET-COMPILE-VERDICT-PHASE1 (Phase 1 R1 rustc gate; widen per target).
+type TargetCompileVerdict
+  = TargetCompileAccepted
+  | TargetCompileRejected { diagnostic_code: Symbol }
+
+data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_type_mismatch
+data target_diagnostic_e0423_expected_value_found_type: Symbol = target_diagnostic_e0423_expected_value_found_type
+data target_diagnostic_e0599_method_not_found: Symbol = target_diagnostic_e0599_method_not_found
+data target_diagnostic_python_name_error_undefined_name: Symbol = target_diagnostic_python_name_error_undefined_name
+
+type LeafModelClaimId = Symbol
+
+data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId = leaf_model_claim_rust_r1_i32_surface_spelling
+data leaf_model_claim_python_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_python_r1_int_surface_spelling
+data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_model_claim_rust_r2a_i32_algebra_operations
+data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
+data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
+data leaf_model_claim_rust_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_rust_r3_external_symbol_projection
+
+type LeafModelRustCrateType = Symbol
+
+data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = leaf_model_rust_crate_type_lib
+data leaf_model_rust_crate_type_bin: LeafModelRustCrateType = leaf_model_rust_crate_type_bin
+
+// 🟡 gated — feature:leaf-model-r1-rustc-bridge — bind PR #3972 Phase 1 R1 —
+// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
+// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands
+// (docs/planning/v4-leaf-model-verification-2026-05-30.md §9 DFS gate).
+type LeafModelRustFixture {
+  source: String
+  crate_type: LeafModelRustCrateType
+}
+
+// 🟡 gated — feature:leaf-model-r1-rustc-bridge — dissolve-on-arrival: nested under LeafModelFixture<C>.falsification_artifact
+type LeafModelFalsificationCase {
+  fixture: LeafModelRustFixture
+  expected_verdict: TargetCompileVerdict
+}
+
+// 🟡 gated — feature:leaf-model-r1-rustc-bridge — dissolve-on-arrival: R1 row becomes LeafModelFixture<LeafModelClaim<...>>
+type LeafModelFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  coercion_spelling_fact: Symbol
+  happy: LeafModelRustFixture
+  expected_happy_verdict: TargetCompileVerdict
+  falsification: LeafModelFalsificationCase
+}
+
+// 🟡 gated — feature:leaf-model-r1-python-bridge — bind W2.6 / PR #3938 §11.4 —
+// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
+// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands.
+type LeafModelPythonFixture {
+  source: String
+}
+
+type LeafModelPythonFalsificationCase {
+  fixture: LeafModelPythonFixture
+  expected_verdict: TargetCompileVerdict
+}
+
+type LeafModelPythonFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  encoding_spelling_fact: Symbol
+  happy: LeafModelPythonFixture
+  expected_happy_verdict: TargetCompileVerdict
+  falsification: LeafModelPythonFalsificationCase
+}
+
+type LeafModelVerificationRunReceipt {
+  claim_id: LeafModelClaimId
+  happy_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
+  falsification_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
+}
+
+fn leaf_model_verification_claim_passes(
+  receipt: LeafModelVerificationRunReceipt
+) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
+  verdict_combine(a: receipt.happy_verdict, b: receipt.falsification_verdict)
+}
+
+fn leaf_model_verification_combine_runs(
+  runs: List<LeafModelVerificationRunReceipt>
+) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
+  fold(
+    runs,
+    init: Pass,
+    f: fn(acc, r) {
+      verdict_combine(a: acc, b: leaf_model_verification_claim_passes(receipt: r))
+    }
+  )
+}

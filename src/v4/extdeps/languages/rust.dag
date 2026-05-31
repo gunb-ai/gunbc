@@ -74,6 +74,11 @@ import v4.std.model_core {
 import v4.std.witness { Holds, Violates }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
+  TargetAtomTypeShape,
+  TargetFunctionTypeShape,
+  TargetGenericApply,
+  TargetSumTypeShape,
+  TargetTypeExpressionProjection,
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
@@ -87,28 +92,88 @@ import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_source
+  target_model_edge_serialize_source,
+  target_model_edge_type_expression_projection,
+  target_model_edge_collection_realization,
+  TargetCollectionRealization,
+  TargetCollectionReprKind,
+  TargetRepresentation,
+  TargetRepresentationChoice,
+  RequiredTraitWitness,
+  TargetCollectionWitnessOrd,
+  TargetCollectionWitnessHash,
+  TargetCollectionWitnessEq,
+  target_collection_set_carrier,
+  target_collection_set_carrier_node,
+  target_collection_set_no_representation_diagnostic,
+  target_collection_trait_ord,
+  target_collection_trait_hash,
+  target_collection_trait_eq,
+  target_collection_type_param_t,
+  target_collection_repr_field_kind,
+  target_collection_repr_field_apply,
+  target_collection_choice_field_form,
+  target_collection_choice_field_constraints,
+  target_collection_witness_field_trait_name,
+  target_collection_witness_field_type_param,
+  target_collection_row_field_source_carrier,
+  target_collection_row_field_primary,
+  target_collection_row_field_alternatives,
+  target_collection_row_field_fallback,
+  target_collection_repr_kind_atom,
+  target_collection_set_no_representation,
+  TargetCollectionReprBTreeSet,
+  TargetCollectionReprHashSet,
+  target_type_expr_atom_emitted,
+  target_type_expr_arrow_emitted,
+  target_type_expr_field_atom,
+  target_type_expr_field_arrow,
+  target_type_expr_field_cardinality,
+  target_type_expr_field_close,
+  target_type_expr_field_conj,
+  target_type_expr_field_disj,
+  target_type_expr_field_ident_token,
+  target_type_expr_field_instantiation,
+  target_type_expr_field_open,
+  target_type_expr_field_separator,
+  target_type_expr_field_variant_separator,
+  target_type_expr_field_surface,
+  target_type_expr_field_kind,
+  target_type_expr_surface_edge,
+  target_type_expr_cardinality_emitted,
+  target_type_expr_instantiation_emitted,
+  target_type_expr_record_emitted,
+  target_type_expr_sum_emitted,
+  target_type_expr_wrapped_emitted,
+  TargetTypeExprFieldSlot,
+  TargetTypeExprInstantiation,
+  TargetTypeExprVariantSlot
 }
 import v4.std.node {
   Arrow,
   Atom,
+  Cardinality,
   Conj,
   Edge,
   Named,
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  Instantiation
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,
+  algebra_binary_fn_node,
   approximate_field_node,
   approximate_field_type_node,
   boolean_algebra_node,
   boolean_algebra_type_node,
   Empty,
+  Cons,
   fold_list,
+  fold_list_node,
   list_append,
   list_snoc_item,
   ordered_ring_node,
@@ -373,6 +438,7 @@ data rust_token_rbrace: Symbol = rust_token_rbrace
 data rust_token_lparen: Symbol = rust_token_lparen
 data rust_token_rparen: Symbol = rust_token_rparen
 data rust_token_comma: Symbol = rust_token_comma
+data rust_token_pipe: Symbol = rust_token_pipe
 data rust_token_colon: Symbol = rust_token_colon
 data rust_token_kw_let: Symbol = rust_token_kw_let
 data rust_token_kw_if: Symbol = rust_token_kw_if
@@ -380,6 +446,7 @@ data rust_token_kw_else: Symbol = rust_token_kw_else
 data rust_token_kw_return: Symbol = rust_token_kw_return
 data rust_token_equal: Symbol = rust_token_equal
 data rust_token_gt: Symbol = rust_token_gt
+data rust_token_lt: Symbol = rust_token_lt
 data rust_token_semicolon: Symbol = rust_token_semicolon
 data rust_token_int_literal: Symbol = rust_token_int_literal
 
@@ -420,10 +487,24 @@ data rust_surface_comparison_expr: Symbol = rust_surface_comparison_expr
 data rust_surface_additive_expr: Symbol = rust_surface_additive_expr
 data rust_surface_primary_expr: Symbol = rust_surface_primary_expr
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
+data rust_surface_type_atom: Symbol = rust_surface_type_atom
+data rust_surface_type_generic_apply: Symbol = rust_surface_type_generic_apply
+data rust_surface_type_cardinality: Symbol = rust_surface_type_cardinality
+data rust_surface_type_record: Symbol = rust_surface_type_record
+data rust_surface_type_sum: Symbol = rust_surface_type_sum
+data rust_surface_type_arrow: Symbol = rust_surface_type_arrow
 data rust_surface_bin_add: Symbol = rust_surface_bin_add
 data rust_binding_fn_add: Symbol = rust_binding_fn_add
 data rust_binding_param_x: Symbol = rust_binding_param_x
 data rust_binding_param_y: Symbol = rust_binding_param_y
+
+// SG-2 falsification probe bindings — Node-keyed spellings, not name-keyed emitter branches.
+data rust_binding_sg2_foobar: Symbol = rust_binding_sg2_foobar
+data rust_binding_sg2_x: Symbol = rust_binding_sg2_x
+data rust_binding_sg2_y: Symbol = rust_binding_sg2_y
+data rust_binding_sg2_rc: Symbol = rust_binding_sg2_rc
+data rust_binding_sg2_bogus_meta: Symbol = rust_binding_sg2_bogus_meta
+data rust_binding_sg2_bogus_named: Symbol = rust_binding_sg2_bogus_named
 
 data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
 
@@ -709,6 +790,26 @@ data rust_noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts> = [
   rust_facts_unit,
   rust_facts_never
 ]
+
+// Leaf-model Layer-A — derived fact exposure + PLANNED SG-1 slot (PR #3971 §3; no parallel *_fact_id Symbol wrappers).
+data rust_integer_algebra_inhabitance_rust_facts_i32: AlgebraInhabitanceDecl = rust_integer_algebra_inhabitance(facts: rust_facts_i32)
+// 🟡 gated — feature:sg-1-target-atom-realization — bind PR #3938 §10.1 / design-target-realization-canonical-home.md —
+// dissolve-on: TargetAtomRealization row for Symbol lands; fact_id names that row.
+data rust_atom_realization_symbol: Symbol = rust_atom_realization_symbol
+data rust_atom_realization_symbol_node: Node = rust_inhabitant_atom(id: rust_atom_realization_symbol)
+
+// Structural fact_id projections for C(rust.dag) — Node cites declared bindings, not sibling Symbol handles.
+fn rust_leaf_model_fact_id_node_rust_facts_i32() -> Node {
+  rust_integer_facts_node(facts: rust_facts_i32)
+}
+
+fn rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32() -> Node {
+  rust_integer_algebra_inhabitance_rust_facts_i32.algebra
+}
+
+fn rust_leaf_model_fact_id_node_atom_realization_symbol() -> Node {
+  rust_atom_realization_symbol_node
+}
 
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
@@ -1380,6 +1481,188 @@ fn rust_mvp1_translation_rules_node() -> Node {
   }
 }
 
+data rust_collection_surface_btree_set: Symbol = rust_collection_surface_btree_set
+data rust_collection_surface_hash_set: Symbol = rust_collection_surface_hash_set
+
+fn rust_set_collection_apply_btree() -> TargetGenericApply {
+  TargetGenericApply {
+    surface: rust_collection_surface_btree_set,
+    open: rust_token_lt,
+    separator: rust_token_comma,
+    close: rust_token_gt
+  }
+}
+
+fn rust_set_collection_apply_hash() -> TargetGenericApply {
+  TargetGenericApply {
+    surface: rust_collection_surface_hash_set,
+    open: rust_token_lt,
+    separator: rust_token_comma,
+    close: rust_token_gt
+  }
+}
+
+fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
+  TargetRepresentationChoice {
+    form: TargetRepresentation {
+      kind: TargetCollectionReprBTreeSet,
+      apply: rust_set_collection_apply_btree()
+    },
+    constraints: [
+      TargetCollectionWitnessOrd { type_param: target_collection_type_param_t }
+    ]
+  }
+}
+
+fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
+  TargetRepresentationChoice {
+    form: TargetRepresentation {
+      kind: TargetCollectionReprHashSet,
+      apply: rust_set_collection_apply_hash()
+    },
+    constraints: [
+      TargetCollectionWitnessHash { type_param: target_collection_type_param_t },
+      TargetCollectionWitnessEq { type_param: target_collection_type_param_t }
+    ]
+  }
+}
+
+fn rust_set_collection_alternative_choices() -> List<TargetRepresentationChoice> {
+  Cons {
+    head: rust_set_collection_hash_choice(),
+    tail: Empty
+  }
+}
+
+fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_collection_repr_field_kind,
+        target: rust_inhabitant_atom(id: target_collection_repr_kind_atom(kind: form.kind))
+      ),
+      rust_named_edge(
+        name: target_collection_repr_field_apply,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            rust_named_edge(
+              name: target_type_expr_field_surface,
+              target: rust_inhabitant_atom(id: form.apply.surface)
+            ),
+            rust_named_edge(
+              name: target_type_expr_field_open,
+              target: rust_inhabitant_atom(id: form.apply.open)
+            ),
+            rust_named_edge(
+              name: target_type_expr_field_separator,
+              target: rust_inhabitant_atom(id: form.apply.separator)
+            ),
+            rust_named_edge(
+              name: target_type_expr_field_close,
+              target: rust_inhabitant_atom(id: form.apply.close)
+            )
+          ]
+        }
+      )
+    ]
+  }
+}
+
+fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
+  match witness {
+    TargetCollectionWitnessOrd { type_param: type_param } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: target_collection_trait_ord)
+          ),
+          rust_named_edge(
+            name: target_collection_witness_field_type_param,
+            target: rust_inhabitant_atom(id: type_param)
+          )
+        ]
+      }
+    TargetCollectionWitnessHash { type_param: type_param } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: target_collection_trait_hash)
+          ),
+          rust_named_edge(
+            name: target_collection_witness_field_type_param,
+            target: rust_inhabitant_atom(id: type_param)
+          )
+        ]
+      }
+    TargetCollectionWitnessEq { type_param: type_param } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: target_collection_witness_field_trait_name,
+            target: rust_inhabitant_atom(id: target_collection_trait_eq)
+          ),
+          rust_named_edge(
+            name: target_collection_witness_field_type_param,
+            target: rust_inhabitant_atom(id: type_param)
+          )
+        ]
+      }
+  }
+}
+
+fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_collection_choice_field_form,
+        target: rust_collection_repr_bundle_node(form: choice.form)
+      ),
+      rust_named_edge(
+        name: target_collection_choice_field_constraints,
+        target: fold_list_node(
+          xs: choice.constraints,
+          item_node: rust_collection_witness_bundle_node
+        )
+      )
+    ]
+  }
+}
+
+fn rust_set_collection_realization_bundle_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_collection_row_field_source_carrier,
+        target: target_collection_set_carrier_node()
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_primary,
+        target: rust_collection_choice_bundle_node(choice: rust_set_collection_primary_choice())
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_alternatives,
+        target: fold_list_node(
+          xs: rust_set_collection_alternative_choices(),
+          item_node: rust_collection_choice_bundle_node
+        )
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_fallback,
+        target: rust_inhabitant_atom(id: target_collection_set_no_representation)
+      )
+    ]
+  }
+}
+
 fn rust_mvp1_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1399,6 +1682,10 @@ fn rust_mvp1_target_model_node() -> Node {
       rust_named_edge(
         name: target_model_edge_serialize_source,
         target: rust_mvp1_serialize_source_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_collection_realization,
+        target: rust_set_collection_realization_bundle_node()
       )
     ]
   }
@@ -1407,12 +1694,24 @@ fn rust_mvp1_target_model_node() -> Node {
 fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), rust_binding_fn_add, "add"),
-      rust_binding_param_x,
-      "x"
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(empty_map(), rust_binding_fn_add, "add"),
+            rust_binding_param_x,
+            "x"
+          ),
+          rust_binding_param_y,
+          "y"
+        ),
+        rust_collection_surface_btree_set,
+        "std::collections::BTreeSet"
+      ),
+      rust_collection_surface_hash_set,
+      "std::collections::HashSet"
     ),
-    rust_binding_param_y,
-    "y"
+    target_collection_set_carrier,
+    "Set"
   )
 }
 
@@ -2770,5 +3069,558 @@ fn rust_language_model_wave2() -> RustLanguageModel {
     language_identity: rust_language_model_surface_id,
     canonical_symbols: rust_language_model_wave2_canonical_symbols(),
     core: rust_model_core_wave1()
+  }
+}
+
+// SG-2 — Rust TargetTypeExpressionProjection row (per-connective; uniform carrier for all targets).
+fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
+  TargetTypeExpressionProjection {
+    atom_form: TargetAtomTypeShape {
+      surface: rust_surface_type_atom,
+      ident_token: rust_token_ident
+    },
+    conj_form: TargetGenericApply {
+      surface: rust_surface_type_record,
+      open: rust_token_lbrace,
+      separator: rust_token_comma,
+      close: rust_token_rbrace
+    },
+    disj_form: TargetSumTypeShape {
+      surface: rust_surface_type_sum,
+      variant_separator: rust_token_pipe
+    },
+    arrow_form: TargetFunctionTypeShape {
+      surface: rust_surface_type_arrow,
+      open: rust_token_lparen,
+      close: rust_token_rparen,
+      arrow: rust_token_arrow
+    },
+    cardinality_form: TargetGenericApply {
+      surface: rust_surface_type_cardinality,
+      open: rust_token_lt,
+      separator: rust_token_comma,
+      close: rust_token_gt
+    },
+    instantiation_form: TargetGenericApply {
+      surface: rust_surface_type_generic_apply,
+      open: rust_token_lt,
+      separator: rust_token_comma,
+      close: rust_token_gt
+    }
+  }
+}
+
+data rust_sg2_type_alias_literal: Symbol = rust_sg2_type_alias_literal
+data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"
+
+fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
+              rust_binding_sg2_x,
+              "X"
+            ),
+            rust_binding_sg2_y,
+            "Y"
+          ),
+          rust_binding_sg2_rc,
+          "Rc"
+        ),
+        rust_collection_surface_btree_set,
+        "std::collections::BTreeSet"
+      ),
+      rust_collection_surface_hash_set,
+      "std::collections::HashSet"
+    ),
+    target_collection_set_carrier,
+    "Set"
+  )
+}
+
+fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      rust_ident_lex_rule(),
+      rust_lex_rule(token_class: rust_token_lt, text: "<"),
+      rust_lex_rule(token_class: rust_token_gt, text: ">"),
+      rust_lex_rule(token_class: rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
+      rust_lex_rule(token_class: rust_token_lparen, text: "("),
+      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
+      rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
+      rust_lex_rule(token_class: rust_token_pipe, text: " | ")
+    ]
+  }
+}
+
+fn rust_sg2_type_expr_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: rust_type_expression_projection_bundle_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_serialize_source,
+        target: rust_sg2_serialize_source_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_translation_rules,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: Empty
+        }
+      ),
+      rust_named_edge(
+        name: target_model_edge_selection_policy,
+        target: rust_mvp1_selection_policy_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: rust_declared_inhabitants_root()
+      ),
+      rust_named_edge(
+        name: target_model_edge_collection_realization,
+        target: rust_set_collection_realization_bundle_node()
+      )
+    ]
+  }
+}
+
+fn rust_type_expression_projection_bundle_node() -> Node {
+  let row = rust_type_expression_projection()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_atom, target: rust_type_expr_atom_shape_node(form: row.atom_form)),
+      rust_named_edge(name: target_type_expr_field_conj, target: rust_type_expr_generic_apply_shape_node(form: row.conj_form)),
+      rust_named_edge(name: target_type_expr_field_disj, target: rust_type_expr_sum_shape_node(form: row.disj_form)),
+      rust_named_edge(name: target_type_expr_field_arrow, target: rust_type_expr_arrow_shape_node(form: row.arrow_form)),
+      rust_named_edge(name: target_type_expr_field_cardinality, target: rust_type_expr_generic_apply_shape_node(form: row.cardinality_form)),
+      rust_named_edge(name: target_type_expr_field_instantiation, target: rust_type_expr_generic_apply_shape_node(form: row.instantiation_form))
+    ]
+  }
+}
+
+fn rust_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_ident_token, target: rust_inhabitant_atom(id: form.ident_token))
+    ]
+  }
+}
+
+fn rust_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
+      rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
+      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
+    ]
+  }
+}
+
+fn rust_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_variant_separator, target: rust_inhabitant_atom(id: form.variant_separator))
+    ]
+  }
+}
+
+fn rust_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
+      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close)),
+      rust_named_edge(name: target_type_expr_field_arrow, target: rust_inhabitant_atom(id: form.arrow))
+    ]
+  }
+}
+
+fn rust_sg2_serialize_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: serialize_source_field_source_text,
+        target: rust_inhabitant_atom(id: rust_sg2_type_alias_literal)
+      )
+    ]
+  }
+}
+
+fn rust_sg2_type_expr_target_model() -> TargetModel {
+  TargetModel {
+    bundle: rust_sg2_type_expr_target_model_node(),
+    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    binding_spellings: rust_sg2_binding_spellings(),
+    authority_source_text: rust_sg2_type_alias_text
+  }
+}
+
+data rust_binding_sg5_non_ordable: Symbol = rust_binding_sg5_non_ordable
+
+fn rust_sg5_non_ordable_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: rust_binding_sg5_non_ordable } },
+    children: []
+  }
+}
+
+// SG-5 probe: Set<NonOrdable> as Cardinality(set_carrier, NonOrdable).
+fn rust_sg5_set_non_ordable_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      Edge { label: Positional, target: target_collection_set_carrier_node() },
+      Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }
+    ]
+  }
+}
+
+// SG-2 probe: Rc<FooBar<X, Y>> as Instantiation(Rc, Instantiation(FooBar, X, Y)).
+fn rust_sg2_rc_foobar_xy_emitted() -> Node {
+  target_type_expr_instantiation_emitted(
+    form: rust_type_expression_projection().instantiation_form,
+    head: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_rc
+    ),
+    args: [
+      target_type_expr_instantiation_emitted(
+        form: rust_type_expression_projection().instantiation_form,
+        head: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_foobar
+        ),
+        args: [
+          target_type_expr_atom_emitted(
+            form: rust_type_expression_projection().atom_form,
+            identity: rust_binding_sg2_x
+          ),
+          target_type_expr_atom_emitted(
+            form: rust_type_expression_projection().atom_form,
+            identity: rust_binding_sg2_y
+          )
+        ]
+      )
+    ]
+  )
+}
+
+fn rust_sg2_instantiation_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: rust_binding_sg2_rc } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Instantiation },
+          children: [
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_foobar } },
+                children: []
+              }
+            },
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_x } },
+                children: []
+              }
+            },
+            Edge {
+              label: Positional,
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: rust_binding_sg2_y } },
+                children: []
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+fn rust_sg2_atom_node(binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: []
+  }
+}
+
+fn rust_sg2_arrow_xy_emitted() -> Node {
+  target_type_expr_arrow_emitted(
+    form: rust_type_expression_projection().arrow_form,
+    inputs: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: rust_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    output: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_y
+    )
+  )
+}
+
+fn rust_sg2_arrow_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_y) }
+    ]
+  }
+}
+
+fn rust_sg2_binary_fn_source_type_node() -> Node {
+  algebra_binary_fn_node(
+    domain: rust_sg2_atom_node(binding: rust_binding_sg2_x),
+    codomain: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+  )
+}
+
+fn rust_sg2_arrow_malformed_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: rust_binding_sg2_x) }
+    ]
+  }
+}
+
+fn rust_sg2_conj_xy_emitted() -> Node {
+  target_type_expr_record_emitted(
+    form: rust_type_expression_projection().conj_form,
+    fields: [
+      TargetTypeExprFieldSlot {
+        label: rust_binding_sg2_x,
+        type_expr: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_x
+        )
+      },
+      TargetTypeExprFieldSlot {
+        label: rust_binding_sg2_y,
+        type_expr: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_y
+        )
+      }
+    ]
+  )
+}
+
+fn rust_sg2_conj_source_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_binding_sg2_x, target: rust_sg2_atom_node(binding: rust_binding_sg2_x)),
+      rust_named_edge(name: rust_binding_sg2_y, target: rust_sg2_atom_node(binding: rust_binding_sg2_y))
+    ]
+  }
+}
+
+fn rust_sg2_sum_xy_emitted() -> Node {
+  target_type_expr_sum_emitted(
+    form: rust_type_expression_projection().disj_form,
+    variants: [
+      TargetTypeExprVariantSlot {
+        label: rust_binding_sg2_x,
+        type_expr: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_x
+        )
+      },
+      TargetTypeExprVariantSlot {
+        label: rust_binding_sg2_y,
+        type_expr: target_type_expr_atom_emitted(
+          form: rust_type_expression_projection().atom_form,
+          identity: rust_binding_sg2_y
+        )
+      }
+    ]
+  )
+}
+
+fn rust_sg2_emitted_without_named_edge(base: Node, field: Symbol) -> Node {
+  Node {
+    kind: base.kind,
+    children: fold(base.children, init: Empty, f: fn(acc, e) {
+      match e.label {
+        Named { name: n } =>
+          if n == field {
+            acc
+          } else {
+            list_snoc_item(xs: acc, item: e)
+          }
+        Positional => list_snoc_item(xs: acc, item: e)
+      }
+    })
+  }
+}
+
+fn rust_sg2_malformed_atom_missing_surface_emitted() -> Node {
+  rust_sg2_emitted_without_named_edge(
+    base: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_x
+    ),
+    field: target_type_expr_field_surface
+  )
+}
+
+fn rust_sg2_malformed_atom_duplicate_surface_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: target_type_expr_surface_edge(
+        surface: rust_type_expression_projection().atom_form.surface
+      )
+    )
+  }
+}
+
+fn rust_sg2_malformed_atom_wrong_surface_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: rust_sg2_emitted_without_named_edge(base: base, field: target_type_expr_field_surface).children,
+      item: target_type_expr_surface_edge(surface: rust_binding_sg2_bogus_meta)
+    )
+  }
+}
+
+fn rust_sg2_malformed_atom_extra_named_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: rust_named_edge(
+        name: rust_binding_sg2_bogus_named,
+        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+      )
+    )
+  }
+}
+
+fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: Edge {
+        label: Positional,
+        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+      }
+    )
+  }
+}
+
+fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
+  let base = target_type_expr_atom_emitted(
+    form: rust_type_expression_projection().atom_form,
+    identity: rust_binding_sg2_x
+  )
+  Node {
+    kind: base.kind,
+    children: fold(base.children, init: Empty, f: fn(acc, e) {
+      match e.label {
+        Positional => acc
+        _ => list_snoc_item(xs: acc, item: e)
+      }
+    })
+  }
+}
+
+fn rust_sg2_malformed_arrow_one_positional_emitted() -> Node {
+  target_type_expr_arrow_emitted(
+    form: rust_type_expression_projection().arrow_form,
+    inputs: Empty,
+    output: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: rust_binding_sg2_x
+    )
+  )
+}
+
+fn rust_sg2_malformed_instantiation_zero_positional_emitted() -> Node {
+  target_type_expr_wrapped_emitted(
+    kind: TargetTypeExprInstantiation,
+    surface: rust_type_expression_projection().instantiation_form.surface,
+    children: Empty
+  )
+}
+
+fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {
+  let base = rust_sg2_conj_xy_emitted()
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: Edge {
+        label: Positional,
+        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+      }
+    )
+  }
+}
+
+fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
+  let base = rust_sg2_sum_xy_emitted()
+  Node {
+    kind: base.kind,
+    children: list_snoc_item(
+      xs: base.children,
+      item: Edge {
+        label: Positional,
+        target: rust_sg2_atom_node(binding: rust_binding_sg2_y)
+      }
+    )
   }
 }

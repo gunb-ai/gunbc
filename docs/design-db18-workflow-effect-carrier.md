@@ -184,6 +184,18 @@ pub struct BindNode {
 `Dag` accessors pattern-match both behaviors:
 
 ```rust
+// file-scoped helper in `src/v3/compiler/src/dag.rs`
+fn upsert_lane2_workflow_on_node(
+    slot: &mut Option<Box<WorkflowEffect>>,
+    workflow: WorkflowEffect,
+) -> bool {
+    match slot.as_deref() {
+        None => { *slot = Some(Box::new(workflow)); true }
+        Some(existing) if *existing == workflow => true,
+        Some(_) => false,  // conflict — no silent overwrite
+    }
+}
+
 impl Dag {
     pub fn try_register_lane2_workflow_effect(
         &mut self,
@@ -191,8 +203,8 @@ impl Dag {
         workflow: WorkflowEffect,
     ) -> bool {
         match self.nodes.get_mut(root.index()) {
-            Some(Behavior::Value(v)) => { v.lane2_workflow = Some(Box::new(workflow)); true }
-            Some(Behavior::Bind(b))  => { b.lane2_workflow = Some(Box::new(workflow)); true }
+            Some(Behavior::Value(v)) => upsert_lane2_workflow_on_node(&mut v.lane2_workflow, workflow),
+            Some(Behavior::Bind(b))  => upsert_lane2_workflow_on_node(&mut b.lane2_workflow, workflow),
             _ => false,  // other Behavior kinds cannot host a WorkflowEffect
         }
     }
@@ -212,7 +224,7 @@ One workflow per root node, keyed by `NodeId`. `workflow_idempotency::analyze_wo
 **Authority contract (R2, live in tree):**
 
 - **One `WorkflowEffect` per workflow-root node.** The root must be a `Value` or `Bind` behavior; other `Behavior` variants cannot host the carrier. The root is identified by `NodeId`; the `lane2_workflow` field holds at most one `WorkflowEffect`. No `Dag.workflows: List<...>` sidecar; the carrier is attached to the node it describes.
-- **Writes.** `Dag::try_register_lane2_workflow_effect` is the staging/test write path today; **future lowering** will also populate `lane2_workflow`. Re-registration overwrites in the current implementation.
+- **Writes.** `Dag::try_register_lane2_workflow_effect` is the staging/test write path today; **future lowering** will also populate `lane2_workflow`. Re-registration is verify-first upsert: create when absent, accept when equal, return `false` on conflict (no silent overwrite) — see `upsert_lane2_workflow_on_node` in `src/v3/compiler/src/dag.rs`.
 - **Readers.** Every consumer reads via `Dag::lane2_workflow_effect_at(&root: &NodeId)` (matches substrate accessor emission — explicit boundary with `node_opt` / `port_opt`).
 - **Reflection.** `lane2_workflow` is declared on `ValueNode` / `BindNode` in `substrate.dag` and is readable from `.dag` via `lane2_workflow_at` + per-target realizations (e.g. `rust.dag`). Part 3 remains: user **surface** authoring (`data my_flow: WorkflowEffect = …`) end-to-end.
 

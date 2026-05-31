@@ -3,7 +3,7 @@
 // Scope: cost lens — symbolic cost composition with target-realization.
 // Anchor: THESIS Cost dimension §1.2 + per-target realization in extdeps/languages/*
 //
-// U2 (operator-ratified 2026-05-15) — cost is TOTAL over the closed
+// U2 (ratified 2026-05-15) — cost is TOTAL over the closed
 // kernel. SymbolicCost is defined at the kernel level (the 6 connectives
 // × 5 behaviors), NOT per surface-feature. There is NO per-feature cost
 // opt-in: anything expressible is kernel-composed, so it has a cost by

@@ -111,7 +111,7 @@ because v3 failed at exactly this surface. v3 workers hit hard
 decisions, made local choices to keep moving, and the local choices
 accumulated into substrate drift that took operator intervention to
 catch. v4's discipline removes the drift surface at its source: every
-hard decision is operator-tier or it doesn't get made.
+hard decision is top-tier or it doesn't get made.
 
 Stopping is not a failure mode for a worker. It is the correct
 behavior when the brief or substrate is insufficient. The failure
@@ -127,7 +127,7 @@ The shape is the structural fix to v3's failure mode. Every constraint exists be
 - **Escalation triggers explicit** — v3 had no clear "stop and surface" discipline; here it's a list, and triggering escalation is a feature, not a failure.
 
 (The former "WorkerOutput instance with `dissolves` field" point was removed
-2026-05-15, operator-ratified: the work-direction meta-layer
+2026-05-15, ratified: the work-direction meta-layer
 (`workflow/worker_output.dag` et al.) was cut — the project does not model
 its own work-direction, and the compiler model self-justifies. v3's
 paper-shrink failure mode is now contained by the immutable-contract +

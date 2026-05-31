@@ -69,6 +69,11 @@ fn write_github_output(path: &str, flags: CiComponentAffected) -> io::Result<()>
     writeln!(file, "testclaim_corpus={}", flags.testclaim_corpus)?;
     writeln!(file, "workflow_policy={}", flags.workflow_policy)?;
     writeln!(file, "release_distribution={}", flags.release_distribution)?;
+    writeln!(
+        file,
+        "release_distribution_only={}",
+        flags.release_distribution_only
+    )?;
     Ok(())
 }
 
@@ -136,6 +141,14 @@ fn main() -> ExitCode {
     eprintln!(
         "release_distribution (RELEASE §5 parity smoke): {}",
         if flags.release_distribution {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+    eprintln!(
+        "release_distribution_only (RELEASE §5 skip phase1 rung): {}",
+        if flags.release_distribution_only {
             "yes"
         } else {
             "no"

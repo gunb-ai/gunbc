@@ -55,8 +55,69 @@ import v4.std.verification {
   generated_claim_anchor,
   manual_claim_anchor
 }
-import v4.std.refinement { Refined }
+import v4.std.diagnostic { Accepted, port_locus, Locus, Rejected }
+import v4.std.refinement {
+  Refined,
+  VacuousValidation,
+  vacuous_admits_marker,
+  Validation,
+  refine,
+  refined_vacuous_stub_pack
+}
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
+
+
+data refinement_preservation_stub_locus_port: Symbol = refinement_preservation_stub_locus_port
+data refinement_preservation_stub_invalid: Symbol = refinement_preservation_stub_invalid
+
+
+fn refinement_preservation_stub_locus() -> Locus {
+  port_locus(port: refinement_preservation_stub_locus_port)
+}
+
+
+// Intentionally trivial: T-19 wishlist stub routes refinement preservation through refine (placeholder).
+// 🟡 gated — feature:refinement-preservation-stub-refine-placeholder — bind T-19 testgen follow-up — dissolve-on-arrival: replace admits=true with a real List<Node> predicate or delete the stub once the refinement-preservation generator emits from substrate; forbidden: permanent vacuous refinement without a dissolution receipt.
+fn refinement_preservation_stub_admits(xs: List<Node>) -> Bool {
+  true
+}
+
+
+data refinement_preservation_stub_validation: Validation<List<Node>> = Validation {
+  reason: refinement_preservation_stub_invalid,
+  admits: refinement_preservation_stub_admits
+}
+
+
+// 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-19 testgen follow-up
+// with complexity (T-12); dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
+data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
+  reason: refinement_preservation_stub_invalid,
+  vacuous: vacuous_admits_marker
+}
+
+
+// Generator anchor: vacuous admits=true stub — refine accepts; pack helper is exhaustive-match only.
+// 🟡 gated — feature:refinement-preservation-stub-fallback — bind T-19 testgen follow-up — dissolve-on-arrival: replace oracle pack with Witness unwrap at the generator boundary; forbidden: permanent vacuous refinement without a dissolution receipt.
+fn refinement_preservation_stub_generator_refined_terminal() -> Refined<List<Node>> {
+  refined_vacuous_stub_pack(
+    base: [stub_empty_conj],
+    by: refinement_preservation_stub_vacuous_validation,
+    at: refinement_preservation_stub_locus()
+  )
+}
+
+
+fn refinement_preservation_stub_generator_refined() -> Refined<List<Node>> {
+  match refine(
+    base: [stub_empty_conj],
+    by: refinement_preservation_stub_validation,
+    at: refinement_preservation_stub_locus()
+  ) {
+    Accepted { value: refined, diagnostics: _ } => refined
+    Rejected { diagnostics: _ } => refinement_preservation_stub_generator_refined_terminal()
+  }
+}
 
 
 // 🟡 gated — coproduct dissolution (docs/modeling-discipline.md Practice 4) — feature:t19-generator-oracle-basis-carrier — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — owner:T-19 testgen follow-up — dissolve-on-arrival: delete TestgenOracleBasis when each wishlist arm is replaced by its category-specific generated corpus and that corpus carries oracle basis through the concrete generator helper or emitted TestClaim shape; forbidden: permanent parallel oracle-category authority in the wishlist ledger.
@@ -184,7 +245,7 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
     anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
     slot: RefinementPreservation {
       subject: RefinementPreservationSubject {
-        refined: Refined { base: [stub_empty_conj] },
+        refined: refinement_preservation_stub_generator_refined(),
         original: [stub_empty_conj],
       },
     }

@@ -19,11 +19,32 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import v4.std.algebra { Empty, list_snoc_item }
 import v4.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
 
 
 data named_child_missing: Symbol = named_child_missing
 data named_child_ambiguous: Symbol = named_child_ambiguous
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
+fn node_positional_child_targets(node: Node) -> List<Node> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Positional => list_snoc_item(xs: acc, item: e.target)
+      Named { name: _ } => acc
+    }
+  })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-labeled-child-edges — bind node://adhoc-sg2-labeled-child-edges — dissolve-on-arrival: substrate canonical labeled-child edge projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query.
+fn node_labeled_child_edges(node: Node) -> List<Edge> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => list_snoc_item(xs: acc, item: e)
+      Positional => acc
+    }
+  })
+}
 
 
 // 🟢 grounded — canonical single-named-edge-target lookup via name_occurrences uniqueness gate
