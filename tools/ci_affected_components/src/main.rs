@@ -66,6 +66,7 @@ fn write_github_output(path: &str, flags: CiComponentAffected) -> io::Result<()>
     writeln!(file, "v2={}", flags.v2)?;
     writeln!(file, "v3={}", flags.v3)?;
     writeln!(file, "v4={}", flags.v4)?;
+    writeln!(file, "testclaim_corpus={}", flags.testclaim_corpus)?;
     writeln!(file, "workflow_policy={}", flags.workflow_policy)?;
     writeln!(file, "release_distribution={}", flags.release_distribution)?;
     writeln!(
@@ -128,6 +129,10 @@ fn main() -> ExitCode {
         } else {
             "no (skipping v4 bootstrap test)"
         }
+    );
+    eprintln!(
+        "testclaim_corpus (T-22 corpus bridge): {}",
+        if flags.testclaim_corpus { "yes" } else { "no" }
     );
     eprintln!(
         "workflow_policy (Gate #103 surface): {}",

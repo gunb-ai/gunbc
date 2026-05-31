@@ -244,6 +244,15 @@ fn ci_upsert_test_claim_ref_input(claim_id: Symbol) -> UpsertInputRef {
   TestClaimRef { claim_id: claim_id }
 }
 
+// W2.3 Bucket E — `UpstreamUpsert` over landed job shadow `CiStepId`s (compiler-spine shadow registry §6).
+fn ci_upsert_upstream_input(step_id: CiStepId) -> UpsertInputRef {
+  UpstreamUpsert { step_id: step_id }
+}
+
+fn ci_upsert_upstream_job_input(job: CiJobId) -> UpsertInputRef {
+  ci_upsert_upstream_input(step_id: JobStep { job: job, step: job })
+}
+
 type CiJobId = Symbol
 type CiGateId = Symbol
 type CiCommandId = Symbol
@@ -332,13 +341,14 @@ type SelectionDecision
 // Receipt field alias — single authority with `v4.std.change` `AffectedDependency`.
 type AffectedNode = AffectedDependency
 
-// RULING-1: 🟢 pretty-much-done — GitHub Actions `affected` job outputs (v2/v3/v4/workflow_policy/release_distribution).
+// RULING-1: 🟢 pretty-much-done — GitHub Actions `affected` job outputs (v2/v3/v4/testclaim_corpus/workflow_policy/release_distribution/release_distribution_only).
 // Structural replacement for scripts/detect-affected-components.sh (T-21/T-24); host transport:
 // `cargo run -p ci_affected_components --bin detect-ci-affected-components` (must stay aligned with these predicates).
 type CiComponentAffected {
   v2: Bool
   v3: Bool
   v4: Bool
+  testclaim_corpus: Bool
   workflow_policy: Bool
   release_distribution: Bool
   release_distribution_only: Bool
@@ -504,9 +514,9 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
 })
 
 
-// ── W2.3 Phase 1.5 — CiUpsertStep rows (Buckets A+B+C landed job slices) ───────────────────
-// In-scope: `ci_upsert_steps_buckets_a_b_c_in_scope_step_ids` (A FileSet + B FileSet/TestClaimRef + C LensOutputRef).
-// Out-of-scope: `ci_upsert_steps_buckets_a_b_c_out_of_scope_step_ids` (bucket E gates only; §2.1).
+// ── W2.3 Phase 1.5 — CiUpsertStep rows (Buckets A+B+C+E — full `ci_pipeline_step_ids_shadow`) ──
+// In-scope: `ci_upsert_steps_full_in_scope_step_ids` (A–E landed; bijection with shadow universe).
+// Historical partial slices: `ci_upsert_steps_buckets_a_b_c_*` retained for bucket A/B/C landing ledger.
 
 type CiUpsertStepRow {
   step_id: CiStepId
@@ -668,6 +678,146 @@ fn ci_upsert_lens_ci_registry_execution_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_lens_ci_registry_execution: CiUpsertStepSymbol = ci_upsert_lens_ci_registry_execution_mk()
 
+data ci_upsert_structural_v2_compile_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: v2_compile_src_v4)
+]
+
+fn ci_upsert_structural_v2_compile_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_structural_v2_compile_inputs
+  verify: ci_gate_projection_node(
+    g: CiGate {
+      id: structural_v2_compile,
+      job: v2_compile_src_v4,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  create: ci_gate_projection_node(
+    g: CiGate {
+      id: structural_v2_compile,
+      job: v2_compile_src_v4,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  resolve: ci_atom(sym: structural_v2_compile)
+  payload_type: ci_atom(sym: ci_cache_gate_policy_requires_job_tag)
+  }
+}
+
+data ci_upsert_structural_v2_compile: CiUpsertStepSymbol = ci_upsert_structural_v2_compile_mk()
+
+data ci_upsert_lens_ci_registry_signal_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: lens_ci_registry_execution)
+]
+
+fn ci_upsert_lens_ci_registry_signal_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_lens_ci_registry_signal_inputs
+  verify: ci_gate_projection_node(
+    g: CiGate {
+      id: lens_ci_registry_signal,
+      job: lens_ci_registry_execution,
+      run_policy: Always
+    }
+  )
+  create: ci_gate_projection_node(
+    g: CiGate {
+      id: lens_ci_registry_signal,
+      job: lens_ci_registry_execution,
+      run_policy: Always
+    }
+  )
+  resolve: ci_atom(sym: lens_ci_registry_signal)
+  payload_type: ci_atom(sym: ci_cache_gate_policy_always_tag)
+  }
+}
+
+data ci_upsert_lens_ci_registry_signal: CiUpsertStepSymbol = ci_upsert_lens_ci_registry_signal_mk()
+
+data ci_upsert_m1_rust_emit_probe_signal_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)
+]
+
+fn ci_upsert_m1_rust_emit_probe_signal_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_m1_rust_emit_probe_signal_inputs
+  verify: ci_gate_projection_node(
+    g: CiGate {
+      id: m1_rust_emit_probe_signal,
+      job: m1_rust_emit_probe_execution,
+      run_policy: Always
+    }
+  )
+  create: ci_gate_projection_node(
+    g: CiGate {
+      id: m1_rust_emit_probe_signal,
+      job: m1_rust_emit_probe_execution,
+      run_policy: Always
+    }
+  )
+  resolve: ci_atom(sym: m1_rust_emit_probe_signal)
+  payload_type: ci_atom(sym: ci_cache_gate_policy_always_tag)
+  }
+}
+
+data ci_upsert_m1_rust_emit_probe_signal: CiUpsertStepSymbol = ci_upsert_m1_rust_emit_probe_signal_mk()
+
+data ci_upsert_testclaim_corpus_eval_signal_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: testclaim_corpus_eval_execution)
+]
+
+fn ci_upsert_testclaim_corpus_eval_signal_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_testclaim_corpus_eval_signal_inputs
+  verify: ci_gate_projection_node(
+    g: CiGate {
+      id: testclaim_corpus_eval_signal,
+      job: testclaim_corpus_eval_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  create: ci_gate_projection_node(
+    g: CiGate {
+      id: testclaim_corpus_eval_signal,
+      job: testclaim_corpus_eval_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  resolve: ci_atom(sym: testclaim_corpus_eval_signal)
+  payload_type: ci_atom(sym: ci_cache_gate_policy_requires_job_tag)
+  }
+}
+
+data ci_upsert_testclaim_corpus_eval_signal: CiUpsertStepSymbol = ci_upsert_testclaim_corpus_eval_signal_mk()
+
+data ci_upsert_phase1_nat_semiring_rung_gate_signal_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: phase1_nat_semiring_rung_gate_execution)
+]
+
+fn ci_upsert_phase1_nat_semiring_rung_gate_signal_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_phase1_nat_semiring_rung_gate_signal_inputs
+  verify: ci_gate_projection_node(
+    g: CiGate {
+      id: phase1_nat_semiring_rung_gate_signal,
+      job: phase1_nat_semiring_rung_gate_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  create: ci_gate_projection_node(
+    g: CiGate {
+      id: phase1_nat_semiring_rung_gate_signal,
+      job: phase1_nat_semiring_rung_gate_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  resolve: ci_atom(sym: phase1_nat_semiring_rung_gate_signal)
+  payload_type: ci_atom(sym: ci_cache_gate_policy_requires_job_tag)
+  }
+}
+
+data ci_upsert_phase1_nat_semiring_rung_gate_signal: CiUpsertStepSymbol = ci_upsert_phase1_nat_semiring_rung_gate_signal_mk()
+
 data ci_upsert_steps: List<CiUpsertStepRow> = [
   CiUpsertStepRow {
     step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
@@ -699,6 +849,37 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
     step_id: JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution },
     step: ci_upsert_lens_ci_registry_execution,
     inputs: ci_upsert_lens_ci_registry_execution_inputs
+  },
+  CiUpsertStepRow {
+    step_id: GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
+    step: ci_upsert_structural_v2_compile,
+    inputs: ci_upsert_structural_v2_compile_inputs
+  },
+  CiUpsertStepRow {
+    step_id: GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
+    step: ci_upsert_lens_ci_registry_signal,
+    inputs: ci_upsert_lens_ci_registry_signal_inputs
+  },
+  CiUpsertStepRow {
+    step_id: GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+    step: ci_upsert_m1_rust_emit_probe_signal,
+    inputs: ci_upsert_m1_rust_emit_probe_signal_inputs
+  },
+  CiUpsertStepRow {
+    step_id: GateStep {
+      job: testclaim_corpus_eval_execution,
+      gate: testclaim_corpus_eval_signal
+    },
+    step: ci_upsert_testclaim_corpus_eval_signal,
+    inputs: ci_upsert_testclaim_corpus_eval_signal_inputs
+  },
+  CiUpsertStepRow {
+    step_id: GateStep {
+      job: phase1_nat_semiring_rung_gate_execution,
+      gate: phase1_nat_semiring_rung_gate_signal
+    },
+    step: ci_upsert_phase1_nat_semiring_rung_gate_signal,
+    inputs: ci_upsert_phase1_nat_semiring_rung_gate_signal_inputs
   }
 ]
 
@@ -759,6 +940,26 @@ data ci_upsert_steps_buckets_a_b_c_in_scope_step_ids: List<CiStepId> = ci_step_i
 )
 
 // Bucket E gates only — complement of landed job slice within `ci_pipeline_step_ids_shadow`.
+data ci_upsert_steps_bucket_e_slice_step_ids: List<CiStepId> = [
+  GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
+  GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
+  GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+  GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
+  GateStep {
+    job: phase1_nat_semiring_rung_gate_execution,
+    gate: phase1_nat_semiring_rung_gate_signal
+  }
+]
+
+// Full W2.3 universe — A+B+C job rows (#4055/#4066/#4067) + E gate rows (this slice).
+data ci_upsert_steps_full_in_scope_step_ids: List<CiStepId> = ci_step_id_list_append_items(
+  base: ci_upsert_steps_buckets_a_b_c_in_scope_step_ids,
+  more: ci_upsert_steps_bucket_e_slice_step_ids
+)
+
+data ci_upsert_steps_full_out_of_scope_step_ids: List<CiStepId> = []
+
+// Historical partial close — bucket E gates were out-of-scope at A+B+C landing (#4055/#4067).
 data ci_upsert_steps_buckets_a_b_c_out_of_scope_step_ids: List<CiStepId> = [
   GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
   GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
@@ -2272,22 +2473,37 @@ fn ci_upsert_rows_match_job_shadow_ids(rows: List<CiUpsertStepRow>, jobs: List<C
 }
 
 
+fn ci_upsert_step_row_gate_shadow_step_id_ok_for_gate(row: CiUpsertStepRow, ci_gate: CiGate) -> Bool {
+  ci_step_id_eq(left: row.step_id, right: ci_gate_shadow_step_id(ci_gate: ci_gate))
+}
+
+
+fn ci_upsert_step_row_matches_some_gate_shadow(row: CiUpsertStepRow, gates: List<CiGate>) -> Bool {
+  count_where(xs: gates, predicate: fn(g) {
+    ci_upsert_step_row_gate_shadow_step_id_ok_for_gate(row: row, ci_gate: g)
+  }) != 0
+}
+
+
+fn ci_upsert_step_row_matches_pipeline_shadow(row: CiUpsertStepRow, p: CiPipeline) -> Bool {
+  ci_upsert_step_row_matches_some_job_shadow(row: row, jobs: p.jobs)
+    || ci_upsert_step_row_matches_some_gate_shadow(row: row, gates: p.gates)
+}
+
+
+fn ci_upsert_rows_match_pipeline_shadow_ids(rows: List<CiUpsertStepRow>, p: CiPipeline) -> Bool {
+  for_all(xs: rows, predicate: fn(row) {
+    ci_upsert_step_row_matches_pipeline_shadow(row: row, p: p)
+  })
+}
+
+
 fn ci_upsert_steps_slice_bijection_for_pipeline(p: CiPipeline, rows: List<CiUpsertStepRow>) -> Bool {
-  let slice = ci_upsert_steps_buckets_a_b_c_in_scope_step_ids
-  let out_of_scope = ci_upsert_steps_buckets_a_b_c_out_of_scope_step_ids
+  let slice = ci_upsert_steps_full_in_scope_step_ids
   ci_upsert_steps_registry_ids_unique(rows: rows)
     && ci_upsert_steps_registry_matches_declared_slice(rows: rows, slice: slice)
-    && ci_upsert_steps_slice_subset_of_pipeline_shadow(p: p, slice: slice)
-    && ci_upsert_steps_slice_strict_subset_of_pipeline_shadow(p: p, slice: slice)
-    && ci_upsert_rows_match_job_shadow_ids(rows: rows, jobs: p.jobs)
-    && ci_step_ids_subset_of(xs: out_of_scope, universe: ci_pipeline_step_ids_shadow(p: p))
-    && ci_step_id_lists_disjoint(left: slice, right: out_of_scope)
-    && ci_upsert_steps_slice_partition_covers_pipeline_shadow(
-      p: p,
-      slice: slice,
-      out_of_scope: out_of_scope
-    )
-    && ci_upsert_steps_out_of_scope_disjoint_from_registry(rows: rows, out_of_scope: out_of_scope)
+    && ci_step_id_lists_biject(left: slice, right: ci_pipeline_step_ids_shadow(p: p))
+    && ci_upsert_rows_match_pipeline_shadow_ids(rows: rows, p: p)
 }
 
 
@@ -2684,7 +2900,18 @@ fn ci_changed_path_affects_v3(changed: RepoPath) -> Bool {
 
 
 fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
-  ci_repo_path_has_prefix(path: changed, prefix: "src/v4/")
+  changed == "src/v4/bin/main.dag"
+    || changed == "src/v4/workflow/bootstrap.dag"
+    || changed == "src/v4/workflow/ci.dag"
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/compiler/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/std/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/extdeps/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/lens/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/manual/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/generated/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/fixture/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/v2_run_preflight/")
+    || changed == "src/v4/test/coercion_fold_int_rust_fixture.dag"
     || ci_repo_path_has_prefix(path: changed, prefix: "fixtures/v4-mvp1/")
     || changed == "scripts/v4-mvp1-e2e-gate.sh"
     || changed == "scripts/v4-m1-rust-emit-probe.sh"
@@ -2695,6 +2922,11 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
     || ci_repo_path_has_prefix(path: changed, prefix: "dsl/std/")
     || changed == "Cargo.toml"
     || changed == "Cargo.lock"
+}
+
+
+fn ci_changed_path_affects_testclaim_corpus(changed: RepoPath) -> Bool {
+  ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/claim/")
 }
 
 
@@ -2721,6 +2953,7 @@ fn ci_changed_path_triggers_ci_component(changed: RepoPath) -> Bool {
   ci_changed_path_affects_v2(changed: changed)
     || ci_changed_path_affects_v3(changed: changed)
     || ci_changed_path_affects_v4(changed: changed)
+    || ci_changed_path_affects_testclaim_corpus(changed: changed)
     || ci_changed_path_affects_workflow_policy(changed: changed)
     || ci_changed_path_affects_release_distribution(changed: changed)
 }
@@ -2755,6 +2988,7 @@ fn ci_component_affected_fail_closed() -> CiComponentAffected {
     v2: true
     v3: true
     v4: true
+    testclaim_corpus: true
     workflow_policy: true
     release_distribution: true
     release_distribution_only: false
@@ -2767,6 +3001,10 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
     v2: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v2),
     v3: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v3),
     v4: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v4),
+    testclaim_corpus: any(
+      xs: git_diff.changed_paths,
+      predicate: ci_changed_path_affects_testclaim_corpus
+    ),
     workflow_policy: any(
       xs: git_diff.changed_paths,
       predicate: ci_changed_path_affects_workflow_policy
