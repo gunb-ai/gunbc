@@ -370,13 +370,18 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         surface_declares_data(&rung_8, "phase1_nat_semiring_rung8_runtime_value_rows"),
         "{NAT_SEMIRING_RUNG_8_PATH}: runtime roster carrier (7 rows)"
     );
-    assert!(
-        rung_8.items.iter().any(|item| matches!(
-            item,
-            SurfaceItem::Fn { name, .. } if name == "rung8_tier1_eval_run"
-        )),
-        "{NAT_SEMIRING_RUNG_8_PATH}: T-22 tier-1 eval constructor"
-    );
+    for name in [
+        "rung8_tier1_eval_run",
+        "rung8_tier1_assert_passes",
+        "witness_rung8_nat_add_left_identity",
+        "witness_rung8_nat_add_wrong_identity_falsifies_law",
+    ] {
+        assert!(
+            surface_declares_fn(&rung_8, name)
+                || surface_declares_data(&rung_8, name),
+            "{NAT_SEMIRING_RUNG_8_PATH}: missing T-22 witness {name}"
+        );
+    }
 
     let eval_module = parse_module(NAT_SEMIRING_RUNG8_EVAL_DAG, NAT_SEMIRING_RUNG8_EVAL_PATH);
     for name in [
@@ -384,6 +389,7 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         "nat_semiring_rung8_gate",
         "nat_semiring_rung8_zero_deferred",
         "nat_semiring_rung8_all_rows_not_deferred",
+        "witness_nat_semiring_rung8_gate_closed",
     ] {
         assert!(
             surface_declares_fn(&eval_module, name),

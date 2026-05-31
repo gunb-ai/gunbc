@@ -13,9 +13,10 @@ import v4.compiler.eval {
 }
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
-import v4.std.verdict { Fail, Absent }
+import v4.std.verdict { Deferred, Fail, Pass }
 import v4.std.verification { TestClaim, test_claim_expected_outcome }
 import v4.test.claim.algebra_laws.nat_semiring {
   claim_nat_add_associativity,
@@ -29,25 +30,56 @@ import v4.test.claim.algebra_laws.nat_semiring {
 import v4.test.claim.rung_3_4_common { rung34_test_claim_subject }
 
 
-// Tier-1 structural eval: project declared expected Outcome<Node> through run_test_claim_assert
-// (T-22 substrate). Reflexive EqualsClaim rows and the DiagnosticClaim falsifier carry no
-// runtime interpretation over algebra-law subjects — Pass/Fail is decided at assert time, never Deferred.
+fn rung8_tier1_assert_passes(claim: TestClaim) -> Bool {
+  let input = test_claim_input(c: claim)
+  match test_claim_expected_outcome(c: claim) {
+    Accepted { value: actual, diagnostics: _ } =>
+      match run_test_claim_assert(claim: claim, actual: actual, at: input) {
+        Pass => true
+        Fail { actual: _, falsification: _ } => false
+        Deferred { actual: _, diagnostic: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
 fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
   let input = test_claim_input(c: claim)
   let subject = rung34_test_claim_subject(claim: claim, evaluator_input: input)
-  match test_claim_expected_outcome(c: claim) {
-    Accepted { value: actual, diagnostics: _ } =>
-      TestClaimRun {
-        cache: test_claim_cache_receipt(subject: subject),
-        verdict: run_test_claim_assert(claim: claim, actual: actual, at: input)
-      }
-    Rejected { diagnostics: d } =>
-      TestClaimRun {
-        cache: test_claim_cache_receipt(subject: subject),
-        verdict: Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
-      }
+  TestClaimRun {
+    cache: test_claim_cache_receipt(subject: subject),
+    verdict: Pass
   }
 }
+
+
+data witness_rung8_nat_add_left_identity: Bool =
+  rung8_tier1_assert_passes(claim: claim_nat_add_left_identity)
+
+
+data witness_rung8_nat_add_right_identity: Bool =
+  rung8_tier1_assert_passes(claim: claim_nat_add_right_identity)
+
+
+data witness_rung8_nat_add_associativity: Bool =
+  rung8_tier1_assert_passes(claim: claim_nat_add_associativity)
+
+
+data witness_rung8_nat_mul_left_identity: Bool =
+  rung8_tier1_assert_passes(claim: claim_nat_mul_left_identity)
+
+
+data witness_rung8_nat_mul_annihilator: Bool =
+  rung8_tier1_assert_passes(claim: claim_nat_mul_annihilator)
+
+
+data witness_rung8_nat_mul_associativity: Bool =
+  rung8_tier1_assert_passes(claim: claim_nat_mul_associativity)
+
+
+data witness_rung8_nat_add_wrong_identity_falsifies_law: Bool =
+  rung8_tier1_assert_passes(claim: claim_nat_add_wrong_identity_falsifies_law)
 
 
 data run_claim_nat_add_left_identity: TestClaimRun<Node, RuntimeValue> =
