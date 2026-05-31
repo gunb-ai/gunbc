@@ -95,7 +95,7 @@ import v2.compiler.infer_method {
 import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
-  ItemInfo, DataItem
+  ItemInfo, DataItem, TypeItem
 }
 import v2.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
@@ -1269,6 +1269,31 @@ fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
     None => false
   }
   if is_data { to_snake(n) } else { n }
+}
+
+// Imported graph type names must not participate in enum variant-parent expansion
+// (e.g. String is a type in v4.std.text but also a variant of GoScalarKind in go.dag).
+fn is_graph_type_name(name: String, registry: Map<String, ItemInfo>) -> Bool {
+  match map_get(registry, name) {
+    Some { value: info } => info.kind == TypeItem
+    None => false
+  }
+}
+
+fn symbol_defining_mod_filename(name: String, registry: Map<String, ItemInfo>, import_mod: String) -> String {
+  match map_get(registry, name) {
+    Some { value: info } => module_to_filename(name: info.module_name)
+    None => import_mod
+  }
+}
+
+fn emit_pub_use_from_module(mod_filename: String, names: List<String>, registry: Map<String, ItemInfo>) -> String {
+  if names |> count == 0 {
+    ""
+  } else {
+    let names_str = names |> map(n => emit_import_name(n: n, registry: registry)) |> join(separator: ", ")
+    concat(rust_visibility_prefix(), "use crate::", mod_filename, "::{", names_str, "};")
+  }
 }
 
 fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {

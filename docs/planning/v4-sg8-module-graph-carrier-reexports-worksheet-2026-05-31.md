@@ -1,0 +1,107 @@
+# v4 SG-8 Worksheet — Module graph + carrier re-exports
+
+> **Status:** WORKSHEET DRAFT — worker session `sunny-cat-161` (Target Realization lane under `keen-heron-687`); Modeling DFS §8 sign-off pending.
+> **Date:** 2026-05-31
+> **Dispatch anchor:** `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §5 (SG-8 ~796 E0425+E0432+E0433); `#4086` routing; fresh probe `7181` lines / **808** SG-8-family (`485+240+83`).
+> **Primary consumer:** `src/v2/05_emit_rust.dag` `emit_imports` + generic type-alias emission (M1 v2 Rust emit path over full `src/v4` tree).
+> **Canonical modeling home (export facts):** `src/v4/std/target_model.dag` (`v4.std.target_model`) for cross-target export-surface vocabulary; **live M1 fix lands in v2 emit** until `06_translate` owns Rust module files.
+
+---
+
+## Mechanical dispatch rule
+
+> **No SG-8 implementation worker may land until this worksheet is complete and Modeling DFS Manager–approved.**
+
+Acceptance is **§4 falsification probes**, not E0425/E0432/E0433 count reduction on the M1 probe.
+
+---
+
+## §10.0-adapted worksheet
+
+```text
+SG class:               SG-8
+Representative emitted failure:
+  // Import site: v4.compiler.target_carriers (imports String from v4.std.text)
+  pub use crate::v4_std_text::{GoScalarKind};
+  use crate::v4_std_text::GoScalarKind::{String};
+  pub type TargetSource = FreeMonoid<Char>;
+  // rustc E0432: GoScalarKind not in v4_std_text; String is a type alias there, not a variant.
+
+  // Import site: v4.compiler.emit (imports TargetSource from target_carriers)
+  pub use crate::v4_compiler_target_carriers::{CarrierKind};
+  use crate::v4_compiler_target_carriers::CarrierKind::{TargetSource};
+  // rustc E0432: CarrierKind lives in v4.std.pipeline, not target_carriers.
+
+  // Import site: many modules
+  pub use crate::v4_std_collection::{List};
+  // rustc E0432: List<T> = FreeMonoid<T> generic alias never emitted in collection.rs
+
+Immediate local patch:
+  - Hand-add pub use lines to emitted crate root / shim modules.
+  - Re-export CarrierKind from target_carriers.dag (duplicate authority).
+  - Per-error mod rs patch table keyed by unresolved import spelling.
+Why that patch is forbidden:
+  - INVARIANTS P2: parallel authority — export surface must be derived from resolve/admission facts, not duplicated in shims.
+  - Name-keyed tables (CarrierKind, List, GoScalarKind, …) calcify and do not scale to new carriers/modules.
+  - Hides two independent emit bugs: (a) variant-parent confusion on type imports; (b) missing generic type-alias emission.
+DFS path:
+  std/ authority:
+    - CarrierKind / PipelineStage: src/v4/std/pipeline.dag
+    - List / Map / Set aliases: src/v4/std/collection.dag
+    - TargetModelBundle: src/v4/std/target_model.dag
+    - Char / String: src/v4/std/text.dag
+    - GoScalarKind: src/v4/extdeps/languages/go.dag (not std.text)
+  extdeps/language authority:
+    - Rust module templates: dsl/extdeps/languages/rust/imports.dag (templates only — no export graph)
+    - PubInPath / RustVisibility: src/v4/extdeps/languages/rust.dag (T-28 residual per TASKS.md)
+  compiler stage consuming it:
+    - v2 `emit_imports` in src/v2/05_emit_rust.dag (M1 full-tree emit)
+    - v4 `03_name_resolve.dag` owns admission/export binding (T-28-B); emit must consume **defining module**, not import-site module
+  existing scaffold/dissolution notes:
+    - T-28 dissolved catalog carrier; T-28-B admission in 03_name_resolve.dag
+    - TASKS.md T-28 residual: PubInPath visibility authority before PubInPath consumers execute
+Deepest unsound boundary:
+  Rust import emission treats every imported spelling as a potential enum variant, resolves variant parents against the **import statement's module**, and re-exports parent + child from that module. Type imports (registry `TypeItem`) and defining-module boundaries are ignored. Separately, parametric type aliases (`type List<T> = …`) classify as `type_decl` and emit nothing.
+Systemic fix:
+  (1) emit_imports: skip variant-parent expansion for graph type names (`ItemInfo.kind == TypeItem`); resolve `pub use` / variant paths from **defining** `ItemInfo.module_name`, not import site.
+  (2) emit_typed_item: emit `pub type Foo<T> = …` for parametric type aliases (`is_type_decl_item` + alias rhs).
+  (3) Follow-on (out of scope this PR): `TargetModuleExportSurface` row bundle in v4.std.target_model consumed by v4 06_translate when Rust emit migrates off v2.
+Non-goals:
+  - Hand-editing generated `src/v4_*.rs`.
+  - Duplicating CarrierKind / List into shim modules.
+  - SG-4 Char atom realization (separate class; may shrink overlap).
+  - SG-2 generic arity (E0107/E0282).
+  - M1 error-count reduction as acceptance.
+Falsification probe:
+  (F1) Add `import v4.std.text { String }` in a new test module that also imports nothing from go.dag — emitted Rust has **no** `GoScalarKind` use lines.
+  (F2) `import v4.compiler.target_carriers { TargetSource }` — emitted Rust does **not** `pub use` CarrierKind from `v4_compiler_target_carriers`.
+  (F3) `import v4.std.collection { List }` — `v4_std_collection.rs` contains `pub type List<…>`.
+  (F4) New generic alias `type Pair<T> = FreeMonoid<T>` in std test module — emits without v2 emitter edit.
+Metric allowed only as secondary:
+  ~808 SG-8-family lines on 2026-05-31 probe (485 E0425 + 240 E0432 + 83 E0433).
+```
+
+---
+
+## §4 Falsification table (worker PROVEN rows)
+
+| ID | Probe | Receipt |
+| -- | ----- | ------- |
+| F1 | String type import cannot pull GoScalarKind parent | `rg 'GoScalarKind' emitted module` empty for fixture |
+| F2 | TargetSource import does not re-export CarrierKind from wrong mod | `rg 'CarrierKind' v4_compiler_emit.rs` empty |
+| F3 | List alias emitted in collection | `rg 'pub type List' v4_std_collection.rs` present |
+| F4 | New generic alias emits without emitter branch | fixture module in `src/v2/tests` or v4 manual claim |
+
+---
+
+## Tightened worker brief
+
+Implement §10.0 systemic fix (1)+(2) in `src/v2/05_emit_rust.dag`. Re-run `scripts/v4-m1-rust-emit-probe.sh`; attach probe summary + forbidden-pattern greps as PR evidence. Do not claim SG-8 PROVEN on error count alone.
+
+---
+
+## Related artifacts
+
+- `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §5
+- `docs/planning/v4-correctness-ladder-2026-05-30.md` §10.0 template
+- `src/v4/TASKS.md` T-28 / T-28-B / PubInPath residual
