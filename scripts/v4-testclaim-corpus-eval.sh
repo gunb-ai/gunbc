@@ -478,8 +478,33 @@ if ! grep -Eq '\(tally\.fail == Zero\) && \(tally\.deferred == Zero\)' "$corpus_
   exit 1
 fi
 
-# JSON array of the discovered TestClaimRun roster rows (per-row verdict surface).
-run_roster_json="$(printf '%s\n' "${run_rows[@]}" | jq -R . | jq -s -c .)"
+# JSON array of the full manual-corpus TestClaimRun registry (structural item-registry obligation).
+run_registry_json="$(printf '%s\n' "${run_rows[@]}" | jq -R . | jq -s -c .)"
+
+# Verdict-surface roster = EXACTLY the rows witness_manual_corpus_gate_closed folds, i.e. the
+# explicit `manual_corpus_node_runtime_value_rows` consumed by run_manual_testclaim_corpus_eval().
+# This is a strict subset of the full manual registry above; the receipt keeps the two distinct
+# so the tally witness is never paired with rows it does not cover (P2 boundary discipline).
+roster_src="src/v4/test/claim/manual/manual_corpus_roster.dag"
+mapfile -t surface_rows < <(
+  sed -n '/data manual_corpus_node_runtime_value_rows:/,/]/p' "$roster_src" \
+    | grep -oE 'run_[A-Za-z0-9_]+' | sort -u
+)
+if [[ "${#surface_rows[@]}" -eq 0 ]]; then
+  echo "error: ${roster_src}: could not parse manual_corpus_node_runtime_value_rows roster" >&2
+  exit 1
+fi
+# The witness's tally is only meaningful if the runner actually folds that exact roster.
+runner_src="src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
+if ! grep -q 'runs: manual_corpus_node_runtime_value_rows' "$runner_src"; then
+  echo "error: ${runner_src}: run_manual_testclaim_corpus_eval must fold manual_corpus_node_runtime_value_rows" >&2
+  exit 1
+fi
+# Every verdict-surface row must also be present in the compiled item registry (fail-closed).
+for row in "${surface_rows[@]}"; do
+  require_item "$row"
+done
+surface_roster_json="$(printf '%s\n' "${surface_rows[@]}" | jq -R . | jq -s -c .)"
 
 files_emitted="$(grep -E '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$rust_log" | tail -1 | sed -n 's/^compiled: \([0-9]*\) files emitted, 0 diagnostics$/\1/p')"
 
@@ -490,9 +515,13 @@ cat <<JSON
   "verdict_surface_source": "authoring-time const witnesses over the modeled corpus runner (CorpusEvalReport / VerdictTally); NOT CI-executed runtime verdicts",
   "residual_runtime_gate": "per-row runtime TestClaimRun execution (cargo-clean M1 emitted subset OR bootstrap-evaluator corpus path) is load-bearing and out of this author lane; tracked as escalated upward debt",
   "manual_dag_files": ${#manual_files[@]},
-  "testclaim_run_rows": ${#run_rows[@]},
-  "testclaim_run_roster": ${run_roster_json},
+  "manual_corpus_registry_rows": ${#run_rows[@]},
+  "manual_corpus_registry_roster": ${run_registry_json},
+  "verdict_surface_roster_rows": ${#surface_rows[@]},
+  "verdict_surface_roster": ${surface_roster_json},
+  "verdict_surface_roster_note": "the rows manual_corpus_node_runtime_value_rows that run_manual_testclaim_corpus_eval folds; a strict subset of manual_corpus_registry_roster — the tally witness covers ONLY these rows",
   "corpus_tally_gate_witness": "witness_manual_corpus_gate_closed",
+  "corpus_tally_gate_witness_status": "binding present in source with predicate verified by grep; NOT evaluated by this host transport (compile does not gate on Bool witness truth) — see residual_runtime_gate",
   "corpus_gate_predicate": "non-empty roster AND zero Fail AND zero Deferred",
   "rust_emit_files_emitted": ${files_emitted},
   "structural_witness": "PASS"
@@ -503,7 +532,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     echo "### T-22 TestClaim corpus eval — verdict surface (modeled CiUpsertStep)"
     echo ""
-    echo "**execution_status:** \`authoring_time_verdict_surface\` — per-row TestClaimRun roster + modeled corpus tally witness (\`witness_manual_corpus_gate_closed\`, predicate: non-empty AND zero Fail AND zero Deferred). Source is authoring-time const witnesses, NOT CI-executed runtime verdicts; per-row runtime execution remains the escalated residual gate."
+    echo "**execution_status:** \`authoring_time_verdict_surface\` — the modeled corpus tally witness (\`witness_manual_corpus_gate_closed\`, predicate: non-empty AND zero Fail AND zero Deferred) covers the ${#surface_rows[@]}-row \`manual_corpus_node_runtime_value_rows\` roster; the full manual TestClaimRun registry is ${#run_rows[@]} rows. The witness is an authoring-time const verified by source-grep, NOT evaluated by this transport (compile does not gate on Bool witness truth); per-row runtime execution remains the escalated residual gate."
     echo ""
     echo "| receipt | status |"
     echo "| --- | --- |"
@@ -511,9 +540,9 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo "| upstream bootstrap dag emit (0-diagnostic) | PASS |"
     echo "| manual corpus modules + TestClaimRun registry | PASS (${#manual_files[@]} files, ${#run_rows[@]} runs) |"
     echo "| MVP generated-Rust + modeled runner structural witness | PASS |"
-    echo "| modeled corpus tally gate witness (Fail+Deferred surfaced) | PASS |"
+    echo "| corpus tally gate witness (covers ${#surface_rows[@]}-row roster) | DECLARED — source-present + predicate verified; NOT CI-evaluated |"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
 
-echo "T-22 TestClaim corpus verdict-surface eval PASS: ${#manual_files[@]} manual .dag files; ${#run_rows[@]} TestClaimRun rows surfaced via modeled corpus tally witness; upstream M1+bootstrap receipts; per-row runtime execution = escalated residual gate."
+echo "T-22 TestClaim corpus verdict-surface eval PASS: ${#manual_files[@]} manual .dag files; ${#run_rows[@]} TestClaimRun registry rows; verdict-surface tally witness covers ${#surface_rows[@]}-row roster (source-present, not CI-evaluated); per-row runtime execution = escalated residual gate."
 exit 0
