@@ -554,7 +554,10 @@ fn v4_loop_linear_bound_rung8_dag_tokenizes_and_parses_full_fixture_roster() {
         "{LOOP_LINEAR_BOUND_RUNG_8_PATH}: roster rows must thread run_test_claim verdicts (not fabricated Pass)"
     );
 
-    let eval_module = parse_module(LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG, LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH);
+    let eval_module = parse_module(
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG,
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH,
+    );
     for name in [
         "run_loop_linear_bound_rung8_eval",
         "loop_linear_bound_rung8_gate",
@@ -573,7 +576,8 @@ fn v4_loop_linear_bound_rung8_dag_tokenizes_and_parses_full_fixture_roster() {
         "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: authoring-time zero-deferred witness (data binding)"
     );
     assert!(
-        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG.contains("phase4_loop_linear_bound_rung8_runtime_value_rows"),
+        LOOP_LINEAR_BOUND_RUNG8_EVAL_DAG
+            .contains("phase4_loop_linear_bound_rung8_runtime_value_rows"),
         "{LOOP_LINEAR_BOUND_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster"
     );
     assert!(
