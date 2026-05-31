@@ -92,76 +92,6 @@ parallel to predicates, tracked separately per SUPPORTED.md + flavor iv):
   weather demo verification (snappy-bee subtree)
 ```
 
-[Prior ASCII graph removed per cursor RC#2 — visual encoded relaxed P3 bar (multi-target spine) that §3.3 explicitly excludes.]
-
-(rest of §2 retained below for line-number stability — content superseded by dependency-list above)
-
-```
-                           v4-done = 6/6 PROVEN
-                                  ↑
-            ┌─────────┬──────────┼──────────┬──────────┐
-            │         │          │          │          │
-            P1        P2         P3         P4         P5        P6
-   every-other-task corpus-   emit-      bit-id     TestClaim   hand-Rust
-                    compiles  compiles   self-output  passes    reproduction
-                                                                (gated P4+P3)
-            │         │          │          │          │          │
-            │         │          │          │          │          │
-            │         │          │       ┌──┴──┐       │      ┌───┴───┐
-            │         │          │       │     │       │      │       │
-            │         │     ┌────┴────┐  │  P2 │       │      P4      P3
-            │         │     │         │  │  P3 │       │   PROVEN  PROVEN
-            │         │     │   Rust  │  │PROVEN│      │      ↑       ↑
-            │         │     │ emit OK │  └──┬──┘       │  [see P4]  [see P3]
-            │         │     │         │     │          │
-            │         │     │   ┌─────┴───┐ │          │   ┌──────────────┐
-            │         │     │   │ Python  │ │      ┌───┴───┴┐             │
-            │         │     │   │ emit OK │ │      │ rung4-9│             │
-            │         │     │   └────┬────┘ │      │ fixtures│             │
-            │         │     │        │      │      └────┬───┘             │
-            │         │     │        │      │           │                 │
-            │         │     │   ┌────┴───┐  │      ┌────┴────┐            │
-            │         │     │   │ Go     │  │      │ rung4   │            │
-            │         │     │   │ emit OK│  │      │ first   │            │
-            │         │     │   └────┬───┘  │      │ PASS|FAIL│           │
-            │         │     │        │      │      └────┬────┘            │
-            │         │     │        │      │           │                 │
-            │         │  ┌──┴────────┴──────┴┐     ┌────┴────────────┐    │
-            │         │  │ All SG (Symbol/   │     │ run_emit_host   │    │
-            │         │  │ TypeExpr/Coll/    │     │ transport       │    │
-            │         │  │ Lattice/etc.)     │     │ (#4047 in flight)│   │
-            │         │  │ TR carriers       │     └────┬────────────┘    │
-            │         │  │ landed            │          │                 │
-            │         │  └──┬────────────────┘     ┌────┴────────────┐    │
-            │         │     │                      │ runtime-value   │    │
-            │         │     │                      │ rosters (#4046  │    │
-            │         │     │                      │ MERGED ✓)       │    │
-            │         │  ┌──┴───────┐              └─────────────────┘    │
-            │         │  │ SG-1 #3956│                                    │
-            │         │  │ (in flight)│                                   │
-            │         │  └──┬───────┘                                    │
-            │         │     │                                            │
-            │         │  ┌──┴────────────────┐                           │
-            │         │  │ SG-5 ✓ + SG-2 ✓   │                           │
-            │         │  │ + Upsert<T> ✓ +   │                           │
-            │         │  │ CiUpsertStep ✓ +  │                           │
-            │         │  │ SG-7 dissolved ✓  │                           │
-            │         │  └───────────────────┘                           │
-            │         │                                                  │
-        ┌───┴───┐ ┌───┴────────────┐                                     │
-        │"every"│ │ fresh M1 probe │                                     │
-        │ defn  │ │ + reclassify   │                                     │
-        └───────┘ │ tail by missing│                                     │
-                  │ modeled fact   │                                     │
-                  └────────────────┘                                     │
-                                                                         │
-                                              ┌──────────────────────────┘
-                                              │ Wave 3 closure: W3.1
-                                              │ (T-24 ci.yml emit) +
-                                              │ W3.5 (self-emit fixpoint
-                                              │ rung 7 / T-15 close)
-                                              └──────────────────────────
-```
 
 ## §3. Per-predicate work-unit lists
 
@@ -263,13 +193,13 @@ Per burn-down P2 row + #4014 evidence: "advances ci.dag authority, not corpus co
    - Receipt: bootstrap-from-source receipt
 
 [Note: W3.1 / T-24 generated ci.yml emit was previously listed here as P4-B; per operator decision D2 (00:30Z) it homes under P1 / T-24 release-authority lane unless the self-host fixed-point harness explicitly consumes generated CI. Removed from P4 dependency chain.]
-4. **P4-D — fixed-point harness: two consecutive bootstrap runs produce bit-identical output**.
+3. **P4-C — fixed-point harness: two consecutive bootstrap runs produce bit-identical output**.
    - Lane: Self-host/Release (merry-badger-222 successor)
-   - Gating: P4-C
+   - Gating: P4-B
    - Receipt: `docs/audit/v4-self-host-fixpoint-receipt-YYYY-MM-DD.md`
-5. **P4-E — P4 PROVEN ledger entry**.
+4. **P4-D — P4 PROVEN ledger entry**.
    - Lane: Close/Receipt
-   - Gating: P4-D
+   - Gating: P4-C
    - Receipt: P4 PROVEN
 
 ### §3.5. P5 — TestClaim-suite-passes
@@ -423,9 +353,9 @@ Everything else is in flight OR genuinely gated by upstream substrate landing.
 ## §9. Honest framing
 
 - **No time estimate**. Per TASKS.md discipline (no day-estimates) and CODING.md, this doc names work-units and dependencies. Operator + manager bandwidth + external review cadence + substrate complexity all combine to actual elapsed time.
-- **P2-D is the elastic core**. After SG-1 lands and the M1 probe reclassifies the tail, the work-unit count for the remaining error classes becomes measurable. Until then, that fraction of the graph is "many iterations of unknown count."
-- **P4-C is gated on substrate**. Compiler self-bootstrap is meaningful only after P2 + P3 cargo-clean — there is no shortcut.
-- **P5 is the most-decoupled lane**. It can PROVEN well before the P2/P3/P4 chain closes because it operates on a single landed fixture's emitted code.
+- **P3-D is the elastic core**. After SG-1 lands and the M1 probe reclassifies the tail, the per-class work-unit count for the remaining Rust-emit blockers becomes measurable. Until then, that fraction of the graph is "many iterations of unknown count."
+- **P4-B is gated on substrate-PROVEN bars** (compiler-of-record + Rust→binary). Compiler self-bootstrap is meaningful only after P2 + P3 PROVEN — there is no shortcut.
+- **P5-minimum-viable is the most-decoupled milestone**. P5-minimum-viable (one fixture zero-Deferred) can land well before the P2/P3/P4 chain closes because it operates on a single landed fixture's emitted code. **P5 PROVEN itself is suite-wide + structural-bridge-deleted** — that follows after fixture widening + bridge deletion, not at P5-minimum-viable.
 - **Release-state framing** (per TASKS.md no-timeline discipline, no date claim made here): per flavor (iv), v0.1.0 ships with predicates at whatever state they hold; honest alpha labeling absorbs the gap. The path to 6/6 is the predicate dependency graph above, not the release calendar.
 
 ## §10. Open decisions (operator-flagged 00:30Z)
