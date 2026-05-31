@@ -1,10 +1,10 @@
-// std/compute_fabric.dag — Elastic compute fabric (Worksheet A / exploration §4.0f cases 1–8).
+// std/compute_fabric.dag -- Elastic compute fabric (Worksheet A / exploration S4.0f cases 1-8).
 //
 // Authority: docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md
-// Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface.
+// Composition: cache via ExecutionReceipt.output only -- MUST NOT import cache_interface.
 //
 // Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v4.workflow.ci / v4.std.change
-// authority — forward-stubbed as Node until harness wires cross-module checks (P-CF-INGRESS).
+// authority -- forward-stubbed as Node until harness wires cross-module checks (P-CF-INGRESS).
 
 module std.compute_fabric
 
@@ -12,11 +12,11 @@ import std.types { NonEmptyStr, ContentHash, Bool, Int }
 import std.float { Float }
 import std.measure { Measure, Time, Memory, DataRate, One }
 
-// 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
+// [YELLOW] forward -- v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
 type Witness<C> = Node
 type Outcome<T> = Node
 
-// 🟡 forward — v4 ingress / artifact carriers (P-CF-INGRESS).
+// [YELLOW] forward -- v4 ingress / artifact carriers (P-CF-INGRESS).
 type UpsertInputRef = Node
 type ChangeSet = Node
 type ArtifactRef = Node
@@ -33,7 +33,7 @@ type Idempotency = Node
 type IdentityElement = Node
 type InstructionSet = Node
 
-// --- §1.7 supporting enums + measure carriers --------------------------------
+// --- S1.7 supporting enums + measure carriers --------------------------------
 
 type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
@@ -68,7 +68,7 @@ type ComputeArtifactLocality
 
 type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
 
-// --- §1.4 supply records -----------------------------------------------------
+// --- S1.4 supply records -----------------------------------------------------
 
 type StorageMount {
   mount_path: NonEmptyStr
@@ -182,8 +182,9 @@ type ComputeHost {
   network_interfaces: List<NetworkInterface>
 }
 
-type ProcessorCostModel { /* data rows per provider — land with supply rows */ }
-type ProviderCostModel { /* provider-indexed */ }
+// ProcessorCostModel and ProviderCostModel: data rows land with supply proofs.
+type ProcessorCostModel {}
+type ProviderCostModel {}
 
 type CostModel {
   cost_class: CostClass
@@ -227,7 +228,7 @@ fn host_label_for(host: ComputeHost) -> NonEmptyStr {
   host.identity
 }
 
-// --- §1.2 demand -------------------------------------------------------------
+// --- S1.2 demand -------------------------------------------------------------
 
 type ResourceEnvelope {
   cpu: CpuRequirement?
@@ -276,7 +277,7 @@ type WorkDemand {
   effects: List<EffectBoundary>
 }
 
-// --- §1.3 parallelism + budget -----------------------------------------------
+// --- S1.3 parallelism + budget -----------------------------------------------
 
 type ParallelismShape
   = SingleWorkItem
@@ -304,7 +305,7 @@ type ExecutionBudget {
 
 type WatchdogLimit { max_wall: Duration }
 
-// --- §1.5 eligibility --------------------------------------------------------
+// --- S1.5 eligibility --------------------------------------------------------
 
 type DemandDimension
   = DemandCpu
@@ -343,7 +344,7 @@ type ComputeLease {
   eligibility: Witness<ComputeLeaseEligibility>
 }
 
-// 🟡 P-CF-WITNESS — `satisfies` witness derivation lands with supply proofs (cases 7–8).
+// [YELLOW] P-CF-WITNESS -- `satisfies` witness derivation lands with supply proofs (cases 7-8).
 fn satisfies(_supply: ComputeSupplyFacts, _demand: WorkDemand) -> Witness<ComputeLeaseEligibility> {
   satisfies_eligible_witness()
 }
@@ -352,7 +353,7 @@ fn satisfies_eligible_witness() -> Witness<ComputeLeaseEligibility> {
   satisfies_eligible_witness()
 }
 
-// --- §1.1 executable unit + ingress --------------------------------------------
+// --- S1.1 executable unit + ingress --------------------------------------------
 
 type WorkUnit<T> {
   id: WorkUnitId
@@ -364,7 +365,7 @@ type WorkUnit<T> {
 
 fn artifact_refs_from_upsert_inputs(
   _inputs: List<UpsertInputRef>,
-  _change: ChangeSet,
+  _change: ChangeSet
 ) -> List<ArtifactRef> {
   artifact_refs_from_upsert_inputs_empty()
 }
@@ -383,7 +384,7 @@ type ExecutionReceipt<T> {
   finished_at: LogicalTime
 }
 
-// --- §5 falsification fixtures (cases 1–8) -----------------------------------
+// --- S5 falsification fixtures (cases 1-8) -----------------------------------
 
 data supply_srv1_host_identity: HostIdentity = "srv1"
 data supply_srv2_host_identity: HostIdentity = "srv2"
@@ -442,7 +443,7 @@ data supply_srv2: ComputeSupplyFacts = ComputeSupplyFacts {
   observed_performance: []
 }
 
-// Case 2 — Mac mini Darwin surface (no CI schema change).
+// Case 2 -- Mac mini Darwin surface (no CI schema change).
 data supply_mac_mini_os: OperatingSystemSurface = OperatingSystemSurface {
   kernel: Darwin
   distro_or_product: "macOS"
@@ -451,7 +452,7 @@ data supply_mac_mini_os: OperatingSystemSurface = OperatingSystemSurface {
   process_semantics: PosixProcess
 }
 
-// Case 3 — WSL guest surface.
+// Case 3 -- WSL guest surface.
 data supply_wsl_os: OperatingSystemSurface = OperatingSystemSurface {
   kernel: LinuxGuestOnWindows
   distro_or_product: "WSL2"
@@ -489,7 +490,7 @@ data supply_wsl: ComputeSupplyFacts = ComputeSupplyFacts {
   observed_performance: []
 }
 
-// Case 4 — container runtime on supply row (gcloud / ubicloud pattern).
+// Case 4 -- container runtime on supply row (gcloud / ubicloud pattern).
 data supply_gcloud_container_execution: ExecutionSurface = ExecutionSurface {
   os: supply_srv1_linux_os
   isolation: ContainerHermetic
@@ -506,11 +507,11 @@ data supply_gcloud_container: ComputeSupplyFacts = ComputeSupplyFacts {
   observed_performance: []
 }
 
-// Cases 5–7 — demand/supply coordinates and `satisfies` surface (Measure-valued
+// Cases 5-7 -- demand/supply coordinates and `satisfies` surface (Measure-valued
 // demand rows deferred until ByteSize literals land in dsl/std).
 // Case 5: `ResourceEnvelope.gpu` coordinate exists (no `ComputeKind` enum).
-// Case 6–7: `satisfies(supply, demand)` typed; multi-provider proof at harness.
-// Case 8 — fail-closed missing dimension.
+// Case 6-7: `satisfies(supply, demand)` typed; multi-provider proof at harness.
+// Case 8 -- fail-closed missing dimension.
 data falsification_missing_gpu: MissingDemandFact = MissingDemandFact {
   dimension: DemandGpu
   required: "min_vram"
