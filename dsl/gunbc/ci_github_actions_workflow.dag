@@ -656,7 +656,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_CARGO_CHECK_JOBS": "4" },
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: true,
           timeout_minutes: Some { value: 20 }
         }, RunStep {
@@ -705,7 +705,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "480" },
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: true,
           timeout_minutes: Some { value: 35 }
         }, RunStep {
@@ -715,7 +715,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: { "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log" },
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')" },
+          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -725,26 +725,17 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: Some { value: "always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'" },
-          continue_on_error: false,
-          timeout_minutes: none
-        }, UsesStep {
-          name: Some { value: "Cache T-22 TestClaim corpus structural bridge receipt" },
-          id: Some { value: "t22_testclaim_corpus_cache" },
-          uses: { owner: "actions", repo: "cache", ref: "v4" },
-          with: { "path": "${{ runner.temp }}/t22-testclaim-corpus-gate", "key": "t22-testclaim-corpus-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/v4-testclaim-corpus-gate.sh', 'src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml', 'dsl/std/**', 'src/v4/**') }}" },
-          env: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          if_condition: Some { value: "always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "T-22 TestClaim corpus structural bridge — manual .dag corpus" },
+          name: Some { value: "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)" },
           id: none,
-          run: "bash scripts/v4-testclaim-corpus-gate.sh\nmkdir -p \"${RUNNER_TEMP}/t22-testclaim-corpus-gate\"\nprintf 'T-22 TestClaim corpus structural bridge passed for %s\\n' \"${GITHUB_SHA}\" > \"${RUNNER_TEMP}/t22-testclaim-corpus-gate/receipt.txt\"\n",
+          run: "bash scripts/v4-testclaim-corpus-eval.sh",
           shell: Bash,
-          env: { "V4_TESTCLAIM_TIMEOUT_SECS": "480", "V4_TESTCLAIM_REUSE_RUST_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_TESTCLAIM_REUSE_RUST_LOG": "${{ runner.temp }}/v4-rust-emit.compile.log", "V4_TESTCLAIM_REUSE_DAG_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_TESTCLAIM_REUSE_DAG_LOG": "${{ runner.temp }}/v4-bootstrap.log" },
+          env: { "V2_COMPILER": "target/release/gunbc", "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_RUST_EMIT_LOG": "${{ runner.temp }}/v4-rust-emit.compile.log", "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_TESTCLAIM_CORPUS_TIMEOUT_SECS": "480" },
           working_directory: none,
-          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.t22_testclaim_corpus_cache.outputs.cache-hit != 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
           timeout_minutes: Some { value: 15 }
         }],
@@ -876,7 +867,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "v4 receipt (bootstrap gate runs in ci_v4 job)" },
           id: none,
-          run: "echo \"::notice::v4 bootstrap viability + T-22 TestClaim corpus structural bridge ran inside the ci_v4 job when v4 is affected; TestClaim verdict execution remains a T-38 follow-up.\"\n",
+          run: "echo \"::notice::v4 bootstrap viability + modeled TestClaim corpus eval (CiUpsertStep) ran inside ci_v4 when v4/workflow_policy/testclaim_corpus is affected; per-row verdict execution remains T-38-PR2.\"\n",
           shell: Bash,
           env: none,
           working_directory: none,

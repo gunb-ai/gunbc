@@ -2,7 +2,7 @@
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; Wave-0 TestClaim roster selection.
 // Wave-0 partial close (this PR): T-21/T-24 affected-set authority, detect-affected-components.sh dissolution, runner-pool/M1 facts modeled.
 // T-24 CI/YAML authority bridge (emitter wired, hand-authored ci.yml deleted) remains open per src/v4/TASKS.md §T-24 — interim hand ci.yml edits are transport wiring only, not YAML-authority dissolution.
-// Status: filled — declarative core + eager well-formedness + T-21/T-24 component affected-set (dissolves scripts/detect-affected-components.sh via `ci_component_affected_from_git_diff` + `detect-ci-affected-components` host transport) + T-21/T-24 TestClaim roster selection + T-38 dissolution step declared (TestClaimCorpusEvalCommand job/gate/cache-digest; IRT-1 call site — ci_select_from_affected_set narrows roster to content_hash frontier — lands with dissolution PR that replaces scripts/v4-testclaim-corpus-gate.sh).
+// Status: filled — declarative core + eager well-formedness + T-21/T-24 component affected-set (dissolves scripts/detect-affected-components.sh via `ci_component_affected_from_git_diff` + `detect-ci-affected-components` host transport) + T-21/T-24 TestClaim roster selection + P5 Layer 2 structural bridge (positive-Y `ci_upsert_testclaim_corpus_eval_*` + `TestClaimCorpusEvalCommand`; IRT-1 `ci_select_from_affected_set`; cache via `ci_upsert_step_cache_digest` / `content_hash` projection — T-38-PR2 runtime verdict CI remains open).
 
 module v4.workflow.ci
 
@@ -132,7 +132,7 @@ type CiCommand
   | LensCiCommand { required_lenses: List<LensIdV0> }
   | BootstrapStageCompile { produces: Symbol }
   | M1RustEmitProbeCommand
-  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: delete scripts/v4-testclaim-corpus-gate.sh and the paired CI step when the modeled runner evaluates src/v4/test/claim/manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set) — forbidden: setting selection_fn to any other symbol or bypassing narrowing to run full corpus unconditionally.
+  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1) — forbidden: bypassing narrowing to run full corpus unconditionally. Forward (T-38-PR2): amend when modeled runner evaluates manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts in CI.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol }
   // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
   | Phase1NatSemiringRungGateCommand
@@ -292,6 +292,9 @@ data v2_substrate_circular_dep: Symbol = v2_substrate_circular_dep
 data integrity_always_run_interim: Symbol = integrity_always_run_interim
 data v2_substrate_dependency_modeled_in_affected_set: Symbol = v2_substrate_dependency_modeled_in_affected_set
 data ci_gate_run_policy_dissolved_to_receipt: Symbol = ci_gate_run_policy_dissolved_to_receipt
+// P5 §1.2 — bootstrap dag emit is workflow-local until `v4_bootstrap_compile` lands as CiJob in shadow universe.
+data workflow_local_bootstrap_dag_upstream: Symbol = workflow_local_bootstrap_dag_upstream
+data v4_bootstrap_dag_emit_ci_job: Symbol = v4_bootstrap_dag_emit_ci_job
 
 // Phase 2.1 shadow seed — docs/planning/compiler-spine-ci-selection-receipt-shadow-2026-05-30.md §7.
 data ci_always_run_carveouts: List<CiCarveout> = [
@@ -314,6 +317,15 @@ data ci_always_run_carveouts: List<CiCarveout> = [
     reason_code: integrity_always_run_interim,
     reason_detail: "interim Always gate policy; non-blocking probe",
     dissolution_target: ModelMissingSubstrate { what: ci_gate_run_policy_dissolved_to_receipt }
+  },
+  CiCarveout {
+    step_id: JobStep {
+      job: testclaim_corpus_eval_execution,
+      step: testclaim_corpus_eval_execution
+    },
+    reason_code: workflow_local_bootstrap_dag_upstream,
+    reason_detail: "bootstrap dag emit is workflow-local (ci_v4 v4_bootstrap_compile); host transport uses composition-edge V4_BOOTSTRAP_* until bootstrap lands in ci_pipeline for UpstreamUpsert",
+    dissolution_target: ModelMissingSubstrate { what: v4_bootstrap_dag_emit_ci_job }
   }
 ]
 
@@ -454,6 +466,15 @@ data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSign
   script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
   non_blocking: true
   timeout_minutes: 20
+}
+
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — consumer:v4.workflow.ci testclaim_corpus_eval_ci_live_workflow_signal — structural-slice CLOSED: shell bridge deleted + positive-Y CiUpsertStep sole structural authority; forward: T-38-PR2 amends when runtime per-row TestClaimRun verdict CI lands — dissolve-on-arrival: emitted/projected GitHub Actions reads `ci_pipeline`/`TestClaimCorpusEvalCommand` directly and this carrier is deleted; forbidden: adding corpus eval step facts outside `ci_pipeline` + this binding.
+data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
+  binding_smoke_step_name: ""
+  step_name: "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)"
+  script_path: "scripts/v4-testclaim-corpus-eval.sh"
+  non_blocking: false
+  timeout_minutes: 15
 }
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
@@ -619,7 +640,13 @@ data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
 data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/manual/**"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"),
-  ci_upsert_file_set_input(segment: "scripts/v4-testclaim-*")
+  ci_upsert_file_set_input(segment: "scripts/v4-testclaim-corpus-eval.sh")
+]
+
+// #4091 §1.2 — M1 rust emit is upstream compile authority (forbidden: host-owned `gunbc compile --target rust` in corpus eval transport).
+// Bootstrap dag emit: workflow-local — see `ci_always_run_carveouts` row `workflow_local_bootstrap_dag_upstream` (composition-edge V4_BOOTSTRAP_* in ci.yml until `v4_bootstrap_dag_emit_ci_job` lands).
+data ci_upsert_testclaim_corpus_eval_upstream_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)
 ]
 
 fn ci_upsert_testclaim_corpus_eval_claim_ref_inputs() -> List<UpsertInputRef> {
@@ -628,8 +655,14 @@ fn ci_upsert_testclaim_corpus_eval_claim_ref_inputs() -> List<UpsertInputRef> {
   })
 }
 
-fn ci_upsert_testclaim_corpus_eval_execution_inputs_mk() -> List<UpsertInputRef> {
+fn ci_upsert_testclaim_corpus_eval_file_and_claim_inputs_mk() -> List<UpsertInputRef> {
   fold(ci_upsert_testclaim_corpus_eval_claim_ref_inputs(), init: ci_upsert_testclaim_corpus_eval_file_set_inputs, f: fn(acc, item) {
+    list_snoc_item(xs: acc, item: item)
+  })
+}
+
+fn ci_upsert_testclaim_corpus_eval_execution_inputs_mk() -> List<UpsertInputRef> {
+  fold(ci_upsert_testclaim_corpus_eval_file_and_claim_inputs_mk(), init: ci_upsert_testclaim_corpus_eval_upstream_inputs, f: fn(acc, item) {
     list_snoc_item(xs: acc, item: item)
   })
 }
@@ -650,7 +683,9 @@ fn ci_upsert_testclaim_corpus_eval_execution_mk() -> CiUpsertStepSymbol {
     }
   )
   resolve: ci_atom(sym: testclaim_corpus_eval_execution)
-  payload_type: ci_atom(sym: ci_cache_cmd_testclaim_corpus_eval_tag)
+  payload_type: ci_command_projection_node(
+    c: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }
+  )
   }
 }
 
@@ -1110,7 +1145,6 @@ data ci_cache_cmd_ignored_test_tag: Symbol = ci_cache_cmd_ignored_test_tag
 data ci_cache_cmd_lens_ci_tag: Symbol = ci_cache_cmd_lens_ci_tag
 data ci_cache_cmd_bootstrap_compile_tag: Symbol = ci_cache_cmd_bootstrap_compile_tag
 data ci_cache_cmd_m1_probe_tag: Symbol = ci_cache_cmd_m1_probe_tag
-data ci_cache_cmd_testclaim_corpus_eval_tag: Symbol = ci_cache_cmd_testclaim_corpus_eval_tag
 data ci_cache_cmd_phase1_nat_semiring_rung_gate_tag: Symbol = ci_cache_cmd_phase1_nat_semiring_rung_gate_tag
 data ci_cache_gate_policy_always_tag: Symbol = ci_cache_gate_policy_always_tag
 data ci_cache_gate_policy_requires_job_tag: Symbol = ci_cache_gate_policy_requires_job_tag
