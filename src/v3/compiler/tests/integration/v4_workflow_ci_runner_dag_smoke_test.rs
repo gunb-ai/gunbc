@@ -955,6 +955,30 @@ fn v4_workflow_ci_bankruptcy_tier0_legacy_top_level_jobs_deleted() {
 }
 
 #[test]
+fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
+    assert!(
+        CI_YML.contains("needs: [affected, ci_integration, ci_v4]")
+            || CI_YML.contains("needs: [affected, ci_integration, ci_v4]\n"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must not need `discipline` (B1 §3.5 — check-* off Tier-0 critical path)"
+    );
+    assert!(
+        !CI_YML.contains("needs.discipline.result"),
+        "{CI_YML_PATH}: `ci` Validate prerequisites must not fail-closed on discipline"
+    );
+    assert!(
+        CI_YML.contains("needs: [affected]\n    runs-on:")
+            || CI_YML.contains("ci_integration:")
+            && CI_YML.contains("needs: [affected]"),
+        "{CI_YML_PATH}: Tier-0 ci_integration must not need discipline"
+    );
+    assert!(
+        CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_integration\", \"ci_v4\"]")
+            && !CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"discipline\""),
+        "{CI_WORKFLOW_DAG_PATH}: generated workflow must mirror ci.yml (P2 — discipline off aggregator)"
+    );
+}
+
+#[test]
 fn v4_workflow_ci_bankruptcy_tier0_i4_if_matches_live_workflow_binding() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     let i4_binding = data_body(
