@@ -38,6 +38,10 @@ const MANIFEST_PATH: &str = "src/v4/test/claim/manual/manual_anchor_manifest.dag
 const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
+const SG1B_FAILCLOSED_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/sg1b_signature_realization_failclosed.dag");
+const SG1B_FAILCLOSED_PATH: &str =
+    "src/v4/test/claim/manual/sg1b_signature_realization_failclosed.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
 const LBE_GENERATED_DAG: &str =
@@ -406,6 +410,11 @@ fn coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
 #[test]
 fn t22_diagnostic_assert_eval_witnesses_parse() {
     parse_module(DIAGNOSTIC_ASSERT_EVAL_DAG, DIAGNOSTIC_ASSERT_EVAL_PATH);
+}
+
+#[test]
+fn sg1b_signature_realization_failclosed_receipt_parses() {
+    parse_module(SG1B_FAILCLOSED_DAG, SG1B_FAILCLOSED_PATH);
 }
 
 #[test]
