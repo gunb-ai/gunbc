@@ -208,6 +208,7 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4071](https://github.com/gunb-ai/gunbc/pull/4071) | ~02:45 | Maintenance | *(tracker)* | Post-#4061 W2.3 buckets + extended landing log |
 | [#4073](https://github.com/gunb-ai/gunbc/pull/4073) | ~02:52 | W1.5 C4 | **P2**, **P5** | MW-D8 C4 impl — `ci_selection_receipt_shadow` shadow fixture (ledger flip pending) |
 | [#4075](https://github.com/gunb-ai/gunbc/pull/4075) | 02:56 | Maintenance | *(tracker)* | Post-#4071 Bucket C + landing log refresh |
+| [#4077](https://github.com/gunb-ai/gunbc/pull/4077) | 03:42 | Maintenance | *(tracker)* | Post-#4075 C4 #4073 formal/operator split + landing log |
 
 ---
 
