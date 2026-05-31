@@ -17,16 +17,18 @@ import v4.std.algebra {
   BoundedLatticeComplete,
   BoundedLatticePartial,
   MissingMeet,
+  MissingLatticeField,
   NotBoundedLatticeInstance,
   bounded_lattice_field_bottom,
   bounded_lattice_field_lattice,
   bounded_lattice_field_top,
   bounded_lattice_instance_completeness,
+  inhabitant_edge,
   lattice_field_join,
   lattice_field_meet,
   length
 }
-import v4.std.diagnostic { Outcome, Rejected }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 
@@ -100,11 +102,31 @@ data anchor_partial_bounded_lattice_instance: Node = Node {
 }
 
 
+data anchor_partial_missing_lattice_field_instance: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    anchor_named_edge(name: bounded_lattice_field_top, target: anchor_atom_node(s: anchor_top_sym)),
+    anchor_named_edge(name: bounded_lattice_field_bottom, target: anchor_atom_node(s: anchor_bottom_sym))
+  ]
+}
+
+
 data anchor_consumer_of_partial: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     anchor_named_edge(
-      name: anchor_meet_sym,
+      name: inhabitant_edge,
+      target: anchor_partial_bounded_lattice_instance
+    )
+  ]
+}
+
+
+data anchor_module_with_partial_only: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    anchor_named_edge(
+      name: anchor_partial_decl_sym,
       target: anchor_partial_bounded_lattice_instance
     )
   ]
@@ -145,12 +167,35 @@ data anchor_partial_bounded_lattice_missing_meet: Bool = match bounded_lattice_i
 }
 
 
-data anchor_bounded_lattice_completeness_classifies_instances: Bool = anchor_complete_bounded_lattice_completeness_ok && anchor_partial_bounded_lattice_missing_meet
+data anchor_partial_missing_lattice_field: Bool = match bounded_lattice_instance_completeness(instance: anchor_partial_missing_lattice_field_instance) {
+  BoundedLatticePartial { missing: MissingLatticeField } => true
+  _ => false
+}
+
+
+data anchor_bounded_lattice_completeness_classifies_instances: Bool =
+  anchor_complete_bounded_lattice_completeness_ok
+    && anchor_partial_bounded_lattice_missing_meet
+    && anchor_partial_missing_lattice_field
 
 
 data anchor_partials_collected_from_module: Bool = length(
   xs: partial_bounded_lattice_instances_in_tree(tree: anchor_module_with_partial_and_consumer)
 ) == 1
+
+
+data anchor_partials_collected_from_partial_only_module: Bool = length(
+  xs: partial_bounded_lattice_instances_in_tree(tree: anchor_module_with_partial_only)
+) == 1
+
+
+data anchor_module_partial_only_consumer_gate_accepts: Bool = match infer_bounded_lattice_consumer_gate(
+  consumer: anchor_module_with_partial_only,
+  partials: [anchor_partial_bounded_lattice_instance]
+) {
+  Accepted { value: _, diagnostics: _ } => true
+  Rejected { diagnostics: _ } => false
+}
 
 
 data anchor_instance_gate_rejects_partial: Outcome<Node> = infer_bounded_lattice_instance_gate(instance: anchor_partial_bounded_lattice_instance)

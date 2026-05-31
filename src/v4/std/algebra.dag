@@ -686,8 +686,7 @@ fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeIn
 
 
 fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
-  if conj_has_unique_named_child(root: instance, name: bounded_lattice_field_lattice)
-    && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_top)
+  if conj_has_unique_named_child(root: instance, name: bounded_lattice_field_top)
     && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_bottom) {
     match conj_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
       NamedChildFound { target: lattice } =>
