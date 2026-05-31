@@ -172,6 +172,9 @@ type CiUpsertStep<T> {
   payload_type: Node
 }
 
+// Phase 1.5 parser bridge — v3/v4 surface parse rejects `CiUpsertStep<Symbol> { … }` record literals in `data`.
+type CiUpsertStepSymbol = CiUpsertStep<Symbol>
+
 // Structural consumer of `v4.std.patterns.Upsert<T>`: field-compatible with generic Upsert (verify/create/resolve).
 // Record constructor `Upsert<T> { … }` is not yet supported by v4 `gunbc compile` (P1.5-PARSER).
 
@@ -437,10 +440,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
 
 type CiUpsertStepRow {
   step_id: CiStepId
-  step: CiUpsertStep<Symbol>
+  step: CiUpsertStepSymbol
 }
 
-data ci_upsert_v2_compile_src_v4: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
+fn ci_upsert_v2_compile_src_v4_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
   inputs: [
     ci_upsert_file_set_input(segment: "src/v2/**"),
     ci_upsert_file_set_input(segment: "Cargo.toml"),
@@ -458,9 +462,13 @@ data ci_upsert_v2_compile_src_v4: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
   )
   resolve: ci_atom(sym: v4_stage0_binary)
   payload_type: ci_atom(sym: ci_cache_cmd_bootstrap_compile_tag)
+  }
 }
 
-data ci_upsert_m1_rust_emit_probe_execution: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
+data ci_upsert_v2_compile_src_v4: CiUpsertStepSymbol = ci_upsert_v2_compile_src_v4_mk()
+
+fn ci_upsert_m1_rust_emit_probe_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
   inputs: [
     ci_upsert_file_set_input(segment: "src/v4/**"),
     ci_upsert_file_set_input(segment: "scripts/v4-m1*"),
@@ -477,9 +485,13 @@ data ci_upsert_m1_rust_emit_probe_execution: CiUpsertStep<Symbol> = CiUpsertStep
   )
   resolve: ci_atom(sym: m1_rust_emit_probe_execution)
   payload_type: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+  }
 }
 
-data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
+data ci_upsert_m1_rust_emit_probe_execution: CiUpsertStepSymbol = ci_upsert_m1_rust_emit_probe_execution_mk()
+
+fn ci_upsert_phase1_nat_semiring_rung_gate_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
   inputs: [
     ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
     ci_upsert_file_set_input(segment: "src/v4/**")
@@ -494,7 +506,10 @@ data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStep<Symbol> = C
   )
   resolve: ci_atom(sym: phase1_nat_semiring_rung_gate_execution)
   payload_type: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+  }
 }
+
+data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStepSymbol = ci_upsert_phase1_nat_semiring_rung_gate_execution_mk()
 
 data ci_upsert_steps: List<CiUpsertStepRow> = [
   CiUpsertStepRow {
@@ -1655,8 +1670,15 @@ fn ci_step_ids_subset_of(xs: List<CiStepId>, universe: List<CiStepId>) -> Bool {
 }
 
 
+fn ci_step_id_list_ids_unique(xs: List<CiStepId>) -> Bool {
+  length(xs: xs) == length(xs: unique(xs: xs, eq: ci_step_id_eq))
+}
+
+
 fn ci_step_id_lists_biject(left: List<CiStepId>, right: List<CiStepId>) -> Bool {
   length(xs: left) == length(xs: right)
+    && ci_step_id_list_ids_unique(xs: left)
+    && ci_step_id_list_ids_unique(xs: right)
     && ci_step_ids_subset_of(xs: left, universe: right)
     && ci_step_ids_subset_of(xs: right, universe: left)
 }
@@ -1852,21 +1874,29 @@ data ci_upsert_cache_digest_create_sensitivity_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/workflow/ci.dag")
 ]
 
-data ci_upsert_cache_digest_create_sensitivity_a: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
-  inputs: ci_upsert_cache_digest_create_sensitivity_inputs
-  verify: ci_atom(sym: ci_selection_shadow_reason)
-  create: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
-  resolve: ci_atom(sym: ci_selection_shadow_reason)
-  payload_type: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+fn ci_upsert_cache_digest_create_sensitivity_a_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+    inputs: ci_upsert_cache_digest_create_sensitivity_inputs
+    verify: ci_atom(sym: ci_selection_shadow_reason)
+    create: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+    resolve: ci_atom(sym: ci_selection_shadow_reason)
+    payload_type: ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+  }
 }
 
-data ci_upsert_cache_digest_create_sensitivity_b: CiUpsertStep<Symbol> = CiUpsertStep<Symbol> {
-  inputs: ci_upsert_cache_digest_create_sensitivity_inputs
-  verify: ci_atom(sym: ci_selection_shadow_reason)
-  create: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
-  resolve: ci_atom(sym: ci_selection_shadow_reason)
-  payload_type: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+data ci_upsert_cache_digest_create_sensitivity_a: CiUpsertStepSymbol = ci_upsert_cache_digest_create_sensitivity_a_mk()
+
+fn ci_upsert_cache_digest_create_sensitivity_b_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+    inputs: ci_upsert_cache_digest_create_sensitivity_inputs
+    verify: ci_atom(sym: ci_selection_shadow_reason)
+    create: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+    resolve: ci_atom(sym: ci_selection_shadow_reason)
+    payload_type: ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+  }
 }
+
+data ci_upsert_cache_digest_create_sensitivity_b: CiUpsertStepSymbol = ci_upsert_cache_digest_create_sensitivity_b_mk()
 
 fn ci_upsert_cache_digest_create_sensitivity_witness_holds() -> Bool {
   ci_upsert_step_cache_digest(step: ci_upsert_cache_digest_create_sensitivity_a) != ci_upsert_step_cache_digest(step: ci_upsert_cache_digest_create_sensitivity_b)
