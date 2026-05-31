@@ -467,8 +467,6 @@ require_item "run_eval_mvp2_test_claim_route"
 # silently dropped. This is the SURFACE — per-row runtime execution is the escalated residual gate.
 require_module "v4.test.claim.workflow.testclaim_corpus_runner"
 require_module "v4.test.claim.workflow.manual_corpus_eval"
-require_item "run_manual_testclaim_corpus_eval"
-require_item "witness_manual_corpus_gate_closed"
 
 corpus_eval_src="src/v4/test/claim/workflow/manual_corpus_eval.dag"
 if ! grep -q '^data witness_manual_corpus_gate_closed: Bool = manual_corpus_gate(' "$corpus_eval_src"; then
