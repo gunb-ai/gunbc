@@ -2257,10 +2257,10 @@ fn emit_shared_expr(
     ExprLambda =>
       let body = lambda_body(texpr: texpr)
       let raw_body = recurse(body)
-      let final_body = if target == Go && !go_lambda_emits_statement_body(body: body) {
-        concat("return ", raw_body)
-      } else {
-        raw_body
+      let final_body = match target {
+        Go =>
+          if go_lambda_emits_statement_body(body: body) { raw_body } else { concat("return ", raw_body) }
+        _ => raw_body
       }
       wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names_at(texpr: texpr, source_indices: source_indices), target: target), body_str: final_body, target: target))
     ExprStringInterp =>
@@ -2567,10 +2567,14 @@ fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget,
   }
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
-  let call_str = if target == Go && is_go_v2rt_free_function(name: func) {
-    emit_go_v2rt_free_call(func: func, arg_strs: all_args)
-  } else {
-    concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+  let call_str = match target {
+    Go =>
+      if is_go_v2rt_free_function(name: func) {
+        emit_go_v2rt_free_call(func: func, arg_strs: all_args)
+      } else {
+        concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+      }
+    _ => concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
   }
   match callee {
     Some { value: info } =>
