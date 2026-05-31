@@ -1,29 +1,17 @@
 // src/v4/test/claim/nat_semiring/rung_8.dag
 // Scope: phase1/nat_semiring rung-8 TestClaimRun roster — full fixture law corpus (§7).
-// Status: W3.6 — T-22 eval → TestClaimRun (run_test_claim + structural DiagnosticClaim assert).
+// Status: W3.6 — T-22 eval → TestClaimRun via run_test_claim (single authority for all claim kinds).
 
 module v4.test.claim.nat_semiring.rung_8
 
 
-import v4.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  run_test_claim,
-  run_test_claim_assert,
-  test_claim_cache_receipt,
-  test_claim_input
-}
-import v4.std.collection { List, Absent }
-import v4.std.diagnostic { Accepted, Rejected }
+import v4.compiler.eval { TestClaimRun, run_test_claim, test_claim_input }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verdict { Deferred, Fail, Pass }
-import v4.std.verification {
-  TestClaim,
-  DiagnosticClaim,
-  test_claim_expected_outcome
-}
+import v4.std.verification { TestClaim }
 import v4.test.claim.algebra_laws.nat_semiring {
   claim_nat_add_associativity,
   claim_nat_add_left_identity,
@@ -36,41 +24,13 @@ import v4.test.claim.algebra_laws.nat_semiring {
 import v4.test.claim.rung_3_4_common { rung34_test_claim_subject }
 
 
-fn rung8_diagnostic_assert_run(
-  claim: TestClaim,
-  subject: TestClaimEvalSubject<Node>,
-  input: Node
-) -> TestClaimRun<Node, RuntimeValue> {
-  TestClaimRun {
-    cache: test_claim_cache_receipt(subject: subject),
-    verdict: match test_claim_expected_outcome(c: claim) {
-      Accepted { value: actual, diagnostics: _ } =>
-        match run_test_claim_assert(claim: claim, actual: actual, at: input) {
-          Pass => Pass
-          Fail { actual: Rejected { diagnostics: d }, falsification: f } =>
-            Fail { actual: Rejected { diagnostics: d }, falsification: f }
-          Deferred { actual: Rejected { diagnostics: d }, diagnostic: diag } =>
-            Deferred { actual: Rejected { diagnostics: d }, diagnostic: diag }
-          Fail { actual: Accepted { value: _, diagnostics: ad }, falsification: f } =>
-            Fail { actual: Rejected { diagnostics: ad }, falsification: f }
-          Deferred { actual: Accepted { value: _, diagnostics: ad }, diagnostic: diag } =>
-            Deferred { actual: Rejected { diagnostics: ad }, diagnostic: diag }
-        }
-      Rejected { diagnostics: d } =>
-        Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
-    }
-  }
-}
-
-
 fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
-  let input = test_claim_input(c: claim)
-  let subject = rung34_test_claim_subject(claim: claim, evaluator_input: input)
-  match claim {
-    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
-      rung8_diagnostic_assert_run(claim: claim, subject: subject, input: input)
-    _ => run_test_claim(subject: subject)
-  }
+  run_test_claim(
+    subject: rung34_test_claim_subject(
+      claim: claim,
+      evaluator_input: test_claim_input(c: claim)
+    )
+  )
 }
 
 

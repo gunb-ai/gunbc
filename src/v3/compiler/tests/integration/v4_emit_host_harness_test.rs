@@ -389,13 +389,19 @@ fn v4_nat_semiring_rung8_dag_tokenizes_and_parses_full_law_roster() {
         "nat_semiring_rung8_gate",
         "nat_semiring_rung8_zero_deferred",
         "nat_semiring_rung8_all_rows_not_deferred",
-        "witness_nat_semiring_rung8_gate_closed",
     ] {
         assert!(
             surface_declares_fn(&eval_module, name),
             "{NAT_SEMIRING_RUNG8_EVAL_PATH}: missing fn {name}"
         );
     }
+    assert!(
+        surface_declares_data(
+            &eval_module,
+            "witness_nat_semiring_rung8_zero_deferred_closed"
+        ),
+        "{NAT_SEMIRING_RUNG8_EVAL_PATH}: authoring-time zero-deferred witness (data binding)"
+    );
     assert!(
         NAT_SEMIRING_RUNG8_EVAL_DAG.contains("phase1_nat_semiring_rung8_runtime_value_rows"),
         "{NAT_SEMIRING_RUNG8_EVAL_PATH}: CorpusEvalReport must consume rung-8 roster"
