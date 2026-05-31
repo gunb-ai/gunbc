@@ -86,7 +86,7 @@ Falsification probe:
   (F1) Add `import v4.std.text { String }` in a new test module that also imports nothing from go.dag — emitted Rust has **no** `GoScalarKind` use lines.
   (F2) `import v4.compiler.target_carriers { TargetSource }` — emitted Rust does **not** `pub use` CarrierKind from `v4_compiler_target_carriers`.
   (F3) `import v4.std.collection { List }` — `v4_std_collection.rs` contains `pub type List<…>`.
-  (F4) New generic alias `type Pair<T> = FreeMonoid<T>` in std test module — emits without v2 emitter edit.
+  (F4) New generic alias `type Pair<T> = FreeMonoid<T>` in a hermetic fixture `.dag` module — emits `pub type Pair<…>` via the generic alias path (no per-name emitter branch).
 Metric allowed only as secondary:
   ~796 SG-8-family per committed catalog §5 (#4086); implementation PR attaches fresh probe receipt (not worksheet authority).
 ```
@@ -100,7 +100,7 @@ Metric allowed only as secondary:
 | F1 | String type import cannot pull GoScalarKind parent | `rg 'GoScalarKind' emitted module` empty for fixture |
 | F2 | TargetSource import does not re-export CarrierKind from wrong mod | `rg 'CarrierKind' v4_compiler_emit.rs` empty |
 | F3 | List alias emitted in collection | `rg 'pub type List' v4_std_collection.rs` present |
-| F4 | New generic alias emits without emitter branch | fixture module in `src/v2/tests` or v4 manual claim |
+| F4 | New generic alias emits via generic path | Hermetic fixture `.dag` module + **structural** `.dag TestClaim` (runner-evaluated) **or** `src/v2/tests` unit test; receipt: `rg 'pub type Pair' <emitted_fixture.rs>` in implementation PR. Prose/manual assertion alone is **not** PROVEN. |
 
 ---
 
@@ -119,7 +119,7 @@ Metric allowed only as secondary:
 
 ## §6 Downstream worker brief (dispatch after §8)
 
-Implement §10.0 systemic fix (1)+(2) in `src/v2/05_emit_rust.dag` on `main` after #4127 merges. Re-run `scripts/v4-m1-rust-emit-probe.sh`; attach probe summary + forbidden-pattern greps as implementation PR evidence. Do not claim SG-8 PROVEN on error count alone.
+Implement §10.0 systemic fix (1)+(2) in `src/v2/05_emit_rust.dag` on `main` after #4127 merges. Re-run `scripts/v4-m1-rust-emit-probe.sh`; attach probe summary + forbidden-pattern greps as implementation PR evidence. F4 must ship a hermetic `.dag TestClaim` or `src/v2/tests` fixture with grep/compile receipt (per §4 table). Do not claim SG-8 PROVEN on error count alone.
 
 **Worksheet-only PR non-goals:** `src/v2/05_emit_rust.dag`, `src/v2/stage0/`, or generated `src/v4_*.rs` edits (per SG-RC #4100 worksheet-only pattern).
 
