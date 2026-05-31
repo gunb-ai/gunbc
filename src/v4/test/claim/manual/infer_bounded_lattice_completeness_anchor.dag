@@ -126,55 +126,46 @@ data anchor_module_with_partial_and_consumer: Node = Node {
 }
 
 
-data anchor_non_bl_node_is_not_complete_variant: Bool =
-  match bounded_lattice_instance_completeness(instance: anchor_atom_node(s: anchor_top_sym)) {
-    NotBoundedLatticeInstance => true
-    BoundedLatticeComplete => false
-    BoundedLatticePartial { missing: _ } => false
-  }
+data anchor_non_bl_node_is_not_complete_variant: Bool = match bounded_lattice_instance_completeness(instance: anchor_atom_node(s: anchor_top_sym)) {
+  NotBoundedLatticeInstance => true
+  BoundedLatticeComplete => false
+  BoundedLatticePartial { missing: _ } => false
+}
 
 
-data anchor_complete_bounded_lattice_completeness_ok: Bool =
-  match bounded_lattice_instance_completeness(instance: anchor_complete_bounded_lattice_instance) {
-    BoundedLatticeComplete => true
-    _ => false
-  }
+data anchor_complete_bounded_lattice_completeness_ok: Bool = match bounded_lattice_instance_completeness(instance: anchor_complete_bounded_lattice_instance) {
+  BoundedLatticeComplete => true
+  _ => false
+}
 
 
-data anchor_partial_bounded_lattice_missing_meet: Bool =
-  match bounded_lattice_instance_completeness(instance: anchor_partial_bounded_lattice_instance) {
-    BoundedLatticePartial { missing: MissingMeet } => true
-    _ => false
-  }
+data anchor_partial_bounded_lattice_missing_meet: Bool = match bounded_lattice_instance_completeness(instance: anchor_partial_bounded_lattice_instance) {
+  BoundedLatticePartial { missing: MissingMeet } => true
+  _ => false
+}
 
 
-data anchor_bounded_lattice_completeness_classifies_instances: Bool =
-  anchor_complete_bounded_lattice_completeness_ok && anchor_partial_bounded_lattice_missing_meet
+data anchor_bounded_lattice_completeness_classifies_instances: Bool = anchor_complete_bounded_lattice_completeness_ok && anchor_partial_bounded_lattice_missing_meet
 
 
-data anchor_partials_collected_from_module: Bool =
-  length(
-    xs: partial_bounded_lattice_instances_in_tree(tree: anchor_module_with_partial_and_consumer)
-  ) == 1
+data anchor_partials_collected_from_module: Bool = length(
+  xs: partial_bounded_lattice_instances_in_tree(tree: anchor_module_with_partial_and_consumer)
+) == 1
 
 
-data anchor_instance_gate_rejects_partial: Outcome<Node> =
-  infer_bounded_lattice_instance_gate(instance: anchor_partial_bounded_lattice_instance)
+data anchor_instance_gate_rejects_partial: Outcome<Node> = infer_bounded_lattice_instance_gate(instance: anchor_partial_bounded_lattice_instance)
 
 
-data anchor_instance_gate_accepts_complete: Outcome<Node> =
-  infer_bounded_lattice_instance_gate(instance: anchor_complete_bounded_lattice_instance)
+data anchor_instance_gate_accepts_complete: Outcome<Node> = infer_bounded_lattice_instance_gate(instance: anchor_complete_bounded_lattice_instance)
 
 
-data anchor_consumer_gate_rejects_partial_reference: Outcome<Node> =
-  infer_bounded_lattice_consumer_gate(
-    consumer: anchor_consumer_of_partial,
-    partials: [anchor_partial_bounded_lattice_instance]
-  )
+data anchor_consumer_gate_rejects_partial_reference: Outcome<Node> = infer_bounded_lattice_consumer_gate(
+  consumer: anchor_consumer_of_partial,
+  partials: [anchor_partial_bounded_lattice_instance]
+)
 
 
-data anchor_infer_rejects_consumer_tree: Outcome<InferredTree> =
-  infer(tree: anchor_module_with_partial_and_consumer)
+data anchor_infer_rejects_consumer_tree: Outcome<InferredTree> = infer(tree: anchor_module_with_partial_and_consumer)
 
 
 fn anchor_infer_consumer_tree_is_rejected() -> Bool {
