@@ -8,7 +8,7 @@ Forward projection of remaining work to v4-done. Supersedes the 2026-05-30 snaps
 |---|---|---|
 | P1 | Every other scheduled task complete | YELLOW (8/53 PROVEN per sharp-otter #4065 roster + #4060 distribution; 45 GAP items remain) |
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **TECHNICAL-PROVEN / AUTHORITY-BLOCKED**: scope (a) PROVEN per valiant-moth-559 probe (44-source compiler closure, 0 dag+rust diagnostics, no resolve-posture bridge needed). Full predicate gated on P2-B bridge deletion (`ci.yml:378-385` + `scripts/v4-bootstrap-resolve-posture-gate.sh`) — operator-authorization-blocked. |
-| P3 | v4 emits Rust source that compiles to a binary | YELLOW. Post-SG-1 #3956 measurement: 6991 rustc errors (was 7951; SG-1 dissolved E0423 class -2978; SG-7 cleared). 8 active receipt-producing classes routed per #4086 catalog. |
+| P3 | v4 emits Rust source that compiles to a binary | YELLOW. Post-SG-1 #3956 measurement: 6991 rustc errors (was 7951; SG-1 dissolved E0423 class -2978; SG-7 cleared). 8 receipt-producing classes per #4086 catalog — 7 dispatchable + SG-3-CASCADE cascade-residual (see §3.3). |
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | RED — hard-gated on P2 full deletion + P3 PROVEN |
 | P5 | TestClaim suite passes | YELLOW. **P5-minimum-viable LANDED** (#4063 + #4064). **P5-PROVEN gates split into two bundles. Layer 1 fixture/law bundle: 3/3 CLOSED** (Wa-1 #4079 + Wa-2 #4080 + P5-D tranche-2 #4089). **Layer 2 authority gate: OPEN** (structural-bridge `scripts/v4-testclaim-corpus-gate.sh` replacement+deletion). **P5 PROVEN requires BOTH layers closed.** Don't read "Wa-2 LANDED → P5 GREEN". |
 | P6 | Hand-authored Rust not editable authority (proven by REPRODUCTION) | RED — hard-gated on P4 + P3 PROVEN |
@@ -18,7 +18,7 @@ Forward projection of remaining work to v4-done. Supersedes the 2026-05-30 snaps
 Receipt-producing landings (NOT activity counting — these flipped or partial-flipped a predicate or exit gate):
 
 - **SG-1 #3956** — dominant Pareto closer; -2978 E0423 errors
-- **#4086 sharp-otter post-SG-1 catalog** — P3-D elastic core has concrete count: 8 classes routed (see §3.3)
+- **#4086 sharp-otter post-SG-1 catalog** — P3-D elastic core has concrete count: 8 receipt-producing classes, 7 dispatchable + SG-3-CASCADE cascade-residual (see §3.3)
 - **W2.3 Bucket E #4078** — 5 GateStep CiUpsertStep rows; full `ci_pipeline_step_ids_shadow` bijection; W2.3 sequence A+B+C+E complete
 - **W1.5 shadow receipt #4073 + #4082** — MW-D8 condition C4 PROVEN → Wave 1 EXIT achieved
 - **Wc cross-target #4081** — L5 cross-target equivalence gate first-fire (18/18 rows Rust+Python+Go on nat_semiring)
@@ -41,7 +41,7 @@ Per sharp-otter #4060 roster + per-lane close work. NOT a critical path for v0.1
 **Layer 2 — Authority deletion (OPEN, operator-decision-node):**
 - **P2-B**: delete `ci.yml:378-385` resolve-posture bridge + `scripts/v4-bootstrap-resolve-posture-gate.sh`. Decision-node owner: operator/PM. Output: authorize deletion OR explicitly keep bridge with named follow-up receipt. Smart-stag flagged 2026-05-30; not authorized. **Blocks: P2 full PROVEN flip; P4 cascade.**
 
-### §3.3 P3 Rust source → binary — 8 active receipt-producing classes
+### §3.3 P3 Rust source → binary — 8 receipt-producing classes (7 dispatchable + SG-3-CASCADE cascade-residual)
 
 Per #4086 catalog + proud-pike routing (msg_6db2dc9e):
 
@@ -57,7 +57,7 @@ Per #4086 catalog + proud-pike routing (msg_6db2dc9e):
 | SG-1-FOLLOWON | (extend existing) | routed | worker-only follow-on |
 | SG-COLLECTION-PROJECTION | ~170 | route-pending | amend SG-5/SG-6 first; escalate to NEW only if single-authority-fact fails |
 
-(Table lists 9 routing rows for 8 distinct receipt-producing classes — SG-1b + SG-1-FOLLOWON are two routing paths for one class per #4086 catalog. `state` legend: `worksheet-needed` = no §10.0 yet; `authoring` = §10.0 being written; `routed` = §10.0 exists, worker dispatchable; `in-review` = worker PR open; `route-pending` = decision needed on extend-vs-new; `retired (no worksheet)` = determined cascade-only, bands owned by primaries, not separately dispatchable per `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md`.)
+(Table lists 9 rows for 8 distinct receipt-producing classes — SG-1b + SG-1-FOLLOWON are two routing paths for one class per #4086 catalog. Of the 8, **7 are dispatchable** and SG-3-CASCADE is a retired cascade-residual meter (not worker-extensible). `state` legend: `worksheet-needed` = no §10.0 yet; `authoring` = §10.0 being written; `routed` = §10.0 exists, worker dispatchable; `in-review` = worker PR open; `route-pending` = decision needed on extend-vs-new; `retired (no worksheet)` = determined cascade-only, bands owned by primaries, not separately dispatchable per `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md`.)
 
 P3 PROVEN bar: **Rust source compiles to a binary** (not zero rustc errors — that is a measurement proxy; not Python+Go either — those are v0.1.0 alpha scope per Wave F F3). Each named class closure shrinks the rustc error count; when residual errors → 0 on the Rust compile path, the binary builds.
 
@@ -95,7 +95,7 @@ Hard-gated on P4 + P3 PROVEN. No worker until those land.
 **Path C: P3 binary build (longest, parallel)**
 1. proud-pike authors SG-RC-LAYERING §10.0 worksheet
 2. keen-heron dispatches SG-1b sibling worker (TR lane)
-3. Workers extend SG-2/SG-3/SG-5/SG-6/SG-8/SG-1-FOLLOWON in parallel
+3. Workers extend SG-2/SG-5/SG-6/SG-8/SG-1-FOLLOWON in parallel (SG-3 is **not** a dispatch target — retired cascade-only per §3.3; its bands dissolve as these primaries close, see `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md`)
 4. Each class closure shrinks rustc residual; binary builds when residual hits 0
 5. P3 PROVEN flips GREEN
 
