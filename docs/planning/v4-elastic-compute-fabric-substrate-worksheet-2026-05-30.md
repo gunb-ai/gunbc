@@ -103,22 +103,15 @@ type WorkUnit<T> {
 
 ### 1.2 Layer 3 — demand (orthogonal coordinates)
 
-```dag
-type WorkDemand {
-  compute: ComputeRequirement
-  memory: MemoryRequirement
-  storage: StorageRequirement
-  network: NetworkRequirement
-  os: Option<OperatingSystemRequirement>
-  isolation: IsolationRequirement
-  toolchains: List<ToolchainRequirement>
-  parallelism: ParallelismShape
-  data_locality: List<ArtifactLocalityRequirement>
-  effects: List<EffectBoundary>       // dsl/std/effects.dag — CONSUME
-}
+**Single authority (P2):** resource requirements live only in `ResourceEnvelope` (record
+coordinates — NOT `ComputeKind` coproduct). `WorkDemand` embeds that block plus
+scheduling/OS/toolchain/parallelism axes. `satisfies` matches `demand.resources.*`
+against `ComputeSupplyFacts`; there is no parallel `compute` / `memory` field on
+`WorkDemand`.
 
-// Scheduler-facing projection of multi-dimensional demand (exploration §4.0a).
-// Coordinates — NOT ComputeKind coproduct.
+```dag
+// Resource coordinates — sole authority for cpu/gpu/memory/storage/network demand.
+// Each field is Option<…> so a workload may inhabit multiple dimensions (case 5: gpu + cpu).
 type ResourceEnvelope {
   cpu: Option<CpuRequirement>
   gpu: Option<GpuRequirement>
@@ -127,10 +120,19 @@ type ResourceEnvelope {
   network: Option<NetworkRequirement>
 }
 
+type WorkDemand {
+  resources: ResourceEnvelope
+  os: Option<OperatingSystemRequirement>
+  isolation: IsolationRequirement
+  toolchains: List<ToolchainRequirement>
+  parallelism: ParallelismShape
+  data_locality: List<ArtifactLocalityRequirement>
+  effects: List<EffectBoundary>       // dsl/std/effects.dag — CONSUME
+}
+
 // Per-dimension requirement records (minimal landing — extend only with named consumer):
 type CpuRequirement { min_cores: Int, architecture: Option<CpuArchitecture> }
 type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
-type ComputeRequirement { min_cores: Int, architecture: Option<CpuArchitecture> }
 type MemoryRequirement { min_bytes: ByteSize }
 type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
 type NetworkRequirement { egress: Option<NetworkEgressClass>, ambient_allowed: Bool }
@@ -317,9 +319,10 @@ type ComputeLeaseEligibility
   = Eligible { witness: ComputeLeaseWitness }
   | Rejected { reason: MissingDemandFact }    // fail-closed — case 8
 
-// Closed axis set for case 8 fail-closed diagnostics — one variant per WorkDemand coordinate.
+// Closed axis set for case 8 fail-closed diagnostics — one variant per satisfiable axis.
 type DemandDimension
-  = DemandCompute
+  = DemandCpu
+  | DemandGpu
   | DemandMemory
   | DemandStorage
   | DemandNetwork
@@ -581,8 +584,8 @@ Symbolic cost                | v4.lens.cost SymbolicCost            | CONSUME fo
 | 2 | Mac mini row | `CpuFacts` (Apple Silicon), `OperatingSystemSurface` (Darwin) | `data supply_mac_mini: ComputeSupplyFacts` without `CiUpsertStep` schema change |
 | 3 | WSL row | `KernelFamily::LinuxGuestOnWindows`, `FileSystemSemantics::WslPathTranslation`, `NetworkLocality::WslNat \| WslBridged` | `data supply_wsl: ComputeSupplyFacts` encodes explicit guest facts |
 | 4 | gcloud / ubicloud container | `ComputeSupplyFacts` + `ExecutionSurface.container_runtime` | New `data` rows; **grep** no `CiRunPolicy` / run-mode enum in chain |
-| 5 | GPU provider | `ResourceEnvelope.gpu: Option<GpuRequirement>` | GPU demand expressible; **grep** no `ComputeKind` |
-| 6 | Storage-heavy provider | `WorkDemand.storage`, `WorkDemand.network`, `StorageDevice[]`, `NetworkInterface[]` on supply | `satisfies` Eligible when devices meet thresholds |
+| 5 | GPU provider | `WorkDemand.resources.gpu: Option<GpuRequirement>` | GPU demand expressible on canonical carrier; **grep** no `ComputeKind` |
+| 6 | Storage-heavy provider | `WorkDemand.resources.storage`, `WorkDemand.resources.network`, `StorageDevice[]`, `NetworkInterface[]` on supply | `satisfies` Eligible when devices meet thresholds |
 | 7 | One demand, many providers | `satisfies`, `Witness<ComputeLeaseEligibility>` | Same `WorkDemand` → `Eligible` for srv1, srv2, gcloud rows where facts match |
 | 8 | Ineligible fail-closed | `Rejected { reason: MissingDemandFact }` | No `Eligible` without witness; reason names dimension |
 | 9 | GHA Actions Cache row | `CacheStore` id `gha_actions_cache`, `cache_key_for_upsert` | Emitted workflow has no `hashFiles(...)` authority (downstream emit PR) |
@@ -610,7 +613,7 @@ Phase B — srv1/srv2 concrete supply (agenda §7)
   B3. machine_view projections (optional fn)
 
 Phase C — demand + eligibility
-  C1. WorkDemand + ResourceEnvelope + requirement records
+  C1. WorkDemand (embeds ResourceEnvelope) + per-dimension requirement records
   C2. ParallelismShape + ReducerLaws (Witness fields 🟡 in dsl)
   C3. satisfies + ComputeLeaseEligibility + MissingDemandFact
   C4. ExecutionBudget (SymbolicCost in v4 mirror)
