@@ -2050,6 +2050,13 @@ fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> 
   }
 }
 
+fn go_lambda_emits_statement_body(body: Node) -> Bool {
+  match body.expr_data {
+    ExprMatch | ExprBlock | ExprLet => true
+    _ => false
+  }
+}
+
 fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> String {
   let spec = language_spec(target: target)
   apply_type_template2(template: spec.lambda_template, arg0: params_str, arg1: body_str)
@@ -2249,7 +2256,13 @@ fn emit_shared_expr(
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
     ExprLambda =>
       let body = lambda_body(texpr: texpr)
-      wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names_at(texpr: texpr, source_indices: source_indices), target: target), body_str: recurse(body), target: target))
+      let raw_body = recurse(body)
+      let final_body = if target == Go && !go_lambda_emits_statement_body(body: body) {
+        concat("return ", raw_body)
+      } else {
+        raw_body
+      }
+      wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names_at(texpr: texpr, source_indices: source_indices), target: target), body_str: final_body, target: target))
     ExprStringInterp =>
       emit_string_interp(texpr)
     ExprBlock =>
@@ -2528,6 +2541,15 @@ fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target:
   }
 }
 
+fn is_go_v2rt_free_function(name: String) -> Bool {
+  name == "concat" || name == "to_string" || name == "lookup"
+}
+
+fn emit_go_v2rt_free_call(func: String, arg_strs: List<String>) -> String {
+  let fn_name = bridge_method_name_unified(method_name: func, target: Go)
+  concat("v2rt.", emit_export_ident(name: fn_name, target: Go), "(", arg_strs |> join(separator: ", "), ")")
+}
+
 fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
@@ -2545,7 +2567,11 @@ fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget,
   }
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
-  let call_str = concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+  let call_str = if target == Go && is_go_v2rt_free_function(name: func) {
+    emit_go_v2rt_free_call(func: func, arg_strs: all_args)
+  } else {
+    concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+  }
   match callee {
     Some { value: info } =>
       let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
@@ -2631,7 +2657,64 @@ fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indi
   }
 }
 
-fn emit_unified_variant_pattern(name: String, field_bindings: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
+fn go_variant_case_type(name: String, parent_enum: String?) -> String {
+  match parent_enum {
+    Some { value: parent } => concat(parent, name)
+    None => name
+  }
+}
+
+fn emit_go_match_arm_binding_prefix(arm: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: _, parent_enum: pe, field_bindings: fbs } =>
+      if fbs |> count == 0 {
+        ""
+      } else {
+        let lines = fbs |> map(fb =>
+          concat(
+            make_indent(level: 2),
+            emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Go),
+            " := __gunbcMatch.",
+            emit_export_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Go),
+            "\n"
+          )
+        )
+        lines |> join(separator: "")
+      }
+    _ => ""
+  }
+}
+
+fn emit_typed_match_go(
+    scrutinee_str: String, arms: List<Node>, depth: Int,
+    recurse: fn(Node, Int) -> String,
+    render_pattern: fn(MatchPattern) -> String,
+    source_indices: Map<String, NewlineIndex>) -> String {
+  let bs = language_spec(target: Go).block_syntax
+  let case_depth = depth + 1
+  let body_depth = case_depth + 1
+  let arm_strs = arms |> map(arm =>
+    let binding_prefix = emit_go_match_arm_binding_prefix(arm: arm, source_indices: source_indices)
+    let body_str = emit_match_arm_body_stmt(
+      target: Go,
+      body_str: recurse(arm_body(n: arm), body_depth)
+    )
+    let guard_str = emit_arm_guard(arm: arm, target: Go, render_guard_expr: g => recurse(g, depth))
+    emit_match_arm_line(
+      arm: arm, target: Go, case_depth: case_depth, body_depth: body_depth,
+      body_str: concat(binding_prefix, body_str),
+      guard_str: guard_str,
+      render_pattern: render_pattern
+    )
+  )
+  let arms_str = arm_strs |> join(separator: "\n")
+  concat(
+    "switch __gunbcMatch := ", scrutinee_str, ".(type)", bs.block_open,
+    arms_str, "\n", make_indent(level: depth), bs.block_close
+  )
+}
+
+fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let es = language_spec(target: target).expression_semantics
   match es.variant_pattern {
     Some { value: vps } =>
@@ -2645,13 +2728,7 @@ fn emit_unified_variant_pattern(name: String, field_bindings: List<Node>, target
         concat(name, vps.open, binding_strs |> join(separator: ", "), vps.close)
       }
     None =>
-      // Type-name-only pattern (Go type switch). Fail closed if bindings
-      // are present — the target cannot faithfully represent them.
-      if field_bindings |> count > 0 {
-        emit_error_expr(message: concat("variant pattern has bindings but target has no destructuring syntax: ", name), target: target)
-      } else {
-        name
-      }
+      go_variant_case_type(name: name, parent_enum: parent_enum)
   }
 }
 
@@ -2702,20 +2779,27 @@ fn emit_arm_guard(arm: Node, target: RenderTarget, render_guard_expr: fn(Node) -
 }
 
 fn emit_typed_match_unified(scrutinee_str: String, arms: List<Node>, target: RenderTarget, depth: Int, recurse: fn(Node, Int) -> String, render_pattern: fn(MatchPattern) -> String, source_indices: Map<String, NewlineIndex>) -> String {
-  let bs = language_spec(target: target).block_syntax
-  let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
-  let body_depth = case_depth + 1
-  let arm_strs = arms |> map(arm =>
-    let body_str = emit_match_arm_body_stmt(target: target, body_str: recurse(arm_body(n: arm), body_depth))
-    let guard_str = emit_arm_guard(arm: arm, target: target, render_guard_expr: g => recurse(g, depth))
-    emit_match_arm_line(arm: arm, target: target, case_depth: case_depth, body_depth: body_depth,
-      body_str: body_str, guard_str: guard_str, render_pattern: render_pattern)
-  )
-  let arms_str = arm_strs |> join(separator: "\n")
-  if bs.block_close == "" {
-    concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str)
-  } else {
-    concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str, "\n", make_indent(level: depth), bs.block_close)
+  match target {
+    Go =>
+      emit_typed_match_go(
+        scrutinee_str: scrutinee_str, arms: arms, depth: depth,
+        recurse: recurse, render_pattern: render_pattern, source_indices: source_indices)
+    _ =>
+      let bs = language_spec(target: target).block_syntax
+      let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
+      let body_depth = case_depth + 1
+      let arm_strs = arms |> map(arm =>
+        let body_str = emit_match_arm_body_stmt(target: target, body_str: recurse(arm_body(n: arm), body_depth))
+        let guard_str = emit_arm_guard(arm: arm, target: target, render_guard_expr: g => recurse(g, depth))
+        emit_match_arm_line(arm: arm, target: target, case_depth: case_depth, body_depth: body_depth,
+          body_str: body_str, guard_str: guard_str, render_pattern: render_pattern)
+      )
+      let arms_str = arm_strs |> join(separator: "\n")
+      if bs.block_close == "" {
+        concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str)
+      } else {
+        concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str, "\n", make_indent(level: depth), bs.block_close)
+      }
   }
 }
 
