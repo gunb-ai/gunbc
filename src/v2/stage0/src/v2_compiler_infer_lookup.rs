@@ -2,9 +2,7 @@
 // Source module: v2.compiler.infer_lookup
 
 use crate::std_algebra::AlgebraTypeTemplate::{ContainerOf, ReceiverSelf};
-use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{
     algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate,
     AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
