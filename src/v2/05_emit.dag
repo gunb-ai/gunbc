@@ -2541,20 +2541,6 @@ fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target:
   }
 }
 
-fn is_go_v2rt_free_function(name: String) -> Bool {
-  match name {
-    "concat" => true
-    "to_string" => true
-    "lookup" => true
-    _ => false
-  }
-}
-
-fn emit_go_v2rt_free_call(func: String, arg_strs: List<String>) -> String {
-  let fn_name = bridge_method_name_unified(method_name: func, target: Go)
-  concat("v2rt.", emit_export_ident(name: fn_name, target: Go), "(", arg_strs |> join(separator: ", "), ")")
-}
-
 fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
@@ -2572,15 +2558,7 @@ fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget,
   }
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
-  let call_str = match target {
-    Go =>
-      if is_go_v2rt_free_function(name: func) {
-        emit_go_v2rt_free_call(func: func, arg_strs: all_args)
-      } else {
-        concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
-      }
-    _ => concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
-  }
+  let call_str = concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
   match callee {
     Some { value: info } =>
       let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
