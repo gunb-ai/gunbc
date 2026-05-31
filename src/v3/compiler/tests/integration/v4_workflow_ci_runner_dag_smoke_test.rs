@@ -886,7 +886,7 @@ fn v4_workflow_affected_set_ci_runner_claim_wiring() {
 }
 
 #[test]
-fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
+fn v4_workflow_ci_bankruptcy_tier0_types_and_command_arms_modeled() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     for name in ["CiBuildProfile", "CiSchedulePolicy"] {
         assert!(
@@ -915,22 +915,32 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         "{CI_DAG_PATH}: must declare ci_select_ci_jobs_from_affected_set (I1 / A2)"
     );
     assert!(
+        CI_DAG.contains("fn ci_select_ci_jobs_from_affected_set(\n  pipeline: CiPipeline,"),
+        "{CI_DAG_PATH}: job selector must take well-formed CiPipeline (not bare job list)"
+    );
+    for step_id in [
+        "v3_determinism_execution",
+        "v3_self_host_fixed_point_execution",
+        "v4_t15_self_host_fixed_point_execution",
+    ] {
+        assert!(
+            CI_DAG.contains(step_id),
+            "{CI_DAG_PATH}: ci_pipeline must include bankruptcy Tier-0 step `{step_id}`"
+        );
+    }
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_schedule_policy_carries_disposition() {
+    assert!(
         CI_DAG.contains("feature:ci-bankruptcy-schedule-policy")
             && CI_DAG.contains("fn ci_job_scheduled_by_policy("),
-        "{CI_DAG_PATH}: schedule-policy Bool dispatch must carry Practice-10 disposition (openai-pro RC)"
+        "{CI_DAG_PATH}: schedule-policy Bool dispatch must carry Practice-10 disposition"
     );
-    assert!(
-        CI_DAG.contains("v3_determinism_execution"),
-        "{CI_DAG_PATH}: ci_pipeline must include v3_determinism_execution"
-    );
-    assert!(
-        CI_DAG.contains("v3_self_host_fixed_point_execution"),
-        "{CI_DAG_PATH}: ci_pipeline must include v3_self_host_fixed_point_execution"
-    );
-    assert!(
-        CI_DAG.contains("v4_t15_self_host_fixed_point_execution"),
-        "{CI_DAG_PATH}: ci_pipeline must include v4_t15_self_host_fixed_point_execution (I7 / T-15)"
-    );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_legacy_top_level_jobs_deleted() {
     for legacy_job in ["v2", "v3", "v4", "self_host_ratchet"] {
         assert!(
             !ci_yml_has_deleted_legacy_top_level_job(CI_YML, legacy_job),
@@ -938,13 +948,15 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         );
     }
     assert!(
-        CI_YML.contains("v3 determinism (Tier-0 I3)"),
-        "{CI_YML_PATH}: Tier-0 I3 must run inside the ci harness job"
+        CI_YML.contains("v3 determinism (Tier-0 I3)")
+            && CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
+        "{CI_YML_PATH}: Tier-0 I3/I4 must run inside the ci harness job"
     );
-    assert!(
-        CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
-        "{CI_YML_PATH}: Tier-0 I4 must run inside the ci harness job"
-    );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_i4_if_matches_live_workflow_binding() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
     let i4_binding = data_body(
         &module,
         "ci_v3_self_host_fixed_point_ci_live_workflow_binding",
@@ -956,12 +968,20 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         i4_step.contains(&i4_if_condition),
         "{CI_YML_PATH}: Tier-0 I4 step `if` must match modeled ci_v3_self_host_fixed_point_ci_live_workflow_binding (§3.3 / D1)"
     );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_corpus_eval_uses_one_canonical_ci_job_row() {
     assert!(
         CI_DAG.contains("data ci_job_testclaim_corpus_eval_execution_row: CiJob = ci_job_testclaim_corpus_eval_execution_mk()")
             && CI_DAG.contains("create: ci_job_projection_node(j: ci_job_testclaim_corpus_eval_execution_row)")
             && CI_DAG.contains("ci_job_testclaim_corpus_eval_execution_row,"),
         "{CI_DAG_PATH}: corpus eval must use one canonical CiJob row for pipeline + Upsert create (P2)"
     );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_t15_schedule_matches_ci_yml() {
     let t15_step = workflow_step_block(CI_YML, T15_SELF_HOST_STEP_NAME);
     assert!(
         t15_step.contains(T15_SELF_HOST_HARNESS_TEST_FILTER),
@@ -1002,12 +1022,15 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         ci_v4_job_if.contains("needs.affected.outputs.release_distribution == 'true'"),
         "{CI_YML_PATH}: ci_v4 job `if` must include release_distribution (TestClaimCorpusEvalCommand mask axis)"
     );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_ci_v4_job_if_matches_generated_workflow() {
     assert!(
-        CI_WORKFLOW_DAG.contains(
-            "id: \"ci_v4\""
-        ) && CI_WORKFLOW_DAG.contains(
-            "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
-        ),
+        CI_WORKFLOW_DAG.contains("id: \"ci_v4\"")
+            && CI_WORKFLOW_DAG.contains(
+                "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
+            ),
         "{CI_WORKFLOW_DAG_PATH}: ci_v4 job if_condition must mirror ci.yml (main-push + release_distribution)"
     );
     let t15_workflow_marker = format!("name: Some {{ value: \"{T15_SELF_HOST_STEP_NAME}\" }}");
@@ -1042,23 +1065,10 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
             && v2_build_workflow_window.contains("refs/heads/main"),
         "{CI_WORKFLOW_DAG_PATH}: v2 compiler build if_condition must include main-push (T-15 needs v2_compile_src_v4)"
     );
-    let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
-    assert!(
-        binding_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
-        )),
-        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run M1 binding with one TESTNAME per cargo invocation"
-    );
-    assert!(
-        binding_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --exact --quiet"
-        )),
-        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run bankruptcy D3 ratchet as a separate cargo invocation"
-    );
-    assert!(
-        CI_DAG.contains("fn ci_select_ci_jobs_from_affected_set(\n  pipeline: CiPipeline,"),
-        "{CI_DAG_PATH}: job selector must take well-formed CiPipeline (not bare job list)"
-    );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_release_distribution_mask_axes_modeled() {
     assert!(
         CI_DAG.contains("release_distribution && affected.release_distribution"),
         "{CI_DAG_PATH}: ci_component_mask_intersects must include release_distribution axis"
@@ -1082,6 +1092,10 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
             && CI_DAG.contains("release_distribution_only: false"),
         "{CI_DAG_PATH}: job masks must populate release_distribution_only (P2 carrier completeness)"
     );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_upsert_slice_registers_tier0_jobs() {
     assert!(
         CI_DAG.contains("data ci_upsert_steps_bankruptcy_tier0_slice_step_ids:")
             && CI_DAG.contains("ci_upsert_v2_bootstrap_smoke_execution")
@@ -1097,6 +1111,10 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
             && CI_DAG.contains("ci_job_v4_t15_self_host_fixed_point_execution_row"),
         "{CI_DAG_PATH}: Tier-0 CiJob rows must be canonical (pipeline + Upsert create)"
     );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_v2_build_step_includes_main_push() {
     let v2_bootstrap_build =
         workflow_step_block(CI_YML, "Build v2 compiler (v4 bootstrap / host eval gate)");
     assert!(
@@ -1115,6 +1133,10 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         v2_bin_cache.contains("github.event_name == 'push'") && v2_bin_cache.contains("refs/heads/main"),
         "{CI_YML_PATH}: v2 compiler cache step must include main-push paired with build/T-15 needs closure"
     );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_needs_closure_is_bounded_and_skips_unresolved() {
     assert!(
         CI_DAG.contains("fn ci_select_ci_jobs_needs_closure_pass("),
         "{CI_DAG_PATH}: needs closure must be bounded (P4) — not unbounded recursion on unresolved needs"
@@ -1124,6 +1146,23 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
             "ci_symbol_resolves(s: n, jobs: jobs) && ci_symbol_not_in_ids(s: n, ids: selected_ids)"
         ),
         "{CI_DAG_PATH}: needs closure must ignore unresolved need symbols"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step() {
+    let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
+    assert!(
+        binding_step.contains(&format!(
+            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
+        )),
+        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run M1 binding with one TESTNAME per cargo invocation"
+    );
+    assert!(
+        binding_step.contains(&format!(
+            "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
+        )),
+        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run bankruptcy D3 ratchet tests (prefix filter, one claim per test)"
     );
 }
 
