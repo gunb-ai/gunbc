@@ -1,0 +1,85 @@
+// src/v4/std/bounded_lattice_completeness.dag
+// Scope: BoundedLattice instance completeness — consumes find_named_child (node_query authority).
+// Status: SG-6 cycle-breaker (algebra cannot import node_query; node_query imports algebra).
+
+
+module v4.std.bounded_lattice_completeness
+
+
+import v4.std.algebra {
+  BoundedLatticeComplete,
+  BoundedLatticeInstanceCompleteness,
+  BoundedLatticeMissingWitness,
+  BoundedLatticePartial,
+  MissingJoin,
+  MissingLatticeField,
+  MissingMeet,
+  NotBoundedLatticeInstance,
+  bounded_lattice_field_bottom,
+  bounded_lattice_field_lattice,
+  bounded_lattice_field_top,
+  lattice_field_join,
+  lattice_field_meet,
+}
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.node { Node, Symbol }
+import v4.std.node_query {
+  find_named_child,
+  named_child_ambiguous,
+  named_child_missing,
+}
+
+
+type BlNamedChildLookup
+  = BlNamedChildFound { target: Node }
+  | BlNamedChildMissing
+  | BlNamedChildAmbiguous
+
+
+fn bl_named_child_lookup(root: Node, name: Symbol) -> BlNamedChildLookup {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: target, diagnostics: _ } => BlNamedChildFound { target: target }
+    Rejected { diagnostics: d } =>
+      if d.head.reason == named_child_missing {
+        BlNamedChildMissing
+      } else if d.head.reason == named_child_ambiguous {
+        BlNamedChildAmbiguous
+      } else {
+        BlNamedChildMissing
+      }
+  }
+}
+
+
+fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeInstanceCompleteness {
+  match bl_named_child_lookup(root: lattice, name: lattice_field_meet) {
+    BlNamedChildMissing => BoundedLatticePartial { missing: MissingMeet }
+    BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingMeet }
+    BlNamedChildFound { target: _ } =>
+      match bl_named_child_lookup(root: lattice, name: lattice_field_join) {
+        BlNamedChildMissing => BoundedLatticePartial { missing: MissingJoin }
+        BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingJoin }
+        BlNamedChildFound { target: _ } => BoundedLatticeComplete
+      }
+  }
+}
+
+
+fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
+  match bl_named_child_lookup(root: instance, name: bounded_lattice_field_top) {
+    BlNamedChildFound { target: _ } =>
+      match bl_named_child_lookup(root: instance, name: bounded_lattice_field_bottom) {
+        BlNamedChildFound { target: _ } =>
+          match bl_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
+            BlNamedChildFound { target: lattice } =>
+              bounded_lattice_lattice_field_completeness(lattice: lattice)
+            BlNamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
+            BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
+          }
+        BlNamedChildMissing => NotBoundedLatticeInstance
+        BlNamedChildAmbiguous => NotBoundedLatticeInstance
+      }
+    BlNamedChildMissing => NotBoundedLatticeInstance
+    BlNamedChildAmbiguous => NotBoundedLatticeInstance
+  }
+}
