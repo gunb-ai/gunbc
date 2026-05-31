@@ -3511,6 +3511,7 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
         ),
         rust_target_atom_type_spelling_string,
         "String"
+      ),
       rust_sg_rc_ctor_rc_new,
       "Rc::new"
     ),
