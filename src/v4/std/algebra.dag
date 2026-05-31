@@ -628,16 +628,6 @@ type BoundedLatticeInstanceCompleteness
   | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:conj-has-unique-named-child-predicate — bind node://sg6-bl-completeness — dissolve-on-arrival: substrate-derived name_occurrences==1 projection; forbidden: parallel Bool predicate outside std/algebra bounded-lattice completeness gate.
-fn conj_has_unique_named_child(root: Node, name: Symbol) -> Bool {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      name_occurrences(name: name, children: root.children) == 1
-    _ => false
-  }
-}
-
-
 fn conj_named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
   match root.kind {
     TypeNode { connective: Conj } =>
@@ -686,16 +676,21 @@ fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeIn
 
 
 fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
-  if conj_has_unique_named_child(root: instance, name: bounded_lattice_field_top)
-    && conj_has_unique_named_child(root: instance, name: bounded_lattice_field_bottom) {
-    match conj_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
-      NamedChildFound { target: lattice } =>
-        bounded_lattice_lattice_field_completeness(lattice: lattice)
-      NamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
-      NamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
-    }
-  } else {
-    NotBoundedLatticeInstance
+  match conj_named_child_lookup(root: instance, name: bounded_lattice_field_top) {
+    NamedChildFound { target: _ } =>
+      match conj_named_child_lookup(root: instance, name: bounded_lattice_field_bottom) {
+        NamedChildFound { target: _ } =>
+          match conj_named_child_lookup(root: instance, name: bounded_lattice_field_lattice) {
+            NamedChildFound { target: lattice } =>
+              bounded_lattice_lattice_field_completeness(lattice: lattice)
+            NamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
+            NamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
+          }
+        NamedChildMissing => NotBoundedLatticeInstance
+        NamedChildAmbiguous => NotBoundedLatticeInstance
+      }
+    NamedChildMissing => NotBoundedLatticeInstance
+    NamedChildAmbiguous => NotBoundedLatticeInstance
   }
 }
 

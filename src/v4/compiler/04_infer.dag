@@ -20,6 +20,7 @@ import v4.std.algebra {
   any,
   boolean_algebra_field_bounded_lattice,
   bounded_lattice_instance_completeness,
+  contains,
   inhabitant_edge,
   lattice_field_join,
   lattice_field_meet,
@@ -290,13 +291,25 @@ fn infer_partial_bounded_lattice_instances_fold_init(n: Node) -> List<Node> {
 }
 
 
+fn infer_partial_bounded_lattice_instances_snoc_unique(
+  acc: List<Node>,
+  item: Node,
+) -> List<Node> {
+  if contains(xs: acc, item: item, eq: fn(a, b) { a == b }) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+
 fn infer_partial_bounded_lattice_instances_fold_step(
   acc: List<Node>,
   e: Edge,
   child: List<Node>,
 ) -> List<Node> {
   fold(child, init: acc, f: fn(a, p) {
-    list_snoc_item(xs: a, item: p)
+    infer_partial_bounded_lattice_instances_snoc_unique(acc: a, item: p)
   })
 }
 
