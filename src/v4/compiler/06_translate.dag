@@ -2605,10 +2605,11 @@ fn serialize_type_expr_arrow_bounded(
             o: lex_rules_literal(target: target, token_class: form.arrow),
             f: fn(arrow_source) {
               bind_outcome(
-                o: serialize_type_expr_emitted_bounded(
+                o: serialize_type_expr_boundary_bounded(
                   remaining: remaining - 1,
                   target: target,
                   projection: projection,
+                  boundary_site: FunctionBoundaryReturn,
                   emitted: split.output
                 ),
                 f: fn(output_source) {

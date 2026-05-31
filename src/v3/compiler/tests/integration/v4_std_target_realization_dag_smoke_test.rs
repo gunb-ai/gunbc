@@ -2,12 +2,13 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + `_internal/INVARIANTS_OPS.md` row land in the same PR.
-//! **This PR (+0 SG-0 paths):** same-file expansion for SG-5/SG-6 (#4121 on `main`) plus
-//! SG-RC-LAYERING (#4100) — parse/tokenize smokes only; no new hand-Rust logic beyond
-//! `parse_for_test` surface checks.
+//! **This PR (+0 SG-0 paths):** same-file expansion for SG-RC-LAYERING (#4100) — parse/tokenize
+//! smokes only; no new hand-Rust logic beyond `parse_for_test` surface checks. (SG-2 smokes
+//! landed on `main` via #4124; SG-5/SG-6 via #4121.)
 //!
-//! SG-1 + SG-5/SG-6 + SG-RC receipt: `target_model.dag` carriers; `bounded_lattice_completeness`
-//! + `04_infer` gate; Rust rows in `rust.dag`; `06_translate.dag` consumers.
+//! SG-1 + SG-2 + SG-5/SG-6 + SG-RC receipt: `target_model.dag` carriers;
+//! `bounded_lattice_completeness` + `04_infer` gate; Rust rows in `rust.dag`;
+//! `06_translate.dag` consumers.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
@@ -307,6 +308,110 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
     assert!(
         bundle_core_body.contains("target_model_edge_collection_realization"),
         "{RUST_LANGUAGE_PATH}: row/catalog host_bundle must include collection_realization so target_model_bundle_core(host) decode matches"
+    );
+}
+
+// P5 receipt: same-path smoke expansion (SG-2 type-expression-projection worksheet §6).
+// Asserts `.dag` surface shape only — substrate edits landed #3962 on `main` (#4124).
+// Deferral: retired when `.dag` `TestClaim` / T-22 eval covers same facts (T-PB-B).
+#[test]
+fn v4_std_target_model_declares_target_type_expression_projection_carrier() {
+    let module = parse_module(TARGET_MODEL_DAG, TARGET_MODEL_PATH);
+    assert!(
+        surface_declares_type(&module, "TargetTypeExpressionProjection"),
+        "{TARGET_MODEL_PATH}: SG-2 canonical type-expression projection carrier"
+    );
+    assert!(
+        surface_declares_type(&module, "TargetTypeExpression"),
+        "{TARGET_MODEL_PATH}: emitted type-expression wire authority must be typed"
+    );
+    assert!(
+        surface_declares_type(&module, "TargetTypeExprKind"),
+        "{TARGET_MODEL_PATH}: connective kind axis must be a coproduct (M6)"
+    );
+    let wire_fields = type_record_fields(&module, "TargetTypeExpression");
+    assert!(
+        wire_fields.iter().any(|(n, _)| n == "kind"),
+        "TargetTypeExpression.kind must be TargetTypeExprKind (no parallel atom vocab)"
+    );
+    assert!(
+        wire_fields.iter().any(|(n, _)| n == "node"),
+        "TargetTypeExpression.node must carry emitted subtree authority"
+    );
+    let proj_fields = type_record_fields(&module, "TargetTypeExpressionProjection");
+    assert!(
+        proj_fields.iter().any(|(n, _)| n == "instantiation_form"),
+        "instantiation_form must be present for generic-apply connective"
+    );
+    assert!(
+        proj_fields.iter().any(|(n, _)| n == "arrow_form"),
+        "arrow_form must be present for function-type connective"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_type_expr_emitted_wire_decode"),
+        "{TARGET_MODEL_PATH}: bidirectional wire decode must share projection row (§10.6)"
+    );
+}
+
+#[test]
+fn v4_translate_dag_imports_type_expression_projection_consumer() {
+    let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_type_expression_projection"
+        ),
+        "{TRANSLATE_PATH}: translate must read type_expression_projection bundle edge"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_type_expr_emitted_wire_decode"
+        ),
+        "{TRANSLATE_PATH}: serialize path must import wire decode from target_model"
+    );
+    assert!(
+        surface_declares_fn(&module, "type_expression_projection_from_target"),
+        "{TRANSLATE_PATH}: projection rows must decode from TargetModel bundle"
+    );
+    assert!(
+        surface_declares_fn(&module, "project_type_expression_node"),
+        "{TRANSLATE_PATH}: TypeNode subtrees must project via SG-2 row"
+    );
+    assert!(
+        surface_declares_fn(&module, "translate_node_with_projection"),
+        "{TRANSLATE_PATH}: projection-present targets must use dedicated translate path"
+    );
+    assert!(
+        TRANSLATE_DAG.contains("translate_node_with_projection("),
+        "{TRANSLATE_PATH}: translate_node must route ProjectionPresent to projection path"
+    );
+}
+
+#[test]
+fn v4_rust_language_model_declares_type_expression_projection_row() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    assert!(
+        surface_declares_fn(&module, "rust_type_expression_projection"),
+        "{RUST_LANGUAGE_PATH}: per-language SG-2 row must be authored in rust.dag"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_type_expression_projection_bundle_node"),
+        "{RUST_LANGUAGE_PATH}: projection row must encode as TargetModel bundle child"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_sg2_type_expr_target_model"),
+        "{RUST_LANGUAGE_PATH}: falsification probe target must carry projection edge"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("target_model_edge_type_expression_projection"),
+        "{RUST_LANGUAGE_PATH}: SG-2 bundle edge name must wire on rust TargetModel"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("fn rust_sg2_rc_foobar_xy_emitted()"),
+        "{RUST_LANGUAGE_PATH}: golden Rc<FooBar<X,Y>> emitted node for falsification probe"
     );
 }
 
