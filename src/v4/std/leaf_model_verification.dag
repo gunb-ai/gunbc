@@ -95,7 +95,6 @@ data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_m
 data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
 data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
 data leaf_model_claim_rust_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_rust_r3_external_symbol_projection
-data leaf_model_claim_rust_r3_internal_symbol_coupling: LeafModelClaimId = leaf_model_claim_rust_r3_internal_symbol_coupling
 
 type LeafModelRustCrateType = Symbol
 
@@ -125,16 +124,6 @@ type LeafModelFixturePair {
   happy: LeafModelRustFixture
   expected_happy_verdict: TargetCompileVerdict
   falsification: LeafModelFalsificationCase
-}
-
-// Phase 1 R3-internal — row mutation must change both type and value emit projections (not rustc).
-type LeafModelEmitCouplingReceipt {
-  claim_id: LeafModelClaimId
-  atom_realization_fact: Symbol
-  baseline_type_emit: Symbol
-  mutated_type_emit: Symbol
-  baseline_value_emit_kind: Symbol
-  mutated_value_emit_kind: Symbol
 }
 
 // 🟡 gated — feature:leaf-model-r1-python-bridge — bind W2.6 / PR #3938 §11.4 —

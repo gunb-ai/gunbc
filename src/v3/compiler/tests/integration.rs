@@ -303,8 +303,6 @@ mod v4_leaf_model_python_r1_test;
 mod v4_leaf_model_rust_r1_rustc_test;
 #[path = "boundary/v4_leaf_model_rust_r2_r3_external_rustc_test.rs"]
 mod v4_leaf_model_rust_r2_r3_external_rustc_test;
-#[path = "boundary/v4_leaf_model_rust_r3_internal_emit_coupling_test.rs"]
-mod v4_leaf_model_rust_r3_internal_emit_coupling_test;
 #[path = "integration/v4_lens_affected_set_dag_smoke_test.rs"]
 mod v4_lens_affected_set_dag_smoke_test;
 #[path = "integration/v4_lens_application_dag_smoke_test.rs"]
@@ -1163,20 +1161,6 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/machine_constraints.dag"),
             "dsl/std/machine_constraints.dag",
-        );
-    }
-
-    #[test]
-    fn handwritten_parser_accepts_cache_interface_dag() {
-        // P5 receipt (Dispatch-Discipline (b) deferral): Worksheet B gate P-CI-TYPE —
-        // `docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md` §2 Parser gates.
-        // SG-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
-        // `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` (line ~421) — path count
-        // unchanged (N→N); this adds one `#[test]` fn only, same pattern as
-        // `handwritten_parser_accepts_gunbc_digest_render_dag` below.
-        parse_file(
-            include_str!("../../../../dsl/std/cache_interface.dag"),
-            "dsl/std/cache_interface.dag",
         );
     }
 
