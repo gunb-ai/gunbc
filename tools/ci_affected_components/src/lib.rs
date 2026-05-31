@@ -198,6 +198,12 @@ mod tests {
         assert!(!ci_changed_path_affects_v4(
             "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
         ));
+        // Previously tripped v4 via blanket `src/v4/`; now release_distribution or testclaim only.
+        assert!(!ci_changed_path_affects_v4("src/v4/install/install.dag"));
+        assert!(ci_changed_path_affects_release_distribution(
+            "src/v4/install/install.dag"
+        ));
+        assert!(!ci_changed_path_affects_v4("src/v4/TASKS.md"));
     }
 
     #[test]
