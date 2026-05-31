@@ -1058,6 +1058,7 @@ fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
   count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
 }
 
+// Logical negation of `ci_member`; match form only — gunbc DAG tokenizer rejects unary `!` at expression sites (see bankruptcy smoke ratchet string).
 fn ci_symbol_not_in_ids(s: Symbol, ids: List<Symbol>) -> Bool {
   match ci_member(s: s, ids: ids) {
     true => false
