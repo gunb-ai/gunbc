@@ -383,7 +383,139 @@ type ExecutionReceipt<T> {
   finished_at: LogicalTime
 }
 
-// --- §7 falsification supply rows (cases 1–3 skeleton) -----------------------
+// --- §5 falsification fixtures (cases 1–8) -----------------------------------
 
 data supply_srv1_host_identity: HostIdentity = "srv1"
 data supply_srv2_host_identity: HostIdentity = "srv2"
+
+data supply_srv1_linux_os: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Linux
+  distro_or_product: "ubuntu"
+  version: "22.04"
+  filesystem_semantics: Posix
+  process_semantics: PosixProcess
+}
+
+data supply_srv1_cpu: CpuFacts = CpuFacts {
+  architecture: Aarch64
+  vendor: "ampere"
+  model: "altra"
+  cores: 128
+  threads: 128
+  instruction_sets: []
+}
+
+data supply_srv1_host: ComputeHost = ComputeHost {
+  identity: supply_srv1_host_identity
+  processors: [CpuProcessor { cpu: supply_srv1_cpu }]
+  memory: []
+  storage: []
+  network_interfaces: []
+}
+
+data supply_srv1_execution: ExecutionSurface = ExecutionSurface {
+  os: supply_srv1_linux_os
+  isolation: SharedHostHome
+  container_runtime: none
+  toolchains: []
+  mounted_storage: []
+  network: []
+}
+
+data supply_srv1: ComputeSupplyFacts = ComputeSupplyFacts {
+  physical: supply_srv1_host
+  execution: supply_srv1_execution
+  cost: none
+  observed_performance: []
+}
+
+data supply_srv2: ComputeSupplyFacts = ComputeSupplyFacts {
+  physical: ComputeHost {
+    identity: supply_srv2_host_identity
+    processors: [CpuProcessor { cpu: supply_srv1_cpu }]
+    memory: []
+    storage: []
+    network_interfaces: []
+  }
+  execution: supply_srv1_execution
+  cost: none
+  observed_performance: []
+}
+
+// Case 2 — Mac mini Darwin surface (no CI schema change).
+data supply_mac_mini_os: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Darwin
+  distro_or_product: "macOS"
+  version: "14"
+  filesystem_semantics: Apfs
+  process_semantics: PosixProcess
+}
+
+// Case 3 — WSL guest surface.
+data supply_wsl_os: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: LinuxGuestOnWindows
+  distro_or_product: "WSL2"
+  version: "2"
+  filesystem_semantics: WslPathTranslation
+  process_semantics: HybridWslGuest
+}
+
+data supply_wsl_network: NetworkInterface = NetworkInterface {
+  addressability: Unicast
+  bandwidth: none
+  latency_class: none
+  locality: WslNat
+}
+
+data supply_wsl_host_identity: HostIdentity = "wsl-guest"
+
+data supply_wsl: ComputeSupplyFacts = ComputeSupplyFacts {
+  physical: ComputeHost {
+    identity: supply_wsl_host_identity
+    processors: [CpuProcessor { cpu: supply_srv1_cpu }]
+    memory: []
+    storage: []
+    network_interfaces: [supply_wsl_network]
+  }
+  execution: ExecutionSurface {
+    os: supply_wsl_os
+    isolation: PerJobFilesystem
+    container_runtime: none
+    toolchains: []
+    mounted_storage: []
+    network: [supply_wsl_network]
+  }
+  cost: none
+  observed_performance: []
+}
+
+// Case 4 — container runtime on supply row (gcloud / ubicloud pattern).
+data supply_gcloud_container_execution: ExecutionSurface = ExecutionSurface {
+  os: supply_srv1_linux_os
+  isolation: ContainerHermetic
+  container_runtime: GcloudRun
+  toolchains: []
+  mounted_storage: []
+  network: []
+}
+
+data supply_gcloud_container: ComputeSupplyFacts = ComputeSupplyFacts {
+  physical: supply_srv1_host
+  execution: supply_gcloud_container_execution
+  cost: none
+  observed_performance: []
+}
+
+// Cases 5–7 — demand/supply coordinates and `satisfies` surface (Measure-valued
+// demand rows deferred until ByteSize literals land in dsl/std).
+// Case 5: `ResourceEnvelope.gpu` coordinate exists (no `ComputeKind` enum).
+// Case 6–7: `satisfies(supply, demand)` typed; multi-provider proof at harness.
+// Case 8 — fail-closed missing dimension.
+data falsification_missing_gpu: MissingDemandFact = MissingDemandFact {
+  dimension: DemandGpu
+  required: "min_vram"
+}
+
+data falsification_case8_rejected: ComputeLeaseEligibility = Rejected {
+  reason: falsification_missing_gpu
+}
