@@ -4,7 +4,7 @@
 **Authority:** PR #4094 §3.2 P2-B dispatch (PM forced-dispatch 2026-05-31); cross-link to PR #4086 §3 (post-SG-1 catalog — SG-7 cleared + 0 v2 diagnostics on the M1 probe).
 **Predecessor receipt:** P2-A (`valiant-moth-559`) verified 44-source compiler closure with 0 dag+rust diagnostics; this probe is the **complementary safety-net receipt** required before operator authorizes the bridge deletion in dispatch board priority 3.
 **Reference commit:** `origin/main` at `c05a5a84b` (CI #4091 merge; HEAD when the M2 probe ran, verified via `git rev-parse HEAD` on this branch's parent).
-**Bridge under test:** `scripts/v4-bootstrap-resolve-posture-gate.sh` + the CI step at `.github/workflows/ci.yml:377-384` (`v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)`).
+**Bridge under test:** `scripts/v4-bootstrap-resolve-posture-gate.sh` + the CI step at `.github/workflows/ci.yml:382-391` (`v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)`).
 
 ---
 
@@ -78,7 +78,7 @@ The post-SG-1 catalog (PR #4086) reports 6,991 rustc errors on the M1 (rustc-on-
 
 Based on this receipt + P2-A + PR #4050:
 
-- **GO (delete bridge):** operator authorizes `git rm scripts/v4-bootstrap-resolve-posture-gate.sh` + removes the CI step at `ci.yml:377-384` + drops the `v4_bootstrap_resolve_posture` step output references. Repeatable receipt: every future PR run of this M2 probe shape (or simply the unmodified `v4-bootstrap-viability.sh` step in CI) catches regression.
+- **GO (delete bridge):** operator authorizes `git rm scripts/v4-bootstrap-resolve-posture-gate.sh` + removes the CI step at `ci.yml:382-391` + drops the `v4_bootstrap_resolve_posture` step output references. Repeatable receipt: every future PR run of this M2 probe shape (or simply the unmodified `v4-bootstrap-viability.sh` step in CI) catches regression.
 - **GO-WITH-FOLLOWUP:** authorize deletion AND attach a follow-on watch: the next 14 consecutive days of `main` CI runs must show the bootstrap step green without bridge fallback. PR #4050's MW-D8 C2 watch conditions already cover the rustc-error side; an equivalent watch for the timeout side is a small extension.
 - **HOLD:** if operator wants the 14-day rolling-window proof (per bridge header dissolution condition) before authorization, this single-probe receipt is insufficient and the decision waits for that window. This Close/Receipt lane's recommendation: this probe is sufficient for "today's main compiles" but does NOT discharge the 14-day-window operator policy unilaterally — the operator's choice between the two reads is theirs.
 
@@ -98,5 +98,5 @@ Based on this receipt + P2-A + PR #4050:
 - PR #4086 — post-SG-1 rustc catalog (M1 path, 0 v2 diagnostics confirms bridge not invoked there either).
 - `scripts/v4-bootstrap-viability.sh` — the real-work step the probe ran verbatim.
 - `scripts/v4-bootstrap-resolve-posture-gate.sh` — the bridge script under test (left untouched on main).
-- `.github/workflows/ci.yml:377-384` — the CI step under test (left untouched on main).
+- `.github/workflows/ci.yml:382-391` — the CI step under test (left untouched on main).
 - PR #3949 §1 — closure invariant: the executable receipt is the §1 `Verdict` table verbatim; falsification would be a second probe run that fails on `main` HEAD (none observed in this run).
