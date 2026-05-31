@@ -1,10 +1,18 @@
 # v4 SG-RC-LAYERING Worksheet — Per-use-site reference layering (`Rc` / `Box` / owned)
 
-> **Status:** **PENDING §8** — Modeling DFS Manager sign-off (`proud-pike-680`). Worksheet authored 2026-05-31 (`sharp-lark-878`).
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Manager §8 sign-off 2026-05-31 (`proud-pike-680`; worksheet PR [#4100](https://github.com/gunb-ai/gunbc/pull/4100)).
 > **Date:** 2026-05-31
 > **Dispatch anchor:** `docs/audit/v4-rustc-error-catalog-2026-05-31.md` §4.1 (~700 E0308 Rc/Box band, ~10% post-SG-1 residual); `#4086` routing; PR #3938 §10.0.
 > **Canonical home:** `src/v4/std/target_model.dag` (`v4.std.target_model`) — same Option A placement as `docs/design-target-realization-canonical-home.md` §1 (extends realization carrier family; does **not** amend SG-1 worksheet).
 > **Implementation lane:** Modeling DFS (worksheet + §8) → **Target Realization** (carrier + `extdeps/languages/rust.dag` rows) + **Compiler Spine** (`06_translate` boundary consumers).
+
+### Status (single authority — no contradiction)
+
+| Layer | State |
+| ----- | ----- |
+| **Worksheet** | **READY-FOR-WORKER-DISPATCH** — §8 closed 2026-05-31 (`proud-pike-680` msg_6e4121f9) |
+| **Worksheet PR** | [#4100](https://github.com/gunb-ai/gunbc/pull/4100) — docs-only; merge unblocks downstream dispatch binding |
+| **Implementation dispatch** | **Authorized** after #4100 on `main` — Target Realization (carrier + Rust rows) + Compiler Spine (`06_translate`); Runtime/TestClaim for §10.6 falsification transcript |
 
 ---
 
@@ -16,7 +24,7 @@ Acceptance is **§10.6 bidirectional falsification + forbidden-register grep**, 
 
 ---
 
-## §10.0-adapted worksheet
+## §10.0-adapted worksheet — CLOSED 2026-05-31 (Modeling DFS §8)
 
 ```text
 SG class:               SG-RC-LAYERING
@@ -279,16 +287,16 @@ Escalate to Modeling DFS:
 
 ---
 
-## §8 Manager approval checklist (`proud-pike-680`) — OPEN
+## §8 Manager approval checklist (`proud-pike-680`) — CLOSED 2026-05-31
 
-- [ ] Single-authority fact: `TargetUseSiteOwnershipRealization` in `v4.std.target_model` (per use site, not kind enum)
-- [ ] Distinct from `v4.lens.ownership` (analysis) and from SG-COLLECTION-PROJECTION (monoid→Vec)
-- [ ] Spot-fix forbidden: name-keyed `shared_types`, return-only wrap, lens-as-emit-authority
-- [ ] Parser gates §2 named; implementation gates not confused with worksheet PR scope
-- [ ] Falsification table §4 (F1–F6) accepted as worker acceptance
-- [ ] Forbidden register §3 + grep literals accepted
-- [ ] Landing order §5 + lane split (TR vs Compiler Spine vs TestClaim)
-- [ ] **READY-FOR-WORKER-DISPATCH** after checkboxes closed
+- [x] Single-authority fact: `TargetUseSiteOwnershipRealization` in `v4.std.target_model` (per use site, not kind enum)
+- [x] Distinct from `v4.lens.ownership` (analysis) and from SG-COLLECTION-PROJECTION (monoid→Vec)
+- [x] Spot-fix forbidden: name-keyed `shared_types`, return-only wrap, lens-as-emit-authority
+- [x] Parser gates §2 named; implementation gates not confused with worksheet PR scope
+- [x] Falsification table §4 (F1–F6) accepted as worker acceptance
+- [x] Forbidden register §3 + grep literals accepted
+- [x] Landing order §5 + lane split (TR vs Compiler Spine vs TestClaim)
+- [x] **READY-FOR-WORKER-DISPATCH**
 
 ---
 
