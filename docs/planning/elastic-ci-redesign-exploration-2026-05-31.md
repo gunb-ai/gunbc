@@ -183,7 +183,7 @@ scratch even when the input + binary are byte-identical to a prior run.
 | srv2 `ctrl-jobserver` FIFO race | `/var/lib/ctrl/jobserver/host.fifo` is a directory on srv2 (FIFO on srv1) → daemon crash-loop → emit stalls until step timeout. M1 20m timeout / exit 143 (audit §5.1) | Operator infra |
 | Concurrent jobs share `$HOME` registry | Race avoidance via per-job `CARGO_HOME` indirection; brittle to new actions | Workflow author |
 | `$RUNNER_TEMP` per-job lifetime | Caches must be re-fetched every job — no cross-job state | GHA-side, not local |
-| 20m / 35m / 60m hard timeouts | Encoded in YAML, not modeled — no per-step `timeout: Duration` carrier | T-24 close gap |
+| 20m / 35m / 60m hard timeouts | Encoded in YAML, not modeled — no `ExecutionBudget` splitting semantic `expected_cost` from operational `watchdog` (see §4.0c) | T-24 close gap |
 | `continue-on-error: true` on Tier-0 probes (M1, phase1) | Modeled `non_blocking: true` in `ci.dag:451-457`, but YAML divergence possible | Phase 1.5 W2.3 |
 
 ---
