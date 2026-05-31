@@ -695,7 +695,8 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
-        CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal"),
+        CI_DAG
+            .contains("data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal"),
         "{CI_DAG_PATH}: must model live-workflow binding for testclaim corpus eval"
     );
     assert!(
@@ -724,8 +725,7 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
         "{CI_YML_PATH}: P5 bridge negative authority must not appear in `{step_name}`"
     );
     assert!(
-        eval_step.contains("V4_M1_RUST_EMIT_OUT:")
-            && eval_step.contains("V4_BOOTSTRAP_OUT:"),
+        eval_step.contains("V4_M1_RUST_EMIT_OUT:") && eval_step.contains("V4_BOOTSTRAP_OUT:"),
         "{CI_YML_PATH}: `{step_name}` must wire upstream M1 + bootstrap composition-edge env"
     );
     if non_blocking {
