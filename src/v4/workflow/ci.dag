@@ -450,6 +450,16 @@ type CiUpsertStepRow {
   inputs: List<UpsertInputRef>
 }
 
+type CiUpsertRowInputsLookup {
+  found: Bool
+  inputs: List<UpsertInputRef>
+}
+
+type CiUpsertRowCacheDigestLookup {
+  found: Bool
+  digest: Hash
+}
+
 data ci_upsert_v2_compile_src_v4_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v2/**"),
   ci_upsert_file_set_input(segment: "Cargo.toml"),
@@ -1607,30 +1617,40 @@ fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId>
 
 
 fn ci_upsert_row_inputs_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> List<UpsertInputRef> {
-  fold(rows, init: [], f: fn(acc, row) {
-    if length(xs: acc) > 0 {
-      acc
-    } else if ci_step_id_eq(left: step_id, right: row.step_id) {
-      row.inputs
-    } else {
-      acc
-    }
-  })
-}
-
-
-fn ci_upsert_row_cache_digest_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> Hash {
   fold(
     rows,
-    init: content_hash(n: ci_step_id_projection_node(step_id: step_id)),
+    init: CiUpsertRowInputsLookup { found: false, inputs: [] },
     f: fn(acc, row) {
-      if ci_step_id_eq(left: step_id, right: row.step_id) {
-        ci_upsert_step_symbol_cache_digest(step: row.step)
+      if acc.found {
+        acc
+      } else if ci_step_id_eq(left: step_id, right: row.step_id) {
+        CiUpsertRowInputsLookup { found: true, inputs: row.inputs }
       } else {
         acc
       }
     }
-  )
+  ).inputs
+}
+
+
+fn ci_upsert_row_cache_digest_for_step_id(step_id: CiStepId, rows: List<CiUpsertStepRow>) -> Hash {
+  let fallback = content_hash(n: ci_step_id_projection_node(step_id: step_id))
+  fold(
+    rows,
+    init: CiUpsertRowCacheDigestLookup { found: false, digest: fallback },
+    f: fn(acc, row) {
+      if acc.found {
+        acc
+      } else if ci_step_id_eq(left: step_id, right: row.step_id) {
+        CiUpsertRowCacheDigestLookup {
+          found: true,
+          digest: ci_upsert_step_symbol_cache_digest(step: row.step)
+        }
+      } else {
+        acc
+      }
+    }
+  ).digest
 }
 
 
