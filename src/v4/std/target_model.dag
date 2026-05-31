@@ -622,7 +622,7 @@ fn target_constructor_template_from_node(
   }
 }
 
-fn target_model_bundle_core_keep_edge(acc, edge: Edge) {
+fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
   match edge.label {
     Named { name: n } =>
       match n == target_model_edge_atom_realizations {
