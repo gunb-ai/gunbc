@@ -7,7 +7,7 @@
 module v4.std.algebra
 
 
-import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
+import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
 type Magma<T> {
   op: fn(T, T) -> T
 }
