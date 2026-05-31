@@ -1880,12 +1880,23 @@ fn ci_glob_segment_matches_any_changed_path(
 }
 
 
+fn ci_file_set_selector_primary_segment(selector: FileSetSelector) -> GlobSegment {
+  fold(selector.pattern.segments, init: "", f: fn(acc, segment) {
+    if acc == "" {
+      segment
+    } else {
+      acc
+    }
+  })
+}
+
+
 fn ci_upsert_file_set_input_touches_git_diff(
   selector: FileSetSelector,
   git_diff: GitDiffNameOnly
 ) -> Bool {
   ci_glob_segment_matches_any_changed_path(
-    segment: selector.pattern.segments[0],
+    segment: ci_file_set_selector_primary_segment(selector: selector),
     paths: git_diff.changed_paths
   )
 }
@@ -1936,15 +1947,8 @@ fn ci_upsert_inputs_intersect_git_diff(
 }
 
 
-type CiUpsertInputsIntersectLookup {
-  intersects: Bool
-  hits: List<AffectedDependency>
-}
-
-
 fn ci_selection_decision_for_step(
   step_id: CiStepId,
-  pr: ChangeSet,
   affected: AffectedSet,
   git_diff: GitDiffNameOnly,
   carveouts: List<CiCarveout>,
@@ -2016,7 +2020,6 @@ fn ci_selection_receipt_shadow_rows(
         xs: acc,
         item: ci_selection_decision_for_step(
           step_id: step_id,
-          pr: pr,
           affected: affected,
           git_diff: git_diff,
           carveouts: carveouts,
@@ -2283,6 +2286,105 @@ data ci_selection_receipt_shadow_fail_closed_affected: AffectedSet = AffectedSet
   changes: ci_selection_receipt_shadow_empty_pr,
   evidence: AffectedSetReason { reason: ci_selection_shadow_reason }
 }
+
+// MW-D8 C4 fixture — v4 workflow touch selects m1 probe Run; v2 compile is carveout CarvedOut.
+data ci_selection_receipt_shadow_fixture_git_diff: GitDiffNameOnly = GitDiffNameOnly {
+  changed_paths: ["src/v4/workflow/ci.dag"]
+}
+
+data ci_selection_receipt_shadow_fixture_affected: AffectedSet = AffectedSetProduced {
+  changes: ci_selection_receipt_shadow_empty_pr,
+  affected: [],
+  exclusions: [],
+  restricted_to: []
+}
+
+data ci_selection_receipt_shadow_fixture_receipt: CiSelectionReceipt = match ci_pipeline {
+  Accepted { value: pl, diagnostics: _ } =>
+    ci_selection_receipt_shadow(
+      pr: ci_selection_receipt_shadow_empty_pr,
+      affected: ci_selection_receipt_shadow_fixture_affected,
+      git_diff: ci_selection_receipt_shadow_fixture_git_diff,
+      pipeline: pl,
+      carveouts: ci_always_run_carveouts,
+      registry: ci_upsert_steps
+    )
+  Rejected { diagnostics: _ } =>
+    ci_selection_receipt_shadow(
+      pr: ci_selection_receipt_shadow_empty_pr,
+      affected: ci_selection_receipt_shadow_fail_closed_affected,
+      git_diff: ci_selection_receipt_shadow_fixture_git_diff,
+      pipeline: CiPipeline { jobs: [], gates: [] },
+      carveouts: ci_always_run_carveouts,
+      registry: ci_upsert_steps
+    )
+}
+
+fn ci_step_selection_decision_is_run(row: CiStepSelection) -> Bool {
+  match row.decision {
+    Run => true
+    Skip => false
+    CarvedOut { carveout_reason: _ } => false
+  }
+}
+
+fn ci_step_selection_decision_is_carved_out(row: CiStepSelection) -> Bool {
+  match row.decision {
+    Run => false
+    Skip => false
+    CarvedOut { carveout_reason: _ } => true
+  }
+}
+
+fn ci_receipt_step_decision_matches(
+  receipt: CiSelectionReceipt,
+  step_id: CiStepId,
+  predicate: fn(CiStepSelection) -> Bool
+) -> Bool {
+  count_where(xs: receipt.decisions, predicate: fn(row) {
+    ci_step_id_eq(left: row.step_id, right: step_id) && predicate(row: row)
+  }) != 0
+}
+
+fn ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds() -> Bool {
+  ci_receipt_step_decision_matches(
+    receipt: ci_selection_receipt_shadow_fixture_receipt,
+    step_id: JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
+    predicate: ci_step_selection_decision_is_carved_out
+  )
+}
+
+fn ci_selection_receipt_shadow_fixture_m1_probe_run_holds() -> Bool {
+  ci_receipt_step_decision_matches(
+    receipt: ci_selection_receipt_shadow_fixture_receipt,
+    step_id: JobStep {
+      job: m1_rust_emit_probe_execution,
+      step: m1_rust_emit_probe_execution
+    },
+    predicate: ci_step_selection_decision_is_run
+  )
+}
+
+data ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok: Bool =
+  ci_selection_receipt_shadow_fixture_v2_compile_carved_out_holds()
+
+data ci_selection_receipt_shadow_fixture_m1_probe_run_ok: Bool =
+  ci_selection_receipt_shadow_fixture_m1_probe_run_holds()
+
+data ci_selection_receipt_shadow_fixture_well_formed_ok: Bool = match ci_pipeline {
+  Accepted { value: pl, diagnostics: _ } =>
+    ci_selection_receipt_well_formed(
+      receipt: ci_selection_receipt_shadow_fixture_receipt,
+      pipeline: pl
+    )
+  Rejected { diagnostics: _ } => false
+}
+
+// C4 generatability — fixture receipt is well-formed and encodes carveout + affected Run evidence.
+data ci_selection_receipt_shadow_generatable_ok: Bool =
+  ci_selection_receipt_shadow_fixture_well_formed_ok
+    && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok
+    && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 
 // Shadow heartbeat data — NOT evidence that affected-set dependency selection works.
 data ci_selection_receipt_shadow_heartbeat_mode: CiSelectionReceipt = match ci_pipeline {
