@@ -406,7 +406,7 @@ jobs:
     # P5 Layer 2 / T-22: modeled TestClaim corpus structural check (positive-Y CiUpsertStep).
     # Modeled authority: src/v4/workflow/ci.dag `testclaim_corpus_eval_execution` +
     # `testclaim_corpus_eval_signal` + `testclaim_corpus_eval_ci_live_workflow_signal`.
-  - name: T-22 TestClaim corpus eval (modeled CiUpsertStep — structural)
+    - name: T-22 TestClaim corpus eval (modeled CiUpsertStep — structural)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
       timeout-minutes: 15
       env:

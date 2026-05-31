@@ -690,14 +690,64 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
 }
 
 #[test]
-fn v4_workflow_ci_testclaim_corpus_bridge_runs_for_claim_changes() {
-    let step_name = "T-22 TestClaim corpus structural bridge — manual .dag corpus";
-    let step = workflow_step_block(CI_YML, step_name);
+fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
-        step.contains("needs.affected.outputs.v4 == 'true'")
-            && step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
-            && step.contains("needs.affected.outputs.workflow_policy == 'true'"),
+        CI_DAG.contains("data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal"),
+        "{CI_DAG_PATH}: must model live-workflow binding for testclaim corpus eval"
+    );
+    assert!(
+        CI_DAG.contains("ci_upsert_testclaim_corpus_eval_upstream_inputs")
+            && CI_DAG.contains("ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)"),
+        "{CI_DAG_PATH}: testclaim corpus eval execution must consume M1 rust emit via UpstreamUpsert (#4091 §1.2)"
+    );
+    let live_signal = data_body(&module, "testclaim_corpus_eval_ci_live_workflow_signal");
+    let step_name = expr_string(record_body_field(live_signal, "step_name"));
+    let script_path = expr_string(record_body_field(live_signal, "script_path"));
+    let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
+    let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
+    let eval_step = workflow_step_block(CI_YML, step_name);
+    assert!(
+        eval_step.contains("needs.affected.outputs.v4 == 'true'")
+            && eval_step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
+            && eval_step.contains("needs.affected.outputs.workflow_policy == 'true'"),
         "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, and workflow-policy changes"
+    );
+    assert!(
+        !eval_step.contains("v4-testclaim-corpus-gate.sh")
+            && !eval_step.contains("t22_testclaim_corpus_cache")
+            && !eval_step.contains("V4_TESTCLAIM_REUSE_RUST_OUT")
+            && !eval_step.contains("V4_TESTCLAIM_REUSE_DAG_OUT")
+            && !eval_step.contains("T-22 TestClaim corpus structural bridge"),
+        "{CI_YML_PATH}: P5 bridge negative authority must not appear in `{step_name}`"
+    );
+    assert!(
+        eval_step.contains("V4_M1_RUST_EMIT_OUT:")
+            && eval_step.contains("V4_BOOTSTRAP_OUT:"),
+        "{CI_YML_PATH}: `{step_name}` must wire upstream M1 + bootstrap composition-edge env"
+    );
+    if non_blocking {
+        assert!(
+            eval_step.contains("continue-on-error: true"),
+            "{CI_YML_PATH}: `{step_name}` must set continue-on-error when modeled non_blocking is true"
+        );
+    } else {
+        assert!(
+            !eval_step.contains("continue-on-error: true"),
+            "{CI_YML_PATH}: `{step_name}` must not set continue-on-error when modeled non_blocking is false"
+        );
+    }
+    assert!(
+        eval_step.contains(&format!("timeout-minutes: {timeout_minutes}")),
+        "{CI_YML_PATH}: `{step_name}` must set timeout-minutes from modeled timeout_minutes"
+    );
+    assert!(
+        eval_step.contains(&format!("run: bash {script_path}")),
+        "{CI_YML_PATH}: `{step_name}` must invoke the modeled host transport"
+    );
+    assert!(
+        !CI_YML.contains("v4-testclaim-corpus-gate.sh"),
+        "{CI_YML_PATH}: shell bridge script must be absent from workflow"
     );
 }
 
@@ -725,9 +775,9 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
     );
     assert!(
         CI_YML.contains(
-            "if: always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'"
+            "if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'"
         ),
-        "{CI_YML_PATH}: bootstrap gate result skip guard must stay projected from modeled gate run policy"
+        "{CI_YML_PATH}: bootstrap gate result skip guard must include testclaim_corpus upstream path"
     );
 }
 
@@ -813,8 +863,15 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must bind selection_fn to the canonical authority"
     );
     assert!(
-        CI_DAG.contains("ci_cache_cmd_testclaim_corpus_eval_tag"),
-        "{CI_DAG_PATH}: ci_command_cache_digest must cover TestClaimCorpusEvalCommand"
+        CI_DAG.contains("payload_type: ci_command_projection_node(")
+            && CI_DAG.contains(
+                "c: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }"
+            ),
+        "{CI_DAG_PATH}: testclaim corpus CiUpsertStep payload_type must use command projection (content_hash authority, not static tag)"
+    );
+    assert!(
+        !CI_DAG.contains("ci_cache_cmd_testclaim_corpus_eval_tag"),
+        "{CI_DAG_PATH}: static testclaim cache tag dissolved — cache via ci_upsert_step_cache_digest / content_hash projection"
     );
     assert!(
         module.items.iter().any(|item| matches!(
