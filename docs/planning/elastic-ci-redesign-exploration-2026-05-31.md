@@ -396,6 +396,24 @@ content-addressed `ArtifactRef`s (not file paths). Outputs are typed
 `ArtifactSpec<T>` claims. The same `WorkUnit` produced by two different
 `CiUpsertStep<T>`s can share results — this is the dedup substrate.
 
+**Ingress-boundary discipline.** `ArtifactRef` is the *scheduled* form — but
+the CI dependency model still starts from real changed paths and substrate
+queries at ingress (`UpsertInputRef` → `ChangeSet` → `FileSetSelector` /
+`NodeQuery`). Don't erase that boundary too early; the harness needs to
+explain *why this work unit selected this path change*. The materialization
+chain is:
+
+```
+UpsertInputRef (CiUpsertStep<T>.inputs — typed substrate selector)
+  → ChangeSet ∩ FileSetSelector / NodeQuery  (ingress: real paths and node IDs)
+  → materialized ArtifactRef                  (content-addressed snapshot)
+  → WorkUnit<T>.inputs                        (scheduled form)
+```
+
+Scheduled work never re-asks "which files matched?" — that's resolved at
+ingress and baked into the `ArtifactRef`. But the chain is auditable end to
+end: a path change can be traced through to the work units it selected.
+
 #### Layer 3 — Demand: orthogonal coordinates, not modes
 
 ```dag
@@ -592,13 +610,37 @@ type ExecutionReceipt<T> {
   started_at: LogicalTime
   finished_at: LogicalTime
 }
+
+// Receipt quality matters — perf-per-cost selection must read measurement
+// confidence, not just point values. Otherwise "highest performance per cost"
+// degrades into a hidden heuristic.
+type PerformanceReceipt {
+  work_shape: WorkShape
+  provider: ProviderIdentity
+  duration: Duration
+  cache_state: CacheState                  // cold / L1-warm / L2-hit / etc.
+  sample_count: Int                         // 1 measurement vs N samples
+  measurement_context: ExecutionSurface     // where it ran — drives generalizability
+  confidence: MeasurementConfidence         // point / range / distribution
+}
+
+type CostReceipt {
+  provider: ProviderIdentity
+  billable_units: Cost
+  pricing_source: PricingSource             // vendor docs / observed bill / negotiated
+  amortization_scope: Option<AmortizationScope>  // for owned hardware: how is fixed cost split?
+}
 ```
 
 Receipts are the **only substrate the scheduler reads** to make
 perf-per-cost decisions in the future. "This shape of work on srv1 took X;
 on gcloud took Y; cache hit on srv2 saved Z" — those facts come from receipts,
-not from heuristics. If no receipt evidence exists for a class of work, the
-scheduler reports `insufficient evidence` rather than silently guessing.
+not from heuristics. If no receipt evidence exists for a class of work, or if
+existing receipts have `confidence: SingleSample`, the scheduler reports
+`insufficient evidence` rather than silently guessing. Mechanically-checkable
+acceptance: "perf-per-cost ranking is computable only if all candidate offers
+have at least one receipt with `confidence ≥ Range`" (or similar threshold —
+exact bar is operator-bar).
 
 ### 4.0b Parallelism is algebraic, not numerical
 
@@ -723,27 +765,163 @@ abstraction emerges from comparing the rows.
 Dimensions are orthogonal *in practice*, not just on paper. Modeling them as a
 `CacheKind` variant would deny these inhabited combinations.
 
-#### The fractal discipline emerges (don't pre-design)
+#### The fractal discipline emerges (don't pre-design — concrete row first, view second)
 
-Once each cache is modeled as orthogonal facts, the common interface is:
+Once each cache is modeled as orthogonal facts, the **concrete fact row** is:
 
 ```dag
-type CacheStore {
-  identity: CacheStoreId
-  key_space: KeyDerivation
-  value_space: ValueShape
+// Authority — one row per concrete backend (GHA Actions Cache, sccache, …).
+// Lands FIRST. Consumers may project a view from it; this is not the view.
+type CacheInterfaceFacts {
+  identity: CacheInterfaceId
+  backing_surface: StorageSurface
+  key_derivation: KeyDerivationFacts
+  lookup_semantics: CacheLookupSemantics
+  write_semantics: CacheWriteSemantics
+  miss_semantics: CacheMissSemantics
+  value_shape: ValueShape
   locality: PersistenceLocality
   eviction: EvictionPolicy
   atomicity: AtomicityModel
   auth: AuthScope
   read_latency: ReadLatencyClass
+  consistency: ConsistencyModel
+}
+
+// Derived projection — convenience view for consumers that want a uniform
+// handle (e.g., the scheduler picking among offers). NEVER the first modeled
+// authority; always derived from CacheInterfaceFacts rows. Same shape rule as
+// MachineView (§4.0a Layer 4) — a projection, not a primitive.
+type CacheStoreView {
+  facts: CacheInterfaceFacts
 }
 ```
 
-— a record of orthogonal facts, not an enum-of-cases. Then the `Upsert<T>`
-fractal discipline applies uniformly: at every layer of the DAG,
-`cache_key = content_hash(canonical Upsert<T> subject)`, **projected** into
-the backend's `key_space`:
+— a record of orthogonal facts, not an enum-of-cases. Each concrete backend
+gets one `CacheInterfaceFacts` data row (`gha_actions_cache_facts`,
+`sccache_local_facts`, `buildbuddy_cas_facts`, `cargo_target_dir_facts`,
+`rustup_toolchain_store_facts`, …); the view follows.
+
+**Vendor-fact discipline.** `CacheInterfaceFacts` rows assert claims about
+external services (TTL, size cap, atomicity, restore behavior, key
+semantics). Exploration-grade rows like the roster above are *candidate-
+vocabulary*. Before ratification, each row must carry either (a) a cited
+source (vendor docs, RFC) or (b) a runner-observed receipt that verifies the
+claim against actual behavior. Asserted-without-evidence rows are forbidden
+at ratification.
+
+#### Identity vs transport: separate `ArtifactIdentity<T>` from `BackendCacheKey`
+
+A cache hit involves two distinct identities — conflating them re-introduces
+the "backend invents the identity" failure mode:
+
+```dag
+// Semantic — what artifact this IS, projected from the complete Upsert<T> subject.
+// Invariant across backends; defines the artifact's true identity.
+type ArtifactIdentity<T> {
+  subject_digest: Hash          // content_hash(canonical Upsert<T> subject)
+  artifact_kind: ArtifactKind<T>
+}
+
+// Transport — how a specific backend addresses this artifact internally.
+// Backend-specific; varies across CacheInterfaceFacts rows; never authority.
+type BackendCacheKey {
+  store: CacheInterfaceId
+  key: ProviderKey              // tagged union per backend: opaque string for
+                                 // GHA, sccache-hash for sccache, CAS digest for
+                                 // BuildBuddy, Cargo fingerprint for target/
+}
+
+// The projection from semantic identity to backend transport — explicit,
+// auditable, replaceable per backend without changing semantic identity.
+type CacheKeyProjection<T> {
+  artifact: ArtifactIdentity<T>
+  backend: CacheInterfaceFacts
+  key: BackendCacheKey
+}
+```
+
+This makes the layering explicit: `ArtifactIdentity` is the cross-backend
+semantic carrier; `BackendCacheKey` is the transport per backend; the
+projection is the function that maps one to the other. GHA, sccache, Cargo,
+and BuildBuddy never become identity authorities — they only host transport.
+
+#### Cache hit must return a receipt, not just bytes
+
+```dag
+// Required result of a successful cache lookup at any tier. A bare blob hit
+// without this receipt is rejected (§4.0d). Kills the wrong-cache-hit bug class.
+type CachedArtifactReceipt<T> {
+  artifact: ArtifactIdentity<T>
+  backend_key: BackendCacheKey
+  producer: ExecutionReceipt<T>       // who originally produced this artifact
+  verified_subject_digest: Hash       // matched against artifact.subject_digest
+  content_digest: Hash                // matched against the bytes received
+}
+```
+
+The cache proves *this artifact was produced by an `ExecutionReceipt` whose
+`WorkUnit` projects to the same `content_hash`*. "A file existed at this
+key" is not sufficient — the producer-chain receipt is required.
+
+#### Lookup / write / miss semantics — restore is not just key derivation
+
+Cache backends differ sharply in *behavior*, not just key format. Model
+those behaviors as orthogonal coordinates too:
+
+```dag
+type CacheLookupSemantics
+  = ExactKeyOnly                                       // BuildBuddy CAS
+  | PrefixFallback { ordered_prefixes: List<KeyPrefix> }  // GHA actions/cache@v4 restore-keys
+  | NativeInternalLookup                                // sccache, Cargo target/
+  | ContentAddressLookup                                // CAS-native
+
+type CacheWriteSemantics
+  = WriteOnce
+  | OverwriteAllowed
+  | WriteThenCommit          // GHA Cache: PUT then commit; visible after commit
+  | WriteThenRename          // sccache: write to tmp, rename atomically
+  | ProviderInternal         // Cargo target/, rustup
+
+type CacheMissSemantics
+  = MissThenCreate                                  // L0/L1 typical
+  | MissThenFallback { lower_tier: CacheInterfaceId }  // L0→L1→L2 cascade
+  | MissIsDiagnostic                                // verify-only stores
+```
+
+Concrete row examples:
+- **GHA Actions Cache:** `lookup_semantics: PrefixFallback`, `write_semantics: WriteThenCommit`, `miss_semantics: MissThenCreate`
+- **BuildBuddy CAS:** `lookup_semantics: ContentAddressLookup`, `write_semantics: WriteOnce`, `miss_semantics: MissThenFallback { lower_tier: external_source }`
+- **sccache:** `lookup_semantics: NativeInternalLookup`, `write_semantics: WriteThenRename`, `miss_semantics: MissThenCreate`
+- **Cargo `target/`:** `lookup_semantics: NativeInternalLookup`, `write_semantics: ProviderInternal`, `miss_semantics: MissThenCreate`
+
+These facts must be modeled per row before the abstraction is ratified.
+
+#### `KeyDerivation` — concrete facts, not just three-way classification
+
+Don't stop at `KeyDerivation = ContentAddressed | HandAuthored | NativeInternal`.
+That's an opening sketch. The substrate needs concrete fields per backend:
+
+```dag
+type KeyDerivationFacts {
+  classification: KeyDerivationClass         // ContentAddressed | HandAuthored | NativeInternal
+  inputs_considered: List<InputSurface>      // what does the backend hash?
+  overwritable: Bool                          // can a put with same key replace?
+  prefix_fallback_allowed: Bool               // can a non-exact match return?
+  content_verified_on_read: Bool              // does the backend verify bytes?
+  visibility_scope: VisibilityScope           // repo / org / network / world
+  invalidation_triggers: List<InvalidationTrigger>  // what makes a key go stale?
+}
+```
+
+Each `CacheInterfaceFacts` row's `key_derivation` must answer those questions
+concretely. "GHA Cache uses hand-authored strings" is insufficient — the
+substrate needs the full fact set so the harness can audit projections.
+
+Then the `Upsert<T>` fractal discipline applies uniformly: at every layer of
+the DAG, the artifact's identity is `ArtifactIdentity<T> { subject_digest:
+content_hash(canonical subject) }`; the backend transport is computed by the
+`CacheKeyProjection` function for that backend's `KeyDerivationFacts`:
 
 | Backend `key_space` | Projection |
 |---|---|
@@ -759,14 +937,14 @@ its implementation.
 
 #### Derived: layer-to-store mapping (worked projection — not the design)
 
-| DAG layer | Today's backing | Canonical `CacheStore` (fractal) |
+| DAG layer | Today's backing | Canonical `CacheInterfaceFacts` row (fractal) |
 |---|---|---|
-| `CiUpsertStep<T>` verdict | T-22 receipt cache; M1 absent | L2 (GHA Cache / BuildBuddy CAS) |
-| `WorkUnit<T>` output (gunbc emit) | none — the 4× redundancy gap | L2 (BuildBuddy CAS) |
-| `ModuleEmitStep<T>` output | sccache | L1 (per-host sccache) |
-| rustc invocation (CGU-level) | Cargo `target/` | L0 (`$RUNNER_TEMP/target/`) |
+| `CiUpsertStep<T>` verdict | T-22 receipt cache; M1 absent | L2 (`gha_actions_cache_facts` / `buildbuddy_cas_facts`) |
+| `WorkUnit<T>` output (gunbc emit) | none — the 4× redundancy gap | L2 (`buildbuddy_cas_facts`) |
+| `ModuleEmitStep<T>` output | sccache | L1 (`sccache_local_facts`) |
+| rustc invocation (CGU-level) | Cargo `target/` | L0 (`cargo_target_dir_facts`, scoped to `$RUNNER_TEMP/target/`) |
 | Crate download | `~/.cargo/registry/cache/` | L1 + optional L2 mirror |
-| Toolchain | rustup-managed | L1 (per-host) |
+| Toolchain | rustup-managed | L1 (`rustup_toolchain_store_facts`) |
 | Compute lease | scheduler-internal | L1 lease-state cache |
 
 #### Derived: cascade (one shape, every layer)
@@ -790,8 +968,9 @@ Upsert<T>.verify  → L0 (in-runner ephemeral target/, sccache local)
 up the cargo execution environment (`CARGO_TARGET_DIR`, sccache backend
 config, `CARGO_BUILD_JOBS` cap, memory caps). It is NOT a separate cache
 layer — it's part of the `ComputeProvider.execution_surface` definition
-(toolchain capability + env wiring) and wires existing `CacheStore` rows
-(sccache backend, Cargo `target/`) into the runner instance.
+(toolchain capability + env wiring) and wires existing `CacheInterfaceFacts`
+rows (`sccache_local_facts`, `cargo_target_dir_facts`) into the runner
+instance.
 
 **Cargo registry ↔ optional L2 mirror.** Today `~/.cargo/registry/` is
 per-host; cache miss = re-download from crates.io (external network). A
@@ -802,12 +981,15 @@ then puts to L2. No per-host filesystem assumption; ground truth is
 canonical regardless of whether srv1, Mac mini, or a fresh container made
 the request.
 
-### 4.0f Modeling DFS worksheet — acceptance criteria
+### 4.0f Modeling DFS worksheets — acceptance criteria (TWO worksheets, not one)
 
 The substrate is **ratified only when these falsification cases pass** — they
-exist to prove the abstraction is real, not srv1/srv2-shaped with thin
-wrapping. (Dispatchable as a single Modeling DFS worksheet to
-proud-pike-680 per the §7 owner-table.)
+prove the abstraction is real, not srv1/srv2-shaped with thin wrapping.
+**Compute and caching are orthogonal concerns; dispatch as two distinct
+worksheets** to proud-pike-680 (per §7 owner-table). Compose only through
+`ExecutionReceipt`.
+
+#### Worksheet A — Compute fabric facts
 
 | # | Case | Pass condition |
 |---|------|---------------|
@@ -819,17 +1001,8 @@ proud-pike-680 per the §7 owner-table.)
 | 6 | Storage-heavy provider | `storage + network` coordinates in demand; provider's `StorageDevice[]` + `NetworkInterface[]` match |
 | 7 | Single `WorkDemand` matches multiple providers | `satisfies(supply, demand)` returns `Witness<ComputeLeaseEligibility>` for srv1, srv2, gcloud-container, *and* (where compatible) Mac mini / WSL |
 | 8 | Ineligible provider fails closed | `satisfies` returns `Rejected { reason: missing_fact(...) }` naming the specific missing demand dimension; no silent fallback |
-| 9 | GHA Actions Cache as `CacheStore` row | Hand-authored `hashFiles(...)` patterns disappear from emitted workflow; harness derives keys from canonical `content_hash(Upsert<T> subject)` |
-| 10 | sccache as `CacheStore` row | sccache-native keying remains internal to its backend; the coarser Upsert<T> grain (module-emit / cargo-invocation) is what the fractal model addresses; sccache is L1 backing |
-| 11 | BuildBuddy CAS as `CacheStore` row | Routed via `ctrl-build --remote`; canonical content-hash key matches BuildBuddy's native key 1:1 (no projection needed) |
-| 12 | Cargo `target/` as `CacheStore` row | Modeled as L0 (per-runner ephemeral); never authority; cleared with the runner lease |
-| 13 | Adding a new cache backend (Mac mini local sccache, S3 mirror, etc.) | One new `CacheStore` fact row; no change to higher-layer `Upsert<T>` definitions or `WorkUnit<T>` types |
-| 14 | Wrong-cache-hit protection | A bare-blob hit without a matching `CachedArtifactReceipt { producer: ExecutionReceipt { work: WorkUnit<T> } }` is rejected; cache must prove subject-digest match |
-| 15 | Cache backends are orthogonal-fact composition, not a kind enum | The 4 of 4 `(content-addressed × locality)` combinations from §4.0g are all representable; no `CacheKind` coproduct anywhere |
 
-**Worksheet outputs** (canonical types to land in `dsl/std/` / `src/v4/std/`,
-not in `src/v4/workflow/ci.dag` — these are general-purpose substrate, not
-CI-specific):
+**Worksheet A type outputs** (land in `dsl/std/` / `src/v4/std/`):
 
 ```text
 ProcessorKind / CpuFacts / GpuFacts / AcceleratorFacts
@@ -845,18 +1018,67 @@ ResourceEnvelope
 ComputeOffer
 ComputeLease
 ExecutionReceipt
-PerformanceReceipt
-CostReceipt
-ProcessorCostModel
+PerformanceReceipt (with sample_count, measurement_context, confidence)
+CostReceipt (with pricing_source, amortization_scope)
+ProviderCostModel
 ParallelismShape
 ReducerLaws
-ExecutionBudget
+ExecutionBudget (with WatchdogLimit separated from SymbolicCost)
 ```
+
+#### Worksheet B — Cache interface facts
+
+| # | Case | Pass condition |
+|---|------|---------------|
+| 9 | GHA Actions Cache as `CacheInterfaceFacts` row | Hand-authored `hashFiles(...)` patterns disappear from emitted workflow; harness derives `BackendCacheKey` via `CacheKeyProjection` from canonical `ArtifactIdentity<T>` |
+| 10 | sccache as `CacheInterfaceFacts` row | sccache-native keying stays internal (`NativeInternalLookup`); the coarser Upsert<T> grain (module-emit / cargo-invocation) is what the fractal model addresses; sccache is L1 backing |
+| 11 | BuildBuddy CAS as `CacheInterfaceFacts` row | Routed via `ctrl-build --remote`; canonical `ArtifactIdentity<T>.subject_digest` matches BuildBuddy's native CAS key 1:1 (`ContentAddressLookup`) |
+| 12 | Cargo `target/` as `CacheInterfaceFacts` row | Modeled as L0 (per-runner ephemeral); never authority; cleared with the runner lease |
+| 13 | rustup toolchain store as `CacheInterfaceFacts` row | Modeled with `Symbol` keying (toolchain name + version + arch) — different `KeyDerivationFacts` than other rows; proves orthogonality |
+| 14 | Adding a new cache backend (Mac mini local sccache, S3 mirror, etc.) | One new `CacheInterfaceFacts` fact row; no change to higher-layer `Upsert<T>` definitions or `WorkUnit<T>` types |
+| 15 | Wrong-cache-hit protection | A bare-blob hit without a matching `CachedArtifactReceipt { producer: ExecutionReceipt { work: WorkUnit<T> } }` is rejected; cache must prove `verified_subject_digest == artifact.subject_digest` AND `content_digest == hash(bytes)` |
+| 16 | Cache backends are orthogonal-fact composition, not a kind enum | The 4 of 4 `(content-addressed × locality)` combinations from §4.0g are all representable; no `CacheKind` coproduct anywhere |
+| 17 | Same `ArtifactIdentity<T>` projects into different backends differently | `CacheKeyProjection(ArtifactIdentity<X>, gha_actions_cache_facts)` ≠ `CacheKeyProjection(ArtifactIdentity<X>, buildbuddy_cas_facts)` as `BackendCacheKey` (different transport), but both resolve back to the same `ArtifactIdentity<X>` (identity invariant under transport) |
+| 18 | Toolchain version change changes `ArtifactIdentity` when output-affecting | Rust toolchain bump → new `subject_digest` → cache miss → re-emit; non-output-affecting host change → no identity change |
+| 19 | Vendor row evidence | Each `CacheInterfaceFacts` row carries either a cited vendor source OR a runner-observed verification receipt — asserted-without-evidence rows are rejected at ratification |
+
+**Worksheet B type outputs** (land in `dsl/std/`):
+
+```text
+CacheInterfaceFacts (concrete row — lands first)
+CacheStoreView (derived projection — never first authority)
+KeyDerivationFacts (with concrete fields per backend)
+KeyDerivationClass
+CacheLookupSemantics
+CacheWriteSemantics
+CacheMissSemantics
+ConsistencyModel
+StorageSurface
+ValueShape / PersistenceLocality / EvictionPolicy / AtomicityModel / AuthScope / ReadLatencyClass
+ArtifactIdentity<T>
+ArtifactSpec<T>
+BackendCacheKey
+ProviderKey
+CacheKeyProjection<T>
+CacheLookup<T>
+CacheEntry<T>
+CachedArtifactReceipt<T>
+InputSurface
+VisibilityScope
+InvalidationTrigger
+```
+
+**Independence acceptance.** Worksheets A and B compose only through
+`ExecutionReceipt<T>.output: Outcome<ArtifactRef<T>>` and
+`ExecutionReceipt<T>` consumption by the `producer:` field of
+`CachedArtifactReceipt<T>`. No type in Worksheet A imports a type from
+Worksheet B except via these two interfaces; vice versa. Cross-coupling
+beyond those interfaces is a worksheet-scope violation — escalate.
 
 Per `feedback_eliminate_x_directives`: this isn't an "eliminate srv1/srv2
 specialness" directive — it's a positive substrate-landing for orthogonal
-compute facts. The dissolution of srv1/srv2-specific CI semantics is the
-*downstream consequence* of the substrate landing, not the goal itself.
+compute and cache facts. The dissolution of srv1/srv2-specific CI semantics
+is the *downstream consequence* of the substrate landing, not the goal itself.
 
 ### 4.0e (provisional, superseded by §4.0a above) Frame: one pattern, every layer
 
