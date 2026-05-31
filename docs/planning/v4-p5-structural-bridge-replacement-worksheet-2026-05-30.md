@@ -1,6 +1,6 @@
 # P5 Worksheet — Structural-bridge replacement (`v4-testclaim-corpus-gate.sh` → positive-Y `CiUpsertStep`)
 
-> **Status:** **WORKSHEET AUTHORED — §8 OPEN** (pending Modeling DFS Manager sign-off; `proud-pike-680`).
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Manager §8 sign-off 2026-05-31 (`proud-pike-680`; PR [#4114](https://github.com/gunb-ai/gunbc/pull/4114)).
 > **Date:** 2026-05-31 (dispatch node://adhoc-520e78dc-d69; `witty-lark-788`)
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-05-31.md` §3.5 Layer 2; PR #4094 decision 2; operator GO msg_30a4b598 (`proud-pike-680`).
 > **Predicate:** P5 TestClaim suite passes — **Layer 2 authority gate** (Layer 1 fixture/law bundle 3/3 CLOSED).
@@ -10,9 +10,10 @@
 
 | Layer | State |
 | ----- | ----- |
-| **Worksheet** | **AUTHORED — §8 OPEN** — docs-only PR; no `ci.dag` / `ci.yml` / shell deletion in worksheet PR |
+| **Worksheet** | **READY-FOR-WORKER-DISPATCH** — §8 closed 2026-05-31 (`proud-pike-680` msg_a4040844) |
+| **Worksheet PR** | [#4114](https://github.com/gunb-ai/gunbc/pull/4114) — docs-only; merge unblocks implementation dispatch |
 | **Prerequisites on `origin/main`** | `v4-ci-schema-worksheet` §8 CLOSED (#3989); W2.3 `ci_upsert_steps` bijection landed; #4091 exploration ratified; #4095 Worksheets A+B §8 CLOSED (composition vocabulary only — **not** bridge implementation) |
-| **Implementation dispatch** | **Blocked** until this worksheet §8 **CLOSED** |
+| **Implementation dispatch** | **Authorized** after #4114 on `main` — Compiler Spine + Runtime/TestClaim per §6 |
 
 ---
 
@@ -266,17 +267,17 @@ Escalate to Modeling DFS:
 
 ---
 
-## §8 Manager approval checklist (`proud-pike-680`) — OPEN
+## §8 Manager approval checklist (`proud-pike-680`) — CLOSED 2026-05-31
 
-- [ ] Single-authority fact: positive-Y `ci_upsert_testclaim_corpus_eval_*` replaces shell bridge (§1)
-- [ ] Distinct from #4095 substrate worksheets (composition edges only — §2)
-- [ ] Distinct from full T-38 runtime verdict CI (P5 Layer 2 structural only — §7)
-- [ ] Spot-fix forbidden: shell retention, hashFiles cache, host-owned compile, selection_fn bypass (§3)
-- [ ] Parser gates §2.1 named; worksheet PR scope excludes implementation gates
-- [ ] Falsification table §4 (F1–F6) accepted as worker acceptance
-- [ ] Forbidden register §3 + grep literals accepted
-- [ ] Landing order §5 + lane split accepted
-- [ ] **READY-FOR-WORKER-DISPATCH**
+- [x] Single-authority fact: positive-Y `ci_upsert_testclaim_corpus_eval_*` replaces shell bridge (§1)
+- [x] Distinct from #4095 substrate worksheets (composition edges only — §2)
+- [x] Distinct from full T-38 runtime verdict CI (P5 Layer 2 structural only — §7)
+- [x] Spot-fix forbidden: shell retention, hashFiles cache, host-owned compile, selection_fn bypass (§3)
+- [x] Parser gates §2.1 named; worksheet PR scope excludes implementation gates
+- [x] Falsification table §4 (F1–F6) accepted as worker acceptance
+- [x] Forbidden register §3 + grep literals accepted
+- [x] Landing order §5 + lane split accepted
+- [x] **READY-FOR-WORKER-DISPATCH**
 
 ---
 
