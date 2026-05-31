@@ -55,6 +55,10 @@ type CacheLookupSemantics
   | NativeInternalLookup
   | ContentAddressLookup
 
+// Worksheet B §1.6 — orthogonal axes; homonymous spellings (e.g. WriteThenCommit) are
+// distinct variants in separate coproducts, not one fact mirrored twice. Per-row pairing
+// is vendor-specific (BuildBuddy: WriteOnce write + WriteThenCommit atomicity = no
+// overwrite vs CAS upload-commit visibility).
 type CacheWriteSemantics
   = WriteOnce
   | OverwriteAllowed
@@ -164,14 +168,10 @@ type CacheKeyProjection<T> {
 
 // --- §1.5 producer composition (Option A — no compute_fabric import) ---------
 
-type ProducerKind
-  = InternalExecution
-  | ExternalVendor
-  | RunnerObserved
-
+// Neutral digest ref to compute_fabric ExecutionReceipt<T> — producer discriminant
+// lives only on ProducerReceipt<T> (no parallel ProducerKind on this ref).
 type ExecutionReceiptRef<T> {
   receipt_digest: ContentHash
-  producer_kind: ProducerKind
 }
 
 type ProducerReceipt<T>
@@ -315,6 +315,20 @@ data buildbuddy_cas_facts: CacheInterfaceFacts = {
       field: "lookup_semantics"
       evidence: VendorCitation {
         source: "BuildBuddy remote cache content-addressed artifacts"
+        url: "https://www.buildbuddy.io/docs/remote-cache"
+      }
+    },
+    {
+      field: "write_semantics"
+      evidence: VendorCitation {
+        source: "BuildBuddy CAS blobs are content-addressed and not overwritten in place"
+        url: "https://www.buildbuddy.io/docs/remote-cache"
+      }
+    },
+    {
+      field: "atomicity"
+      evidence: VendorCitation {
+        source: "CAS upload commit visibility (orthogonal to write-once key semantics)"
         url: "https://www.buildbuddy.io/docs/remote-cache"
       }
     },

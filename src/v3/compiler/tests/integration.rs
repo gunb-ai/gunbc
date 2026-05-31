@@ -1166,10 +1166,12 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_cache_interface_dag() {
-        // P5 receipt: narrow parser-acceptance consumer for Worksheet B §2 gate
-        // P-CI-TYPE (`docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md` §2).
-        // Does not add semantic authority or expand the SG-0 path census — one test in the
-        // existing `integration.rs` hand-Rust file already counted by `sg0_census_test.rs`.
+        // P5 receipt (Dispatch-Discipline (b) deferral): Worksheet B gate P-CI-TYPE —
+        // `docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md` §2 Parser gates.
+        // SG-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
+        // `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` (line ~421) — path count
+        // unchanged (N→N); this adds one `#[test]` fn only, same pattern as
+        // `handwritten_parser_accepts_gunbc_digest_render_dag` below.
         parse_file(
             include_str!("../../../../dsl/std/cache_interface.dag"),
             "dsl/std/cache_interface.dag",
