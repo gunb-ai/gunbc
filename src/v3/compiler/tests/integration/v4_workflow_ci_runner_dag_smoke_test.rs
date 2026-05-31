@@ -777,9 +777,18 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
     );
     assert!(
         CI_YML.contains(
-            "if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'"
+            "if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'"
         ),
-        "{CI_YML_PATH}: bootstrap gate result skip guard must include testclaim_corpus upstream path"
+        "{CI_YML_PATH}: bootstrap gate result skip guard must include v4, testclaim_corpus, and workflow_policy upstream paths"
+    );
+    assert!(
+        CI_DAG.contains("workflow_local_bootstrap_dag_upstream")
+            && CI_DAG.contains("v4_bootstrap_dag_emit_ci_job"),
+        "{CI_DAG_PATH}: testclaim corpus eval must document workflow-local bootstrap via ci_always_run_carveouts (P5 §1.2)"
+    );
+    assert!(
+        !CI_YML.contains("T-22 TestClaim corpus structural bridge"),
+        "{CI_YML_PATH}: retired bridge step name must not appear anywhere in workflow YAML"
     );
 }
 

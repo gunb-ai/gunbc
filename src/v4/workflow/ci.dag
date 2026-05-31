@@ -292,6 +292,9 @@ data v2_substrate_circular_dep: Symbol = v2_substrate_circular_dep
 data integrity_always_run_interim: Symbol = integrity_always_run_interim
 data v2_substrate_dependency_modeled_in_affected_set: Symbol = v2_substrate_dependency_modeled_in_affected_set
 data ci_gate_run_policy_dissolved_to_receipt: Symbol = ci_gate_run_policy_dissolved_to_receipt
+// P5 §1.2 — bootstrap dag emit is workflow-local until `v4_bootstrap_compile` lands as CiJob in shadow universe.
+data workflow_local_bootstrap_dag_upstream: Symbol = workflow_local_bootstrap_dag_upstream
+data v4_bootstrap_dag_emit_ci_job: Symbol = v4_bootstrap_dag_emit_ci_job
 
 // Phase 2.1 shadow seed — docs/planning/compiler-spine-ci-selection-receipt-shadow-2026-05-30.md §7.
 data ci_always_run_carveouts: List<CiCarveout> = [
@@ -314,6 +317,15 @@ data ci_always_run_carveouts: List<CiCarveout> = [
     reason_code: integrity_always_run_interim,
     reason_detail: "interim Always gate policy; non-blocking probe",
     dissolution_target: ModelMissingSubstrate { what: ci_gate_run_policy_dissolved_to_receipt }
+  },
+  CiCarveout {
+    step_id: JobStep {
+      job: testclaim_corpus_eval_execution,
+      step: testclaim_corpus_eval_execution
+    },
+    reason_code: workflow_local_bootstrap_dag_upstream,
+    reason_detail: "bootstrap dag emit is workflow-local (ci_v4 v4_bootstrap_compile); host transport uses composition-edge V4_BOOTSTRAP_* until bootstrap lands in ci_pipeline for UpstreamUpsert",
+    dissolution_target: ModelMissingSubstrate { what: v4_bootstrap_dag_emit_ci_job }
   }
 ]
 
@@ -632,6 +644,7 @@ data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
 ]
 
 // #4091 §1.2 — M1 rust emit is upstream compile authority (forbidden: host-owned `gunbc compile --target rust` in corpus eval transport).
+// Bootstrap dag emit: workflow-local — see `ci_always_run_carveouts` row `workflow_local_bootstrap_dag_upstream` (composition-edge V4_BOOTSTRAP_* in ci.yml until `v4_bootstrap_dag_emit_ci_job` lands).
 data ci_upsert_testclaim_corpus_eval_upstream_inputs: List<UpsertInputRef> = [
   ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)
 ]

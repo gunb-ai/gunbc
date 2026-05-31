@@ -365,7 +365,7 @@ jobs:
         V4_PHASE1_NAT_SEMIRING_STRICT: "1"
       run: bash scripts/v4-phase1-nat-semiring-rung-gate.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true'
       id: v4_bootstrap_compile
       timeout-minutes: 35
       continue-on-error: true
@@ -380,7 +380,7 @@ jobs:
         echo "exitcode=${ec}" >> "$GITHUB_OUTPUT"
         exit "${ec}"
     - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
-      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
       id: v4_bootstrap_resolve_posture
       env:
         V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
@@ -390,7 +390,7 @@ jobs:
         V4_BOOTSTRAP_COMPILER_EXIT="${{ steps.v4_bootstrap_compile.outputs.exitcode }}" \
           bash scripts/v4-bootstrap-resolve-posture-gate.sh
     - name: v4 bootstrap gate result (compile or tracked bridge)
-      if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'
+      if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'
       run: |
         set -euo pipefail
         if [[ "${{ steps.v4_bootstrap_compile.outcome }}" == "success" ]]; then
@@ -506,7 +506,7 @@ jobs:
     steps:
     - name: v4 receipt (bootstrap gate runs in ci_v4 job)
       run: |
-        echo "::notice::v4 bootstrap viability + T-22 TestClaim corpus structural bridge ran inside the ci_v4 job when v4 is affected; TestClaim verdict execution remains a T-38 follow-up."
+        echo "::notice::v4 bootstrap viability + modeled TestClaim corpus eval (CiUpsertStep) ran inside ci_v4 when v4/workflow_policy/testclaim_corpus is affected; per-row verdict execution remains T-38-PR2."
   # v3 — FROZEN 2026-05-15 pending v4 program. Runs only when src/v3/ or dsl/
   # is affected (or on push-to-main for trunk verification). v3 is no longer
   # the active compiler; v4 program supersedes it (see PR #3147).
