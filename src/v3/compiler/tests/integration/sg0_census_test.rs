@@ -891,8 +891,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
-    // SG-0 + INVARIANTS §P5(b) receipt (+0 paths; bridge registered in NON_TEST). Dissolves when
-    // T-22 substrate eval dispatches host transport and replaces hand-Rust probes.
+    // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
+    // MVP-2 bridge proofs (law×target); `emit_host_bridge.rs` python row (+0 NON_TEST — #4047).
+    // SG-0 + INVARIANTS §P5(b) receipt. Dissolves: ROADMAP T-PB-B / TASKS T-22 T-38.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.

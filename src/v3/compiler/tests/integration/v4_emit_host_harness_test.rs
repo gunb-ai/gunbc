@@ -185,6 +185,97 @@ fn nat_semiring_rung4_emit_vs_eval_falsification_on_host_value_mismatch() {
     );
 }
 
+fn assert_rung6_mvp2_emit_vs_eval_pass(
+    work_dir_prefix: &str,
+    claim_input_root: &str,
+    run_transport: fn(
+        &str,
+        &emit_host_runner::EmitHostFixtureInputs,
+        &std::path::Path,
+        [u8; 5],
+    ) -> Result<
+        emit_host_bridge::EmitHostEmitVsEvalVerdict,
+        emit_host_runner::HostSetupFailure,
+    >,
+    emitted_source: &str,
+) {
+    let work_dir =
+        emit_host_runner::default_work_dir(&format!("{work_dir_prefix}_{}", std::process::id()));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: claim_input_root.to_string(),
+        expected_eval_root: "phase1_nat_semiring_rung6_expected_eval".to_string(),
+    };
+    let verdict = run_transport(
+        emitted_source,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("emit_vs_eval transport");
+    assert_eq!(verdict, emit_host_bridge::EmitHostEmitVsEvalVerdict::Pass);
+}
+
+/// W3.4 tranche-1: each additive-Monoid law row × rust — MVP-2 host emit stdout vs eval literal `5`.
+#[test]
+fn nat_semiring_rung6_rust_add_left_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_left_id",
+        "nat_add_left_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_rust_add_right_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_right_id",
+        "nat_add_right_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_rust_add_associativity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_rust_assoc",
+        "nat_add_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_transport,
+        EMIT_HOST_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_add_left_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_left_id",
+        "nat_add_left_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_add_right_identity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_right_id",
+        "nat_add_right_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung6_python_add_associativity_emit_vs_eval_transport_passes() {
+    assert_rung6_mvp2_emit_vs_eval_pass(
+        "gunbc_rung6_py_assoc",
+        "nat_add_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
 #[test]
 fn emit_host_bridge_rust_transport_builds_runs_and_parses_stdout() {
     let work_dir = emit_host_runner::default_work_dir(&format!(
