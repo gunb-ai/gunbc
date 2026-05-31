@@ -314,7 +314,7 @@ jobs:
       if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
     - name: T-15 self-host fixed-point harness (stage1==stage2)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_t15_self_host_fixed_point_harness_test::t_15_self_host_fixed_point -- --exact --quiet
     - name: MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'

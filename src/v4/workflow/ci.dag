@@ -3245,11 +3245,11 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: true
         release_distribution: false
       }
-    // Mask axes: v4|v3|workflow_policy (ci.yml step if); main-push disjunct via ci_v4_t15_scheduled in ci_job_scheduled_by_policy.
+    // Mask axes: v4|workflow_policy (ci.yml T-15 step if); main-push via ci_v4_t15_scheduled. No v3 — I7 runs only when ci_v4 runs (parent job gates v4|testclaim_corpus|workflow_policy|main-push).
     V4T15SelfHostFixedPointCommand =>
       CiComponentAffected {
         v2: false
-        v3: true
+        v3: false
         v4: true
         testclaim_corpus: false
         workflow_policy: true
@@ -3294,7 +3294,7 @@ fn ci_v3_tier0_scheduled(affected: CiComponentAffected, schedule: CiSchedulePoli
 }
 
 
-// I7: YAML `v4|v3|workflow_policy|main-push` — mask covers component axes; MainPush disjunct is schedule-only.
+// I7: YAML `v4|workflow_policy|main-push` on T-15 step; MainPush disjunct is schedule-only (ci_v4 job if mirrors lane entry).
 fn ci_v4_t15_scheduled(affected: CiComponentAffected, schedule: CiSchedulePolicy) -> Bool {
   schedule == MainPush
 }

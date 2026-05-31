@@ -937,9 +937,13 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     );
     assert!(
         CI_DAG.contains(
-            "V4T15SelfHostFixedPointCommand =>\n      CiComponentAffected {\n        v2: false\n        v3: true\n        v4: true\n        testclaim_corpus: false\n        workflow_policy: true\n        release_distribution: false"
+            "V4T15SelfHostFixedPointCommand =>\n      CiComponentAffected {\n        v2: false\n        v3: false\n        v4: true\n        testclaim_corpus: false\n        workflow_policy: true\n        release_distribution: false"
         ),
         "{CI_DAG_PATH}: V4T15SelfHostFixedPointCommand mask must match ci_v4 T-15 step if: axes"
+    );
+    assert!(
+        !t15_step.contains("needs.affected.outputs.v3 == 'true'"),
+        "{CI_YML_PATH}: T-15 step must not gate on v3 — I7 runs in ci_v4 lane only (parent job has no v3 disjunct)"
     );
     assert!(
         CI_DAG.contains("fn ci_v4_t15_scheduled(affected: CiComponentAffected, schedule: CiSchedulePolicy) -> Bool"),
