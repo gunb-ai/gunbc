@@ -98,13 +98,62 @@ Non-goals:
 
 ---
 
+## §5 Landing order (implementation — not worksheet-only PR)
+
+```text
+1. TargetTypeExpressionProjection carrier + TargetTypeExpression wire authority in v4.std.target_model.
+2. Rust projection row on rust TargetModel bundle (extdeps/languages/rust.dag).
+3. 06_translate type-expression projection consumes per-connective forms (including instantiation_form).
+4. Manual falsification claims: sg2_type_expression_projection.dag (Instantiation → Rc<FooBar<X,Y>>; no FooBar emitter branch).
+5. MVP1 ProjectionAbsent shim remains until every extdeps TargetModel carries the projection edge (🟡 sg-2-mvp1-projection-absent-shim).
+```
+
+**Lane split:** Target Realization owns steps 1–3; Runtime/TestClaim owns step 4; extdeps rollout owns step 5 dissolution.
+
+---
+
+## §6 Downstream worker brief (dispatch after §8)
+
+```text
+Implement SG-2 per approved worksheet §10.0 on main.
+
+MUST:
+  - Author TargetTypeExpressionProjection in v4.std.target_model; Rust row in rust.dag;
+    refactor 06_translate type-emission to consume projection per connective (including instantiation_form).
+  - Land manual falsification probe: new generic carrier arity without name-keyed emitter branches
+    (sg2_type_expression_projection.dag CompilesClaim + EqualsClaim receipts).
+  - Bidirectional readability (§10.6): instantiation_form delimiters shared for emit + wire decode.
+  - Include variant-shape histogram for new coproduct arms (v4-substrate-pr-review-gate §3).
+
+MUST NOT:
+  - Name-keyed special cases for Outcome / Witness / Refined / TestClaimRun / FooBar.
+  - Hardcoding "emit one generic arg" for known carriers.
+  - Use SG-2 rustc error-count reduction (E0107 / E0282) as acceptance.
+  - Dissolve 🟡 sg-2-mvp1-projection-absent-shim before every extdeps TargetModel carries the row.
+
+Escalate to Modeling DFS:
+  - Second target-type-expression vocabulary (violates SG-1 / SG-2 single-authority).
+  - M6 identical-payload coproduct arms on new carriers without substrate-pr-review-gate ack.
+```
+
+---
+
+## §7 Non-goals
+
+- SG-1 `TargetAtomRealization` (separate brief; blocked until SG-2 PR lands)
+- SG-RC-LAYERING / SG-1b / emit-binary M1 probe as primary acceptance
+- `ci.dag` / ci.yml / shell gate migration
+- Dissolving 🟡 sg-2-mvp1-projection-absent-shim in the same PR as substrate landing
+
+---
+
 ## §8 Manager approval checklist (`cool-ibex-692`) — CLOSED 2026-05-30
 
 - [x] Single-authority fact: `TargetTypeExpressionProjection` in `v4.std.target_model`
 - [x] Spot-fix forbidden: name-keyed Outcome/Witness/Refined tables
 - [x] Falsification probe accepted
 - [x] Dispatch order: SG-2 before SG-1
-- [ ] Worker dispatch — **authorized** to Target Realization Manager after brief handoff
+- [x] Worker dispatch — **authorized** (`fierce-deer-774`; substrate #3962 on `main` 2026-05-30)
 
 ## Related artifacts
 
