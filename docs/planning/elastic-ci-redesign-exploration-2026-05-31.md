@@ -258,6 +258,73 @@ verdict(step) = cached_verdict(content_hash(whole CiUpsertStep<T> node))
 
 ## 4. Elastic CI — target shape under "infinite compute, stateless runners"
 
+### 4.0 Framing: one pattern, every layer; one logical computer, locality-aware below
+
+**The pattern is Upsert<T>.** Not "Upsert<T> for CI steps, plus a separate cache
+design, plus a separate runner-pool design, plus a separate compiler-internals
+design." Same shape, every layer:
+
+```
+verify  → "is the desired output already at this layer's address?"
+satisfy → "if not, recursively upsert the inputs at the layer below"
+create  → "execute the layer's specific action"
+resolve → "return a stable handle / verdict the layer above can hash"
+```
+
+Concrete instances (each is one `Upsert<T>` row, not a bespoke subsystem):
+
+| Layer | Upsert<T> instance | `verify` reads | `satisfy` recurses into | `create` does |
+|-------|-------------------|----------------|------------------------|---------------|
+| **CI step** | `CiUpsertStep<T>` (`ci.dag:173`) | step verdict cache (L2 by `content_hash(node)`) | upstream `CiUpsertStep<T>` per `UpstreamUpsert` | runner dispatch |
+| **Compiler module emit** | per-module emit step | per-module output content-hash cache | module's dep closure (other module emits) | compile that module |
+| **Cache fetch** (L2 hit) | L2 read | L2 store for this key | — | network/disk read |
+| **Cache miss → fall to L1** | L1 read | L2 upsert | — | local read |
+| **Runner allocation** | resource-manager upsert | "is there a free runner with affinity for this step?" | jobserver-token upsert (acquire) | spawn runner instance |
+| **Jobserver token** | token upsert | per-runner ephemeral pool | — | hand out a token |
+| **Bootstrap stage** | `BootstrapStageCompile` (`ci.dag:113`) | stage artifact content-hash | prior stage output | run that stage's compile |
+
+This isn't an analogy — it's the same `Upsert<T>` Node, instantiated at different
+levels of the DAG. The `dsl/std/patterns.dag` UPSERT<T> canon (per
+`docs/audit/upsert-pattern-compiler-stray-2026-05-29.md`) is meant to be applied
+recursively. "Don't reinvent the wheel per layer" = don't write a parallel mental
+model for caches vs runners vs compiler internals; each is a row in a Node graph
+whose shape is fixed.
+
+**Architectural payoff of fractal Upsert<T>:**
+- One implementation, not N. The interpreter that walks `ci_pipeline` is the same
+  interpreter that walks an emit step's per-module dep closure (just rooted lower).
+- One cache discipline (`content_hash(whole node)`) — no per-layer ad-hoc keying.
+- One verdict shape (`Outcome<...>`) — aggregator at any level is a fold.
+- One escape valve (`ci_always_run_carveouts`-style explicit data) when the
+  layer below isn't yet modeled.
+
+**Logical compute view: srv1 + srv2 = one giant computer.** At the modeling
+layer, the harness sees a single compute pool of *workers* (declared with
+`worker_count`, `timeout`, `resource_class` — modeled facts on the step). It does
+not know or care which physical box runs which step.
+
+**Physical view: a locality-aware resource-manager `Upsert<T>` sits between.**
+That Node:
+- Consumes the step's declared resource needs + cache-locality hints (where was
+  this step's prior verdict produced? where do its inputs live?).
+- Knows `ci_self_hosted_runner_pools` (`ci.dag:420-423`) — which boxes exist,
+  what their `jobserver_token_cap` / `core_count` / `runner_count` are.
+- Knows the physical-reality penalties: crossing the srv1↔srv2 boundary costs
+  network for L1 cache, splitting a step's working set across hosts is forbidden
+  (one runner = one host, by construction), memory pressure is per-box.
+- `create` picks a host: prefer one with warm L1 for this step's inputs; fall
+  back to the other; never split a step.
+
+The high-level harness never says "run this on srv1." It says "run this step";
+the resource-manager `Upsert<T>` resolves the physical placement using the same
+verify → satisfy → create → resolve discipline. If srv1 dies, every step still
+runs on srv2 — slower (L2 path), correct (no semantic change). If you add srv3
+tomorrow, the resource-manager Node grows by one row in
+`ci_self_hosted_runner_pools`; no other layer changes.
+
+The subsections below (§4.1–§4.10) are each one instance of this pattern at a
+specific layer. Treat them as worked examples of §4.0, not as parallel designs.
+
 ### 4.1 First principle: one Node = one schedulable work unit
 
 Today: `ci_v4` runs 26 sequential steps in one runner process. Steps that don't
@@ -274,7 +341,12 @@ Consequence: the wall-time floor for a workflow run is the longest *chain* of
 shape, the chain is `v2_compile_src_v4 → {M1, T-22, bootstrap, phase1, lens-ci}`
 fan-out — at most **2 hops** from witness to verdict.
 
-### 4.2 Three cache tiers — explicit, logically distinct
+### 4.2 Cache as nested Upsert<T> — not a "designed hierarchy"
+
+**Frame (§4.0 application):** each cache tier is an `Upsert<T>` whose
+`satisfy`-phase upserts the tier below. There is no separately-designed cache
+hierarchy; there's one pattern recursed three deep. The names L0/L1/L2 are
+identities for the underlying *storage*, not separate cache designs.
 
 Per the operator's constraint *"either Actions Cache or treating srv1/srv2 as
 separate caches"*:
@@ -348,7 +420,13 @@ identity:
 These three are real compiler engineering (sequencing into Phase 1b or beyond),
 not workflow YAML edits.
 
-### 4.5 Runner pool as elastic resource
+### 4.5 Runner pool as elastic resource — the resource-manager `Upsert<T>`
+
+**Frame (§4.0 application):** runner allocation is itself an `Upsert<T>` Node.
+The high-level workflow harness does *not* know srv1/srv2 exist — it sees one
+logical compute pool. The resource-manager `Upsert<T>` is the single layer that
+maps logical step → physical runner with locality awareness (and is the *only*
+place that reads `ci_self_hosted_runner_pools`).
 
 Today: pool capacity (50 runners) is implicit; jobs race for them under GHA's
 runner-selection logic.
@@ -365,7 +443,11 @@ Elastic:
 - Per-host affinity (srv1 vs srv2) is hash-driven for L1 cache locality, not for
   load-balancing — see §4.7
 
-### 4.6 Jobserver redesign — per-runner ephemeral
+### 4.6 Jobserver redesign — per-runner ephemeral (Upsert<T> over token slots)
+
+**Frame (§4.0 application):** jobserver-token acquisition is one more
+`Upsert<T>` recursion below runner allocation. Token-pool identity = the runner's
+identity; tokens live exactly as long as the runner.
 
 Today: `MAKEFLAGS=--jobserver-auth=fifo:/var/lib/ctrl/jobserver/host.fifo`. Host-wide
 FIFO; the srv2 incident (audit §5.1) demonstrated that a single misconfigured FIFO
@@ -383,23 +465,27 @@ Elastic:
 not the *authority* on parallelism (which lives in the modeled
 `worker_count`).
 
-### 4.7 L1 locality: srv1 / srv2 as logically distinct caches
+### 4.7 L1 locality is the resource-manager's intelligence (not a separate concern)
 
-Per operator framing: srv1-cache and srv2-cache are **logically separate**, not
-"the same cache happens to be on two boxes."
+The §4.0 resource-manager `Upsert<T>` is where physical-locality knowledge lives.
+The top-level harness treats srv1+srv2 as one logical computer; the
+resource-manager is the only layer that:
 
-Implication for scheduling:
-- The harness can choose to pin re-execution of step S to the host whose L1
-  cache last produced its output (best L1 hit rate).
-- This is *advisory*, not load-bearing: L2 is always available; L1 pinning is an
-  optimization, not a correctness requirement.
-- The pinning decision is itself a function of the modeled facts (`step.id`,
-  `output.hash`, `last_produced_on: SelfHostedRunnerPool`), not a per-host
-  filesystem assertion.
+- Knows srv1-cache and srv2-cache are **logically distinct** L1 stores.
+- Records `last_produced_on: SelfHostedRunnerPool` per step verdict.
+- On `verify`, prefers the host whose L1 last produced this step's output
+  (best L1 hit rate; minimizes cross-box network).
+- On `create` (fresh runner spawn), picks a host with current capacity and warm
+  L1 affinity for the step's *inputs* (not just outputs).
+- **Never splits a step across boxes** — one runner is one host by construction.
+  This is the "intelligent enough not to split storage across boundaries"
+  property the operator named.
 
-If srv1 dies, every step still runs on srv2 — slower (L2 path), but correct.
-This is the elasticity-vs-locality knob: prefer L1 when available, fall back to
-L2, never assume.
+If srv1 dies, the resource-manager's `verify` misses every srv1-affinity hint;
+the `satisfy` recursion falls to L2 (Actions Cache or BuildBuddy CAS); every step
+runs on srv2 — slower (L2 path), correct (no semantic change). No higher layer
+notices. This is the elasticity-vs-locality knob: prefer L1 when available, fall
+back to L2, never assume.
 
 ### 4.8 Cache invalidation discipline
 
