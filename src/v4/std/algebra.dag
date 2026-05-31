@@ -607,23 +607,28 @@ fn bounded_lattice_node(inhabitant: Node) -> Node {
 
 // BoundedLattice instance completeness: meet/join witnesses must be populated on the
 // nested lattice field (std authority for field paths; infer gate consumes this).
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL (internal NamedChildLookup for BL completeness fold).
 type NamedChildLookup
   = NamedChildFound { target: Node }
   | NamedChildMissing
   | NamedChildAmbiguous
 
 
+// 🟢 coproduct dissolution — CP-AI1-BL-MISSING-WITNESS (MissingMeet/Join/LatticeField distinguish partial-instance gaps).
 type BoundedLatticeMissingWitness
   = MissingMeet
   | MissingJoin
   | MissingLatticeField
 
 
+// 🟢 coproduct dissolution — CP-AI1-BL-INSTANCE-COMPLETENESS (NotBL / Complete / Partial trichotomy).
 type BoundedLatticeInstanceCompleteness
-  = BoundedLatticeComplete
+  = NotBoundedLatticeInstance
+  | BoundedLatticeComplete
   | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:conj-has-unique-named-child-predicate — bind node://sg6-bl-completeness — dissolve-on-arrival: substrate-derived name_occurrences==1 projection; forbidden: parallel Bool predicate outside std/algebra bounded-lattice completeness gate.
 fn conj_has_unique_named_child(root: Node, name: Symbol) -> Bool {
   match root.kind {
     TypeNode { connective: Conj } =>
@@ -696,15 +701,16 @@ fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstan
       NamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
     }
   } else {
-    BoundedLatticeComplete
+    NotBoundedLatticeInstance
   }
 }
 
 
 fn bounded_lattice_instance_is_partial(instance: Node) -> Bool {
   match bounded_lattice_instance_completeness(instance: instance) {
-    BoundedLatticeComplete => false
     BoundedLatticePartial { missing: _ } => true
+    NotBoundedLatticeInstance => false
+    BoundedLatticeComplete => false
   }
 }
 

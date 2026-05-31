@@ -12,12 +12,19 @@ import v4.std.algebra {
   BoundedLatticeMissingWitness,
   BoundedLatticeComplete,
   BoundedLatticePartial,
+  NotBoundedLatticeInstance,
+  MissingMeet,
+  MissingJoin,
+  MissingLatticeField,
+  Empty,
   any,
-  bounded_lattice_instance_completeness
+  bounded_lattice_instance_completeness,
+  bounded_lattice_instance_is_partial,
+  list_snoc_item
 }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v4.std.collection { List, Map }
+import v4.std.collection { Absent, List, Map, Optional, Present }
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -37,6 +44,7 @@ import v4.std.diagnostic {
   Accepted,
   None,
   Rejected,
+  Suggested,
   bind_outcome,
   diagnostics_merge,
   diagnostics_singleton,
