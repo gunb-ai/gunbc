@@ -843,6 +843,16 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         t15_step.contains(T15_SELF_HOST_HARNESS_TEST_FILTER),
         "{CI_YML_PATH}: `{T15_SELF_HOST_STEP_NAME}` must run the T-15 self-host fixed-point harness (I7)"
     );
+    assert!(
+        !t15_step.contains("release_distribution"),
+        "{CI_YML_PATH}: T-15 step must not gate on release_distribution (single-authority with modeled mask)"
+    );
+    assert!(
+        CI_DAG.contains(
+            "V4T15SelfHostFixedPointCommand =>\n      CiComponentAffected {\n        v2: false\n        v3: true\n        v4: true\n        testclaim_corpus: false\n        workflow_policy: true\n        release_distribution: false"
+        ),
+        "{CI_DAG_PATH}: V4T15SelfHostFixedPointCommand mask must match ci_v4 T-15 step if: axes"
+    );
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
         binding_step.contains(&format!(

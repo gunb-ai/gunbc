@@ -3185,6 +3185,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v2: true
         v3: false
         v4: false
+        testclaim_corpus: false
         workflow_policy: false
         release_distribution: false
       }
@@ -3193,6 +3194,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v2: true
         v3: false
         v4: true
+        testclaim_corpus: false
         workflow_policy: false
         release_distribution: false
       }
@@ -3201,6 +3203,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v2: false
         v3: true
         v4: false
+        testclaim_corpus: false
         workflow_policy: false
         release_distribution: false
       }
@@ -3210,6 +3213,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v2: false
         v3: false
         v4: false
+        testclaim_corpus: false
         workflow_policy: false
         release_distribution: false
       }
@@ -3218,22 +3222,26 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v2: false
         v3: true
         v4: true
+        testclaim_corpus: false
         workflow_policy: true
         release_distribution: false
       }
+    // Mask axes match ci_v4 step `T-15 self-host fixed-point harness` if: (v4|v3|workflow_policy|main-push); not release_distribution.
     V4T15SelfHostFixedPointCommand =>
       CiComponentAffected {
         v2: false
         v3: true
         v4: true
+        testclaim_corpus: false
         workflow_policy: true
-        release_distribution: true
+        release_distribution: false
       }
     M1RustEmitProbeCommand =>
       CiComponentAffected {
         v2: false
         v3: false
         v4: true
+        testclaim_corpus: false
         workflow_policy: true
         release_distribution: false
       }
@@ -3242,6 +3250,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v2: false
         v3: false
         v4: true
+        testclaim_corpus: false
         workflow_policy: true
         release_distribution: false
       }
