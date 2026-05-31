@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `17a9ac4c3` (`main` 2026-05-31T03:42Z) — post #4077 burn-down maintenance (MW-D8 C4 #4073 framing + landing log).  
+> **Tree HEAD:** `914d2e55b` (`main` 2026-05-31T04:00Z) — post #4084 maintenance; **SG-1 #3956 landed**; P3-B fresh probe [#4086](https://github.com/gunb-ai/gunbc/pull/4086).  
 > **Wave posture:** MW-D8 **4/5 PROVEN** formal ledger; **C4 impl landed** [#4073](https://github.com/gunb-ai/gunbc/pull/4073) — operator-facing **5/5 impl complete**, awaiting Close/Receipt row flip. Wave 2 active.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -34,7 +34,7 @@
 | --------- | -------------------- | --------- |
 | **P1** | **YELLOW** (unchanged) | Meta-gate; `T-35`, `T-38`, `T-31`, `T-32`, `T-36` still open. Wave 2 CI migration does not dissolve per-task receipts. |
 | **P2** | **YELLOW** (unchanged) | Resolve-posture bridge still live; v4 compiler-of-record not proven. [#4014](https://github.com/gunb-ai/gunbc/pull/4014) (W1.1 / MW-D8 C2) advances ci.dag authority, not corpus compile-of-record. |
-| **P3** | **YELLOW** (stronger possible) | Wave 2 primary: [#3964](https://github.com/gunb-ai/gunbc/pull/3964) SG-1 re-dispatch + held [#3956](https://github.com/gunb-ai/gunbc/pull/3956). ~2978 E0423 class — dominant Pareto; landing by Jun 1 is possible but **emit→binary PROVEN** is not. |
+| **P3** | **YELLOW** (stronger) | **#3956** SG-1 **MERGED** — E0423 substrate landed; fresh probe [#4086](https://github.com/gunb-ai/gunbc/pull/4086) post-SG-1 (8 active classes). **emit→binary PROVEN** still not; [#3964](https://github.com/gunb-ai/gunbc/pull/3964) if still open is tail work only. |
 | **P4** | **YELLOW** (unchanged) | T-15 runner scaffold; B1 pins open. W2.5 ladder fixtures support path only; bit-identical fixpt is Wave 3 (W3.5). |
 | **P5** | **YELLOW** (strongest Jun 1 mover) | [#3972](https://github.com/gunb-ai/gunbc/pull/3972) R1 PROVEN; [#4000](https://github.com/gunb-ai/gunbc/pull/4000) R2a/R2b/R3-external landed. Jun 1 anti-shelfware asks structural-bridge **deletion schedule**, not full T-38 GREEN. `scripts/v4-testclaim-corpus-gate.sh` likely still live Jun 1. |
 | **P6** | **GRAY** (unchanged) | Upstream on P4 + P3; no Jun 1 path. |
@@ -65,7 +65,7 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 
 | Wave 2 item | Owner lane | Named PR(s) | Primary predicate touch | Jun 1 touch? |
 | ----------- | ---------- | ----------- | ----------------------- | ------------ |
-| **W2.1** SG-1 TargetAtomRealization | Target Realization | [#3956](https://github.com/gunb-ai/gunbc/pull/3956) (held draft), [#3964](https://github.com/gunb-ai/gunbc/pull/3964) (re-dispatch) | **P3** (emit → binary) | Yes — highest-signal Wave 2 PR |
+| **W2.1** SG-1 TargetAtomRealization | Target Realization | [#3956](https://github.com/gunb-ai/gunbc/pull/3956) **MERGED**; [#3964](https://github.com/gunb-ai/gunbc/pull/3964) re-dispatch if still open | **P3** (emit → binary) | **Landed** — dominant E0423 substrate; emit→binary PROVEN still not |
 | **W2.2** SG-5 / SG-6 | Target Realization | [#3957](https://github.com/gunb-ai/gunbc/pull/3957) **MERGED** ~22:00Z; SG-6 TBD | **P3** | Landed — carrier + translate consumer; rustc meter unchanged until emit consumes |
 | **W2.3** Phase 1.5 `CiUpsertStep<T>` | Modeling DFS + Compiler Spine | [#4055](https://github.com/gunb-ai/gunbc/pull/4055) Bucket A **MERGED**; [#4066](https://github.com/gunb-ai/gunbc/pull/4066) Bucket B **MERGED**; [#4067](https://github.com/gunb-ai/gunbc/pull/4067) Bucket C **MERGED**; [#4059](https://github.com/gunb-ai/gunbc/pull/4059) partition table; Bucket D in flight | **P2**, **P5** (ci.dag authority) | Partial — migration slices landing; not full W2.3 close |
 | **W2.4** Phase 1b A3–A14 + `check-*` deletion | Compiler Spine | *(dispatch TBD post-W2.3)* | **P2**, **P5** | No — post-Jun 1 |
@@ -124,9 +124,9 @@ Wave 2 items per [`v4-merge-wave-and-next-waves-2026-05-30.md`](v4-merge-wave-an
 | **Burn-down** | **YELLOW** |
 | **Owner** | **Compiler Spine** + **Target Realization** (`keen-heron-687`) |
 | **Blocking receipt** | v4-emitted Rust `cargo`-clean for release binary; bootstrap `compiled:` under v4 emit |
-| **Evidence today** | SG-1 class still open (~E0423); **#3957** SG-5 carrier + translate consumer landed — rustc meter unchanged until emit consumes |
-| **Today’s PRs** | **#3962** SG-2 substrate (merged). **#3957** SG-5 **MERGED** ~22:00Z. **#3964** SG-1 re-dispatch OPEN — **primary Wave 2 P3 PR**. Held **#3956** canonical SG-1 draft. |
-| **Wave 2 PR** | **#3964** (active), **#3956** (held); **#3957** SG-5 **landed** |
+| **Evidence today** | **#3956** SG-1 **MERGED** — E0423 substrate landed; fresh M1 probe [#4086](https://github.com/gunb-ai/gunbc/pull/4086) post-SG-1 (8 active classes); **emit→binary PROVEN** still not |
+| **Today’s PRs** | **#3956** SG-1 **MERGED**. **#4086** P3-B probe reclassification. **#4076** Go emit fix. **#3957** SG-5 prior. |
+| **Wave 2 PR** | **#3956** SG-1 **landed**; **#3964** if still open; **#3957** SG-5 **landed** |
 | **Re-check** | **2026-06-02** — SG-2 consumer dispatch + emit-error program (#3934 class) |
 
 ### P4 — Bit-identical self-output (stage1 == stage2)
@@ -209,6 +209,10 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | [#4073](https://github.com/gunb-ai/gunbc/pull/4073) | ~02:52 | W1.5 C4 | **P2**, **P5** | MW-D8 C4 impl — `ci_selection_receipt_shadow` shadow fixture (ledger flip pending) |
 | [#4075](https://github.com/gunb-ai/gunbc/pull/4075) | 02:56 | Maintenance | *(tracker)* | Post-#4071 Bucket C + landing log refresh |
 | [#4077](https://github.com/gunb-ai/gunbc/pull/4077) | 03:42 | Maintenance | *(tracker)* | Post-#4075 C4 #4073 formal/operator split + landing log |
+| [#4084](https://github.com/gunb-ai/gunbc/pull/4084) | ~03:50 | Maintenance | *(tracker)* | Post-#4077 HEAD refresh + #4077 landing log |
+| [#3956](https://github.com/gunb-ai/gunbc/pull/3956) | ~03:55 | W2.1 SG-1 | **P3** | YELLOW stronger — TargetAtomRealization landed (E0423 substrate); not GREEN |
+| [#4086](https://github.com/gunb-ai/gunbc/pull/4086) | ~04:00 | Close/Receipt P3-B | **P3** | Fresh M1 rustc probe + tail reclassification post-SG-1 (8 active classes) |
+| [#4076](https://github.com/gunb-ai/gunbc/pull/4076) | ~03:50 | emit | **P3** | YELLOW — v2 Go layout + weather Go compile |
 
 ---
 
@@ -219,8 +223,8 @@ For release-notes / `snappy-bee-513` — honest snapshot at v0.1.0 tag under fla
 ```text
 v4-done predicates: 0/6 PROVEN | 5 YELLOW | 1 GRAY (P6)
 MW-D8 Wave 1 exit:  4/5 PROVEN formal (C4 impl #4073 landed; Close/Receipt pending)
-Wave 2 landed:      W2.6 #4022, W2.2 #3957 (SG-5), W2.5 #4018/#4028/#4015, W1.1 #4014, W1.5 #4073 (C4 shadow)
-Wave 2 in flight:   W2.1 #3956/#3964 (SG-1), W2.3 Bucket D
+Wave 2 landed:      W2.1 #3956 (SG-1), W2.6 #4022, W2.2 #3957, W2.5 #4018/#4028/#4015, W1.1 #4014, W1.5 #4073
+Wave 2 in flight:   W2.3 Bucket D; #3964 if still open
 Public tier:        alpha/WIP — no compile-clean guarantee on v4 surfaces
 Strongest mover:    P5 (TestClaim / leaf-model path)
 No predicate GREEN flips forecast at tag time.
