@@ -788,20 +788,18 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
             && CI_DAG.contains("dsl/std/compute_fabric.dag"),
         "{CI_DAG_PATH}: M1 parallelism note must cite the compute_fabric dissolve-on-arrival authority"
     );
+    // The probe must run jobserver-coupled: inherited MAKEFLAGS (GHA runner unit) or ctrl-build
+    // (session containers), and it still understands the ctrl-build governor for the latter.
     assert!(
-        M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("jobserver-auth")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
             && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
-        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must route through the ctrl-build host governor"
+        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to the host jobserver (MAKEFLAGS or ctrl-build)"
     );
-    // No fallback: the probe must fail closed when ctrl-build is unavailable (operator policy), and
-    // no static `--jobs` cap path may remain.
+    // No fallback: the probe must fail closed when NEITHER coupling source is present (operator policy).
     assert!(
-        M1_RUST_EMIT_PROBE_SCRIPT.contains("requires the host build governor (no fallback)"),
-        "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed without ctrl-build"
-    );
-    assert!(
-        !M1_RUST_EMIT_PROBE_SCRIPT.contains("--jobs"),
-        "scripts/v4-m1-rust-emit-probe.sh: no static --jobs fallback path may remain"
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
+        "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
     );
 }
 
