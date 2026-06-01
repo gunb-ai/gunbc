@@ -5,7 +5,7 @@
 //! minting a second raw-string authority.
 //!
 //! **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST`
-//! same-path expansion):** explicit deferral to `_internal/ROADMAP_OPS.md` § **Nine lanes**
+//! same-path expansion):** explicit deferral to `ROADMAP.md` § **Nine lanes**
 //! row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap
 //! test floor). This parse-surface smoke dissolves when `.dag` `TestClaim` or generated
 //! harness coverage asserts the `HostStringText` carrier shape and its constructor/projection

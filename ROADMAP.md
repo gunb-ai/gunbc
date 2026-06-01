@@ -44,6 +44,12 @@ Work is organized around closing the bootstrap loop, not a calendar:
 4. **Self-host fixed point** — `compiler.dag` emits bit-identical stage0; hand-maintained file count → 0 per [docs/design-pure-bootstrap-zero.md](docs/design-pure-bootstrap-zero.md).
 5. **Public release** — v2 + v4 story documented; binaries via GitHub Releases; public repo snapshot with these root docs.
 
+### Nine lanes
+
+| Lane | Gate / row | Tracked obligation |
+|------|------------|--------------------|
+| **T-PB-B** | `pb_rust_tests_outside_residual_zero` | Pure Bootstrap test floor: hand-maintained Rust tests under `src/v3/compiler/tests/` shrink toward zero as receipts migrate to `.dag` `TestClaim` declarations or generated harness coverage. Each temporary Rust test scaffold must be listed in the SG-0 hand-authored-test census with a dissolution trigger, and the same PR removes that census entry when the modeled or generated replacement lands. |
+
 Earlier release-program lanes (complexity parity, testgen, multi-target emit, pure-bootstrap floors) informed v4 scope; detailed operational tracking for that era lives in [`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md) for maintainers migrating from the internal repo.
 
 ## How to read the tree
