@@ -96,13 +96,21 @@ falsification_static_rejected=false
 
 pyright_run() {
   local target="$1" out="$2"
+  local cmd
   if command -v pyright >/dev/null 2>&1; then
-    pyright --outputjson "$target" >"$out" 2>/dev/null
+    cmd=(pyright --outputjson "$target")
   elif command -v npx >/dev/null 2>&1; then
-    npx --yes "pyright@${pyright_version}" --outputjson "$target" >"$out" 2>/dev/null
+    cmd=(npx --yes "pyright@${pyright_version}" --outputjson "$target")
   else
-    return 2
+    return 2  # tool unavailable
   fi
+  # pyright EXITS NON-ZERO when it reports diagnostics — for the falsification fixture
+  # that is the EXPECTED success path (reportReturnType), NOT a tool-availability failure.
+  # So ignore pyright's exit code and judge availability purely by whether it produced
+  # parseable --outputjson. An empty/invalid file (e.g. npx could not fetch pyright,
+  # offline runner) => tool unavailable (return 2), which the caller treats as a MISS.
+  "${cmd[@]}" >"$out" 2>/dev/null || true
+  python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$out" >/dev/null 2>&1 || return 2
   return 0
 }
 
