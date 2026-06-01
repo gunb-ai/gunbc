@@ -600,23 +600,34 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
         && (n.connective.clone() == Connective::NoConnective))
 }
 
-pub fn rust_diff_id_ord_carrier_shape_eligible(
-    name: String,
-    children: Rc<Vec<Rc<Node>>>,
+pub fn rust_nominal_ord_resolved_shape(n: Rc<Node>) -> Rc<Node> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(Resolved { node: rt, .. }) => rt.clone(),
+        _ => n.clone(),
+    }
+}
+
+pub fn rust_nominal_ord_record_shape_eligible(
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if ((name.as_str() != "DiffId".to_string().as_str()) || ((children.clone().len() as i64) != 1))
-    {
-        false
-    } else {
-        match children.clone().first().cloned() {
-            Some(child) => rust_nominal_identity_carrier_shape_eligible(
+    ((n.connective.clone() == Conj) && ((n.children.clone().len() as i64) == 1))
+        && match n.children.clone().first().cloned() {
+            Some(child) => rust_nominal_ord_type_eligible(
                 child_type_node(child.clone()),
-                source_indices,
+                source_indices.clone(),
             ),
             None => false,
         }
-    }
+}
+
+pub fn rust_nominal_ord_coproduct_shape_eligible(n: Rc<Node>) -> bool {
+    ((n.connective.clone() == Disj) && ((n.children.clone().len() as i64) > 0))
+        && n.children
+            .clone()
+            .iter()
+            .cloned()
+            .all(|v| ((v.children.clone().len() as i64) == 0))
 }
 
 pub fn rust_nominal_ord_derives_for_shape(
@@ -624,31 +635,41 @@ pub fn rust_nominal_ord_derives_for_shape(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let _ = children;
-    let _ = source_indices;
-    if rust_nominal_ord_name_eligible(name) {
+    let shape = Rc::new(Node {
+        name,
+        span: make_span(0, 0),
+        ident_span: None,
+        children,
+        connective: Conj,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(NoExprData),
+        ident: None,
+    });
+    if rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()) {
         rust_ord_derives_text()
     } else {
         "".to_string()
     }
 }
 
-pub fn rust_nominal_ord_name_eligible(name: String) -> bool {
-    ((((name.as_str() == "DiffId".to_string().as_str())
-        || (name.as_str() == "FormalTerminal".to_string().as_str()))
-        || (name.as_str() == "FormalNonterminal".to_string().as_str()))
-        || (name.as_str() == "JsonSchemaCoreTypeName".to_string().as_str()))
-}
-
 pub fn rust_nominal_ord_type_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
-        || rust_nominal_ord_name_eligible(authored_name_at(
-            source_indices.clone(),
-            elem_node.clone(),
-        )))
+    let shape = rust_nominal_ord_resolved_shape(elem_node.clone());
+    ((rust_nominal_identity_carrier_shape_eligible(shape.clone(), source_indices.clone())
+        || rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()))
+        || rust_nominal_ord_coproduct_shape_eligible(shape.clone()))
 }
 
 pub fn rust_serde_tag_attr() -> String {
@@ -3938,9 +3959,7 @@ pub fn emit_rust_field_definition(
 
 pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
     {
-        if rust_nominal_ord_name_eligible(name) {
-            return rust_ord_derives_text();
-        }
+        let _ = name;
         let complex = Rc::new({
             let mut __result = Vec::new();
             for v in children.iter().cloned() {
@@ -3951,7 +3970,7 @@ pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
             __result
         });
         match ((complex.len() as i64) == 0) {
-            true => rust_enum_derives_copy_text(),
+            true => rust_ord_derives_copy_text(),
             false => rust_enum_derives_text(),
         }
     }
