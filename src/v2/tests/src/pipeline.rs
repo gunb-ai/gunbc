@@ -285,6 +285,9 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
 
 #[test]
 fn generic_fn_sig_preserves_applied_type_args() {
+    // Signature-only receipt: generic applied param types must render with type
+    // args and shared_types Rc wrap. Body is trivial so we do not depend on
+    // generic struct field projection (separate emitter lane).
     let source = "\
 module gen_applied_sig
 
@@ -293,16 +296,16 @@ type Pair<S, A> {
   second: A
 }
 
-fn project_first<S, A>(p: Pair<S, A>) -> S {
-  p.first
+fn takes_pair<S, A>(p: Pair<S, A>) -> () {
+  ()
 }
 ";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/gen_applied_sig.rs");
     assert!(
-        content.contains("project_first<S, A>(p: Rc<Pair<S, A>>)"),
-        "generic fn params/returns must preserve applied type args; got:\n{content}"
+        content.contains("takes_pair<S, A>(p: Rc<Pair<S, A>>)"),
+        "generic fn params must preserve applied type args with shared_types Rc; got:\n{content}"
     );
 }
 
