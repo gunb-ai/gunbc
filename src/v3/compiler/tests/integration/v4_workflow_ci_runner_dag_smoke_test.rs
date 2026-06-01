@@ -1340,15 +1340,9 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "witness_manual_corpus_gate_closed",
         "corpus_report_tally(report);",
         "fail_deferred_conjunction",
-<<<<<<< HEAD
         "tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
         "&&",
         "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-=======
-        "tally\\.fail={2}[^&|;=!]*(?:Nat::)?[Zz]ero\\b",
-        "&&",
-        "tally\\.deferred={2}[^&|;=!]*(?:Nat::)?[Zz]ero\\b",
->>>>>>> origin/main
         "inline_empty_gate",
         "if(?<!!)is_empty\\([^)]*report[^)]*entries",
         "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
