@@ -6034,12 +6034,17 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           None => "compile_error!(\"BoundedLattice data missing bottom\")"
         }
-        concat("            Rc::new(BoundedLattice {\n",
+        let inner = concat("Rc::new(BoundedLattice {\n",
           "                meet: Rc::new(", meet_str, "),\n",
           "                join: Rc::new(", join_str, "),\n",
           "                top: Box::new(", top_str, "),\n",
           "                bottom: Box::new(", bottom_str, "),\n",
           "            })")
+        if raw_ty_str == "Rc<BoundedLattice>" {
+          concat("            Rc::new(", inner, ")")
+        } else {
+          concat("            ", inner)
+        }
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
