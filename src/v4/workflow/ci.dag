@@ -844,7 +844,7 @@ data ci_upsert_testclaim_corpus_eval_upstream_inputs: List<UpsertInputRef> = [
 ]
 
 fn ci_upsert_testclaim_corpus_eval_claim_ref_inputs() -> List<UpsertInputRef> {
-  fold(ci_testclaim_corpus_eval_claim_ids, init: Empty, f: fn(acc, claim_id) {
+  fold(ci_testclaim_corpus_eval_claim_ids, init: ci_empty_upsert_input_refs(), f: fn(acc, claim_id) {
     list_snoc_item(xs: acc, item: ci_upsert_test_claim_ref_input(claim_id: claim_id))
   })
 }
@@ -2306,7 +2306,7 @@ fn ci_upsert_step_symbol_cache_digest(step: CiUpsertStepSymbol) -> Hash {
 
 
 fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId> {
-  fold(rows, init: Empty, f: fn(acc, row) {
+  fold(rows, init: ci_empty_step_ids(), f: fn(acc, row) {
     list_snoc_item(xs: acc, item: row.step_id)
   })
 }
