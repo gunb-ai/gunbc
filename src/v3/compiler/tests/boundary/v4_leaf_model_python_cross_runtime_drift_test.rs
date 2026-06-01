@@ -94,9 +94,11 @@ fn v4_leaf_model_python_drift_dags_tokenize_and_parse() {
 fn v4_leaf_model_python_drift_fixture_strings_match_dag_authority() {
     let py = extract_fixture_source(LENS_DAG, "python_cross_runtime_drift_python_source").unwrap();
     let rs = extract_fixture_source(LENS_DAG, "python_cross_runtime_drift_rust_source").unwrap();
-    let py_val =
-        extract_fixture_source(LENS_DAG, "python_cross_runtime_drift_arbitrary_precision_value")
-            .unwrap();
+    let py_val = extract_fixture_source(
+        LENS_DAG,
+        "python_cross_runtime_drift_arbitrary_precision_value",
+    )
+    .unwrap();
     let fw_val =
         extract_fixture_source(LENS_DAG, "python_cross_runtime_drift_fixed_width_value").unwrap();
     assert_eq!(py, PYTHON_SOURCE);
