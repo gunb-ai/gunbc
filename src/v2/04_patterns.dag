@@ -75,6 +75,11 @@ fn pattern_subject_from_node(n: Node) -> PatternSubject {
   let is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if is_error {
     PatternLookupBlocked
+  } else if n.connective == NoConnective && n.children |> count > 0 && n.inferred != none {
+    match n.inferred {
+      Some { value: Resolved { node: target } } => pattern_subject_from_node(n: target)
+      _ => PatternResolved { node: n }
+    }
   } else {
     PatternResolved { node: n }
   }
