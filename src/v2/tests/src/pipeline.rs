@@ -308,6 +308,33 @@ fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
 }
 
 #[test]
+fn nested_applied_generic_type_args_preserved_in_fn_sig() {
+    let source = "\
+module nested_applied_sig
+
+type Boxed<S> {
+  value: S
+}
+
+type Wrapper<S> {
+  inner: Boxed<S>
+}
+
+fn use_wrap<S>(w: Wrapper<S>) -> Wrapper<S> {
+  w
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/nested_applied_sig.rs");
+    assert!(
+        content
+            .contains("fn use_wrap<S>(w: Rc<Wrapper<Rc<Boxed<S>>>>) -> Rc<Wrapper<Rc<Boxed<S>>>>"),
+        "nested applied generic args must render through decl-type path; got:\n{content}"
+    );
+}
+
+#[test]
 fn generic_param_type_does_not_special_case_nodefold() {
     let source = "\
 module gen_param_no_fabrication

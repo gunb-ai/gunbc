@@ -211,25 +211,19 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
-        _ => {
-            if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) == 0))
-            {
-                authored_name_at(source_indices, n.clone())
-            } else {
-                render_rust_type(n.clone(), shared_types, source_indices)
-            }
-        }
+        _ => render_rust_decl_type(n.clone(), generic_param_names, shared_types, source_indices),
     }
 }
 
 pub fn render_rust_applied_type(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -247,6 +241,7 @@ pub fn render_rust_applied_type(
                     for arg in n.children.clone().iter().cloned() {
                         __result.push(render_rust_applied_type_arg(
                             arg.clone(),
+                            generic_param_names.clone(),
                             shared_types.clone(),
                             source_indices.clone(),
                         ));
@@ -265,12 +260,17 @@ pub fn render_rust_applied_type(
 
 pub fn render_rust_applied_type_shared(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let rendered =
-            render_rust_applied_type(n.clone(), shared_types.clone(), source_indices.clone());
+        let rendered = render_rust_applied_type(
+            n.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        );
         let type_name = authored_name_at(source_indices.clone(), n.clone());
         if v2_rt::set_contains(&shared_types, type_name) {
             v2_rt::concat(v2_rt::concat("Rc<".to_string(), rendered), ">".to_string())
@@ -296,6 +296,7 @@ pub fn render_rust_decl_type(
                 if ((applied.children.clone().len() as i64) > 0) {
                     render_rust_applied_type_shared(
                         applied.clone(),
+                        generic_param_names.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
                     )
@@ -3598,6 +3599,7 @@ pub fn render_rust_type_with_applied_binding(
             if ((applied.children.clone().len() as i64) > 0) {
                 render_rust_applied_type_shared(
                     applied.clone(),
+                    Rc::new(vec![]),
                     shared_types,
                     source_indices.clone(),
                 )
