@@ -270,7 +270,6 @@ fn variant_decl_id(
     variant_name: &str,
 ) -> Result<DeclarationId, EvalError> {
     let Some(decl) = dag.declaration_by_name(type_name) else {
-        eprintln!("emit_host_eval: missing variant carrier type `{type_name}`");
         return Err(EvalError::BadTransformOperands {
             reason: "variant carrier type not found",
         });
