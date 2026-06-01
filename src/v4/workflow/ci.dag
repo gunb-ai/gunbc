@@ -161,14 +161,15 @@ type CiJob {
 }
 
 type TestClaimCorpusDeclarationAuthority {
-  module_name: Symbol
-  declaration: Symbol
+  module_path: String
+  declaration_name: String
 }
 
 // 🟡 bounded bridge — feature:t38-testclaim-corpus-eval-qualified-authority — dissolve-on-arrival:
 // generated item-registry reflection replaces these declaration-qualified handles with canonical
-// module/declaration references. Until then, this record is the command-local authority for the
-// manual T-22 corpus verdict surface; forbidden: raw unqualified Symbol fields for roster/report/tally/witness.
+// module/declaration references. Until then, this record names the exact source module and
+// declaration for each manual T-22 corpus verdict surface handle; forbidden: raw unqualified
+// Symbol fields or CI-local placeholder symbols for roster/report/tally/witness.
 type TestClaimCorpusVerdictSurfaceAuthority {
   run_roster: TestClaimCorpusDeclarationAuthority
   eval_report: TestClaimCorpusDeclarationAuthority
@@ -931,38 +932,38 @@ data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
   claim_rust_language_model_emit_subsumption_reverifies
 ]
 
-data ci_testclaim_corpus_module_manual_roster: Symbol = ci_testclaim_corpus_module_manual_roster
-data ci_testclaim_corpus_module_runner: Symbol = ci_testclaim_corpus_module_runner
-data ci_testclaim_corpus_module_eval: Symbol = ci_testclaim_corpus_module_eval
-data ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows: Symbol = ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows
-data ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval: Symbol = ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval
-data ci_testclaim_corpus_decl_corpus_report_tally: Symbol = ci_testclaim_corpus_decl_corpus_report_tally
-data ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed: Symbol = ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed
+data ci_testclaim_corpus_module_manual_roster_path: String = "v4.test.claim.manual.manual_corpus_roster"
+data ci_testclaim_corpus_module_runner_path: String = "v4.test.claim.workflow.testclaim_corpus_runner"
+data ci_testclaim_corpus_module_eval_path: String = "v4.test.claim.workflow.manual_corpus_eval"
+data ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows_name: String = "manual_corpus_node_runtime_value_rows"
+data ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: String = "run_manual_testclaim_corpus_eval"
+data ci_testclaim_corpus_decl_corpus_report_tally_name: String = "corpus_report_tally"
+data ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: String = "witness_manual_corpus_gate_closed"
 
 fn ci_testclaim_corpus_declaration_authority(
-  module_name: Symbol,
-  declaration: Symbol
+  module_path: String,
+  declaration_name: String
 ) -> TestClaimCorpusDeclarationAuthority {
-  TestClaimCorpusDeclarationAuthority { module_name: module_name, declaration: declaration }
+  TestClaimCorpusDeclarationAuthority { module_path: module_path, declaration_name: declaration_name }
 }
 
 fn ci_testclaim_corpus_verdict_surface_authority() -> TestClaimCorpusVerdictSurfaceAuthority {
   TestClaimCorpusVerdictSurfaceAuthority {
     run_roster: ci_testclaim_corpus_declaration_authority(
-      module_name: ci_testclaim_corpus_module_manual_roster,
-      declaration: ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows
+      module_path: ci_testclaim_corpus_module_manual_roster_path,
+      declaration_name: ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows_name
     ),
     eval_report: ci_testclaim_corpus_declaration_authority(
-      module_name: ci_testclaim_corpus_module_runner,
-      declaration: ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval
+      module_path: ci_testclaim_corpus_module_runner_path,
+      declaration_name: ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name
     ),
     verdict_tally: ci_testclaim_corpus_declaration_authority(
-      module_name: ci_testclaim_corpus_module_runner,
-      declaration: ci_testclaim_corpus_decl_corpus_report_tally
+      module_path: ci_testclaim_corpus_module_runner_path,
+      declaration_name: ci_testclaim_corpus_decl_corpus_report_tally_name
     ),
     gate_witness: ci_testclaim_corpus_declaration_authority(
-      module_name: ci_testclaim_corpus_module_eval,
-      declaration: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed
+      module_path: ci_testclaim_corpus_module_eval_path,
+      declaration_name: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name
     )
   }
 }
@@ -2048,8 +2049,8 @@ fn ci_declaration_authority_projection_node(a: TestClaimCorpusDeclarationAuthori
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      ci_named_edge(name: ci_projection_declaration_module_edge, target: ci_atom(sym: a.module_name)),
-      ci_named_edge(name: ci_projection_declaration_name_edge, target: ci_atom(sym: a.declaration))
+      ci_named_edge(name: ci_projection_declaration_module_edge, target: ci_string_projection_node(s: a.module_path)),
+      ci_named_edge(name: ci_projection_declaration_name_edge, target: ci_string_projection_node(s: a.declaration_name))
     ]
   }
 }
