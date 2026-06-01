@@ -35,21 +35,19 @@ jobs:
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
         # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
-        # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
-        # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
-        # path translation. Gate on WRITE access to the socket (`[ -w ]`), NOT mere existence:
-        # connect(2) to a UNIX socket requires write permission, and on these runners the ctrl
-        # service owns the socket with perms the runner user can't write (ctrl#1399) — a bare
-        # `[ -S ]` gate would export RUSTC_WRAPPER and the build would die "sccache: Permission
-        # denied". (`sccache --show-stats` is NOT a usable probe — it auto-spawns a local server
-        # and returns 0 even when the host server is unreachable.) No write access degrades
-        # observably to a cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
-        if [ -S /var/lib/ctrl/sccache/server.sock ] && [ -w /var/lib/ctrl/sccache/server.sock ]; then
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. Gate on WRITE access
+        # to the INHERITED socket (`[ -w ]`) — connect(2) to a UNIX socket needs write permission; the
+        # runner's isolated socket is ghrunner-writable so this passes and sccache engages, and
+        # degrades observably to a cold build (::warning) — never silently / never fail-hard — when no
+        # usable socket is inherited. dissolve-on-arrival.
+        if [ -S "$SCCACHE_SERVER_UDS" ] && [ -w "$SCCACHE_SERVER_UDS" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache server at /var/lib/ctrl/sccache/server.sock absent or not usable by runner user; building cold"
+          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -89,21 +87,19 @@ jobs:
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
         # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
-        # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
-        # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
-        # path translation. Gate on WRITE access to the socket (`[ -w ]`), NOT mere existence:
-        # connect(2) to a UNIX socket requires write permission, and on these runners the ctrl
-        # service owns the socket with perms the runner user can't write (ctrl#1399) — a bare
-        # `[ -S ]` gate would export RUSTC_WRAPPER and the build would die "sccache: Permission
-        # denied". (`sccache --show-stats` is NOT a usable probe — it auto-spawns a local server
-        # and returns 0 even when the host server is unreachable.) No write access degrades
-        # observably to a cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
-        if [ -S /var/lib/ctrl/sccache/server.sock ] && [ -w /var/lib/ctrl/sccache/server.sock ]; then
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. Gate on WRITE access
+        # to the INHERITED socket (`[ -w ]`) — connect(2) to a UNIX socket needs write permission; the
+        # runner's isolated socket is ghrunner-writable so this passes and sccache engages, and
+        # degrades observably to a cold build (::warning) — never silently / never fail-hard — when no
+        # usable socket is inherited. dissolve-on-arrival.
+        if [ -S "$SCCACHE_SERVER_UDS" ] && [ -w "$SCCACHE_SERVER_UDS" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache server at /var/lib/ctrl/sccache/server.sock absent or not usable by runner user; building cold"
+          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -137,21 +133,19 @@ jobs:
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
         # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
-        # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
-        # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
-        # path translation. Gate on WRITE access to the socket (`[ -w ]`), NOT mere existence:
-        # connect(2) to a UNIX socket requires write permission, and on these runners the ctrl
-        # service owns the socket with perms the runner user can't write (ctrl#1399) — a bare
-        # `[ -S ]` gate would export RUSTC_WRAPPER and the build would die "sccache: Permission
-        # denied". (`sccache --show-stats` is NOT a usable probe — it auto-spawns a local server
-        # and returns 0 even when the host server is unreachable.) No write access degrades
-        # observably to a cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
-        if [ -S /var/lib/ctrl/sccache/server.sock ] && [ -w /var/lib/ctrl/sccache/server.sock ]; then
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. Gate on WRITE access
+        # to the INHERITED socket (`[ -w ]`) — connect(2) to a UNIX socket needs write permission; the
+        # runner's isolated socket is ghrunner-writable so this passes and sccache engages, and
+        # degrades observably to a cold build (::warning) — never silently / never fail-hard — when no
+        # usable socket is inherited. dissolve-on-arrival.
+        if [ -S "$SCCACHE_SERVER_UDS" ] && [ -w "$SCCACHE_SERVER_UDS" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache server at /var/lib/ctrl/sccache/server.sock absent or not usable by runner user; building cold"
+          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
