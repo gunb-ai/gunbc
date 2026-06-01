@@ -1068,11 +1068,18 @@ fn l1_type_knowledge_ratchet() {
             .arg(&v3)
             .output()
             .unwrap_or_else(|e| panic!("grep L1 {label}: {e}"));
-        assert!(
-            output.status.code() == Some(1),
-            "L1 {label} ratchet: expected 0 matches under src/v3, grep stdout:\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        );
+        match output.status.code() {
+            Some(1) => {}
+            Some(0) => panic!(
+                "L1 {label} ratchet: found matches under src/v3:\n{}",
+                String::from_utf8_lossy(&output.stdout)
+            ),
+            code => panic!(
+                "L1 {label} ratchet: grep failed (exit {code:?}):\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        }
     }
 }
 
