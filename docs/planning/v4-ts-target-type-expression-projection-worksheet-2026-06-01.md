@@ -1,6 +1,6 @@
 # v4 TS TargetTypeExpressionProjection Worksheet (per-language row)
 
-> **Status:** DRAFT — `ready-for-review` (TypeScript RCA Manager `fierce-fox-719`; 2026-06-01).  
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). **Dispatch before** TS atom-realization.  
 > **Lane:** ALPHA/PREVIEW — NOT release-minimum.  
 > **Shared carrier authority:** `src/v4/std/target_model.dag` — `TargetTypeExpressionProjection` (SG-2 landed; Rust row on main per #4124). **Do NOT redefine carrier.**  
 > **Dispatch order:** **Before** TS TargetAtomRealization rows (`type_form` dependency).  
@@ -92,13 +92,13 @@ Metric allowed only as secondary:
 
 ---
 
-## §8 Manager approval checklist — OPEN
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] Single-authority fact: carrier in std only; row in typescript.dag only
-- [ ] Dispatch before TS atom-realization worker
-- [ ] Shared-fact review routed to Modeling DFS Arbiter (not TS-only reinvention)
-- [ ] MVP-1 shim dissolution criterion named
-- [ ] Worker dispatch — **forbidden** until Arbiter sign-off
+- [x] Single-authority fact: carrier in `std/target_model` only; row in `typescript.dag` only
+- [x] Dispatch **before** TS atom-realization worker (operator hold enforced)
+- [x] SG-2 extension only — no duplicate carrier
+- [x] MVP-1 shim dissolution criterion named
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ## Related artifacts
 

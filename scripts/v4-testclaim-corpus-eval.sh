@@ -411,8 +411,8 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
     )
     normalized_all_pass = "".join(all_pass_body.split())
     fail_deferred_conjunction = re.compile(
-        r"tally\.fail={2}[^&|;=!]*(?:Nat::)?[Zz]ero\b[^&|;]*&&"
-        r"[^&|;]*tally\.deferred={2}[^&|;=!]*(?:Nat::)?[Zz]ero\b"
+        r"tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
+        r"[^&|;]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
     )
     if not fail_deferred_conjunction.search(normalized_all_pass):
         raise ReceiptError(

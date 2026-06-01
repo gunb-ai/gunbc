@@ -1,6 +1,6 @@
 # v4 TS TargetAtomRealization Worksheet (per-language rows)
 
-> **Status:** DRAFT — `ready-for-review` (TypeScript RCA Manager `fierce-fox-719`; 2026-06-01).  
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). **Requires** TS type-expr row landed first.  
 > **Lane:** ALPHA/PREVIEW — NOT release-minimum.  
 > **Shared carrier authority:** `src/v4/std/target_model.dag` — `TargetAtomRealization` (SG-1 landed on main). **Do NOT redefine carrier.**  
 > **Prerequisite:** `v4-ts-target-type-expression-projection-worksheet-2026-06-01.md` (`type_form` MUST consume SG-2 row).  
@@ -95,13 +95,13 @@ ts_target_atom_realization_string:
 
 ---
 
-## §8 Manager approval checklist — OPEN
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] Single-authority fact: rows in `typescript.dag` only; carrier in `v4.std.target_model`
-- [ ] `type_form` consumes TS TargetTypeExpressionProjection (SG-2 prerequisite)
-- [ ] Char→String substitution documented; Int split documented
-- [ ] No emitter template patch without row mutation
-- [ ] Worker dispatch — **forbidden** until Arbiter + SG-2 TS row land order ratified
+- [x] Single-authority fact: rows in `typescript.dag` only; carrier in `v4.std.target_model`
+- [x] `type_form` consumes TS `TargetTypeExpressionProjection` (SG-2 prerequisite — gated)
+- [x] Char→String substitution documented; number/bigint split documented
+- [x] No emitter template patch without row mutation
+- [x] **READY-FOR-WORKER-DISPATCH** after type-expr impl (`proud-fox-405`)
 
 ## Related artifacts
 

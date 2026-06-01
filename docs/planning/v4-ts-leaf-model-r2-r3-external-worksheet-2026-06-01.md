@@ -1,6 +1,6 @@
 # v4 TS Leaf-Model R2a / R2b / R3-external Worksheet (MW-D3 alpha lane)
 
-> **Status:** DRAFT — `ready-for-review` (TypeScript RCA Manager `fierce-fox-719`; 2026-06-01).  
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Alpha/preview lane only.  
 > **Lane:** ALPHA/PREVIEW — NOT v4 release-minimum (Wave F F3). Mirror landed pattern: Python #4117, Rust #4000.  
 > **Authority:** `docs/planning/v4-leaf-model-verification-2026-05-30.md` §5–§7; `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.2.  
 > **Prerequisite worksheets:** `v4-ts-target-atom-realization-worksheet-2026-06-01.md` (R3-external row must exist before R3 worker); `v4-ts-algebra-inhabitance-widening-worksheet-2026-06-01.md` (stable fact IDs for R2a/R2b subjects).
@@ -31,8 +31,10 @@ Why that patch is forbidden:
 DFS path:
   std/ authority:
     - LeafModelClaimId + LeafModelVerificationRunReceipt at src/v4/std/leaf_model_verification.dag
-    - Target verdict vocabulary (NEW): TargetTypeScriptCompileVerdict / TargetTypeScriptRuntimeVerdict
-      — Arbiter must ratify before worker (no copy-paste of Rust/Python enums without review)
+    - **Shared verdict carriers (ratified):** R2a/R3-external on `TargetCompileVerdict` +
+      `target_diagnostic_ts_*` + `leaf_model_toolchain_tsc_strict`; R2b on shared
+      `TargetRuntimeExerciseVerdict` — **no** `TargetTypeScriptCompileVerdict` /
+      `TargetTypeScriptRuntimeVerdict` (per authority map)
   extdeps/language authority:
     - src/v4/extdeps/languages/typescript.dag — ts_number_algebra_inhabitance,
       ts_bigint_algebra_inhabitance (widened fact IDs per algebra-inhabitance worksheet)
@@ -119,15 +121,15 @@ Metric allowed only as secondary:
 
 ---
 
-## §8 Manager approval checklist (TypeScript RCA Manager) — OPEN
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] Single-authority fact: claim IDs reference typescript.dag data lines only (no parallel Subject coproduct at Phase 1)
-- [ ] Shared verdict carriers ratified by Modeling DFS Arbiter (not reinvented in typescript.dag)
-- [ ] Prerequisite: atom-realization + algebra-widening worksheets approved
-- [ ] R3-external blocked until `ts_target_atom_realization_symbol` row lands
-- [ ] Alpha/preview framing explicit — NOT v4-done / release-minimum gate
-- [ ] §P5(b) receipt table accepted for downstream implementation PR (not this worksheet PR)
-- [ ] Worker dispatch — **forbidden** until Arbiter sign-off
+- [x] Single-authority fact: claim IDs reference `typescript.dag` data lines only
+- [x] **Shared verdict carriers:** R2a/R3-external → `TargetCompileVerdict` + `target_diagnostic_ts_*` + `leaf_model_toolchain_tsc_strict`; R2b → shared `TargetRuntimeExerciseVerdict` — **no** `TargetTypeScript*Verdict`
+- [x] Prerequisites: type-expr + atom + algebra worksheets §8 APPROVED (strict order)
+- [x] R3-external blocked until `ts_target_atom_realization_symbol` row lands
+- [x] Alpha/preview only — NOT v4-done gate
+- [x] §P5(b) receipt table accepted for implementation PR (not worksheet PR)
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ## Related artifacts
 
