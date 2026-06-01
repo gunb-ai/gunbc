@@ -5922,14 +5922,7 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let annotation_type_node = if type_node.children |> count > 0 || find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: scope.type_env.source_indices) != none {
-    type_node
-  } else {
-    match type_node.inferred {
-      Some { value: Resolved { node: rt } } => rt
-      _ => type_node
-    }
-  }
+  let annotation_type_node = type_node
   let render_type_node = if annotation_type_node.children |> count > 0 {
     annotation_type_node
   } else {
