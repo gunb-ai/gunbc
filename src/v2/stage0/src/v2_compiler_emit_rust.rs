@@ -423,7 +423,12 @@ pub fn render_rust_fn_sig_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((generic_param_names.len() as i64) > 0) {
-        render_rust_decl_type(n, generic_param_names, shared_types, source_indices)
+        render_node_type(
+            n,
+            RenderTarget::Rust,
+            shared_types,
+            source_indices,
+        )
     } else {
         render_rust_type_with_applied_binding(n, shared_types, source_indices)
     }
@@ -5286,7 +5291,12 @@ pub fn render_rust_param_sig_type(
 ) -> String {
     let type_node = resolved_type(param.clone());
     if ((generic_param_names.len() as i64) > 0) {
-        render_rust_decl_type(type_node, generic_param_names, shared_types, source_indices)
+        render_node_type(
+            type_node,
+            RenderTarget::Rust,
+            shared_types,
+            source_indices,
+        )
     } else {
         render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
     }
