@@ -66,7 +66,9 @@ Falsification probe (per claim):
         (TS2339 Property 'log2_exact' does not exist — analog E0599 / Python AttributeError).
   R2b: happy bigint add beyond Number.MAX_SAFE_INTEGER; falsification uses number lane for same
         magnitude and expects IEEE754 precision loss or tsc rejection per declared expectation.
-  R3-external: happy Symbol class ctor arity match; falsification ctor arity mismatch (TS2554).
+  R3-external: happy ECMA Symbol() factory call `Symbol("x")` typechecks; falsification uses
+        illegal `new Symbol("x")` (Symbol is not a constructor — ECMA-262 / MDN) or arity
+        `Symbol(1, 2)` → TS2554.
 Metric allowed only as secondary:
   TestClaim wiring count; NOT acceptance.
 ```
@@ -79,7 +81,9 @@ Metric allowed only as secondary:
 |----------|------------------------------|----------------|---------------|
 | `leaf_model_claim_ts_r2a_number_algebra_operations` | `ts_number_algebra_inhabitance_ts_facts_number` | `function r2a(a: number, b: number): [number, boolean] { return [a + b, a < b]; }` | Call `a.log2_exact()` → TS2339 |
 | `leaf_model_claim_ts_r2b_bigint_beyond_safe_integer` | `ts_bigint_algebra_inhabitance_ts_facts_bigint` | Runtime: `(2n ** 63n - 1n) + 1n === 2n ** 63n` via Node | Same expr in `number` lane → diverges from model |
-| `leaf_model_claim_ts_r3_external_symbol_projection` | `ts_target_atom_realization_symbol` | Class `Symbol` + `new Symbol("x")` typechecks | `new Symbol(1, 2)` → TS2554 |
+| `leaf_model_claim_ts_r3_external_symbol_projection` | `ts_target_atom_realization_symbol` | `const s: symbol = Symbol("x");` typechecks (`Symbol()` factory; not constructable) | `new Symbol("x")` → not constructable (tsc) **or** `Symbol(1, 2)` → TS2554 |
+
+**R3-external ECMA grounding (P1):** TypeScript `Symbol` is a callable factory, **not** a constructor — `new Symbol()` is invalid ([MDN Symbol()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/Symbol)). Do **not** mirror Python R3’s nominal `class Symbol` + `__init__` happy path; that pattern is CPython-faithful, not TS-faithful.
 
 **Numeric lane split (operator-visible):** TypeScript has no single `Int` primitive. R2a anchors on ECMA `number` (IEEE-754 binary64 / `ApproximateField`). R2b anchors on `bigint` (exact ℤ / `OrderedRing`). This mirrors Python (#4117) splitting unbounded int behavior (R2b) from algebra ops (R2a), adapted to TS’s dual numeric types.
 

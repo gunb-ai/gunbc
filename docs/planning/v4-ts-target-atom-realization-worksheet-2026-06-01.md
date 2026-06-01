@@ -69,7 +69,7 @@ Metric allowed only as secondary:
 
 | PM / Rust anchor | TypeScript realization | Disposition |
 |------------------|------------------------|-------------|
-| Symbol | `Symbol` branded class or `type Symbol = …` per row | **L0 required** |
+| Symbol | ECMA global `symbol` primitive via `Symbol(description?)` factory (NOT `new Symbol`) | **L0 required** |
 | Bool | `boolean` / `ts_surface_spelling_boolean` | **L0 required** |
 | Char | *N/A* — use **String** (UTF-16 code units, `ts_facts_string`) | **Substitute** (not Char) |
 | Int | *Split:* kernel `Int` routing uses **number** + **bigint** facts, not a single TS `Int` | **Defer atom row** unless Arbiter batches numeric atoms |
@@ -80,9 +80,9 @@ Metric allowed only as secondary:
 
 ```text
 ts_target_atom_realization_symbol:
-  type_form:     ts_type_expression_projection().atom_form applied to Symbol spelling
-  value_form:    new Symbol(<string-literal>)  // must match R3-external happy fixture
-  constructor_form: as ratified by Arbiter (class ctor vs factory — one choice)
+  type_form:     symbol  (primitive) or branded alias per Arbiter — NOT a nominal class shadowing global Symbol
+  value_form:    Symbol(<string-literal>)  // ECMA factory call; must match R3-external happy fixture
+  constructor_form: optional_absent()  // Symbol is not a constructor (ECMA-262); forbidden: new Symbol(...)
 
 ts_target_atom_realization_bool:
   type_form:     boolean
