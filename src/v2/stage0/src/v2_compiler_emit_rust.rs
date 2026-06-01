@@ -431,7 +431,7 @@ pub fn render_rust_fn_sig_type(
         {
             render_rust_type_with_applied_binding(n, shared_types, source_indices)
         } else {
-            render_node_type(n, RenderTarget::Rust, shared_types, source_indices)
+            render_rust_type(n, shared_types, source_indices)
         }
     } else {
         render_rust_type_with_applied_binding(n, shared_types, source_indices)
@@ -5302,12 +5302,7 @@ pub fn render_rust_param_sig_type(
         {
             render_rust_type_with_applied_binding(param, shared_types, source_indices)
         } else {
-            render_node_type(
-                resolved_type(param.clone()),
-                RenderTarget::Rust,
-                shared_types,
-                source_indices,
-            )
+            render_rust_type(resolved_type(param.clone()), shared_types, source_indices)
         }
     } else {
         render_rust_field_type_with_applied_binding(param, shared_types, source_indices)

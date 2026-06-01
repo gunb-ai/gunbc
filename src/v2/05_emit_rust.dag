@@ -243,7 +243,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     if find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
       render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
     } else {
-      render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
     }
   } else {
     render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
@@ -2221,8 +2221,7 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
     if find_property(props: param.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
       render_rust_type_with_applied_binding(n: param, shared_types: shared_types, source_indices: source_indices)
     } else {
-      let type_node = resolved_type(n: param)
-      render_node_type(n: type_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      render_rust_type(n: resolved_type(n: param), shared_types: shared_types, source_indices: source_indices)
     }
   } else {
     render_rust_field_type_with_applied_binding(field: param, shared_types: shared_types, source_indices: source_indices)
