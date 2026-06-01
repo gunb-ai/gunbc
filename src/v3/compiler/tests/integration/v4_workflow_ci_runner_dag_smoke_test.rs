@@ -12,7 +12,15 @@
 //! **TASKS.md** T-21 + T-24; bankruptcy B0/B1 Tier-0 binding smoke: `docs/design-ci-bankruptcy-rebuild.md` §4.1
 //! Wave 1 §11.7.1 floor: `docs/planning/ci-required-surface-cut-2026-06-01.md` (`v4_workflow_ci_wave1_*`).
 //! Wave 3 §11.7.2 shadow receipt Phase 1: same doc (`v4_workflow_ci_wave3_*`; P5(b) receipt table).
-//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174).
+//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174 / #4251).
+//!
+//! **P5 hand-Rust receipt (PR #4251 — `infra_isolation` runner de-priv guard):** no net-new
+//! scaffold and no SG-0 census growth in spirit — `v4_workflow_ci_runner_isolation_guard_*` and
+//! `expr_string_list` are a SAME-PATH expansion of this already-receipted ci.dag↔ci.yml binding
+//! harness (identical posture to the M1 / bootstrap / wave1 binding tests above), not a new Rust
+//! authority surface. It dissolves on the SAME lane as the rest of this file: when `.dag` TestClaim
+//! execution (T-24 emitted-`ci.yml`) covers the `ci_runner_isolation_policy` binding, this test
+//! retires with the harness. ROADMAP row: `T-PB-B` / `pb_rust_tests_outside_residual_zero`.
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
