@@ -5264,7 +5264,7 @@ pub fn emit_rust_param_type(
             let param_types = Rc::new({
                 let mut __result = Vec::new();
                 for p in n.params.clone().iter().cloned() {
-                    __result.push(render_rust_type(
+                    __result.push(render_rust_type_with_applied_binding(
                         param_node_type_expr(p.clone()),
                         shared_types.clone(),
                         source_indices.clone(),
@@ -5275,7 +5275,11 @@ pub fn emit_rust_param_type(
             let param_str = param_types.join(&", ".to_string());
             let ret_str = match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    render_rust_type(rt.clone(), shared_types.clone(), source_indices.clone())
+                    render_rust_type_with_applied_binding(
+                        rt.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                    )
                 }
                 _ => "()".to_string(),
             };
@@ -5291,11 +5295,11 @@ pub fn emit_rust_param_type(
             )
         }
     } else {
-        {
-            let rendered =
-                render_rust_type(n.clone(), shared_types.clone(), source_indices.clone());
-            rendered
-        }
+        render_rust_type_with_applied_binding(
+            n.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        )
     }
 }
 
@@ -5326,7 +5330,7 @@ pub fn emit_inferred(
 ) -> String {
     v2_rt::concat(
         rust_items().return_arrow.clone(),
-        render_rust_type(inferred, shared_types, source_indices),
+        render_rust_type_with_applied_binding(inferred, shared_types, source_indices),
     )
 }
 
@@ -8697,6 +8701,7 @@ pub fn emit_typed_call(
             let mut __result = Vec::new();
             for pair in Rc::new(
                 filled_args
+                    .clone()
                     .iter()
                     .cloned()
                     .enumerate()
@@ -8791,13 +8796,33 @@ pub fn emit_typed_call(
         let all_args = v2_rt::concat(arg_strs, extra_args);
         let args_str = all_args.clone().join(&", ".to_string());
         let runtime_name = rust_runtime_bridge_name(func.clone());
-        let func_name = if is_rt.clone() {
+        let si = scope.type_env.clone().source_indices.clone();
+        let callee_self_capture = if is_rt.clone() {
+            false
+        } else {
+            {
+                let mut __found = false;
+                for a in filled_args.clone().iter().cloned() {
+                    if expr_references_var(arg_value(a.clone()), func.clone(), si.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        };
+        let func_ident = if is_rt.clone() {
             v2_rt::concat(
                 "v2_rt::".to_string(),
                 emit_ident(runtime_name, RenderTarget::Rust),
             )
         } else {
             emit_ident(func.clone(), RenderTarget::Rust)
+        };
+        let func_name = if callee_self_capture {
+            v2_rt::concat(func_ident, ".clone()".to_string())
+        } else {
+            func_ident
         };
         let call_str = if ((is_rt.clone()
             && (func.clone().as_str() == "concat".to_string().as_str()))
