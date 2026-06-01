@@ -4,9 +4,6 @@
 # Fail-closed v4 bootstrap gate: v2-compiler full compile over src/v4.
 # Success requires exit 0 and the compiler's `compiled: N files emitted, 0 diagnostics` line.
 #
-# CI emit-wall bridge (log grep / timeout-as-success) lives in
-# scripts/v4-bootstrap-resolve-posture-gate.sh — separate step, separate exit authority.
-
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
