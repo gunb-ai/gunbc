@@ -1254,8 +1254,8 @@ fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step()
 #[test]
 fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
     assert!(
-        CI_YML.contains("docs/planning/ci-required-surface-cut-2026-06-01.md"),
-        "{CI_YML_PATH}: must reference Wave 1 honesty ledger"
+        CI_YML.contains("Wave 1 §11.7.1 safety floor"),
+        "{CI_YML_PATH}: must declare Wave 1 §11.7.1 safety floor"
     );
     assert!(
         CI_YML.contains("  ci_floor:"),
@@ -1507,13 +1507,12 @@ fn v4_workflow_ci_wave3_ci_floor_independent_of_affected() {
 }
 
 #[test]
-fn v4_workflow_ci_wave3_honesty_ledger_documents_fixture_deferral() {
-    let ledger = include_str!("../../../../../docs/planning/ci-required-surface-cut-2026-06-01.md");
+fn v4_workflow_ci_wave3_fixture_receipt_documents_live_ci_deferral() {
     assert!(
-        ledger.contains("ci_wave3_shadow_fixture_fail_closed_receipt")
-            && ledger.contains("FixtureReceipt")
-            && ledger.contains("adhoc-331899f9-19a"),
-        "honesty ledger must name fixture receipt and live-CI deferral"
+        CI_DAG.contains("data ci_wave3_shadow_fixture_fail_closed_receipt")
+            && CI_DAG.contains("FixtureReceipt")
+            && CI_DAG.contains("adhoc-331899f9-19a"),
+        "{CI_DAG_PATH}: must model fixture receipt and live-CI deferral"
     );
 }
 
@@ -1582,12 +1581,17 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "manual_corpus_gate",
         "witness_manual_corpus_gate_closed",
         "corpus_report_tally(report);",
+        "explicit_return",
+        "\\breturn\\b",
+        "inverted_zero_comparison",
+        "(?<![A-Za-z0-9_:])(?:!\\(*|\\(*false\\)*={2}\\(*|\\(*true\\)*!=\\(*)",
+        "tally\\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b\\)*",
         "fail_deferred_conjunction",
-        "tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "[^&|;=]*&&",
+        "(?:^|;)\\(*tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
+        "\\)*&&",
         "&&",
         "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "[^&|;=]*(?:;|\\})",
+        "\\)*\\}$",
         "inline_empty_gate",
         "if(?<!!)is_empty\\([^)]*report[^)]*entries",
         "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
@@ -1608,23 +1612,64 @@ fn v4_workflow_ci_t38_script_receipt_rejects_inverted_zero_predicates() {
             r#"
 import re
 
+explicit_return = re.compile(r"\breturn\b")
+inverted_zero_comparison = re.compile(
+    r"(?<![A-Za-z0-9_:])(?:!\(*|\(*false\)*={2}\(*|\(*true\)*!=\(*)"
+    r"tally\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*"
+)
 fail_deferred_conjunction = re.compile(
-    r"tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
-    r"[^&|;]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
+    r"(?:^|;)\(*tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*&&"
+    r"\(*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*\}$"
 )
 
-assert fail_deferred_conjunction.search(
-    "tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}"
+def receipt_accepts(source):
+    normalized_source = "".join(source.split())
+    return (
+        not explicit_return.search(source)
+        and not inverted_zero_comparison.search(normalized_source)
+        and fail_deferred_conjunction.search(normalized_source)
+    )
+
+assert receipt_accepts("lettally=x;tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}")
+assert receipt_accepts("lettally=x;(tally.fail==Zero)&&(tally.deferred==Zero)}")
+assert not receipt_accepts(
+    "lettally=x;(tally.fail==Zero)==false&&tally.deferred==Zero}"
 )
-assert not fail_deferred_conjunction.search(
-    "(tally.fail==Zero)==false&&tally.deferred==Zero}"
+assert not receipt_accepts(
+    "lettally=x;tally.fail==Zero&&(tally.deferred==Zero)==false}"
 )
-assert not fail_deferred_conjunction.search(
-    "tally.fail==Zero&&(tally.deferred==Zero)==false}"
+assert not receipt_accepts(
+    "lettally=x;tally.fail==NotZero&&tally.deferred==NotZero}"
 )
-assert not fail_deferred_conjunction.search(
-    "tally.fail==NotZero&&tally.deferred==NotZero}"
-)
+for non_returned in [
+    "lettally=x;tally.fail==Zero&&tally.deferred==Zero;false}",
+    "lettally=x;letok=tally.fail==Zero&&tally.deferred==Zero;false}",
+    "lettally=x;{letinner=1;tally.fail==Zero&&tally.deferred==Zero};false}",
+    "return (tally.fail == Zero) == false && tally.deferred == Zero; tally.fail == Zero && tally.deferred == Zero}",
+    "let tally = x; return (tally.fail == Zero) == false && tally.deferred == Zero; tally.fail == Zero && tally.deferred == Zero}",
+]:
+    assert not receipt_accepts(non_returned)
+for inverted in [
+    "lettally=x;!tally.fail==Zero&&tally.deferred==Zero}",
+    "lettally=x;!(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;!((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;false==(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;(false)==(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;false==((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;true!=(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;(true)!=(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;true!=((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;tally.fail==Zero&&!tally.deferred==Zero}",
+    "lettally=x;tally.fail==Zero&&!(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&!((tally.deferred==Zero))}",
+    "lettally=x;tally.fail==Zero&&false==(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&(false)==(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&false==((tally.deferred==Zero))}",
+    "lettally=x;tally.fail==Zero&&true!=(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&(true)!=(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&true!=((tally.deferred==Zero))}",
+]:
+    assert not receipt_accepts(inverted)
 "#,
         )
         .output()

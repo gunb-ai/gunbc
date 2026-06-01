@@ -20,7 +20,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-# Wave 1 §11.7.1 safety floor — honesty ledger: docs/planning/ci-required-surface-cut-2026-06-01.md
+# Wave 1 §11.7.1 safety floor — fmt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
 # Required on every non-draft PR: fmt, bootstrap viability, M1 rust emit, ci.dag structural receipt, no-new-shell.
 jobs:
   fmt:
@@ -181,4 +181,4 @@ jobs:
         echo "ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)"
     - name: ci receipt (§11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell). See docs/planning/ci-required-surface-cut-2026-06-01.md"
+        echo "::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)"
