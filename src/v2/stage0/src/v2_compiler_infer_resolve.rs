@@ -820,7 +820,7 @@ pub fn resolve_node_bounded(
                                 children: target_result.resolved.clone().children.clone(),
                                 connective: target_result.resolved.clone().connective.clone(),
                                 params: Rc::new(vec![]),
-                                inferred: n.inferred.clone(),
+                                inferred: target_result.resolved.clone().inferred.clone(),
                                 return_cardinality: n.return_cardinality.clone(),
                                 uses: n.uses.clone(),
                                 body: n.body.clone(),
