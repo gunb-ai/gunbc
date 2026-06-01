@@ -356,7 +356,8 @@ rung1_pass="$(row_aggregate R1-rust-typecheck)"
 rung2_pass="$(row_aggregate R2-rust-compile R2-python-compile R2-go-compile)"
 
 l1_python_runtime_pass="SKIP"
-if [[ "${verdict[R0-python-parse]}" == "PASS" || "${verdict[R2-python-compile]}" == "PASS" ]]; then
+# L1 runtime exec requires R2-python-compile PASS (py_compile receipt); R0 alone is insufficient.
+if [[ "${verdict[R2-python-compile]}" == "PASS" ]]; then
   export V4_PHASE1_NAT_SEMIRING_OUT="$out"
   export V4_PHASE1_NAT_SEMIRING_PYTHON="$python_bin"
   export V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS="$timeout_secs"
