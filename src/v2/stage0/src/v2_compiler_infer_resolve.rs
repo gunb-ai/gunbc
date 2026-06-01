@@ -266,7 +266,9 @@ pub fn substitute_type_slots(
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum AliasKind {
     AliasParameterized,
