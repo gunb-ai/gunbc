@@ -30,7 +30,7 @@
 
 use v3_compiler::emit_host_bridge;
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceItem, SurfaceVariant};
+use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceVariant};
 use v3_compiler::tokenize_for_test;
 
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/compiler/emit_host.dag");
@@ -122,6 +122,24 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
             SurfaceItem::Data { name: decl_name, .. } if decl_name == name
         )
     })
+}
+
+fn data_body<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a SurfaceExpr {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(body),
+                ..
+            } if item_name == name => Some(body),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data body `{name}`"))
 }
 
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
