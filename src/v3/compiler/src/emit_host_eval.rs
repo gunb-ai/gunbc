@@ -8,8 +8,8 @@
 //! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** `EXPECTED_HAND_AUTHORED_NON_TEST`
 //! row in `sg0_census_test.rs` paired with `v4_emit_host_eval_dispatch_test.rs`. Explicit
 //! deferral: lane T-PB-B / `pb_rust_tests_outside_residual_zero` (checkable:
-//! `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag` TestClaim name;
-//! ROADMAP.md L47 → `_internal/ROADMAP_OPS.md` when present) plus `emit_host.dag` T-22 rust
+//! `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag` TestClaim name and `ROADMAP.md`
+//! T-PB-B row) plus `emit_host.dag` T-22 rust
 //! intercept. Dissolution: substrate Callable
 //! dispatch owns `run_emit_host_rust` without this intercept; retires with `emit_host_bridge.rs`.
 
@@ -144,7 +144,7 @@ fn emit_host_fixture_inputs(
 ) -> Result<emit_host_runner::EmitHostFixtureInputs, EvalError> {
     let claim_root = inputs_root_field(value)?;
     let claim_pin_source =
-        inputs_optional_present_node_field(value, "host_claim_pin").unwrap_or(claim_root);
+        inputs_optional_present_node_field(dag, value, "host_claim_pin")?.unwrap_or(claim_root);
     let claim_pin = host_pin_from_inputs_root(dag, claim_pin_source, state, strategy)?;
     let expected_root = inputs_expected_eval_root_field(value)?;
     let expected_pin = host_pin_from_inputs_root(dag, expected_root, state, strategy)?;
@@ -167,9 +167,30 @@ fn inputs_expected_eval_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, E
     optional_present_payload(optional)
 }
 
-fn inputs_optional_present_node_field<'a>(inputs: &'a Value, label: &str) -> Option<&'a Value> {
-    let optional = inputs_record_field(inputs, label, "expected Inputs optional field").ok()?;
-    optional_present_payload(optional).ok()
+fn inputs_optional_present_node_field<'a>(
+    dag: &Dag,
+    inputs: &'a Value,
+    label: &str,
+) -> Result<Option<&'a Value>, EvalError> {
+    let Some(optional) = inputs_optional_record_field(inputs, label)? else {
+        return Ok(None);
+    };
+    optional_node_payload(dag, optional)
+}
+
+fn inputs_optional_record_field<'a>(
+    inputs: &'a Value,
+    label: &str,
+) -> Result<Option<&'a Value>, EvalError> {
+    match inputs {
+        Value::RecordValue(fields) => Ok(fields
+            .iter()
+            .find(|field| field.label == label)
+            .map(|field| &field.value)),
+        _ => Err(EvalError::BadTransformOperands {
+            reason: "expected Inputs record",
+        }),
+    }
 }
 
 fn inputs_record_field<'a>(
@@ -208,6 +229,34 @@ fn optional_present_payload<'a>(value: &'a Value) -> Result<&'a Value, EvalError
         _ => Err(EvalError::BadTransformOperands {
             reason: "emit host dispatch requires Inputs.expected_eval_root Present",
         }),
+    }
+}
+
+fn optional_node_payload<'a>(dag: &Dag, value: &'a Value) -> Result<Option<&'a Value>, EvalError> {
+    let Value::VariantValue { tag, payload } = value else {
+        return Err(EvalError::BadTransformOperands {
+            reason: "expected Inputs optional field to be Optional variant",
+        });
+    };
+    match variant_label_for_tag(dag, *tag).as_deref() {
+        Some("Absent") => Ok(None),
+        Some("Present") => Ok(Some(optional_present_payload_value(payload)?)),
+        _ => Err(EvalError::BadTransformOperands {
+            reason: "expected Inputs optional field to be Present or Absent",
+        }),
+    }
+}
+
+fn optional_present_payload_value<'a>(payload: &'a Value) -> Result<&'a Value, EvalError> {
+    match payload {
+        Value::RecordValue(fields) => fields
+            .iter()
+            .find(|field| field.label == "value")
+            .map(|field| &field.value)
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "expected Optional Present { value } payload",
+            }),
+        value => Ok(value),
     }
 }
 
@@ -269,6 +318,18 @@ fn hash_value_to_runner_pin(dag: &Dag, hash: &Value) -> Result<String, EvalError
             reason: "content_hash result not projectable to host runner pin",
         }),
     }
+}
+
+fn variant_label_for_tag(dag: &Dag, tag: DeclarationId) -> Option<String> {
+    dag.declarations().iter().find_map(|decl| {
+        let TypeConnective::Disj { variants } = &decl.connective else {
+            return None;
+        };
+        variants
+            .iter()
+            .find(|variant| variant.ty == tag)
+            .map(|variant| variant.label.clone())
+    })
 }
 
 fn node_primary_symbol(dag: &Dag, value: &Value) -> Option<String> {
@@ -714,15 +775,24 @@ fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{Dag, DeclarationId};
+    use crate::dag::Dag;
     use crate::evaluator::{EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder};
     use emit_host_runner::HostSetupFailure;
+
+    fn optional_variant(dag: &Dag, name: &str, payload: Value) -> Value {
+        Value::VariantValue {
+            tag: dag.declaration_by_name(name).expect(name).id,
+            payload: Box::new(payload),
+        }
+    }
+
+    fn optional_present_value(dag: &Dag, value: Value) -> Value {
+        optional_variant(dag, "Present", value)
+    }
 
     #[test]
     fn emit_host_fixture_inputs_projects_distinct_claim_and_expected_roots() {
         let dag = Dag::new();
-        // Tag id unused by `optional_present_payload` (shape-only); empty dag has no std types.
-        let present_tag = DeclarationId::test_raw(0);
         let inputs = Value::RecordValue(vec![
             NamedField {
                 label: "root".to_string(),
@@ -730,15 +800,10 @@ mod tests {
             },
             NamedField {
                 label: "expected_eval_root".to_string(),
-                value: Value::VariantValue {
-                    tag: present_tag,
-                    payload: Box::new(Value::RecordValue(vec![NamedField {
-                        label: "value".to_string(),
-                        value: Value::LiteralValue(LiteralBits::String(
-                            "expected_eval_pin".to_string(),
-                        )),
-                    }])),
-                },
+                value: optional_present_value(
+                    &dag,
+                    Value::LiteralValue(LiteralBits::String("expected_eval_pin".to_string())),
+                ),
             },
         ]);
         let mut state = EvalStateStack::with_root_frame(EvalFrame::empty());
@@ -749,6 +814,73 @@ mod tests {
             emit_host_fixture_inputs(&dag, &inputs, &mut state, &strategy).expect("Inputs pins");
         assert_eq!(pins.claim_input_root, "claim_pin");
         assert_eq!(pins.expected_eval_root, "expected_eval_pin");
+    }
+
+    #[test]
+    fn emit_host_fixture_inputs_uses_present_host_claim_pin() {
+        let dag = Dag::new();
+        let inputs = Value::RecordValue(vec![
+            NamedField {
+                label: "root".to_string(),
+                value: Value::LiteralValue(LiteralBits::String("eval_root_pin".to_string())),
+            },
+            NamedField {
+                label: "expected_eval_root".to_string(),
+                value: optional_present_value(
+                    &dag,
+                    Value::LiteralValue(LiteralBits::String("expected_eval_pin".to_string())),
+                ),
+            },
+            NamedField {
+                label: "host_claim_pin".to_string(),
+                value: optional_present_value(
+                    &dag,
+                    Value::LiteralValue(LiteralBits::String("host_claim_pin".to_string())),
+                ),
+            },
+        ]);
+        let mut state = EvalStateStack::with_root_frame(EvalFrame::empty());
+        let strategy = EvalStrategy::ApplicativeOrder {
+            input_order: InputEvaluationOrder::LeftFirst,
+        };
+        let pins =
+            emit_host_fixture_inputs(&dag, &inputs, &mut state, &strategy).expect("Inputs pins");
+        assert_eq!(pins.claim_input_root, "host_claim_pin");
+        assert_eq!(pins.expected_eval_root, "expected_eval_pin");
+    }
+
+    #[test]
+    fn emit_host_fixture_inputs_rejects_malformed_host_claim_pin() {
+        let dag = Dag::new();
+        let inputs = Value::RecordValue(vec![
+            NamedField {
+                label: "root".to_string(),
+                value: Value::LiteralValue(LiteralBits::String("eval_root_pin".to_string())),
+            },
+            NamedField {
+                label: "expected_eval_root".to_string(),
+                value: optional_present_value(
+                    &dag,
+                    Value::LiteralValue(LiteralBits::String("expected_eval_pin".to_string())),
+                ),
+            },
+            NamedField {
+                label: "host_claim_pin".to_string(),
+                value: Value::LiteralValue(LiteralBits::String("not_optional".to_string())),
+            },
+        ]);
+        let mut state = EvalStateStack::with_root_frame(EvalFrame::empty());
+        let strategy = EvalStrategy::ApplicativeOrder {
+            input_order: InputEvaluationOrder::LeftFirst,
+        };
+        let err = emit_host_fixture_inputs(&dag, &inputs, &mut state, &strategy)
+            .expect_err("malformed host_claim_pin must fail closed");
+        assert_eq!(
+            err,
+            EvalError::BadTransformOperands {
+                reason: "expected Inputs optional field to be Optional variant"
+            }
+        );
     }
 
     #[test]

@@ -321,8 +321,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** paired TEST row
     // `v4_emit_host_eval_dispatch_test.rs`; explicit deferral lane T-PB-B /
     // `pb_rust_tests_outside_residual_zero` (checkable: `r1_release_acceptance.dag` TestClaim
-    // name `pb_rust_tests_outside_residual_zero`; ROADMAP.md L47 operational row in
-    // `_internal/ROADMAP_OPS.md` when present); substrate `emit_host.dag` T-22 rust intercept.
+    // name `pb_rust_tests_outside_residual_zero` and `ROADMAP.md` T-PB-B row);
+    // substrate `emit_host.dag` T-22 rust intercept.
     // Dissolution: substrate Callable dispatch owns transport without this intercept; retires with
     // `emit_host_bridge.rs` when the T-PB-B lane closes.
     "src/v3/compiler/src/emit_host_eval.rs",
