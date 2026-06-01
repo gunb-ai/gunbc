@@ -23,6 +23,13 @@ import v4.extdeps.languages.typescript {
   ts_bigint_algebra_inhabitance_ts_facts_bigint,
   ts_number_algebra_inhabitance_ts_facts_number
 }
+import v4.extdeps.languages.go {
+  go_atom_realization_symbol,
+  go_facts_field_encoding,
+  go_integer_algebra_inhabitance_go_facts_int,
+  go_integer_algebra_inhabitance_go_facts_int64,
+  go_surface_spelling_int
+}
 import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
   rust_coercion_field_i32_spelling,
@@ -53,6 +60,9 @@ import v4.std.leaf_model_verification {
   LeafModelPythonFixture,
   LeafModelPythonFixturePair,
   LeafModelPythonFalsificationCase,
+  LeafModelGoFixture,
+  LeafModelGoFixturePair,
+  LeafModelGoFalsificationCase,
   LeafModelTypeScriptFixture,
   LeafModelTypeScriptFixturePair,
   LeafModelTypeScriptFalsificationCase,
@@ -64,6 +74,10 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_python_r2b_int_arbitrary_precision_add,
   leaf_model_claim_python_r3_external_symbol_projection,
   leaf_model_claim_python_l1_static_return_type,
+  leaf_model_claim_go_r1_int_surface_spelling,
+  leaf_model_claim_go_r2a_int_algebra_operations,
+  leaf_model_claim_go_r2b_int64_overflow_wrap,
+  leaf_model_claim_go_r3_external_symbol_projection,
   leaf_model_claim_ts_r2a_number_algebra_operations,
   leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
   leaf_model_claim_ts_r3_external_symbol_projection,
@@ -87,6 +101,9 @@ import v4.std.leaf_model_verification {
   target_diagnostic_e0308_type_mismatch,
   target_diagnostic_e0423_expected_value_found_type,
   target_diagnostic_e0599_method_not_found,
+  target_diagnostic_go_undefined_identifier,
+  target_diagnostic_go_method_not_found,
+  target_diagnostic_go_too_many_conversion_args,
   target_diagnostic_python_name_error_undefined_name,
   target_diagnostic_python_attribute_error_method_not_found,
   target_diagnostic_python_type_error_init_arity_mismatch,
@@ -280,6 +297,139 @@ fn python_r3_external_fixture_pair() -> LeafModelPythonFixturePair {
 
 fn python_r3_external_fixture() -> LeafModelPythonFixturePair {
   python_r3_external_fixture_pair()
+}
+
+// R1 — Go predeclared int surface spelling.
+data go_r1_claim_surface_spelling_fact: Symbol = go_surface_spelling_int
+data go_r1_claim_encoding_spelling_fact: Symbol = go_facts_field_encoding
+
+data go_r1_happy_fixture_source: String = "package main\n\nfunc r1_test() int { return 0 }\n"
+
+data go_r1_falsification_fixture_source: String = "package main\n\nfunc r1_test() i32 { return 0 }\n"
+
+fn go_r1_happy_fixture() -> LeafModelGoFixture {
+  LeafModelGoFixture { source: go_r1_happy_fixture_source }
+}
+
+fn go_r1_falsification_fixture() -> LeafModelGoFixture {
+  LeafModelGoFixture { source: go_r1_falsification_fixture_source }
+}
+
+fn go_r1_fixture_pair() -> LeafModelGoFixturePair {
+  LeafModelGoFixturePair {
+    claim_id: leaf_model_claim_go_r1_int_surface_spelling,
+    surface_spelling_fact: go_r1_claim_surface_spelling_fact,
+    encoding_spelling_fact: go_r1_claim_encoding_spelling_fact,
+    happy: go_r1_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoFalsificationCase {
+      fixture: go_r1_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_go_undefined_identifier
+      }
+    }
+  }
+}
+
+fn go_r1_fixture() -> LeafModelGoFixturePair {
+  go_r1_fixture_pair()
+}
+
+// R2a — int algebra inhabitance: arithmetic + ordering over Go int.
+data go_r2a_claim_algebra_inhabitance_fact: Symbol = go_integer_algebra_inhabitance_go_facts_int
+
+data go_r2a_happy_fixture_source: String = "package main\n\nfunc r2a_test(a int, b int) (int, bool) { return a + b, a < b }\n"
+
+data go_r2a_falsification_fixture_source: String = "package main\n\nfunc r2a_test(a int) int { return a.log2_exact() }\n"
+
+fn go_r2a_happy_fixture() -> LeafModelGoFixture {
+  LeafModelGoFixture { source: go_r2a_happy_fixture_source }
+}
+
+fn go_r2a_falsification_fixture() -> LeafModelGoFixture {
+  LeafModelGoFixture { source: go_r2a_falsification_fixture_source }
+}
+
+fn go_r2a_fixture_pair() -> LeafModelGoFixturePair {
+  LeafModelGoFixturePair {
+    claim_id: leaf_model_claim_go_r2a_int_algebra_operations,
+    surface_spelling_fact: go_r2a_claim_algebra_inhabitance_fact,
+    encoding_spelling_fact: go_r2a_claim_algebra_inhabitance_fact,
+    happy: go_r2a_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoFalsificationCase {
+      fixture: go_r2a_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_go_method_not_found
+      }
+    }
+  }
+}
+
+fn go_r2a_fixture() -> LeafModelGoFixturePair {
+  go_r2a_fixture_pair()
+}
+
+// R2b — typed int64 overflow wraps at runtime (non-constant expression).
+data go_r2b_claim_algebra_inhabitance_fact: Symbol = go_integer_algebra_inhabitance_go_facts_int64
+
+data go_r2b_runtime_fixture_source: String = "package main\n\nfunc r2b_test(a int64, b int64) int64 { return a + b }\n\nfunc main() {\n\tvar max int64 = 1<<63 - 1\n\tvar min int64 = -1 << 63\n\tif r2b_test(max, 1) != min {\n\t\tpanic(\"go int64 overflow did not wrap to min int64\")\n\t}\n}\n"
+
+fn go_r2b_runtime_fixture() -> LeafModelGoFixture {
+  LeafModelGoFixture { source: go_r2b_runtime_fixture_source }
+}
+
+fn go_r2b_fixture_pair() -> LeafModelGoFixturePair {
+  LeafModelGoFixturePair {
+    claim_id: leaf_model_claim_go_r2b_int64_overflow_wrap,
+    surface_spelling_fact: go_r2b_claim_algebra_inhabitance_fact,
+    encoding_spelling_fact: go_r2b_claim_algebra_inhabitance_fact,
+    happy: go_r2b_runtime_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoFalsificationCase {
+      fixture: go_r2b_runtime_fixture(),
+      expected_verdict: TargetCompileAccepted
+    }
+  }
+}
+
+fn go_r2b_fixture() -> LeafModelGoFixturePair {
+  go_r2b_fixture_pair()
+}
+
+// R3-external — Symbol atom realization projects to Go string.
+data go_r3_external_claim_atom_realization_fact: Symbol = go_atom_realization_symbol
+
+data go_r3_external_happy_fixture_source: String = "package main\n\nfunc r3_test() string { return \"x\" }\n"
+
+data go_r3_external_falsification_fixture_source: String = "package main\n\nfunc r3_test() string { return string(\"x\", \"y\") }\n"
+
+fn go_r3_external_happy_fixture() -> LeafModelGoFixture {
+  LeafModelGoFixture { source: go_r3_external_happy_fixture_source }
+}
+
+fn go_r3_external_falsification_fixture() -> LeafModelGoFixture {
+  LeafModelGoFixture { source: go_r3_external_falsification_fixture_source }
+}
+
+fn go_r3_external_fixture_pair() -> LeafModelGoFixturePair {
+  LeafModelGoFixturePair {
+    claim_id: leaf_model_claim_go_r3_external_symbol_projection,
+    surface_spelling_fact: go_r3_external_claim_atom_realization_fact,
+    encoding_spelling_fact: go_r3_external_claim_atom_realization_fact,
+    happy: go_r3_external_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoFalsificationCase {
+      fixture: go_r3_external_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_go_too_many_conversion_args
+      }
+    }
+  }
+}
+
+fn go_r3_external_fixture() -> LeafModelGoFixturePair {
+  go_r3_external_fixture_pair()
 }
 
 // R2a — ECMA number (IEEE-754) algebra inhabitance vs tsc.

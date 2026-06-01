@@ -149,6 +149,7 @@ type CiCommand
   | V3SelfHostFixedPointCommand { profile: CiBuildProfile, schedule: CiSchedulePolicy }
   | V4T15SelfHostFixedPointCommand
   | M1RustEmitProbeCommand
+  | LeafModelGoVerifyCommand
   // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1) — forbidden: bypassing narrowing to run full corpus unconditionally. Forward (T-38-PR2): amend when modeled runner evaluates manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts in CI.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol }
   // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
@@ -498,12 +499,14 @@ data v3_self_host_fixed_point_execution: Symbol = v3_self_host_fixed_point_execu
 data v4_t15_self_host_fixed_point_execution: Symbol = v4_t15_self_host_fixed_point_execution
 data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
 data m1_rust_emit_probe_execution: Symbol = m1_rust_emit_probe_execution
+data leaf_model_go_verify_execution: Symbol = leaf_model_go_verify_execution
 data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set
 data testclaim_corpus_eval_execution: Symbol = testclaim_corpus_eval_execution
 data phase1_nat_semiring_rung_gate_execution: Symbol = phase1_nat_semiring_rung_gate_execution
 data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
 data m1_rust_emit_probe_signal: Symbol = m1_rust_emit_probe_signal
+data leaf_model_go_verify_signal: Symbol = leaf_model_go_verify_signal
 data testclaim_corpus_eval_signal: Symbol = testclaim_corpus_eval_signal
 data phase1_nat_semiring_rung_gate_signal: Symbol = phase1_nat_semiring_rung_gate_signal
 data ci_srv1_host: Symbol = ci_srv1_host
@@ -654,6 +657,16 @@ fn ci_job_v4_t15_self_host_fixed_point_execution_mk() -> CiJob {
 }
 
 data ci_job_v4_t15_self_host_fixed_point_execution_row: CiJob = ci_job_v4_t15_self_host_fixed_point_execution_mk()
+
+fn ci_job_leaf_model_go_verify_execution_mk() -> CiJob {
+  CiJob {
+    id: leaf_model_go_verify_execution,
+    command: LeafModelGoVerifyCommand,
+    needs: [v2_compile_src_v4]
+  }
+}
+
+data ci_job_leaf_model_go_verify_execution_row: CiJob = ci_job_leaf_model_go_verify_execution_mk()
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding.
 // 🟡 gated — feature:phase1-nat-semiring-rust-rung-interim-nonblocking — bind #3955 §6 (rust rung emit not rustc-clean on main) — dissolve-on-arrival: flip non_blocking to false when rung1 rust_typecheck passes under V4_PHASE1_NAT_SEMIRING_STRICT=1; until then non_blocking: true (continue-on-error at workflow) while STRICT=1 still logs fail-closed rung receipts; forbidden: silent YAML-only continue-on-error without modeled parity.
 // 🟡 tracked-bridge — feature:phase1-nat-semiring-rung-gate-binding-smoke — owner:keen-crab-361 (Ladder/Fixture Manager) — bind node://adhoc-2b191c1e-6b3 ("phase1/nat_semiring rung gate binding-smoke test (mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml)") — consumer:src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs new test function asserting ci.dag step_name/script_path/non_blocking/timeout_minutes parity with .github/workflows/ci.yml step block — dissolve-on-arrival: binding_smoke_step_name carries the new test's step name (e.g. "phase1/nat_semiring rung gate model/YAML binding smoke") AND ci.yml runs the new test as a cargo-test step paired with the gate; forbidden: re-emptying binding_smoke_step_name after the test lands. Until the bound work item closes, ci.dag↔ci.yml single-authority for THIS signal is enforced by the four-field parity (step_name / script_path / non_blocking / timeout_minutes) under review checkpoint at PR-time — not by a CI binding test.
@@ -697,6 +710,7 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       command: M1RustEmitProbeCommand,
       needs: [v2_compile_src_v4]
     },
+    ci_job_leaf_model_go_verify_execution_row,
     ci_job_testclaim_corpus_eval_execution_row,
     CiJob {
       id: phase1_nat_semiring_rung_gate_execution,
@@ -719,6 +733,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       id: m1_rust_emit_probe_signal,
       job: m1_rust_emit_probe_execution,
       run_policy: Always
+    },
+    CiGate {
+      id: leaf_model_go_verify_signal,
+      job: leaf_model_go_verify_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
     },
     CiGate {
       id: testclaim_corpus_eval_signal,
@@ -884,6 +903,27 @@ fn ci_upsert_m1_rust_emit_probe_execution_mk() -> CiUpsertStepSymbol {
 }
 
 data ci_upsert_m1_rust_emit_probe_execution: CiUpsertStepSymbol = ci_upsert_m1_rust_emit_probe_execution_mk()
+
+data ci_upsert_leaf_model_go_verify_execution_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v4/extdeps/languages/go.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/lens/leaf_model_verification.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/std/leaf_model_verification.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/language_model/go_*.dag"),
+  ci_upsert_file_set_input(segment: "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"),
+  ci_upsert_file_set_input(segment: "scripts/v4-leaf-model-go-*-verify.sh")
+]
+
+fn ci_upsert_leaf_model_go_verify_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_leaf_model_go_verify_execution_inputs
+  verify: ci_atom(sym: ci_cache_cmd_leaf_model_go_verify_tag)
+  create: ci_job_projection_node(j: ci_job_leaf_model_go_verify_execution_row)
+  resolve: ci_atom(sym: leaf_model_go_verify_execution)
+  payload_type: ci_atom(sym: ci_cache_cmd_leaf_model_go_verify_tag)
+  }
+}
+
+data ci_upsert_leaf_model_go_verify_execution: CiUpsertStepSymbol = ci_upsert_leaf_model_go_verify_execution_mk()
 
 data ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
@@ -1069,6 +1109,34 @@ fn ci_upsert_m1_rust_emit_probe_signal_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_m1_rust_emit_probe_signal: CiUpsertStepSymbol = ci_upsert_m1_rust_emit_probe_signal_mk()
 
+data ci_upsert_leaf_model_go_verify_signal_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: leaf_model_go_verify_execution)
+]
+
+fn ci_upsert_leaf_model_go_verify_signal_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_leaf_model_go_verify_signal_inputs
+  verify: ci_gate_projection_node(
+    g: CiGate {
+      id: leaf_model_go_verify_signal,
+      job: leaf_model_go_verify_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  create: ci_gate_projection_node(
+    g: CiGate {
+      id: leaf_model_go_verify_signal,
+      job: leaf_model_go_verify_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    }
+  )
+  resolve: ci_atom(sym: leaf_model_go_verify_signal)
+  payload_type: ci_atom(sym: ci_cache_gate_policy_requires_job_tag)
+  }
+}
+
+data ci_upsert_leaf_model_go_verify_signal: CiUpsertStepSymbol = ci_upsert_leaf_model_go_verify_signal_mk()
+
 data ci_upsert_testclaim_corpus_eval_signal_inputs: List<UpsertInputRef> = [
   ci_upsert_upstream_job_input(job: testclaim_corpus_eval_execution)
 ]
@@ -1175,6 +1243,14 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
   },
   CiUpsertStepRow {
     step_id: JobStep {
+      job: leaf_model_go_verify_execution,
+      step: leaf_model_go_verify_execution
+    },
+    step: ci_upsert_leaf_model_go_verify_execution,
+    inputs: ci_upsert_leaf_model_go_verify_execution_inputs
+  },
+  CiUpsertStepRow {
+    step_id: JobStep {
       job: testclaim_corpus_eval_execution,
       step: testclaim_corpus_eval_execution
     },
@@ -1200,6 +1276,14 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
     step_id: GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
     step: ci_upsert_m1_rust_emit_probe_signal,
     inputs: ci_upsert_m1_rust_emit_probe_signal_inputs
+  },
+  CiUpsertStepRow {
+    step_id: GateStep {
+      job: leaf_model_go_verify_execution,
+      gate: leaf_model_go_verify_signal
+    },
+    step: ci_upsert_leaf_model_go_verify_signal,
+    inputs: ci_upsert_leaf_model_go_verify_signal_inputs
   },
   CiUpsertStepRow {
     step_id: GateStep {
@@ -1237,6 +1321,7 @@ data ci_upsert_steps_bankruptcy_tier0_slice_step_ids: List<CiStepId> = [
 data ci_upsert_steps_bucket_a_slice_step_ids: List<CiStepId> = [
   JobStep { job: v2_compile_src_v4, step: v2_compile_src_v4 },
   JobStep { job: m1_rust_emit_probe_execution, step: m1_rust_emit_probe_execution },
+  JobStep { job: leaf_model_go_verify_execution, step: leaf_model_go_verify_execution },
   JobStep {
     job: phase1_nat_semiring_rung_gate_execution,
     step: phase1_nat_semiring_rung_gate_execution
@@ -1250,6 +1335,7 @@ data ci_upsert_steps_bucket_a_out_of_scope_step_ids: List<CiStepId> = [
   GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
   GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
   GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+  GateStep { job: leaf_model_go_verify_execution, gate: leaf_model_go_verify_signal },
   GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
   GateStep {
     job: phase1_nat_semiring_rung_gate_execution,
@@ -1273,6 +1359,7 @@ data ci_upsert_steps_bucket_c_out_of_scope_step_ids: List<CiStepId> = [
   GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
   GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
   GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+  GateStep { job: leaf_model_go_verify_execution, gate: leaf_model_go_verify_signal },
   GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
   GateStep {
     job: phase1_nat_semiring_rung_gate_execution,
@@ -1294,6 +1381,7 @@ data ci_upsert_steps_bucket_e_slice_step_ids: List<CiStepId> = [
   GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
   GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
   GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+  GateStep { job: leaf_model_go_verify_execution, gate: leaf_model_go_verify_signal },
   GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
   GateStep {
     job: phase1_nat_semiring_rung_gate_execution,
@@ -1317,6 +1405,7 @@ data ci_upsert_steps_buckets_a_b_c_out_of_scope_step_ids: List<CiStepId> = [
   GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
   GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
   GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
+  GateStep { job: leaf_model_go_verify_execution, gate: leaf_model_go_verify_signal },
   GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
   GateStep {
     job: phase1_nat_semiring_rung_gate_execution,
@@ -1457,6 +1546,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     V3SelfHostFixedPointCommand { profile: _, schedule: _ } => true
     V4T15SelfHostFixedPointCommand => true
     M1RustEmitProbeCommand => true
+    LeafModelGoVerifyCommand => true
     TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
       fn_name == ci_testclaim_corpus_selection_fn
     Phase1NatSemiringRungGateCommand => true
@@ -1485,6 +1575,7 @@ data ci_cache_schedule_pull_request_tag: Symbol = ci_cache_schedule_pull_request
 data ci_cache_schedule_main_push_tag: Symbol = ci_cache_schedule_main_push_tag
 data ci_cache_schedule_nightly_tag: Symbol = ci_cache_schedule_nightly_tag
 data ci_cache_cmd_m1_probe_tag: Symbol = ci_cache_cmd_m1_probe_tag
+data ci_cache_cmd_leaf_model_go_verify_tag: Symbol = ci_cache_cmd_leaf_model_go_verify_tag
 data ci_cache_cmd_phase1_nat_semiring_rung_gate_tag: Symbol = ci_cache_cmd_phase1_nat_semiring_rung_gate_tag
 data ci_cache_gate_policy_always_tag: Symbol = ci_cache_gate_policy_always_tag
 data ci_cache_gate_policy_requires_job_tag: Symbol = ci_cache_gate_policy_requires_job_tag
@@ -1955,6 +2046,7 @@ fn ci_command_projection_node(c: CiCommand) -> Node {
       }
     V4T15SelfHostFixedPointCommand => ci_atom(sym: ci_cache_cmd_v4_t15_self_host_tag)
     M1RustEmitProbeCommand => ci_atom(sym: ci_cache_cmd_m1_probe_tag)
+    LeafModelGoVerifyCommand => ci_atom(sym: ci_cache_cmd_leaf_model_go_verify_tag)
     TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
       Node {
         kind: TypeNode { connective: Conj },

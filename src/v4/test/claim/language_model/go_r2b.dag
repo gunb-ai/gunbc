@@ -1,0 +1,47 @@
+// src/v4/test/claim/language_model/go_r2b.dag
+// Scope: Phase 1 R2b — go.dag int64 overflow wrap runtime behavior.
+// Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-go-r2b-verify.sh.
+
+module v4.test.claim.language_model.go_r2b
+
+import v4.extdeps.languages.go { go_integer_algebra_inhabitance_go_facts_int64 }
+import v4.lens.leaf_model_verification {
+  go_r2b_fixture,
+  go_r2b_runtime_fixture_source
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.leaf_model_verification { leaf_model_claim_go_r2b_int64_overflow_wrap }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Boundary,
+  manual_claim_anchor
+}
+
+data go_r2b_claim_bool_true: Symbol = go_r2b_claim_bool_true
+data go_r2b_claim_bool_false: Symbol = go_r2b_claim_bool_false
+
+fn go_r2b_claim_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: go_r2b_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: go_r2b_claim_bool_false } }, children: [] }
+  }
+}
+
+data claim_go_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
+  label: "language_model/go_r2b: runtime fixture references go int64 algebra inhabitance",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: go_r2b_claim_bool_atom(b: true),
+  rhs: go_r2b_claim_bool_atom(
+    b: go_r2b_fixture().claim_id == leaf_model_claim_go_r2b_int64_overflow_wrap
+      && go_r2b_fixture().surface_spelling_fact == go_integer_algebra_inhabitance_go_facts_int64
+      && go_r2b_fixture().encoding_spelling_fact == go_integer_algebra_inhabitance_go_facts_int64
+      && go_r2b_fixture().happy.source == go_r2b_runtime_fixture_source
+      && go_r2b_fixture().falsification.fixture.source == go_r2b_runtime_fixture_source
+  ),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
