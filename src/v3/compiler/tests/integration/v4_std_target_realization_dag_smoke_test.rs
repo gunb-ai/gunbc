@@ -35,13 +35,6 @@
 //! mixed-wire rejection) live in `src/v4/test/claim/manual/sg2_typescript_type_expression_projection.dag`;
 //! dissolves when manual-claim runner executes those `TestClaim`s without this file. ROADMAP:
 //! `_internal/ROADMAP_OPS.md` § **Nine lanes** / T-PB-B (`pb_rust_tests_outside_residual_zero`).
-//! **This PR (+0 SG-0 paths):** TS SG-2 arrow wire-shape widening — extends
-//! `v4_typescript_language_model_declares_type_expression_projection_row` with parse-surface
-//! receipts for `ts_sg2_arrow_labeled_xy_emitted` and `ts_sg2_arrow_mixed_wire_emitted`
-//! golden probes (`typescript.dag`). Behavioral contracts (wire-shape, labeled serialize,
-//! mixed-wire rejection) live in `src/v4/test/claim/manual/sg2_typescript_type_expression_projection.dag`;
-//! dissolves when manual-claim runner executes those `TestClaim`s without this file. ROADMAP:
-//! `_internal/ROADMAP_OPS.md` § **Nine lanes** / T-PB-B (`pb_rust_tests_outside_residual_zero`).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
