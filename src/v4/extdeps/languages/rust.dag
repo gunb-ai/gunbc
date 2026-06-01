@@ -1762,7 +1762,7 @@ fn rust_set_collection_realization_bundle_node() -> Node {
       ),
       rust_named_edge(
         name: target_collection_row_field_fallback,
-        target: rust_inhabitant_atom(id: target_collection_free_monoid_no_representation)
+        target: rust_inhabitant_atom(id: target_collection_set_no_representation)
       )
     ]
   }
