@@ -531,6 +531,38 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
   ci_srv2_pool
 ]
 
+// RUNNER-ISOLATION SECURITY FLOOR — gunbc is PUBLIC on the private self-hosted fleet (srv1/srv2),
+// so fork-PR `pull_request` runs execute attacker-controlled code on those runners. The operator
+// runner de-privilege (jobs run as the unprivileged `ghrunner` user, not root, no passwordless
+// sudo) is the ONLY thing keeping fork-PR code off srv1/srv2 root. That de-priv lives in the
+// fleet's actions-runner host config, OUTSIDE this repo — so a silent host-side regression
+// (runner re-installed as root, sudoers loosened) would re-expose the fleet with NO in-repo diff
+// to catch it. This policy is the in-CI regression guard: a cheap job that adversarially probes
+// its OWN runtime privilege on every run and fails closed the moment the runner is re-privileged.
+// It is a structural FLOOR, not a component-gated job: it runs unconditionally (no `affected`
+// mask, no draft gate) because the fork-PR exposure exists wherever a runner executes at all.
+// Authority for the ci.yml binding receipt: v4_workflow_ci_runner_dag_smoke_test
+// (v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml).
+type RunnerIsolationPolicy {
+  guard_job_name: String // ci.yml job id that enforces the de-priv floor
+  guard_step_name: String // the assertion step name (ci.dag↔ci.yml binding anchor)
+  expected_unprivileged_user: String // the de-privileged runner account (ghrunner)
+  forbid_root_uid: Bool // a job running as uid 0 is a de-priv regression — fail closed
+  forbid_passwordless_sudo: Bool // `sudo -n` succeeding is root-equivalent — fail closed
+  timeout_minutes: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  blocks_required_path: Bool // a privileged runner blocks the merge (not advisory)
+}
+
+data ci_runner_isolation_policy: RunnerIsolationPolicy = {
+  guard_job_name: "runner_isolation_guard"
+  guard_step_name: "Assert runner is de-privileged (fork-PR isolation floor)"
+  expected_unprivileged_user: "ghrunner"
+  forbid_root_uid: true
+  forbid_passwordless_sudo: true
+  timeout_minutes: 5
+  blocks_required_path: true
+}
+
 // 🟡 gated — CI build-cache projection NOT YET MODELED HERE — feature:elastic-cache-interface
 //   — authority: dsl/std/cache_interface.dag (Modeling DFS Worksheet B; landed PR #4095). The
 //   internal planning worksheets (elastic-cache-interface / elastic-ci-redesign) were deleted in
@@ -4036,6 +4068,21 @@ fn ci_runner_pool_capacity_valid(pool: SelfHostedRunnerPool) -> Bool {
 fn ci_runner_pool_fleet_capacities_valid() -> Bool {
   for_all(xs: ci_self_hosted_runner_pools, predicate: ci_runner_pool_capacity_valid)
 }
+
+
+// A faithful runner-isolation floor must (a) fail closed on a re-privileged runner — both the
+// uid-0 and the passwordless-sudo regression shapes — and (b) be a required-path gate, since an
+// advisory-only guard would let a fork-PR exposure ride through on a green-with-warnings merge.
+fn ci_runner_isolation_policy_valid(p: RunnerIsolationPolicy) -> Bool {
+  p.forbid_root_uid
+    && p.forbid_passwordless_sudo
+    && p.blocks_required_path
+    && ci_int_positive(n: p.timeout_minutes)
+}
+
+
+// Receipt: the runner de-priv regression guard is modeled as a fail-closed, required-path floor.
+data ci_runner_isolation_policy_ok: Bool = ci_runner_isolation_policy_valid(p: ci_runner_isolation_policy)
 
 
 // RULING-1: 🟢 operator fact — M1 rust-emit probe parallelism. The emitted-tree `cargo check` runs
