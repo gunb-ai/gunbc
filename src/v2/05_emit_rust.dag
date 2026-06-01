@@ -5909,9 +5909,21 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let render_type_node = match type_node.inferred {
-    Some { value: Resolved { node: rt } } => rt
-    _ => type_node
+  let annotation_type_node = if type_node.children |> count > 0 {
+    type_node
+  } else {
+    match type_node.inferred {
+      Some { value: Resolved { node: rt } } => rt
+      _ => type_node
+    }
+  }
+  let render_type_node = if annotation_type_node.children |> count > 0 {
+    annotation_type_node
+  } else {
+    match value.inferred {
+      Some { value: Resolved { node: rt } } => rt
+      _ => annotation_type_node
+    }
   }
   let raw_ty_str = render_rust_type(n: render_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
