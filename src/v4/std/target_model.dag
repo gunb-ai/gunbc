@@ -5,7 +5,18 @@
 
 module v4.std.target_model
 
-import v4.std.algebra { Cons, Empty, fold_list, is_empty, list_snoc_item, length, list_append }
+import v4.std.algebra {
+  Cons,
+  Empty,
+  fold_list,
+  free_monoid_field_head,
+  free_monoid_field_tail,
+  free_monoid_variant_empty,
+  is_empty,
+  list_snoc_item,
+  length,
+  list_append
+}
 import v4.std.collection {
   Absent,
   List,
@@ -78,23 +89,26 @@ data target_model_edge_atom_realizations: Symbol = target_model_edge_atom_realiz
 // SG-1b function-boundary signature realization catalog (per-language; Param/Return sites only).
 data target_model_edge_signature_realizations: Symbol = target_model_edge_signature_realizations
 
-// --- SG-1 atom realization vocabulary (M6 product carriers on kind+payload axes) ---
+// --- SG-1 atom realization vocabulary (M6 coproduct carriers with variant payloads) ---
 
-type SourceAtomValueKind
-  = SourceAtomSymbol
-  | SourceAtomBool
-  | SourceAtomChar
-
-type SourceAtomValue {
-  kind: SourceAtomValueKind
-  node: Node
-}
+type SourceAtomValue
+  = SourceAtomSymbol { identity: Symbol }
+  | SourceAtomBool { value: Bool }
+  | SourceAtomChar { codepoint: Char }
+  // 🟡 gated — feature:source-atom-string-canonical-carrier — owner:Modeling DFS / std.algebra lane —
+  // bind TS-ATOM-REALIZATION String bridge — dissolve-on: std.algebra exposes a canonical
+  // `String = FreeMonoid<Char>` value/projection carrier that target realization can name
+  // directly; replace this encoded `Node` payload with that carrier and delete the paired
+  // encoded-node projection below. forbidden: treating raw `Node` as the permanent string value
+  // carrier or adding another string/FreeMonoid raw-node bridge outside this receipt.
+  | SourceAtomString { value: Node }
 
 type TargetValueExpressionKind
   = TargetValueExprSymbolIdentity
   | TargetValueExprSymbolToOwnedString
   | TargetValueExprBoolLiteral
   | TargetValueExprCharUnicodeScalar
+  | TargetValueExprStringLiteral
   | TargetValueExprReferenceRcNew
   | TargetValueExprReferenceBoxNew
 
@@ -109,6 +123,7 @@ type TargetValueTemplateKind
   | ValueSymbolToOwnedString
   | ValueBoolLiteral
   | ValueCharUnicodeScalar
+  | ValueStringLiteral
 
 type TargetValueTemplate {
   kind: TargetValueTemplateKind
@@ -149,6 +164,7 @@ data target_value_template_symbol_identity_passthrough: Symbol = target_value_te
 data target_value_template_symbol_to_owned_string: Symbol = target_value_template_symbol_to_owned_string
 data target_value_template_bool_literal: Symbol = target_value_template_bool_literal
 data target_value_template_char_unicode_scalar: Symbol = target_value_template_char_unicode_scalar
+data target_value_template_string_literal: Symbol = target_value_template_string_literal
 data target_model_edge_value_expression: Symbol = target_model_edge_value_expression
 data target_value_expression_symbol_identity_atom: Symbol = target_value_expression_symbol_identity
 data target_value_expression_symbol_to_owned_string_atom: Symbol = target_value_expression_symbol_to_owned_string
@@ -156,6 +172,7 @@ data target_value_expression_bool_literal_atom: Symbol = target_value_expression
 data target_value_expression_bool_true: Symbol = target_value_expression_bool_true
 data target_value_expression_bool_false: Symbol = target_value_expression_bool_false
 data target_value_expression_char_unicode_scalar_atom: Symbol = target_value_expression_char_unicode_scalar
+data target_value_expression_string_literal_atom: Symbol = target_value_expression_string_literal
 data target_value_expression_field_identity: Symbol = target_value_expression_field_identity
 data target_value_expression_field_value: Symbol = target_value_expression_field_value
 data target_value_expression_field_codepoint: Symbol = target_value_expression_field_codepoint
@@ -179,45 +196,66 @@ fn char_kernel_type_node() -> Node {
 }
 
 fn source_atom_symbol(identity: Symbol) -> SourceAtomValue {
-  SourceAtomValue {
-    kind: SourceAtomSymbol,
-    node: Node {
-      kind: TypeNode { connective: Atom { identity: identity } },
-      children: []
-    }
-  }
+  SourceAtomSymbol { identity: identity }
 }
 
 fn source_atom_bool(value: Bool) -> SourceAtomValue {
-  SourceAtomValue {
-    kind: SourceAtomBool,
-    node: match value {
-      true =>
-        Node {
-          kind: TypeNode {
-            connective: Atom { identity: target_value_expression_bool_true }
-          },
-          children: []
-        }
-      false =>
-        Node {
-          kind: TypeNode {
-            connective: Atom { identity: target_value_expression_bool_false }
-          },
-          children: []
-        }
-    }
-  }
+  SourceAtomBool { value: value }
 }
 
 fn source_atom_char(codepoint: Char) -> SourceAtomValue {
-  SourceAtomValue {
-    kind: SourceAtomChar,
-    node: Node {
-      kind: TypeNode { connective: Atom { identity: codepoint } },
-      children: []
-    }
+  SourceAtomChar { codepoint: codepoint }
+}
+
+fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
+  match source.kind {
+    TypeNode { connective: Atom { identity: c } } =>
+      if c == char_kernel_type_atom {
+        optional_absent()
+      } else {
+        optional_present(source_atom_char(codepoint: c))
+      }
+    _ => optional_absent()
   }
+}
+
+// 🟡 gated — feature:free-monoid-node-projection — owner:Modeling DFS / std.algebra lane —
+// dissolve-on: std.algebra exports a canonical `Node -> Optional<FreeMonoid<T>>` (or
+// `Node -> Optional<String>`) projection over `free_monoid_type_node`'s encoded surface; replace
+// this local encoded-node projection with that accessor. The local recursion is fail-closed and
+// bounded to TS-ATOM-REALIZATION's String value-template bridge; forbidden: adding another
+// FreeMonoid storage walker outside this receipt.
+fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
+  match source.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == free_monoid_variant_empty {
+        optional_present(source_atom_string(value: source))
+      } else {
+        optional_absent()
+      }
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: source, name: free_monoid_field_head) {
+        Accepted { value: head } =>
+          match find_named_child(root: source, name: free_monoid_field_tail) {
+            Accepted { value: tail } =>
+              match source_atom_char_projection_from_node(source: head) {
+                Present { value: _ } =>
+                  match source_atom_string_projection_from_node(source: tail) {
+                    Present { value: _ } => optional_present(source_atom_string(value: source))
+                    Absent => optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn source_atom_string(value: Node) -> SourceAtomValue {
+  SourceAtomString { value: value }
 }
 
 fn target_model_named_edge(name: Symbol, target: Node) -> Edge {
@@ -260,15 +298,9 @@ fn source_atom_value_for_value_template(
         _ => optional_absent()
       }
     ValueCharUnicodeScalar =>
-      match source.kind {
-        TypeNode { connective: Atom { identity: c } } =>
-          if c == char_kernel_type_atom {
-            optional_absent()
-          } else {
-            optional_present(source_atom_char(codepoint: c))
-          }
-        _ => optional_absent()
-      }
+      source_atom_char_projection_from_node(source: source)
+    ValueStringLiteral =>
+      source_atom_string_projection_from_node(source: source)
   }
 }
 
@@ -280,41 +312,29 @@ fn source_atom_value_for_realization_row(
 }
 
 fn source_atom_value_as_symbol(value: SourceAtomValue) -> Optional<Symbol> {
-  match value.kind {
-    SourceAtomSymbol =>
-      match value.node.kind {
-        TypeNode { connective: Atom { identity: id } } => optional_present(id)
-        _ => optional_absent()
-      }
+  match value {
+    SourceAtomSymbol { identity: id } => optional_present(id)
     _ => optional_absent()
   }
 }
 
 fn source_atom_value_as_bool(value: SourceAtomValue) -> Optional<Bool> {
-  match value.kind {
-    SourceAtomBool =>
-      match value.node.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          if id == target_value_expression_bool_true {
-            optional_present(true)
-          } else if id == target_value_expression_bool_false {
-            optional_present(false)
-          } else {
-            optional_absent()
-          }
-        _ => optional_absent()
-      }
+  match value {
+    SourceAtomBool { value: b } => optional_present(b)
     _ => optional_absent()
   }
 }
 
 fn source_atom_value_as_char(value: SourceAtomValue) -> Optional<Char> {
-  match value.kind {
-    SourceAtomChar =>
-      match value.node.kind {
-        TypeNode { connective: Atom { identity: c } } => optional_present(c)
-        _ => optional_absent()
-      }
+  match value {
+    SourceAtomChar { codepoint: c } => optional_present(c)
+    _ => optional_absent()
+  }
+}
+
+fn source_atom_value_as_string(value: SourceAtomValue) -> Optional<Node> {
+  match value {
+    SourceAtomString { value: s } => optional_present(s)
     _ => optional_absent()
   }
 }
@@ -341,6 +361,7 @@ fn target_value_template_kind_tag(kind: TargetValueTemplateKind) -> Symbol {
     ValueSymbolToOwnedString => target_value_template_symbol_to_owned_string
     ValueBoolLiteral => target_value_template_bool_literal
     ValueCharUnicodeScalar => target_value_template_char_unicode_scalar
+    ValueStringLiteral => target_value_template_string_literal
   }
 }
 
@@ -421,6 +442,23 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
   }
 }
 
+fn target_value_expression_string_literal(value: Node) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprStringLiteral,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: target_value_expression_string_literal_atom }
+      },
+      children: [
+        target_model_named_edge(
+          name: target_value_expression_field_value,
+          target: value
+        )
+      ]
+    }
+  }
+}
+
 fn target_value_template_apply(
   template: TargetValueTemplate,
   value: SourceAtomValue,
@@ -461,6 +499,15 @@ fn target_value_template_apply(
           )
         Present { value: c } =>
           outcome_accepted(target_value_expression_char_unicode_scalar(codepoint: c))
+      }
+    ValueStringLiteral =>
+      match source_atom_value_as_string(value: value) {
+        Absent =>
+          outcome_rejected(
+            target_value_template_mismatch_diagnostic(source_carrier: source_carrier)
+          )
+        Present { value: s } =>
+          outcome_accepted(target_value_expression_string_literal(value: s))
       }
   }
 }
@@ -942,6 +989,13 @@ fn target_value_template_from_node(
         outcome_accepted(
           TargetValueTemplate {
             kind: ValueCharUnicodeScalar,
+            node: n
+          }
+        )
+      } else if id == target_value_template_string_literal {
+        outcome_accepted(
+          TargetValueTemplate {
+            kind: ValueStringLiteral,
             node: n
           }
         )

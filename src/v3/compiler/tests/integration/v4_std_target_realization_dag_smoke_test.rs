@@ -21,6 +21,13 @@
 //! `v4_go_language_model_declares_target_atom_realization_rows` per
 //! `docs/planning/v4-go-target-atom-realization-worksheet-2026-06-01.md` §9 (Int row
 //! fail-closed deferred until shared `TargetValueTemplateKind` gains integer literal arm).
+//! **This PR (+0 SG-0 paths):** TS L0 TargetAtomRealization same-path expansion —
+//! `v4_typescript_language_model_declares_target_atom_realization_rows` per
+//! `docs/planning/v4-ts-target-atom-realization-worksheet-2026-06-01.md` §8; ROADMAP row
+//! `_internal/ROADMAP_OPS.md` § **Nine lanes** / T-PB-B
+//! (`pb_rust_tests_outside_residual_zero`). Dissolves when `.dag` `TestClaim` /
+//! generated harness execution covers TS Symbol/Bool/String TargetAtomRealization catalog
+//! facts directly without this host Rust parse-surface smoke.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
@@ -32,6 +39,9 @@ const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.d
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
+const TYPESCRIPT_LANGUAGE_DAG: &str =
+    include_str!("../../../../v4/extdeps/languages/typescript.dag");
+const TYPESCRIPT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/typescript.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const SG_RC_LAYERING_CLAIM_DAG: &str =
@@ -574,6 +584,39 @@ fn v4_bounded_lattice_completeness_and_infer_gate_are_wired() {
     assert!(
         surface_declares_fn(&infer_module, "partial_bounded_lattice_instances_in_tree"),
         "{INFER_PATH}: partial instances must be collected before consumer gate"
+    );
+}
+
+#[test]
+fn v4_typescript_language_model_declares_target_atom_realization_rows() {
+    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_symbol"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS Symbol TargetAtomRealization row must be authored in typescript.dag"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_bool"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS Bool TargetAtomRealization row must be authored in typescript.dag"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_string"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS String TargetAtomRealization row substitutes for Rust Char"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_catalog"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS TargetModel must expose atom rows through the shared catalog"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("target_model_edge_atom_realizations"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: live TS TargetModel bundle must expose atom_realizations edge"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("ts_type_expression_projection().atom_form"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: atom rows must consume the SG-2 TypeScript type-expression row"
+    );
+    assert!(
+        !TYPESCRIPT_LANGUAGE_DAG.contains("ts_target_atom_realization_char"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS L0 substitutes String; it must not copy the Rust Char row"
     );
 }
 
