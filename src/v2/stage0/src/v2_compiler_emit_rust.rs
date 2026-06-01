@@ -624,11 +624,18 @@ pub fn rust_nominal_ord_derives_for_shape(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if rust_diff_id_ord_carrier_shape_eligible(name, children, source_indices) {
+    if rust_nominal_ord_name_eligible(name) {
         rust_ord_derives_text()
     } else {
         "".to_string()
     }
+}
+
+pub fn rust_nominal_ord_name_eligible(name: String) -> bool {
+    ((((name.as_str() == "DiffId".to_string().as_str())
+        || (name.as_str() == "FormalTerminal".to_string().as_str()))
+        || (name.as_str() == "FormalNonterminal".to_string().as_str()))
+        || (name.as_str() == "JsonSchemaCoreTypeName".to_string().as_str()))
 }
 
 pub fn rust_nominal_ord_type_eligible(
@@ -636,11 +643,10 @@ pub fn rust_nominal_ord_type_eligible(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
-        || rust_diff_id_ord_carrier_shape_eligible(
-            authored_name_at(source_indices.clone(), elem_node.clone()),
-            elem_node.children.clone(),
+        || rust_nominal_ord_name_eligible(authored_name_at(
             source_indices.clone(),
-        ))
+            elem_node.clone(),
+        )))
 }
 
 pub fn rust_serde_tag_attr() -> String {
