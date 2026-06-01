@@ -65,7 +65,7 @@ use v3_compiler::{
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
 /// [`compile_to_dag`] loads a single surface module — imports do not pull sibling files from
-/// disk. Merge the regenerated GitHub Actions workflow module before `gunbc.ci` so
+/// disk. Merge the pinned GitHub Actions workflow module before `gunbc.ci` so
 /// `ci_workflow_dag.github_actions_workflow` resolves to `gunbc_ci_github_actions_workflow`.
 const GUNBC_CI_LINKED_COMPILE_SOURCE: &str = concat!(
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag"),

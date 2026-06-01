@@ -24,8 +24,8 @@
 // Consumers:
 //   .github/workflows/ci.yml — sole live Actions transport for gunbc CI (single authority).
 //   dsl/gunbc/ci.dag — compiler-intent gates (`CIPipeline` / `CIGate`) plus the pinned GitHub
-//     Actions `Workflow` carrier field on `CIWorkflowDag` (regenerated from `.github/workflows/ci.yml`
-//     into `dsl/gunbc/ci_github_actions_workflow.dag` — single structural consumer; no hand-parallel
+//     Actions `Workflow` carrier field on `CIWorkflowDag` (from
+//     `dsl/gunbc/ci_github_actions_workflow.dag` — single structural consumer; no hand-parallel
 //     `Workflow` mirror elsewhere in this module).
 //   dsl/gunbc/ci_emission.dag — WI-2 / Slice 4: `WorkflowRuntime` + `project_github_actions` +
 //     pinned `gunbc_ci_yml_workflow` (`project_github_actions(ci_workflow_dag, YamlStatic)`).
