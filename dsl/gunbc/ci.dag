@@ -117,6 +117,8 @@ type CIGateEdge {
 // The pinned carrier is an interim static input, not a second editorial source for which compiler
 // gates exist; gate-vs-Actions alignment is process + follow-on projection (WI-2), not dual
 // authority over the same axis (INVARIANTS P2 / modeling Practices 3+5).
+// Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
+// the static carrier.
 type CIWorkflowDag {
   pipeline: CIPipeline
   edges: List<CIGateEdge>

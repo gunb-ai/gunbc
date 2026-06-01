@@ -2,10 +2,9 @@
 //!
 //! E6-G1.a Option 3 — static `Lens<Int>` consumer wiring (argument-opaque `Dag` / `Behavior`).
 //!
-//! Authority: `docs/briefs/r3-pr-e6-g1a-option3-static-lens-worker.md` + feasibility probe
-//! (`docs/briefs/r3-pr-e6-g1a-option3-feasibility-probe.md`). Both are on-tree (landed
-//! `gunbc#1853`); `include_str!` receipts at the end of this file bind the integration crate to
-//! those paths (P1/P5 checkable receipt even when the PR diff is test-only).
+//! Authority: E6-G1.a Option 3 static `Lens<Int>` mechanism landed in `gunbc#1853`; SG-0
+//! `EXPECTED_HAND_AUTHORED_TEST` census membership is the P5 checkable receipt for this
+//! hand-authored integration harness.
 //! Mechanism demonstration only; lens-over-`Dag` folding is deferred to `ReflectedProgram<T>` /
 //! typed declaration-reference carrier work (Q-Reification).
 //!
