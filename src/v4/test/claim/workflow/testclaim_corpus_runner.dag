@@ -143,10 +143,14 @@ fn bootstrap_evaluator_corpus_runtime_pin_is_v4(runtime: BootstrapEvaluatorCorpu
 
 fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
   let runtime = bootstrap_evaluator_corpus_runtime_eval()
-  CorpusEvalReport {
-    entries: corpus_entries_execute_via_bootstrap_evaluator(
-      runtime: runtime,
-      runs: manual_corpus_node_runtime_value_rows
-    )
+  if bootstrap_evaluator_corpus_runtime_pin_is_v4(runtime: runtime) {
+    CorpusEvalReport {
+      entries: corpus_entries_execute_via_bootstrap_evaluator(
+        runtime: runtime,
+        runs: manual_corpus_node_runtime_value_rows
+      )
+    }
+  } else {
+    CorpusEvalReport { entries: [] }
   }
 }

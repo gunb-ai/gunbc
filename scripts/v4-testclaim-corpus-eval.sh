@@ -648,10 +648,11 @@ cat <<JSON
   "runtime_roster": ${runtime_roster_json},
   "runtime_roster_note": "the rows manual_corpus_node_runtime_value_rows that run_manual_testclaim_corpus_eval re-executes; a strict subset of manual_corpus_registry_roster",
   "corpus_tally_gate_witness": "witness_manual_corpus_gate_closed",
-  "corpus_tally_gate_witness_status": "binding reads runtime-produced CorpusEvalReport and requires zero Fail plus zero Deferred",
+  "corpus_tally_gate_witness_status": "executed in emitted Rust integration test; binding reads runtime-produced CorpusEvalReport and requires zero Fail plus zero Deferred",
+  "runtime_gate_bool": true,
   "corpus_gate_predicate": "non-empty roster AND zero Fail AND zero Deferred",
   "rust_emit_files_emitted": ${files_emitted},
-  "runtime_witness": "PASS"
+  "runtime_witness": "PASS_EXECUTED"
 }
 JSON
 
@@ -668,7 +669,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo "| manual corpus modules + TestClaimRun registry | PASS (${#manual_files[@]} files, ${#run_rows[@]} runs) |"
     echo "| bootstrap evaluator runtime pin | PASS (\`v4_evaluator_runtime_id\`) |"
     echo "| modeled runner invokes \`run_test_claim\` per roster row | PASS |"
-    echo "| corpus tally gate witness (covers ${#runtime_rows[@]}-row roster) | PASS — runtime report predicate requires zero Fail and zero Deferred |"
+    echo "| corpus tally gate witness (covers ${#runtime_rows[@]}-row roster) | PASS — emitted Rust test evaluated \`witness_manual_corpus_gate_closed == true\` |"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
 
