@@ -88,8 +88,8 @@ type TargetPythonExerciseVerdict
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
-// 🟡 coproduct dissolution — feature:leaf-model-runtime-exercise-bridge —
-// single runtime-exercise authority for Go R2b + TypeScript R2b (dissolved CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1);
+// 🟢 coproduct dissolution — CP-LMV-TARGET-RUNTIME-EXERCISE-VERDICT-PHASE1 (generalizes Go + TypeScript R2b runtime;
+// dissolved CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1 and CP-LMV-TARGET-GO-RUNTIME-VERDICT-PHASE1 on main).
 // dissolve-on-arrival: fold into LeafModelFixture<C>.expected_verdict once T-22 run_target_verification lands.
 type TargetRuntimeExerciseVerdict
   = TargetRuntimeExerciseAccepted
