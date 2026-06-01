@@ -62,6 +62,7 @@ import v4.std.collection {
   Absent,
   List,
   Map,
+  Optional,
   Present,
   Set,
   empty_map,
@@ -104,7 +105,8 @@ import v4.std.target_model {
   TargetGenericApply,
   TargetSumTypeShape,
   TargetTypeExpression,
-  TargetTypeExpressionProjection
+  TargetTypeExpressionProjection,
+  ValueSymbolIdentityPassthrough
 }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -143,7 +145,6 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
   ValueBoolLiteral,
-  ValueSymbolIdentityPassthrough,
   ValueSymbolToOwnedString
 }
 import v4.std.node {
@@ -1703,6 +1704,36 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
     inhabitant: inhabitant,
     witness: ts_bool_algebra_witness_node()
   }
+}
+
+// Phase 1 leaf-model claim subjects (algebra-inhabitance widening worksheet).
+data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
+data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
+
+// Phase 1 SG-1 Symbol atom realization (alpha lane; catalog bundle edge deferred to SG-2 tranche).
+data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
+data ts_surface_type_symbol: Symbol = ts_surface_type_symbol
+
+fn ts_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
+  target_atom_alias_type_expression(
+    spelling: spelling,
+    atom_form: TargetAtomTypeShape {
+      surface: ts_surface_type_symbol,
+      ident_token: ts_token_ident
+    }
+  )
+}
+
+// Claim subject fact id (mirror rust_atom_realization_symbol).
+data ts_atom_realization_symbol: Symbol = ts_atom_realization_symbol
+
+data ts_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: ts_mvp1_target_model(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_symbol),
+  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
+  constructor_form: optional_absent(),
+  display_name: symbol_kernel_type_atom
 }
 
 fn ts_numeric_algebra_inhabitance_step(

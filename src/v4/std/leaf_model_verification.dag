@@ -88,12 +88,24 @@ type TargetPythonExerciseVerdict
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
+// 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-COMPILE-VERDICT-PHASE1 (Phase 1 tsc gate; widen per target).
+type TargetTypeScriptCompileVerdict
+  = TargetTypeScriptCompileAccepted
+  | TargetTypeScriptCompileRejected { diagnostic_code: Symbol }
+
+// 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1 (Phase 1 Node gate; widen per target).
+type TargetTypeScriptRuntimeVerdict
+  = TargetTypeScriptRuntimeAccepted
+  | TargetTypeScriptRuntimeRejected { diagnostic_code: Symbol }
+
 data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_type_mismatch
 data target_diagnostic_e0423_expected_value_found_type: Symbol = target_diagnostic_e0423_expected_value_found_type
 data target_diagnostic_e0599_method_not_found: Symbol = target_diagnostic_e0599_method_not_found
 data target_diagnostic_python_name_error_undefined_name: Symbol = target_diagnostic_python_name_error_undefined_name
 data target_diagnostic_python_attribute_error_method_not_found: Symbol = target_diagnostic_python_attribute_error_method_not_found
 data target_diagnostic_python_type_error_init_arity_mismatch: Symbol = target_diagnostic_python_type_error_init_arity_mismatch
+data target_diagnostic_ts2339_property_does_not_exist: Symbol = target_diagnostic_ts2339_property_does_not_exist
+data target_diagnostic_ts7009_new_expression_not_constructable: Symbol = target_diagnostic_ts7009_new_expression_not_constructable
 
 type LeafModelClaimId = Symbol
 
@@ -107,6 +119,9 @@ data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_m
 data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
 data leaf_model_claim_rust_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_rust_r3_external_symbol_projection
 data leaf_model_claim_rust_r3_internal_symbol_coupling: LeafModelClaimId = leaf_model_claim_rust_r3_internal_symbol_coupling
+data leaf_model_claim_ts_r2a_number_algebra_operations: LeafModelClaimId = leaf_model_claim_ts_r2a_number_algebra_operations
+data leaf_model_claim_ts_r2b_bigint_beyond_safe_integer: LeafModelClaimId = leaf_model_claim_ts_r2b_bigint_beyond_safe_integer
+data leaf_model_claim_ts_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_ts_r3_external_symbol_projection
 
 type LeafModelRustCrateType = Symbol
 
@@ -167,6 +182,46 @@ type LeafModelPythonFixturePair {
   happy: LeafModelPythonFixture
   expected_happy_verdict: TargetPythonExerciseVerdict
   falsification: LeafModelPythonFalsificationCase
+}
+
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — bind PR #4157 Phase 1 MW-D3 alpha lane —
+// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
+// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands
+// (docs/planning/v4-leaf-model-verification-2026-05-30.md §9; T-22 run_target_verification).
+type LeafModelTypeScriptFixture {
+  source: String
+}
+
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: nested under LeafModelFixture<C>.falsification_artifact
+type LeafModelTypeScriptFalsificationCase {
+  fixture: LeafModelTypeScriptFixture
+  expected_verdict: TargetTypeScriptCompileVerdict
+}
+
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2a/R3-external rows become LeafModelFixture<LeafModelClaim<...>>
+type LeafModelTypeScriptFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  encoding_spelling_fact: Symbol
+  happy: LeafModelTypeScriptFixture
+  expected_happy_verdict: TargetTypeScriptCompileVerdict
+  falsification: LeafModelTypeScriptFalsificationCase
+}
+
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2b Node runtime rows fold into LeafModelFixture<C>
+type LeafModelTypeScriptRuntimeFixture {
+  source: String
+}
+
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2b bigint-vs-number divergence probe under LeafModelFixture<C>
+type LeafModelTypeScriptRuntimeFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  encoding_spelling_fact: Symbol
+  happy: LeafModelTypeScriptRuntimeFixture
+  expected_happy_verdict: TargetTypeScriptRuntimeVerdict
+  falsification: LeafModelTypeScriptRuntimeFixture
+  expected_falsification_verdict: TargetTypeScriptRuntimeVerdict
 }
 
 type LeafModelVerificationRunReceipt {
