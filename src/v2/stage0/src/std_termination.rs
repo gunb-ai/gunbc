@@ -15,7 +15,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum DescentEvidence {
     Strict,
@@ -58,9 +60,9 @@ pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> 
     }
 }
 
-pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>> {
+pub fn descent_evidence_bounded_lattice() -> Rc<Rc<BoundedLattice<DescentEvidence>>> {
     thread_local! {
-        static CACHED: Rc<BoundedLattice<DescentEvidence>> = {
+        static CACHED: Rc<Rc<BoundedLattice<DescentEvidence>>> = {
             Rc::new(BoundedLattice {
                 meet: Rc::new(descent_evidence_lattice_meet),
                 join: Rc::new(descent_evidence_lattice_join),
@@ -69,7 +71,7 @@ pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>>
             })
         };
     }
-    CACHED.with(|c: &Rc<BoundedLattice<DescentEvidence>>| c.clone())
+    CACHED.with(|c: &Rc<Rc<BoundedLattice<DescentEvidence>>>| c.clone())
 }
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
