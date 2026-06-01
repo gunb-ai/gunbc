@@ -2823,20 +2823,21 @@ fn serialize_type_expr_arrow_bounded(
   form: TargetFunctionTypeShape,
   node: Node
 ) -> Outcome<TargetSource> {
-  if is_empty(xs: node_positional_child_targets(node: node)) {
-    serialize_type_expr_arrow_named_bounded(
-      remaining: remaining,
-      target: target,
-      projection: projection,
-      form: form,
-      node: node
-    )
-  } else {
-    bind_outcome(
-      o: type_expr_arrow_split_from_types(
-        types: node_positional_child_targets(node: node),
+  match target_type_expr_arrow_wire_shape(node: node) {
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
+      serialize_type_expr_arrow_named_bounded(
+        remaining: remaining,
+        target: target,
+        projection: projection,
+        form: form,
         node: node
-      ),
+      )
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
+      bind_outcome(
+        o: type_expr_arrow_split_from_types(
+          types: node_positional_child_targets(node: node),
+          node: node
+        ),
       f: fn(split) {
         bind_outcome(
           o: serialize_type_expr_arrow_inputs_bounded(
@@ -2875,6 +2876,7 @@ fn serialize_type_expr_arrow_bounded(
         )
       }
     )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 fn serialize_type_expr_emitted_wire_bounded(
@@ -3078,15 +3080,10 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
 fn project_type_expression_arrow_domain_is_named_conj(domain: Node) -> Bool {
   match domain.kind {
     TypeNode { connective: Conj } =>
-      if is_empty(xs: node.children) {
+      if is_empty(xs: domain.children) {
         false
       } else {
-        fold(node.children, init: true, f: fn(acc, e) {
-          match e.label {
-            Named { name: _ } => acc
-            Positional => false
-          }
-        })
+        connective_edges_conform(children: domain.children, c: Conj)
       }
     _ => false
   }
