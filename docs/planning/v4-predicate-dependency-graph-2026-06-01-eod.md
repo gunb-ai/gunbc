@@ -57,15 +57,13 @@ This was the biggest single-day cascade of the project. Receipt-producing landin
 
 Per-lane maintenance continues. Not Jun 1 GREEN candidate. R3-internal addition + scattered closures throughout the day; total count needs fresh sharp-otter roster refresh.
 
-### §3.2 P2 — TECHNICAL-PROVEN / AUTHORITY-BLOCKED
+### §3.2 P2 — TECHNICAL-PROVEN; DELETION IN FLIGHT
 
 **Layer 1 (technical):** PROVEN via P2-A probe.
 
-**Layer 2 (authority):** OPEN. Two paths to GREEN:
-- **(a) Operator authorization**: explicit `gh pr` deleting `ci.yml:378-385` + `scripts/v4-bootstrap-resolve-posture-gate.sh`. M2 probe (#4097) provides safety-net receipt. Today is day 1 of 14 per script header.
-- **(b) Wait for 14-day window**: removal trigger met on main CI for 14 consecutive days (either v2-compiler typed resolve gate OR v4 emit reaches `compiled:` without SIGTERM).
+**Layer 2 (authority):** **OPERATOR AUTHORIZED EARLY DELETION 2026-06-01T00:28Z** — work-item `adhoc-4cad7e9b-558` spawned to delete `scripts/v4-bootstrap-resolve-posture-gate.sh` + the corresponding bridge step in `.github/workflows/ci.yml:401-410` (the `v2 → v4 bootstrap resolve-posture gate` step). The 14-day window per script header was skipped on M2 probe (#4097) safety-net receipt. P2 flips fully GREEN on that PR merge.
 
-PM cannot resolve; operator decision.
+Awaiting: worker dispatch + PR + merge. Not operator-blocked.
 
 ### §3.3 P3 — 9 routed classes; 8 closed/retired/worksheet-on-main + 2 follow-on stragglers
 
@@ -109,7 +107,7 @@ Hard-gated on P4 + P3.
 
 **Path A: P5 strict "suite passes" (runtime gate)** — operator decision required between (i) and (ii). (i) is patient-wait-for-P3-cascade. (ii) is dedicated DFS worksheet authoring. Either flips strict P5 GREEN.
 
-**Path B: P2 GREEN flip** — operator decides whether to authorize bridge deletion now (with M2 probe as safety-net receipt) OR wait for 14-day window. Authorization-only; no implementation work needed.
+**Path B: P2 GREEN flip** — IN FLIGHT. Operator authorized early deletion 2026-06-01T00:28Z; work-item `adhoc-4cad7e9b-558` spawned. P2 flips on that worker's PR merging.
 
 **Path C: P3 binary build (residual march)** — SG-8 impl worker can spawn once §8 sign-off resolves; SG-1-FOLLOWON + SG-COLLECTION-PROJECTION minor follow-ons; fresh M1 probe to reflect actual post-cascade count. Each class closure shrinks residual; binary builds when ≈0 on Rust path. Long-horizon.
 
@@ -123,7 +121,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 
 | Blocker | Owner action |
 |---|---|
-| **P2-B bridge deletion authorization** | Operator decision OR wait for 14-day window (day 1 = today via #4097 M2 probe) |
+| ~~P2-B bridge deletion authorization~~ | **RESOLVED 2026-06-01T00:28Z** — authorized; work-item `adhoc-4cad7e9b-558` in flight |
 | **P5 runtime gate** | Operator decision on `node://adhoc-f8699326-d69` choice (i) vs (ii) |
 | **SG-8 §8 sign-off** | Modeling DFS authority ambiguous post-proud-pike-archival; need operator routing decision OR PM/keen-heron to act as DFS reviewer |
 | **Fresh M1 probe post-cascade** | sharp-otter to re-measure after today's 7 class closures landed |
@@ -133,7 +131,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 | Priority | Item | State | Owner | Exit receipt |
 |---|---|---|---|---|
 | 1 | P5 runtime gate decision | operator-decision-node | operator | choice (i) or (ii) on adhoc-f8699326-d69 |
-| 2 | P2-B bridge deletion authorization | operator-decision-node | operator | authorize delete OR wait window |
+| 2 | P2-B bridge deletion | **AUTHORIZED + in flight** | work-item `adhoc-4cad7e9b-558` (worker auto-spawn) | bridge script + ci.yml step deleted → P2 GREEN |
 | 3 | SG-8 §8 sign-off authority | structurally ambiguous | operator routing OR PM/keen-heron-acting | §8 ratification → impl worker dispatchable |
 | 4 | Fresh M1 probe post-cascade | PM dispatchable | sharp-otter | new rustc residual count + per-class delta |
 | 5 | SG-1-FOLLOWON impl | routed | TR lane (keen-heron) | minor follow-on close |
@@ -143,12 +141,14 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 
 **No worker implementation dispatches blocked** — most P3 classes closed; SG-8 impl needs §8 routing decision (operator) before spawn.
 
-**One PM dispatch available** if operator authorizes: fresh M1 probe post-cascade (sharp-otter). This would give a clean post-cascade rustc residual count to inform P3 path-C planning.
+**PM dispatches now in flight** (post operator authorization 2026-06-01T00:28Z): P2-B deletion worker (`adhoc-4cad7e9b-558`) + fresh M1 probe worker (`adhoc-7b46e080-3cd`).
 
-**Operator decisions blocking forward progress**:
-- P5 runtime gate (i) vs (ii) on adhoc-f8699326-d69
-- P2-B bridge deletion authorization (or rely on 14-day window)
-- SG-8 §8 sign-off authority routing (PM acts as DFS / spawn new DFS Manager / ratify keen-heron expanded scope)
+**Operator decisions still blocking forward progress** (per consolidated §8.5):
+- P5 runtime gate (i) vs (ii) on `adhoc-f8699326-d69`
+- SG-8 §8 sign-off authority routing
+- Modeling DFS Manager succession plan
+- TypeScript work plan authorization
+- stern-lynx closeout cond (c)
 
 ## §8. Risk / honesty
 
@@ -216,21 +216,23 @@ Per Wave F F3 framing, TS is v4-alpha-only (not release-minimum). Parallel TS cl
 
 ## §10. Watchlist (Jun 1 release-day eod, no time-based ETAs)
 
-**Operator decisions pending (gate forward progress):**
-- P2-B bridge deletion authorization
+**Operator decisions still pending (gate forward progress)** — see §8.5 for full table:
 - P5 runtime gate choice (i) vs (ii) on `adhoc-f8699326-d69`
 - SG-8 §8 sign-off authority routing
+- Modeling DFS Manager succession plan
+- TypeScript work plan authorization
+- stern-lynx closeout cond (c)
 
-**PM dispatches available pending operator authorization:**
-- Fresh M1 probe post-cascade (sharp-otter)
+**PM dispatches in flight (post 2026-06-01T00:28Z operator authorization):**
+- P2-B deletion worker (`adhoc-4cad7e9b-558`) → P2 GREEN on merge
+- Fresh M1 probe worker (`adhoc-7b46e080-3cd`) → clean post-cascade rustc residual
 
 **Receipts available for review:**
 - All today's class closures on main; predicate-state movement substantial across P3 + P5 layers
-- No active worker awaiting attention
 
 **Jun 1 release readiness summary:**
 - v4 ships alpha per Flavor (iv) operator framing (per session memory `project_june1_release`)
 - Substrate landings: massive day (SG-1/2/5/6/1b/RC-LAYERING + SG-3-retired + SG-8-worksheet + #4115 P5 + #4120 T-38-PR2 + W2.3 Bucket E + #4091 elastic CI ratification + compute fabric + cache substrate)
-- **P5 (canonical "TestClaim suite passes" per TASKS.md): NOT fully GREEN today** — Layer 1 + Layer 2 closed but runtime-execution gate remains open at `node://adhoc-f8699326-d69` (operator decision pending on path (i) M1 cargo-clean subset vs (ii) bootstrap-evaluator corpus runtime). P5 flips fully GREEN only when runtime-execution gate closes; do NOT treat as done.
-- P2 awaits operator authorization OR 14-day window completion
+- **P5 (canonical "TestClaim suite passes" per TASKS.md): NOT fully GREEN today** — Layer 1 + Layer 2 closed but runtime-execution gate remains open at `node://adhoc-f8699326-d69`. P5 flips fully GREEN only when runtime-execution gate closes; do NOT treat as done.
+- **P2: deletion in flight** — pending merge of `adhoc-4cad7e9b-558` worker PR; then P2 fully GREEN
 - P3 multi-class cascade closed today but residual rustc count significant; long-horizon to binary builds
