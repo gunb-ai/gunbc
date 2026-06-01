@@ -9,7 +9,8 @@ import v4.compiler.translate {
   target_bundle_child_optional_type_expr_projection,
   target_serialize_source_from_model,
   translate,
-  ProjectionAbsent
+  ProjectionAbsent,
+  ProjectionPresent
 }
 import v4.extdeps.languages.rust {
   rust_mvp1_target_model,
