@@ -12,7 +12,9 @@ use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_types::is_container_type;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
+pub use crate::v2_compiler_coercion::{
+    coerce_primitive_type, is_copy, lookup_checkpoint, target_optional_template,
+};
 pub use crate::v2_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v2_compiler_emit::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -129,7 +131,12 @@ pub fn render_rust_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
+        Some(InferredNode::TypeVariable { id: tv, .. }) => match n.return_cardinality.clone() {
+            Cardinality::CardOptional => {
+                apply_type_template1(target_optional_template(RenderTarget::Rust), tv.clone())
+            }
+            Cardinality::Required => tv.clone(),
+        },
         _ => match find_property(
             n.properties.clone(),
             "__applied_type_args".to_string(),
