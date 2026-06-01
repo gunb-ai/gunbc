@@ -167,8 +167,8 @@ Captures everything PM is waiting on operator to confirm/decide. Updated as item
 |---|---|---|---|
 | 1 | P2-B bridge deletion | **DONE 2026-06-01T00:50Z** (early deletion, 14-day window skipped) — #4139 MERGED (squash 12d1aa68c); script + ci.yml step removed from main | P2 flipped fully GREEN |
 | 2 | Fresh M1 probe post-cascade | **AUTHORIZED 2026-06-01T00:28Z** — work-item `adhoc-7b46e080-3cd` in flight (sharp-otter archived; fresh worker spawned) | Gives clean post-cascade P3 residual count |
-| 3 | P5 runtime gate **routing decision** (i) vs (ii) | **DECISION RESOLVED 2026-06-01T01** — option (ii) authorized as **WORKSHEET** (not implementation). The P5 runtime-execution **gate itself remains OPEN** — gate closes only when runtime ships + suite executes + passes (per §1 P5 row + §3.5 + §10). Worksheet authoring is the next step toward gate closure, not the closure itself. |
-| 4 | SG-8 §8 sign-off **authority routing** | **ROUTING RESOLVED 2026-06-01T01** — dedicated Modeling DFS Manager to spawn; PM does NOT act as Modeling DFS; keen-heron remains TR. **Ratification completed 2026-06-01** by `proud-fox-405`; SG-8 implementation dispatch follows the worksheet and ratification log. |
+| 3 | P5 runtime gate **routing decision** (i) vs (ii) | **DECISION RESOLVED 2026-06-01T01** — option (ii) authorized as **WORKSHEET** (not implementation), and worksheet §8 approval completed 2026-06-01 by `proud-fox-405`. The P5 runtime-execution **gate itself remains OPEN** — gate closes only when runtime ships + suite executes + passes (per §1 P5 row + §3.5 + §10). Implementation dispatch under the approved worksheet is the next step toward gate closure. |
+| 4 | SG-8 §8 sign-off **authority routing** | **ROUTING RESOLVED 2026-06-01T01** — dedicated Modeling DFS Arbiter `proud-fox-405` spawned; PM does NOT act as Modeling DFS; keen-heron remains TR. **Ratification completed 2026-06-01** by `proud-fox-405`; SG-8 implementation dispatch follows the worksheet and ratification log. |
 | 5 | Modeling DFS Manager succession plan | **RESOLVED 2026-06-01T01** — dedicated manager going forward (per #4). |
 | 6 | TypeScript / non-release-minimum work plan | **RESOLVED 2026-06-01T01** — authorized as alpha/preview language lane (NOT release-minimum per Wave F F3); spawn TS RCA Manager per §11.8 runway. |
 | 7 | Go / Python language RCA managers | **RESOLVED 2026-06-01T01** — authorized for self-compile runway (Rust+Python+Go release-minimum family per §11.8; rungs L0-L4 sequenced). |
@@ -229,7 +229,7 @@ Per Wave F F3 framing, TS is v4-alpha-only (not release-minimum). Parallel TS cl
 - stern-lynx closeout cond (c) — still pending (low-priority)
 
 **Next dispatch actions (post-#4137 merge)**:
-- Spawn Modeling DFS Arbiter (per §8.5 #4-#5)
+- Continue implementation dispatch from Modeling DFS Arbiter approvals already recorded by `proud-fox-405` (per §8.5 #4-#5)
 - Spawn CI Manager (per §8.5 #8) — Wave 1 bankruptcy PR + four-compile collapse
 - Spawn TypeScript/Go/Python language RCA managers (per §8.5 #6-#7 + §11.8 runway)
 - P5 runtime gate option (ii) implementation proceeds from approved worksheet (per §8.5 #3 and ratification log)
@@ -302,13 +302,13 @@ This section captures the operator-ratified (pending re-review) management redes
 
 Once operator ratifies §11 structure and #4140 lands as measurement receipt:
 
-1. **Spawn Modeling DFS Arbiter** (fresh session)
+1. **Modeling DFS Arbiter active** (`proud-fox-405`; fresh session spawned per §8.5 #4-#5)
 2. **Spawn 6 shared substrate managers** + **3-4 language RCA managers** in parallel
 3. **First wave authorizations** (per #4140 RCA fanout):
    - SG-8 / ModuleGraph manager → impl wave on E0425/E0432/E0433 (biggest delta +420)
    - E0308 stratification → Rust RCA + TargetAtom + Collection + Ownership managers split the cluster
    - SG-2 residual → TargetTypeExpression manager
-   - P5 runtime gate path (ii) → Runtime/TestClaim manager authoring worksheet
+   - P5 runtime gate path (ii) → Runtime/TestClaim manager implementation under approved worksheet
    - CI Manager → start migrating remaining YAML steps to CiUpsertStep rows
 4. **Re-probe after wave** (not per-PR)
 
