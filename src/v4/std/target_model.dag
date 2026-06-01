@@ -2443,24 +2443,20 @@ type TargetUseSiteOwnershipLookup
   | TargetUseSiteOwnershipUnique { row: TargetUseSiteOwnershipRealization }
   | TargetUseSiteOwnershipAmbiguous
 
-type TargetUseSiteOwnershipSourceKey
-  = TargetUseSiteOwnershipSourceKeyFound { key: Node }
-  | TargetUseSiteOwnershipSourceKeyAbsent
-
 fn target_use_site_ownership_source_key(
   source_carrier: Node,
   projection: TargetUseSiteOwnershipSourceProjection
-) -> TargetUseSiteOwnershipSourceKey {
+) -> Optional<Node> {
   match projection {
-    UseSiteOwnershipExactCarrier => TargetUseSiteOwnershipSourceKeyFound { key: source_carrier }
+    UseSiteOwnershipExactCarrier => optional_present(value: source_carrier)
     UseSiteOwnershipInstantiationHeadCarrier =>
       match source_carrier.kind {
         TypeNode { connective: Instantiation } =>
           match list_at_optional(xs: node_positional_child_targets(node: source_carrier), index: 0) {
-            Present { value: head } => TargetUseSiteOwnershipSourceKeyFound { key: head }
-            Absent => TargetUseSiteOwnershipSourceKeyAbsent
+            Present { value: head } => optional_present(value: head)
+            Absent => optional_absent()
           }
-        _ => TargetUseSiteOwnershipSourceKeyAbsent
+        _ => optional_absent()
       }
   }
 }
@@ -2476,8 +2472,8 @@ fn target_use_site_ownership_lookup_step(
     source_carrier: source_carrier,
     projection: row.source_projection
   ) {
-    TargetUseSiteOwnershipSourceKeyAbsent => acc
-    TargetUseSiteOwnershipSourceKeyFound { key: source_key } =>
+    Absent => acc
+    Present { value: source_key } =>
       if content_hash(n: row.source_carrier) == content_hash(n: source_key)
         && row.use_site == use_site
       {
