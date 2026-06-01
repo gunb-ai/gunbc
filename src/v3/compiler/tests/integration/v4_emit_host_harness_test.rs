@@ -975,15 +975,6 @@ fn emit_host_runner_go_row_runs_and_parses_stdout() {
 
 #[test]
 fn cross_target_mvp2_stdout_parity_rust_python_go() {
-    if std::process::Command::new("go")
-        .arg("version")
-        .output()
-        .is_err()
-    {
-        eprintln!("skipping cross-target parity transport: go binary is not available on PATH");
-        return;
-    }
-
     let pid = std::process::id();
     for law in [
         "add_left_identity",
