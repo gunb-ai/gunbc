@@ -1,8 +1,8 @@
 // src/v4/compiler/emit_host.dag
 // Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
-// Status: W3 — substrate `run_emit_host_*` rows remain fail-closed (`transport_not_wired`);
-//   executable transport is `tools/emit_host_runner` via `emit_host_bridge.rs` until T-22 eval
-//   dispatches host rows (rust/python/go).
+// Status: T-22 rust row — eval dispatches `run_emit_host_rust` → `tools/emit_host_runner`
+//   (`emit_host_eval.rs`); python/go substrate rows stay fail-closed (`transport_not_wired`).
+//   W3 integration tests still exercise `emit_host_bridge.rs` until substrate-only authority.
 // Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
 
@@ -192,8 +192,8 @@ fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<Ru
   }
 }
 
-// Substrate row: fail-closed until T-22 eval dispatches `tools/emit_host_runner` (P3 — no
-// fabricated host receipt). Executable proof: `emit_host_bridge.rs` integration tests.
+// Substrate row: body stays fail-closed; T-22 eval intercepts Callable dispatch to
+// `tools/emit_host_runner` (no fabricated receipt in `.dag`). Executable proof: `emit_host_eval.rs`.
 fn run_emit_host_rust(
   target: TargetModel,
   source: TargetSource,
