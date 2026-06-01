@@ -5308,9 +5308,13 @@ pub fn render_rust_param_sig_type(
         render_rust_type_with_applied_binding(authored, shared_types, source_indices)
     } else if ((generic_param_names.len() as i64) > 0) {
         if ((authored.connective.clone() == Connective::NoConnective)
-            && ((authored.children.clone().len() as i64) > 0))
+            && ((authored.children.clone().len() as i64) > 0)
+            && !is_container_type(authored_name_at(
+                source_indices.clone(),
+                authored.clone(),
+            )))
         {
-            render_node_type(authored, RenderTarget::Rust, shared_types, source_indices)
+            render_rust_applied_type_shared(authored, shared_types, source_indices)
         } else {
             render_node_type(
                 child_type_node(authored),
