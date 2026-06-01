@@ -270,10 +270,11 @@ Falsification probes:
    StaticAnalysisAdvisory{tool_id, diagnostic_code}` (fail-closed: BlockingForRung + advisory-only
    finding on the falsification path is a MISS). `host_run` stays runtime stdout/exit only — no
    static-analysis facts there.
-3. **Per-tool profiles.** `src/v4/extdeps/typecheckers/pyright.dag` + `mypy.dag` (mirror the
+3. **Per-tool profiles.** `src/v4/extdeps/typecheckers/pyright.dag` (mirror the
    `extdeps/formatters/black.dag` category layout). `diagnostic_code` Symbols are per-tool facts
    declared in each extdeps file — NOT a shared cross-tool namespace. std carriers reference the
-   tool profile / diagnostic by Symbol only.
+   tool profile / diagnostic by Symbol only. (A `mypy.dag` profile was authored under the same
+   shape but is **deferred to a follow-up** — see the mypy follow-up note below.)
 
 **Landed in PR #4158 against this ruling:**
 
@@ -281,12 +282,12 @@ Falsification probes:
   `TargetStaticAnalysisVerdict`, claim id `leaf_model_claim_python_l1_static_return_type`, and the
   `LeafModelPythonStaticCase` / `LeafModelPythonStaticFixturePair` fixture carriers
   (`src/v4/std/leaf_model_verification.dag`).
-- per-tool profiles `src/v4/extdeps/typecheckers/pyright.dag` + `mypy.dag` (tool-id, config/version
-  policy, per-tool diagnostic namespace). Compile validation is via the whole-tree gate — the
-  `v2 → v4 bootstrap compile (fail-closed full)` step in `ci_floor` compiles all of `src/v4`
-  (including these profiles and the std carriers) with 0 diagnostics. (A bespoke v3
-  `compile_to_dag` smoke was tried and dropped: the isolated v3 flat-chain path cannot parse
-  `src/v4/std/logic.dag`'s `BoolWidthFact {}`, which the profiles transitively depend on; the
+- per-tool profile `src/v4/extdeps/typecheckers/pyright.dag` (tool-id, config/version policy,
+  per-tool diagnostic namespace, typeCheckingMode keyword projection). Compile validation is via
+  the whole-tree gate — the `v2 → v4 bootstrap compile (fail-closed full)` step in `ci_floor`
+  compiles all of `src/v4` (including the profile and the std carriers) with 0 diagnostics. (A
+  bespoke v3 `compile_to_dag` smoke was tried and dropped: the isolated v3 flat-chain path cannot
+  parse `src/v4/std/logic.dag`'s `BoolWidthFact {}`, which the profile transitively depends on; the
   whole-tree v2 gate is the correct authority here.)
 - F1 fixtures + claim: `python_l1_static_*` in `src/v4/lens/leaf_model_verification.dag`,
   `src/v4/test/claim/language_model/python_l1_static.dag`.
@@ -305,3 +306,18 @@ Falsification probes:
 
 Naming nuance vs the ruling: the verdict's accept arm is spelled `StaticAnalysisAccepted` (prefix
 consistency with the other two arms) rather than bare `Accepted`; semantics unchanged.
+
+**mypy follow-up (tracked debt — E-6 / Boundary Discipline).** The ruling names a per-tool profile
+for *both* pyright and mypy. This PR lands the **pyright** profile fully consumed (fixture + `.dag`
+claim + fail-closed host receipt), but does **not** land mypy: a `mypy.dag` profile + diagnostic
+namespace authored under the same shape was **removed from this slice** rather than left as dormant
+extdeps surface, because there is no same-PR mypy fixture/claim/runner consumer (and mypy is not
+installable in the current verification environment, so a mypy F1 receipt cannot be proven here).
+- **Owner / lane:** Python RCA Manager (witty-ram-95), PY-L1-STATIC-STRUCTURAL mypy follow-up.
+- **Bound / trigger:** land `src/v4/extdeps/typecheckers/mypy.dag` *together with* a mypy fixture +
+  `.dag` claim + a fail-closed host receipt that consumes it (mirroring the pyright path), in an
+  environment where mypy is installable. The shared `TargetStaticAnalysis*` carriers already accept
+  a mypy tool profile by `Symbol`, so the follow-up is additive — no carrier change.
+- **Why deferred, not dormant:** E-6 requires a same-PR consumer for new target-spec extdeps facts;
+  shipping mypy profile data with no consumer would be untracked scaffold. Removing it keeps every
+  landed extdeps fact consumed and records the mypy work as bounded debt here.
