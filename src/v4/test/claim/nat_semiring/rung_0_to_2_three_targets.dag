@@ -42,6 +42,7 @@ import v4.test.claim.algebra_laws.nat_semiring {
 // per ladder rung specs §2.4 verdict reporting shape and §2.5 worker brief triple.
 
 data phase1_nat_semiring_rung_subject_symbol: Symbol = phase1_nat_semiring_rung_subject_symbol
+data go_l1_nat_semiring_rung2: Symbol = go_l1_nat_semiring_rung2
 data go_l1_nat_semiring_rung2_slice_symbol: Symbol = go_l1_nat_semiring_rung2
 data go_l1_nat_semiring_rung2_receipt_schema: String = "scripts/v4-phase1-nat-semiring-rung-gate.sh::go_l1_compile_receipt_v1"
 

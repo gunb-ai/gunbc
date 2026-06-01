@@ -565,6 +565,7 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
 fn v4_nat_semiring_go_l1_rung2_receipt_anchor_tokenizes_and_parses() {
     let module = parse_module(NAT_SEMIRING_RUNG_0_TO_2_DAG, NAT_SEMIRING_RUNG_0_TO_2_PATH);
     for name in [
+        "go_l1_nat_semiring_rung2",
         "go_l1_nat_semiring_rung2_slice_symbol",
         "go_l1_nat_semiring_rung2_receipt_schema",
         "go_l1_nat_semiring_rung2_slice_subject",
