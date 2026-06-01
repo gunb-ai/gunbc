@@ -328,6 +328,10 @@ data ts_surface_type_arrow: Symbol = ts_surface_type_arrow
 data ts_surface_type_cardinality: Symbol = ts_surface_type_cardinality
 data ts_surface_type_generic_apply: Symbol = ts_surface_type_generic_apply
 
+// TS-ATOM-REALIZATION row spellings. Symbol uses the ECMA primitive `symbol`;
+// Bool/String reuse the TypeScript primitive fact spellings below.
+data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
+
 data ts_surface_fn_item: Symbol = ts_surface_fn_item
 data ts_surface_type_number: Symbol = ts_surface_type_number
 data ts_surface_bin_add: Symbol = ts_surface_bin_add
@@ -1233,6 +1237,50 @@ fn ts_type_expression_projection_bundle_node() -> Node {
   }
 }
 
+fn ts_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
+  target_atom_alias_type_expression(
+    spelling: spelling,
+    atom_form: ts_type_expression_projection().atom_form
+  )
+}
+
+fn ts_target_atom_realization_target_model_staging() -> TargetModel {
+  ts_sg2_type_expr_target_model()
+}
+
+data ts_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_symbol),
+  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
+  constructor_form: optional_absent(),
+  display_name: symbol_kernel_type_atom
+}
+
+data ts_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: bool_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_boolean),
+  value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
+  constructor_form: optional_absent(),
+  display_name: bool_node_symbol
+}
+
+data ts_target_atom_realization_string: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: string_kernel_type_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_string),
+  value_form: target_value_template_for_kind(kind: ValueSymbolToOwnedString),
+  constructor_form: optional_absent(),
+  display_name: string_kernel_type_atom
+}
+
+data ts_target_atom_realization_catalog: List<TargetAtomRealization> = [
+  ts_target_atom_realization_symbol,
+  ts_target_atom_realization_bool,
+  ts_target_atom_realization_string
+]
+
 // SG-2 lex: MVP-1 wave-1 rules plus the type-expression delimiter tokens this row references
 // (angle brackets for instantiation + cardinality generic collections, union pipe, fat arrow).
 // Additive — MVP-1 lex is untouched.
@@ -1268,6 +1316,22 @@ fn ts_sg2_type_expr_target_model_node() -> Node {
       item: ts_named_edge(
         name: target_model_edge_type_expression_projection,
         target: ts_type_expression_projection_bundle_node()
+      )
+    )
+  }
+}
+
+fn ts_target_atom_realization_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_snoc_item(
+      xs: ts_sg2_type_expr_target_model_node().children,
+      item: ts_named_edge(
+        name: target_model_edge_atom_realizations,
+        target: target_atom_realization_catalog_node(
+          rows: ts_target_atom_realization_catalog,
+          host_bundle: ts_sg2_type_expr_target_model_node()
+        )
       )
     )
   }
@@ -1332,7 +1396,7 @@ fn ts_wave2a_task_target_model_witness() -> Witness<TargetModel> {
 }
 
 fn ts_wave1_target_model() -> Node {
-  ts_mvp1_target_model_node()
+  ts_target_atom_realization_target_model_node()
 }
 
 fn ts_lex_rule(token_class: Symbol, text: String) -> LexRule {

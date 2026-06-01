@@ -24,6 +24,9 @@ const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.d
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
+const TYPESCRIPT_LANGUAGE_DAG: &str =
+    include_str!("../../../../v4/extdeps/languages/typescript.dag");
+const TYPESCRIPT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/typescript.dag";
 const BOUNDED_LATTICE_COMPLETENESS_DAG: &str =
     include_str!("../../../../v4/std/bounded_lattice_completeness.dag");
 const BOUNDED_LATTICE_COMPLETENESS_PATH: &str = "src/v4/std/bounded_lattice_completeness.dag";
@@ -490,6 +493,39 @@ fn v4_bounded_lattice_completeness_and_infer_gate_are_wired() {
     assert!(
         surface_declares_fn(&infer_module, "partial_bounded_lattice_instances_in_tree"),
         "{INFER_PATH}: partial instances must be collected before consumer gate"
+    );
+}
+
+#[test]
+fn v4_typescript_language_model_declares_target_atom_realization_rows() {
+    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_symbol"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS Symbol TargetAtomRealization row must be authored in typescript.dag"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_bool"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS Bool TargetAtomRealization row must be authored in typescript.dag"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_string"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS String TargetAtomRealization row substitutes for Rust Char"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_catalog"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS TargetModel must expose atom rows through the shared catalog"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("target_model_edge_atom_realizations"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: live TS TargetModel bundle must expose atom_realizations edge"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("ts_type_expression_projection().atom_form"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: atom rows must consume the SG-2 TypeScript type-expression row"
+    );
+    assert!(
+        !TYPESCRIPT_LANGUAGE_DAG.contains("ts_target_atom_realization_char"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS L0 substitutes String; it must not copy the Rust Char row"
     );
 }
 
