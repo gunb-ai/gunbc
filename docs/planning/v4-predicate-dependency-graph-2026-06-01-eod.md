@@ -1,10 +1,10 @@
 # v4 predicate dependency graph — 2026-06-01T00:30Z (Jun 1 release day EOD)
 
-Forward projection of remaining work to v4-done as of Jun 1 release day end-of-day. Supersedes `docs/planning/v4-predicate-dependency-graph-2026-05-31.md` (#4096) for current state. Predicate definitions at `src/v4/TASKS.md:806-817`.
+Forward projection of remaining work to v4-done as of Jun 1 release day end-of-day. Supersedes `docs/planning/v4-predicate-dependency-graph-2026-05-31.md` (#4096) for current state. Predicate definitions at `src/v4/TASKS.md` section "Definition of v4-done".
 
 ## §1. Six v4-done predicates — current state
 
-| # | Predicate (TASKS.md:806-817) | State |
+| # | Predicate (per `src/v4/TASKS.md` "Definition of v4-done") | State |
 |---|---|---|
 | P1 | Every other scheduled task complete | YELLOW (~8-12/53 PROVEN; R3-internal added; per-lane GAP continues; no near-term GREEN candidate) |
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **TECHNICAL-PROVEN; DELETION IN FLIGHT**. P2-A probe (44-source closure 0 diagnostics) verified scope (a). M2 probe (#4097) confirmed bridge dead-weight. **Operator authorized early deletion 2026-06-01T00:28Z** (skipping 14-day window); work-item `adhoc-4cad7e9b-558` spawned for `scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml` step removal. P2 flips fully GREEN on that PR merge. |
@@ -61,7 +61,7 @@ Per-lane maintenance continues. Not Jun 1 GREEN candidate. R3-internal addition 
 
 **Layer 1 (technical):** PROVEN via P2-A probe.
 
-**Layer 2 (authority):** **OPERATOR AUTHORIZED EARLY DELETION 2026-06-01T00:28Z** — work-item `adhoc-4cad7e9b-558` spawned to delete `scripts/v4-bootstrap-resolve-posture-gate.sh` + the corresponding bridge step in `.github/workflows/ci.yml:401-410` (the `v2 → v4 bootstrap resolve-posture gate` step). The 14-day window per script header was skipped on M2 probe (#4097) safety-net receipt. P2 flips fully GREEN on that PR merge.
+**Layer 2 (authority):** **OPERATOR AUTHORIZED EARLY DELETION 2026-06-01T00:28Z** — work-item `adhoc-4cad7e9b-558` spawned to delete `scripts/v4-bootstrap-resolve-posture-gate.sh` + the corresponding bridge step in `.github/workflows/ci.yml` step `v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)` (the `v2 → v4 bootstrap resolve-posture gate` step). The 14-day window per script header was skipped on M2 probe (#4097) safety-net receipt. P2 flips fully GREEN on that PR merge.
 
 Awaiting: worker dispatch + PR + merge. Not operator-blocked.
 
@@ -124,7 +124,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 | ~~P2-B bridge deletion authorization~~ | **RESOLVED 2026-06-01T00:28Z** — authorized; work-item `adhoc-4cad7e9b-558` in flight |
 | **P5 runtime gate** | Operator decision on `node://adhoc-f8699326-d69` choice (i) vs (ii) |
 | **SG-8 §8 sign-off** | Modeling DFS authority ambiguous post-proud-pike-archival; need operator routing decision OR PM/keen-heron to act as DFS reviewer |
-| **Fresh M1 probe post-cascade** | sharp-otter to re-measure after today's 7 class closures landed |
+| ~~Fresh M1 probe post-cascade~~ | **RESOLVED 2026-06-01T00:28Z** — authorized; work-item `adhoc-7b46e080-3cd` in flight (sleek-heron-13 auto-spawned; PR #4140 opened) |
 
 ## §6.5 Current Dispatch Board
 
@@ -133,13 +133,16 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 | 1 | P5 runtime gate decision | operator-decision-node | operator | choice (i) or (ii) on adhoc-f8699326-d69 |
 | 2 | P2-B bridge deletion | **AUTHORIZED + in flight** | work-item `adhoc-4cad7e9b-558` (worker auto-spawn) | bridge script + ci.yml step deleted → P2 GREEN |
 | 3 | SG-8 §8 sign-off authority | structurally ambiguous | operator routing OR PM/keen-heron-acting | §8 ratification → impl worker dispatchable |
-| 4 | Fresh M1 probe post-cascade | PM dispatchable | sharp-otter | new rustc residual count + per-class delta |
+| 4 | Fresh M1 probe post-cascade | **AUTHORIZED + in flight** (PR #4140 sleek-heron-13) | work-item `adhoc-7b46e080-3cd` | residual = 7,724 (+549 vs #4122); per-class delta on review |
 | 5 | SG-1-FOLLOWON impl | routed | TR lane (keen-heron) | minor follow-on close |
 | 6 | SG-COLLECTION-PROJECTION amend | deferred | TR/proud-pike-successor | ~170 errors |
 
 ## §7. PM-side actionable items
 
-**No worker implementation dispatches blocked** — most P3 classes closed; SG-8 impl needs §8 routing decision (operator) before spawn.
+**Worker implementation dispatch state (aligned with §6.5 dispatch board):**
+- **SG-8 impl: BLOCKED** on §8 sign-off authority routing (operator decision #4 in §8.5); cannot spawn until resolved
+- **P5 runtime gate impl: BLOCKED** on operator choice (i) vs (ii) (operator decision #3 in §8.5); cannot spawn until resolved
+- All other P3 classes either closed today (per §3.3) OR have follow-on routing (SG-1-FOLLOWON minor, SG-COLLECTION-PROJECTION deferred)
 
 **PM dispatches now in flight** (post operator authorization 2026-06-01T00:28Z): P2-B deletion worker (`adhoc-4cad7e9b-558`) + fresh M1 probe worker (`adhoc-7b46e080-3cd`).
 
@@ -153,7 +156,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 ## §8. Risk / honesty
 
 - **P3 cascade was massive but residual is still significant**: 7,175 rustc errors at last probe (16:18Z), before SG-2 + SG-1b + SG-RC + SG-8 worksheet landed. Per-class wins are smaller than SG-1's 37% magnitude per #4096 §8 honesty. Realistic horizon: weeks-to-months for residual → 0.
-- **P5 single authority**: P5 is **GREEN only when the canonical TASKS.md predicate "TestClaim suite passes" (`src/v4/TASKS.md:816`) is satisfied** — which requires the runtime-execution gate to close. Today's Layer 1 + Layer 2 closures are **partial progress toward P5**, not an alternate definition of GREEN. Surfaced explicitly by T-38-PR2 worker's honest scope analysis (cool-boar-841 identified 3 readings, chose surface migration + escalated runtime gate as upward debt at `node://adhoc-f8699326-d69`; correct discipline per project_spirit "stop and escalate"). Do not treat partial layer closure as P5 GREEN.
+- **P5 single authority**: P5 is **GREEN only when the canonical `src/v4/TASKS.md` "Definition of v4-done" bullet "TestClaim suite passes" is satisfied** — which requires the runtime-execution gate to close. Today's Layer 1 + Layer 2 closures are **partial progress toward P5**, not an alternate definition of GREEN. Surfaced explicitly by T-38-PR2 worker's honest scope analysis (cool-boar-841 identified 3 readings, chose surface migration + escalated runtime gate as upward debt at `node://adhoc-f8699326-d69`; correct discipline per project_spirit "stop and escalate"). Do not treat partial layer closure as P5 GREEN.
 - **proud-pike archival mid-day** consolidated Modeling DFS lane under keen-heron de facto. §8 sign-off authority needs explicit operator routing for SG-8 impl worker dispatch.
 - **#4112 operator-landed manually** despite dashboard recommending self-merge — operator chose to handle that specific PR, others all self-merged per current policy.
 - **One major gap**: no fresh post-cascade rustc residual count. Without #4122-successor probe, we don't know the real P3 residual after today's closures.
@@ -212,7 +215,7 @@ Per Wave F F3 framing, TS is v4-alpha-only (not release-minimum). Parallel TS cl
 - SG-3-CASCADE receipt: `docs/audit/v4-sg3-cascade-only-receipt-2026-05-31.md` (#4126)
 - M2 probe: `docs/audit/v4-p2b-bridge-removal-probe-2026-05-31.md` (#4097)
 - T-38-PR2: `docs/planning/...` per #4120
-- Predicate defs: `src/v4/TASKS.md:806-817`
+- Predicate defs: `src/v4/TASKS.md` section "Definition of v4-done"
 
 ## §10. Watchlist (Jun 1 release-day eod, no time-based ETAs)
 
