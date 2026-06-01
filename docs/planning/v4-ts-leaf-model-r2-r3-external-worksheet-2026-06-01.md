@@ -52,9 +52,9 @@ DFS path:
 Deepest unsound boundary:
   Modeled algebra + atom facts on typescript.dag are not exercised against tsc/Node.
 Systemic fix:
-  Phase 1 claim set (3 claim IDs) + fixture pairs + host runners + optional hand-authored
-  boundary test module mirroring v4_leaf_model_python_r2_r3_external_test.rs pattern
-  (INVARIANTS §P5(b) interim ratchet — alpha lane, not release-minimum census).
+  Phase 1 claim set (3 claim IDs) + fixture pairs + host runners (tsc/Node). Hand-Rust
+  boundary test is NOT optional — see §P5(b) implementation worker receipt below (same
+  gate as Python #4117; alpha lane does NOT waive Mechanism (b)).
 Non-goals:
   - R1 primitive surface-spelling claims (defer unless Arbiter batches with Go L0).
   - R3-internal emit projection mutation receipt (Rust SG-1 only at L0).
@@ -85,6 +85,26 @@ Metric allowed only as secondary:
 
 **R3-external ECMA grounding (P1):** TypeScript `Symbol` is a callable factory, **not** a constructor — `new Symbol()` is invalid ([MDN Symbol()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/Symbol)). Do **not** mirror Python R3’s nominal `class Symbol` + `__init__` happy path; that pattern is CPython-faithful, not TS-faithful.
 
+## §P5(b) implementation worker receipt (hand-Rust — separate PR from worksheets)
+
+> **This worksheet PR (#4147) lands markdown only — zero paths under `src/v3/compiler/tests/**`.**
+> Hand-Rust is **forbidden** here. The first implementation worker that adds the boundary
+> harness MUST satisfy **exactly one** checkable P5 Mechanism (b) receipt per
+> `INVARIANTS.md` Dispatch-Discipline (b) — mirror PR #4117 / `sg0-pr-body-append.4117.txt`.
+
+| Receipt artifact (same PR as harness) | Required content |
+|--------------------------------------|------------------|
+| `src/v3/compiler/tests/boundary/v4_leaf_model_typescript_r2_r3_external_test.rs` | Boundary tsc (+ Node for R2b bigint) exercise; fixture bytes pinned to `src/v4/lens/leaf_model_verification.dag` authority strings |
+| `_internal/INVARIANTS_OPS.md` | New table row: path, ROADMAP **T-PB-B** / `pb_rust_tests_outside_residual_zero`, dissolution (T-22 `run_target_verification` on `typescript_r{2a,2b,3_external}.dag`), interim ratchet test names |
+| `src/v3/compiler/tests/integration/sg0_census_test.rs` | **Net +1** on `EXPECTED_HAND_AUTHORED_TEST` for the boundary path (before/after counts in PR body) |
+| `scripts/ci-merge/sg0-pr-body-append.*.txt` (or PR body) | SG-0 pairing `(c)` line naming path + INVARIANTS §P5(b) + paired verify shells |
+| Host runners (same PR) | `scripts/v4-leaf-model-typescript-r2a-verify.sh`, `r2b-verify.sh`, `r3-external-verify.sh` |
+| Claim wiring (same PR or prior) | `typescript_r2a.dag`, `typescript_r2b.dag`, `typescript_r3_external.dag` + lens fixtures |
+
+**Forbidden:** landing boundary Rust without the INVARIANTS row + census line in the **same** PR; vague deferrals; “alpha lane exempt” from census.
+
+---
+
 **Numeric lane split (operator-visible):** TypeScript has no single `Int` primitive. R2a anchors on ECMA `number` (IEEE-754 binary64 / `ApproximateField`). R2b anchors on `bigint` (exact ℤ / `OrderedRing`). This mirrors Python (#4117) splitting unbounded int behavior (R2b) from algebra ops (R2a), adapted to TS’s dual numeric types.
 
 ---
@@ -106,6 +126,7 @@ Metric allowed only as secondary:
 - [ ] Prerequisite: atom-realization + algebra-widening worksheets approved
 - [ ] R3-external blocked until `ts_target_atom_realization_symbol` row lands
 - [ ] Alpha/preview framing explicit — NOT v4-done / release-minimum gate
+- [ ] §P5(b) receipt table accepted for downstream implementation PR (not this worksheet PR)
 - [ ] Worker dispatch — **forbidden** until Arbiter sign-off
 
 ## Related artifacts
