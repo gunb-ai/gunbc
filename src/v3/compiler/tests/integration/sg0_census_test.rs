@@ -318,8 +318,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit_host_bridge.rs",
     // T-22: substrate eval intercept for `run_emit_host_rust` → `emit_host_runner` (rust row only).
     // Receipt assembly delegates to `emit_host_receipt_from_source` via `eval_callable_declaration`.
-    // **P5 receipt (Mechanism (b)):** `T-PB-B` / `pb_rust_tests_outside_residual_zero`; paired test
-    // `v4_emit_host_eval_dispatch_test.rs`. Dissolution: delete with `emit_host_bridge.rs`.
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** paired TEST row
+    // `v4_emit_host_eval_dispatch_test.rs`; explicit deferral ROADMAP `T-PB-B` /
+    // `pb_rust_tests_outside_residual_zero` plus `src/v4/compiler/emit_host.dag` T-22 rust row.
+    // Dissolution: substrate Callable dispatch owns transport without this intercept; retires with
+    // `emit_host_bridge.rs` when the T-PB-B lane closes.
     "src/v3/compiler/src/emit_host_eval.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/emit_rust_bin_shim.rs",
@@ -927,6 +930,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Dissolves: T-PB-B / T-22 T-38.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
+    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
+    // replaces host-runner receipts.
     "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.

@@ -5,9 +5,11 @@
 //! [`evaluator::eval_callable_declaration`], not re-encoded here. This module only maps runner
 //! facts → substrate operand carriers and invokes the eval hook.
 //!
-//! **P5 receipt:** `EXPECTED_HAND_AUTHORED_NON_TEST` row in `sg0_census_test.rs`; lane
-//! `T-PB-B` / `pb_rust_tests_outside_residual_zero`; dissolution: delete when substrate eval
-//! owns host dispatch without this intercept (`emit_host_bridge.rs` retires with harness).
+//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** `EXPECTED_HAND_AUTHORED_NON_TEST`
+//! row in `sg0_census_test.rs` paired with `v4_emit_host_eval_dispatch_test.rs`. Explicit
+//! deferral: ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus substrate row
+//! `src/v4/compiler/emit_host.dag` (T-22 rust eval intercept). Dissolution: substrate Callable
+//! dispatch owns `run_emit_host_rust` without this intercept; retires with `emit_host_bridge.rs`.
 
 use crate::dag::{ArrowBody, Dag, DeclarationId, LiteralBits, TypeConnective};
 
@@ -202,9 +204,9 @@ fn optional_present_payload<'a>(value: &'a Value) -> Result<&'a Value, EvalError
 fn host_pin_from_inputs_root(dag: &Dag, root: &Value) -> Result<String, EvalError> {
     let pin = match root {
         Value::LiteralValue(LiteralBits::String(s)) => s.clone(),
-        node => {
-            node_primary_symbol(dag, node).unwrap_or_else(|| value_structural_digest(node, dag))
-        }
+        node => node_primary_symbol(dag, node).ok_or(EvalError::BadTransformOperands {
+            reason: "Inputs pin Node must project Atom identity for host runner",
+        })?,
     };
     if pin.is_empty() {
         return Err(EvalError::BadTransformOperands {
@@ -260,38 +262,6 @@ fn record_fields(value: &Value) -> Option<&[NamedField]> {
         Value::VariantValue { payload, .. } => record_fields(payload),
         _ => None,
     }
-}
-
-/// Deterministic structural digest for substrate `Node` values (no `Debug`).
-fn value_structural_digest(value: &Value, dag: &Dag) -> String {
-    match value {
-        Value::LiteralValue(LiteralBits::String(s)) => format!("S:{s}"),
-        Value::LiteralValue(LiteralBits::Int(i)) => format!("I:{i}"),
-        Value::LiteralValue(LiteralBits::Bool(b)) => format!("B:{b}"),
-        Value::RecordValue(fields) => {
-            let mut parts: Vec<String> = fields
-                .iter()
-                .map(|f| format!("{}:{}", f.label, value_structural_digest(&f.value, dag)))
-                .collect();
-            parts.sort();
-            format!("R{{{}}}", parts.join(","))
-        }
-        Value::VariantValue { tag, payload } => {
-            let arm = dag.declaration(*tag).name.as_deref().unwrap_or("?");
-            format!("V:{arm}:{}", value_structural_digest(payload, dag))
-        }
-        Value::NodeRef(id) => format!("N:{id:?}"),
-        Value::CardinalityValue(bound) => format!("C:{bound:?}"),
-    }
-}
-
-fn witness_variant_decl_id(
-    dag: &Dag,
-    preferred: &str,
-    fallback: &str,
-) -> Result<DeclarationId, EvalError> {
-    variant_decl_id(dag, "Witness", preferred)
-        .or_else(|_| variant_decl_id(dag, "Witness", fallback))
 }
 
 fn variant_decl_id(
@@ -639,7 +609,7 @@ fn host_setup_failure_diagnostic(
 
 fn witness_holds_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: witness_variant_decl_id(dag, "Holds", "Inhabits")?,
+        tag: variant_decl_id(dag, "Witness", "Holds")?,
         payload: Box::new(Value::RecordValue(vec![NamedField {
             label: "value".to_string(),
             value,
@@ -648,58 +618,13 @@ fn witness_holds_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
 }
 
 fn witness_violates_variant(dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
-    let tag = variant_decl_id(dag, "Witness", "Violates")?;
-    let payload = match violation_witness_payload_fields(dag, tag) {
-        ViolationWitnessPayload::Diagnostic => Value::RecordValue(vec![NamedField {
+    Ok(Value::VariantValue {
+        tag: variant_decl_id(dag, "Witness", "Violates")?,
+        payload: Box::new(Value::RecordValue(vec![NamedField {
             label: "diagnostic".to_string(),
             value: diagnostic,
-        }]),
-        ViolationWitnessPayload::ReasonSubject => {
-            let Value::RecordValue(diag_fields) = &diagnostic else {
-                return Err(EvalError::BadTransformOperands {
-                    reason: "expected Diagnostic record for Violates witness",
-                });
-            };
-            let reason = diag_fields
-                .iter()
-                .find(|f| f.label == "reason")
-                .map(|f| f.value.clone())
-                .unwrap_or_else(|| diagnostic.clone());
-            Value::RecordValue(vec![
-                NamedField {
-                    label: "reason".to_string(),
-                    value: reason,
-                },
-                NamedField {
-                    label: "subject".to_string(),
-                    value: Value::LiteralValue(LiteralBits::String(String::new())),
-                },
-            ])
-        }
-    };
-    Ok(Value::VariantValue {
-        tag,
-        payload: Box::new(payload),
+        }])),
     })
-}
-
-enum ViolationWitnessPayload {
-    Diagnostic,
-    ReasonSubject,
-}
-
-fn violation_witness_payload_fields(
-    dag: &Dag,
-    variant_ty: DeclarationId,
-) -> ViolationWitnessPayload {
-    let TypeConnective::Conj { children } = &dag.declaration(variant_ty).connective else {
-        return ViolationWitnessPayload::Diagnostic;
-    };
-    if children.iter().any(|f| f.label == "diagnostic") {
-        ViolationWitnessPayload::Diagnostic
-    } else {
-        ViolationWitnessPayload::ReasonSubject
-    }
 }
 
 fn host_exit_outcome_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
@@ -738,22 +663,6 @@ mod tests {
     use crate::dag::{Dag, DeclarationId};
     use emit_host_runner::HostSetupFailure;
 
-    fn conj_node_value() -> Value {
-        Value::RecordValue(vec![
-            NamedField {
-                label: "kind".to_string(),
-                value: Value::RecordValue(vec![NamedField {
-                    label: "connective".to_string(),
-                    value: Value::RecordValue(vec![]),
-                }]),
-            },
-            NamedField {
-                label: "children".to_string(),
-                value: Value::RecordValue(vec![]),
-            },
-        ])
-    }
-
     #[test]
     fn emit_host_fixture_inputs_projects_distinct_claim_and_expected_roots() {
         let dag = Dag::new();
@@ -788,13 +697,5 @@ mod tests {
             host_setup_failure_reason(&HostSetupFailure::EmptyClaimInputRoot),
             "emit_host_setup_empty_claim_input_root"
         );
-    }
-
-    #[test]
-    fn value_structural_digest_is_nonempty_for_node_record() {
-        let dag = Dag::new();
-        let digest = value_structural_digest(&conj_node_value(), &dag);
-        assert!(digest.starts_with("R{"));
-        assert!(digest.len() > 4);
     }
 }
