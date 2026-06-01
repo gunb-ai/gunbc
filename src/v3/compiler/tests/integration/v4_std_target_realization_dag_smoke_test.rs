@@ -540,7 +540,10 @@ fn v4_std_target_model_declares_target_collection_realization_carrier() {
         "{TARGET_MODEL_PATH}: FreeMonoid sequence rows must have a Vec representation kind"
     );
     assert!(
-        surface_declares_fn(&module, "target_collection_type_node_is_free_monoid_carrier"),
+        surface_declares_fn(
+            &module,
+            "target_collection_type_node_is_free_monoid_carrier"
+        ),
         "{TARGET_MODEL_PATH}: FreeMonoid carrier recognition must be substrate-owned"
     );
     assert!(
