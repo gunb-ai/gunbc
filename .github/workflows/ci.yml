@@ -110,6 +110,17 @@ jobs:
         rustflags: ''
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    # INTERIM transport repair (operator 2026-06-01, "stop the bleeding"). Authority for the
+    # right-way fix: src/v4/workflow/ci.dag cache-projection note + dsl/std/cache_interface.dag.
+    # The old key mixed in hashFiles('src/v3/compiler/src/**', …), which changes on nearly every
+    # commit — so the primary slot was NEVER reused: each run minted a brand-new ~200 MiB cache,
+    # flooding the repo's 10 GB budget and LRU-evicting the warm caches (including the v2
+    # `gunbc-bin` build) before the next run could restore them. Cargo's own fingerprinting
+    # already invalidates stale crates on top of a restored target/, so the v3-src component
+    # bought churn, not correctness. De-churned to Cargo.lock + toolchain → one cache per
+    # dependency set, restored via the broad restore-key, eviction pressure cut ~100×.
+    # Does NOT speed up the M1 emit-probe / bootstrap steps — those need content-addressed
+    # sccache via the modeled cache_interface projection (see ci.dag note). dissolve-on-arrival.
     - name: Cache Cargo (ci floor)
       uses: actions/cache@v4
       with:
@@ -118,9 +129,8 @@ jobs:
           ${{ runner.temp }}/cargo/registry/cache/
           ${{ runner.temp }}/cargo/git/db/
           target/
-        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Cache gunbc binary (v4 floor)
       id: v4-v2-bin
@@ -135,10 +145,14 @@ jobs:
       timeout-minutes: 20
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
+        # Static fallback (ctrl-build absent) + governor ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX).
+        # Projected from v4.workflow.ci m1_probe_cargo_check_jobs / _ceiling. Actual parallelism is
+        # memory-denominated via the host compute governor — see src/v4/workflow/ci.dag note.
         V4_M1_CARGO_CHECK_JOBS: "4"
+        V4_M1_CARGO_CHECK_JOBS_CEILING: "64"
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash scripts/v4-m1-rust-emit-probe.sh
-    - name: v2 → v4 bootstrap compile (fail-closed full)
+    - name: v2 -> v4 bootstrap compile (fail-closed full)
       timeout-minutes: 35
       env:
         V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
@@ -169,6 +183,6 @@ jobs:
           exit 1
         fi
         echo "ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)"
-    - name: ci receipt (§11.7.1 floor)
+    - name: ci receipt (section 11.7.1 floor)
       run: |
         echo "::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)"
