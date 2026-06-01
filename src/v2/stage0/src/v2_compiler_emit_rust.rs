@@ -5287,7 +5287,7 @@ pub fn emit_tco_param(
     {
         let authored = param_node_type_expr(param.clone());
         let n = if ((generic_param_names.clone().len() as i64) > 0) {
-            resolved_type(authored)
+            child_type_node(authored)
         } else {
             authored
         };
@@ -5470,7 +5470,7 @@ pub fn emit_param(
     {
         let authored = param_node_type_expr(param.clone());
         let n = if ((generic_param_names.clone().len() as i64) > 0) {
-            resolved_type(authored)
+            child_type_node(authored)
         } else {
             authored
         };
