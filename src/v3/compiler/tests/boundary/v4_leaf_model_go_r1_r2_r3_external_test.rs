@@ -87,7 +87,12 @@ fn exercise_go_build(label: &str, source: &str) -> (i32, String) {
     let out_path = tmp_dir.join("fixture.out");
     let output = Command::new("go")
         .env("GO111MODULE", "off")
-        .args(["build", "-o", out_path.to_str().unwrap(), src_path.to_str().unwrap()])
+        .args([
+            "build",
+            "-o",
+            out_path.to_str().unwrap(),
+            src_path.to_str().unwrap(),
+        ])
         .output()
         .expect("invoke go build on fixture");
     let diagnostics = format!(
