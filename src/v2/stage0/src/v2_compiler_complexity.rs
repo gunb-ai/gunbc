@@ -9,7 +9,6 @@ use crate::std_algebra::CollectionSizeEffect::{IdentityEffect, ProjectionEffect,
 use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
-pub use crate::std_algebra::{map_merge_at, optional_meet};
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
 use crate::std_computation::CallPattern::{
     ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
@@ -47,8 +46,9 @@ use crate::std_termination::RankingDimension::{
     ArithmeticValue, ListLength, SetCardinality, TokenPosition, TreeSize,
 };
 pub use crate::std_termination::{
-    descent_evidence_lattice_meet, evidence_rank, DescentEvidence, DescentSource,
-    PositiveDescentAmount, ProofEdge, RankingDimension, TerminationProof,
+    descent_evidence_lattice_meet, evidence_rank, map_evidence_merge_at, optional_evidence_meet,
+    DescentEvidence, DescentSource, PositiveDescentAmount, ProofEdge, RankingDimension,
+    TerminationProof,
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_emit::to_string;
@@ -147,9 +147,7 @@ pub enum CostExpr {
     },
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Certainty {
     Proven,
@@ -4385,7 +4383,7 @@ pub fn merge_optional_evidence(
     a: Option<DescentEvidence>,
     b: Option<DescentEvidence>,
 ) -> Option<DescentEvidence> {
-    optional_meet(descent_evidence_lattice_meet, a, b)
+    optional_evidence_meet(a, b)
 }
 
 pub fn collect_evidence_incremental(
@@ -6624,12 +6622,7 @@ pub fn merge_edge_evidence(
     acc_map: Rc<HashMap<String, DescentEvidence>>,
     pe: Rc<ParserProgressEdge>,
 ) -> Rc<HashMap<String, DescentEvidence>> {
-    map_merge_at(
-        descent_evidence_lattice_meet,
-        acc_map,
-        pe.callee.clone(),
-        pe.progress.clone(),
-    )
+    map_evidence_merge_at(acc_map, pe.callee.clone(), pe.progress.clone())
 }
 
 pub fn count_known_in_edge_map(m: Rc<HashMap<String, DescentEvidence>>) -> i64 {

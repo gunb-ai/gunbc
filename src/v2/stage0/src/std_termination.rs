@@ -15,9 +15,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DescentEvidence {
     Strict,
@@ -60,9 +58,9 @@ pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> 
     }
 }
 
-pub fn descent_evidence_bounded_lattice() -> Rc<Rc<BoundedLattice<DescentEvidence>>> {
+pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>> {
     thread_local! {
-        static CACHED: Rc<Rc<BoundedLattice<DescentEvidence>>> = {
+        static CACHED: Rc<BoundedLattice<DescentEvidence>> = {
             Rc::new(BoundedLattice {
                 meet: Rc::new(descent_evidence_lattice_meet),
                 join: Rc::new(descent_evidence_lattice_join),
@@ -71,7 +69,7 @@ pub fn descent_evidence_bounded_lattice() -> Rc<Rc<BoundedLattice<DescentEvidenc
             })
         };
     }
-    CACHED.with(|c: &Rc<Rc<BoundedLattice<DescentEvidence>>>| c.clone())
+    CACHED.with(|c: &Rc<BoundedLattice<DescentEvidence>>| c.clone())
 }
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
@@ -79,6 +77,34 @@ pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
         DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
         DescentEvidence::Strict => DescentEvidence::Strict,
         _ => DescentEvidence::DescentUnknown,
+    }
+}
+
+pub fn optional_evidence_meet(
+    a: Option<DescentEvidence>,
+    b: Option<DescentEvidence>,
+) -> Option<DescentEvidence> {
+    match a.clone() {
+        None => b,
+        Some(va) => match b {
+            None => a.clone(),
+            Some(vb) => Some(descent_evidence_lattice_meet(va.clone(), vb.clone())),
+        },
+    }
+}
+
+pub fn map_evidence_merge_at(
+    base: Rc<HashMap<String, DescentEvidence>>,
+    key: String,
+    new_val: DescentEvidence,
+) -> Rc<HashMap<String, DescentEvidence>> {
+    match v2_rt::map_get(&base, key.clone()) {
+        Some(existing) => v2_rt::rc_map_insert(
+            base.clone(),
+            key.clone(),
+            descent_evidence_lattice_meet(existing.clone(), new_val),
+        ),
+        None => v2_rt::rc_map_insert(base.clone(), key.clone(), new_val),
     }
 }
 

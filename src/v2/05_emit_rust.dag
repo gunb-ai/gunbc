@@ -147,9 +147,15 @@ import v2.compiler.emit {
   wrap_shared_type
 }
 
+fn render_rust_type_var_optional_aware(n: Node, tv: String) -> String {
+  if n.return_cardinality == CardOptional {
+    concat("Option<", tv, ">")
+  } else { tv }
+}
+
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
-    Some { value: TypeVariable { id: tv } } => tv
+    Some { value: TypeVariable { id: tv } } => render_rust_type_var_optional_aware(n: n, tv: tv)
     _ =>
       match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Some { value: applied } =>
@@ -196,18 +202,19 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
 
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
-    Some { value: TypeVariable { id: tv } } => tv
+    Some { value: TypeVariable { id: tv } } => render_rust_type_var_optional_aware(n: n, tv: tv)
     _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let base = coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: n))
+  let rust_base = if base == "Map" { "HashMap" } else { base }
   if n.children |> count == 0 {
-    base
+    rust_base
   } else {
     let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
-    concat(base, "<", args, ">")
+    concat(rust_base, "<", args, ">")
   }
 }
 

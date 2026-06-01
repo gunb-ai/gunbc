@@ -123,13 +123,26 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn render_rust_type_var_optional_aware(n: Rc<Node>, tv: String) -> String {
+    if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+        v2_rt::concat(
+            v2_rt::concat("Option<".to_string(), tv.clone()),
+            ">".to_string(),
+        )
+    } else {
+        tv
+    }
+}
+
 pub fn render_rust_type(
     n: Rc<Node>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
+        Some(InferredNode::TypeVariable { id: tv, .. }) => {
+            render_rust_type_var_optional_aware(n.clone(), tv)
+        }
         _ => match find_property(
             n.properties.clone(),
             "__applied_type_args".to_string(),
@@ -239,7 +252,9 @@ pub fn render_rust_applied_type_arg(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
+        Some(InferredNode::TypeVariable { id: tv, .. }) => {
+            render_rust_type_var_optional_aware(n.clone(), tv)
+        }
         _ => render_rust_decl_type(n.clone(), generic_param_names, shared_types, source_indices),
     }
 }
@@ -255,8 +270,13 @@ pub fn render_rust_applied_type(
             RenderTarget::Rust,
             authored_name_at(source_indices.clone(), n.clone()),
         );
+        let rust_base = if (base.clone().as_str() == "Map".to_string().as_str()) {
+            "HashMap".to_string()
+        } else {
+            base.clone()
+        };
         let applied = if ((n.children.clone().len() as i64) == 0) {
-            base
+            rust_base
         } else {
             {
                 let args = Rc::new({
@@ -273,7 +293,7 @@ pub fn render_rust_applied_type(
                 })
                 .join(&", ".to_string());
                 v2_rt::concat(
-                    v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
+                    v2_rt::concat(v2_rt::concat(rust_base, "<".to_string()), args),
                     ">".to_string(),
                 )
             }
