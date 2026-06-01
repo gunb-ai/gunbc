@@ -5309,10 +5309,7 @@ pub fn render_rust_param_sig_type(
     } else if ((generic_param_names.len() as i64) > 0) {
         if ((authored.connective.clone() == Connective::NoConnective)
             && ((authored.children.clone().len() as i64) > 0)
-            && !is_container_type(authored_name_at(
-                source_indices.clone(),
-                authored.clone(),
-            )))
+            && !is_container_type(authored_name_at(source_indices.clone(), authored.clone())))
         {
             render_rust_applied_type_shared(authored, shared_types, source_indices)
         } else {
