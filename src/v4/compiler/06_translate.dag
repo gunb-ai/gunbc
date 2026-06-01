@@ -3239,23 +3239,23 @@ fn translate_value_ownership_use_site_for_atom_realization(
   target: TargetModel,
   requested: TargetOwnershipUseSite
 ) -> Outcome<TargetOwnershipUseSite> {
-  if requested == OwnershipAtBindingProjection {
-    bind_outcome(
-      o: translate_signature_realization_present_for_carrier(
-        source_carrier: source_carrier,
-        target: target,
-        boundary_site: FunctionBoundaryReturn
-      ),
-      f: fn(present) {
-        if present {
-          outcome_accepted(OwnershipAtFunctionReturn)
-        } else {
-          outcome_accepted(requested)
+  match requested {
+    OwnershipAtBindingProjection =>
+      bind_outcome(
+        o: translate_signature_realization_present_for_carrier(
+          source_carrier: source_carrier,
+          target: target,
+          boundary_site: FunctionBoundaryReturn
+        ),
+        f: fn(present) {
+          if present {
+            outcome_accepted(OwnershipAtFunctionReturn)
+          } else {
+            outcome_accepted(requested)
+          }
         }
-      }
-    )
-  } else {
-    outcome_accepted(requested)
+      )
+    _ => outcome_accepted(requested)
   }
 }
 
