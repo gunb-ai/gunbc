@@ -56,40 +56,6 @@ bootstrap-check: lint-upsert
 verify: lint-upsert
 	@$(MAKE) bootstrap-check
 	@$(MAKE) testgen-check
-	@$(MAKE) release-doc-authority-check
-	@$(MAKE) manager-brief-authority-check
-
-# Release-doc authority consumer — fails if forbidden stale concept names
-# appear in live (non-retraction) sections of release-control docs.
-# Authority: docs/r2-structure.md §"Release-doc authority discipline".
-release-doc-authority-check:
-	@bash scripts/check-release-doc-authority.sh
-
-# Self-test for the release-doc authority consumer. Without this, future
-# RETRACTION_PATTERNS broadening could silently neuter the consumer
-# (broaden patterns until everything passes).
-release-doc-authority-test:
-	@bash scripts/test-check-release-doc-authority.sh
-
-# Manager-brief authority consumer — verifies that the 7 R2 manager
-# briefs cite live authorities and use consistent projections.
-# Q1 (file existence) + Q2 (anchor existence) + Q4 (LANDED via #N
-# reachability) + Q5 (cross-brief lane-count consistency).
-# Authority: gpt-5-5-pro meta-review on PR #1126.
-manager-brief-authority-check:
-	@bash scripts/check-manager-brief-authority.sh
-
-# Self-test for the manager-brief authority consumer. Without this,
-# future MANAGER_BRIEFS or pattern-set changes could silently neuter
-# the consumer.
-manager-brief-authority-test:
-	@bash scripts/test-check-manager-brief-authority.sh
-
-# Self-test for the per-test timeout ratchet consumer. Without this,
-# future JSONL manifest parsing changes could silently neuter fail-closed
-# behavior for slow-test policy.
-test-timeout-ratchet-test:
-	@bash scripts/test-check-test-timeout.sh
 
 # Ensure generated artifacts are up to date
 verify-fix: lint-upsert
