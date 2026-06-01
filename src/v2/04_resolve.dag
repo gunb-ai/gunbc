@@ -320,7 +320,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       }
       let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1)
       let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
-      let expanded_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: target_result.resolved.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+      let expanded_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
       let resolved_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Some { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
       NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
     } else {
@@ -919,27 +919,13 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   }
   let resolved_anno = if item.type_annotation == none { none } else {
     let authored_anno = item.type_annotation.value
-    let has_applied_binding = find_property(props: anno_resolved.resolved.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none
-    if authored_anno.children |> count > 0 && !has_applied_binding {
-      let arg_results = authored_anno.children |> map(child => resolve_node(n: child, env: env, module_name: module_name))
-      let resolved_args = arg_results |> map(ar => ar.resolved)
-      let applied_type_args = Node { name: authored_name(env: env, node: authored_anno), span: authored_anno.span, ident_span: authored_anno.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: none, return_cardinality: authored_anno.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      let applied_type_args_property = make_field_init_node(name: "__applied_type_args", value: applied_type_args, span: authored_anno.span, name_span: authored_anno.span)
-      Some { value: Node { name: authored_anno.name, span: authored_anno.span, ident_span: authored_anno.ident_span, children: authored_anno.children, connective: authored_anno.connective, params: authored_anno.params, inferred: Some { value: Resolved { node: anno_resolved.resolved } }, return_cardinality: authored_anno.return_cardinality, uses: authored_anno.uses, body: authored_anno.body, transport: authored_anno.transport, properties: concat(anno_resolved.resolved.properties, [applied_type_args_property]), type_annotation: authored_anno.type_annotation, is_self_recursive: authored_anno.is_self_recursive, has_non_tail_self_call: authored_anno.has_non_tail_self_call, match_pattern: authored_anno.match_pattern, expr_data: authored_anno.expr_data } }
+    if authored_anno.children |> count > 0 {
+      Some { value: Node { name: authored_anno.name, span: authored_anno.span, ident_span: authored_anno.ident_span, children: authored_anno.children, connective: authored_anno.connective, params: authored_anno.params, inferred: Some { value: Resolved { node: anno_resolved.resolved } }, return_cardinality: authored_anno.return_cardinality, uses: authored_anno.uses, body: authored_anno.body, transport: authored_anno.transport, properties: anno_resolved.resolved.properties, type_annotation: authored_anno.type_annotation, is_self_recursive: authored_anno.is_self_recursive, has_non_tail_self_call: authored_anno.has_non_tail_self_call, match_pattern: authored_anno.match_pattern, expr_data: authored_anno.expr_data } }
     } else {
       Some { value: anno_resolved.resolved }
     }
   }
-  let anno_arg_diags = if item.type_annotation == none { [] } else {
-    let authored_anno = item.type_annotation.value
-    let has_applied_binding = find_property(props: anno_resolved.resolved.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none
-    if authored_anno.children |> count > 0 && !has_applied_binding {
-      authored_anno.children
-        |> map(child => resolve_node(n: child, env: env, module_name: module_name))
-        |> flat_map(ar => ar.diagnostics)
-    } else { [] }
-  }
-  let anno_diags = concat(anno_resolved.diagnostics, anno_arg_diags)
+  let anno_diags = anno_resolved.diagnostics
 
   let transport_resolved = if item.transport == none {
     TransportResolveResult { transport: local_transport_node(span: no_span()), diagnostics: [] }

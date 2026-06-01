@@ -5279,23 +5279,27 @@ type RuntimeValue {
   text: String
 }
 
+type Wrapper<T> {
+  value: T
+}
+
 type ProbeClaimRun<S, A> {
   subject: S
   actual: A
 }
 
-data cached_probe_run: ProbeClaimRun<Node, RuntimeValue> = ProbeClaimRun {
-  subject: Node { label: "n" }
+data cached_probe_run: ProbeClaimRun<Wrapper<Node>, RuntimeValue> = ProbeClaimRun {
+  subject: Wrapper { value: Node { label: "n" } }
   actual: RuntimeValue { text: "rv" }
 }
 
-fn probe_param(run: ProbeClaimRun<Node, RuntimeValue>) -> Int {
+fn probe_param(run: ProbeClaimRun<Wrapper<Node>, RuntimeValue>) -> Int {
   1
 }
 
-fn probe_return() -> ProbeClaimRun<Node, RuntimeValue> {
+fn probe_return() -> ProbeClaimRun<Wrapper<Node>, RuntimeValue> {
   ProbeClaimRun {
-    subject: Node { label: "return" }
+    subject: Wrapper { value: Node { label: "return" } }
     actual: RuntimeValue { text: "rv" }
   }
 }
@@ -5304,17 +5308,20 @@ fn probe_return() -> ProbeClaimRun<Node, RuntimeValue> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_generic_annotation_preservation.rs");
     assert!(
-        content.contains("pub fn cached_probe_run() -> Rc<ProbeClaimRun<Node, RuntimeValue>>"),
+        content.contains(
+            "pub fn cached_probe_run() -> Rc<ProbeClaimRun<Wrapper<Node>, RuntimeValue>>"
+        ),
         "generic data cache return type should preserve applied type args, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub fn probe_param(run: ProbeClaimRun<Node, RuntimeValue>) -> i64"),
+        content
+            .contains("pub fn probe_param(run: ProbeClaimRun<Wrapper<Node>, RuntimeValue>) -> i64"),
         "generic function parameter should preserve applied type args, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub fn probe_return() -> ProbeClaimRun<Node, RuntimeValue>"),
+        content.contains("pub fn probe_return() -> ProbeClaimRun<Wrapper<Node>, RuntimeValue>"),
         "generic function return should preserve applied type args, got:\n{}",
         content
     );

@@ -29,17 +29,16 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
+    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
     is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
     local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
     make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
-    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
-    with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
-    Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node,
-    StringPart,
+    make_named_expr_node, make_param_node, make_resource_use_node, make_text_part_node,
+    make_transport_node, map_children, no_span, node_name_span, param_node_default_value,
+    param_node_name_at, param_node_type_expr, resource_use_name_at, resource_use_resource,
+    string_type, transport_request_body, unit_type, with_optional_cardinality,
+    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node, StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2852,56 +2851,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         } else {
             {
                 let authored_anno = item.type_annotation.clone().unwrap();
-                let has_applied_binding = (find_property(
-                    anno_resolved.resolved.clone().properties.clone(),
-                    "__applied_type_args".to_string(),
-                    env.source_indices.clone(),
-                ) != None);
-                if (((authored_anno.children.clone().len() as i64) > 0) && !has_applied_binding) {
-                    let arg_results = Rc::new({
-                        let mut __result = Vec::new();
-                        for child in authored_anno.children.clone().iter().cloned() {
-                            __result.push(resolve_node(
-                                child.clone(),
-                                env.clone(),
-                                module_name.clone(),
-                            ));
-                        }
-                        __result
-                    });
-                    let resolved_args = Rc::new({
-                        let mut __result = Vec::new();
-                        for ar in arg_results.clone().iter().cloned() {
-                            __result.push(ar.resolved.clone());
-                        }
-                        __result
-                    });
-                    let applied_type_args = Rc::new(Node {
-                        name: authored_name(env.clone(), authored_anno.clone()),
-                        span: authored_anno.span.clone(),
-                        ident_span: authored_anno.ident_span.clone(),
-                        children: resolved_args,
-                        connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: None,
-                        return_cardinality: authored_anno.return_cardinality.clone(),
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    });
-                    let applied_type_args_property = make_field_init_node(
-                        "__applied_type_args".to_string(),
-                        applied_type_args,
-                        authored_anno.span.clone(),
-                        authored_anno.span.clone(),
-                    );
+                if ((authored_anno.children.clone().len() as i64) > 0) {
                     Some(Rc::new(Node {
                         name: authored_anno.name.clone(),
                         span: authored_anno.span.clone(),
@@ -2916,10 +2866,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                         uses: authored_anno.uses.clone(),
                         body: authored_anno.body.clone(),
                         transport: authored_anno.transport.clone(),
-                        properties: v2_rt::concat(
-                            anno_resolved.resolved.clone().properties.clone(),
-                            Rc::new(vec![applied_type_args_property]),
-                        ),
+                        properties: anno_resolved.resolved.clone().properties.clone(),
                         type_annotation: authored_anno.type_annotation.clone(),
                         is_self_recursive: authored_anno.is_self_recursive,
                         has_non_tail_self_call: authored_anno.has_non_tail_self_call.clone(),
@@ -2932,43 +2879,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                 }
             }
         };
-        let anno_arg_diags = if (item.type_annotation.clone() == None) {
-            Rc::new(vec![])
-        } else {
-            {
-                let authored_anno = item.type_annotation.clone().unwrap();
-                let has_applied_binding = (find_property(
-                    anno_resolved.resolved.clone().properties.clone(),
-                    "__applied_type_args".to_string(),
-                    env.source_indices.clone(),
-                ) != None);
-                if (((authored_anno.children.clone().len() as i64) > 0) && !has_applied_binding) {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for ar in Rc::new({
-                            let mut __result = Vec::new();
-                            for child in authored_anno.children.clone().iter().cloned() {
-                                __result.push(resolve_node(
-                                    child.clone(),
-                                    env.clone(),
-                                    module_name.clone(),
-                                ));
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.extend((*ar.diagnostics.clone()).iter().cloned());
-                        }
-                        __result
-                    })
-                } else {
-                    Rc::new(vec![])
-                }
-            }
-        };
-        let anno_diags = v2_rt::concat(anno_resolved.diagnostics.clone(), anno_arg_diags);
+        let anno_diags = anno_resolved.diagnostics.clone();
         let transport_resolved = if (item.transport.clone() == None) {
             Rc::new(TransportResolveResult {
                 transport: local_transport_node(no_span()),
