@@ -599,8 +599,8 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
         "{TARGET_MODEL_PATH}: per (carrier, use_site) lookup must be structural"
     );
     assert!(
-        surface_declares_fn(&module, "target_use_site_ownership_outcome_source_key"),
-        "{TARGET_MODEL_PATH}: SG-RC lookup must key Outcome<T> carriers by head so Outcome rows compose with SG-2"
+        surface_declares_fn(&module, "target_use_site_ownership_source_key"),
+        "{TARGET_MODEL_PATH}: SG-RC lookup must use row-authored carrier key projection so Outcome rows compose with SG-2"
     );
     assert!(
         surface_declares_fn(&module, "target_reference_layer_apply_type_emitted"),

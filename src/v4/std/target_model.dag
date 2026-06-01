@@ -2443,14 +2443,21 @@ type TargetUseSiteOwnershipLookup
   | TargetUseSiteOwnershipUnique { row: TargetUseSiteOwnershipRealization }
   | TargetUseSiteOwnershipAmbiguous
 
-fn target_use_site_ownership_outcome_source_key(source_carrier: Node) -> Node {
-  match source_carrier.kind {
-    TypeNode { connective: Instantiation } =>
-      match list_at_optional(xs: node_positional_child_targets(node: source_carrier), index: 0) {
-        Present { value: head } => head
-        Absent => source_carrier
+fn target_use_site_ownership_source_key(
+  source_carrier: Node,
+  projection: TargetUseSiteOwnershipSourceProjection
+) -> Node {
+  match projection {
+    UseSiteOwnershipExactCarrier => source_carrier
+    UseSiteOwnershipInstantiationHeadCarrier =>
+      match source_carrier.kind {
+        TypeNode { connective: Instantiation } =>
+          match list_at_optional(xs: node_positional_child_targets(node: source_carrier), index: 0) {
+            Present { value: head } => head
+            Absent => source_carrier
+          }
+        _ => source_carrier
       }
-    _ => source_carrier
   }
 }
 
@@ -2461,11 +2468,10 @@ fn target_use_site_ownership_lookup_step(
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> TargetUseSiteOwnershipLookup {
-  let source_key = if content_hash(n: row.source_carrier) == content_hash(n: target_carrier_outcome_node()) {
-    target_use_site_ownership_outcome_source_key(source_carrier: source_carrier)
-  } else {
-    source_carrier
-  }
+  let source_key = target_use_site_ownership_source_key(
+    source_carrier: source_carrier,
+    projection: row.source_projection
+  )
   if content_hash(n: row.source_carrier) == content_hash(n: source_key)
     && row.use_site == use_site
   {
@@ -2525,6 +2531,10 @@ fn target_use_site_ownership_row_from_node(
     row_node: row_node,
     edge_name: target_use_site_ownership_field_source_carrier
   )
+  let source_projection_node = target_atom_realization_conj_child(
+    row_node: row_node,
+    edge_name: target_use_site_ownership_field_source_projection
+  )
   let use_site_node = target_atom_realization_conj_child(
     row_node: row_node,
     edge_name: target_use_site_ownership_field_use_site
@@ -2534,33 +2544,48 @@ fn target_use_site_ownership_row_from_node(
     edge_name: target_use_site_ownership_field_reference_layer
   )
   bind_outcome(
-    o: target_model_node_atom_identity(node: use_site_node, source_carrier: source_carrier),
-    f: fn(use_site_id) {
-      match target_ownership_use_site_from_atom(id: use_site_id) {
+    o: target_model_node_atom_identity(node: source_projection_node, source_carrier: source_carrier),
+    f: fn(source_projection_id) {
+      match target_use_site_ownership_source_projection_from_atom(id: source_projection_id) {
         Absent =>
           outcome_rejected(
             target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
               source_carrier: source_carrier
             )
           )
-        Present { value: use_site } =>
+        Present { value: source_projection } =>
           bind_outcome(
-            o: target_model_node_atom_identity(node: layer_node, source_carrier: source_carrier),
-            f: fn(layer_id) {
-              match target_reference_layer_from_atom(id: layer_id) {
+            o: target_model_node_atom_identity(node: use_site_node, source_carrier: source_carrier),
+            f: fn(use_site_id) {
+              match target_ownership_use_site_from_atom(id: use_site_id) {
                 Absent =>
                   outcome_rejected(
                     target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
                       source_carrier: source_carrier
                     )
                   )
-                Present { value: reference_layer } =>
-                  outcome_accepted(
-                    TargetUseSiteOwnershipRealization {
-                      source_carrier: carrier_node,
-                      use_site: use_site,
-                      reference_layer: reference_layer,
-                      display_name: display_name
+                Present { value: use_site } =>
+                  bind_outcome(
+                    o: target_model_node_atom_identity(node: layer_node, source_carrier: source_carrier),
+                    f: fn(layer_id) {
+                      match target_reference_layer_from_atom(id: layer_id) {
+                        Absent =>
+                          outcome_rejected(
+                            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+                              source_carrier: source_carrier
+                            )
+                          )
+                        Present { value: reference_layer } =>
+                          outcome_accepted(
+                            TargetUseSiteOwnershipRealization {
+                              source_carrier: carrier_node,
+                              source_projection: source_projection,
+                              use_site: use_site,
+                              reference_layer: reference_layer,
+                              display_name: display_name
+                            }
+                          )
+                      }
                     }
                   )
               }
@@ -2668,6 +2693,19 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
       target_model_named_edge(
         name: target_use_site_ownership_field_source_carrier,
         target: row.source_carrier
+      ),
+      target_model_named_edge(
+        name: target_use_site_ownership_field_source_projection,
+        target: Node {
+          kind: TypeNode {
+            connective: Atom {
+              identity: target_use_site_ownership_source_projection_atom(
+                projection: row.source_projection
+              )
+            }
+          },
+          children: []
+        }
       ),
       target_model_named_edge(
         name: target_use_site_ownership_field_use_site,
