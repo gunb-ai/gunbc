@@ -5335,13 +5335,8 @@ pub fn emit_tco_param(
     {
         let authored = param_node_type_expr(param.clone());
         let ty = if ((authored.params.clone().len() as i64) > 0) {
-            let carrier = if ((generic_param_names.clone().len() as i64) > 0) {
-                authored
-            } else {
-                child_type_node(authored)
-            };
             emit_rust_param_type(
-                carrier,
+                authored,
                 generic_param_names.clone(),
                 shared_types,
                 source_indices.clone(),
@@ -5528,13 +5523,8 @@ pub fn emit_param(
         let authored = param_node_type_expr(param.clone());
         let is_callable_param = ((authored.params.clone().len() as i64) > 0);
         let ty = if is_callable_param {
-            let carrier = if ((generic_param_names.clone().len() as i64) > 0) {
-                authored.clone()
-            } else {
-                child_type_node(authored.clone())
-            };
             emit_rust_param_type(
-                carrier,
+                authored.clone(),
                 generic_param_names.clone(),
                 shared_types,
                 source_indices.clone(),
