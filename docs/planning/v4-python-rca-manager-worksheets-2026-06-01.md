@@ -288,8 +288,12 @@ Falsification probes:
   `src/v4/test/claim/language_model/python_l1_static.dag`.
 - F1 host receipt: `scripts/v4-leaf-model-python-l1-static-verify.sh` — pyright `reportReturnType`
   catches a `-> int` function returning `str` that BOTH `py_compile` and `python3` exec accept,
-  proving the third distinct authority. Degrades to a recorded deferred/advisory when pyright is
-  unavailable (F2: tool-unavailable recorded honestly, never a runtime/behavioral failure).
+  proving the third distinct authority. **Fail-closed** for the modeled `BlockingForRung` role:
+  the script exits non-zero unless pyright POSITIVELY proves it caught the falsification; a
+  pyright-unavailable run records an honest tool-unavailable receipt (F2: not misattributed as a
+  behavioral failure) but still exits non-zero — a blocking static check that was not proven is a
+  MISS, never a deferred pass. Wired into CI as a gated step in `.github/workflows/ci.yml`
+  (`ci_integration` v4 lane) so F1 is mechanically enforced, not only modeled.
 
 Naming nuance vs the ruling: the verdict's accept arm is spelled `StaticAnalysisAccepted` (prefix
 consistency with the other two arms) rather than bare `Accepted`; semantics unchanged.

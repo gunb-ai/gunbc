@@ -265,6 +265,14 @@ jobs:
     - name: Phase 1 leaf-model R2a/R2b/R3-external rustc boundary (gunbc#846 bypass)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: cargo test -p v3-compiler --test integration v4_leaf_model_rust_r2_r3_external_rustc_test -- --quiet
+    # PY-L1-STATIC-STRUCTURAL F1 host receipt (Arbiter ruling proud-fox-405 msg_41813c03).
+    # Fail-closed for the modeled BlockingForRung role: the script exits non-zero unless
+    # pyright POSITIVELY proves it caught the falsification (reportReturnType) where both
+    # py_compile and python3 exec miss it. This mechanically enforces the third authority;
+    # a deferred/tool-unavailable result is a MISS, never a pass.
+    - name: Phase 1 leaf-model python L1 static-structural F1 receipt (pyright)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: bash scripts/v4-leaf-model-python-l1-static-verify.sh
   # v4 compile gates — parallel with ci_integration. Standalone `v4` jobs hit a ~5m Ubicloud
   # shutdown mid-emit; per-job budgets keep one runner lifecycle per concern. The `v4` job is a
   # receipt-only stub so required check names stay stable. MVP-1 + v4 bootstrap share the
