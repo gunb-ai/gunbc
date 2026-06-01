@@ -10,6 +10,7 @@
 //!
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
 //! **TASKS.md** T-21 + T-24; bankruptcy B0/B1 Tier-0 binding smoke: `docs/design-ci-bankruptcy-rebuild.md` §4.1
+//! Wave 1 §11.7.1 floor: `docs/planning/ci-required-surface-cut-2026-06-01.md` (`v4_workflow_ci_wave1_*`).
 //! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101).
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
@@ -675,11 +676,12 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     let m1_step = workflow_step_block(CI_YML, step_name);
     assert!(
-        m1_step.contains("needs.affected.outputs.v4 == 'true'")
-            && m1_step.contains("needs.affected.outputs.workflow_policy == 'true'")
-            && m1_step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
-            && m1_step.contains("needs.affected.outputs.release_distribution == 'true'"),
-        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, workflow-policy, and release_distribution (M1 is upstream rust emit for corpus eval per #4091 §1.2)"
+        !m1_step.contains("needs.affected.outputs"),
+        "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` runs unconditionally on the safety floor (no component `if:`)"
+    );
+    assert!(
+        m1_step.contains("V4_M1_RUST_EMIT_PROBE_STRICT"),
+        "{CI_YML_PATH}: `{step_name}` must fail-closed (V4_M1_RUST_EMIT_PROBE_STRICT=1)"
     );
     assert!(
         CI_DAG.contains(
@@ -764,45 +766,15 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let script_path = expr_string(record_body_field(live_signal, "script_path"));
     let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
     let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
-    let eval_step = workflow_step_block(CI_YML, step_name);
     assert!(
-        eval_step.contains("needs.affected.outputs.v4 == 'true'")
-            && eval_step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
-            && eval_step.contains("needs.affected.outputs.workflow_policy == 'true'")
-            && eval_step.contains("needs.affected.outputs.release_distribution == 'true'"),
-        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, workflow-policy, and release_distribution changes"
+        !CI_YML.contains(&format!("- name: {step_name}")),
+        "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` demoted from required path (modeled in ci.dag; Class C)"
     );
     assert!(
-        !eval_step.contains("v4-testclaim-corpus-gate.sh")
-            && !eval_step.contains("t22_testclaim_corpus_cache")
-            && !eval_step.contains("V4_TESTCLAIM_REUSE_RUST_OUT")
-            && !eval_step.contains("V4_TESTCLAIM_REUSE_DAG_OUT")
-            && !eval_step.contains("T-22 TestClaim corpus structural bridge"),
-        "{CI_YML_PATH}: P5 bridge negative authority must not appear in `{step_name}`"
+        CI_DAG.contains(&format!("script_path: \"{script_path}\"")),
+        "{CI_DAG_PATH}: T-22 corpus eval host transport remains modeled as `{script_path}`"
     );
-    assert!(
-        eval_step.contains("V4_M1_RUST_EMIT_OUT:") && eval_step.contains("V4_BOOTSTRAP_OUT:"),
-        "{CI_YML_PATH}: `{step_name}` must wire upstream M1 + bootstrap composition-edge env"
-    );
-    if non_blocking {
-        assert!(
-            eval_step.contains("continue-on-error: true"),
-            "{CI_YML_PATH}: `{step_name}` must set continue-on-error when modeled non_blocking is true"
-        );
-    } else {
-        assert!(
-            !eval_step.contains("continue-on-error: true"),
-            "{CI_YML_PATH}: `{step_name}` must not set continue-on-error when modeled non_blocking is false"
-        );
-    }
-    assert!(
-        eval_step.contains(&format!("timeout-minutes: {timeout_minutes}")),
-        "{CI_YML_PATH}: `{step_name}` must set timeout-minutes from modeled timeout_minutes"
-    );
-    assert!(
-        eval_step.contains(&format!("run: bash {script_path}")),
-        "{CI_YML_PATH}: `{step_name}` must invoke the modeled host transport"
-    );
+    let _ = (non_blocking, timeout_minutes);
     assert!(
         !CI_YML.contains("v4-testclaim-corpus-gate.sh"),
         "{CI_YML_PATH}: shell bridge script must be absent from workflow"
@@ -831,13 +803,9 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
         CI_DAG.contains("ci_all_gate_run_policies_resolve(gates: p.gates, jobs: p.jobs)"),
         "{CI_DAG_PATH}: ci_pipeline_well_formed must reject dangling gate run-policy jobs"
     );
-    let bootstrap_skip_guard = expr_string(data_body(
-        &module,
-        "ci_v4_bootstrap_gate_result_skip_guard_if",
-    ));
     assert!(
-        CI_YML.contains(&bootstrap_skip_guard),
-        "{CI_YML_PATH}: bootstrap gate result skip guard must match modeled ci_v4_bootstrap_gate_result_skip_guard_if"
+        CI_YML.contains("bash scripts/v4-bootstrap-viability.sh"),
+        "{CI_YML_PATH}: Wave 1 floor runs bootstrap viability directly (no advisory two-step gate)"
     );
     assert!(
         CI_DAG.contains("workflow_local_bootstrap_dag_upstream")
@@ -969,9 +937,9 @@ fn v4_workflow_ci_bankruptcy_tier0_legacy_top_level_jobs_deleted() {
         );
     }
     assert!(
-        CI_YML.contains("v3 determinism (Tier-0 I3)")
-            && CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
-        "{CI_YML_PATH}: Tier-0 I3/I4 must run inside the ci harness job"
+        !CI_YML.contains("v3 determinism (Tier-0 I3)")
+            && !CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
+        "{CI_YML_PATH}: Wave 1 §11.7.3 — v3 integration permanently deleted from required CI"
     );
 }
 
@@ -1024,23 +992,18 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_integration, ci_v4]")
-            || CI_YML.contains("needs: [affected, ci_integration, ci_v4]\n"),
-        "{CI_YML_PATH}: branch-protection `ci` aggregator must not need `discipline` (B1 §3.5 — check-* off Tier-0 critical path)"
+        CI_YML.contains("needs: [affected, ci_floor]")
+            || CI_YML.contains("needs: [affected, ci_floor]\n"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must need Wave 1 `ci_floor` only"
     );
     assert!(
-        !CI_YML.contains("needs.discipline.result"),
-        "{CI_YML_PATH}: `ci` Validate prerequisites must not fail-closed on discipline"
+        !CI_YML.contains("needs.discipline.result")
+            && !CI_YML.contains("  discipline:"),
+        "{CI_YML_PATH}: discipline job deleted per §11.7.3"
     );
     assert!(
-        CI_YML.contains("needs: [affected]\n    runs-on:")
-            || CI_YML.contains("ci_integration:") && CI_YML.contains("needs: [affected]"),
-        "{CI_YML_PATH}: Tier-0 ci_integration must not need discipline"
-    );
-    assert!(
-        CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_integration\", \"ci_v4\"]")
-            && !CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"discipline\""),
-        "{CI_WORKFLOW_DAG_PATH}: generated workflow must mirror ci.yml (P2 — discipline off aggregator)"
+        CI_YML.contains("ci_floor:") && CI_YML.contains("needs: [affected]"),
+        "{CI_YML_PATH}: `ci_floor` must depend on `affected` only"
     );
 }
 
@@ -1052,11 +1015,9 @@ fn v4_workflow_ci_bankruptcy_tier0_i4_if_matches_live_workflow_binding() {
         "ci_v3_self_host_fixed_point_ci_live_workflow_binding",
     );
     let i4_step_name = expr_string(record_body_field(i4_binding, "step_name"));
-    let i4_if_condition = expr_string(record_body_field(i4_binding, "if_condition"));
-    let i4_step = workflow_step_block(CI_YML, &i4_step_name);
     assert!(
-        i4_step.contains(&i4_if_condition),
-        "{CI_YML_PATH}: Tier-0 I4 step `if` must match modeled ci_v3_self_host_fixed_point_ci_live_workflow_binding (§3.3 / D1)"
+        !CI_YML.contains(&format!("- name: {i4_step_name}")),
+        "{CI_YML_PATH}: Wave 1 — I4 v3 self-host step not on required path (binding remains in ci.dag)"
     );
 }
 
