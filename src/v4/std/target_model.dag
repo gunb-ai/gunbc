@@ -2247,7 +2247,13 @@ type TargetReferenceLayerTokens {
   box_new_ctor: Symbol
 }
 
-// 🟢 coproduct dissolution — SG-RC row-authored source-key projection.
+// 🟢 coproduct dissolution — TERMINAL. SG-RC ownership rows must distinguish exact-carrier
+// identity from generic-family/head identity while still projecting the emitted shell through
+// SG-2. This is not a derivable fact from Node alone: `Outcome<T>`/`TestClaimRun<S,A>` rows
+// intentionally match by instantiation head, while `Node`, `Diagnostics`, and other rows match
+// exact carriers. Encoding that choice in source_carrier would conflate carrier identity with
+// lookup semantics; encoding it in the lookup would reintroduce consumer-local special cases.
+// The row-authored sum is the canonical authority for the finite source-key semantics.
 type TargetUseSiteOwnershipSourceProjection
   = UseSiteOwnershipExactCarrier
   | UseSiteOwnershipInstantiationHeadCarrier
