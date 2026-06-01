@@ -945,15 +945,9 @@ fn v4_workflow_ci_bankruptcy_tier0_legacy_top_level_jobs_deleted() {
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_ci_integration_job_if_includes_release_distribution() {
-    let ci_integration_job_if = CI_YML
-        .lines()
-        .skip_while(|line| !line.starts_with("  ci_integration:"))
-        .skip(1)
-        .find(|line| line.trim_start().starts_with("if:"))
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing ci_integration job `if`"));
     assert!(
-        ci_integration_job_if.contains("needs.affected.outputs.release_distribution == 'true'"),
-        "{CI_YML_PATH}: ci_integration job `if` must include release_distribution (RELEASE §5 binding step at :251 is inside this job)"
+        !CI_YML.contains("  ci_integration:"),
+        "{CI_YML_PATH}: Wave 1 — `ci_integration` job dissolved into `ci_floor`"
     );
 }
 
@@ -1033,88 +1027,27 @@ fn v4_workflow_ci_bankruptcy_tier0_corpus_eval_uses_one_canonical_ci_job_row() {
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_t15_schedule_matches_ci_yml() {
-    let t15_step = workflow_step_block(CI_YML, T15_SELF_HOST_STEP_NAME);
     assert!(
-        t15_step.contains(T15_SELF_HOST_HARNESS_TEST_FILTER),
-        "{CI_YML_PATH}: `{T15_SELF_HOST_STEP_NAME}` must run the T-15 self-host fixed-point harness (I7)"
-    );
-    assert!(
-        !t15_step.contains("release_distribution"),
-        "{CI_YML_PATH}: T-15 step must not gate on release_distribution (single-authority with modeled mask)"
+        !CI_YML.contains(T15_SELF_HOST_STEP_NAME),
+        "{CI_YML_PATH}: Wave 1 — T-15 harness demoted from required path"
     );
     assert!(
         CI_DAG.contains(
             "V4T15SelfHostFixedPointCommand =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true,\n        testclaim_corpus: false,\n        workflow_policy: true,\n        release_distribution: false\n      )"
         ),
-        "{CI_DAG_PATH}: V4T15SelfHostFixedPointCommand mask must match ci_v4 T-15 step if: axes"
-    );
-    assert!(
-        !t15_step.contains("needs.affected.outputs.v3 == 'true'"),
-        "{CI_YML_PATH}: T-15 step must not gate on v3 — I7 runs in ci_v4 lane only (parent job has no v3 disjunct)"
+        "{CI_DAG_PATH}: V4T15SelfHostFixedPointCommand mask remains modeled"
     );
     assert!(
         CI_DAG.contains("fn ci_v4_t15_scheduled(affected: CiComponentAffected, schedule: CiSchedulePolicy) -> Bool"),
         "{CI_DAG_PATH}: T-15 must model main-push schedule authority"
-    );
-    assert!(
-        CI_DAG.contains("V4T15SelfHostFixedPointCommand =>\n      ci_v4_t15_scheduled(affected: affected, schedule: schedule)"),
-        "{CI_DAG_PATH}: ci_job_scheduled_by_policy must select V4T15 on MainPush (YAML main-push disjunct)"
-    );
-    assert!(
-        t15_step.contains("github.event_name == 'push'") && t15_step.contains("refs/heads/main"),
-        "{CI_YML_PATH}: T-15 step must include main-push disjunct paired with modeled ci_v4_t15_scheduled"
-    );
-    let ci_v4_job_if = workflow_top_level_job_if(CI_YML, "ci_v4");
-    assert!(
-        ci_v4_job_if.contains("github.event_name == 'push'") && ci_v4_job_if.contains("refs/heads/main"),
-        "{CI_YML_PATH}: ci_v4 job `if` must include main-push so I7 T-15 can run when the job is not component-selected"
-    );
-    assert!(
-        ci_v4_job_if.contains("needs.affected.outputs.release_distribution == 'true'"),
-        "{CI_YML_PATH}: ci_v4 job `if` must include release_distribution (TestClaimCorpusEvalCommand mask axis)"
     );
 }
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_ci_v4_job_if_matches_generated_workflow() {
     assert!(
-        CI_WORKFLOW_DAG.contains("id: \"ci_v4\"")
-            && CI_WORKFLOW_DAG.contains(
-                "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
-            ),
-        "{CI_WORKFLOW_DAG_PATH}: ci_v4 job if_condition must mirror ci.yml (main-push + release_distribution)"
-    );
-    let t15_workflow_marker = format!("name: Some {{ value: \"{T15_SELF_HOST_STEP_NAME}\" }}");
-    let t15_workflow_idx = CI_WORKFLOW_DAG
-        .find(&t15_workflow_marker)
-        .unwrap_or_else(|| {
-            panic!("{CI_WORKFLOW_DAG_PATH}: missing modeled step `{T15_SELF_HOST_STEP_NAME}`")
-        });
-    let t15_workflow_window =
-        &CI_WORKFLOW_DAG[t15_workflow_idx..t15_workflow_idx.saturating_add(512)];
-    assert!(
-        !t15_workflow_window.contains("needs.affected.outputs.v3 == 'true'"),
-        "{CI_WORKFLOW_DAG_PATH}: T-15 step if_condition must not gate on v3 (P2 parity with ci.yml / ci.dag)"
-    );
-    assert!(
-        t15_workflow_window.contains(
-            "if_condition: Some { value: \"needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')\" }"
-        ),
-        "{CI_WORKFLOW_DAG_PATH}: T-15 step if_condition must mirror ci.yml (I7 / no v3 disjunct)"
-    );
-    let v2_build_workflow_marker =
-        "name: Some { value: \"Build v2 compiler (v4 bootstrap / host eval gate)\" }";
-    let v2_build_workflow_idx = CI_WORKFLOW_DAG
-        .find(v2_build_workflow_marker)
-        .unwrap_or_else(|| {
-            panic!("{CI_WORKFLOW_DAG_PATH}: missing modeled step `Build v2 compiler (v4 bootstrap / host eval gate)`")
-        });
-    let v2_build_workflow_window =
-        &CI_WORKFLOW_DAG[v2_build_workflow_idx..v2_build_workflow_idx.saturating_add(560)];
-    assert!(
-        v2_build_workflow_window.contains("github.event_name == 'push'")
-            && v2_build_workflow_window.contains("refs/heads/main"),
-        "{CI_WORKFLOW_DAG_PATH}: v2 compiler build if_condition must include main-push (T-15 needs v2_compile_src_v4)"
+        !CI_YML.contains("  ci_v4:"),
+        "{CI_YML_PATH}: Wave 1 — `ci_v4` job dissolved into `ci_floor`"
     );
 }
 
@@ -1196,23 +1129,15 @@ fn v4_workflow_ci_bankruptcy_tier0_upsert_slice_registers_tier0_jobs() {
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_v2_build_step_includes_main_push() {
-    let v2_bootstrap_build =
-        workflow_step_block(CI_YML, "Build v2 compiler (v4 bootstrap / host eval gate)");
+    let v2_build = workflow_step_block(CI_YML, "Build v2 compiler (v4 floor)");
     assert!(
-        v2_bootstrap_build.contains("needs.affected.outputs.v4 == 'true'")
-            && !v2_bootstrap_build.contains("needs.affected.outputs.v2 == 'true'"),
-        "{CI_YML_PATH}: v2 compiler build step must follow ci_v4 job gate (v4|testclaim|workflow_policy), not v2-only"
+        !v2_build.contains("needs.affected.outputs"),
+        "{CI_YML_PATH}: Wave 1 — v2 build runs unconditionally in `ci_floor`"
     );
+    let v2_bin_cache = workflow_step_block(CI_YML, "Cache gunbc binary (v4 floor)");
     assert!(
-        v2_bootstrap_build.contains("github.event_name == 'push'")
-            && v2_bootstrap_build.contains("refs/heads/main"),
-        "{CI_YML_PATH}: v2 compiler build step must include main-push when T-15 does (modeled needs: v2_compile_src_v4)"
-    );
-    let v2_bin_cache =
-        workflow_step_block(CI_YML, "Cache gunbc binary (v4 bootstrap / host eval gate)");
-    assert!(
-        v2_bin_cache.contains("github.event_name == 'push'") && v2_bin_cache.contains("refs/heads/main"),
-        "{CI_YML_PATH}: v2 compiler cache step must include main-push paired with build/T-15 needs closure"
+        !v2_bin_cache.contains("needs.affected.outputs"),
+        "{CI_YML_PATH}: Wave 1 — gunbc cache runs unconditionally in `ci_floor`"
     );
 }
 
