@@ -670,21 +670,23 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: ci_pipeline must declare M1 job and gate"
     );
     let live_signal = data_body(&module, "m1_ci_live_workflow_signal");
+    let live_step = record_body_field(live_signal, "step");
     let binding_smoke_step_name =
-        expr_string(record_body_field(live_signal, "binding_smoke_step_name"));
-    let step_name = expr_string(record_body_field(live_signal, "step_name"));
-    let script_path = expr_string(record_body_field(live_signal, "script_path"));
-    let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
-    let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
+        expr_string(record_body_field(live_step, "binding_smoke_step_name"));
+    let step_name = expr_string(record_body_field(live_step, "step_name"));
+    let script_path = expr_string(record_body_field(live_step, "script_path"));
+    let non_blocking = expr_bool(record_body_field(live_step, "non_blocking"));
+    let timeout_minutes = expr_int(record_body_field(live_step, "timeout_minutes"));
     let (strict_env_var, strict_env_value) =
-        strict_env_binding(record_body_field(live_signal, "strict_env_binding"))
+        strict_env_binding(record_body_field(live_step, "strict_env_binding"))
             .unwrap_or_else(|| panic!("{CI_DAG_PATH}: M1 probe must model a strict env binding"));
+    let rust_emit_probe_policy = record_body_field(live_signal, "rust_emit_probe_policy");
     let emit_preconditions_block_required_path = expr_bool(record_body_field(
-        live_signal,
+        rust_emit_probe_policy,
         "emit_preconditions_block_required_path",
     ));
     let rustc_residuals_block_required_path = expr_bool(record_body_field(
-        live_signal,
+        rust_emit_probe_policy,
         "rustc_residuals_block_required_path",
     ));
     let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
@@ -778,7 +780,7 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
         CI_DAG
-            .contains("data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal"),
+            .contains("data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal"),
         "{CI_DAG_PATH}: must model live-workflow binding for testclaim corpus eval"
     );
     assert!(
