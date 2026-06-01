@@ -11,7 +11,10 @@ import v4.lens.leaf_model_verification {
 }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.leaf_model_verification { leaf_model_claim_go_r2b_int64_overflow_wrap }
+import v4.std.leaf_model_verification {
+  leaf_model_claim_go_r2b_int64_overflow_wrap,
+  TargetGoRuntimeAccepted
+}
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -41,7 +44,9 @@ data claim_go_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
       && go_r2b_fixture().surface_spelling_fact == go_integer_algebra_inhabitance_go_facts_int64
       && go_r2b_fixture().encoding_spelling_fact == go_integer_algebra_inhabitance_go_facts_int64
       && go_r2b_fixture().happy.source == go_r2b_runtime_fixture_source
-      && go_r2b_fixture().falsification.fixture.source == go_r2b_runtime_fixture_source
+      && go_r2b_fixture().expected_happy_verdict == TargetGoRuntimeAccepted
+      && go_r2b_fixture().falsification.source == go_r2b_runtime_fixture_source
+      && go_r2b_fixture().expected_falsification_verdict == TargetGoRuntimeAccepted
   ),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
