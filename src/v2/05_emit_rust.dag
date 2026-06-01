@@ -1656,7 +1656,20 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
       } else {
         render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
       }
-    None => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+    None =>
+      match n.inferred {
+        Some { value: Resolved { node: resolved } } =>
+          match find_property(props: resolved.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+            Some { value: applied } =>
+              if applied.children |> count > 0 {
+                render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
+              } else {
+                render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+              }
+            None => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+          }
+        _ => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+      }
   }
 }
 
