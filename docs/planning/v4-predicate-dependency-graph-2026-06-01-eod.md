@@ -10,7 +10,7 @@ Forward projection of remaining work to v4-done as of Jun 1 release day end-of-d
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **GREEN.** P2-A probe (44-source closure 0 diagnostics) verified scope (a). M2 probe (#4097) confirmed bridge dead-weight. **#4139 MERGED 00:50Z (squash 12d1aa68c)** — `scripts/v4-bootstrap-resolve-posture-gate.sh` deleted from main; `.github/workflows/ci.yml` bridge step removed. P2 now fully GREEN. |
 | P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (impl gated on §8 sign-off). **Residual rustc count: 7,724** per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 — substrate landings introduced new diagnostics absorbed back into existing classes). Per-class delta on review. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, deferred amendment). |
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | RED — hard-gated on P2 full PROVEN + P3 binary builds |
-| P5 | TestClaim suite passes | **Layer 1 + Layer 2 BOTH CLOSED** via #4115 (P5 structural-bridge replaced + deleted). Strict P5 "suite passes" still gates on runtime-execution path: upward debt `node://adhoc-f8699326-d69` (operator decision: M1 cargo-clean subset OR new bootstrap-evaluator corpus runtime per SELF_HOSTING). T-38-PR2 verdict-SURFACE migration LANDED #4120 (closes one of three closeout-leaf conditions for stern-lynx). |
+| P5 | TestClaim suite passes | **Layer 1 + Layer 2 BOTH CLOSED** via #4115 (P5 structural-bridge replaced + deleted). Strict P5 "suite passes" still gates on runtime-execution path: **option (ii) bootstrap-evaluator corpus runtime authorized 2026-06-01T01 as WORKSHEET** (not impl) per §8.5 #3; Modeling DFS Arbiter (to spawn) authors the worksheet. P3 cascade continues independently. T-38-PR2 verdict-SURFACE migration LANDED #4120. |
 | P6 | Hand-authored Rust not editable authority (proven by REPRODUCTION) | RED — hard-gated on P4 + P3 PROVEN |
 
 ## §2. What closed today (2026-05-31 since 06:30Z)
@@ -103,7 +103,7 @@ Hard-gated on P4 + P3.
 
 ## §4. Critical paths forward — post-cascade
 
-**Path A: P5 strict "suite passes" (runtime gate)** — operator decision required between (i) and (ii). **(i) is patient-wait for P3 cascade closures to enable M1 cargo-clean emitted subset; P5 strict GREEN flips when the suite actually executes + passes against that subset, NOT on the routing decision itself.** (ii) is dedicated DFS worksheet authoring for a new bootstrap-evaluator corpus runtime; P5 strict GREEN flips when the runtime ships + suite passes. Either path's authorization unblocks dispatch; neither flips P5 GREEN by authorization alone — P5 GREEN requires `src/v4/TASKS.md` "TestClaim suite passes" bullet satisfied by actual suite execution receipt.
+**Path A: P5 strict "suite passes" (runtime gate)** — **option (ii) WORKSHEET authorized 2026-06-01T01** per §8.5 #3. Modeling DFS Arbiter (to spawn) authors bootstrap-evaluator corpus runtime worksheet; P3 cascade continues independently. P5 strict GREEN still requires `src/v4/TASKS.md` "TestClaim suite passes" satisfied by actual suite execution receipt — worksheet authorization unblocks the path, not the predicate.
 
 **Path B: P2 GREEN flip** — **DONE.** #4139 MERGED 2026-06-01T00:50Z (squash 12d1aa68c); bridge script + ci.yml step removed from main.
 
@@ -120,36 +120,36 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 | Blocker | Owner action |
 |---|---|
 | ~~P2-B bridge deletion authorization~~ | **RESOLVED + DELIVERED 2026-06-01T00:50Z** — #4139 MERGED (squash 12d1aa68c); script + ci.yml step gone from main |
-| **P5 runtime gate** | Operator decision on `node://adhoc-f8699326-d69` choice (i) vs (ii) |
-| **SG-8 §8 sign-off** | Modeling DFS authority ambiguous post-proud-pike-archival; need operator routing decision OR PM/keen-heron to act as DFS reviewer |
+| ~~P5 runtime gate~~ | **RESOLVED 2026-06-01T01** — option (ii) authorized as WORKSHEET per §8.5 #3; spawn Modeling DFS Arbiter |
+| ~~SG-8 §8 sign-off~~ | **RESOLVED 2026-06-01T01** — dedicated Modeling DFS Manager to spawn per §8.5 #4; keen-heron stays TR |
 | ~~Fresh M1 probe post-cascade~~ | **RESOLVED 2026-06-01T00:28Z** — authorized; work-item `adhoc-7b46e080-3cd` in flight (sleek-heron-13 auto-spawned; PR #4140 opened) |
 
 ## §6.5 Current Dispatch Board
 
 | Priority | Item | State | Owner | Exit receipt |
 |---|---|---|---|---|
-| 1 | P5 runtime gate decision | operator-decision-node | operator | choice (i) or (ii) on adhoc-f8699326-d69 |
+| 1 | P5 runtime gate | **RESOLVED 2026-06-01T01** per §8.5 #3 — option (ii) WORKSHEET authorized | Modeling DFS Arbiter (to spawn) | bootstrap-evaluator corpus runtime worksheet authored + §8 approved |
 | 2 | P2-B bridge deletion | **DONE 2026-06-01T00:50Z** | #4139 MERGED (squash 12d1aa68c) | P2 fully GREEN |
-| 3 | SG-8 §8 sign-off authority | structurally ambiguous | operator routing OR PM/keen-heron-acting | §8 ratification → impl worker dispatchable |
+| 3 | SG-8 §8 sign-off authority | **RESOLVED 2026-06-01T01** per §8.5 #4 — dedicated Modeling DFS Manager to spawn | Modeling DFS Arbiter (to spawn) | §8 ratification → SG-8 impl worker dispatchable |
 | 4 | Fresh M1 probe post-cascade | **AUTHORIZED + in flight** (PR #4140 sleek-heron-13) | work-item `adhoc-7b46e080-3cd` | residual = 7,724 (+549 vs #4122); per-class delta on review |
 | 5 | SG-1-FOLLOWON impl | routed | TR lane (keen-heron) | minor follow-on close |
 | 6 | SG-COLLECTION-PROJECTION amend | deferred | TR/proud-pike-successor | ~170 errors |
 
 ## §7. PM-side actionable items
 
-**Worker implementation dispatch state (aligned with §6.5 dispatch board):**
-- **SG-8 impl: BLOCKED** on §8 sign-off authority routing (operator decision #4 in §8.5); cannot spawn until resolved
-- **P5 runtime gate impl: BLOCKED** on operator choice (i) vs (ii) (operator decision #3 in §8.5); cannot spawn until resolved
+**Worker implementation dispatch state (aligned with §6.5 dispatch board + §8.5 resolutions):**
+- **SG-8 impl: pending Modeling DFS Arbiter spawn** then §8 sign-off (operator decision #4 RESOLVED 01Z; Arbiter spawn is now the next step)
+- **P5 runtime gate impl: pending worksheet authoring** (operator decision #3 RESOLVED 01Z — option (ii) WORKSHEET authorized; Arbiter writes the worksheet, then impl spawns post-§8)
 - All other P3 classes either closed today (per §3.3) OR have follow-on routing (SG-1-FOLLOWON minor, SG-COLLECTION-PROJECTION deferred)
 
 **PM dispatches from 2026-06-01T00:28Z operator authorization:** P2-B deletion DELIVERED via #4139 MERGED 00:50Z; fresh M1 probe in flight via PR #4140 (sleek-heron-13).
 
 **Operator decisions still blocking forward progress** (per consolidated §8.5):
-- P5 runtime gate (i) vs (ii) on `adhoc-f8699326-d69`
-- SG-8 §8 sign-off authority routing
-- Modeling DFS Manager succession plan
-- TypeScript work plan authorization
-- stern-lynx closeout cond (c)
+- ~~P5 runtime gate (i) vs (ii)~~ **RESOLVED 01Z**: option (ii) WORKSHEET authorized (see §8.5 #3)
+- ~~SG-8 §8 sign-off authority routing~~ **RESOLVED 01Z**: spawn dedicated Modeling DFS Manager (see §8.5 #4)
+- ~~Modeling DFS Manager succession plan~~ **RESOLVED 01Z**: dedicated manager going forward (see §8.5 #5)
+- ~~TypeScript work plan authorization~~ **RESOLVED 01Z**: alpha/preview lane authorized (see §8.5 #6)
+- stern-lynx closeout cond (c) — still pending (low-priority)
 
 ## §8. Risk / honesty
 
@@ -219,12 +219,20 @@ Per Wave F F3 framing, TS is v4-alpha-only (not release-minimum). Parallel TS cl
 
 ## §10. Watchlist (Jun 1 release-day eod, no time-based ETAs)
 
-**Operator decisions still pending (gate forward progress)** — see §8.5 for full table:
-- P5 runtime gate choice (i) vs (ii) on `adhoc-f8699326-d69`
-- SG-8 §8 sign-off authority routing
-- Modeling DFS Manager succession plan
-- TypeScript work plan authorization
-- stern-lynx closeout cond (c)
+**Operator decisions** — see §8.5 for full table (decisions #3-#8 RESOLVED 2026-06-01T01; only #9 stern-lynx closeout (c) remains pending, low-priority):
+- ~~P5 runtime gate (i) vs (ii)~~ RESOLVED: option (ii) WORKSHEET authorized
+- ~~SG-8 §8 sign-off authority routing~~ RESOLVED: dedicated Modeling DFS Manager to spawn
+- ~~Modeling DFS Manager succession plan~~ RESOLVED: dedicated manager going forward
+- ~~TypeScript work plan authorization~~ RESOLVED: alpha/preview lane authorized
+- ~~Go/Python language RCA managers~~ RESOLVED: authorized for self-compile runway per §11.8
+- ~~CI Coverage Bankruptcy Wave 1~~ RESOLVED: APPROVED; spawn CI Manager
+- stern-lynx closeout cond (c) — still pending (low-priority)
+
+**Next dispatch actions (post-#4137 merge)**:
+- Spawn Modeling DFS Arbiter (per §8.5 #4-#5)
+- Spawn CI Manager (per §8.5 #8) — Wave 1 bankruptcy PR + four-compile collapse
+- Spawn TypeScript/Go/Python language RCA managers (per §8.5 #6-#7 + §11.8 runway)
+- Modeling DFS Arbiter authors P5 runtime gate option (ii) worksheet (per §8.5 #3)
 
 **PM dispatches from 2026-06-01T00:28Z operator authorization:**
 - P2-B deletion DELIVERED via #4139 MERGED 00:50Z (squash 12d1aa68c) → P2 fully GREEN
