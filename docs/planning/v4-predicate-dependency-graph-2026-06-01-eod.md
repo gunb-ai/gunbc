@@ -304,6 +304,82 @@ Once operator ratifies §11 structure and #4140 lands as measurement receipt:
    - CI Manager → start migrating remaining YAML steps to CiUpsertStep rows
 4. **Re-probe after wave** (not per-PR)
 
+### §11.6 CI Manager — concrete migration inventory (per operator request)
+
+Captures what specifically needs to migrate for "affected-set testing/building via evaluator" + the larger CI substrate goal. Verified counts as of 2026-06-01T01:00Z post-#4139 main.
+
+**Headline numbers:**
+- `.github/workflows/ci.yml`: **73 YAML steps** across 7 jobs (fmt / discipline / affected / ci_integration / v3 / ci_v4 / ci aggregator / v4 aggregator)
+- `src/v4/workflow/ci.dag`: **47 modeled `CiUpsertStep` rows** on main (W2.3 Buckets A+B+C+E + bankruptcy Tier-0 + P5 structural-bridge replacement #4115)
+- `scripts/`: **~30 shell scripts** in scripts/; ~15-20 invoked from ci.yml gate/check steps
+
+**Migration scope (~26 YAML steps still without `CiUpsertStep` backing):**
+
+| Category | Count | Notes |
+|---|---|---|
+| **A. Already modeled + receipt-parity** | 47 rows | On main per #4078 W2.3 Bucket E + bankruptcy Tier-0 + #4115 P5; receipt parity verified via `ci_pipeline_step_ids_shadow` bijection |
+| **B. Pending modeling (gate/check steps)** | ~10 | SG-0 net-shrink discipline, R4-carve dissolution, Fabrication sentinel ratchet, T-19 testgen activation, Release-doc authority check, install.sh pinned-version smoke, Manager-brief authority check, Test-timeout ratchet, Rust toolchain single-authority check, Gate #103 path-regex + Layer 1 selection |
+| **C. Pending modeling (leaf-model boundary steps)** | ~6 | Phase 1 leaf-model R1 rustc / Python R1 / Python R2a-R2b-R3-external / Rust R2a-R2b-R3-external boundaries (gunbc#846 bypass steps) |
+| **D. Pending modeling (toolchain/cache steps)** | ~5 | Isolate toolchain dirs (×4 jobs), Clear inherited GitHub auth header (×4 jobs), Pin global rustup default (×4 jobs), Cache Cargo, Cache gunbc binary — currently per-job duplication, candidates for shared `CiUpsertStep` factoring |
+| **E. Already retired via dissolution** | n/a | `scripts/v4-testclaim-corpus-gate.sh` deleted #4115; `scripts/v4-bootstrap-resolve-posture-gate.sh` deleted #4139; legacy v2/v3/v4/self_host_ratchet jobs folded into bankruptcy #4101 |
+
+**Shell scripts pending retirement (per `project_no_new_shell` standing directive; each requires positive-Y `CiUpsertStep` modeling first per the `#4115` pattern):**
+
+```
+scripts/v4-bootstrap-viability.sh                     # main v2→v4 bootstrap compile path (invoked from ci_v4)
+scripts/v4-testclaim-corpus-eval.sh                   # T-22 corpus eval host transport (partially modeled per #4115; runtime still shell)
+scripts/v4-m1-rust-emit-probe.sh                      # M1 rust emit probe step
+scripts/v4-mvp1-e2e-gate.sh                           # MVP-1 add.dag e2e gate
+scripts/v4-phase1-nat-semiring-rung-gate.sh           # phase1/nat_semiring rungs 0-2 gate
+scripts/v4-leaf-model-python-r1-verify.sh             # category C above
+scripts/v4-leaf-model-python-r2a-verify.sh
+scripts/v4-leaf-model-python-r2b-verify.sh
+scripts/v4-leaf-model-python-r3-external-verify.sh
+scripts/v4-leaf-model-rust-r3-external-verify.sh
+scripts/check-pr-sg0-net-shrink-discipline.sh         # category B (SG-0 net-shrink)
+scripts/check-r4-carve-dissolution-discipline.sh      # category B (R4-carve)
+scripts/check-rust-toolchain-single-authority.sh      # category B (Rust toolchain)
+scripts/check-compiler-std-ratchet.sh                 # compiler-std ratchet
+scripts/check-test-timeout.sh                         # test timeout ratchet
+scripts/check-release-doc-authority.sh                # release-doc authority
+scripts/check-manager-brief-authority.sh              # manager-brief authority
+scripts/r1_p0_no_fabrication_sentinel.sh              # fabrication sentinel
+scripts/r3-debt-velocity.sh                           # debt velocity
+scripts/l1-ratchet.sh                                 # L1 ratchet
+scripts/detect-phase1-nat-semiring-gate-scope.sh      # PR diff scope detector
+scripts/regenerate-stage0.sh                          # stage0 regen (developer-facing; may stay)
+scripts/publish-snapshot.sh                           # snapshot publishing
+scripts/release-target-triples.sh                     # release target triples
+scripts/install-hooks.sh                              # pre-push hook installer (developer-facing; stays)
+scripts/test-check-*.sh                               # self-test scripts (test infrastructure; stays)
+```
+
+~22 production shell scripts need positive-Y modeling + retirement; ~8 are developer-facing or test infrastructure that stays.
+
+**Structural redundancies pending resolution (per #4091 §1.2):**
+- **Four-compile redundancy in `ci_v4`**: M1 rust emit + v2→v4 bootstrap dag + T-22 corpus rust + T-22 corpus dag — all run against same 332-source closure. Worth ~14m saved if collapsed to 1.
+- **Per-job `$HOME` isolation pattern** (per #4091 §2.3): 4 jobs duplicate `Isolate toolchain dirs` + `Clear GitHub auth header` + `Pin rustup default` steps. Candidates for shared substrate.
+- **Cache cleanup steps** (`Cache cleanup (gates 3s)` repeated across jobs)
+
+**Runtime authority migration:**
+- Today: `.github/workflows/ci.yml` is the runtime authority; GitHub Actions executes the YAML directly
+- Target: `src/v4/workflow/ci.dag` `CiPipeline` is the runtime authority; YAML is emitted from `ci.dag` (or replaced by an evaluator-driven runner)
+- Path: requires (a) all 73 steps modeled, (b) `ci_pipeline_step_ids_shadow` becomes authority (not shadow), (c) evaluator that executes modeled pipeline OR YAML generator from `ci.dag`
+- **Coupled with P5 runtime gate** (`adhoc-f8699326-d69`): the bootstrap-evaluator corpus runtime path (option (ii)) is the same architectural shape as the CI evaluator runtime; both gate on the same SELF_HOSTING-load-bearing substrate work
+
+**Affected-set testing/building specifically:**
+- Today: `needs.affected.outputs.v4 == 'true'` (shell+YAML condition), feeds into per-job conditional gates
+- Modeled: `ChangeSet` → `AffectedSet` → `AffectedSetProduced` substrate exists in `src/v4/std/change.dag`
+- Gap: runtime that consumes the modeled `AffectedSet` instead of the YAML conditional. Same gap as P5 runtime gate.
+
+**CI Manager near-term wins (executable without operator decisions):**
+1. **Migrate categories B (~10 gate/check steps) + C (~6 leaf-model boundaries) to `CiUpsertStep` rows** — pattern proven via W2.3 Bucket E (#4078); each row ~30min authoring; receipt parity via shadow bijection
+2. **Collapse category D toolchain duplication** — shared substrate factoring; one CiUpsertStep instead of 4×
+3. **Collapse four-compile redundancy in ci_v4** — most-impactful runtime drop (~14m on cold cache)
+
+**CI Manager long-pole (gated on operator decision + Modeling DFS Arbiter):**
+- Runtime authority migration (YAML→evaluator) — coupled with P5 runtime gate decision
+
 ### §11.5 PM (this session) scope under new structure
 
 PM remains routing + escalation only:
