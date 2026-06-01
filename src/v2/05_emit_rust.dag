@@ -5999,11 +5999,26 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
   if type_name == "BoundedLattice" {
     match value.expr_data {
       ExprRecordLit { parent_enum: _ } =>
-        let meet_str = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
+        let lattice_value = field_value_by_name(record: value, field_name: "lattice", source_indices: scope.type_env.source_indices)
+        let meet_value = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => Some { value: n }
+          None => match lattice_value {
+            Some { value: lattice } => field_value_by_name(record: lattice, field_name: "meet", source_indices: scope.type_env.source_indices)
+            None => none
+          }
+        }
+        let join_value = match field_value_by_name(record: value, field_name: "join", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => Some { value: n }
+          None => match lattice_value {
+            Some { value: lattice } => field_value_by_name(record: lattice, field_name: "join", source_indices: scope.type_env.source_indices)
+            None => none
+          }
+        }
+        let meet_str = match meet_value {
           Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           None => "compile_error!(\"BoundedLattice data missing meet\")"
         }
-        let join_str = match field_value_by_name(record: value, field_name: "join", source_indices: scope.type_env.source_indices) {
+        let join_str = match join_value {
           Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           None => "compile_error!(\"BoundedLattice data missing join\")"
         }

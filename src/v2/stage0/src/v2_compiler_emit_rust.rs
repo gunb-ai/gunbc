@@ -624,6 +624,8 @@ pub fn rust_nominal_ord_derives_for_shape(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
+    let _ = children;
+    let _ = source_indices;
     if rust_nominal_ord_name_eligible(name) {
         rust_ord_derives_text()
     } else {
@@ -3934,8 +3936,11 @@ pub fn emit_rust_field_definition(
     }
 }
 
-pub fn enum_derives(children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
     {
+        if rust_nominal_ord_name_eligible(name) {
+            return rust_ord_derives_text();
+        }
         let complex = Rc::new({
             let mut __result = Vec::new();
             for v in children.iter().cloned() {
@@ -3964,7 +3969,7 @@ pub fn emit_enum_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let derives = enum_derives(children.clone());
+        let derives = enum_derives(name.clone(), children.clone());
         let variant_lines = Rc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
@@ -16685,11 +16690,42 @@ pub fn emit_data_def_body(
         if (type_name.as_str() == "BoundedLattice".to_string().as_str()) {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                    let meet_str = match field_value_by_name(
+                    let lattice_value = field_value_by_name(
+                        value.clone(),
+                        "lattice".to_string(),
+                        scope.type_env.clone().source_indices.clone(),
+                    );
+                    let meet_value = match field_value_by_name(
                         value.clone(),
                         "meet".to_string(),
                         scope.type_env.clone().source_indices.clone(),
                     ) {
+                        Some(n) => Some(n.clone()),
+                        None => match lattice_value.clone() {
+                            Some(lattice) => field_value_by_name(
+                                lattice.clone(),
+                                "meet".to_string(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            None => None,
+                        },
+                    };
+                    let join_value = match field_value_by_name(
+                        value.clone(),
+                        "join".to_string(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        Some(n) => Some(n.clone()),
+                        None => match lattice_value.clone() {
+                            Some(lattice) => field_value_by_name(
+                                lattice.clone(),
+                                "join".to_string(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            None => None,
+                        },
+                    };
+                    let meet_str = match meet_value {
                         Some(n) => emit_typed_expr(
                             n.clone(),
                             registry.clone(),
@@ -16701,11 +16737,7 @@ pub fn emit_data_def_body(
                         ),
                         None => "compile_error!(\"BoundedLattice data missing meet\")".to_string(),
                     };
-                    let join_str = match field_value_by_name(
-                        value.clone(),
-                        "join".to_string(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) {
+                    let join_str = match join_value {
                         Some(n) => emit_typed_expr(
                             n.clone(),
                             registry.clone(),
