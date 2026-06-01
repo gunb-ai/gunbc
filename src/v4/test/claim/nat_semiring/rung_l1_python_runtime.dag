@@ -20,7 +20,6 @@ import v4.std.verification {
   CompilesClaim,
   manual_claim_anchor
 }
-import v4.test.claim.algebra_laws.nat_semiring { nat_add_left_identity_input }
 
 
 data phase1_nat_semiring_l1_python_runtime_subject_symbol: Symbol =
