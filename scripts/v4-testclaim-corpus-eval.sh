@@ -85,15 +85,18 @@ check_generated_rust_receipt() {
   local fixture_rs="${rust_out}/src/v4_test_claim_manual_eval_runtime_mvp.rs"
   local runner_rs="${rust_out}/src/v4_test_claim_workflow_testclaim_corpus_runner.rs"
   local roster_rs="${rust_out}/src/v4_test_claim_manual_manual_corpus_roster.rs"
+  local corpus_eval_rs="${rust_out}/src/v4_test_claim_workflow_manual_corpus_eval.rs"
   require_file "$eval_rs"
   require_file "$fixture_rs"
   require_file "$runner_rs"
   require_file "$roster_rs"
+  require_file "$corpus_eval_rs"
 
-  python3 - "$eval_rs" "$fixture_rs" "$runner_rs" "$roster_rs" <<'PY'
+  python3 - "$eval_rs" "$fixture_rs" "$runner_rs" "$roster_rs" "$corpus_eval_rs" <<'PY'
 from __future__ import annotations
 
 import sys
+import re
 from pathlib import Path
 
 
@@ -388,10 +391,60 @@ def check_modeled_runner(runner_rs: Path, roster_rs: Path) -> None:
     check(roster_rs, roster_required)
 
 
+def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
+    source = corpus_eval_rs.read_text()
+    for name in [
+        "manual_corpus_all_pass",
+        "manual_corpus_gate",
+        "witness_manual_corpus_gate_closed",
+    ]:
+        require(source, f"pub fn {name}", corpus_eval_rs, f"generated corpus eval function {name}")
+
+    all_pass_body = generated_function(source, "manual_corpus_all_pass", corpus_eval_rs)
+    require_order(
+        all_pass_body,
+        [
+            "let tally = corpus_report_tally(report);",
+        ],
+        corpus_eval_rs,
+        "generated tally source for zero Fail/Deferred predicate",
+    )
+    normalized_all_pass = "".join(all_pass_body.split())
+    fail_deferred_conjunction = re.compile(
+        r"tally\.fail={2}[^&|;=!]*(?:Nat::)?[Zz]ero\b[^&|;]*&&"
+        r"[^&|;]*tally\.deferred={2}[^&|;=!]*(?:Nat::)?[Zz]ero\b"
+    )
+    if not fail_deferred_conjunction.search(normalized_all_pass):
+        raise ReceiptError(
+            f"{corpus_eval_rs}: manual_corpus_all_pass must directly conjoin "
+            "the zero Fail check with the zero Deferred check via &&"
+        )
+    gate_body = generated_function(source, "manual_corpus_gate", corpus_eval_rs)
+    normalized_gate = "".join(gate_body.split())
+    inline_empty_gate = re.compile(
+        r"if(?<!!)is_empty\([^)]*report[^)]*entries[^)]*\)"
+        r"\{false\}else\{manual_corpus_all_pass\([^)]*report[^)]*\)"
+    )
+    if not inline_empty_gate.search(normalized_gate):
+        raise ReceiptError(
+            f"{corpus_eval_rs}: manual_corpus_gate must mirror the modeled inline "
+            "is_empty(report.entries) false fallback before manual_corpus_all_pass"
+        )
+    require_order(
+        generated_function(source, "witness_manual_corpus_gate_closed", corpus_eval_rs),
+        [
+            "manual_corpus_gate(run_manual_testclaim_corpus_eval())",
+        ],
+        corpus_eval_rs,
+        "generated witness folds modeled TestClaimRun roster",
+    )
+
+
 try:
     check_generated_eval(Path(sys.argv[1]))
     check_generated_fixture(Path(sys.argv[2]))
     check_modeled_runner(Path(sys.argv[3]), Path(sys.argv[4]))
+    check_generated_corpus_eval(Path(sys.argv[5]))
 except ReceiptError as err:
     raise SystemExit(f"error: {err}") from err
 PY
