@@ -38,6 +38,7 @@ import v4.extdeps.languages.typescript {
   ts_number_arithmetic_semantics_node,
   ts_number_bitwise_semantics_node,
   ts_number_facts_node,
+  ts_production_mvp1_fn_add,
   ts_std_projection_float64,
   ts_surface_spelling_number,
   ts_tag_bits64,
@@ -99,6 +100,8 @@ data mvp1_ts_emit_source_mismatch: Symbol = mvp1_ts_emit_source_mismatch
 data mvp1_ts_compile_source_mismatch: Symbol = mvp1_ts_compile_source_mismatch
 data mvp1_ts_serialize_unexpected_accept: Symbol = mvp1_ts_serialize_unexpected_accept
 data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
+
+data mvp1_ts_g1_grammar_inverse_production: Symbol = ts_production_mvp1_fn_add
 
 
 data mvp1_ts_number_inhabitant: Node = ts_inhabitant_number_node()
@@ -413,7 +416,7 @@ data claim_mvp1_ts_emit_add_fn_accepts: TestClaim = CompilesClaim {
 
 
 data claim_mvp1_ts_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/mvp1: compile_inferred emits canonical ts_mvp1 add-fn source through grammar inverse",
+  label: "manual/mvp1 G1: compile_inferred emits canonical ts_mvp1 add-fn source through grammar inverse production ts_production_mvp1_fn_add",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: mvp1_ts_emitted_root,
   expected_value: mvp1_ts_emitted_root,

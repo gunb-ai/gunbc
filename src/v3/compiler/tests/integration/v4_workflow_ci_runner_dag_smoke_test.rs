@@ -31,6 +31,8 @@ const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
     include_str!("../../../../../scripts/v4-testclaim-corpus-eval.sh");
 const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
+const M1_RUST_EMIT_PROBE_SCRIPT: &str =
+    include_str!("../../../../../scripts/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
@@ -772,7 +774,36 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),
-        "{CI_YML_PATH}: M1 step must project modeled cargo-check job cap"
+        "{CI_YML_PATH}: M1 step must project modeled cargo-check static fallback"
+    );
+    // Governor ceiling: actual parallelism is memory-denominated via ctrl-build, ≤ this ceiling.
+    assert!(
+        CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
+        "{CI_DAG_PATH}: M1 governor ceiling must be an explicit operator constant"
+    );
+    let m1_ceiling = ci_affected_components::runner_pool::m1_probe_cargo_check_jobs_ceiling();
+    assert_eq!(
+        m1_ceiling, 64,
+        "Rust transport mirror of m1_probe_cargo_check_jobs_ceiling must match ci.dag operator constant"
+    );
+    assert!(
+        m1_ceiling >= m1_jobs,
+        "governor ceiling must not sit below the static fallback"
+    );
+    assert!(
+        m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS_CEILING: \"{m1_ceiling}\"")),
+        "{CI_YML_PATH}: M1 step must project modeled governor ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX)"
+    );
+    // The probe must route the emitted-tree check through the host compute governor, not a hand cap.
+    assert!(
+        CI_DAG.contains("feature:elastic-compute-fabric")
+            && CI_DAG.contains("dsl/std/compute_fabric.dag"),
+        "{CI_DAG_PATH}: M1 parallelism note must cite the compute_fabric dissolve-on-arrival authority"
+    );
+    assert!(
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
+        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must route through the ctrl-build host governor"
     );
 }
 
@@ -1581,12 +1612,17 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "manual_corpus_gate",
         "witness_manual_corpus_gate_closed",
         "corpus_report_tally(report);",
+        "explicit_return",
+        "\\breturn\\b",
+        "inverted_zero_comparison",
+        "(?<![A-Za-z0-9_:])(?:!\\(*|\\(*false\\)*={2}\\(*|\\(*true\\)*!=\\(*)",
+        "tally\\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b\\)*",
         "fail_deferred_conjunction",
-        "tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "[^&|;=]*&&",
+        "(?:^|;)\\(*tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
+        "\\)*&&",
         "&&",
         "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "[^&|;=]*(?:;|\\})",
+        "\\)*\\}$",
         "inline_empty_gate",
         "if(?<!!)is_empty\\([^)]*report[^)]*entries",
         "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
@@ -1607,23 +1643,64 @@ fn v4_workflow_ci_t38_script_receipt_rejects_inverted_zero_predicates() {
             r#"
 import re
 
+explicit_return = re.compile(r"\breturn\b")
+inverted_zero_comparison = re.compile(
+    r"(?<![A-Za-z0-9_:])(?:!\(*|\(*false\)*={2}\(*|\(*true\)*!=\(*)"
+    r"tally\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*"
+)
 fail_deferred_conjunction = re.compile(
-    r"tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
-    r"[^&|;]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
+    r"(?:^|;)\(*tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*&&"
+    r"\(*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*\}$"
 )
 
-assert fail_deferred_conjunction.search(
-    "tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}"
+def receipt_accepts(source):
+    normalized_source = "".join(source.split())
+    return (
+        not explicit_return.search(source)
+        and not inverted_zero_comparison.search(normalized_source)
+        and fail_deferred_conjunction.search(normalized_source)
+    )
+
+assert receipt_accepts("lettally=x;tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}")
+assert receipt_accepts("lettally=x;(tally.fail==Zero)&&(tally.deferred==Zero)}")
+assert not receipt_accepts(
+    "lettally=x;(tally.fail==Zero)==false&&tally.deferred==Zero}"
 )
-assert not fail_deferred_conjunction.search(
-    "(tally.fail==Zero)==false&&tally.deferred==Zero}"
+assert not receipt_accepts(
+    "lettally=x;tally.fail==Zero&&(tally.deferred==Zero)==false}"
 )
-assert not fail_deferred_conjunction.search(
-    "tally.fail==Zero&&(tally.deferred==Zero)==false}"
+assert not receipt_accepts(
+    "lettally=x;tally.fail==NotZero&&tally.deferred==NotZero}"
 )
-assert not fail_deferred_conjunction.search(
-    "tally.fail==NotZero&&tally.deferred==NotZero}"
-)
+for non_returned in [
+    "lettally=x;tally.fail==Zero&&tally.deferred==Zero;false}",
+    "lettally=x;letok=tally.fail==Zero&&tally.deferred==Zero;false}",
+    "lettally=x;{letinner=1;tally.fail==Zero&&tally.deferred==Zero};false}",
+    "return (tally.fail == Zero) == false && tally.deferred == Zero; tally.fail == Zero && tally.deferred == Zero}",
+    "let tally = x; return (tally.fail == Zero) == false && tally.deferred == Zero; tally.fail == Zero && tally.deferred == Zero}",
+]:
+    assert not receipt_accepts(non_returned)
+for inverted in [
+    "lettally=x;!tally.fail==Zero&&tally.deferred==Zero}",
+    "lettally=x;!(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;!((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;false==(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;(false)==(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;false==((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;true!=(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;(true)!=(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;true!=((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;tally.fail==Zero&&!tally.deferred==Zero}",
+    "lettally=x;tally.fail==Zero&&!(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&!((tally.deferred==Zero))}",
+    "lettally=x;tally.fail==Zero&&false==(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&(false)==(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&false==((tally.deferred==Zero))}",
+    "lettally=x;tally.fail==Zero&&true!=(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&(true)!=(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&true!=((tally.deferred==Zero))}",
+]:
+    assert not receipt_accepts(inverted)
 "#,
         )
         .output()
