@@ -5526,11 +5526,12 @@ pub fn emit_param(
 ) -> String {
     {
         let authored = param_node_type_expr(param.clone());
-        let ty = if ((authored.params.clone().len() as i64) > 0) {
+        let is_callable_param = ((authored.params.clone().len() as i64) > 0);
+        let ty = if is_callable_param {
             let carrier = if ((generic_param_names.clone().len() as i64) > 0) {
-                authored
+                authored.clone()
             } else {
-                child_type_node(authored)
+                child_type_node(authored.clone())
             };
             emit_rust_param_type(
                 carrier,
@@ -5547,7 +5548,6 @@ pub fn emit_param(
             )
         };
         let pname = param_node_name_at(param.clone(), source_indices.clone());
-        let is_callable_param = ((authored.params.clone().len() as i64) > 0);
         let is_borrowable = (v2_rt::set_contains(read_only_params.clone(), pname.clone())
             && (is_callable_param == false)
             && needs_reference_node(authored.clone(), source_indices.clone()));
