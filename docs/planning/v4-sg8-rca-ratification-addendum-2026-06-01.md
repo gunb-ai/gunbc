@@ -1,8 +1,8 @@
 # v4 SG-8 RCA Ratification Addendum — 2026-06-01
 
-> **Status:** ADDENDUM ONLY — does not supersede `docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md`.
+> **Status:** ADDENDUM ONLY — §8 APPROVED 2026-06-01 by `proud-fox-405`; does not supersede `docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md`.
 > **Authority:** PR #4140 Jun1 M1 rustc catalog; existing SG-8 worksheet #4127 on main.
-> **Gate:** proud-fox-405 §8 ratification remains required before implementation dispatch.
+> **Gate:** implementation dispatch follows the approved SG-8 worksheet; this addendum only records why #4140 raises priority without changing scope.
 
 ---
 
@@ -21,7 +21,7 @@ This growth does not create a new worksheet class. It confirms the existing SG-8
 
 ---
 
-## Ratification Checklist For proud-fox-405
+## Ratification Checklist — Closed By proud-fox-405
 
 | Check | Required answer |
 | --- | --- |
@@ -30,6 +30,8 @@ This growth does not create a new worksheet class. It confirms the existing SG-8
 | New #4140 evidence changes dispatch? | No; it raises priority only |
 | Spot-fix forbidden | Hand-added `pub use` rows, CarrierKind/List/Char shim duplication, per-error unresolved import patches |
 | Acceptance | F1-F4 in the SG-8 worksheet, not SG-8 count reduction |
+
+Ratification audit trail: `docs/planning/v4-modeling-dfs-ratification-log-2026-06-01.md`.
 
 ---
 
@@ -55,4 +57,3 @@ MUST NOT:
 ## Local Probe Note
 
 The manager session regenerated the M1 probe to recover E0308 stratification. The local SG-8 counts were lower than #4140 while stable families matched exactly, so this addendum keeps #4140 as the only SG-8 population authority and uses the local run only as supporting evidence that the representative failure shapes remain present.
-

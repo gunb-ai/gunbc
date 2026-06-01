@@ -1,8 +1,12 @@
 # v4 Python RCA Manager worksheets - L1/L2 release-minimum runway
 
+<<<<<<< HEAD
 > **Status:** Worksheet A (PY-L1-STATIC-STRUCTURAL) APPROVED by Modeling DFS Arbiter (proud-fox-405, msg_41813c03) and implemented in PR #4158 — see ruling section below. Worksheets B/C/D remain DRAFT; no implementation worker is authorized for those until the relevant section is approved.
+=======
+> **Status:** **WORKSHEET APPROVED** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Worksheet A: **READY-FOR-WORKER-DISPATCH** (static). Worksheets B/C: **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (manager checklist item below still open).
+>>>>>>> origin/main
 > **Date:** 2026-06-01
-> **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` Section 11.8, Python row.
+> **Dispatch anchor:** `docs/planning/v4-active-authority-map-2026-06-01.md` (Python lane) — §8 CLOSED #4170; predicate graph §11.8.2 defers here for L1/L2 dispatch state.
 > **Current rung:** L0 complete via #4117 (R1 + R2a + R2b + R3-external).
 > **Target rung:** L1 fixture-scale + L2 cross-target behavioral parity receipts versus Rust and Go.
 > **Manager role:** Python RCA Manager. Python is release-minimum parity with a weaker static verifier; runtime and cross-target behavior carry more weight than binary-like self-host framing.
@@ -244,6 +248,36 @@ Falsification probes:
 | PY-L2-CROSS-TARGET-BEHAVIORAL-PARITY | Runtime/TestClaim + language RCA managers | Yes: release-minimum target set and runtime-value parity carrier. |
 | PY-SELF-COMPILE-FRAMING | Python RCA, then Runtime/TestClaim and Compiler Spine by rung | Yes: fixed-point/artifact comparison policy must not be Python-only unless proven target-specific. |
 
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
+
+### Worksheet A (PY-L1-STATIC-STRUCTURAL)
+
+- [x] **Shared carriers:** `TargetStaticAnalysisInvocation` + `TargetStaticAnalysisVerdict` in `v4.std.leaf_model_verification` — **not** `TargetPythonExerciseVerdict` extension
+- [x] Per-tool profiles: `v4.extdeps.typecheckers.pyright` + `mypy` (advisory vs blocking on row)
+- [x] Reject: CI-only pyright/mypy grep; Python-only static verdict vocabulary
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
+
+### Worksheet B (PY-L1-L2-RUNTIME-FIXTURE-EXECUTION)
+
+- [x] **Shared runtime carrier:** `TargetRuntimeExerciseVerdict` (additive, shared) for L1/L2 fixture execution
+- [x] `TargetPythonExerciseVerdict` remains L0 leaf-model bridge only until dissolved by shared runner
+- [x] Receipt path: `host_run` + `test_claim_falsification` — reject stdout/stderr shell compare as final authority
+- [x] **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (`proud-fox-405`; Runtime/TestClaim coordinates roster)
+
+### Worksheet C (PY-L2-CROSS-TARGET-BEHAVIORAL-PARITY)
+
+- [x] Reuse #4081 Wc L5 pattern; release-minimum set **Rust + Python + Go** per §11.8
+- [x] Shared `RuntimeValue` + `TestClaimRun` verdict vocabulary — no per-target expected-value tables
+- [x] **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (`proud-fox-405`; depends on worksheet B runner surface + Runtime/TestClaim gate)
+
+### Worksheet D (PY-SELF-COMPILE-FRAMING)
+
+- [x] Policy frame ratified: L1 static/runtime → L2 behavioral parity → L3 artifact equivalence → L4 compiler execution path
+- [x] Non-goals affirmed: no CPython binary self-host; `py_compile` ≠ self-host
+- [x] **FRAME-ONLY** — no impl dispatch from this section
+
+---
+
 ## Manager checklist
 
 - [x] L0 consumed from #4117 rather than redefined.
@@ -251,6 +285,7 @@ Falsification probes:
 - [x] Runtime execution framed as the meaningful Python verifier.
 - [x] Cross-target parity extends #4081 Wc L5 instead of creating a new stdout shell authority.
 - [x] Python self-compile framed as compiler execution parity before binary-like self-host.
+<<<<<<< HEAD
 - [x] Modeling DFS Arbiter approval — Worksheet A (PY-L1-STATIC-STRUCTURAL) APPROVED, see ruling below.
 - [ ] Runtime/TestClaim owner accepts runner-surface dispatch (Worksheets B/C still pending).
 
@@ -321,3 +356,7 @@ installable in the current verification environment, so a mypy F1 receipt cannot
 - **Why deferred, not dormant:** E-6 requires a same-PR consumer for new target-spec extdeps facts;
   shipping mypy profile data with no consumer would be untracked scaffold. Removing it keeps every
   landed extdeps fact consumed and records the mypy work as bounded debt here.
+=======
+- [x] Modeling DFS Arbiter approval.
+- [ ] Runtime/TestClaim owner accepts runner-surface dispatch.
+>>>>>>> origin/main

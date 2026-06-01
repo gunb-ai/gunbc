@@ -1,7 +1,8 @@
 // src/v4/lens/leaf_model_verification.dag
 // Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1–R3-internal).
 // Status: R1 rust + R1 python + R2a rust + R2b rust (debug/release live) + R3-external rustc + R3-internal emit-coupling fixtures;
-//   python R2a + R2b (arbitrary-precision add) + R3-external CPython fixtures.
+//   python R2a + R2b (arbitrary-precision add) + R3-external CPython fixtures;
+//   typescript R2a + R2b (bigint runtime / number-lane falsification) + R3-external tsc fixtures.
 
 module v4.lens.leaf_model_verification
 
@@ -12,10 +13,17 @@ import v4.extdeps.languages.python {
   python_integer_algebra_inhabitance_python_facts_int,
   python_surface_spelling_int
 }
+<<<<<<< HEAD
 import v4.extdeps.typecheckers.pyright {
   pyright_tool_id,
   pyright_profile_l1_id,
   pyright_diag_report_return_type
+=======
+import v4.extdeps.languages.typescript {
+  ts_atom_realization_symbol,
+  ts_bigint_algebra_inhabitance_ts_facts_bigint,
+  ts_number_algebra_inhabitance_ts_facts_number
+>>>>>>> origin/main
 }
 import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
@@ -47,12 +55,23 @@ import v4.std.leaf_model_verification {
   LeafModelPythonFixture,
   LeafModelPythonFixturePair,
   LeafModelPythonFalsificationCase,
+  LeafModelTypeScriptFixture,
+  LeafModelTypeScriptFixturePair,
+  LeafModelTypeScriptFalsificationCase,
+  LeafModelTypeScriptRuntimeFixture,
+  LeafModelTypeScriptRuntimeFixturePair,
   LeafModelRustFixture,
   leaf_model_claim_python_r1_int_surface_spelling,
   leaf_model_claim_python_r2a_int_algebra_operations,
   leaf_model_claim_python_r2b_int_arbitrary_precision_add,
   leaf_model_claim_python_r3_external_symbol_projection,
+<<<<<<< HEAD
   leaf_model_claim_python_l1_static_return_type,
+=======
+  leaf_model_claim_ts_r2a_number_algebra_operations,
+  leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
+  leaf_model_claim_ts_r3_external_symbol_projection,
+>>>>>>> origin/main
   leaf_model_claim_rust_r1_i32_surface_spelling,
   leaf_model_claim_rust_r2a_i32_algebra_operations,
   leaf_model_claim_rust_r2b_debug_default_overflow,
@@ -75,7 +94,13 @@ import v4.std.leaf_model_verification {
   target_diagnostic_e0599_method_not_found,
   target_diagnostic_python_name_error_undefined_name,
   target_diagnostic_python_attribute_error_method_not_found,
-  target_diagnostic_python_type_error_init_arity_mismatch
+  target_diagnostic_python_type_error_init_arity_mismatch,
+  TargetTypeScriptCompileAccepted,
+  TargetTypeScriptCompileRejected,
+  TargetTypeScriptRuntimeAccepted,
+  TargetTypeScriptRuntimeRejected,
+  target_diagnostic_ts2339_property_does_not_exist,
+  target_diagnostic_ts7009_new_expression_not_constructable
 }
 import v4.std.node { Symbol }
 import v4.std.text { String }
@@ -260,6 +285,108 @@ fn python_r3_external_fixture_pair() -> LeafModelPythonFixturePair {
 
 fn python_r3_external_fixture() -> LeafModelPythonFixturePair {
   python_r3_external_fixture_pair()
+}
+
+// R2a — ECMA number (IEEE-754) algebra inhabitance vs tsc.
+data typescript_r2a_claim_algebra_inhabitance_fact: Symbol = ts_number_algebra_inhabitance_ts_facts_number
+
+data typescript_r2a_happy_fixture_source: String = "function r2a_test(a: number, b: number): [number, boolean] { return [a + b, a < b]; }\n"
+
+data typescript_r2a_falsification_fixture_source: String = "function r2a_test(a: number): number { return a.log2_exact(); }\n"
+
+fn typescript_r2a_happy_fixture() -> LeafModelTypeScriptFixture {
+  LeafModelTypeScriptFixture { source: typescript_r2a_happy_fixture_source }
+}
+
+fn typescript_r2a_falsification_fixture() -> LeafModelTypeScriptFixture {
+  LeafModelTypeScriptFixture { source: typescript_r2a_falsification_fixture_source }
+}
+
+fn typescript_r2a_fixture_pair() -> LeafModelTypeScriptFixturePair {
+  LeafModelTypeScriptFixturePair {
+    claim_id: leaf_model_claim_ts_r2a_number_algebra_operations,
+    surface_spelling_fact: typescript_r2a_claim_algebra_inhabitance_fact,
+    encoding_spelling_fact: typescript_r2a_claim_algebra_inhabitance_fact,
+    happy: typescript_r2a_happy_fixture(),
+    expected_happy_verdict: TargetTypeScriptCompileAccepted,
+    falsification: LeafModelTypeScriptFalsificationCase {
+      fixture: typescript_r2a_falsification_fixture(),
+      expected_verdict: TargetTypeScriptCompileRejected {
+        diagnostic_code: target_diagnostic_ts2339_property_does_not_exist
+      }
+    }
+  }
+}
+
+fn typescript_r2a_fixture() -> LeafModelTypeScriptFixturePair {
+  typescript_r2a_fixture_pair()
+}
+
+// R2b — bigint exact add beyond Number.MAX_SAFE_INTEGER (Node runtime) vs number-lane divergence.
+data typescript_r2b_claim_algebra_inhabitance_fact: Symbol = ts_bigint_algebra_inhabitance_ts_facts_bigint
+
+data typescript_r2b_runtime_happy_fixture_source: String = "const ok = (2n ** 63n - 1n) + 1n === 2n ** 63n;\nif (!ok) { console.error(\"r2b bigint lane failed\"); process.exit(1); }\n"
+
+data typescript_r2b_runtime_falsification_fixture_source: String = "const bigintExact = (2n ** 63n + 1n) === 2n ** 63n;\nconst numberLane = (2 ** 63 + 1) === 2 ** 63;\nif (bigintExact || !numberLane) { console.error(\"expected bigint inequality and number-lane IEEE754 false positive\"); process.exit(1); }\n"
+
+fn typescript_r2b_runtime_happy_fixture() -> LeafModelTypeScriptRuntimeFixture {
+  LeafModelTypeScriptRuntimeFixture { source: typescript_r2b_runtime_happy_fixture_source }
+}
+
+fn typescript_r2b_runtime_falsification_fixture() -> LeafModelTypeScriptRuntimeFixture {
+  LeafModelTypeScriptRuntimeFixture { source: typescript_r2b_runtime_falsification_fixture_source }
+}
+
+fn typescript_r2b_runtime_fixture_pair() -> LeafModelTypeScriptRuntimeFixturePair {
+  LeafModelTypeScriptRuntimeFixturePair {
+    claim_id: leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
+    surface_spelling_fact: typescript_r2b_claim_algebra_inhabitance_fact,
+    encoding_spelling_fact: typescript_r2b_claim_algebra_inhabitance_fact,
+    happy: typescript_r2b_runtime_happy_fixture(),
+    expected_happy_verdict: TargetTypeScriptRuntimeAccepted,
+    falsification: typescript_r2b_runtime_falsification_fixture(),
+    // Divergence probe succeeds at runtime (exit 0) when bigint exact ≠ number-lane false positive.
+    expected_falsification_verdict: TargetTypeScriptRuntimeAccepted
+  }
+}
+
+fn typescript_r2b_fixture() -> LeafModelTypeScriptRuntimeFixturePair {
+  typescript_r2b_runtime_fixture_pair()
+}
+
+// R3-external — ECMA Symbol() factory (happy) vs `new Symbol` (not constructable).
+data typescript_r3_external_claim_atom_realization_fact: Symbol = ts_atom_realization_symbol
+
+data typescript_r3_external_happy_fixture_source: String = "const s: symbol = Symbol(\"x\");\n"
+
+data typescript_r3_external_falsification_fixture_source: String = "const s: symbol = new Symbol(\"x\");\n"
+
+fn typescript_r3_external_happy_fixture() -> LeafModelTypeScriptFixture {
+  LeafModelTypeScriptFixture { source: typescript_r3_external_happy_fixture_source }
+}
+
+fn typescript_r3_external_falsification_fixture() -> LeafModelTypeScriptFixture {
+  LeafModelTypeScriptFixture { source: typescript_r3_external_falsification_fixture_source }
+}
+
+fn typescript_r3_external_fixture_pair() -> LeafModelTypeScriptFixturePair {
+  LeafModelTypeScriptFixturePair {
+    claim_id: leaf_model_claim_ts_r3_external_symbol_projection,
+    surface_spelling_fact: typescript_r3_external_claim_atom_realization_fact,
+    encoding_spelling_fact: typescript_r3_external_claim_atom_realization_fact,
+    happy: typescript_r3_external_happy_fixture(),
+    expected_happy_verdict: TargetTypeScriptCompileAccepted,
+    falsification: LeafModelTypeScriptFalsificationCase {
+      fixture: typescript_r3_external_falsification_fixture(),
+      expected_verdict: TargetTypeScriptCompileRejected {
+        diagnostic_code: target_diagnostic_ts7009_new_expression_not_constructable
+      }
+    }
+  }
+}
+
+fn typescript_r3_external_fixture() -> LeafModelTypeScriptFixturePair {
+  typescript_r3_external_fixture_pair()
 }
 
 // R2a — algebra inhabitance: ordered-ring ops on i32 (design-rust-dag-leafmodel-instantiation.md §5).
