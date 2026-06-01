@@ -82,8 +82,15 @@ else
   mkdir -p "$out/logs"
   runtime_ok=1
   for py in "${py_files[@]}"; do
-    base="$(basename "$py")"
-    log="$out/logs/python_runtime_${base}.log"
+    # Path-relative slug avoids log collisions when emit fans out per-law subdirs.
+    rel="${py#"$py_tree"/}"
+    rel="${rel#/}"
+    if [[ -n "$rel" ]]; then
+      log_slug="${rel//\//__}"
+    else
+      log_slug="$(basename "$py")"
+    fi
+    log="$out/logs/python_runtime_${log_slug}.log"
     set +e
     "${timed[@]}" "$python_bin" "$py" >"$log" 2>&1
     status=$?
