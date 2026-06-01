@@ -3666,41 +3666,7 @@ pub fn render_rust_type_with_applied_binding(
                 render_rust_type(n.clone(), shared_types, source_indices.clone())
             }
         }
-        None => match n.inferred.clone().as_deref().cloned() {
-            Some(Resolved { node: resolved, .. }) => match find_property(
-                resolved.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(applied) => {
-                    if ((applied.children.clone().len() as i64) > 0) {
-                        let rendered = render_rust_applied_type(
-                            applied.clone(),
-                            shared_types.clone(),
-                            source_indices.clone(),
-                        );
-                        let applied_name =
-                            authored_name_at(source_indices.clone(), applied.clone());
-                        let resolved_is_wrapped = rust_type_is_rc_wrapped(render_rust_type(
-                            resolved,
-                            shared_types.clone(),
-                            source_indices.clone(),
-                        ));
-                        if ((shared_types.contains(&applied_name) || resolved_is_wrapped)
-                            && !rust_type_is_rc_wrapped(rendered.clone()))
-                        {
-                            wrap_shared_type(RenderTarget::Rust, rendered)
-                        } else {
-                            rendered
-                        }
-                    } else {
-                        render_rust_type(n.clone(), shared_types, source_indices.clone())
-                    }
-                }
-                None => render_rust_type(n.clone(), shared_types, source_indices.clone()),
-            },
-            _ => render_rust_type(n.clone(), shared_types, source_indices.clone()),
-        },
+        None => render_rust_type(n.clone(), shared_types, source_indices.clone()),
     }
 }
 
@@ -5497,7 +5463,7 @@ pub fn emit_func_inferred(
     v2_rt::concat(
         v2_rt::concat(
             " -> Result<".to_string(),
-            render_rust_type_with_applied_binding(inferred, shared_types, source_indices),
+            render_rust_type(inferred, shared_types, source_indices),
         ),
         ", Box<dyn std::error::Error>>".to_string(),
     )
@@ -16731,7 +16697,7 @@ pub fn emit_data_def_body(
     needs_rc: bool,
 ) -> String {
     {
-        let raw_ty_str = render_rust_type_with_applied_binding(
+        let raw_ty_str = render_rust_type(
             type_node.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
