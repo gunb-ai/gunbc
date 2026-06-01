@@ -20,6 +20,7 @@ import v4.lens.registry {
   UnusedParameters,
   lens_registry_ids_resolve
 }
+import v4.lens.testgen { Generator, TestgenConcept }
 import v4.lens.affected_set {
   RerunNodeSet,
   RerunNodeSetFailClosed,
@@ -345,10 +346,68 @@ data ci_always_run_carveouts: List<CiCarveout> = [
   }
 ]
 
+// Wave 3 §11.7.4 — extend existing receipt (arbiter §8 2026-06-01); no parallel shadow receipt type.
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind Wave 4 active-skip — dissolve-on-arrival: `CiActiveFloorSkipEvidence` is populated from cached TestClaimRun verdict partition; forbidden: bare `Active` tag without skip evidence (illegal floor-skip state).
+type CiActiveFloorSkipEvidence {
+  cached_verdict_digest: Hash
+}
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md §8 + #4137 §11.7.2 — dissolve-on-arrival: `Active { skip_evidence }` drives executable skip from receipt (Wave 4); forbidden: persisting independent `floor_skip` beside `mode` or constructing `Active` without evidence.
+type CiSelectionMode
+  = Shadow
+  | Active { skip_evidence: CiActiveFloorSkipEvidence }
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — consumer:ci_selection_receipt_shadow_from_git_diff — bind node://adhoc-331899f9-19a live emit — dissolve-on-arrival: `LivePrGitDiff` only on live population entry with populated claim/testgen rows; forbidden: caller-supplied provenance on step-only shadow (empty claim/testgen partition).
+type CiSelectionReceiptProvenance
+  = FixtureReceipt
+  | LivePrGitDiff
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind arbiter §3.2 — dissolve-on-arrival: claim-row `reason` projects per-claim ∩ rerun-frontier facts (not global frontier emptiness alone); forbidden: unbounded `Symbol` on `CiTestClaimSelection.reason`.
+type CiClaimSelectionReason
+  = FailClosedSuperset
+  | AffectedFrontierEmpty
+  | AffectedIntersectionNonempty
+  | AffectedIntersectionEmpty
+  | TestgenSlotMapped
+  | ShadowObserveOnly
+  | FloorStepCarveout
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind T-21 IRT-4 `test_claim_claim_hash_digest` — dissolve-on-arrival: `claim_projection_hash` is whole-TestClaim authority; forbidden: input-only `Node` projection for receipt hashing.
+type CiTestClaimSelection {
+  anchor: ClaimAnchorKey
+  label: String
+  coproduct_variant: TestClaimCoproductVariant
+  claim_projection_hash: Hash
+  selected: Bool
+  reason: CiClaimSelectionReason
+}
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind neat-hawk testgen roster population — dissolve-on-arrival: `testgen_slots` populated from eval harness via `Generator<TestgenConcept>` (not flattened Symbol labels); forbidden: empty `testgen_slots` standing in for live testgen selection.
+type TestgenSlotSelection {
+  generator: Generator<TestgenConcept>
+  emits_claim_anchor: ClaimAnchorKey
+  selected: Bool
+  reason: CiClaimSelectionReason
+}
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — amend W1.5 `CiSelectionReceipt` — dissolve-on-arrival: receipt partition drives GHA scheduling + TestClaimRun verdict surface (Wave 4); forbidden: parallel shadow receipt genus.
 type CiSelectionReceipt {
   pr: ChangeSet
   affected: AffectedSet
+  mode: CiSelectionMode
+  provenance: CiSelectionReceiptProvenance
   decisions: List<CiStepSelection>
+  testclaim_decisions: List<CiTestClaimSelection>
+  testgen_slots: List<TestgenSlotSelection>
+  component_affected_comparison: CiComponentAffected
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:wave3-shadow-selection-receipt — consumer:ci_floor_held / fixture witnesses — bind docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md §8 — dissolve-on-arrival: `CiSelectionMode` drives floor policy at GHA projection sites (delete Bool projection when Active scheduling lands); forbidden: persisting independent `floor_skip` or untagged mode→Bool helpers beside `mode`.
+fn ci_floor_held(receipt: CiSelectionReceipt) -> Bool {
+  match receipt.mode {
+    Shadow => true
+    Active { skip_evidence: _ } => false
+  }
 }
 
 type CiStepSelection {
@@ -2641,7 +2700,106 @@ fn ci_selection_receipt_shadow_rows(
 }
 
 
-// Shadow selection receipt — `git_diff` is host transport for ChangeSet paths until T-21 wires RepoPath edits.
+fn ci_selection_receipt_mk(
+  pr: ChangeSet,
+  affected: AffectedSet,
+  mode: CiSelectionMode,
+  provenance: CiSelectionReceiptProvenance,
+  decisions: List<CiStepSelection>,
+  testclaim_decisions: List<CiTestClaimSelection>,
+  testgen_slots: List<TestgenSlotSelection>,
+  component_affected_comparison: CiComponentAffected
+) -> CiSelectionReceipt {
+  CiSelectionReceipt {
+    pr: pr,
+    affected: affected,
+    mode: mode,
+    provenance: provenance,
+    decisions: decisions,
+    testclaim_decisions: testclaim_decisions,
+    testgen_slots: testgen_slots,
+    component_affected_comparison: component_affected_comparison
+  }
+}
+
+
+// ── Wave 3 §11.7.4 — CiSelectionReceipt claim projection (consumes #4178 runtime selection API) ──
+fn ci_wave3_shadow_testclaim_selection_reason(
+  claim: TestClaim,
+  affected: AffectedSet,
+  selected: Bool
+) -> CiClaimSelectionReason {
+  if ci_affected_set_is_fail_closed(affected: affected) {
+    FailClosedSuperset
+  } else {
+    match affected_set_rerun_nodes(affected_set_value: affected) {
+      RerunNodeSetFailClosed { evidence: _ } => FailClosedSuperset
+      RerunNodeSetProduced { nodes: nodes } =>
+        if length(xs: nodes) == 0 {
+          if selected {
+            FailClosedSuperset
+          } else {
+            AffectedFrontierEmpty
+          }
+        } else if selected {
+          if test_claim_ci_selection_fail_closed(c: claim) {
+            FailClosedSuperset
+          } else {
+            AffectedIntersectionNonempty
+          }
+        } else if test_claim_in_rerun_frontier(claim: claim, frontier: nodes) {
+          ShadowObserveOnly
+        } else {
+          AffectedIntersectionEmpty
+        }
+    }
+  }
+}
+
+
+fn ci_wave3_shadow_testclaim_selection_row(
+  claim: TestClaim,
+  affected: AffectedSet,
+  selected_claims: List<TestClaim>
+) -> CiTestClaimSelection {
+  let selected = count_equal(xs: selected_claims, item: claim, eq: fn(left, right) { left == right }) != 0
+  CiTestClaimSelection {
+    anchor: test_claim_anchor(c: claim),
+    label: test_claim_label(c: claim),
+    coproduct_variant: test_claim_coproduct_variant(c: claim),
+    claim_projection_hash: test_claim_claim_hash_digest(c: claim),
+    selected: selected,
+    reason: ci_wave3_shadow_testclaim_selection_reason(
+      claim: claim,
+      affected: affected,
+      selected: selected
+    )
+  }
+}
+
+
+fn ci_wave3_shadow_testclaim_selection_rows(affected: AffectedSet) -> List<CiTestClaimSelection> {
+  let selected = ci_wave3_shadow_testclaims_selected(affected: affected)
+  fold(
+    ci_wave3_shadow_claim_roster(),
+    init: Empty,
+    f: fn(acc, claim) {
+      list_snoc_item(
+        xs: acc,
+        item: ci_wave3_shadow_testclaim_selection_row(
+          claim: claim,
+          affected: affected,
+          selected_claims: selected
+        )
+      )
+    }
+  )
+}
+
+
+// W1.5 step-only shadow — `git_diff` is host transport for ChangeSet paths until T-21 wires RepoPath edits.
+// Phase 1: provenance is always `FixtureReceipt` (empty claim/testgen rows). `LivePrGitDiff` is forbidden here;
+// live PR receipts use `ci_selection_receipt_shadow_from_git_diff` (adhoc-331899f9-19a) with populated partitions.
 fn ci_selection_receipt_shadow(
   pr: ChangeSet,
   affected: AffectedSet,
@@ -2650,9 +2808,11 @@ fn ci_selection_receipt_shadow(
   carveouts: List<CiCarveout>,
   registry: List<CiUpsertStepRow>
 ) -> CiSelectionReceipt {
-  CiSelectionReceipt {
+  ci_selection_receipt_mk(
     pr: pr,
     affected: affected,
+    mode: Shadow,
+    provenance: FixtureReceipt,
     decisions: ci_selection_receipt_shadow_rows(
       pr: pr,
       affected: affected,
@@ -2660,8 +2820,11 @@ fn ci_selection_receipt_shadow(
       pipeline: pipeline,
       carveouts: carveouts,
       registry: registry
-    )
-  }
+    ),
+    testclaim_decisions: Empty,
+    testgen_slots: Empty,
+    component_affected_comparison: ci_component_affected_fail_closed()
+  )
 }
 
 
@@ -2694,11 +2857,16 @@ fn ci_selection_receipt_shadow_heartbeat(
   affected: AffectedSet,
   pipe: CiPipeline
 ) -> CiSelectionReceipt {
-  CiSelectionReceipt {
+  ci_selection_receipt_mk(
     pr: pr,
     affected: affected,
-    decisions: ci_step_selection_shadow_rows(step_ids: ci_pipeline_step_ids_shadow(p: pipe))
-  }
+    mode: Shadow,
+    provenance: FixtureReceipt,
+    decisions: ci_step_selection_shadow_rows(step_ids: ci_pipeline_step_ids_shadow(p: pipe)),
+    testclaim_decisions: Empty,
+    testgen_slots: Empty,
+    component_affected_comparison: ci_component_affected_fail_closed()
+  )
 }
 
 
@@ -3003,6 +3171,52 @@ data ci_selection_receipt_shadow_fixture_well_formed_ok: Bool = match ci_pipelin
 }
 
 // C4 generatability — fixture receipt is well-formed and encodes carveout + affected Run evidence.
+// ── Wave 3 §11.7.4 — fixture shadow receipt (modeled selection; NOT live PR / NOT component-flag frontier) ──
+data ci_wave3_shadow_fixture_empty_pr: ChangeSet = ChangeSet { changes: [] }
+
+data ci_wave3_shadow_fixture_fail_closed_receipt: CiSelectionReceipt = ci_selection_receipt_mk(
+  pr: ci_wave3_shadow_fixture_empty_pr,
+  affected: ci_wave3_shadow_fail_closed_affected,
+  mode: Shadow,
+  provenance: FixtureReceipt,
+  decisions: Empty,
+  testclaim_decisions: ci_wave3_shadow_testclaim_selection_rows(
+    affected: ci_wave3_shadow_fail_closed_affected
+  ),
+  testgen_slots: Empty,
+  component_affected_comparison: ci_component_affected_fail_closed()
+)
+
+fn ci_wave3_shadow_fixture_fail_closed_superset_holds() -> Bool {
+  let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)
+  length(xs: selected) == length(xs: ci_wave3_shadow_claim_roster())
+}
+
+fn ci_wave3_shadow_fixture_floor_held_holds() -> Bool {
+  ci_floor_held(receipt: ci_wave3_shadow_fixture_fail_closed_receipt)
+}
+
+// 🟡 gated — predicate-dissolution interim (Practice 10) — feature:wave3-shadow-selection-receipt — consumer:ci_wave3_shadow_fixture_provenance_is_fixture_holds — bind node://adhoc-331899f9-19a live emit — dissolve-on-arrival: fixture witnesses carry `FixtureReceipt` at construction site (delete provenance match helper when live path exists); forbidden: `LivePrGitDiff` on synthetic/heartbeat constructors before real PR git_diff routing.
+fn ci_wave3_shadow_fixture_provenance_is_fixture_holds() -> Bool {
+  match ci_wave3_shadow_fixture_fail_closed_receipt.provenance {
+    FixtureReceipt => true
+    LivePrGitDiff => false
+  }
+}
+
+fn ci_wave3_shadow_fixture_manual_subset_selected_holds() -> Bool {
+  let manual = ci_wave3_shadow_manual_claim_roster()
+  let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)
+  for_all(
+    xs: manual,
+    predicate: fn(claim) {
+      count_equal(xs: selected, item: claim, eq: fn(left, right) { left == right }) != 0
+    }
+  )
+}
+
+data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_closed_superset_holds() && ci_wave3_shadow_fixture_floor_held_holds() && ci_wave3_shadow_fixture_provenance_is_fixture_holds() && ci_wave3_shadow_fixture_manual_subset_selected_holds()
+
 data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 
 // Shadow heartbeat data — NOT evidence that affected-set dependency selection works.

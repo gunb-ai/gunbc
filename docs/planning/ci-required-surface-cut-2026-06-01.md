@@ -30,6 +30,15 @@ Reduced required confidence is explicit. This is triage, not a modeling victory.
 | **ROADMAP / charter row** | `#4137` §11.7.7 Wave 1 deliverable — honesty ledger + five-gate floor |
 | **Deferral / dissolution** | `v4_workflow_ci_wave1_*` + updated `bankruptcy_tier0_*` YAML assertions dissolve when A15 Shape-B emits `ci.yml` from `ci_pipeline` (same posture as file header on smoke test) |
 
+### P5(b) receipt — `v4_workflow_ci_wave3_*` integration harness (PR #4174)
+
+| Field | Value |
+|-------|--------|
+| **Deleted scaffold** | None — five new `#[test]` fns in existing `src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs` (same P5 same-path expansion posture as `v4_workflow_ci_wave1_*` / PR #4101); no new `src/v3/compiler/src/**` product code |
+| **SG-0 hand-Rust delta** | `0` — net +~99 lines integration harness only; `src/v3/compiler/src/**` unchanged |
+| **ROADMAP / charter row** | `ROADMAP.md` **T-PB-B** (`pb_rust_tests_outside_residual_zero`); `TASKS.md` T-21 + T-24; `#4137` §11.7.2 Wave 3 shadow receipts; `docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md` |
+| **Deferral / dissolution** | `v4_workflow_ci_wave3_*` parse/YAML/ledger assertions dissolve when (1) `emit-ci-wave3-shadow-receipt` + `ci_selection_receipt_shadow_from_git_diff` live on CI (`node://adhoc-331899f9-19a` / Compiler Spine eval harness) and (2) `.dag` TestClaim execution retires this hand-Rust binding harness (A15 Shape-B `ci.yml` emission posture — same as Wave 1 header) |
+
 **Four-compile collapse (Wave 1):** Removed duplicate compiles from retired `ci_v4` path (Lens-CI semantic compile, MVP-1, T-15 harness, T-22 corpus eval, phase1 rung gate). Required path now runs **one** v2 `gunbc` build + **two** full-tree compiles (M1 `--target rust`, bootstrap `--target dag`) — not four. The M1 Rust probe must run and publish its residual surface, but does not fail the required path on the known rustc residual population while P3 remains below the binary-build threshold.
 
 ---
@@ -59,6 +68,7 @@ Reduced required confidence is explicit. This is triage, not a modeling victory.
 | T-15 self-host harness in CI | Modeled `V4T15SelfHostFixedPointCommand`; scheduled/main-push only when re-enabled |
 | Gate #103 path-regex + affected-set integration tests in CI | Stay in crate; run locally / Wave 3 shadow |
 | `affected` job (`detect-ci-affected-components`) | Runs with `continue-on-error: true`; **not** in `ci`/`ci_floor` `needs:` — Wave 3 shadow receipts only per §11.7.2 |
+| Wave 3 shadow — **fixture receipt** (`ci_wave3_shadow_fixture_fail_closed_receipt` in `ci.dag`; `provenance: FixtureReceipt`) | Phase 1 on PR #4174: modeled `ci_select_from_affected_set` over `wave3_shadow_roster`; **not** live PR git_diff. **Live CI emit deferred** on Compiler Spine eval harness (`node://adhoc-331899f9-19a` / #4150-class). Floor untouched (`ci_floor_held` derives from `mode: Shadow`). |
 
 ---
 
