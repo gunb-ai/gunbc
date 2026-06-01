@@ -1093,9 +1093,7 @@ pub fn make_resolved_param_node(
         children: children,
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved {
-            node: type_expr,
-        })),
+        inferred: Some(Rc::new(InferredNode::Resolved { node: type_expr })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
