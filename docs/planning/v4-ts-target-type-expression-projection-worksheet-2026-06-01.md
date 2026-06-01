@@ -1,7 +1,7 @@
 # v4 TS TargetTypeExpressionProjection Worksheet
 
-> **Status:** L0 complete on `main` (implementation PR #4176).  
-> **Lane:** ALPHA/PREVIEW, not release-minimum.  
+> **Status:** L0 complete on `main` (implementation PR #4176).
+> **Lane:** ALPHA/PREVIEW, not release-minimum.
 > **Shared carrier authority:** `src/v4/std/target_model.dag` owns `TargetTypeExpressionProjection`; `typescript.dag` owns only the TypeScript row.
 
 ## Receipt
@@ -57,4 +57,3 @@ Systemic fix:
 - `target-record-field-label-binding`: the shared record carrier and serializer do not yet emit named field labels, so L0 does not claim faithful `{ id: T }`.
 
 These gaps are explicitly bounded in `src/v4/extdeps/languages/typescript.dag` and must dissolve through shared carrier changes, not TypeScript-only row redefinition.
-

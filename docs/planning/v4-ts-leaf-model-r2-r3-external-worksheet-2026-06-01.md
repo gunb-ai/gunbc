@@ -1,7 +1,7 @@
 # v4 TS Leaf-Model R2a / R2b / R3-external Worksheet
 
-> **Status:** L0 complete on `main` (implementation PR #4157).  
-> **Lane:** ALPHA/PREVIEW, not release-minimum per Wave F F3.  
+> **Status:** L0 complete on `main` (implementation PR #4157).
+> **Lane:** ALPHA/PREVIEW, not release-minimum per Wave F F3.
 > **Pattern:** mirrors Python #4117: modeled claim rows plus interim host runners and an SG-0 hand-test receipt.
 
 ## Receipt
@@ -62,4 +62,3 @@ Systemic fix:
 - R3-internal row mutation receipts.
 - TypeScript package/module layout modeling.
 - Replacing the interim host runners before T-22 modeled `run_target_verification` owns target verdicts.
-

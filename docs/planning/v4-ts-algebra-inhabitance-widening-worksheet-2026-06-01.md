@@ -1,7 +1,7 @@
 # v4 TS Algebra Inhabitance Widening Worksheet
 
-> **Status:** L0 complete on `main` (implementation PR #4155).  
-> **Lane:** ALPHA/PREVIEW, not release-minimum.  
+> **Status:** L0 complete on `main` (implementation PR #4155).
+> **Lane:** ALPHA/PREVIEW, not release-minimum.
 > **Purpose:** provide stable TypeScript algebra fact IDs for leaf-model R2a/R2b claims, mirroring the Python #4117 pattern.
 
 ## Receipt
@@ -51,4 +51,3 @@ Systemic fix:
 - `typescript_r2b.dag` references `ts_bigint_algebra_inhabitance_ts_facts_bigint`.
 - No TypeScript-only Subject/Expectation coproduct was introduced.
 - Downstream host receipts stay temporary under T-PB-B / `pb_rust_tests_outside_residual_zero`.
-

@@ -1,7 +1,7 @@
 # v4 TS TargetAtomRealization Worksheet
 
-> **Status:** L0 complete on `main` (implementation PR #4189).  
-> **Lane:** ALPHA/PREVIEW, not release-minimum.  
+> **Status:** L0 complete on `main` (implementation PR #4189).
+> **Lane:** ALPHA/PREVIEW, not release-minimum.
 > **Shared carrier authority:** `src/v4/std/target_model.dag` owns `TargetAtomRealization`; `typescript.dag` owns only the TypeScript rows.
 
 ## Receipt
@@ -55,4 +55,3 @@ Systemic fix:
 ## Dissolution Path
 
 The host smoke remains temporary under T-PB-B / `pb_rust_tests_outside_residual_zero`. It dissolves when `.dag` TestClaim execution and generated target verification cover the same TypeScript TargetModel catalog facts.
-
