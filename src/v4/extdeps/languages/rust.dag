@@ -1765,6 +1765,10 @@ fn rust_mvp1_target_model_bundle_core() -> Node {
       rust_named_edge(
         name: target_model_edge_collection_realization,
         target: rust_set_collection_realization_bundle_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: rust_type_expression_projection_bundle_node()
       )
     ]
   }
@@ -1776,21 +1780,25 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
       map_insert(
         map_insert(
           map_insert(
-            map_insert(empty_map(), rust_binding_fn_add, "add"),
-            rust_binding_param_x,
-            "x"
+            map_insert(
+              map_insert(empty_map(), rust_binding_fn_add, "add"),
+              rust_binding_param_x,
+              "x"
+            ),
+            rust_binding_param_y,
+            "y"
           ),
-          rust_binding_param_y,
-          "y"
+          rust_collection_surface_btree_set,
+          "std::collections::BTreeSet"
         ),
-        rust_collection_surface_btree_set,
-        "std::collections::BTreeSet"
+        rust_collection_surface_hash_set,
+        "std::collections::HashSet"
       ),
-      rust_collection_surface_hash_set,
-      "std::collections::HashSet"
+      target_collection_set_carrier,
+      "Set"
     ),
-    target_collection_set_carrier,
-    "Set"
+    rust_target_atom_type_spelling_string,
+    "String"
   )
 }
 
@@ -1858,14 +1866,14 @@ data rust_target_atom_realization_catalog: List<TargetAtomRealization> = [
 // mismatch, so they are NOT speculatively expanded here.
 data rust_target_function_signature_realization_symbol_param: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
   source_carrier: symbol_kernel_type_node(),
-  target_model: rust_sg2_type_expr_target_model_staging(),
+  target_model: rust_mvp1_target_model_staging(),
   boundary_site: FunctionBoundaryParam,
   signature_type_form: rust_target_atom_realization_symbol.type_form
 }
 
 data rust_target_function_signature_realization_symbol_return: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
   source_carrier: symbol_kernel_type_node(),
-  target_model: rust_sg2_type_expr_target_model_staging(),
+  target_model: rust_mvp1_target_model_staging(),
   boundary_site: FunctionBoundaryReturn,
   signature_type_form: rust_target_atom_realization_symbol.type_form
 }
@@ -1873,6 +1881,25 @@ data rust_target_function_signature_realization_symbol_return: TargetFunctionSig
 data rust_target_function_signature_realization_catalog: List<TargetFunctionSignatureRealization> = [
   rust_target_function_signature_realization_symbol_param,
   rust_target_function_signature_realization_symbol_return
+]
+
+data rust_sg2_target_function_signature_realization_symbol_param: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
+  boundary_site: FunctionBoundaryParam,
+  signature_type_form: rust_target_atom_realization_symbol.type_form
+}
+
+data rust_sg2_target_function_signature_realization_symbol_return: TargetFunctionSignatureRealization = TargetFunctionSignatureRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_sg2_type_expr_target_model_staging(),
+  boundary_site: FunctionBoundaryReturn,
+  signature_type_form: rust_target_atom_realization_symbol.type_form
+}
+
+data rust_sg2_target_function_signature_realization_catalog: List<TargetFunctionSignatureRealization> = [
+  rust_sg2_target_function_signature_realization_symbol_param,
+  rust_sg2_target_function_signature_realization_symbol_return
 ]
 
 fn rust_mvp1_target_model_node() -> Node {
@@ -1914,6 +1941,12 @@ fn rust_mvp1_target_model_node() -> Node {
         name: target_model_edge_use_site_ownership_realizations,
         target: target_use_site_ownership_catalog_node(
           rows: rust_sg_rc_use_site_ownership_catalog()
+        )
+      ),
+      rust_named_edge(
+        name: target_model_edge_signature_realizations,
+        target: target_function_signature_realization_catalog_node(
+          rows: rust_target_function_signature_realization_catalog
         )
       )
     ]
@@ -3623,7 +3656,7 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
           item: rust_named_edge(
             name: target_model_edge_signature_realizations,
             target: target_function_signature_realization_catalog_node(
-              rows: rust_target_function_signature_realization_catalog
+              rows: rust_sg2_target_function_signature_realization_catalog
             )
           )
         )
