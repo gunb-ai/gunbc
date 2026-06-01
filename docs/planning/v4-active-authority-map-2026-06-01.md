@@ -3,7 +3,7 @@
 > **Status:** LIVING — updated by Modeling DFS Arbiter (`proud-fox-405`) as worksheets ratify.
 > **Date:** 2026-06-01
 > **Purpose:** Prevent parallel carriers for the same concept across Rust / Go / Python / TS RCA lanes (operator directive post-#4137 §11.2).
-> **Companion:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11; per-class worksheets under `docs/planning/`.
+> **Companion:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11; `docs/planning/v4-modeling-dfs-ratification-log-2026-06-01.md`; per-class worksheets under `docs/planning/`.
 
 ---
 
@@ -107,3 +107,4 @@ Other residuals: see #4148 routing worksheets (not impl without §8)
 | 2026-06-01 | Initial map; P5 + SG-8 APPROVED; Go/TS verdict carrier consolidation | proud-fox-405 |
 | 2026-06-01 | Go five worksheets §8 APPROVED on #4149; map Go rows → APPROVED | proud-fox-405 |
 | 2026-06-01 | TS five worksheets §8 APPROVED on #4169; shared verdict carriers (no TargetTypeScript*Verdict) | proud-fox-405 |
+| 2026-06-01 | Ratification audit trail added at `docs/planning/v4-modeling-dfs-ratification-log-2026-06-01.md` | merry-ibex-873 |
