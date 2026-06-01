@@ -146,7 +146,7 @@ fn emit_host_fixture_inputs(
     let claim_pin_source =
         inputs_optional_present_node_field(dag, value, "host_claim_pin")?.unwrap_or(claim_root);
     let claim_pin = host_pin_from_inputs_root(dag, claim_pin_source, state, strategy)?;
-    let expected_root = inputs_expected_eval_root_field(value)?;
+    let expected_root = inputs_expected_eval_root_field(dag, value)?;
     let expected_pin = host_pin_from_inputs_root(dag, expected_root, state, strategy)?;
     Ok(emit_host_runner::EmitHostFixtureInputs {
         claim_input_root: claim_pin,
@@ -158,13 +158,18 @@ fn inputs_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, EvalError> {
     inputs_record_field(inputs, "root", "expected Inputs.root field")
 }
 
-fn inputs_expected_eval_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, EvalError> {
+fn inputs_expected_eval_root_field<'a>(
+    dag: &Dag,
+    inputs: &'a Value,
+) -> Result<&'a Value, EvalError> {
     let optional = inputs_record_field(
         inputs,
         "expected_eval_root",
         "expected Inputs.expected_eval_root field",
     )?;
-    optional_present_payload(optional)
+    optional_node_payload(dag, optional)?.ok_or(EvalError::BadTransformOperands {
+        reason: "emit host dispatch requires Inputs.expected_eval_root Present",
+    })
 }
 
 fn inputs_optional_present_node_field<'a>(
@@ -212,26 +217,6 @@ fn inputs_record_field<'a>(
     }
 }
 
-fn optional_present_payload<'a>(value: &'a Value) -> Result<&'a Value, EvalError> {
-    match value {
-        Value::VariantValue { payload, .. } => match &**payload {
-            Value::RecordValue(fields) => fields
-                .iter()
-                .find(|field| field.label == "value")
-                .map(|field| &field.value)
-                .ok_or(EvalError::BadTransformOperands {
-                    reason: "expected Optional Present { value } payload",
-                }),
-            _ => Err(EvalError::BadTransformOperands {
-                reason: "expected Optional Present record payload",
-            }),
-        },
-        _ => Err(EvalError::BadTransformOperands {
-            reason: "emit host dispatch requires Inputs.expected_eval_root Present",
-        }),
-    }
-}
-
 fn optional_node_payload<'a>(dag: &Dag, value: &'a Value) -> Result<Option<&'a Value>, EvalError> {
     let Value::VariantValue { tag, payload } = value else {
         return Err(EvalError::BadTransformOperands {
@@ -239,8 +224,8 @@ fn optional_node_payload<'a>(dag: &Dag, value: &'a Value) -> Result<Option<&'a V
         });
     };
     match variant_label_for_tag(dag, *tag).as_deref() {
-        Some("Absent") => Ok(None),
-        Some("Present") => Ok(Some(optional_present_payload_value(payload)?)),
+        Some("Absent" | "None") => Ok(None),
+        Some("Present" | "Some") => Ok(Some(optional_present_payload_value(payload)?)),
         _ => Err(EvalError::BadTransformOperands {
             reason: "expected Inputs optional field to be Present or Absent",
         }),
@@ -780,14 +765,27 @@ mod tests {
     use emit_host_runner::HostSetupFailure;
 
     fn optional_variant(dag: &Dag, name: &str, payload: Value) -> Value {
+        let tag = dag
+            .declarations()
+            .iter()
+            .find_map(|decl| {
+                let TypeConnective::Disj { variants } = &decl.connective else {
+                    return None;
+                };
+                variants
+                    .iter()
+                    .find(|variant| variant.label == name)
+                    .map(|variant| variant.ty)
+            })
+            .expect(name);
         Value::VariantValue {
-            tag: dag.declaration_by_name(name).expect(name).id,
+            tag,
             payload: Box::new(payload),
         }
     }
 
     fn optional_present_value(dag: &Dag, value: Value) -> Value {
-        optional_variant(dag, "Present", value)
+        optional_variant(dag, "Some", value)
     }
 
     #[test]
