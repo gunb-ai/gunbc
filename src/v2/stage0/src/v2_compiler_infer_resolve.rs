@@ -1366,7 +1366,7 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 name: authored_type.name.clone(),
                 span: authored_type.span.clone(),
                 ident_span: authored_type.ident_span.clone(),
-                children: authored_type.children.clone(),
+                children: type_resolved.children.clone(),
                 connective: authored_type.connective.clone(),
                 params: authored_type.params.clone(),
                 inferred: Some(Rc::new(Resolved {
