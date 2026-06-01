@@ -51,7 +51,6 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  connective_edges_conform,
   content_hash
 }
 import v4.std.node_query { find_named_child, node_positional_child_targets }
@@ -1464,10 +1463,8 @@ data target_type_expr_field_param_ident_token: Symbol = target_type_expr_field_p
 data target_type_expr_field_param_type_separator: Symbol = target_type_expr_field_param_type_separator
 data target_type_expr_field_param_list_separator: Symbol = target_type_expr_field_param_list_separator
 data target_type_expr_field_codomain: Symbol = target_type_expr_field_codomain
-// Sentinel label on TargetTypeExprFieldSlot when the substrate carries no parameter name.
-data target_type_expr_arrow_param_unlabeled: Symbol = target_type_expr_arrow_param_unlabeled
 
-// SG-2 — arrow emitted wire shape: positional params+codomain vs named param slots + codomain edge.
+// 🟢 coproduct dissolution — SG-2 emitted arrow wire encodes positional inputs+codomain vs labeled param slots+codomain (authority: target_type_expr_arrow_wire_shape on emitted node).
 type TargetTypeExprArrowWireShape
   = TargetTypeExprArrowPositionalWire
   | TargetTypeExprArrowLabeledWire
@@ -1490,25 +1487,10 @@ fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowW
   }
 }
 
-// SG-2 — arrow source domain projection: Named param conj vs single positional boundary.
-type TargetTypeExprArrowDomainProjection
-  = TargetTypeExprArrowDomainNamedParams { domain: Node }
-  | TargetTypeExprArrowDomainPositionalInput { input: Node }
-
-fn target_type_expr_arrow_domain_projection(input: Node) -> TargetTypeExprArrowDomainProjection {
-  match input.kind {
-    TypeNode { connective: Conj } =>
-      if is_empty(xs: input.children) {
-        TargetTypeExprArrowDomainPositionalInput { input: input }
-      } else {
-        if connective_edges_conform(children: input.children, c: Conj) {
-          TargetTypeExprArrowDomainNamedParams { domain: input }
-        } else {
-          TargetTypeExprArrowDomainPositionalInput { input: input }
-        }
-      }
-    _ => TargetTypeExprArrowDomainPositionalInput { input: input }
-  }
+// 🟢 coproduct dissolution — SG-2 labeled arrow parameter slot (label required; distinct from record TargetTypeExprFieldSlot).
+type TargetTypeExprArrowParamSlot {
+  label: Symbol
+  type_expr: Node
 }
 
 // SG-2 — atom type name: bound ident from source Atom identity via binding_spellings.
@@ -1806,6 +1788,15 @@ fn target_type_expr_field_slot_edges(fields: List<TargetTypeExprFieldSlot>) -> L
     list_snoc_item(
       xs: acc,
       item: Edge { label: Named { name: field.label }, target: field.type_expr }
+    )
+  })
+}
+
+fn target_type_expr_arrow_param_slot_edges(params: List<TargetTypeExprArrowParamSlot>) -> List<Edge> {
+  fold(params, init: Empty, f: fn(acc, param) {
+    list_snoc_item(
+      xs: acc,
+      item: Edge { label: Named { name: param.label }, target: param.type_expr }
     )
   })
 }
@@ -2153,14 +2144,14 @@ fn target_type_expr_arrow_emitted(
 
 fn target_type_expr_arrow_emitted_named(
   form: TargetFunctionTypeShape,
-  params: List<TargetTypeExprFieldSlot>,
+  params: List<TargetTypeExprArrowParamSlot>,
   output: Node
 ) -> Node {
   target_type_expr_wrapped_emitted_labeled(
     kind: TargetTypeExprArrow,
     surface: form.surface,
     slot_edges: list_append(
-      left: target_type_expr_field_slot_edges(fields: params),
+      left: target_type_expr_arrow_param_slot_edges(params: params),
       right: Cons {
         head: Edge {
           label: Named { name: target_type_expr_field_codomain },
@@ -2181,7 +2172,7 @@ fn target_type_expr_arrow_labeled_codomain(node: Node) -> Outcome<Node> {
   }
 }
 
-fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<TargetTypeExprFieldSlot>> {
+fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<TargetTypeExprArrowParamSlot>> {
   bind_outcome(
     o: target_type_expr_arrow_labeled_codomain(node: node),
     f: fn(_codomain) {
@@ -2196,7 +2187,7 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
               } else {
                 list_snoc_item(
                   xs: acc,
-                  item: TargetTypeExprFieldSlot { label: label, type_expr: e.target }
+                  item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
                 )
               }
             Positional => acc
