@@ -130,7 +130,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 |---|---|---|---|---|
 | 1 | P5 runtime gate (gate OPEN; routing RESOLVED) | Routing RESOLVED 01Z per §8.5 #3 — option (ii) WORKSHEET authorized | Modeling DFS Arbiter (to spawn) | bootstrap-evaluator corpus runtime worksheet authored + §8 approved + impl ships + suite executes |
 | 2 | P2-B bridge deletion | **DONE 2026-06-01T00:50Z** | #4139 MERGED (squash 12d1aa68c) | P2 fully GREEN |
-| 3 | SG-8 §8 sign-off authority | **RESOLVED 2026-06-01T01** per §8.5 #4 — dedicated Modeling DFS Manager to spawn | Modeling DFS Arbiter (to spawn) | §8 ratification → SG-8 impl worker dispatchable |
+| 3 | SG-8 §8 sign-off **routing** (NOT the ratification itself) | Routing **RESOLVED 2026-06-01T01** per §8.5 #4 — dedicated Modeling DFS Manager to spawn. The actual §8 ratification on SG-8 worksheet remains PENDING and still gates impl dispatch (sequenced: Arbiter spawn → §8 ratification → SG-8 impl). | Modeling DFS Arbiter (to spawn) | §8 ratification → SG-8 impl worker dispatchable |
 | 4 | Fresh M1 probe post-cascade | **AUTHORIZED + in flight** (PR #4140 sleek-heron-13) | work-item `adhoc-7b46e080-3cd` | residual = 7,724 (+549 vs #4122); per-class delta on review |
 | 5 | SG-1-FOLLOWON impl | routed | TR lane (keen-heron) | minor follow-on close |
 | 6 | SG-COLLECTION-PROJECTION amend | deferred | TR/proud-pike-successor | ~170 errors |
