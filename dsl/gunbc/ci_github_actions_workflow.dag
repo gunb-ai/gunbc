@@ -1,4 +1,6 @@
-// Pinned typed Actions carrier for .github/workflows/ci.yml.
+// Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
+// `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
+// emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
 
 module gunbc.ci.github_actions_workflow
 
