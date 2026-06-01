@@ -16485,7 +16485,7 @@ pub fn emit_data_def(
                 _ => annotation_type_node.clone(),
             }
         };
-        let raw_ty_str = render_rust_type(
+        let raw_ty_str = render_rust_type_with_applied_binding(
             render_type_node,
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
