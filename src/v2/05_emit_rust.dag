@@ -200,7 +200,11 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
 
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
-    Some { value: TypeVariable { id: tv } } => tv
+    Some { value: TypeVariable { id: tv } } =>
+      match n.return_cardinality {
+        CardOptional => apply_type_template1(template: target_optional_template(target: Rust), arg0: tv)
+        Required => tv
+      }
     _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   }
 }
@@ -239,7 +243,10 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
     None =>
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
-        name
+        match n.return_cardinality {
+          CardOptional => apply_type_template1(template: target_optional_template(target: Rust), arg0: name)
+          Required => name
+        }
       } else if n.connective == NoConnective && n.children |> count > 0 {
         let base = coerce_primitive_type(target: Rust, dag_name: name)
         let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
@@ -1790,10 +1797,20 @@ fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: S
   concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
 }
 
+// Domain lattice enums use evidence_rank / meet-join — not derived Ord (P2 single-authority).
+fn rust_enum_ord_derives_eligible(name: String) -> Bool {
+  name != "DescentEvidence" && name != "Ordering"
+}
+
 fn enum_derives(name: String, children: List<Node>) -> String {
   let complex = children |> filter(v => v.children |> count > 0)
   match complex |> count == 0 {
-    true => rust_ord_derives_copy_text()
+    true =>
+      if rust_enum_ord_derives_eligible(name: name) {
+        rust_ord_derives_copy_text()
+      } else {
+        rust_enum_derives_copy_text()
+      }
     false => rust_enum_derives_text()
   }
 }
@@ -6533,7 +6550,8 @@ fn emit_cli_param_type_node(n: Node, source_indices: Map<String, NewlineIndex>) 
   let is_optional = n.return_cardinality == CardOptional
   let has_structure = n.connective != NoConnective
   if is_optional {
-    concat("Option<", emit_cli_param_type_node(n: with_required_cardinality(n: n), source_indices: source_indices), ">")
+    let inner_ty = emit_cli_param_type_node(n: with_required_cardinality(n: n), source_indices: source_indices)
+    apply_type_template1(template: target_optional_template(target: Rust), arg0: inner_ty)
   } else if has_structure {
     "String"
   } else if n.children |> count == 0 {

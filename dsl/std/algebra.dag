@@ -326,41 +326,32 @@ type BooleanAlgebra<T> {
 }
 
 // =========================================================================
-// Lattice lifting — design specification (not yet executable authority)
+// Lattice lifting — optional cardinality (executable)
 // =========================================================================
 //
-// These patterns describe how lattice operations lift through containers.
-// They are a DESIGN SPECIFICATION for concrete monomorphized instances.
+// Optional/T? is return_cardinality on the type node. v2 Rust emit shells via
+// target_optional_template (same authority as emit_container in 05_emit.dag).
 //
-// Concrete instances live next to their lattice declarations:
-//   std/termination.dag: optional_evidence_meet, map_evidence_merge_at
-//   std/induction.dag:   meet_sub_value, join_sub_value
-//
-// Generic patterns (shape; callers instantiate concretely):
-//   optional_meet(meet, a, b):  None is identity (top).
-//   map_merge_at(merge, m, k, v): pointwise per key, absent = identity.
-//   min_by(project, a, b):  compare via projection, keep lesser.
-//   max_by(project, a, b):  compare via projection, keep greater.
-//
-// Type parameters on generic fn signatures emit faithfully to Rust with no
-// synthesized trait bounds — if a concrete instance needs one, the `.dag`
-// authority must declare it (bound-declaration syntax is out-of-scope here;
-// a future lane). Known adjacent gaps, each a separate dissolution lane:
-//   - Higher-order value params still emit as `impl Fn(...) + Clone` at the
-//     callable-bound layer (see 05_emit_rust.dag line ~1401).
-//   - The type/value-param split in the emitter keys on the post-resolve
-//     invariant that resolve_item_types (04_resolve.dag:923) installs:
-//     declared type params get an env binding with
-//     `inferred: TypeVariable { id: T }`, so a param whose type_expr
-//     carries TypeVariable AND whose Node.name matches the type_expr's
-//     name is a declared type param. The classifier lives in
-//     is_function_type_param (05_emit_rust.dag). Pathological aliasing
-//     like `fn foo<T>(T: T)` — a value param whose name shadows the
-//     type-var — would be misclassified; that's a real (though unusual)
-//     case the current heuristic doesn't handle, and the dissolution
-//     target below closes it cleanly. Dissolution target: partition
-//     Node's `params` slot into `type_params` / `value_params`, or
-//     introduce a `ParamKind` discriminator.
+// map_merge_at remains design-only until Map→HashMap emit lands; termination
+// keeps map_evidence_merge_at monomorphically.
+
+fn optional_prefer_first_present<T>(left: T?, right: T?) -> T? {
+  match left {
+    None => right
+    Some { value: _ } => left
+  }
+}
+
+fn optional_meet<T>(meet: fn(T, T) -> T, a: T?, b: T?) -> T? {
+  match a {
+    None => b
+    Some { value: va } =>
+      match b {
+        None => a
+        Some { value: vb } => Some { value: meet(va, vb) }
+      }
+  }
+}
 
 // =========================================================================
 // Sequence/collection structures
