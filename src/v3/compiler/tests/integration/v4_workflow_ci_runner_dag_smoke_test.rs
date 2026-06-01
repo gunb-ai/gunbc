@@ -424,14 +424,11 @@ fn data_body<'a>(
 }
 
 fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a SurfaceExpr {
-    let SurfaceExpr::Record { fields, .. } = body else {
-        panic!("expected record body, got {body:?}");
+    let fields = match body {
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields,
+        other => panic!("expected record body, got {other:?}"),
     };
-    fields
-        .iter()
-        .find(|field| field.name == field_name)
-        .map(|SurfaceRecordField { value, .. }| value)
-        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+    record_field_from_fields(fields, field_name)
 }
 
 fn expr_string(expr: &SurfaceExpr) -> &str {
