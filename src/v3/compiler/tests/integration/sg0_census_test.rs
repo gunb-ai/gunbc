@@ -966,6 +966,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
     // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
+    // PR #4226 (+0 paths): TS SG-2 arrow wire-shape golden probes (ts_sg2_arrow_labeled_xy_emitted,
+    // ts_sg2_arrow_mixed_wire_emitted); behavioral TestClaims in sg2_typescript_type_expression_projection.dag.
     "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
