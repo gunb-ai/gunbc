@@ -149,14 +149,9 @@ type CiCommand
   | V3SelfHostFixedPointCommand { profile: CiBuildProfile, schedule: CiSchedulePolicy }
   | V4T15SelfHostFixedPointCommand
   | M1RustEmitProbeCommand
-<<<<<<< HEAD
+  | LeafModelGoVerifyCommand
   // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); verdict_surface must name the T-22 manual CorpusEvalReport surface (`manual_corpus_node_runtime_value_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed`) using declaration-qualified authorities so per-row TestClaimRun verdict facts are projected, not replaced by host-owned strings. Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol, verdict_surface: TestClaimCorpusVerdictSurfaceAuthority }
-=======
-  | LeafModelGoVerifyCommand
-  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1) — forbidden: bypassing narrowing to run full corpus unconditionally. Forward (T-38-PR2): amend when modeled runner evaluates manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts in CI.
-  | TestClaimCorpusEvalCommand { selection_fn: Symbol }
->>>>>>> origin/main
   // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
   | Phase1NatSemiringRungGateCommand
 
@@ -1619,18 +1614,13 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     V3SelfHostFixedPointCommand { profile: _, schedule: _ } => true
     V4T15SelfHostFixedPointCommand => true
     M1RustEmitProbeCommand => true
-<<<<<<< HEAD
+    LeafModelGoVerifyCommand => true
     TestClaimCorpusEvalCommand {
       selection_fn: fn_name,
       verdict_surface: surface
     } =>
       (fn_name == ci_testclaim_corpus_selection_fn)
         && (surface == ci_testclaim_corpus_verdict_surface_authority())
-=======
-    LeafModelGoVerifyCommand => true
-    TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
-      fn_name == ci_testclaim_corpus_selection_fn
->>>>>>> origin/main
     Phase1NatSemiringRungGateCommand => true
   }
 }
@@ -2135,15 +2125,11 @@ fn ci_command_projection_node(c: CiCommand) -> Node {
       }
     V4T15SelfHostFixedPointCommand => ci_atom(sym: ci_cache_cmd_v4_t15_self_host_tag)
     M1RustEmitProbeCommand => ci_atom(sym: ci_cache_cmd_m1_probe_tag)
-<<<<<<< HEAD
+    LeafModelGoVerifyCommand => ci_atom(sym: ci_cache_cmd_leaf_model_go_verify_tag)
     TestClaimCorpusEvalCommand {
       selection_fn: fn_name,
       verdict_surface: surface
     } =>
-=======
-    LeafModelGoVerifyCommand => ci_atom(sym: ci_cache_cmd_leaf_model_go_verify_tag)
-    TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
->>>>>>> origin/main
       Node {
         kind: TypeNode { connective: Conj },
         children: [
