@@ -9,6 +9,9 @@
 //! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` +
 //! `_internal/INVARIANTS_OPS.md` row land in the same PR. **+0 SG-0 paths** (no new census entry).
 //! SG-RC ctor `binding_spellings` receipts live in `src/v4/test/claim/manual/sg_rc_layering.dag`.
+//! Outcome/Rc<Outcome> receipt: this PR adds assertion-only same-file smoke over
+//! `claim_sg_rc_outcome_inner_sg2_args_preserved`; SG-0 implementation-surface posture remains +0,
+//! and the dissolve trigger is direct v4 manual-claim runner execution of `sg_rc_layering.dag`.
 //!
 //! SG-1 + SG-2 + SG-5/SG-6 + SG-RC receipt: `target_model.dag` carriers;
 //! `bounded_lattice_completeness` + `04_infer` gate; Rust rows in `rust.dag`;
