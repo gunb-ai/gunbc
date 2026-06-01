@@ -61,9 +61,16 @@ fn extract_fixture_source(dag_text: &str, data_name: &str) -> Option<String> {
     Some(unescape_dag_string_literal(rest))
 }
 
+/// Per-call-unique scratch dir. Rust tests run in parallel within one process and several tests
+/// call `run_python` with the same label, so a pid+label path would race (one test's
+/// `remove_dir_all` deletes another's fixture). A process-wide atomic counter makes every
+/// invocation's directory unique — hermetic per TESTING.md.
 fn scratch_dir(label: &str) -> std::path::PathBuf {
-    let suffix = std::process::id();
-    std::env::temp_dir().join(format!("v4_leaf_model_python_drift_{label}_{suffix}"))
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let pid = std::process::id();
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("v4_leaf_model_python_drift_{label}_{pid}_{seq}"))
 }
 
 /// Tokenize + parse a single `.dag` (full multi-module `compile_to_dag` is not hermetic per-file;
