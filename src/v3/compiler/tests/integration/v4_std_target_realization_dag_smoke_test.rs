@@ -31,6 +31,9 @@ const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/r
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
+const SG_RC_LAYERING_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/sg_rc_layering.dag");
+const SG_RC_LAYERING_CLAIM_PATH: &str = "src/v4/test/claim/manual/sg_rc_layering.dag";
 const BOUNDED_LATTICE_COMPLETENESS_DAG: &str =
     include_str!("../../../../v4/std/bounded_lattice_completeness.dag");
 const BOUNDED_LATTICE_COMPLETENESS_PATH: &str = "src/v4/std/bounded_lattice_completeness.dag";
@@ -596,6 +599,10 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
         "{TARGET_MODEL_PATH}: per (carrier, use_site) lookup must be structural"
     );
     assert!(
+        surface_declares_fn(&module, "target_use_site_ownership_source_key"),
+        "{TARGET_MODEL_PATH}: SG-RC lookup must key generic carriers by head so Outcome<T> rows compose with SG-2"
+    );
+    assert!(
         surface_declares_fn(&module, "target_reference_layer_apply_type_emitted"),
         "{TARGET_MODEL_PATH}: type emit must wrap SG-2 inner via reference_layer row"
     );
@@ -610,6 +617,26 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
     assert!(
         surface_declares_data(&module, "target_reference_layer_tokens_decode_invalid"),
         "{TARGET_MODEL_PATH}: non-Conj token bundle must fail-closed"
+    );
+}
+
+#[test]
+fn v4_sg_rc_outcome_claim_preserves_sg2_inner_type_args() {
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("sg_rc_outcome_node_source_type"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: must include an Outcome<T> SG-RC fixture"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("project_type_expression_node"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: Outcome<T> fixture must project inner type through SG-2 before SG-RC wrapping"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("Rc<Outcome<Node>>"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: Outcome<T> receipt must assert Rc<Outcome<Node>>, not bare Rc<Outcome>"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("claim_sg_rc_outcome_inner_sg2_args_preserved"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: manual TestClaim must pin Outcome<T> SG-2 + SG-RC composition"
     );
 }
 
