@@ -190,5 +190,6 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 **Jun 1 release readiness summary:**
 - v4 ships alpha per Flavor (iv) operator framing (per session memory `project_june1_release`)
 - Substrate landings: massive day (SG-1/2/5/6/1b/RC-LAYERING + SG-3-retired + SG-8-worksheet + #4115 P5 + #4120 T-38-PR2 + W2.3 Bucket E + #4091 elastic CI ratification + compute fabric + cache substrate)
-- Predicate flips per dep-graph framing: **P5 fully GREEN today**; P2 awaits authorization; P3 multi-class cascade closed but residual significant
-- Per strict TASKS.md reading: only P5 Layer 1+2 closed; runtime-execution gate is the residual upward debt
+- **P5 (canonical "TestClaim suite passes" per TASKS.md): NOT fully GREEN today** — Layer 1 + Layer 2 closed but runtime-execution gate remains open at `node://adhoc-f8699326-d69` (operator decision pending on path (i) M1 cargo-clean subset vs (ii) bootstrap-evaluator corpus runtime). P5 flips fully GREEN only when runtime-execution gate closes; do NOT treat as done.
+- P2 awaits operator authorization OR 14-day window completion
+- P3 multi-class cascade closed today but residual rustc count significant; long-horizon to binary builds
