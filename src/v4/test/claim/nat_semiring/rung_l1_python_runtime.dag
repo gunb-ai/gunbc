@@ -22,8 +22,7 @@ import v4.std.verification {
 }
 
 
-data phase1_nat_semiring_l1_python_runtime_subject_symbol: Symbol =
-  phase1_nat_semiring_l1_python_runtime_subject_symbol
+data phase1_nat_semiring_l1_python_runtime_subject_symbol: Symbol = phase1_nat_semiring_l1_python_runtime_subject_symbol
 
 data phase1_nat_semiring_l1_python_runtime_subject: Node = Node {
   kind: TypeNode {
