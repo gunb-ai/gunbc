@@ -128,7 +128,9 @@ pub struct TcoReassignInput {
     pub depth: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum BackendCapability {
     CapServiceEmit,
@@ -2878,7 +2880,9 @@ pub fn is_resource_def_item(item: Rc<Node>) -> bool {
             && (item.body.clone() == None)))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum ExprCategory {
     ExprCatLeaf,
