@@ -1339,8 +1339,10 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "manual_corpus_gate",
         "witness_manual_corpus_gate_closed",
         "corpus_report_tally(report);",
+        "inverted_zero_comparison",
+        "!\\(*tally\\.(?:fail|deferred)={2}",
         "fail_deferred_conjunction",
-        "tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
+        "(?<!!\\()(?<!!)tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
         "[^&|;=]*&&",
         "&&",
         "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
@@ -1365,23 +1367,40 @@ fn v4_workflow_ci_t38_script_receipt_rejects_inverted_zero_predicates() {
             r#"
 import re
 
+inverted_zero_comparison = re.compile(
+    r"!\(*tally\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*"
+)
 fail_deferred_conjunction = re.compile(
-    r"tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
-    r"[^&|;]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
+    r"(?<!!\()(?<!!)tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
+    r"[^&|;=!]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
 )
 
-assert fail_deferred_conjunction.search(
-    "tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}"
-)
-assert not fail_deferred_conjunction.search(
+def receipt_accepts(source):
+    return (
+        not inverted_zero_comparison.search(source)
+        and fail_deferred_conjunction.search(source)
+    )
+
+assert receipt_accepts("tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}")
+assert not receipt_accepts(
     "(tally.fail==Zero)==false&&tally.deferred==Zero}"
 )
-assert not fail_deferred_conjunction.search(
+assert not receipt_accepts(
     "tally.fail==Zero&&(tally.deferred==Zero)==false}"
 )
-assert not fail_deferred_conjunction.search(
+assert not receipt_accepts(
     "tally.fail==NotZero&&tally.deferred==NotZero}"
 )
+for inverted in [
+    "!tally.fail==Zero&&tally.deferred==Zero}",
+    "!(tally.fail==Zero)&&tally.deferred==Zero}",
+    "!((tally.fail==Zero))&&tally.deferred==Zero}",
+    "tally.fail==Zero&&!tally.deferred==Zero}",
+    "tally.fail==Zero&&!(tally.deferred==Zero)}",
+    "tally.fail==Zero&&!((tally.deferred==Zero))}",
+]:
+    assert inverted_zero_comparison.search(inverted)
+    assert not receipt_accepts(inverted)
 "#,
         )
         .output()
