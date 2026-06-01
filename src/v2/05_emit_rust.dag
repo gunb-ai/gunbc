@@ -80,7 +80,7 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
-import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
+import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint, target_optional_template }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name }
@@ -149,7 +149,11 @@ import v2.compiler.emit {
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
-    Some { value: TypeVariable { id: tv } } => tv
+    Some { value: TypeVariable { id: tv } } =>
+      match n.return_cardinality {
+        CardOptional => apply_type_template1(template: target_optional_template(target: Rust), arg0: tv)
+        Required => tv
+      }
     _ =>
       match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Some { value: applied } =>
