@@ -88,6 +88,13 @@ type TargetPythonExerciseVerdict
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
+// 🟡 coproduct dissolution — feature:leaf-model-runtime-exercise-bridge —
+// dissolve-on-arrival: fold runtime exercise results into LeafModelFixture<C>.expected_verdict /
+// expected_falsification_verdict once T-22 modeled run_target_verification consumes target rows.
+type TargetRuntimeExerciseVerdict
+  = TargetRuntimeExerciseAccepted
+  | TargetRuntimeExerciseRejected { diagnostic_code: Symbol }
+
 // --- PY-L1-STATIC-STRUCTURAL: shared cross-target static-analysis carriers ---
 // Arbiter ruling (Modeling DFS, proud-fox-405, msg_41813c03): static structural
 // analysis by a third-party type checker is a SHARED cross-target authority — one
@@ -146,6 +153,10 @@ data target_diagnostic_python_attribute_error_method_not_found: Symbol = target_
 data target_diagnostic_python_type_error_init_arity_mismatch: Symbol = target_diagnostic_python_type_error_init_arity_mismatch
 data target_diagnostic_ts2339_property_does_not_exist: Symbol = target_diagnostic_ts2339_property_does_not_exist
 data target_diagnostic_ts7009_new_expression_not_constructable: Symbol = target_diagnostic_ts7009_new_expression_not_constructable
+data target_diagnostic_go_undefined_type: Symbol = target_diagnostic_go_undefined_type
+data target_diagnostic_go_undefined_method: Symbol = target_diagnostic_go_undefined_method
+data target_diagnostic_go_invalid_conversion_arity: Symbol = target_diagnostic_go_invalid_conversion_arity
+data target_diagnostic_go_runtime_panic: Symbol = target_diagnostic_go_runtime_panic
 
 type LeafModelClaimId = Symbol
 
@@ -167,6 +178,10 @@ data leaf_model_claim_rust_r3_internal_symbol_coupling: LeafModelClaimId = leaf_
 data leaf_model_claim_ts_r2a_number_algebra_operations: LeafModelClaimId = leaf_model_claim_ts_r2a_number_algebra_operations
 data leaf_model_claim_ts_r2b_bigint_beyond_safe_integer: LeafModelClaimId = leaf_model_claim_ts_r2b_bigint_beyond_safe_integer
 data leaf_model_claim_ts_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_ts_r3_external_symbol_projection
+data leaf_model_claim_go_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_go_r1_int_surface_spelling
+data leaf_model_claim_go_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_go_r2a_int_algebra_operations
+data leaf_model_claim_go_r2b_int64_silent_overflow_truncates: LeafModelClaimId = leaf_model_claim_go_r2b_int64_silent_overflow_truncates
+data leaf_model_claim_go_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_go_r3_external_symbol_projection
 
 type LeafModelRustCrateType = Symbol
 
@@ -229,6 +244,7 @@ type LeafModelPythonFixturePair {
   falsification: LeafModelPythonFalsificationCase
 }
 
+<<<<<<< HEAD
 // 🟡 gated — feature:leaf-model-r1-r3-go-bridge — bind go.dag release-minimum lane —
 // dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
 // forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once T-22 run_target_verification lands.
@@ -265,6 +281,42 @@ type LeafModelGoRuntimeFixturePair {
   encoding_spelling_fact: Symbol
   happy: LeafModelGoRuntimeFixture
   expected_happy_verdict: TargetGoRuntimeVerdict
+=======
+// 🟡 gated — feature:leaf-model-go-bridge — bind docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01 —
+// dissolve-on-arrival: fold into LeafModelFixture<C> once T-22 modeled run_target_verification consumes Go rows.
+type LeafModelGoBuildFixture {
+  source: String
+}
+
+type LeafModelGoRunFixture {
+  source: String
+}
+
+type LeafModelGoCompileFalsificationCase {
+  fixture: LeafModelGoBuildFixture
+  expected_verdict: TargetCompileVerdict
+}
+
+type LeafModelGoCompileFixturePair {
+  claim_id: LeafModelClaimId
+  fact_anchor: Node
+  happy: LeafModelGoBuildFixture
+  expected_happy_verdict: TargetCompileVerdict
+  falsification: LeafModelGoCompileFalsificationCase
+}
+
+type LeafModelGoRuntimeFalsificationCase {
+  fixture: LeafModelGoRunFixture
+  expected_verdict: TargetRuntimeExerciseVerdict
+}
+
+type LeafModelGoRuntimeFixturePair {
+  claim_id: LeafModelClaimId
+  fact_anchor: Node
+  happy: LeafModelGoRunFixture
+  expected_happy_verdict: TargetRuntimeExerciseVerdict
+  falsification: LeafModelGoRuntimeFalsificationCase
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 }
 
 // PY-L1-STATIC-STRUCTURAL fixture carriers. Polarity AND role are STRUCTURAL, not prose:

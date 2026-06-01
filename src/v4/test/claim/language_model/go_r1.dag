@@ -1,15 +1,26 @@
 // src/v4/test/claim/language_model/go_r1.dag
+<<<<<<< HEAD
 // Scope: Phase 1 R1 — go.dag int surface spelling vs Go compiler.
+=======
+// Scope: Phase 1 R1 — go.dag int surface spelling vs go build.
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-go-r1-verify.sh.
 
 module v4.test.claim.language_model.go_r1
 
+<<<<<<< HEAD
 import v4.extdeps.languages.go { go_surface_spelling_int, go_facts_field_encoding }
 import v4.lens.leaf_model_verification {
+=======
+import v4.extdeps.languages.go { go_surface_spelling_int }
+import v4.lens.leaf_model_verification {
+  go_leaf_model_fact_atom,
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
   go_r1_fixture,
   go_r1_falsification_fixture_source,
   go_r1_happy_fixture_source
 }
+<<<<<<< HEAD
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.leaf_model_verification {
@@ -18,6 +29,17 @@ import v4.std.leaf_model_verification {
   TargetCompileRejected,
   target_diagnostic_go_undefined_identifier
 }
+=======
+import v4.std.leaf_model_verification {
+  leaf_model_claim_go_r1_int_surface_spelling,
+  TargetCompileAccepted,
+  TargetCompileRejected,
+  TargetCompileVerdict,
+  target_diagnostic_go_undefined_type
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -39,19 +61,35 @@ fn go_r1_claim_bool_atom(b: Bool) -> Node {
 }
 
 data claim_go_r1_fixture_pair_wired: TestClaim = EqualsClaim {
+<<<<<<< HEAD
   label: "language_model/go_r1: fixture pair references go int surface spelling",
+=======
+  label: "language_model/go_r1: fixture pair references go_surface_spelling_int",
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_r1_claim_bool_atom(b: true),
   rhs: go_r1_claim_bool_atom(
     b: go_r1_fixture().claim_id == leaf_model_claim_go_r1_int_surface_spelling
+<<<<<<< HEAD
       && go_r1_fixture().surface_spelling_fact == go_surface_spelling_int
       && go_r1_fixture().encoding_spelling_fact == go_facts_field_encoding
       && go_r1_fixture().happy.source == go_r1_happy_fixture_source
       && go_r1_fixture().falsification.fixture.source == go_r1_falsification_fixture_source
+=======
+      && go_r1_fixture().fact_anchor == go_leaf_model_fact_atom(id: go_surface_spelling_int)
+      && go_r1_fixture().happy.source == go_r1_happy_fixture_source
+      && go_r1_fixture().expected_happy_verdict == TargetCompileAccepted
+      && go_r1_fixture().falsification.fixture.source == go_r1_falsification_fixture_source
+      && go_r1_fixture().falsification.expected_verdict == go_r1_modeled_falsification_expectation
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
   ),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
 data go_r1_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
+<<<<<<< HEAD
   diagnostic_code: target_diagnostic_go_undefined_identifier
+=======
+  diagnostic_code: target_diagnostic_go_undefined_type
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 }

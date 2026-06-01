@@ -1,15 +1,24 @@
 // src/v4/test/claim/language_model/go_r3_external.dag
+<<<<<<< HEAD
 // Scope: Phase 1 R3-external — go.dag Symbol atom realization projection vs Go compiler.
+=======
+// Scope: Phase 1 R3-external — Symbol atom realization projection vs go build.
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-go-r3-external-verify.sh.
 
 module v4.test.claim.language_model.go_r3_external
 
 import v4.extdeps.languages.go { go_atom_realization_symbol }
 import v4.lens.leaf_model_verification {
+<<<<<<< HEAD
+=======
+  go_leaf_model_fact_atom,
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
   go_r3_external_fixture,
   go_r3_external_falsification_fixture_source,
   go_r3_external_happy_fixture_source
 }
+<<<<<<< HEAD
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.leaf_model_verification {
@@ -18,6 +27,17 @@ import v4.std.leaf_model_verification {
   TargetCompileRejected,
   target_diagnostic_go_too_many_conversion_args
 }
+=======
+import v4.std.leaf_model_verification {
+  leaf_model_claim_go_r3_external_symbol_projection,
+  TargetCompileAccepted,
+  TargetCompileRejected,
+  TargetCompileVerdict,
+  target_diagnostic_go_invalid_conversion_arity
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -39,19 +59,35 @@ fn go_r3_external_claim_bool_atom(b: Bool) -> Node {
 }
 
 data claim_go_r3_external_fixture_pair_wired: TestClaim = EqualsClaim {
+<<<<<<< HEAD
   label: "language_model/go_r3_external: fixture pair references go Symbol atom realization",
+=======
+  label: "language_model/go_r3_external: fixture pair references go_atom_realization_symbol",
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_r3_external_claim_bool_atom(b: true),
   rhs: go_r3_external_claim_bool_atom(
     b: go_r3_external_fixture().claim_id == leaf_model_claim_go_r3_external_symbol_projection
+<<<<<<< HEAD
       && go_r3_external_fixture().surface_spelling_fact == go_atom_realization_symbol
       && go_r3_external_fixture().encoding_spelling_fact == go_atom_realization_symbol
       && go_r3_external_fixture().happy.source == go_r3_external_happy_fixture_source
       && go_r3_external_fixture().falsification.fixture.source == go_r3_external_falsification_fixture_source
+=======
+      && go_r3_external_fixture().fact_anchor == go_leaf_model_fact_atom(id: go_atom_realization_symbol)
+      && go_r3_external_fixture().happy.source == go_r3_external_happy_fixture_source
+      && go_r3_external_fixture().expected_happy_verdict == TargetCompileAccepted
+      && go_r3_external_fixture().falsification.fixture.source == go_r3_external_falsification_fixture_source
+      && go_r3_external_fixture().falsification.expected_verdict == go_r3_external_modeled_falsification_expectation
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
   ),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
 data go_r3_external_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
+<<<<<<< HEAD
   diagnostic_code: target_diagnostic_go_too_many_conversion_args
+=======
+  diagnostic_code: target_diagnostic_go_invalid_conversion_arity
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 }

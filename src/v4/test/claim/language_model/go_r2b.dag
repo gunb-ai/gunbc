@@ -1,4 +1,5 @@
 // src/v4/test/claim/language_model/go_r2b.dag
+<<<<<<< HEAD
 // Scope: Phase 1 R2b — go.dag int64 overflow wrap runtime behavior.
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-go-r2b-verify.sh.
 
@@ -15,6 +16,28 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_go_r2b_int64_overflow_wrap,
   TargetGoRuntimeAccepted
 }
+=======
+// Scope: Phase 1 R2b — go.dag typed integer overflow truncation vs go run.
+// Status: modeled claim + runtime fixture pair; host runner scripts/v4-leaf-model-go-r2b-verify.sh.
+
+module v4.test.claim.language_model.go_r2b
+
+import v4.extdeps.languages.go { go_facts_int64, go_integer_facts_node }
+import v4.lens.leaf_model_verification {
+  go_r2b_fixture,
+  go_r2b_falsification_fixture_source,
+  go_r2b_happy_fixture_source
+}
+import v4.std.leaf_model_verification {
+  leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
+  TargetRuntimeExerciseAccepted,
+  TargetRuntimeExerciseRejected,
+  TargetRuntimeExerciseVerdict,
+  target_diagnostic_go_runtime_panic
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -36,6 +59,7 @@ fn go_r2b_claim_bool_atom(b: Bool) -> Node {
 }
 
 data claim_go_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
+<<<<<<< HEAD
   label: "language_model/go_r2b: runtime fixture references go int64 algebra inhabitance",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_r2b_claim_bool_atom(b: true),
@@ -48,3 +72,22 @@ data claim_go_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
   ),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
+=======
+  label: "language_model/go_r2b: fixture pair references go_facts_int64",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: go_r2b_claim_bool_atom(b: true),
+  rhs: go_r2b_claim_bool_atom(
+    b: go_r2b_fixture().claim_id == leaf_model_claim_go_r2b_int64_silent_overflow_truncates
+      && go_r2b_fixture().fact_anchor == go_integer_facts_node(facts: go_facts_int64)
+      && go_r2b_fixture().happy.source == go_r2b_happy_fixture_source
+      && go_r2b_fixture().expected_happy_verdict == TargetRuntimeExerciseAccepted
+      && go_r2b_fixture().falsification.fixture.source == go_r2b_falsification_fixture_source
+      && go_r2b_fixture().falsification.expected_verdict == go_r2b_modeled_falsification_expectation
+  ),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data go_r2b_modeled_falsification_expectation: TargetRuntimeExerciseVerdict = TargetRuntimeExerciseRejected {
+  diagnostic_code: target_diagnostic_go_runtime_panic
+}
+>>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
