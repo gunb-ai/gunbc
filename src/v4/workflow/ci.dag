@@ -4195,13 +4195,21 @@ fn ci_runner_pool_fleet_capacities_valid() -> Bool {
 
 
 // A faithful runner-isolation floor must (a) fail closed on a re-privileged runner — both the
-// uid-0 and the passwordless-sudo regression shapes — and (b) be a required-path gate, since an
-// advisory-only guard would let a fork-PR exposure ride through on a green-with-warnings merge.
+// uid-0 and the passwordless-sudo regression shapes — (b) be a required-path gate, since an
+// advisory-only guard would let a fork-PR exposure ride through on a green-with-warnings merge, and
+// (c) carry ALL the modeled sentinel facts the comment above advertises as part of the guard: the
+// privileged-group set the job greps, the App-private-key path it must not be able to read, and the
+// docker.sock path it must not be able to access. Without (c) the receipt would pass for a policy
+// that silently drops three of the five advertised de-priv checks (P3 fail-closed: the validator
+// must be no weaker than the policy it certifies).
 fn ci_runner_isolation_policy_valid(p: RunnerIsolationPolicy) -> Bool {
   p.forbid_root_uid
     && p.forbid_passwordless_sudo
     && p.blocks_required_path
     && ci_int_positive(n: p.timeout_minutes)
+    && length(xs: p.privileged_groups) >= 1
+    && p.app_private_key_path != ""
+    && p.docker_socket_path != ""
 }
 
 
