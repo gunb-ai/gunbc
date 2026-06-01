@@ -63,12 +63,12 @@ pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> 
 pub fn descent_evidence_bounded_lattice() -> Rc<Rc<BoundedLattice<DescentEvidence>>> {
     thread_local! {
         static CACHED: Rc<Rc<BoundedLattice<DescentEvidence>>> = {
-            Rc::new(BoundedLattice {
+            Rc::new(Rc::new(BoundedLattice {
                 meet: Rc::new(descent_evidence_lattice_meet),
                 join: Rc::new(descent_evidence_lattice_join),
                 top: Box::new(DescentEvidence::Strict),
                 bottom: Box::new(DescentEvidence::DescentUnknown),
-            })
+            }))
         };
     }
     CACHED.with(|c: &Rc<Rc<BoundedLattice<DescentEvidence>>>| c.clone())
