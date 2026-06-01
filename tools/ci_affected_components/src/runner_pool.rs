@@ -31,10 +31,6 @@ pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
 
 pub const CI_SELF_HOSTED_RUNNER_POOLS: [SelfHostedRunnerPool; 2] = [CI_SRV1_POOL, CI_SRV2_POOL];
 
-/// Operator M1 probe cargo-check parallelism (`data m1_probe_cargo_check_jobs` in `ci.dag`).
-/// Static fallback applied only when the host compute governor (ctrl-build) is unavailable.
-pub const M1_PROBE_CARGO_CHECK_JOBS: u32 = 4;
-
 /// Governor ceiling handed to ctrl-build as `CTRL_BUILD_DYNAMIC_JOBS_MAX`
 /// (`data m1_probe_cargo_check_jobs_ceiling` in `ci.dag`). Actual jobs are memory-denominated
 /// at or below this; the MemAvailable term binds on a 128c/96GiB host.

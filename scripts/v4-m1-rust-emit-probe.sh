@@ -16,8 +16,9 @@
 #   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
 #   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when rustc fails
 #   V4_M1_RUSTC_TIMEOUT_SECS  — optional timeout for cargo check (CI: 600)
-#   V4_M1_CARGO_CHECK_JOBS    — parallelism cap for cargo check (default: 4; modeled
-#                               as m1_probe_cargo_check_jobs in src/v4/workflow/ci.dag)
+#   V4_M1_CARGO_CHECK_JOBS_CEILING — host-governor job ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX,
+#                               default 64; modeled as m1_probe_cargo_check_jobs_ceiling in
+#                               src/v4/workflow/ci.dag). Actual jobs are memory-denominated below it.
 
 set -euo pipefail
 
@@ -127,21 +128,11 @@ if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
   # oversubscription (each job blind to the others). The jobserver bounds the host-wide total.
   #   V4_M1_CARGO_CHECK_JOBS_CEILING (v4.workflow.ci `m1_probe_cargo_check_jobs_ceiling`) — the
   #     per-invocation ceiling handed to the governor; actual jobs land at or below it.
-  #   V4_M1_CARGO_CHECK_JOBS (`m1_probe_cargo_check_jobs`) — static fallback applied ONLY when
-  #     ctrl-build is unavailable (no governor to bound the host total).
-  cargo_check_jobs="${V4_M1_CARGO_CHECK_JOBS:-4}"
   check_cmd=()
   if [[ -n "$rustc_timeout" ]]; then
     check_cmd+=(timeout --preserve-status "$rustc_timeout")
   fi
-  if [[ -n "$ctrl_build_bin" ]]; then
-    check_cmd+=("$ctrl_build_bin" --)
-  fi
-  check_cmd+=("$cargo_bin" check --manifest-path "$out/Cargo.toml")
-  if [[ -z "$ctrl_build_bin" ]]; then
-    # Fallback only: no host governor, so apply the static safety cap directly.
-    check_cmd+=(--jobs "$cargo_check_jobs")
-  fi
+  check_cmd+=("$ctrl_build_bin" -- "$cargo_bin" check --manifest-path "$out/Cargo.toml")
   set +e
   CTRL_BUILD_DYNAMIC_JOBS_MAX="${V4_M1_CARGO_CHECK_JOBS_CEILING:-64}" \
     "${check_cmd[@]}" 2>&1 | tee "$rustc_log"
