@@ -5234,7 +5234,7 @@ data sample_pair: Pair<Int, String> = Pair {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_generic_data_annotation.rs");
     assert!(
-        content.contains("pub fn sample_pair() -> Pair<i64, String>"),
+        content.contains("pub fn sample_pair() -> Rc<Pair<i64, String>>"),
         "generic data return type should preserve applied type args, got:\n{}",
         content
     );
