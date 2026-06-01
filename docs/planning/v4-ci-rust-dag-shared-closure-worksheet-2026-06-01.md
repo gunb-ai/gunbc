@@ -93,6 +93,15 @@ P5(b)-style receipt:
 - shared-closure path: `compile_to_resolved(sources)` then `emit_resolved_for_target(..., Dag)`
 - assertion: diagnostics equal and emitted files equal byte-for-byte
 
+The paired `src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs` change is
+not a new substrate authority. It is a bounded hand-Rust binding smoke for the T-24 CI/YAML bridge:
+the modeled `src/v4/workflow/ci.dag` command/env facts must appear in `.github/workflows/ci.yml`,
+and the parity receipt command must precede bootstrap reuse. P5 receipt form: ROADMAP-row deferral
+to `src/v4/TASKS.md` T-24, whose completion gate deletes hand-authored YAML and migrates v3 string
+ratchets into `TestClaim`s over generated workflow output. Dissolution trigger: when T-24 emits the
+workflow from `ci.dag`, this Rust string-ordering smoke is deleted or replaced by the generated
+workflow/TestClaim receipt in the same lane; it must not become a permanent floor gate.
+
 ## §8 Modeling DFS Arbiter Checklist
 
 - [ ] `emit_resolved_for_target` is the only resolved→target emit authority.
@@ -100,4 +109,3 @@ P5(b)-style receipt:
 - [ ] Parity receipt passes locally and in CI.
 - [ ] Bootstrap reuse remains disabled unless the parity receipt exists.
 - [ ] CI Manager confirms #4171 waits for main strict-M1 floor readiness.
-
