@@ -764,7 +764,8 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
     );
     // Governor ceiling is the ONLY M1 parallelism constant — no static fallback. Actual jobs are
-    // memory/pids-denominated by the host governor (ctrl-build) at or below this ceiling.
+    // jobserver-coupled (inherited MAKEFLAGS on GHA / ctrl-build in session containers) and pared
+    // below this ceiling by the host token pool.
     assert!(
         CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
         "{CI_DAG_PATH}: M1 governor ceiling must be an explicit operator constant"
