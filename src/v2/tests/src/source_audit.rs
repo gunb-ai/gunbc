@@ -1056,29 +1056,24 @@ fn l1_type_knowledge_ratchet() {
     }
 
     let v3 = ws.join("src/v3");
-    let constructor_pattern = r"\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\b";
+    let constructor_pattern =
+        r"\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\b";
     let typename_pattern = r#"\.name == "(Optional|Map|List|Set|Dynamic|Error|Int|String|Bool|Float|Unit|Bytes|Json|Secret|Tuple|Callable|None|Some)""#;
-    let mut violations = 0usize;
-    for entry in walkdir::WalkDir::new(&v3)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "dag"))
-    {
-        let content = std::fs::read_to_string(entry.path())
-            .unwrap_or_else(|e| panic!("read {}: {e}", entry.path().display()));
-        violations += regex::Regex::new(constructor_pattern)
-            .expect("constructor pattern")
-            .find_iter(&content)
-            .count();
-        violations += regex::Regex::new(typename_pattern)
-            .expect("typename pattern")
-            .find_iter(&content)
-            .count();
+    for (label, pattern) in [
+        ("type constructors", constructor_pattern),
+        ("type-name comparisons", typename_pattern),
+    ] {
+        let output = std::process::Command::new("grep")
+            .args(["-rqE", "--include=*.dag", pattern])
+            .arg(&v3)
+            .output()
+            .unwrap_or_else(|e| panic!("grep L1 {label}: {e}"));
+        assert!(
+            output.status.code() == Some(1),
+            "L1 {label} ratchet: expected 0 matches under src/v3, grep stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
     }
-    assert_eq!(
-        violations, 0,
-        "L1 type knowledge ratchet: {violations} violation(s) under src/v3 (authority: dsl/gunbc/tools/ratchet.dag)"
-    );
 }
 
 #[test]
