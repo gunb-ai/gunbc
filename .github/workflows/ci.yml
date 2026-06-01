@@ -48,9 +48,10 @@ jobs:
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
-  # Affected-set host transport — retained for Wave 3 shadow receipts; not yet scheduling authority.
+  # Affected-set host transport — Wave 3 shadow only (Class C). continue-on-error: not a §11.7.1 gate.
   affected:
     if: github.event.pull_request.draft != true
+    continue-on-error: true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     outputs:
@@ -88,7 +89,6 @@ jobs:
   # §11.7.1 Class A safety floor — single job, one v2 build, two compiles (M1 rust + bootstrap dag).
   ci_floor:
     if: github.event.pull_request.draft != true
-    needs: [affected]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
@@ -157,22 +157,18 @@ jobs:
         bash scripts/check-ci-no-new-shell.sh
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [affected, ci_floor]
+    needs: [ci_floor]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
     - name: Validate prerequisites (fail-closed under skipped/failed deps)
       run: |
         set -euo pipefail
-        if [[ "${{ needs.affected.result }}" != "success" ]]; then
-          echo "::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed."
-          exit 1
-        fi
         if [[ "${{ needs.ci_floor.result }}" != "success" ]]; then
           echo "::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied"
+        echo "ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)"
     - name: ci receipt (§11.7.1 floor)
       run: |
         echo "::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell). See docs/planning/ci-required-surface-cut-2026-06-01.md"

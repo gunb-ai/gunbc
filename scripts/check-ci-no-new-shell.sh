@@ -95,6 +95,7 @@ if [[ "${1:-}" == "--self-test" ]]; then
   self_test_scan_must_fail "./scripts/" 'run: ./scripts/evil-bypass.sh'
   self_test_scan_must_fail "bash ./scripts/" 'run: bash ./scripts/evil-bypass.sh'
   self_test_scan_must_fail "bash -c scripts/" "run: bash -c 'scripts/evil-bypass.sh'"
+  self_test_scan_must_fail "bash -e scripts/" 'run: bash -e scripts/evil-bypass.sh'
   echo "check-ci-no-new-shell: self-test ok"
   exit 0
 fi

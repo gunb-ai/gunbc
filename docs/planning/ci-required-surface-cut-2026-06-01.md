@@ -18,8 +18,17 @@ Reduced required confidence is explicit. This is triage, not a modeling victory.
 | 4 | `ci.dag` structural receipt + `CiUpsertStep` schema | `ci_floor` → `v4_workflow_ci_*` integration prefix filters | Modeled-positive-Y via parse harness |
 | 5 | no-new-shell ratchet | `ci_floor` → `check-ci-no-new-shell.sh` | Allowlist of shell scripts on required path |
 
-**Branch-protection check names:** `fmt`, `ci` (aggregator over `affected` + `ci_floor`).  
+**Branch-protection check names:** `fmt`, `ci` (aggregator over `ci_floor` only — **not** `affected`).  
 **Cold PR target:** ≤10min wall (was ~30–75min pre-cut).
+
+### P5(b) receipt — `v4_workflow_ci_wave1_*` integration harness (this PR)
+
+| Field | Value |
+|-------|--------|
+| **Deleted scaffold** | None — net **shrink** of required CI surface; new assertions bind existing `ci.dag` ↔ `ci.yml` for Wave 1 cut only |
+| **SG-0 hand-Rust delta** | `0` (no new `src/v3/compiler/src/**` product code; two prefix-filter tests in existing `v4_workflow_ci_runner_dag_smoke_test.rs` integration harness) |
+| **ROADMAP / charter row** | `#4137` §11.7.7 Wave 1 deliverable — honesty ledger + five-gate floor |
+| **Deferral / dissolution** | `v4_workflow_ci_wave1_*` + updated `bankruptcy_tier0_*` YAML assertions dissolve when A15 Shape-B emits `ci.yml` from `ci_pipeline` (same posture as file header on smoke test) |
 
 **Four-compile collapse (Wave 1):** Removed duplicate compiles from retired `ci_v4` path (Lens-CI semantic compile, MVP-1, T-15 harness, T-22 corpus eval, phase1 rung gate). Required path now runs **one** v2 `gunbc` build + **two** full-tree compiles (M1 `--target rust`, bootstrap `--target dag`) — not four.
 
@@ -49,6 +58,7 @@ Reduced required confidence is explicit. This is triage, not a modeling victory.
 | T-22 TestClaim corpus eval (`v4-testclaim-corpus-eval.sh`) | Modeled in `ci.dag`; **not** on required path; duplicates M1 signal per §11.7.1 |
 | T-15 self-host harness in CI | Modeled `V4T15SelfHostFixedPointCommand`; scheduled/main-push only when re-enabled |
 | Gate #103 path-regex + affected-set integration tests in CI | Stay in crate; run locally / Wave 3 shadow |
+| `affected` job (`detect-ci-affected-components`) | Runs with `continue-on-error: true`; **not** in `ci`/`ci_floor` `needs:` — Wave 3 shadow receipts only per §11.7.2 |
 
 ---
 
