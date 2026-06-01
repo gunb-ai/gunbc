@@ -91,7 +91,7 @@ fn python_l1_static_expected_verdicts_wired() -> Bool {
 }
 
 data claim_python_l1_static_expected_verdicts_wired: TestClaim = EqualsClaim {
-  label: "language_model/python_l1_static: happy=Accepted, falsification=Rejected{pyright,reportReturnType}",
+  label: "language_model/python_l1_static: happy=Accepted, falsification=Rejected(pyright, reportReturnType)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_expected_verdicts_wired()),
   rhs: python_l1_static_claim_bool_atom(b: true),
