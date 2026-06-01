@@ -320,7 +320,7 @@ type Wrapper<S> {
   inner: Boxed<S>
 }
 
-fn use_wrap<S>(w: Wrapper<S>) -> Wrapper<S> {
+fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
   w
 }
 ";
@@ -330,7 +330,7 @@ fn use_wrap<S>(w: Wrapper<S>) -> Wrapper<S> {
     assert!(
         content
             .contains("fn use_wrap<S>(w: Rc<Wrapper<Rc<Boxed<S>>>>) -> Rc<Wrapper<Rc<Boxed<S>>>>"),
-        "nested applied generic args must render through decl-type path; got:\n{content}"
+        "nested applied generic args (Wrapper<Boxed<S>>) must render through decl-type path; got:\n{content}"
     );
 }
 
