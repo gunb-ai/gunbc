@@ -1028,58 +1028,32 @@ fn parse_item_keyword_arm_count() {
 
 #[test]
 fn l1_type_knowledge_ratchet() {
-    // Authority: dsl/gunbc/tools/ratchet.dag (replaces deleted scripts/l1-ratchet.sh).
-    // Prefer `gunbc run --source-root dsl --function run_l1_ratchet` when the binary exists;
-    // otherwise run the same grep corpus inline so v2 tests stay hermetic in partial builds.
+    // Sole authority: dsl/gunbc/tools/ratchet.dag (`run_l1_ratchet`). No parallel grep ledger.
     let ws = crate::helpers::workspace_root();
     let gunbc = ws.join("target/release/gunbc");
-    if gunbc.is_file() {
-        let output = std::process::Command::new(&gunbc)
-            .args([
-                "run",
-                "--source-root",
-                "dsl",
-                "--function",
-                "run_l1_ratchet",
-            ])
-            .current_dir(&ws)
-            .output()
-            .expect("failed to run gunbc L1 ratchet entrypoint");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("{stdout}");
-        assert!(
-            output.status.success(),
-            "gunbc run run_l1_ratchet failed:\n{stdout}\n{stderr}"
-        );
-        return;
-    }
-
-    let v3 = ws.join("src/v3");
-    let constructor_pattern = r"\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\b";
-    let typename_pattern = r#"\.name == "(Optional|Map|List|Set|Dynamic|Error|Int|String|Bool|Float|Unit|Bytes|Json|Secret|Tuple|Callable|None|Some)""#;
-    for (label, pattern) in [
-        ("type constructors", constructor_pattern),
-        ("type-name comparisons", typename_pattern),
-    ] {
-        let output = std::process::Command::new("grep")
-            .args(["-rqE", "--include=*.dag", pattern])
-            .arg(&v3)
-            .output()
-            .unwrap_or_else(|e| panic!("grep L1 {label}: {e}"));
-        match output.status.code() {
-            Some(1) => {}
-            Some(0) => panic!(
-                "L1 {label} ratchet: found matches under src/v3:\n{}",
-                String::from_utf8_lossy(&output.stdout)
-            ),
-            code => panic!(
-                "L1 {label} ratchet: grep failed (exit {code:?}):\n{}\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            ),
-        }
-    }
+    assert!(
+        gunbc.is_file(),
+        "L1 ratchet requires {gunbc:?}; build with `cargo build -p v2-compiler --release` \
+         (patterns live only in dsl/gunbc/tools/ratchet.dag)"
+    );
+    let output = std::process::Command::new(&gunbc)
+        .args([
+            "run",
+            "--source-root",
+            "dsl",
+            "--function",
+            "run_l1_ratchet",
+        ])
+        .current_dir(&ws)
+        .output()
+        .expect("failed to run gunbc L1 ratchet entrypoint");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("{stdout}");
+    assert!(
+        output.status.success(),
+        "gunbc run run_l1_ratchet failed:\n{stdout}\n{stderr}"
+    );
 }
 
 #[test]
