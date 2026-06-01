@@ -47,6 +47,10 @@ const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const SG_RC_LAYERING_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/sg_rc_layering.dag");
 const SG_RC_LAYERING_CLAIM_PATH: &str = "src/v4/test/claim/manual/sg_rc_layering.dag";
+const SG_COLLECTION_PROJECTION_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/sg_collection_projection.dag");
+const SG_COLLECTION_PROJECTION_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/sg_collection_projection.dag";
 const BOUNDED_LATTICE_COMPLETENESS_DAG: &str =
     include_str!("../../../../v4/std/bounded_lattice_completeness.dag");
 const BOUNDED_LATTICE_COMPLETENESS_PATH: &str = "src/v4/std/bounded_lattice_completeness.dag";
@@ -511,6 +515,10 @@ fn v4_rust_language_model_declares_type_expression_projection_row() {
         RUST_LANGUAGE_DAG.contains("fn rust_sg2_rc_foobar_xy_emitted()"),
         "{RUST_LANGUAGE_PATH}: golden Rc<FooBar<X,Y>> emitted node for falsification probe"
     );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("target_model_edge_free_monoid_collection_realization"),
+        "{RUST_LANGUAGE_PATH}: Rust SG-2 target model must expose FreeMonoid collection row"
+    );
 }
 
 // P5 receipt: same-path smoke expansion (SG-5 collection-bounded-lattice worksheet §6).
@@ -526,6 +534,14 @@ fn v4_std_target_model_declares_target_collection_realization_carrier() {
     assert!(
         surface_declares_type(&module, "TargetCollectionReprKind"),
         "{TARGET_MODEL_PATH}: representation kind must be a coproduct (M6)"
+    );
+    assert!(
+        TARGET_MODEL_DAG.contains("TargetCollectionReprVec"),
+        "{TARGET_MODEL_PATH}: FreeMonoid sequence rows must have a Vec representation kind"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_collection_type_node_is_free_monoid_carrier"),
+        "{TARGET_MODEL_PATH}: FreeMonoid carrier recognition must be substrate-owned"
     );
     assert!(
         surface_declares_type(&module, "RequiredTraitWitness"),
@@ -553,8 +569,28 @@ fn v4_translate_dag_imports_collection_realization_consumer() {
         "{TRANSLATE_PATH}: Set carrier projection must consume TargetCollectionRealization rows"
     );
     assert!(
+        surface_declares_fn(&module, "project_free_monoid_collection_type_node"),
+        "{TRANSLATE_PATH}: FreeMonoid carrier projection must consume TargetCollectionRealization rows"
+    );
+    assert!(
         surface_declares_fn(&module, "collection_realization_from_target"),
         "{TRANSLATE_PATH}: collection rows must decode from TargetModel bundle"
+    );
+}
+
+#[test]
+fn v4_sg_collection_projection_claim_declares_vec_rc_receipt() {
+    let module = parse_module(
+        SG_COLLECTION_PROJECTION_CLAIM_DAG,
+        SG_COLLECTION_PROJECTION_CLAIM_PATH,
+    );
+    assert!(
+        surface_declares_data(&module, "claim_sg_collection_free_monoid_vec_rc_projection"),
+        "{SG_COLLECTION_PROJECTION_CLAIM_PATH}: FreeMonoid<T> -> Vec<Rc<T>> claim must be authored"
+    );
+    assert!(
+        SG_COLLECTION_PROJECTION_CLAIM_DAG.contains("Vec<Rc<Node>>"),
+        "{SG_COLLECTION_PROJECTION_CLAIM_PATH}: claim must pin the Rust Vec<Rc<T>> boundary"
     );
 }
 

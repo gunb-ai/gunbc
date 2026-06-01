@@ -1832,21 +1832,30 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
       map_insert(
         map_insert(
           map_insert(
-            map_insert(empty_map(), rust_binding_fn_add, "add"),
-            rust_binding_param_x,
-            "x"
+            map_insert(
+              map_insert(
+                map_insert(
+                  map_insert(empty_map(), rust_binding_fn_add, "add"),
+                  rust_binding_param_x,
+                  "x"
+                ),
+                rust_binding_param_y,
+                "y"
+              ),
+              rust_collection_surface_btree_set,
+              "std::collections::BTreeSet"
+            ),
+            rust_collection_surface_hash_set,
+            "std::collections::HashSet"
           ),
-          rust_binding_param_y,
-          "y"
+          rust_collection_surface_vec,
+          "Vec"
         ),
-        rust_collection_surface_btree_set,
-        "std::collections::BTreeSet"
+        target_collection_set_carrier,
+        "Set"
       ),
-      rust_collection_surface_hash_set,
-      "std::collections::HashSet"
-    ),
-    target_collection_set_carrier,
-    "Set"
+    target_collection_free_monoid_carrier,
+    "FreeMonoid"
   )
 }
 
@@ -1954,6 +1963,10 @@ fn rust_mvp1_target_model_node() -> Node {
       rust_named_edge(
         name: target_model_edge_collection_realization,
         target: rust_set_collection_realization_bundle_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_free_monoid_collection_realization,
+        target: rust_free_monoid_collection_realization_bundle_node()
       ),
       rust_named_edge(
         name: target_model_edge_atom_realizations,
@@ -3544,61 +3557,62 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
                                 map_insert(
                                   map_insert(
                                     map_insert(
-                                      map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
-                                      rust_binding_sg2_x,
-                                      "X"
+                                      map_insert(
+                                        map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
+                                        rust_binding_sg2_x,
+                                        "X"
+                                      ),
+                                      rust_binding_sg2_y,
+                                      "Y"
                                     ),
-                                    rust_binding_sg2_y,
-                                    "Y"
+                                    rust_binding_sg2_rc,
+                                    "Rc"
                                   ),
-                                  rust_binding_sg2_rc,
-                                  "Rc"
+                                  rust_binding_sg_rc_box,
+                                  "Box"
                                 ),
-                                rust_binding_sg_rc_box,
-                                "Box"
+                                target_carrier_diagnostics,
+                                "Diagnostics"
                               ),
-                              target_carrier_diagnostics,
-                              "Diagnostics"
+                              target_carrier_node,
+                              "Node"
                             ),
-                            target_carrier_node,
-                            "Node"
+                            target_carrier_test_claim,
+                            "TestClaim"
                           ),
-                          target_carrier_test_claim,
-                          "TestClaim"
+                          target_carrier_free_monoid,
+                          "FreeMonoid"
                         ),
-                        target_carrier_free_monoid,
-                        "FreeMonoid"
+                        target_carrier_outcome,
+                        "Outcome"
                       ),
-                      target_carrier_outcome,
-                      "Outcome"
+                      target_carrier_model_core,
+                      "ModelCore"
                     ),
-                    target_carrier_model_core,
-                    "ModelCore"
+                    target_carrier_algebra_inhabitance_decl,
+                    "AlgebraInhabitanceDecl"
                   ),
-                  target_carrier_algebra_inhabitance_decl,
-                  "AlgebraInhabitanceDecl"
+                  target_carrier_probe_heap,
+                  "ProbeHeap"
                 ),
-                target_carrier_probe_heap,
-                "ProbeHeap"
+                rust_collection_surface_btree_set,
+                "std::collections::BTreeSet"
               ),
-              rust_collection_surface_btree_set,
-              "std::collections::BTreeSet"
+              rust_collection_surface_hash_set,
+              "std::collections::HashSet"
             ),
-            rust_collection_surface_hash_set,
-            "std::collections::HashSet"
+            rust_collection_surface_vec,
+            "Vec"
           ),
-          rust_collection_surface_vec,
-          "Vec"
-        ),
           target_collection_set_carrier,
           "Set"
         ),
         target_collection_free_monoid_carrier,
         "FreeMonoid"
       ),
-        rust_target_atom_type_spelling_string,
-        "String"
-      ),
+      rust_target_atom_type_spelling_string,
+      "String"
+    ),
       rust_sg_rc_ctor_rc_new,
       "Rc::new"
     ),
@@ -3656,6 +3670,10 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
       rust_named_edge(
         name: target_model_edge_collection_realization,
         target: rust_set_collection_realization_bundle_node()
+      ),
+      rust_named_edge(
+        name: target_model_edge_free_monoid_collection_realization,
+        target: rust_free_monoid_collection_realization_bundle_node()
       ),
       rust_named_edge(
         name: target_model_edge_reference_layer_tokens,
