@@ -7,7 +7,8 @@
 
 use emit_host_runner::{
     host_logical_run_from_exit, run_emit_host_go, run_emit_host_python, run_emit_host_rust,
-    EmitHostFixtureInputs, EmitHostRunReceipt, HostExit, RuntimeValueParseFailure,
+    EmitHostFixtureInputs, EmitHostRunReceipt, HostExit, HostSetupFailure,
+    RuntimeValueParseFailure,
 };
 
 /// MVP-2 / `eval_runtime_mvp` alignment: five stdout bytes denote runtime value `5`.
@@ -28,6 +29,30 @@ pub enum EmitHostEmitVsEvalVerdict {
     },
     FailHostExit {
         host_receipt: EmitHostRunReceipt,
+    },
+}
+
+/// Release-minimum L2 parity verdict for Rust/Python/Go over one runtime-value fixture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EmitHostCrossTargetParityVerdict {
+    Pass,
+    FailSetup {
+        target: &'static str,
+        setup: HostSetupFailure,
+    },
+    FailHostExit {
+        target: &'static str,
+        host_receipt: EmitHostRunReceipt,
+    },
+    FailParse {
+        target: &'static str,
+        host_receipt: EmitHostRunReceipt,
+        parse: RuntimeValueParseFailure,
+    },
+    FailBehaviorMismatch {
+        rust_stdout: Vec<u8>,
+        python_stdout: Vec<u8>,
+        go_stdout: Vec<u8>,
     },
 }
 
@@ -152,6 +177,110 @@ pub fn run_emit_vs_eval_mvp2_go_transport(
     ))
 }
 
+fn cross_target_stdout_bytes(
+    target: &'static str,
+    receipt: EmitHostRunReceipt,
+    parse_stdout: fn(&[u8]) -> Result<(), RuntimeValueParseFailure>,
+) -> Result<Vec<u8>, EmitHostCrossTargetParityVerdict> {
+    if !host_exit_holds(&receipt.exit) {
+        return Err(EmitHostCrossTargetParityVerdict::FailHostExit {
+            target,
+            host_receipt: receipt,
+        });
+    }
+    let stdout = match host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()) {
+        Some(bytes) => bytes,
+        None => {
+            return Err(EmitHostCrossTargetParityVerdict::FailHostExit {
+                target,
+                host_receipt: receipt,
+            });
+        }
+    };
+    if let Err(parse) = parse_stdout(&stdout) {
+        return Err(EmitHostCrossTargetParityVerdict::FailParse {
+            target,
+            host_receipt: receipt,
+            parse,
+        });
+    }
+    Ok(stdout)
+}
+
+/// L2 cross-target behavioral parity: Rust, Python, and Go must all execute, parse into the
+/// same MVP-2 runtime-value carrier, and agree on observed stdout for the same fixture subject.
+pub fn run_cross_target_mvp2_python_parity_transport(
+    rust_source: &str,
+    python_source: &str,
+    go_source: &str,
+    inputs: &EmitHostFixtureInputs,
+    rust_work_dir: &std::path::Path,
+    python_work_dir: &std::path::Path,
+    go_work_dir: &std::path::Path,
+) -> EmitHostCrossTargetParityVerdict {
+    let rust_receipt = match run_emit_host_rust_transport(rust_source, inputs, rust_work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => {
+            return EmitHostCrossTargetParityVerdict::FailSetup {
+                target: "rust",
+                setup,
+            };
+        }
+    };
+    let python_receipt = match run_emit_host_python_transport(python_source, inputs, python_work_dir)
+    {
+        Ok(receipt) => receipt,
+        Err(setup) => {
+            return EmitHostCrossTargetParityVerdict::FailSetup {
+                target: "python",
+                setup,
+            };
+        }
+    };
+    let go_receipt = match run_emit_host_go_transport(go_source, inputs, go_work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => {
+            return EmitHostCrossTargetParityVerdict::FailSetup {
+                target: "go",
+                setup,
+            };
+        }
+    };
+
+    let rust_stdout = match cross_target_stdout_bytes(
+        "rust",
+        rust_receipt,
+        emit_host_runner::runtime_value_parse_rust,
+    ) {
+        Ok(stdout) => stdout,
+        Err(verdict) => return verdict,
+    };
+    let python_stdout = match cross_target_stdout_bytes(
+        "python",
+        python_receipt,
+        emit_host_runner::runtime_value_parse_python,
+    ) {
+        Ok(stdout) => stdout,
+        Err(verdict) => return verdict,
+    };
+    let go_stdout =
+        match cross_target_stdout_bytes("go", go_receipt, emit_host_runner::runtime_value_parse_go)
+        {
+            Ok(stdout) => stdout,
+            Err(verdict) => return verdict,
+        };
+
+    if rust_stdout == python_stdout && rust_stdout == go_stdout {
+        EmitHostCrossTargetParityVerdict::Pass
+    } else {
+        EmitHostCrossTargetParityVerdict::FailBehaviorMismatch {
+            rust_stdout,
+            python_stdout,
+            go_stdout,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +367,11 @@ mod tests {
     }
 
     const PYTHON_FIXTURE_SOURCE_PASS: &str = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
+    const PYTHON_FIXTURE_SOURCE_MISMATCH: &str =
+        "import sys\nsys.stdout.buffer.write(bytes([1, 2, 3, 4, 5]))\n";
+    const PYTHON_FIXTURE_SOURCE_PARSE_FAIL: &str =
+        "import sys\nsys.stdout.buffer.write(b'\\x00' * 3)\n";
+    const PYTHON_FIXTURE_SOURCE_HOST_EXIT_FAIL: &str = "raise RuntimeError('fixture failure')\n";
 
     #[test]
     fn bridge_python_transport_builds_runs_and_parses_stdout() {
@@ -297,5 +431,88 @@ mod tests {
         )
         .expect("transport setup");
         assert_eq!(verdict, EmitHostEmitVsEvalVerdict::Pass);
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_passes_when_three_targets_match() {
+        let pid = std::process::id();
+        let verdict = run_cross_target_mvp2_python_parity_transport(
+            FIXTURE_SOURCE_PASS,
+            PYTHON_FIXTURE_SOURCE_PASS,
+            GO_FIXTURE_SOURCE_PASS,
+            &mvp2_inputs(),
+            &default_work_dir(&format!("gunbc_xct_bridge_rust_pass_{pid}")),
+            &default_work_dir(&format!("gunbc_xct_bridge_py_pass_{pid}")),
+            &default_work_dir(&format!("gunbc_xct_bridge_go_pass_{pid}")),
+        );
+        assert_eq!(verdict, EmitHostCrossTargetParityVerdict::Pass);
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_reports_python_behavior_mismatch() {
+        let pid = std::process::id();
+        let verdict = run_cross_target_mvp2_python_parity_transport(
+            FIXTURE_SOURCE_PASS,
+            PYTHON_FIXTURE_SOURCE_MISMATCH,
+            GO_FIXTURE_SOURCE_PASS,
+            &mvp2_inputs(),
+            &default_work_dir(&format!("gunbc_xct_bridge_rust_mismatch_{pid}")),
+            &default_work_dir(&format!("gunbc_xct_bridge_py_mismatch_{pid}")),
+            &default_work_dir(&format!("gunbc_xct_bridge_go_mismatch_{pid}")),
+        );
+        match verdict {
+            EmitHostCrossTargetParityVerdict::FailBehaviorMismatch {
+                rust_stdout,
+                python_stdout,
+                go_stdout,
+            } => {
+                assert_eq!(rust_stdout, MVP2_RUNTIME_VALUE_FIVE_BYTES);
+                assert_eq!(python_stdout, [1, 2, 3, 4, 5]);
+                assert_eq!(go_stdout, MVP2_RUNTIME_VALUE_FIVE_BYTES);
+            }
+            other => panic!("expected Python behavior mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_reports_python_parse_failure_before_equality() {
+        let pid = std::process::id();
+        let verdict = run_cross_target_mvp2_python_parity_transport(
+            FIXTURE_SOURCE_PASS,
+            PYTHON_FIXTURE_SOURCE_PARSE_FAIL,
+            GO_FIXTURE_SOURCE_PASS,
+            &mvp2_inputs(),
+            &default_work_dir(&format!("gunbc_xct_bridge_rust_parse_{pid}")),
+            &default_work_dir(&format!("gunbc_xct_bridge_py_parse_{pid}")),
+            &default_work_dir(&format!("gunbc_xct_bridge_go_parse_{pid}")),
+        );
+        assert!(matches!(
+            verdict,
+            EmitHostCrossTargetParityVerdict::FailParse {
+                target: "python",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_reports_python_host_exit_failure() {
+        let pid = std::process::id();
+        let verdict = run_cross_target_mvp2_python_parity_transport(
+            FIXTURE_SOURCE_PASS,
+            PYTHON_FIXTURE_SOURCE_HOST_EXIT_FAIL,
+            GO_FIXTURE_SOURCE_PASS,
+            &mvp2_inputs(),
+            &default_work_dir(&format!("gunbc_xct_bridge_rust_exit_{pid}")),
+            &default_work_dir(&format!("gunbc_xct_bridge_py_exit_{pid}")),
+            &default_work_dir(&format!("gunbc_xct_bridge_go_exit_{pid}")),
+        );
+        assert!(matches!(
+            verdict,
+            EmitHostCrossTargetParityVerdict::FailHostExit {
+                target: "python",
+                ..
+            }
+        ));
     }
 }
