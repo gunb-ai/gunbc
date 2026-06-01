@@ -57,7 +57,6 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  connective_edges_conform,
   fold_node,
   well_formed
 }
@@ -132,6 +131,7 @@ import v4.std.target_model {
   target_type_expr_arrow_emitted_named,
   target_type_expr_arrow_labeled_codomain,
   target_type_expr_arrow_labeled_param_slots,
+  target_type_expr_arrow_domain_is_named_param_conj,
   target_type_expr_arrow_param_unlabeled,
   target_type_expr_arrow_wire_shape,
   TargetTypeExprArrowLabeledWire,
@@ -3152,18 +3152,6 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
   )
 }
 
-fn project_type_expression_arrow_domain_is_named_conj(domain: Node) -> Bool {
-  match domain.kind {
-    TypeNode { connective: Conj } =>
-      if is_empty(xs: domain.children) {
-        false
-      } else {
-        connective_edges_conform(children: domain.children, c: Conj)
-      }
-    _ => false
-  }
-}
-
 fn project_type_expression_arrow_emitted_from_original_split(
   original_split: TypeExprArrowSplit,
   anchor: Node,
@@ -3174,7 +3162,7 @@ fn project_type_expression_arrow_emitted_from_original_split(
     bind_outcome(
       o: list_head_and_tail(xs: original_split.inputs, node: anchor),
       f: fn(head_tail) {
-        if project_type_expression_arrow_domain_is_named_conj(domain: head_tail.head) {
+        if target_type_expr_arrow_domain_is_named_param_conj(domain: head_tail.head) {
           bind_outcome(
             o: project_type_expression_arrow_param_slots(
               remaining: node_subtree_count(n: head_tail.head),

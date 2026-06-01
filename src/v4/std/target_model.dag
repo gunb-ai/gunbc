@@ -51,6 +51,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
+  connective_edges_conform,
   content_hash
 }
 import v4.std.node_query { find_named_child, node_positional_child_targets }
@@ -1486,6 +1487,19 @@ fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowW
     } else {
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
     }
+  }
+}
+
+// SG-2 — arrow source domain carries Named param slots (non-empty Conj with LabeledEdges discipline).
+fn target_type_expr_arrow_domain_is_named_param_conj(domain: Node) -> Bool {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      if is_empty(xs: domain.children) {
+        false
+      } else {
+        connective_edges_conform(children: domain.children, c: Conj)
+      }
+    _ => false
   }
 }
 
