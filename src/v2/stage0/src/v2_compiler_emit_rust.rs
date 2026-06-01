@@ -16507,25 +16507,10 @@ pub fn emit_data_def(
             }
         };
         let raw_ty_str = render_rust_type_with_applied_binding(
-            render_type_node.clone(),
+            render_type_node,
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
-        if name.contains("run_phase1_nat_semiring_rung6_rust_add_left_identity")
-            || name.contains("nat_semiring_rung6_additive_monoid_runtime_value_rows")
-        {
-            eprintln!(
-                "DBG2 name={} raw={} type_children={} type_props={} render_children={} render_props={} type_applied={} render_applied={}",
-                name,
-                raw_ty_str,
-                type_node.children.len(),
-                type_node.properties.len(),
-                render_type_node.children.len(),
-                render_type_node.properties.len(),
-                find_property(type_node.properties.clone(), "__applied_type_args".to_string(), scope.type_env.clone().source_indices.clone()).is_some(),
-                find_property(render_type_node.properties.clone(), "__applied_type_args".to_string(), scope.type_env.clone().source_indices.clone()).is_some()
-            );
-        }
         let ty_str = if ((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
             || (raw_ty_str.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
         {
