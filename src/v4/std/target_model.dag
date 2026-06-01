@@ -2410,7 +2410,7 @@ type TargetUseSiteOwnershipLookup
   | TargetUseSiteOwnershipUnique { row: TargetUseSiteOwnershipRealization }
   | TargetUseSiteOwnershipAmbiguous
 
-fn target_use_site_ownership_source_key(source_carrier: Node) -> Node {
+fn target_use_site_ownership_outcome_source_key(source_carrier: Node) -> Node {
   match source_carrier.kind {
     TypeNode { connective: Instantiation } =>
       match list_at_optional(xs: node_positional_child_targets(node: source_carrier), index: 0) {
@@ -2428,7 +2428,12 @@ fn target_use_site_ownership_lookup_step(
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> TargetUseSiteOwnershipLookup {
-  let source_key = target_use_site_ownership_source_key(source_carrier: source_carrier)
+  let source_key =
+    if content_hash(n: row.source_carrier) == content_hash(n: target_carrier_outcome_node()) {
+      target_use_site_ownership_outcome_source_key(source_carrier: source_carrier)
+    } else {
+      source_carrier
+    }
   if content_hash(n: row.source_carrier) == content_hash(n: source_key)
     && row.use_site == use_site
   {
