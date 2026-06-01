@@ -1344,9 +1344,11 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "witness_manual_corpus_gate_closed",
         "corpus_report_tally(report);",
         "fail_deferred_conjunction",
-        "tally\\.fail={2}[^&|;=!]*(?:Nat::)?[Zz]ero\\b",
+        "tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
+        "[^&|;=]*&&",
         "&&",
-        "tally\\.deferred={2}[^&|;=!]*(?:Nat::)?[Zz]ero\\b",
+        "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
+        "[^&|;=]*(?:;|\\})",
         "inline_empty_gate",
         "if(?<!!)is_empty\\([^)]*report[^)]*entries",
         "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
@@ -1357,4 +1359,42 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
             "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: missing generated corpus-eval receipt probe `{needle}`"
         );
     }
+}
+
+#[test]
+fn v4_workflow_ci_t38_script_receipt_rejects_inverted_zero_predicates() {
+    let output = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(
+            r#"
+import re
+
+fail_deferred_conjunction = re.compile(
+    r"tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
+    r"[^&|;]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
+)
+
+assert fail_deferred_conjunction.search(
+    "tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}"
+)
+assert not fail_deferred_conjunction.search(
+    "(tally.fail==Zero)==false&&tally.deferred==Zero}"
+)
+assert not fail_deferred_conjunction.search(
+    "tally.fail==Zero&&(tally.deferred==Zero)==false}"
+)
+assert not fail_deferred_conjunction.search(
+    "tally.fail==NotZero&&tally.deferred==NotZero}"
+)
+"#,
+        )
+        .output()
+        .expect("python3 should run T-38 receipt regex regression");
+
+    assert!(
+        output.status.success(),
+        "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: generated corpus-eval receipt regex accepted an inverted zero predicate\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
