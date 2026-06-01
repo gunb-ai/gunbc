@@ -12,7 +12,8 @@
 const FIXTURE_DAG: &str = include_str!("../../../../v4/lens/leaf_model_verification.dag");
 const PYRIGHT_DAG: &str = include_str!("../../../../v4/extdeps/typecheckers/pyright.dag");
 const MYPY_DAG: &str = include_str!("../../../../v4/extdeps/typecheckers/mypy.dag");
-const CLAIM_DAG: &str = include_str!("../../../../v4/test/claim/language_model/python_l1_static.dag");
+const CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/language_model/python_l1_static.dag");
 const WORKSHEET: &str =
     include_str!("../../../../../docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md");
 
