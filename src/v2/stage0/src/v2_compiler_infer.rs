@@ -8951,8 +8951,10 @@ pub fn arm_ctx_from_find_named_child(
                     if vname != "Accepted".to_string() {
                         return None;
                     }
-                    let call_args =
-                        call_args_by_name(scrut.clone(), ctx.type_env.clone().source_indices.clone());
+                    let call_args = call_args_by_name(
+                        scrut.clone(),
+                        ctx.type_env.clone().source_indices.clone(),
+                    );
                     match v2_rt::map_get(&call_args, "root".to_string()) {
                         Some(root_arg) => {
                             let root_rel =
@@ -8963,19 +8965,24 @@ pub fn arm_ctx_from_find_named_child(
                                         root_arg.clone(),
                                         ctx.type_env.clone().source_indices.clone(),
                                     );
-                                    match v2_rt::map_get(&ctx.param_names.clone(), root_name.clone()) {
+                                    match v2_rt::map_get(
+                                        &ctx.param_names.clone(),
+                                        root_name.clone(),
+                                    ) {
                                         Some(t) => t.clone(),
                                         None => match v2_rt::map_get(
                                             &ctx.sub_value_vars.clone(),
                                             root_name.clone(),
                                         ) {
                                             Some(rel) => match (*rel.clone()).clone() {
-                                                SubValueRelation::StrictSubValue { field: f, .. } => {
-                                                    f.element_type.clone()
-                                                }
-                                                SubValueRelation::IteratedSubValue { field: f, .. } => {
-                                                    f.element_type.clone()
-                                                }
+                                                SubValueRelation::StrictSubValue {
+                                                    field: f,
+                                                    ..
+                                                } => f.element_type.clone(),
+                                                SubValueRelation::IteratedSubValue {
+                                                    field: f,
+                                                    ..
+                                                } => f.element_type.clone(),
                                                 _ => "".to_string(),
                                             },
                                             None => "".to_string(),
@@ -9004,11 +9011,14 @@ pub fn arm_ctx_from_find_named_child(
                                                 fb.clone(),
                                                 ctx.type_env.clone().source_indices.clone(),
                                             );
-                                            let bind_name =
-                                                match (*field_binding_pattern(fb.clone())).clone() {
-                                                    MatchPattern::Bind { name: bn, .. } => bn.clone(),
-                                                    _ => "".to_string(),
-                                                };
+                                            let bind_name = match (*field_binding_pattern(
+                                                fb.clone(),
+                                            ))
+                                            .clone()
+                                            {
+                                                MatchPattern::Bind { name: bn, .. } => bn.clone(),
+                                                _ => "".to_string(),
+                                            };
                                             if field_label == "value".to_string()
                                                 && bind_name != "".to_string()
                                             {
