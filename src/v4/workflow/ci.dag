@@ -2616,8 +2616,20 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     path == "Cargo.lock"
   } else if segment == "scripts/v4-m1*" {
     ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-m1")
+  } else if segment == "scripts/v4-leaf-model-go-*-verify.sh" {
+    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-leaf-model-go-")
   } else if segment == "scripts/v4-phase1-nat-semiring*" {
     ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-phase1-nat-semiring")
+  } else if segment == "src/v4/extdeps/languages/go.dag" {
+    path == "src/v4/extdeps/languages/go.dag"
+  } else if segment == "src/v4/lens/leaf_model_verification.dag" {
+    path == "src/v4/lens/leaf_model_verification.dag"
+  } else if segment == "src/v4/std/leaf_model_verification.dag" {
+    path == "src/v4/std/leaf_model_verification.dag"
+  } else if segment == "src/v4/test/claim/language_model/go_*.dag" {
+    ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/language_model/go_")
+  } else if segment == "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs" {
+    path == "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"
   } else if segment == "src/v4/test/claim/manual/**" {
     ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/manual/")
   } else if segment == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag" {
@@ -3910,6 +3922,15 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
       ci_job_component_mask_row(
         v2: false,
         v3: false,
+        v4: true,
+        testclaim_corpus: true,
+        workflow_policy: true,
+        release_distribution: true
+      )
+    LeafModelGoVerifyCommand =>
+      ci_job_component_mask_row(
+        v2: false,
+        v3: true,
         v4: true,
         testclaim_corpus: true,
         workflow_policy: true,
