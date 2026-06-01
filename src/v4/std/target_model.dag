@@ -45,6 +45,7 @@ import v4.std.node {
   Atom,
   Conj,
   Edge,
+  EdgeLabel,
   Instantiation,
   Named,
   Node,
@@ -221,6 +222,7 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
   }
 }
 
+<<<<<<< HEAD
 // 🟡 coproduct dissolution — local fold state for fail-closed encoded FreeMonoid<Char>
 // projection; dissolve-on: std.algebra exports the canonical string/free-monoid projection
 // named by the `free-monoid-node-projection` receipt below.
@@ -290,16 +292,149 @@ fn source_atom_string_projection_fold_step(
           }
         _ => SourceAtomStringFoldInvalid
       }
+=======
+type SourceAtomStringProjection {
+  is_conj: Bool
+  is_char: Bool
+  is_string: Bool
+  head_count: Int
+  tail_count: Int
+  head_ok: Bool
+  tail_ok: Bool
+  unexpected_edge_count: Int
+}
+
+fn source_atom_string_projection_state(
+  is_conj: Bool,
+  is_char: Bool,
+  is_empty: Bool,
+  head_count: Int,
+  tail_count: Int,
+  head_ok: Bool,
+  tail_ok: Bool,
+  unexpected_edge_count: Int
+) -> SourceAtomStringProjection {
+  SourceAtomStringProjection {
+    is_conj: is_conj,
+    is_char: is_char,
+    is_string: is_empty || (
+      is_conj &&
+      head_count == 1 &&
+      tail_count == 1 &&
+      head_ok &&
+      tail_ok &&
+      unexpected_edge_count == 0
+    ),
+    head_count: head_count,
+    tail_count: tail_count,
+    head_ok: head_ok,
+    tail_ok: tail_ok,
+    unexpected_edge_count: unexpected_edge_count
+  }
+}
+
+fn source_atom_string_projection_init(source: Node) -> SourceAtomStringProjection {
+  match source.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      source_atom_string_projection_state(
+        is_conj: false,
+        is_char: id != char_kernel_type_atom && id != free_monoid_variant_empty,
+        is_empty: id == free_monoid_variant_empty,
+        head_count: 0,
+        tail_count: 0,
+        head_ok: false,
+        tail_ok: false,
+        unexpected_edge_count: 0
+      )
+    TypeNode { connective: Conj } =>
+      source_atom_string_projection_state(
+        is_conj: true,
+        is_char: false,
+        is_empty: false,
+        head_count: 0,
+        tail_count: 0,
+        head_ok: false,
+        tail_ok: false,
+        unexpected_edge_count: 0
+      )
+    _ =>
+      source_atom_string_projection_state(
+        is_conj: false,
+        is_char: false,
+        is_empty: false,
+        head_count: 0,
+        tail_count: 0,
+        head_ok: false,
+        tail_ok: false,
+        unexpected_edge_count: 1
+      )
+  }
+}
+
+fn source_atom_string_projection_advance(
+  acc: SourceAtomStringProjection,
+  label: EdgeLabel,
+  child: SourceAtomStringProjection
+) -> SourceAtomStringProjection {
+  match label {
+    Named { name: edge_name } =>
+      if edge_name == free_monoid_field_head {
+        source_atom_string_projection_state(
+          is_conj: acc.is_conj,
+          is_char: acc.is_char,
+          is_empty: false,
+          head_count: acc.head_count + 1,
+          tail_count: acc.tail_count,
+          head_ok: acc.head_ok || child.is_char,
+          tail_ok: acc.tail_ok,
+          unexpected_edge_count: acc.unexpected_edge_count
+        )
+      } else if edge_name == free_monoid_field_tail {
+        source_atom_string_projection_state(
+          is_conj: acc.is_conj,
+          is_char: acc.is_char,
+          is_empty: false,
+          head_count: acc.head_count,
+          tail_count: acc.tail_count + 1,
+          head_ok: acc.head_ok,
+          tail_ok: acc.tail_ok || child.is_string,
+          unexpected_edge_count: acc.unexpected_edge_count
+        )
+      } else {
+        source_atom_string_projection_state(
+          is_conj: acc.is_conj,
+          is_char: acc.is_char,
+          is_empty: false,
+          head_count: acc.head_count,
+          tail_count: acc.tail_count,
+          head_ok: acc.head_ok,
+          tail_ok: acc.tail_ok,
+          unexpected_edge_count: acc.unexpected_edge_count + 1
+        )
+      }
+    Positional =>
+      source_atom_string_projection_state(
+        is_conj: acc.is_conj,
+        is_char: acc.is_char,
+        is_empty: false,
+        head_count: acc.head_count,
+        tail_count: acc.tail_count,
+        head_ok: acc.head_ok,
+        tail_ok: acc.tail_ok,
+        unexpected_edge_count: acc.unexpected_edge_count + 1
+      )
+>>>>>>> 60c8ae40cf (WIP: Rust v2 emit diagnostic cleanup RCA — source_atom_string_projection_from)
   }
 }
 
 // 🟡 gated — feature:free-monoid-node-projection — owner:Modeling DFS / std.algebra lane —
 // dissolve-on: std.algebra exports a canonical `Node -> Optional<FreeMonoid<T>>` (or
 // `Node -> Optional<String>`) projection over `free_monoid_type_node`'s encoded surface; replace
-// this local encoded-node projection with that accessor. The local recursion is fail-closed and
-// bounded to TS-ATOM-REALIZATION's String value-template bridge; forbidden: adding another
-// FreeMonoid storage walker outside this receipt.
+// this local encoded-node projection with that accessor. The local fold is fail-closed and bounded
+// to TS-ATOM-REALIZATION's String value-template bridge; forbidden: adding another FreeMonoid
+// storage walker outside this receipt.
 fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
+<<<<<<< HEAD
   match fold_node(
     n: source,
     algebra: NodeFold {
@@ -309,6 +444,21 @@ fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomV
   ) {
     SourceAtomStringFoldString => optional_present(source_atom_string(value: source))
     _ => optional_absent()
+=======
+  let projection = fold_node(
+    n: source,
+    algebra: NodeFold {
+      init: fn(n0) { source_atom_string_projection_init(source: n0) },
+      step: fn(acc, e, child) {
+        source_atom_string_projection_advance(acc: acc, label: e.label, child: child)
+      }
+    }
+  )
+  if projection.is_string {
+    optional_present(source_atom_string(value: source))
+  } else {
+    optional_absent()
+>>>>>>> 60c8ae40cf (WIP: Rust v2 emit diagnostic cleanup RCA — source_atom_string_projection_from)
   }
 }
 
