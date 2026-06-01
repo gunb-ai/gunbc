@@ -86,6 +86,7 @@ import v4.std.diagnostic {
   Extent,
   Locus,
   NoCorrectionReason,
+  Diagnostics,
   Outcome,
   Accepted,
   Rejected,
@@ -237,7 +238,7 @@ fn ci_upsert_lens_output_ref_input(lens: LensIdV0) -> UpsertInputRef {
 fn ci_upsert_lens_inputs_from_required_lenses(lenses: List<LensIdV0>) -> List<UpsertInputRef> {
   fold_list(
     xs: lenses,
-    empty: Empty,
+    empty: [],
     cons: fn(acc, lens) {
       list_snoc_item(xs: acc, item: ci_upsert_lens_output_ref_input(lens: lens))
     }
@@ -1519,6 +1520,11 @@ fn ci_named_edge(name: Symbol, target: Node) -> Edge {
 }
 
 
+fn ci_no_diagnostics() -> Diagnostics {
+  None
+}
+
+
 fn ci_symbol_digest(sym: Symbol) -> Hash {
   content_hash(n: ci_atom(sym: sym))
 }
@@ -1529,7 +1535,7 @@ fn ci_symbol_list_projection_node(xs: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: xs,
-      empty: Empty,
+      empty: [],
       cons: fn(acc, sym) {
         list_snoc_item(
           xs: acc,
@@ -1565,7 +1571,7 @@ fn ci_compile_stage_projection_outcome(stage: CompileStage) -> Outcome<Node> {
     Accepted { value: produces_hash_node, diagnostics: _ } =>
       Accepted {
         value: ci_compile_stage_projection_node(stage: stage, produces_hash_node: produces_hash_node),
-        diagnostics: None
+        diagnostics: ci_no_diagnostics()
       }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
@@ -1614,7 +1620,7 @@ fn ci_fixpt_stage_projection_outcome(fixpt: FixptStage1Stage2) -> Outcome<Node> 
                   right_hash_node: right_hash_node,
                   pinned_hash_node: pinned_hash_node
                 ),
-                diagnostics: None
+                diagnostics: ci_no_diagnostics()
               }
             Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
           }
@@ -1644,7 +1650,7 @@ fn ci_bootstrap_plan_accepted_projection_outcome(plan: BootstrapPlan) -> Outcome
                         ci_named_edge(name: ci_projection_bootstrap_plan_fixpt_edge, target: fixpt_node)
                       ]
                     },
-                    diagnostics: None
+                    diagnostics: ci_no_diagnostics()
                   }
                 Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
               }
@@ -1765,7 +1771,7 @@ fn ci_string_projection_node(s: String) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: s,
-      empty: Empty,
+      empty: [],
       cons: fn(acc, ch) {
         list_snoc_item(
           xs: acc,
@@ -1862,7 +1868,7 @@ fn ci_lens_list_projection_node(lenses: List<LensIdV0>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: lenses,
-      empty: Empty,
+      empty: [],
       cons: fn(acc, lens) {
         list_snoc_item(
           xs: acc,
@@ -1891,7 +1897,7 @@ fn ci_job_list_projection_node(jobs: List<CiJob>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: jobs,
-      empty: Empty,
+      empty: [],
       cons: fn(acc, job) {
         list_snoc_item(
           xs: acc,
@@ -1923,7 +1929,7 @@ fn ci_gate_list_projection_node(gates: List<CiGate>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: gates,
-      empty: Empty,
+      empty: [],
       cons: fn(acc, gate) {
         list_snoc_item(
           xs: acc,
@@ -2007,7 +2013,7 @@ fn ci_bootstrap_plan_cache_hash() -> Outcome<Hash> {
     Accepted { value: plan, diagnostics: _ } =>
       match ci_bootstrap_plan_accepted_projection_outcome(plan: plan) {
         Accepted { value: node, diagnostics: _ } =>
-          Accepted { value: content_hash(n: node), diagnostics: None }
+          Accepted { value: content_hash(n: node), diagnostics: ci_no_diagnostics() }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
@@ -2040,7 +2046,7 @@ fn ci_glob_pattern_projection_node(pattern: GlobPattern) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: pattern.segments,
-      empty: Empty,
+      empty: [],
       cons: fn(acc, segment) {
         list_snoc_item(
           xs: acc,
@@ -2237,7 +2243,7 @@ fn ci_upsert_input_ref_list_projection_node(refs: List<UpsertInputRef>) -> Node 
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: refs,
-      empty: Empty,
+      empty: [],
       cons: fn(acc, input_ref) {
         list_snoc_item(
           xs: acc,
@@ -2338,7 +2344,7 @@ fn ci_gate_shadow_step_id(ci_gate: CiGate) -> CiStepId {
 fn ci_job_step_ids_shadow(jobs: List<CiJob>) -> List<CiStepId> {
   fold_list(
     xs: jobs,
-    empty: Empty,
+    empty: [],
     cons: fn(acc, ci_job) {
       list_snoc_item(xs: acc, item: ci_job_shadow_step_id(ci_job: ci_job))
     }
@@ -2597,7 +2603,7 @@ fn ci_selection_receipt_shadow_rows(
   let superset = ci_affected_set_is_fail_closed(affected: affected)
   fold_list(
     xs: ci_pipeline_step_ids_shadow(p: pipeline),
-    empty: Empty,
+    empty: [],
     cons: fn(acc, step_id) {
       list_snoc_item(
         xs: acc,
@@ -2654,7 +2660,7 @@ fn ci_step_selection_shadow_row(step_id: CiStepId) -> CiStepSelection {
 fn ci_step_selection_shadow_rows(step_ids: List<CiStepId>) -> List<CiStepSelection> {
   fold_list(
     xs: step_ids,
-    empty: Empty,
+    empty: [],
     cons: fn(acc, sid) {
       list_snoc_item(xs: acc, item: ci_step_selection_shadow_row(step_id: sid))
     }
@@ -2703,7 +2709,7 @@ fn ci_step_selection_step_id(row: CiStepSelection) -> CiStepId {
 fn ci_step_selections_step_ids(decisions: List<CiStepSelection>) -> List<CiStepId> {
   fold_list(
     xs: decisions,
-    empty: Empty,
+    empty: [],
     cons: fn(acc, row) {
       list_snoc_item(xs: acc, item: ci_step_selection_step_id(row: row))
     }
@@ -3109,9 +3115,9 @@ fn workflow_pipeline_pass_gate(
       match run.verdict {
         Pass => Pass
         Fail { actual: _, falsification: _ } =>
-          Fail { actual: Accepted { value: run, diagnostics: None }, falsification: Absent }
+          Fail { actual: Accepted { value: run, diagnostics: ci_no_diagnostics() }, falsification: Absent }
         Deferred { actual: _, diagnostic: d } =>
-          Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
+          Deferred { actual: Accepted { value: run, diagnostics: ci_no_diagnostics() }, diagnostic: d }
       }
     ],
     at: at
@@ -3132,7 +3138,7 @@ fn workflow_pipeline_plan_bound_pass_receipt(
               run: run,
               plan_hash: plan_hash
             },
-            diagnostics: None
+            diagnostics: ci_no_diagnostics()
           }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
@@ -3177,7 +3183,7 @@ fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
           if ci_all_gate_run_policies_resolve(gates: p.gates, jobs: p.jobs) {
             if ci_acyclic(jobs: p.jobs) {
               if ci_all_commands_authority_ok(jobs: p.jobs) {
-                Accepted { value: p, diagnostics: None }
+                Accepted { value: p, diagnostics: ci_no_diagnostics() }
               } else {
                 Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation)) }
               }
