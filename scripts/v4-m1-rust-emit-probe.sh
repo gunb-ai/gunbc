@@ -42,11 +42,7 @@ strict="${V4_M1_RUST_EMIT_PROBE_STRICT:-0}"
 
 if [[ ! -x "$bin" ]]; then
   echo "error: v2-compiler not found at $bin (build v2-compiler --release first)" >&2
-  if [[ "$strict" == "1" ]]; then
-    exit 1
-  fi
-  echo "::notice title=M1 rust emit probe::skipped — v2-compiler missing"
-  exit 0
+  exit 1
 fi
 
 rm -rf "$out"
@@ -201,17 +197,17 @@ fi
 
 echo "=== M1 probe summary written to ${summary} ==="
 
-if [[ "$strict" == "1" ]]; then
-  if [[ "$compile_status" -ne 0 ]]; then
-    exit "$compile_status"
-  fi
-  if [[ "$rustc_skipped" == "true" ]]; then
-    echo "error: strict mode requires cargo check after successful compile (skip_reason=${rustc_skip_reason})" >&2
-    exit 1
-  fi
-  if [[ "$rustc_attempted" == "true" && "${rustc_status:-0}" -ne 0 ]]; then
-    exit "$rustc_status"
-  fi
+if [[ "$compile_status" -ne 0 ]]; then
+  exit "$compile_status"
+fi
+
+if [[ "$rustc_skipped" == "true" ]]; then
+  echo "error: M1 probe requires cargo check after successful compile (skip_reason=${rustc_skip_reason})" >&2
+  exit 1
+fi
+
+if [[ "$strict" == "1" && "$rustc_attempted" == "true" && "${rustc_status:-0}" -ne 0 ]]; then
+  exit "$rustc_status"
 fi
 
 exit 0
