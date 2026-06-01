@@ -14,7 +14,7 @@ Reduced required confidence is explicit. This is triage, not a modeling victory.
 |---|------|----------------------|-------|
 | 1 | `fmt --check` | `fmt` job | ~30s |
 | 2 | Bootstrap minimal viability | `ci_floor` → `v4-bootstrap-viability.sh` | v2→v4 `--target dag`; Class A shell exception until Wave 2 `CiUpsertStep` |
-| 3 | M1 v4 full-tree rust emit probe | `ci_floor` → `v4-m1-rust-emit-probe.sh` with `V4_M1_RUST_EMIT_PROBE_STRICT=0` modeled by `m1_ci_live_workflow_signal.rustc_residuals_block_required_path=false` | **One** rust emit path; T-22 corpus rust **not** required; rustc residuals are a required receipt until P3 reaches binary-build threshold |
+| 3 | M1 v4 full-tree rust emit probe | `ci_floor` → `v4-m1-rust-emit-probe.sh` with `emit_preconditions_block_required_path=true` and `V4_M1_RUST_EMIT_PROBE_STRICT=0` / `rustc_residuals_block_required_path=false` | **One** rust emit path; T-22 corpus rust **not** required; missing compiler, v2 emit failure, and skipped cargo-check preconditions fail closed; rustc residuals are a required receipt until P3 reaches binary-build threshold |
 | 4 | `ci.dag` structural receipt + `CiUpsertStep` schema | `ci_floor` → `v4_workflow_ci_*` integration prefix filters | Modeled-positive-Y via parse harness |
 | 5 | no-new-shell ratchet | `ci_floor` → `check-ci-no-new-shell.sh` | Allowlist of shell scripts on required path |
 

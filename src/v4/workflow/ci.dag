@@ -409,6 +409,7 @@ type M1CiLiveWorkflowSignal {
   timeout_minutes: Int
   strict_env_var: String
   strict_env_value: String
+  emit_preconditions_block_required_path: Bool
   rustc_residuals_block_required_path: Bool
 }
 
@@ -476,6 +477,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   timeout_minutes: 20
   strict_env_var: "V4_M1_RUST_EMIT_PROBE_STRICT"
   strict_env_value: "0"
+  emit_preconditions_block_required_path: true
   rustc_residuals_block_required_path: false
 }
 
@@ -558,6 +560,7 @@ data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSign
   timeout_minutes: 20
   strict_env_var: "V4_PHASE1_NAT_SEMIRING_STRICT"
   strict_env_value: "1"
+  emit_preconditions_block_required_path: true
   rustc_residuals_block_required_path: false
 }
 
@@ -570,6 +573,7 @@ data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   timeout_minutes: 15
   strict_env_var: ""
   strict_env_value: ""
+  emit_preconditions_block_required_path: true
   rustc_residuals_block_required_path: true
 }
 

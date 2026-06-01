@@ -2,8 +2,9 @@
 # scripts/v4-m1-rust-emit-probe.sh
 #
 # M1 informational probe: v2-compiler --target rust over full src/v4, then
-# cargo check on emitted output. Surfaces v2 Rust emitter / rustc gaps without
-# failing CI (probe mode exits 0 unless V4_M1_RUST_EMIT_PROBE_STRICT=1).
+# cargo check on emitted output. Missing compiler, v2 emit failure, and skipped
+# cargo-check preconditions fail closed; V4_M1_RUST_EMIT_PROBE_STRICT controls
+# whether rustc residuals from an attempted cargo check also fail the step.
 #
 # Authority: src/v4/workflow/ci.dag (T-24) + src/v4/TASKS.md T-24; r3 gates #98/#100 interim bridge.
 # Pattern: scripts/v4-bootstrap-viability.sh (compile + log receipt parsing).
@@ -13,7 +14,7 @@
 #   V4_M1_RUST_EMIT_OUT       — emit output dir (default: /tmp/v4-rust-emit)
 #   V4_M1_RUST_EMIT_LOG       — v2 compile log (default: ${OUT}.compile.log)
 #   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
-#   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when compile or rustc fails
+#   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when rustc fails
 #   V4_M1_RUSTC_TIMEOUT_SECS  — optional timeout for cargo check (CI: 600)
 #   V4_M1_CARGO_CHECK_JOBS    — parallelism cap for cargo check (default: 4; modeled
 #                               as m1_probe_cargo_check_jobs in src/v4/workflow/ci.dag)

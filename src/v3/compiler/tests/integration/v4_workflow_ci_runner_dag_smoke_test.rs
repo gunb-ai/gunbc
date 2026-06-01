@@ -654,6 +654,10 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
     let strict_env_var = expr_string(record_body_field(live_signal, "strict_env_var"));
     let strict_env_value = expr_string(record_body_field(live_signal, "strict_env_value"));
+    let emit_preconditions_block_required_path = expr_bool(record_body_field(
+        live_signal,
+        "emit_preconditions_block_required_path",
+    ));
     let rustc_residuals_block_required_path = expr_bool(record_body_field(
         live_signal,
         "rustc_residuals_block_required_path",
@@ -678,6 +682,10 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         strict_env_value == "1",
         rustc_residuals_block_required_path,
         "{CI_DAG_PATH}: strictness env and rustc residual required-path policy must agree"
+    );
+    assert!(
+        emit_preconditions_block_required_path,
+        "{CI_DAG_PATH}: required M1 probe must fail closed on missing compiler, v2 emit failure, and skipped cargo-check preconditions"
     );
     assert!(
         CI_DAG.contains(
