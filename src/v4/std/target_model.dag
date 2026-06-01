@@ -2413,13 +2413,9 @@ type TargetUseSiteOwnershipLookup
 fn target_use_site_ownership_source_key(source_carrier: Node) -> Node {
   match source_carrier.kind {
     TypeNode { connective: Instantiation } =>
-      match source_carrier.children {
-        Cons { head: edge, tail: _ } =>
-          match edge.label {
-            Positional => edge.target
-            Named { name: _ } => source_carrier
-          }
-        Empty => source_carrier
+      match list_at_optional(xs: node_positional_child_targets(node: source_carrier), index: 0) {
+        Present { value: head } => head
+        Absent => source_carrier
       }
     _ => source_carrier
   }
