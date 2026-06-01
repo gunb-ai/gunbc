@@ -85,16 +85,16 @@ Representative:
   expected Vec<Rc<FormalGrammarSymbol>>, found FreeMonoid<_>
 
 Single-authority fact:
-  TargetCollectionBoundaryProjection (name provisional) or an approved extension of TargetCollectionRealization that names boundary role and storage carrier.
+  Extend `TargetCollectionRealization` in `v4.std.target_model` — add boundary/storage axis for `FreeMonoid<T>` → Rust `Vec<Rc<T>>` (e.g. `TargetCollectionReprVecRc` + `source_algebraic_carrier` on row). **Reject** parallel `TargetCollectionBoundaryProjection` carrier.
 
 Existing worksheet:
   none complete for this exact FreeMonoid -> Vec<Rc<T>> boundary. SG-5 covers Set/Map target realization and explicitly excludes SG-COLLECTION-PROJECTION.
 
 Draft worker brief:
-  Author a separate SG-COLLECTION-PROJECTION worksheet before implementation. The fact must distinguish algebraic source carrier (`FreeMonoid<T>`) from Rust storage/ABI boundary (`Vec<Rc<T>>`) and must compose with SG-RC for inner element ownership.
+  Author a separate SG-COLLECTION-PROJECTION §10.0 worksheet before implementation. Rows must distinguish algebraic source carrier (`FreeMonoid<T>`) from Rust storage/ABI boundary (`Vec<Rc<T>>`) and must compose with SG-RC for inner element ownership.
 
 Acceptance:
-  New carrier `ProbeSeq<T>` or `FreeMonoid<Probe>` projects to Rust boundary storage by row change only; no hardcoded `FreeMonoid` or `Edge` branch.
+  Changing the `TargetCollectionRealization` row (repr kind + source_algebraic_carrier) changes emitted boundary storage by row change only; no hardcoded `FreeMonoid` / `Edge` / `PrimitiveFactBundle` branch in `06_translate`.
 ```
 
 #### Arbiter adjudication (E0308-C / SG-COLLECTION-PROJECTION) — CLOSED 2026-06-01 (`proud-fox-405`)
