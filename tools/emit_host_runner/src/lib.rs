@@ -19,9 +19,12 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+
+static WORK_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Wall-clock bound for `cargo build` of the ephemeral fixture crate.
 pub const HOST_BUILD_TIMEOUT: Duration = Duration::from_secs(300);
@@ -545,6 +548,12 @@ pub fn default_work_dir(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(prefix)
 }
 
+/// Hermetic work directory unique per process and per call (concurrent eval / parallel tests safe).
+pub fn unique_work_dir(prefix: &str) -> PathBuf {
+    let seq = WORK_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+    default_work_dir(&format!("{prefix}_{}_{seq}", std::process::id()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -553,6 +562,16 @@ mod tests {
     fn runtime_value_parse_rust_accepts_five_bytes() {
         assert!(runtime_value_parse_rust(&[0, 0, 0, 0, 0]).is_ok());
         assert!(runtime_value_parse_rust(&[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn unique_work_dir_differs_per_call_in_process() {
+        let a = unique_work_dir("gunbc_emit_host_unique_test");
+        let b = unique_work_dir("gunbc_emit_host_unique_test");
+        assert_ne!(
+            a, b,
+            "concurrent eval calls must not share a work directory"
+        );
     }
 
     #[test]
