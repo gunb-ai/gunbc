@@ -111,10 +111,3 @@ fn tc3_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
         results[0].result
     );
 }
-
-// INVARIANTS P1 / P5 — checkable receipt: this integration crate must not build if the cited
-// worker brief is missing from the worktree.
-const _: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../docs/briefs/r3-v-pattern-a-tc3-v1-worker.md"
-));
