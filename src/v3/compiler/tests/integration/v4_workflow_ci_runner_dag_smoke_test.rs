@@ -1340,7 +1340,7 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "witness_manual_corpus_gate_closed",
         "corpus_report_tally(report);",
         "inverted_zero_comparison",
-        "(?<![A-Za-z0-9_:])(?:!\\(*|\\(*false\\)*={2}\\(*)",
+        "(?<![A-Za-z0-9_:])(?:!\\(*|\\(*false\\)*={2}\\(*|\\(*true\\)*!=\\(*)",
         "fail_deferred_conjunction",
         "(?:^|;)\\(*tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
         "\\)*&&",
