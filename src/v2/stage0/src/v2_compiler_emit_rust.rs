@@ -5244,7 +5244,7 @@ pub fn emit_func_inferred(
     v2_rt::concat(
         v2_rt::concat(
             " -> Result<".to_string(),
-            render_rust_type(inferred, shared_types, source_indices),
+            render_rust_type_with_applied_binding(inferred, shared_types, source_indices),
         ),
         ", Box<dyn std::error::Error>>".to_string(),
     )
@@ -5283,7 +5283,7 @@ pub fn emit_rust_param_type(
             let param_types = Rc::new({
                 let mut __result = Vec::new();
                 for p in n.params.clone().iter().cloned() {
-                    __result.push(render_rust_type(
+                    __result.push(render_rust_type_with_applied_binding(
                         param_node_type_expr(p.clone()),
                         shared_types.clone(),
                         source_indices.clone(),
@@ -5294,7 +5294,7 @@ pub fn emit_rust_param_type(
             let param_str = param_types.join(&", ".to_string());
             let ret_str = match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    render_rust_type(rt.clone(), shared_types.clone(), source_indices.clone())
+                    render_rust_type_with_applied_binding(rt.clone(), shared_types.clone(), source_indices.clone())
                 }
                 _ => "()".to_string(),
             };
@@ -5312,7 +5312,7 @@ pub fn emit_rust_param_type(
     } else {
         {
             let rendered =
-                render_rust_type(n.clone(), shared_types.clone(), source_indices.clone());
+                render_rust_type_with_applied_binding(n.clone(), shared_types.clone(), source_indices.clone());
             rendered
         }
     }
@@ -5345,7 +5345,7 @@ pub fn emit_inferred(
 ) -> String {
     v2_rt::concat(
         rust_items().return_arrow.clone(),
-        render_rust_type(inferred, shared_types, source_indices),
+        render_rust_type_with_applied_binding(inferred, shared_types, source_indices),
     )
 }
 
