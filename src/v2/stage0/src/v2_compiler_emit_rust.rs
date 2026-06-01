@@ -255,7 +255,7 @@ pub fn render_rust_applied_type(
             RenderTarget::Rust,
             authored_name_at(source_indices.clone(), n.clone()),
         );
-        let applied = if ((n.children.clone().len() as i64) == 0) {
+        if ((n.children.clone().len() as i64) == 0) {
             base
         } else {
             {
@@ -277,15 +277,6 @@ pub fn render_rust_applied_type(
                     ">".to_string(),
                 )
             }
-        };
-        if (v2_rt::set_contains(
-            &shared_types,
-            authored_name_at(source_indices.clone(), n.clone()),
-        ) && !rust_type_is_rc_wrapped(applied.clone()))
-        {
-            wrap_shared_type(RenderTarget::Rust, applied.clone())
-        } else {
-            applied.clone()
         }
     }
 }
@@ -307,9 +298,9 @@ pub fn render_rust_applied_type_shared(
         if (v2_rt::set_contains(&shared_types, type_name)
             && !rust_type_is_rc_wrapped(rendered.clone()))
         {
-            wrap_shared_type(RenderTarget::Rust, rendered)
+            wrap_shared_type(RenderTarget::Rust, rendered.clone())
         } else {
-            rendered
+            rendered.clone()
         }
     }
 }
@@ -16775,14 +16766,7 @@ pub fn emit_data_def_body(
                         }
                     };
                     let inner = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: Box::new(".to_string()), top_str), "),\n".to_string()), "                bottom: Box::new(".to_string()), bottom_str), "),\n".to_string()), "            })".to_string());
-                    if needs_rc.clone() {
-                        v2_rt::concat(
-                            v2_rt::concat("            Rc::new(".to_string(), inner),
-                            ")".to_string(),
-                        )
-                    } else {
-                        v2_rt::concat("            ".to_string(), inner)
-                    }
+                    v2_rt::concat("            ".to_string(), inner)
                 }
                 _ => "            compile_error!(\"BoundedLattice data must be a record\")"
                     .to_string(),
