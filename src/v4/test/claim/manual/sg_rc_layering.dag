@@ -161,7 +161,11 @@ fn sg_rc_outcome_node_source_type() -> Node {
 }
 
 fn sg_rc_outcome_node_projected_type() -> Node {
-  match project_type_expression_node(node: sg_rc_outcome_node_source_type(), target: sg_rc_target()) {
+  match project_type_expression_node(
+    node: sg_rc_outcome_node_source_type(),
+    target: sg_rc_target(),
+    projection: rust_type_expression_projection()
+  ) {
     Accepted { value: projected, diagnostics: _ } => projected
     Rejected { diagnostics: _ } => sg_rc_fail_node()
   }
