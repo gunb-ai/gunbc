@@ -343,8 +343,10 @@ fn main() {
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
                 for (name, render_target) in render_targets {
-                    let result =
-                        v2_compiler_compile::emit_resolved_for_target(resolved.clone(), render_target);
+                    let result = v2_compiler_compile::emit_resolved_for_target(
+                        resolved.clone(),
+                        render_target,
+                    );
                     let target_output_dir = format!("{}/{}", output_dir, name);
                     write_output_files(&target_output_dir, &result);
                     eprintln!(
