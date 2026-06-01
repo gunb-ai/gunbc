@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 84d11eebb390649bca9d14c30114d919a5c665b9fac3484cf29647458842b8c2
+// Source-SHA256(.github/workflows/ci.yml): ac6adc3fb0192e45d4eb425a43f91760b11b5b001f2a41c118200bc65e3c855a
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -284,7 +284,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "M1 v4 workflow CI model/YAML binding smoke" },
           id: none,
-          run: "set -euo pipefail\ncargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet\ncargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet\ncargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet\n",
+          run: "set -euo pipefail\ncargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet\ncargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_bankruptcy_tier0_ -- --quiet\ncargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_wave1_ -- --quiet\n",
           shell: Bash,
           env: none,
           working_directory: none,

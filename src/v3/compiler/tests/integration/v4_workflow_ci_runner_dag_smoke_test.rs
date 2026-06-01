@@ -34,9 +34,9 @@ const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eva
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
     include_str!("../../../../../scripts/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
-    "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
+    "v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
-    "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_";
+    "v4_workflow_ci_bankruptcy_tier0_";
 const CI_MODEL_YAML_BINDING_STEP_NAME: &str = "M1 v4 workflow CI model/YAML binding smoke";
 const T15_SELF_HOST_STEP_NAME: &str = "T-15 self-host fixed-point harness (stage1==stage2)";
 const CLAIM_DAG: &str =
@@ -1274,7 +1274,7 @@ fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step()
         "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run bankruptcy D3 ratchet tests (prefix filter, one claim per test)"
     );
     assert!(
-        binding_step.contains("v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_"),
+        binding_step.contains("v4_workflow_ci_wave1_"),
         "{CI_YML_PATH}: binding step must run Wave 1 floor prefix filter"
     );
 }

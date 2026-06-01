@@ -97,3 +97,12 @@ path = "src/bin/r1c_e_emit_gates.rs"
 [[bin]]
 name = "gunbc-ci"
 path = "src/bin/gunbc_ci.rs"
+
+# Lean standalone test target for the CI model/YAML binding smoke. The required-CI
+# `ci_floor` binding-smoke step runs only these assertions; hoisting them out of the
+# consolidated `integration` binary lets that step compile just `v3_compiler`'s lib +
+# this one module instead of the full 138-module integration binary. The source stays
+# under `tests/integration/` so every `include_str!` path is unchanged.
+[[test]]
+name = "v4_workflow_ci_runner_dag_smoke_test"
+path = "tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs"
