@@ -2291,6 +2291,7 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
                           item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
                         )
                       }
+                    Positional => acc
                   }
                 }
               ),
