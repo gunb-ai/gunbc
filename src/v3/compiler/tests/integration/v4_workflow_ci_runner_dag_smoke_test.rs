@@ -420,14 +420,11 @@ fn data_body<'a>(
 }
 
 fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a SurfaceExpr {
-    let SurfaceExpr::Record { fields, .. } = body else {
-        panic!("expected record body, got {body:?}");
+    let fields = match body {
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields,
+        other => panic!("expected record body, got {other:?}"),
     };
-    fields
-        .iter()
-        .find(|field| field.name == field_name)
-        .map(|SurfaceRecordField { value, .. }| value)
-        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+    record_field_from_fields(fields, field_name)
 }
 
 fn expr_string(expr: &SurfaceExpr) -> &str {
@@ -779,8 +776,9 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
-        CI_DAG
-            .contains("data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal"),
+        CI_DAG.contains(
+            "data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal"
+        ),
         "{CI_DAG_PATH}: must model live-workflow binding for testclaim corpus eval"
     );
     assert!(
