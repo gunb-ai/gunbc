@@ -15,8 +15,7 @@ use emit_host_runner::{
 const FIXTURE_SOURCE_PASS: &str =
     "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }";
 
-const FIXTURE_SOURCE_NONZERO: &str =
-    "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[1,2,3,4,5]); }";
+const FIXTURE_SOURCE_NONZERO: &str = "fn main() { std::process::exit(1); }";
 
 fn mvp2_inputs() -> EmitHostFixtureInputs {
     EmitHostFixtureInputs {
