@@ -9,7 +9,11 @@
 //! `T-PB-B` / `pb_rust_tests_outside_residual_zero`; dissolution: delete when substrate eval
 //! owns host dispatch without this intercept (`emit_host_bridge.rs` retires with harness).
 
-use crate::dag::{Dag, DeclarationId, LiteralBits, TypeConnective};
+use crate::dag::{ArrowBody, Dag, DeclarationId, LiteralBits, TypeConnective};
+
+/// Canonical substrate authority for `run_emit_host_rust` (see `src/v4/compiler/emit_host.dag`).
+const EMIT_HOST_DAG_AUTHORITY_SUFFIX: &str = "emit_host.dag";
+
 use crate::evaluator::{EvalError, EvalStateStack, EvalStrategy, NamedField, Value};
 use emit_host_runner::{
     ExitWitness, HostExit, HostExitOutcome, HostLogicalFailure, HostSetupFailure,
@@ -90,14 +94,25 @@ pub fn try_dispatch_emit_host_rust(
 
 fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
     let callee = dag.declaration(callee_decl);
-    callee.name.as_deref() == Some("run_emit_host_rust")
-        && matches!(callee.connective, TypeConnective::Arrow { .. })
+    if callee.name.as_deref() != Some("run_emit_host_rust") {
+        return false;
+    }
+    if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_SUFFIX) {
+        return false;
+    }
+    let TypeConnective::Arrow { inputs, body, .. } = &callee.connective else {
+        return false;
+    };
+    inputs.len() == 3 && matches!(body, ArrowBody::UserDefined(_))
 }
 
 fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
     dag.declarations()
         .iter()
-        .find(|decl| decl.name.as_deref() == Some(name))
+        .find(|decl| {
+            decl.name.as_deref() == Some(name)
+                && decl.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_SUFFIX)
+        })
         .map(|decl| decl.id)
         .ok_or(EvalError::BadTransformOperands {
             reason: "substrate fn declaration not found in eval dag",
@@ -124,27 +139,64 @@ fn emit_host_fixture_inputs(
     dag: &Dag,
     value: &Value,
 ) -> Result<emit_host_runner::EmitHostFixtureInputs, EvalError> {
-    let root = inputs_root_field(value)?;
-    let pin = host_pin_from_inputs_root(dag, root)?;
+    let claim_root = inputs_root_field(value)?;
+    let claim_pin = host_pin_from_inputs_root(dag, claim_root)?;
+    let expected_root = inputs_expected_eval_root_field(value)?;
+    let expected_pin = host_pin_from_inputs_root(dag, expected_root)?;
     Ok(emit_host_runner::EmitHostFixtureInputs {
-        claim_input_root: pin.clone(),
-        // Substrate passes only `claim_input_root` in `Inputs.root` for `run_emit_host` today
-        // (`emit_host.dag` `run_test_claim_emit_vs_eval_for_claim`); runner validates both pins.
-        expected_eval_root: pin,
+        claim_input_root: claim_pin,
+        expected_eval_root: expected_pin,
     })
 }
 
 fn inputs_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, EvalError> {
+    inputs_record_field(inputs, "root", "expected Inputs.root field")
+}
+
+fn inputs_expected_eval_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, EvalError> {
+    let optional = inputs_record_field(
+        inputs,
+        "expected_eval_root",
+        "expected Inputs.expected_eval_root field",
+    )?;
+    optional_present_payload(optional)
+}
+
+fn inputs_record_field<'a>(
+    inputs: &'a Value,
+    label: &str,
+    missing_reason: &'static str,
+) -> Result<&'a Value, EvalError> {
     match inputs {
         Value::RecordValue(fields) => fields
             .iter()
-            .find(|field| field.label == "root")
+            .find(|field| field.label == label)
             .map(|field| &field.value)
             .ok_or(EvalError::BadTransformOperands {
-                reason: "expected Inputs.root field",
+                reason: missing_reason,
             }),
         _ => Err(EvalError::BadTransformOperands {
             reason: "expected Inputs record",
+        }),
+    }
+}
+
+fn optional_present_payload<'a>(value: &'a Value) -> Result<&'a Value, EvalError> {
+    match value {
+        Value::VariantValue { payload, .. } => match &**payload {
+            Value::RecordValue(fields) => fields
+                .iter()
+                .find(|field| field.label == "value")
+                .map(|field| &field.value)
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "expected Optional Present { value } payload",
+                }),
+            _ => Err(EvalError::BadTransformOperands {
+                reason: "expected Optional Present record payload",
+            }),
+        },
+        _ => Err(EvalError::BadTransformOperands {
+            reason: "emit host dispatch requires Inputs.expected_eval_root Present",
         }),
     }
 }
@@ -236,16 +288,26 @@ fn value_structural_digest(value: &Value, dag: &Dag) -> String {
     }
 }
 
+fn witness_variant_decl_id(
+    dag: &Dag,
+    preferred: &str,
+    fallback: &str,
+) -> Result<DeclarationId, EvalError> {
+    variant_decl_id(dag, "Witness", preferred)
+        .or_else(|_| variant_decl_id(dag, "Witness", fallback))
+}
+
 fn variant_decl_id(
     dag: &Dag,
     type_name: &str,
     variant_name: &str,
 ) -> Result<DeclarationId, EvalError> {
-    let decl = dag
-        .declaration_by_name(type_name)
-        .ok_or(EvalError::BadTransformOperands {
+    let Some(decl) = dag.declaration_by_name(type_name) else {
+        eprintln!("emit_host_eval: missing variant carrier type `{type_name}`");
+        return Err(EvalError::BadTransformOperands {
             reason: "variant carrier type not found",
-        })?;
+        });
+    };
     let TypeConnective::Disj { variants } = &decl.connective else {
         return Err(EvalError::BadTransformOperands {
             reason: "variant carrier is not a sum type",
@@ -580,7 +642,7 @@ fn host_setup_failure_diagnostic(
 
 fn witness_holds_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Witness", "Holds")?,
+        tag: witness_variant_decl_id(dag, "Holds", "Inhabits")?,
         payload: Box::new(Value::RecordValue(vec![NamedField {
             label: "value".to_string(),
             value,
@@ -589,13 +651,58 @@ fn witness_holds_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
 }
 
 fn witness_violates_variant(dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
-    Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Witness", "Violates")?,
-        payload: Box::new(Value::RecordValue(vec![NamedField {
+    let tag = variant_decl_id(dag, "Witness", "Violates")?;
+    let payload = match violation_witness_payload_fields(dag, tag) {
+        ViolationWitnessPayload::Diagnostic => Value::RecordValue(vec![NamedField {
             label: "diagnostic".to_string(),
             value: diagnostic,
-        }])),
+        }]),
+        ViolationWitnessPayload::ReasonSubject => {
+            let Value::RecordValue(diag_fields) = &diagnostic else {
+                return Err(EvalError::BadTransformOperands {
+                    reason: "expected Diagnostic record for Violates witness",
+                });
+            };
+            let reason = diag_fields
+                .iter()
+                .find(|f| f.label == "reason")
+                .map(|f| f.value.clone())
+                .unwrap_or_else(|| diagnostic.clone());
+            Value::RecordValue(vec![
+                NamedField {
+                    label: "reason".to_string(),
+                    value: reason,
+                },
+                NamedField {
+                    label: "subject".to_string(),
+                    value: Value::LiteralValue(LiteralBits::String(String::new())),
+                },
+            ])
+        }
+    };
+    Ok(Value::VariantValue {
+        tag,
+        payload: Box::new(payload),
     })
+}
+
+enum ViolationWitnessPayload {
+    Diagnostic,
+    ReasonSubject,
+}
+
+fn violation_witness_payload_fields(
+    dag: &Dag,
+    variant_ty: DeclarationId,
+) -> ViolationWitnessPayload {
+    let TypeConnective::Conj { children } = &dag.declaration(variant_ty).connective else {
+        return ViolationWitnessPayload::Diagnostic;
+    };
+    if children.iter().any(|f| f.label == "diagnostic") {
+        ViolationWitnessPayload::Diagnostic
+    } else {
+        ViolationWitnessPayload::ReasonSubject
+    }
 }
 
 fn host_exit_outcome_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
@@ -631,7 +738,7 @@ fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::Dag;
+    use crate::dag::{Dag, DeclarationId};
     use emit_host_runner::HostSetupFailure;
 
     fn conj_node_value() -> Value {
@@ -651,15 +758,31 @@ mod tests {
     }
 
     #[test]
-    fn emit_host_fixture_inputs_accepts_node_shaped_inputs_root() {
+    fn emit_host_fixture_inputs_projects_distinct_claim_and_expected_roots() {
         let dag = Dag::new();
-        let inputs = Value::RecordValue(vec![NamedField {
-            label: "root".to_string(),
-            value: conj_node_value(),
-        }]);
-        let pins = emit_host_fixture_inputs(&dag, &inputs).expect("node-shaped Inputs.root");
-        assert!(!pins.claim_input_root.is_empty());
-        assert_eq!(pins.claim_input_root, pins.expected_eval_root);
+        // Tag id unused by `optional_present_payload` (shape-only); empty dag has no std types.
+        let present_tag = DeclarationId::test_raw(0);
+        let inputs = Value::RecordValue(vec![
+            NamedField {
+                label: "root".to_string(),
+                value: Value::LiteralValue(LiteralBits::String("claim_pin".to_string())),
+            },
+            NamedField {
+                label: "expected_eval_root".to_string(),
+                value: Value::VariantValue {
+                    tag: present_tag,
+                    payload: Box::new(Value::RecordValue(vec![NamedField {
+                        label: "value".to_string(),
+                        value: Value::LiteralValue(LiteralBits::String(
+                            "expected_eval_pin".to_string(),
+                        )),
+                    }])),
+                },
+            },
+        ]);
+        let pins = emit_host_fixture_inputs(&dag, &inputs).expect("substrate-shaped Inputs");
+        assert_eq!(pins.claim_input_root, "claim_pin");
+        assert_eq!(pins.expected_eval_root, "expected_eval_pin");
     }
 
     #[test]

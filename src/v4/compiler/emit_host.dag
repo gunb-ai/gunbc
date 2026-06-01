@@ -18,6 +18,8 @@ import v4.compiler.eval {
   accepted_runtime_value_outcome_eq,
   eval,
   eval_context_interpretation,
+  inputs_for_emit_host,
+  inputs_root_only,
   run_test_claim,
   test_claim_cache_receipt_node
 }
@@ -289,14 +291,17 @@ fn run_test_claim_emit_vs_eval_for_claim(
   let expected = eval(
     tree: subject.tree,
     interpretation: interpretation,
-    inputs: Inputs { root: expected_eval_root }
+    inputs: inputs_root_only(root: expected_eval_root)
   )
   match emit(tree: subject.tree, target: target) {
     Accepted { value: source, diagnostics: _ } =>
       match run_emit_host(
         target: target,
         source: source,
-        fixture_inputs: Inputs { root: claim_input_root }
+        fixture_inputs: inputs_for_emit_host(
+          claim_input_root: claim_input_root,
+          expected_eval_root: expected_eval_root
+        )
       ) {
         Accepted { value: host_receipt, diagnostics: _ } =>
           match host_receipt.logical_run {
