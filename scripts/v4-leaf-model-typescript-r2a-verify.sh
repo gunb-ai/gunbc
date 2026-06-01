@@ -92,7 +92,7 @@ import json
 import os
 import re
 
-stderr = os.environ.get("V4_TS_R2A_FALSIFICATION_STDERR", "")
+stderr = os.environ.get("V4_TS_R2A_FALSIFICATION_DIAG", "")
 print(
     json.dumps(
         {
