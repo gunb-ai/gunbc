@@ -1,27 +1,24 @@
 // src/v4/lens/leaf_model_verification.dag
 // Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1–R3-internal).
 // Status: R1 rust + R1 python + R2a rust + R2b rust (debug/release live) + R3-external rustc + R3-internal emit-coupling fixtures;
-//   python R2a + R2b (arbitrary-precision add) + R3-external CPython fixtures;
-//   typescript R2a + R2b (bigint runtime / number-lane falsification) + R3-external tsc fixtures.
+//   python R2a + R2b (arbitrary-precision add) + R3-external CPython fixtures.
 
 module v4.lens.leaf_model_verification
 
 
+import v4.extdeps.languages.go {
+  go_atom_realization_symbol,
+  go_facts_int,
+  go_facts_int64,
+  go_integer_algebra_inhabitance,
+  go_integer_facts_node,
+  go_surface_spelling_int
+}
 import v4.extdeps.languages.python {
   python_atom_realization_symbol,
   python_facts_field_encoding,
   python_integer_algebra_inhabitance_python_facts_int,
   python_surface_spelling_int
-}
-import v4.extdeps.typecheckers.pyright {
-  pyright_tool_id,
-  pyright_profile_l1_id,
-  pyright_diag_report_return_type
-}
-import v4.extdeps.languages.typescript {
-  ts_atom_realization_symbol,
-  ts_bigint_algebra_inhabitance_ts_facts_bigint,
-  ts_number_algebra_inhabitance_ts_facts_number
 }
 import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
@@ -32,6 +29,7 @@ import v4.extdeps.languages.rust {
   rust_target_atom_realization_symbol,
   rust_target_atom_type_form
 }
+import v4.std.algebra { algebra_inhabitance_node }
 import v4.std.collection { optional_absent }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
@@ -53,20 +51,21 @@ import v4.std.leaf_model_verification {
   LeafModelPythonFixture,
   LeafModelPythonFixturePair,
   LeafModelPythonFalsificationCase,
-  LeafModelTypeScriptFixture,
-  LeafModelTypeScriptFixturePair,
-  LeafModelTypeScriptFalsificationCase,
-  LeafModelTypeScriptRuntimeFixture,
-  LeafModelTypeScriptRuntimeFixturePair,
+  LeafModelGoBuildFixture,
+  LeafModelGoCompileFixturePair,
+  LeafModelGoCompileFalsificationCase,
+  LeafModelGoRunFixture,
+  LeafModelGoRuntimeFixturePair,
+  LeafModelGoRuntimeFalsificationCase,
   LeafModelRustFixture,
+  leaf_model_claim_go_r1_int_surface_spelling,
+  leaf_model_claim_go_r2a_int_algebra_operations,
+  leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
+  leaf_model_claim_go_r3_external_symbol_projection,
   leaf_model_claim_python_r1_int_surface_spelling,
   leaf_model_claim_python_r2a_int_algebra_operations,
   leaf_model_claim_python_r2b_int_arbitrary_precision_add,
   leaf_model_claim_python_r3_external_symbol_projection,
-  leaf_model_claim_python_l1_static_return_type,
-  leaf_model_claim_ts_r2a_number_algebra_operations,
-  leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
-  leaf_model_claim_ts_r3_external_symbol_projection,
   leaf_model_claim_rust_r1_i32_surface_spelling,
   leaf_model_claim_rust_r2a_i32_algebra_operations,
   leaf_model_claim_rust_r2b_debug_default_overflow,
@@ -80,24 +79,20 @@ import v4.std.leaf_model_verification {
   TargetCompileRejected,
   TargetPythonExerciseAccepted,
   TargetPythonExecRejected,
-  TargetArtifact,
-  LeafModelPythonStaticHappyCase,
-  LeafModelPythonStaticFalsificationCase,
-  LeafModelPythonStaticFixturePair,
+  TargetRuntimeExerciseAccepted,
+  TargetRuntimeExerciseRejected,
   target_diagnostic_e0308_type_mismatch,
   target_diagnostic_e0423_expected_value_found_type,
   target_diagnostic_e0599_method_not_found,
+  target_diagnostic_go_invalid_conversion_arity,
+  target_diagnostic_go_runtime_panic,
+  target_diagnostic_go_undefined_method,
+  target_diagnostic_go_undefined_type,
   target_diagnostic_python_name_error_undefined_name,
   target_diagnostic_python_attribute_error_method_not_found,
-  target_diagnostic_python_type_error_init_arity_mismatch,
-  TargetTypeScriptCompileAccepted,
-  TargetTypeScriptCompileRejected,
-  TargetTypeScriptRuntimeAccepted,
-  TargetTypeScriptRuntimeRejected,
-  target_diagnostic_ts2339_property_does_not_exist,
-  target_diagnostic_ts7009_new_expression_not_constructable
+  target_diagnostic_python_type_error_init_arity_mismatch
 }
-import v4.std.node { Symbol }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.text { String }
 
 
@@ -282,106 +277,125 @@ fn python_r3_external_fixture() -> LeafModelPythonFixturePair {
   python_r3_external_fixture_pair()
 }
 
-// R2a — ECMA number (IEEE-754) algebra inhabitance vs tsc.
-data typescript_r2a_claim_algebra_inhabitance_fact: Symbol = ts_number_algebra_inhabitance_ts_facts_number
+// Go R1 — int surface spelling against go build.
+data go_r1_claim_surface_spelling_fact: Symbol = go_surface_spelling_int
 
-data typescript_r2a_happy_fixture_source: String = "function r2a_test(a: number, b: number): [number, boolean] { return [a + b, a < b]; }\n"
+data go_r1_happy_fixture_source: String = "package leafmodel\n\nfunc r1() int { return 0 }\n"
 
-data typescript_r2a_falsification_fixture_source: String = "function r2a_test(a: number): number { return a.log2_exact(); }\n"
+data go_r1_falsification_fixture_source: String = "package leafmodel\n\nfunc r1() i32 { return 0 }\n"
 
-fn typescript_r2a_happy_fixture() -> LeafModelTypeScriptFixture {
-  LeafModelTypeScriptFixture { source: typescript_r2a_happy_fixture_source }
+fn go_build_fixture(source: String) -> LeafModelGoBuildFixture {
+  LeafModelGoBuildFixture { source: source }
 }
 
-fn typescript_r2a_falsification_fixture() -> LeafModelTypeScriptFixture {
-  LeafModelTypeScriptFixture { source: typescript_r2a_falsification_fixture_source }
+fn go_run_fixture(source: String) -> LeafModelGoRunFixture {
+  LeafModelGoRunFixture { source: source }
 }
 
-fn typescript_r2a_fixture_pair() -> LeafModelTypeScriptFixturePair {
-  LeafModelTypeScriptFixturePair {
-    claim_id: leaf_model_claim_ts_r2a_number_algebra_operations,
-    surface_spelling_fact: typescript_r2a_claim_algebra_inhabitance_fact,
-    encoding_spelling_fact: typescript_r2a_claim_algebra_inhabitance_fact,
-    happy: typescript_r2a_happy_fixture(),
-    expected_happy_verdict: TargetTypeScriptCompileAccepted,
-    falsification: LeafModelTypeScriptFalsificationCase {
-      fixture: typescript_r2a_falsification_fixture(),
-      expected_verdict: TargetTypeScriptCompileRejected {
-        diagnostic_code: target_diagnostic_ts2339_property_does_not_exist
+fn go_leaf_model_fact_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [] }
+}
+
+fn go_r2a_algebra_inhabitance_fact_node() -> Node {
+  let decl = go_integer_algebra_inhabitance(facts: go_facts_int)
+  algebra_inhabitance_node(algebra: decl.algebra, inhabitant: decl.inhabitant)
+}
+
+fn go_r1_fixture_pair() -> LeafModelGoCompileFixturePair {
+  LeafModelGoCompileFixturePair {
+    claim_id: leaf_model_claim_go_r1_int_surface_spelling,
+    fact_anchor: go_leaf_model_fact_atom(id: go_r1_claim_surface_spelling_fact),
+    happy: go_build_fixture(source: go_r1_happy_fixture_source),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoCompileFalsificationCase {
+      fixture: go_build_fixture(source: go_r1_falsification_fixture_source),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_go_undefined_type
       }
     }
   }
 }
 
-fn typescript_r2a_fixture() -> LeafModelTypeScriptFixturePair {
-  typescript_r2a_fixture_pair()
+fn go_r1_fixture() -> LeafModelGoCompileFixturePair {
+  go_r1_fixture_pair()
 }
 
-// R2b — bigint exact add beyond Number.MAX_SAFE_INTEGER (Node runtime) vs number-lane divergence.
-data typescript_r2b_claim_algebra_inhabitance_fact: Symbol = ts_bigint_algebra_inhabitance_ts_facts_bigint
+// Go R2a — int algebra operations against go build.
+data go_r2a_claim_algebra_inhabitance_fact: Node = go_r2a_algebra_inhabitance_fact_node()
 
-data typescript_r2b_runtime_happy_fixture_source: String = "const ok = (2n ** 63n - 1n) + 1n === 2n ** 63n;\nif (!ok) { console.error(\"r2b bigint lane failed\"); process.exit(1); }\n"
+data go_r2a_happy_fixture_source: String = "package leafmodel\n\nfunc r2a(a int, b int) (int, bool) { return a + b, a < b }\n"
 
-data typescript_r2b_runtime_falsification_fixture_source: String = "const bigintExact = (2n ** 63n + 1n) === 2n ** 63n;\nconst numberLane = (2 ** 63 + 1) === 2 ** 63;\nif (bigintExact || !numberLane) { console.error(\"expected bigint inequality and number-lane IEEE754 false positive\"); process.exit(1); }\n"
+data go_r2a_falsification_fixture_source: String = "package leafmodel\n\nfunc r2a(a int) int { return a.log2_exact() }\n"
 
-fn typescript_r2b_runtime_happy_fixture() -> LeafModelTypeScriptRuntimeFixture {
-  LeafModelTypeScriptRuntimeFixture { source: typescript_r2b_runtime_happy_fixture_source }
-}
-
-fn typescript_r2b_runtime_falsification_fixture() -> LeafModelTypeScriptRuntimeFixture {
-  LeafModelTypeScriptRuntimeFixture { source: typescript_r2b_runtime_falsification_fixture_source }
-}
-
-fn typescript_r2b_runtime_fixture_pair() -> LeafModelTypeScriptRuntimeFixturePair {
-  LeafModelTypeScriptRuntimeFixturePair {
-    claim_id: leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
-    surface_spelling_fact: typescript_r2b_claim_algebra_inhabitance_fact,
-    encoding_spelling_fact: typescript_r2b_claim_algebra_inhabitance_fact,
-    happy: typescript_r2b_runtime_happy_fixture(),
-    expected_happy_verdict: TargetTypeScriptRuntimeAccepted,
-    falsification: typescript_r2b_runtime_falsification_fixture(),
-    // Divergence probe succeeds at runtime (exit 0) when bigint exact ≠ number-lane false positive.
-    expected_falsification_verdict: TargetTypeScriptRuntimeAccepted
-  }
-}
-
-fn typescript_r2b_fixture() -> LeafModelTypeScriptRuntimeFixturePair {
-  typescript_r2b_runtime_fixture_pair()
-}
-
-// R3-external — ECMA Symbol() factory (happy) vs `new Symbol` (not constructable).
-data typescript_r3_external_claim_atom_realization_fact: Symbol = ts_atom_realization_symbol
-
-data typescript_r3_external_happy_fixture_source: String = "const s: symbol = Symbol(\"x\");\n"
-
-data typescript_r3_external_falsification_fixture_source: String = "const s: symbol = new Symbol(\"x\");\n"
-
-fn typescript_r3_external_happy_fixture() -> LeafModelTypeScriptFixture {
-  LeafModelTypeScriptFixture { source: typescript_r3_external_happy_fixture_source }
-}
-
-fn typescript_r3_external_falsification_fixture() -> LeafModelTypeScriptFixture {
-  LeafModelTypeScriptFixture { source: typescript_r3_external_falsification_fixture_source }
-}
-
-fn typescript_r3_external_fixture_pair() -> LeafModelTypeScriptFixturePair {
-  LeafModelTypeScriptFixturePair {
-    claim_id: leaf_model_claim_ts_r3_external_symbol_projection,
-    surface_spelling_fact: typescript_r3_external_claim_atom_realization_fact,
-    encoding_spelling_fact: typescript_r3_external_claim_atom_realization_fact,
-    happy: typescript_r3_external_happy_fixture(),
-    expected_happy_verdict: TargetTypeScriptCompileAccepted,
-    falsification: LeafModelTypeScriptFalsificationCase {
-      fixture: typescript_r3_external_falsification_fixture(),
-      expected_verdict: TargetTypeScriptCompileRejected {
-        diagnostic_code: target_diagnostic_ts7009_new_expression_not_constructable
+fn go_r2a_fixture_pair() -> LeafModelGoCompileFixturePair {
+  LeafModelGoCompileFixturePair {
+    claim_id: leaf_model_claim_go_r2a_int_algebra_operations,
+    fact_anchor: go_r2a_claim_algebra_inhabitance_fact,
+    happy: go_build_fixture(source: go_r2a_happy_fixture_source),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoCompileFalsificationCase {
+      fixture: go_build_fixture(source: go_r2a_falsification_fixture_source),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_go_undefined_method
       }
     }
   }
 }
 
-fn typescript_r3_external_fixture() -> LeafModelTypeScriptFixturePair {
-  typescript_r3_external_fixture_pair()
+fn go_r2a_fixture() -> LeafModelGoCompileFixturePair {
+  go_r2a_fixture_pair()
+}
+
+// Go R2b — typed int64 overflow truncates silently at runtime.
+data go_r2b_claim_overflow_fact: Node = go_integer_facts_node(facts: go_facts_int64)
+
+data go_r2b_happy_fixture_source: String = "package main\n\nimport \"math\"\n\nfunc main() {\n    var x int64 = math.MaxInt64\n    got := x + 1\n    want := int64(math.MinInt64)\n    if got != want {\n        panic(\"silent signed wrap: expected MinInt64\")\n    }\n}\n"
+
+data go_r2b_falsification_fixture_source: String = "package main\n\nimport \"math\"\n\nfunc main() {\n    var x int64 = math.MaxInt64\n    got := x + 1\n    want := int64(0)\n    if got != want {\n        panic(\"deliberately wrong expected wrap value\")\n    }\n}\n"
+
+fn go_r2b_fixture_pair() -> LeafModelGoRuntimeFixturePair {
+  LeafModelGoRuntimeFixturePair {
+    claim_id: leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
+    fact_anchor: go_r2b_claim_overflow_fact,
+    happy: go_run_fixture(source: go_r2b_happy_fixture_source),
+    expected_happy_verdict: TargetRuntimeExerciseAccepted,
+    falsification: LeafModelGoRuntimeFalsificationCase {
+      fixture: go_run_fixture(source: go_r2b_falsification_fixture_source),
+      expected_verdict: TargetRuntimeExerciseRejected {
+        diagnostic_code: target_diagnostic_go_runtime_panic
+      }
+    }
+  }
+}
+
+fn go_r2b_fixture() -> LeafModelGoRuntimeFixturePair {
+  go_r2b_fixture_pair()
+}
+
+// Go R3-external — Symbol atom realization: built-in string carrier vs invalid conversion arity.
+data go_r3_external_claim_atom_realization_fact: Symbol = go_atom_realization_symbol
+
+data go_r3_external_happy_fixture_source: String = "package leafmodel\n\nfunc r3() string { return \"x\" }\n"
+
+data go_r3_external_falsification_fixture_source: String = "package leafmodel\n\nfunc r3() string { return string(\"x\", \"y\") }\n"
+
+fn go_r3_external_fixture_pair() -> LeafModelGoCompileFixturePair {
+  LeafModelGoCompileFixturePair {
+    claim_id: leaf_model_claim_go_r3_external_symbol_projection,
+    fact_anchor: go_leaf_model_fact_atom(id: go_r3_external_claim_atom_realization_fact),
+    happy: go_build_fixture(source: go_r3_external_happy_fixture_source),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoCompileFalsificationCase {
+      fixture: go_build_fixture(source: go_r3_external_falsification_fixture_source),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: target_diagnostic_go_invalid_conversion_arity
+      }
+    }
+  }
+}
+
+fn go_r3_external_fixture() -> LeafModelGoCompileFixturePair {
+  go_r3_external_fixture_pair()
 }
 
 // R2a — algebra inhabitance: ordered-ring ops on i32 (design-rust-dag-leafmodel-instantiation.md §5).
@@ -575,34 +589,4 @@ fn rust_r3_internal_emit_coupling_receipt() -> LeafModelEmitCouplingReceipt {
 
 fn rust_r3_internal_fixture() -> LeafModelEmitCouplingReceipt {
   rust_r3_internal_emit_coupling_receipt()
-}
-
-// --- PY-L1-STATIC-STRUCTURAL fixtures (Arbiter ruling proud-fox-405, msg_41813c03) ---
-// F1 demonstration: the falsification fixture returns a `str` from a function annotated
-// `-> int`. CPython `py_compile` ACCEPTS it and `python3` runs it with NO error
-// (the value is never used), so neither the compile nor the runtime authority catches
-// the defect — only static analysis (pyright `reportReturnType`) does. This is exactly
-// why static structural analysis is a third, distinct authority.
-data python_l1_static_happy_fixture_source: String = "def l1_test() -> int:\n    return 0\n"
-data python_l1_static_falsification_fixture_source: String = "def l1_test() -> int:\n    return \"not an int\"\n"
-
-fn python_l1_static_fixture_pair() -> LeafModelPythonStaticFixturePair {
-  LeafModelPythonStaticFixturePair {
-    claim_id: leaf_model_claim_python_l1_static_return_type,
-    surface_spelling_fact: python_surface_spelling_int,
-    happy: LeafModelPythonStaticHappyCase {
-      artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
-      tool_profile_ref: pyright_profile_l1_id
-    },
-    falsification: LeafModelPythonStaticFalsificationCase {
-      artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
-      tool_profile_ref: pyright_profile_l1_id,
-      tool_id: pyright_tool_id,
-      diagnostic_code: pyright_diag_report_return_type
-    }
-  }
-}
-
-fn python_l1_static_fixture() -> LeafModelPythonStaticFixturePair {
-  python_l1_static_fixture_pair()
 }
