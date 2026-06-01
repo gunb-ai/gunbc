@@ -2,8 +2,8 @@
 //
 // Canonical GitHub Actions `Workflow` bytes live in `gunbc.ci.github_actions_workflow`
 // (`dsl/gunbc/ci_github_actions_workflow.dag`, regenerated from canonical `.github/workflows/ci.yml`).
-// **R3 gate #98:** `ci.yml` is machine-serialized YAML (see `gen_gunbc_ci_workflow_dag`
-// `--write-canonical-github-actions-yaml`); no hand-authored comments in the committed artifact.
+// **R3 gate #98:** `ci.yml` is machine-serialized YAML; no hand-authored comments in the
+// committed artifact.
 // `CIWorkflowDag.github_actions_workflow` pins that carrier as part of the same authority
 // row as the gate graph (`dsl/gunbc/ci.dag`).
 //

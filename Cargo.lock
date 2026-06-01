@@ -359,13 +359,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gen_gunbc_ci_workflow_dag"
-version = "0.1.0"
-dependencies = [
- "serde_yaml",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1144,7 +1137,6 @@ dependencies = [
  "ci_affected_components",
  "criterion",
  "emit_host_runner",
- "gen_gunbc_ci_workflow_dag",
  "libc",
  "num-bigint",
  "serde",

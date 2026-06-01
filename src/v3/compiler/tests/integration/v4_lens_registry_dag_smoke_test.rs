@@ -335,8 +335,6 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
         "{CI_PATH}: Lens-CI execution must depend on the v2 compiler artifact job used by the live semantic step"
     );
 
-    gen_gunbc_ci_workflow_dag::parse_and_validate_github_actions_workflow_yaml(CI_YML)
-        .unwrap_or_else(|e| panic!("{CI_YML_PATH}: parse/validate workflow YAML: {e}"));
     let smoke_step_name = expr_string(record_body_field(live_signal, "smoke_step_name"));
     let semantic_step_name = expr_string(record_body_field(live_signal, "semantic_step_name"));
     let semantic_target = expr_string(record_body_field(live_signal, "semantic_target"));

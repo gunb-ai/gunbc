@@ -46,7 +46,6 @@ libc = { version = "0.2", default-features = false }
 # R3 C1 — Tier-3 mirror dissolution perf budget (Phase 1 baseline capture); see
 # `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0a/0b.
 criterion = "0.5"
-gen_gunbc_ci_workflow_dag = { path = "../../../tools/gen_gunbc_ci_workflow_dag" }
 ci_affected_components = { path = "../../../tools/ci_affected_components" }
 serde = { workspace = true }
 serde_json = { workspace = true }
