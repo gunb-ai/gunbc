@@ -543,20 +543,29 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
 // mask, no draft gate) because the fork-PR exposure exists wherever a runner executes at all.
 // Authority for the ci.yml binding receipt: v4_workflow_ci_runner_dag_smoke_test
 // (v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml).
+// The check set is live-verified against the operator de-priv by calm-gull-119 (CI floor
+// coordination, 2026-06-01): the de-privileged `ghrunner` account is non-root, member of NONE of
+// {docker, sudo, lxd, wheel, root}, cannot read the GitHub App private key at
+// /etc/actions-runner/app.pem, has no passwordless sudo, and cannot read /var/run/docker.sock
+// (docker.sock is a root-equivalent escape primitive). Each fact is a regression sentinel.
 type RunnerIsolationPolicy {
-  guard_job_name: String // ci.yml job id that enforces the de-priv floor
+  guard_job_name: String // ci.yml job id that enforces the de-priv floor (operator branch-protection key)
   guard_step_name: String // the assertion step name (ci.dag↔ci.yml binding anchor)
-  expected_unprivileged_user: String // the de-privileged runner account (ghrunner)
+  privileged_groups: List<String> // membership in ANY is a de-priv regression — fail closed
+  app_private_key_path: String // the GitHub App key; readable by the runner = regression
+  docker_socket_path: String // root-equivalent escape primitive; readable = regression
   forbid_root_uid: Bool // a job running as uid 0 is a de-priv regression — fail closed
   forbid_passwordless_sudo: Bool // `sudo -n` succeeding is root-equivalent — fail closed
   timeout_minutes: Int // 🟡 gated: formatter-int-refinement — must be ≥1
-  blocks_required_path: Bool // a privileged runner blocks the merge (not advisory)
+  blocks_required_path: Bool // a privileged runner blocks the merge (wired into ci.needs, not advisory)
 }
 
 data ci_runner_isolation_policy: RunnerIsolationPolicy = {
-  guard_job_name: "runner_isolation_guard"
-  guard_step_name: "Assert runner is de-privileged (fork-PR isolation floor)"
-  expected_unprivileged_user: "ghrunner"
+  guard_job_name: "infra_isolation"
+  guard_step_name: "Assert runner is de-privileged (adversarial)"
+  privileged_groups: ["docker", "sudo", "lxd", "wheel", "root"]
+  app_private_key_path: "/etc/actions-runner/app.pem"
+  docker_socket_path: "/var/run/docker.sock"
   forbid_root_uid: true
   forbid_passwordless_sudo: true
   timeout_minutes: 5

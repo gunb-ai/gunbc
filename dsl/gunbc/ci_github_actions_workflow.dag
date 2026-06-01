@@ -284,7 +284,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "M1 v4 workflow CI model/YAML binding smoke" },
           id: none,
-          run: "set -euo pipefail\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet\n",
+          run: "set -euo pipefail\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml -- --exact --quiet\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -317,7 +317,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Validate prerequisites (fail-closed under skipped/failed deps)" },
           id: none,
-          run: "set -euo pipefail\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)\"\n",
+          run: "set -euo pipefail\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.infra_isolation.result }}\" != \"success\" ]]; then\n  echo \"::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified — ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; infra_isolation de-priv guard green; affected is shadow-only)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -335,10 +335,33 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["ci_floor"],
+      needs: ["ci_floor", "infra_isolation"],
       env: none,
       outputs: none,
       if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true }}" },
+      strategy: none,
+      timeout_minutes: Some { value: 5 },
+      continue_on_error: false,
+      concurrency: none
+    }, {
+      id: "infra_isolation",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "Assert runner is de-privileged (adversarial)" },
+          id: none,
+          run: "fail(){ echo \"::error::INFRA ISOLATION REGRESSION: $1\"; exit 1; }\n[ \"$(id -u)\" -ne 0 ] || fail \"running as root\"\nfor g in docker sudo lxd wheel root; do id -nG | tr ' ' '\\n' | grep -qx \"$g\" && fail \"in privileged group $g\"; done\ncat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail \"can read the App private key\"\nsudo -n true 2>/dev/null && fail \"has passwordless sudo\"\ntest -r /var/run/docker.sock && fail \"can access docker.sock\"\necho \"OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, no docker.sock\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }],
+      needs: [],
+      env: none,
+      outputs: none,
+      if_condition: none,
       strategy: none,
       timeout_minutes: Some { value: 5 },
       continue_on_error: false,
