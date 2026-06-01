@@ -419,16 +419,17 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
             "the zero Fail check with the zero Deferred check via &&"
         )
     gate_body = generated_function(source, "manual_corpus_gate", corpus_eval_rs)
-    require_order(
-        gate_body,
-        [
-            "manual_corpus_report_has_evidence(report.clone())",
-            "manual_corpus_all_pass(report)",
-            "false",
-        ],
-        corpus_eval_rs,
-        "generated non-empty roster gate before all-pass tally",
+    normalized_gate = "".join(gate_body.split())
+    gate_order = re.compile(
+        r"manual_corpus_report_has_evidence\([^)]*report[^)]*\)"
+        r".*manual_corpus_all_pass\([^)]*report[^)]*\)"
+        r".*false"
     )
+    if not gate_order.search(normalized_gate):
+        raise ReceiptError(
+            f"{corpus_eval_rs}: manual_corpus_gate must check non-empty roster "
+            "evidence before manual_corpus_all_pass and retain a false fallback"
+        )
     require_order(
         generated_function(source, "witness_manual_corpus_gate_closed", corpus_eval_rs),
         [

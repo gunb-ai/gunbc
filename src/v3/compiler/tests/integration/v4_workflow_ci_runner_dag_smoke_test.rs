@@ -1407,6 +1407,9 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "fail_deferred_conjunction",
         "tally\\.fail[^&|;]*[Zz]ero",
         "&&[^&|;]*tally\\.deferred[^&|;]*[Zz]ero",
+        "gate_order",
+        "manual_corpus_report_has_evidence\\([^)]*report",
+        "manual_corpus_all_pass\\([^)]*report",
         "manual_corpus_gate(run_manual_testclaim_corpus_eval())",
     ] {
         assert!(
