@@ -819,7 +819,10 @@ fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure()
             .find(&format!("data {symbol}"))
             .unwrap_or_else(|| panic!("{CI_DAG_PATH}: missing `data {symbol}`"));
         let rest = &CI_DAG[start..];
-        let end = rest[1..].find("\ndata ").map(|i| i + 1).unwrap_or(rest.len());
+        let end = rest[1..]
+            .find("\ndata ")
+            .map(|i| i + 1)
+            .unwrap_or(rest.len());
         &rest[..end]
     };
     let upstream_edge = "ci_upsert_upstream_job_input(job: v2_compile_src_v4)";
