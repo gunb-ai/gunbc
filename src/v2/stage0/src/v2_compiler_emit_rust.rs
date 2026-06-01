@@ -16490,7 +16490,13 @@ pub fn emit_data_def(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let annotation_type_node = if ((type_node.children.clone().len() as i64) > 0) {
+        let annotation_type_node = if (((type_node.children.clone().len() as i64) > 0)
+            || (find_property(
+                type_node.properties.clone(),
+                "__applied_type_args".to_string(),
+                scope.type_env.clone().source_indices.clone(),
+            ) != None))
+        {
             type_node.clone()
         } else {
             match type_node.inferred.clone().as_deref().cloned() {
