@@ -2131,6 +2131,7 @@ pub mod evaluator {
             StrictEvidence, Value, BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
         };
         use crate::compile_to_dag;
+        use crate::dag::Declaration;
         use crate::dag::{
             literal_bits_int, ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster,
             ComparisonOp, Dag, DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound,
@@ -2221,6 +2222,94 @@ pub mod evaluator {
 
             let full_program = "package main\nfunc main() {}\n";
             assert_eq!(emit_host_go_executable_source(full_program), full_program);
+        }
+
+        fn record_field<'a>(value: &'a Value, label: &str) -> &'a Value {
+            let Value::RecordValue(fields) = value else {
+                panic!("expected record value for field `{label}`, got {value:?}");
+            };
+            &fields
+                .iter()
+                .find(|field| field.label == label)
+                .unwrap_or_else(|| panic!("missing field `{label}`"))
+                .value
+        }
+
+        fn variant_payload<'a>(
+            dag: &Dag,
+            value: &'a Value,
+            file_suffix: &str,
+            variant_name: &str,
+        ) -> &'a Value {
+            let Value::VariantValue { tag, payload } = value else {
+                panic!("expected variant `{variant_name}`, got {value:?}");
+            };
+            let decl = dag.declaration(*tag);
+            assert!(
+                decl.span.file.ends_with(file_suffix),
+                "variant `{variant_name}` came from unexpected file `{}`",
+                decl.span.file
+            );
+            assert_eq!(decl.name.as_deref(), Some(variant_name));
+            payload
+        }
+
+        fn alloc_emit_host_go_decl(dag: &mut Dag) -> DeclarationId {
+            let int_decl = dag.int_shape().expect("Int decl in bootstrap").declaration;
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("run_emit_host_go".to_string()),
+                connective: TypeConnective::Arrow {
+                    inputs: vec![int_decl, int_decl, int_decl],
+                    output: int_decl,
+                    body: ArrowBody::Pending,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: SourceSpan::new("src/v4/compiler/emit_host.dag", 0, 1),
+            });
+            id
+        }
+
+        #[test]
+        fn transform_callable_dispatches_run_emit_host_go_through_evaluator() {
+            let mut dag = Dag::new();
+            let callee_decl = alloc_emit_host_go_decl(&mut dag);
+            let target = dag.push_value(LiteralBits::String("Go".to_string()), span());
+            let source_fragment = "func emittedFragment() int { return 1 }";
+            let source = dag.push_value(LiteralBits::String(source_fragment.to_string()), span());
+            let input_root = dag.push_value(LiteralBits::String("root-pin".to_string()), span());
+            let call_output = dag.push_transform(
+                TransformTarget::Callable(callee_decl),
+                vec![target, source, input_root],
+                span(),
+            );
+            let entry = node_for_port(&dag, call_output);
+            let mut state = empty_state();
+
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy())
+                .expect("run_emit_host_go dispatch evaluates");
+
+            let accepted_payload =
+                variant_payload(&dag, &value, "src/v4/std/diagnostic.dag", "Accepted");
+            let receipt = record_field(accepted_payload, "value");
+            assert_eq!(
+                record_field(receipt, "source_text"),
+                &Value::LiteralValue(LiteralBits::String(source_fragment.to_string())),
+                "receipt keeps the modeled TargetSource fragment, not the executable wrapper"
+            );
+            let logical_run = record_field(receipt, "logical_run");
+            let logical_payload =
+                variant_payload(&dag, logical_run, "src/v4/std/diagnostic.dag", "Accepted");
+            let stdout = record_field(record_field(logical_payload, "value"), "stdout");
+            let _ = record_field(stdout, "bytes");
         }
 
         fn bind_node_id_for_fn(dag: &Dag, fn_name: &str) -> NodeId {
