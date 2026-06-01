@@ -23,8 +23,8 @@
 
 | Concept | Canonical home | Per-target rows | §8 state | Forbidden |
 | ------- | -------------- | ----------------- | -------- | --------- |
-| **TargetAtomRealization** | `src/v4/std/target_model.dag` | `rust.dag`, `go.dag`, `python.dag`, `typescript.dag` | Rust APPROVED (#4099); Go PENDING (#4145); TS PENDING (atom after type-expr) | `GoAtomRealization`, duplicate carrier in `go.dag` |
-| **TargetTypeExpressionProjection** | `src/v4/std/target_model.dag` | same extdeps | Rust APPROVED (#4124); Go PENDING (#4145); TS PENDING (strict order **before** atom) | Name-keyed `Outcome`/`Witness` tables in emit |
+| **TargetAtomRealization** | `src/v4/std/target_model.dag` | `rust.dag`, `go.dag`, `python.dag`, `typescript.dag` | Rust APPROVED (#4099); Go APPROVED (#4149); TS PENDING (atom after type-expr; §8 follow-up) | `GoAtomRealization`, duplicate carrier in `go.dag` |
+| **TargetTypeExpressionProjection** | `src/v4/std/target_model.dag` | same extdeps | Rust APPROVED (#4124); Go APPROVED (#4149); TS PENDING (strict order **before** atom) | Name-keyed `Outcome`/`Witness` tables in emit |
 | **TargetCollectionRealization** | `src/v4/std/target_model.dag` | same extdeps | SG-5/6 APPROVED; **SG-COLLECTION-PROJECTION** PENDING (vivid-lynx-81) | `Vec<Rc<T>>` shim in emit without monoid→Vec row |
 | **TargetBundleEdge / RC layering** | `v4.std.target_model` (`TargetBundleEdge`) | emit consumes via `target_bundle_edge_*` | SG-RC APPROVED (#4100) | Conflating with collection projection |
 | **Module graph / export surface** | `03_name_resolve.dag` + `05_emit_rust.dag` (M1) | follow-on `TargetModuleExportSurface` in `target_model` | SG-8 §8 APPROVED (#4143) | Per-error `pub use` patch tables |
@@ -94,8 +94,8 @@ Other residuals: see #4148 routing worksheets (not impl without §8)
 | Priority | Item | PR / owner | Arbiter state |
 | -------- | ---- | ---------- | ------------- |
 | 1 | SG-COLLECTION-PROJECTION (new) | vivid-lynx-81 (pending author) | **BLOCKED** — awaiting worksheet |
-| 2 | Go L0/L1 bundle (5 worksheets) | #4145 gentle-lynx-68 | **active** — §8 in flight |
-| 3 | TS strict-order (5 worksheets) | #4147 merged; §8 follow-up | **active** — post-merge ratification |
+| 2 | Go L0/L1 bundle (5 worksheets) | #4149 (supersedes draft #4145 content + §8) | **ready-for-review** — all §8 CLOSED |
+| 3 | TS strict-order (5 worksheets) | #4147 merged; §8 follow-up PR TBD | **active** — shared verdict adjudication pending |
 | 4 | Python L1/L2 | witty-ram-95 | **active** — review queue |
 
 ---
@@ -105,3 +105,4 @@ Other residuals: see #4148 routing worksheets (not impl without §8)
 | Date | Change | Arbiter |
 | ---- | ------ | ------- |
 | 2026-06-01 | Initial map; P5 + SG-8 APPROVED; Go/TS verdict carrier consolidation | proud-fox-405 |
+| 2026-06-01 | Go five worksheets §8 APPROVED on #4149; map Go rows → APPROVED | proud-fox-405 |
