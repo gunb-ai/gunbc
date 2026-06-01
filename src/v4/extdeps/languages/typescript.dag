@@ -1433,6 +1433,13 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
+// Phase 1 leaf-model claim subjects (algebra-inhabitance widening worksheet).
+data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
+data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
+
+// Phase 1 R3-external fact anchor (full TargetAtomRealization row: atom-realization worksheet).
+data ts_target_atom_realization_symbol: Symbol = ts_target_atom_realization_symbol
+
 fn ts_numeric_algebra_inhabitance_step(
   acc: List<AlgebraInhabitanceDecl>,
   row: TsEcma262NumericPrimitiveFactsUnion
