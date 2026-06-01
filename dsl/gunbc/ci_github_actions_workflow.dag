@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 3e661cb61276625a8ab867a88bf6a1c7e851da168f9b0489dfd2512c82d22c9c
+// Source-SHA256(.github/workflows/ci.yml): 9497a7c57078c4aea45b45b99cfd1797438da2bb7dc449038a49a3db6de952c9
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -36,7 +36,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths\n# the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container\n# path translation. Gate on the live socket; a missing socket degrades observably to a cold\n# build (::warning), never silently and never fail-hard. dissolve-on-arrival.\nif [ -S /var/lib/ctrl/sccache/server.sock ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -108,7 +108,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths\n# the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container\n# path translation. Gate on the live socket; a missing socket degrades observably to a cold\n# build (::warning), never silently and never fail-hard. dissolve-on-arrival.\nif [ -S /var/lib/ctrl/sccache/server.sock ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -188,7 +188,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths\n# the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container\n# path translation. Gate on the live socket; a missing socket degrades observably to a cold\n# build (::warning), never silently and never fail-hard. dissolve-on-arrival.\nif [ -S /var/lib/ctrl/sccache/server.sock ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,

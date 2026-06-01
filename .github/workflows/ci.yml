@@ -32,6 +32,20 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
+        # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
+        # path translation. Gate on the live socket; a missing socket degrades observably to a cold
+        # build (::warning), never silently and never fail-hard. dissolve-on-arrival.
+        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
@@ -67,6 +81,20 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
+        # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
+        # path translation. Gate on the live socket; a missing socket degrades observably to a cold
+        # build (::warning), never silently and never fail-hard. dissolve-on-arrival.
+        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
@@ -96,6 +124,20 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
+        # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
+        # path translation. Gate on the live socket; a missing socket degrades observably to a cold
+        # build (::warning), never silently and never fail-hard. dissolve-on-arrival.
+        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
