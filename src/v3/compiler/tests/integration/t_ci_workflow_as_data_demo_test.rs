@@ -16,8 +16,7 @@
 //! loaded for gate #57), `ci_workflow_dag.github_actions_workflow` is structurally identical to
 //! `gunbc_ci_github_actions_workflow`, matching the **`YamlStatic => dag.github_actions_workflow`**
 //! arm of `project_github_actions` in `dsl/gunbc/ci_emission.dag`, plus a source-text ratchet on the
-//! pinned `data gunbc_ci_yml_workflow` binding. **Orthogonal ratchet:**
-//! `gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output` (YAML → generator → `.dag` bytes).
+//! pinned `data gunbc_ci_yml_workflow` binding.
 //!
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
 //! hosts the executable receipt: **`compile_to_dag` on a linked bundle** (`ci_github_actions_workflow.dag`

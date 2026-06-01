@@ -1,11 +1,9 @@
 // gunbc/ci_emission.dag — T-WAD WI-2 / Slice 4: `WorkflowRuntime` + `project_github_actions`.
 //
-// Canonical GitHub Actions `Workflow` bytes live in `gunbc.ci.github_actions_workflow`
-// (`dsl/gunbc/ci_github_actions_workflow.dag`, regenerated from canonical `.github/workflows/ci.yml`).
-// **R3 gate #98:** `ci.yml` is machine-serialized YAML; no hand-authored comments in the
-// committed artifact.
-// `CIWorkflowDag.github_actions_workflow` pins that carrier as part of the same authority
-// row as the gate graph (`dsl/gunbc/ci.dag`).
+// Static GitHub Actions `Workflow` carrier bytes live in `gunbc.ci.github_actions_workflow`
+// (`dsl/gunbc/ci_github_actions_workflow.dag`). `.github/workflows/ci.yml` remains the
+// hand-edited workflow authority until the T-24 CI model emits it. `CIWorkflowDag.github_actions_workflow`
+// pins the static carrier as part of the same authority row as the gate graph (`dsl/gunbc/ci.dag`).
 //
 // `project_github_actions(..., YamlStatic)` returns that YAML-pinned carrier (Slice 4:
 // no structural projection from `pipeline`/`edges` yet; WI-2 follow-on). Transport-arm
