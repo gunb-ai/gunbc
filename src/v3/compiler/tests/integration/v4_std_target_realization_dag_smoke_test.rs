@@ -9,6 +9,9 @@
 //! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` +
 //! `_internal/INVARIANTS_OPS.md` row land in the same PR. **+0 SG-0 paths** (no new census entry).
 //! SG-RC ctor `binding_spellings` receipts live in `src/v4/test/claim/manual/sg_rc_layering.dag`.
+//! Outcome/Rc<Outcome> receipt: this PR adds assertion-only same-file smoke over
+//! `claim_sg_rc_outcome_inner_sg2_args_preserved`; SG-0 implementation-surface posture remains +0,
+//! and the dissolve trigger is direct v4 manual-claim runner execution of `sg_rc_layering.dag`.
 //!
 //! SG-1 + SG-2 + SG-5/SG-6 + SG-RC receipt: `target_model.dag` carriers;
 //! `bounded_lattice_completeness` + `04_infer` gate; Rust rows in `rust.dag`;
@@ -31,6 +34,9 @@ const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/r
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
+const SG_RC_LAYERING_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/sg_rc_layering.dag");
+const SG_RC_LAYERING_CLAIM_PATH: &str = "src/v4/test/claim/manual/sg_rc_layering.dag";
 const BOUNDED_LATTICE_COMPLETENESS_DAG: &str =
     include_str!("../../../../v4/std/bounded_lattice_completeness.dag");
 const BOUNDED_LATTICE_COMPLETENESS_PATH: &str = "src/v4/std/bounded_lattice_completeness.dag";
@@ -596,6 +602,10 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
         "{TARGET_MODEL_PATH}: per (carrier, use_site) lookup must be structural"
     );
     assert!(
+        surface_declares_fn(&module, "target_use_site_ownership_source_key"),
+        "{TARGET_MODEL_PATH}: SG-RC lookup must use row-authored carrier key projection so Outcome rows compose with SG-2"
+    );
+    assert!(
         surface_declares_fn(&module, "target_reference_layer_apply_type_emitted"),
         "{TARGET_MODEL_PATH}: type emit must wrap SG-2 inner via reference_layer row"
     );
@@ -610,6 +620,26 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
     assert!(
         surface_declares_data(&module, "target_reference_layer_tokens_decode_invalid"),
         "{TARGET_MODEL_PATH}: non-Conj token bundle must fail-closed"
+    );
+}
+
+#[test]
+fn v4_sg_rc_outcome_claim_preserves_sg2_inner_type_args() {
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("sg_rc_outcome_node_source_type"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: must include an Outcome<T> SG-RC fixture"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("project_type_expression_node"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: Outcome<T> fixture must project inner type through SG-2 before SG-RC wrapping"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("Rc<Outcome<Node>>"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: Outcome<T> receipt must assert Rc<Outcome<Node>>, not bare Rc<Outcome>"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("claim_sg_rc_outcome_inner_sg2_args_preserved"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: manual TestClaim must pin Outcome<T> SG-2 + SG-RC composition"
     );
 }
 
