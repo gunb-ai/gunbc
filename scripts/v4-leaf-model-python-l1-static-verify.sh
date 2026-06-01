@@ -14,7 +14,12 @@
 # This is exactly why static analysis is modeled as TargetStaticAnalysisVerdict, a
 # carrier distinct from TargetPythonCompileRejected and TargetPythonExecRejected.
 #
-# Tool policy: pyright is pinned via npx. The fixtures are modeled BlockingForRung
+# Tool policy: the runner CONSUMES the modeled pyright_profile_l1 (single authority,
+# src/v4/extdeps/typecheckers/pyright.dag) — it pins exactly that pyright_version (PATH
+# pyright is used only if its --version matches, else npx pins it) and feeds the modeled
+# python_version + type_checking_mode to pyright via a generated pyrightconfig.json. So the
+# F1 receipt proves the SAME profile that pyright_profile_l1_id references, not whatever
+# pyright happens to be on PATH. The fixtures are modeled BlockingForRung
 # (src/v4/std/leaf_model_verification.dag), so this gate is FAIL-CLOSED: the static
 # authority must positively prove it caught the falsification. If pyright cannot be
 # obtained (offline runner) the run still records an honest receipt that distinguishes
@@ -27,11 +32,15 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 fixture_dag="src/v4/lens/leaf_model_verification.dag"
-pyright_version="1.1.410"
+pyright_profile_dag="src/v4/extdeps/typecheckers/pyright.dag"
 pyright_expected_rule="reportReturnType"
 
 if [[ ! -f "$fixture_dag" ]]; then
   echo "error: missing fixture authority at $fixture_dag" >&2
+  exit 1
+fi
+if [[ ! -f "$pyright_profile_dag" ]]; then
+  echo "error: missing pyright profile authority at $pyright_profile_dag" >&2
   exit 1
 fi
 if ! command -v python3 >/dev/null 2>&1; then
@@ -65,6 +74,42 @@ print(f"falsification_source={shlex.quote(falsification)}")
 PY
 )"
 
+# Single authority: the static profile facts come from the modeled pyright_profile_l1
+# (pyright.dag), NOT hardcoded. The runner pins exactly that version and feeds the modeled
+# pythonVersion / typeCheckingMode to pyright via a generated pyrightconfig.json, so the F1
+# receipt proves the SAME profile that pyright_profile_l1_id references.
+eval "$(python3 - "$pyright_profile_dag" <<'PY'
+from __future__ import annotations
+
+import re
+import shlex
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text()
+
+def field(name: str) -> str:
+    m = re.search(rf'{name}:\s*"([^"]*)"', text)
+    if not m:
+        raise SystemExit(f"error: pyright.dag: missing pyright_profile_l1 field {name}")
+    return m.group(1)
+
+mode_map = {
+    "PyrightModeOff": "off",
+    "PyrightModeBasic": "basic",
+    "PyrightModeStandard": "standard",
+    "PyrightModeStrict": "strict",
+}
+m = re.search(r"type_checking_mode:\s*(PyrightMode\w+)", text)
+if not m or m.group(1) not in mode_map:
+    raise SystemExit("error: pyright.dag: missing/unknown pyright_profile_l1 type_checking_mode")
+
+print(f"pyright_version={shlex.quote(field('pyright_version'))}")
+print(f"pyright_python_version={shlex.quote(field('python_version'))}")
+print(f"pyright_mode={shlex.quote(mode_map[m.group(1)])}")
+PY
+)"
+
 run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-$$}"
 scratch="${RUNNER_TEMP:-/tmp}/v4-leaf-model-python-l1-static-${run_suffix}"
 rm -rf "$scratch"
@@ -72,6 +117,11 @@ mkdir -p "$scratch"
 
 printf '%s' "$happy_source" >"${scratch}/happy.py"
 printf '%s' "$falsification_source" >"${scratch}/falsification.py"
+
+# Modeled profile → pyright config (auto-discovered by pyright from the target's directory).
+cat >"${scratch}/pyrightconfig.json" <<JSON
+{ "pythonVersion": "${pyright_python_version}", "typeCheckingMode": "${pyright_mode}" }
+JSON
 
 # --- compile + runtime authorities: both must MISS the falsification defect ---
 compile_authority_misses=true
@@ -97,12 +147,16 @@ falsification_static_rejected=false
 pyright_run() {
   local target="$1" out="$2"
   local cmd
-  if command -v pyright >/dev/null 2>&1; then
+  # Pin EXACTLY the modeled pyright_version. A pyright already on PATH is used only if its
+  # version matches the modeled profile; otherwise pin via npx. This prevents the receipt
+  # from passing under a different tool profile than pyright_profile_l1 declares.
+  if command -v pyright >/dev/null 2>&1 \
+     && pyright --version 2>/dev/null | grep -qw "$pyright_version"; then
     cmd=(pyright --outputjson "$target")
   elif command -v npx >/dev/null 2>&1; then
     cmd=(npx --yes "pyright@${pyright_version}" --outputjson "$target")
   else
-    return 2  # tool unavailable
+    return 2  # modeled tool/version unavailable
   fi
   # pyright EXITS NON-ZERO when it reports diagnostics — for the falsification fixture
   # that is the EXPECTED success path (reportReturnType), NOT a tool-availability failure.
@@ -156,6 +210,8 @@ export V4_PYL1_FALS_RULE="$falsification_static_rule"
 export V4_PYL1_DISTINCT_PROVEN="$distinct_authority_proven"
 export V4_PYL1_STATIC_PROVEN="$static_proven"
 export V4_PYL1_PYRIGHT_VERSION="$pyright_version"
+export V4_PYL1_PYTHON_VERSION="$pyright_python_version"
+export V4_PYL1_MODE="$pyright_mode"
 export V4_PYL1_EXPECTED_RULE="$pyright_expected_rule"
 
 python3 - <<'PY'
@@ -167,7 +223,13 @@ static_available = b("V4_PYL1_STATIC_AVAILABLE")
 print(json.dumps({
     "schema": "scripts/v4-leaf-model-python-l1-static-verify.sh::static_receipt_v1",
     "claim_id": "PythonL1StaticReturnType",
-    "tool": {"id": "pyright", "version": os.environ["V4_PYL1_PYRIGHT_VERSION"]},
+    "tool": {
+        "id": "pyright",
+        "version": os.environ["V4_PYL1_PYRIGHT_VERSION"],
+        "python_version": os.environ["V4_PYL1_PYTHON_VERSION"],
+        "type_checking_mode": os.environ["V4_PYL1_MODE"],
+        "profile": "pyright_profile_l1 (single authority: src/v4/extdeps/typecheckers/pyright.dag)",
+    },
     "authority_separation": {
         "py_compile_accepts_both": b("V4_PYL1_COMPILE_MISSES"),
         "runtime_exec_clean_on_falsification": b("V4_PYL1_RUNTIME_MISSES"),
