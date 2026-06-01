@@ -82,6 +82,10 @@ const MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_typescript_record_task_translate.dag");
 const MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH: &str =
     "src/v4/test/claim/manual/mvp1_typescript_record_task_translate.dag";
+const MVP1_TYPESCRIPT_PR3_TYPED_FN_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_typescript_pr3_typed_fn_translate.dag");
+const MVP1_TYPESCRIPT_PR3_TYPED_FN_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/mvp1_typescript_pr3_typed_fn_translate.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -1125,6 +1129,48 @@ fn v4_mvp1_typescript_grammar_inverse_claims_name_l0_productions() {
         assert!(
             data_body_var_name_equals(&task_module, anchor, expected),
             "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 anchor {anchor} must bind {expected}"
+        );
+    }
+}
+
+#[test]
+fn v4_mvp1_typescript_grammar_inverse_claims_name_g3_productions() {
+    let pr3_module = parse_module(
+        MVP1_TYPESCRIPT_PR3_TYPED_FN_CLAIM_DAG,
+        MVP1_TYPESCRIPT_PR3_TYPED_FN_CLAIM_PATH,
+    );
+    for production in [
+        "ts_production_pr3_typed_fn_decl",
+        "ts_production_pr3_typed_param",
+        "ts_production_wave2a_type_annotation",
+        "ts_production_wave2a_type_number",
+    ] {
+        assert!(
+            import_includes_name(
+                &pr3_module,
+                &["v4", "extdeps", "languages", "typescript"],
+                production
+            ),
+            "{MVP1_TYPESCRIPT_PR3_TYPED_FN_CLAIM_PATH}: G3 must import {production}"
+        );
+    }
+    for (anchor, expected) in [
+        (
+            "mvp1_ts_pr3_g3_grammar_inverse_production",
+            "ts_production_pr3_typed_fn_decl",
+        ),
+        (
+            "mvp1_ts_pr3_g3_type_annotation_production",
+            "ts_production_wave2a_type_annotation",
+        ),
+        (
+            "mvp1_ts_pr3_g3_typed_param_production",
+            "ts_production_pr3_typed_param",
+        ),
+    ] {
+        assert!(
+            data_body_var_name_equals(&pr3_module, anchor, expected),
+            "{MVP1_TYPESCRIPT_PR3_TYPED_FN_CLAIM_PATH}: G3 anchor {anchor} must bind {expected}"
         );
     }
 }
