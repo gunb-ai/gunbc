@@ -5851,7 +5851,7 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let raw_ty_str = render_rust_type_with_applied_binding(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
     match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
       Some { value: top_value } =>
@@ -5907,7 +5907,7 @@ fn rust_nominal_identity_data_expr(type_node: Node, value: Node, source_indices:
 }
 
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
-  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let raw_ty_str = render_rust_type_with_applied_binding(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
   if type_name == "BoundedLattice" {
     match value.expr_data {
