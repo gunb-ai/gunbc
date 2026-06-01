@@ -14,6 +14,7 @@ import v4.extdeps.languages.python {
 }
 import v4.extdeps.typecheckers.pyright {
   pyright_tool_id,
+  pyright_profile_l1_id,
   pyright_diag_report_return_type
 }
 import v4.extdeps.languages.rust {
@@ -66,9 +67,6 @@ import v4.std.leaf_model_verification {
   TargetPythonExerciseAccepted,
   TargetPythonExecRejected,
   TargetArtifact,
-  TargetStaticAnalysisInvocation,
-  TargetStaticAnalysisRole,
-  BlockingForRung,
   LeafModelPythonStaticHappyCase,
   LeafModelPythonStaticFalsificationCase,
   LeafModelPythonStaticFixturePair,
@@ -466,23 +464,17 @@ fn rust_r3_internal_fixture() -> LeafModelEmitCouplingReceipt {
 data python_l1_static_happy_fixture_source: String = "def l1_test() -> int:\n    return 0\n"
 data python_l1_static_falsification_fixture_source: String = "def l1_test() -> int:\n    return \"not an int\"\n"
 
-fn python_l1_static_invocation(source: String, role: TargetStaticAnalysisRole) -> TargetStaticAnalysisInvocation {
-  TargetStaticAnalysisInvocation {
-    tool_profile_ref: pyright_tool_id,
-    input_artifact: TargetArtifact { source_text: source },
-    analysis_role: role
-  }
-}
-
 fn python_l1_static_fixture_pair() -> LeafModelPythonStaticFixturePair {
   LeafModelPythonStaticFixturePair {
     claim_id: leaf_model_claim_python_l1_static_return_type,
     surface_spelling_fact: python_surface_spelling_int,
     happy: LeafModelPythonStaticHappyCase {
-      invocation: python_l1_static_invocation(source: python_l1_static_happy_fixture_source, role: BlockingForRung)
+      artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id
     },
     falsification: LeafModelPythonStaticFalsificationCase {
-      invocation: python_l1_static_invocation(source: python_l1_static_falsification_fixture_source, role: BlockingForRung),
+      artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id,
       tool_id: pyright_tool_id,
       diagnostic_code: pyright_diag_report_return_type
     }

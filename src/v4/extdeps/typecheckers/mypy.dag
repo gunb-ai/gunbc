@@ -36,6 +36,10 @@ data mypy_profile_l1: MypyConfig = MypyConfig {
   strict: true,
 }
 
+// Stable PROFILE identity for the mypy_profile_l1 row — distinct from mypy_tool_id
+// (tool identity); TargetStaticAnalysisInvocation.tool_profile_ref references THIS.
+data mypy_profile_l1_id: Symbol = mypy_profile_l1_id
+
 // Per-tool diagnostic-code namespace (NOT shared across tools, per Arbiter ruling).
 // code_id is the Symbol carried in StaticAnalysisRejected/Advisory; error_code is the
 // literal mypy bracket code emitted under --show-error-codes.

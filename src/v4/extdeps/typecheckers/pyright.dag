@@ -43,6 +43,12 @@ data pyright_profile_l1: PyrightConfig = PyrightConfig {
   type_checking_mode: PyrightModeStandard,
 }
 
+// Stable PROFILE identity for the pyright_profile_l1 row — distinct from pyright_tool_id
+// (tool identity). TargetStaticAnalysisInvocation.tool_profile_ref references THIS (the
+// concrete per-tool profile/config row), not the bare tool id, so profile selection and
+// tool identity are not conflated.
+data pyright_profile_l1_id: Symbol = pyright_profile_l1_id
+
 // Per-tool diagnostic-rule namespace (NOT a shared cross-tool namespace, per Arbiter
 // ruling). code_id is the Symbol carried in StaticAnalysisRejected/Advisory;
 // rule_name is the literal pyright rule string emitted under --outputjson.
