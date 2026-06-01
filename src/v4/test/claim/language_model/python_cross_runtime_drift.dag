@@ -11,6 +11,7 @@ import v4.lens.leaf_model_verification {
   python_cross_runtime_drift_probe,
   python_cross_runtime_drift_python_source,
   python_cross_runtime_drift_rust_source,
+  python_cross_runtime_drift_go_source,
   python_cross_runtime_drift_arbitrary_precision_value,
   python_cross_runtime_drift_fixed_width_value
 }
@@ -47,6 +48,7 @@ fn python_cross_runtime_drift_probe_is_wired(p: LeafModelCrossRuntimeDriftProbe)
   p.claim_id == leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
     && p.arbitrary_precision_source == python_cross_runtime_drift_python_source
     && p.fixed_width_rust_source == python_cross_runtime_drift_rust_source
+    && p.fixed_width_go_source == python_cross_runtime_drift_go_source
     && p.expected_divergence.expected == python_cross_runtime_drift_arbitrary_precision_value
     && p.expected_divergence.actual == python_cross_runtime_drift_fixed_width_value
 }

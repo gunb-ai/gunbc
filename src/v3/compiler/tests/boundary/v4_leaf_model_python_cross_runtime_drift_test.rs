@@ -135,10 +135,17 @@ fn run_python(source: &str) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
-fn run_rust(source: &str) -> Option<String> {
-    if Command::new("rustc").arg("--version").output().is_err() {
-        return None;
-    }
+/// rustc is MANDATORY (fail-closed): the cross-runtime drift claim *is* Python arbitrary
+/// precision vs Rust fixed-width, and the host runner treats rustc as required for the same
+/// reason. The repo's other rust boundary tests (`v4_leaf_model_rust_*`) likewise invoke rustc
+/// unconditionally — it is the bootstrap toolchain, always present in a test environment.
+/// Skipping the assertion when rustc is absent would let a green receipt never exercise the
+/// drift pair, so we panic instead.
+fn run_rust(source: &str) -> String {
+    Command::new("rustc")
+        .arg("--version")
+        .output()
+        .expect("rustc must be available (mandatory for the Python-vs-Rust drift pair)");
     let tmp_dir = scratch_dir("rs");
     let _ = std::fs::remove_dir_all(&tmp_dir);
     std::fs::create_dir_all(&tmp_dir).expect("create scratch dir");
@@ -163,7 +170,7 @@ fn run_rust(source: &str) -> Option<String> {
     );
     let run = Command::new(&bin_path).output().expect("run rust binary");
     let _ = std::fs::remove_dir_all(&tmp_dir);
-    Some(String::from_utf8_lossy(&run.stdout).trim().to_string())
+    String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
 #[test]
@@ -178,10 +185,7 @@ fn v4_leaf_model_python_drift_python_realizes_arbitrary_precision() {
 #[test]
 fn v4_leaf_model_python_drift_python_vs_rust_diverges() {
     let python_value = run_python(PYTHON_SOURCE);
-    let Some(rust_value) = run_rust(RUST_SOURCE) else {
-        eprintln!("rustc unavailable — skipping cross-runtime drift assertion");
-        return;
-    };
+    let rust_value = run_rust(RUST_SOURCE);
     assert_eq!(
         rust_value, EXPECTED_FIXED_WIDTH,
         "Rust i64 must wrap to i64::MIN at the fixed-width boundary"
