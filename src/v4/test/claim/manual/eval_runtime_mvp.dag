@@ -13,6 +13,7 @@ import v4.compiler.eval {
   eval_context_with_semantics,
   eval_diagnostic,
   eval_test_claim_subject,
+  inputs_root_only,
   run_test_claim
 }
 import v4.compiler.infer {
@@ -359,7 +360,7 @@ fn eval_mvp2_actual() -> Outcome<RuntimeValue> {
   eval(
     tree: eval_mvp2_inferred_tree(),
     interpretation: eval_mvp2_interpretation_algebra(),
-    inputs: Inputs { root: eval_mvp2_add_subgraph() }
+    inputs: inputs_root_only(root: eval_mvp2_add_subgraph())
   )
 }
 
