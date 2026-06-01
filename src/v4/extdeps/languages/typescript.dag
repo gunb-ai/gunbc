@@ -1220,7 +1220,8 @@ fn ts_type_expression_projection_bundle_node() -> Node {
 }
 
 // SG-2 lex: MVP-1 wave-1 rules plus the type-expression delimiter tokens this row references
-// (angle brackets, tuple brackets, fat arrow). Additive — MVP-1 lex is untouched.
+// (angle brackets for instantiation + cardinality generic collections, union pipe, fat arrow).
+// Additive — MVP-1 lex is untouched.
 fn ts_sg2_type_expr_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
@@ -1228,8 +1229,6 @@ fn ts_sg2_type_expr_lex_rules() -> LexRuleSet {
       ys: [
         ts_lex_rule(token_class: ts_token_lt, text: "<"),
         ts_lex_rule(token_class: ts_token_gt, text: ">"),
-        ts_lex_rule(token_class: ts_token_lbracket, text: "["),
-        ts_lex_rule(token_class: ts_token_rbracket, text: "]"),
         ts_lex_rule(token_class: ts_token_pipe, text: " | "),
         ts_lex_rule(token_class: ts_token_fat_arrow, text: " => ")
       ]
