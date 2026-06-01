@@ -558,6 +558,19 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
 //   and does NOT touch the two dominant ci_floor steps (M1 emit-probe cargo-check ~13m, v2→v4
 //   bootstrap ~9m) — those compile freshly-emitted trees in $RUNNER_TEMP whose target/ is
 //   discarded each run, so only content-addressed sccache (the modeled projection) can warm them.
+//   INTERIM (operator 2026-06-01, "disregard the memo for now and implement this in ci.yml";
+//   PR #4248, merged): the standing prohibition above notwithstanding, the operator explicitly
+//   directed wiring `RUSTC_WRAPPER=sccache` + `CARGO_INCREMENTAL=0` into the three cargo jobs'
+//   "Isolate toolchain dirs" step — gated fail-safe on the runner's inherited isolated sccache
+//   socket dir (ghrunner-owned /var/lib/ctrl/sccache-ci, ctrl#1419) — to get a real cross-run
+//   cargo-check speedup before the modeled projection lands. This is a sanctioned, bounded
+//   deviation, NOT new standing design surface and NOT a second cache-key authority: the env wire
+//   carries no hand-authored cache key (sccache derives its own content hash internally), so it
+//   does not introduce the `hashFiles`/`cache_key:`/`--cache-mode-key` parallel authority the
+//   prohibition targets. Same dissolve-on-arrival as the hand blocks above: when the
+//   cache_interface projection consumer lands, the sccache env is projected from
+//   `sccache_local_facts` and this interim wire (and its mirror in
+//   dsl/gunbc/ci_github_actions_workflow.dag) is deleted.
 
 data lens_ci_required_lenses: List<LensIdV0> = [
   Complexity,
