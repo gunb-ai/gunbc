@@ -2500,7 +2500,6 @@ fn serialize_type_expr_sum_bounded(
 }
 fn serialize_type_expr_arrow_param_spelling(
   target: TargetModel,
-  form: TargetFunctionTypeShape,
   label: Symbol
 ) -> Outcome<TargetSource> {
   match map_get(target.binding_spellings, label) {
@@ -2524,7 +2523,6 @@ fn serialize_type_expr_arrow_param_bounded(
   bind_outcome(
     o: serialize_type_expr_arrow_param_spelling(
       target: target,
-      form: form,
       label: slot.label
     ),
     f: fn(name_source) {

@@ -3278,6 +3278,8 @@ fn rust_language_model_wave2() -> RustLanguageModel {
 }
 
 // SG-2 — Rust TargetTypeExpressionProjection row (per-connective; uniform carrier for all targets).
+// arrow_form param spelling tokens staged on carrier for labeled-wire serialize/decode; source projection
+// stays positional until target-arrow-domain-param-list-carrier (🟡 gate — parallel typescript.dag row).
 fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {
