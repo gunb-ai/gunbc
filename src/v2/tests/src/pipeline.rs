@@ -308,6 +308,33 @@ fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
 }
 
 #[test]
+fn generic_fn_applied_param_preserves_struct_field_access() {
+    // Resolve must keep structural param type for inference; emit reads overlay from properties.
+    let source = "\
+module gen_applied_field
+
+type NodeFold<S> {
+  seed: S
+}
+
+fn get_seed<S>(fold: NodeFold<S>) -> S {
+  fold.seed
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/gen_applied_field.rs");
+    assert!(
+        content.contains("get_seed<S>(fold: Rc<NodeFold<S>>)"),
+        "generic fn params must preserve applied type args with shared_types Rc; got:\n{content}"
+    );
+    assert!(
+        content.contains("fold.seed"),
+        "applied generic param must retain struct field surface for body inference; got:\n{content}"
+    );
+}
+
+#[test]
 fn generic_param_type_does_not_special_case_nodefold() {
     let source = "\
 module gen_param_no_fabrication

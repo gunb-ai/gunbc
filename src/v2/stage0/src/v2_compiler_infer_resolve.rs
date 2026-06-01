@@ -1373,24 +1373,10 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
             Some(result) => Some(result.expr.clone()),
             None => None,
         };
-        let sig_type_expr = match find_property(
-            type_resolved.properties.clone(),
-            "__applied_type_args".to_string(),
-            env.source_indices.clone(),
-        ) {
-            Some(applied) => {
-                if ((applied.children.clone().len() as i64) > 0) {
-                    applied
-                } else {
-                    authored_type.clone()
-                }
-            }
-            None => authored_type.clone(),
-        };
         Rc::new(ParamResult {
             param: make_resolved_param_node(
                 param_node_name_at(param.clone(), env.source_indices.clone()),
-                sig_type_expr,
+                type_resolved.clone(),
                 default_expr,
                 v2_rt::concat(param.properties.clone(), type_resolved.properties.clone()),
                 param.span.clone(),
@@ -2721,32 +2707,16 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
             }
             __result
         });
-        let authored_ret = match item.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-            _ => unit_type(),
-        };
         let ret_result =
             resolve_optional_node(item.inferred.clone(), env.clone(), module_name.clone());
         let ret_resolved = ret_result.resolved.clone();
         let ret_diags = ret_result.diagnostics.clone();
-        let sig_ret = match find_property(
-            ret_resolved.properties.clone(),
-            "__applied_type_args".to_string(),
-            env.source_indices.clone(),
-        ) {
-            Some(applied) => {
-                if ((applied.children.clone().len() as i64) > 0) {
-                    applied
-                } else {
-                    authored_ret.clone()
-                }
-            }
-            None => authored_ret.clone(),
-        };
         let resolved_ret = if (item.inferred.clone() == None) {
             None
         } else {
-            Some(Rc::new(InferredNode::Resolved { node: sig_ret }))
+            Some(Rc::new(InferredNode::Resolved {
+                node: ret_resolved.clone(),
+            }))
         };
         let use_results = Rc::new({
             let mut __result = Vec::new();
