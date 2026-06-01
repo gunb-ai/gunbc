@@ -1912,31 +1912,28 @@ data rust_sg2_target_function_signature_realization_catalog: List<TargetFunction
   rust_sg2_target_function_signature_realization_symbol_return
 ]
 
+// bundle_core is always Conj; compose live-only catalogs without a silent non-Conj fallback.
 fn rust_mvp1_target_model_node() -> Node {
-  match rust_mvp1_target_model_bundle_core().kind {
-    TypeNode { connective: Conj } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: list_append(
-          left: rust_mvp1_target_model_bundle_core().children,
-          right: [
-            rust_named_edge(
-              name: target_model_edge_atom_realizations,
-              target: target_atom_realization_catalog_node(
-                rows: rust_target_atom_realization_catalog,
-                host_bundle: rust_mvp1_target_model_bundle_core()
-              )
-            ),
-            rust_named_edge(
-              name: target_model_edge_signature_realizations,
-              target: target_function_signature_realization_catalog_node(
-                rows: rust_target_function_signature_realization_catalog
-              )
-            )
-          ]
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: rust_mvp1_target_model_bundle_core().children,
+      right: [
+        rust_named_edge(
+          name: target_model_edge_atom_realizations,
+          target: target_atom_realization_catalog_node(
+            rows: rust_target_atom_realization_catalog,
+            host_bundle: rust_mvp1_target_model_bundle_core()
+          )
+        ),
+        rust_named_edge(
+          name: target_model_edge_signature_realizations,
+          target: target_function_signature_realization_catalog_node(
+            rows: rust_target_function_signature_realization_catalog
+          )
         )
-      }
-    _ => rust_mvp1_target_model_bundle_core()
+      ]
+    )
   }
 }
 
