@@ -88,6 +88,20 @@ type TargetPythonExerciseVerdict
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
+// Shared static-analyzer boundary (pyright, mypy, later tsc --noEmit). Distinct from CPython
+// compile and from runtime execution (#4170 worksheet A; v4-python-rca-manager-worksheets).
+type TargetStaticAnalysisInvocation {
+  tool: Symbol
+  config_policy: Symbol
+  input_artifact: Symbol
+  blocking: Bool
+}
+
+type TargetStaticAnalysisVerdict
+  = TargetStaticAnalysisAccepted
+  | TargetStaticAnalysisRejected { diagnostic_code: Symbol }
+  | TargetStaticAnalysisAdvisory { diagnostic_code: Symbol }
+
 // 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-COMPILE-VERDICT-PHASE1 (Phase 1 tsc gate; widen per target).
 type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted

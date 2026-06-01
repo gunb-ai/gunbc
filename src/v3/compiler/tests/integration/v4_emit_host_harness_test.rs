@@ -56,6 +56,10 @@ const NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_l1_python_runtime.dag");
 const NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH: &str =
     "src/v4/test/claim/nat_semiring/rung_l1_python_runtime.dag";
+const NAT_SEMIRING_RUNG_L1_PYTHON_STATIC_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_l1_python_static.dag");
+const NAT_SEMIRING_RUNG_L1_PYTHON_STATIC_PATH: &str =
+    "src/v4/test/claim/nat_semiring/rung_l1_python_static.dag";
 const NAT_SEMIRING_RUNG5_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung5_eval.dag");
 const NAT_SEMIRING_RUNG5_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung5_eval.dag";
@@ -579,6 +583,26 @@ fn v4_nat_semiring_rung_l1_python_runtime_dag_tokenizes_and_parses_claim_row() {
     assert!(
         surface_declares_data(&module, "phase1_nat_semiring_l1_python_runtime_claim_rows"),
         "{NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH}: L1 claim roster"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung_l1_python_static_dag_tokenizes_and_parses_claim_rows() {
+    let module = parse_module(
+        NAT_SEMIRING_RUNG_L1_PYTHON_STATIC_DAG,
+        NAT_SEMIRING_RUNG_L1_PYTHON_STATIC_PATH,
+    );
+    assert!(
+        surface_declares_data(&module, "claim_phase1_nat_semiring_l1_python_pyright_static"),
+        "{NAT_SEMIRING_RUNG_L1_PYTHON_STATIC_PATH}: L1 pyright static claim"
+    );
+    assert!(
+        surface_declares_data(&module, "claim_phase1_nat_semiring_l1_python_mypy_static"),
+        "{NAT_SEMIRING_RUNG_L1_PYTHON_STATIC_PATH}: L1 mypy static claim"
+    );
+    assert!(
+        surface_declares_data(&module, "phase1_nat_semiring_l1_python_static_claim_rows"),
+        "{NAT_SEMIRING_RUNG_L1_PYTHON_STATIC_PATH}: L1 static claim roster"
     );
 }
 

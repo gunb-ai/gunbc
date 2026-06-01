@@ -1,0 +1,27 @@
+// src/v4/extdeps/typecheckers/pyright.dag
+// Scope: pyright invocation profile for modeled TargetStaticAnalysisInvocation rows.
+// Status: Phase 1 release-minimum (#4170 worksheet A); host bridge until T-22 runner.
+// Anchor: https://github.com/microsoft/pyright/blob/main/docs/configuration.md
+
+module v4.extdeps.typecheckers.pyright
+
+import v4.std.node { Symbol }
+import v4.std.text { String }
+
+
+type PyrightConfig {
+  python_version: String
+  type_checking_mode: String
+}
+
+data pyright_defaults: PyrightConfig = PyrightConfig {
+  python_version: "3.11",
+  type_checking_mode: "basic"
+}
+
+data pyright_tool_identity: Symbol = pyright_tool_identity
+data pyright_config_policy_phase1_nat_semiring: Symbol = pyright_config_policy_phase1_nat_semiring
+data pyright_input_emit_tree: Symbol = pyright_input_emit_tree
+
+// Phase 1 nat_semiring row: blocking only when gate STRICT=1 (advisory otherwise).
+data pyright_phase1_nat_semiring_blocking: Bool = false

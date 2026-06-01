@@ -1,0 +1,26 @@
+// src/v4/extdeps/typecheckers/mypy.dag
+// Scope: mypy invocation profile for modeled TargetStaticAnalysisInvocation rows.
+// Status: Phase 1 release-minimum (#4170 worksheet A); host bridge until T-22 runner.
+// Anchor: https://mypy.readthedocs.io/en/stable/command_line.html
+
+module v4.extdeps.typecheckers.mypy
+
+import v4.std.node { Symbol }
+import v4.std.text { String }
+
+
+type MypyConfig {
+  follow_imports: String
+  ignore_missing_imports: Bool
+}
+
+data mypy_defaults: MypyConfig = MypyConfig {
+  follow_imports: "skip",
+  ignore_missing_imports: true
+}
+
+data mypy_tool_identity: Symbol = mypy_tool_identity
+data mypy_config_policy_phase1_nat_semiring: Symbol = mypy_config_policy_phase1_nat_semiring
+data mypy_input_emit_tree: Symbol = mypy_input_emit_tree
+
+data mypy_phase1_nat_semiring_blocking: Bool = false

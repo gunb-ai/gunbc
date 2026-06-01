@@ -21,6 +21,8 @@
 #   V4_PHASE1_NAT_SEMIRING_STRICT — if 1, exit non-zero on any rung failure (implies L1 strict)
 #   V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT — if 1, L1 runtime gate fail-closed even when
 #     parent STRICT=0 (merged into child export; parent exit honors either knob)
+#   V4_PHASE1_NAT_SEMIRING_PYTHON_STATIC_STRICT — if 1, L1 pyright/mypy gate fail-closed on FAIL
+#     (advisory when 0: missing tools SKIP; parent exit honors this knob alone)
 #   V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS — timeout per toolchain check (CI: 300)
 #   V4_PHASE1_NAT_SEMIRING_PYTHON — python3 binary (default: python3)
 #   V4_PHASE1_NAT_SEMIRING_GO     — go binary (default: go)
@@ -53,6 +55,7 @@ gofmt_bin="${V4_PHASE1_NAT_SEMIRING_GOFMT:-gofmt}"
 timeout_secs="${V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS:-300}"
 strict="${V4_PHASE1_NAT_SEMIRING_STRICT:-0}"
 l1_runtime_strict="${V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT:-0}"
+l1_static_strict="${V4_PHASE1_NAT_SEMIRING_PYTHON_STATIC_STRICT:-0}"
 if [[ "$strict" == "1" ]]; then
   l1_runtime_strict="1"
 fi
@@ -361,12 +364,32 @@ rung0_pass="$(row_aggregate R0-dag-parse R0-rust-parse R0-python-parse R0-go-par
 rung1_pass="$(row_aggregate R1-rust-typecheck)"
 rung2_pass="$(row_aggregate R2-rust-compile R2-python-compile R2-go-compile)"
 
+l1_python_static_pass="SKIP"
 l1_python_runtime_pass="SKIP"
-# L1 runtime exec requires R2-python-compile PASS (py_compile receipt); R0 alone is insufficient.
+# L1 static + runtime require R2-python-compile PASS (py_compile receipt); R0 alone is insufficient.
 if [[ "${verdict[R2-python-compile]}" == "PASS" ]]; then
   export V4_PHASE1_NAT_SEMIRING_OUT="$out"
-  export V4_PHASE1_NAT_SEMIRING_PYTHON="$python_bin"
   export V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS="$timeout_secs"
+  export V4_PHASE1_NAT_SEMIRING_PYTHON_STATIC_STRICT="$l1_static_strict"
+  set +e
+  bash "${root}/scripts/v4-phase1-nat-semiring-python-static-gate.sh"
+  l1_static_status=$?
+  set -e
+  if [[ -f "${out}.python-static-gate-summary.txt" ]]; then
+    l1_static_line="$(grep -E '^  l1_python_static:' "${out}.python-static-gate-summary.txt" || true)"
+    if [[ "$l1_static_line" =~ l1_python_static:\ PASS ]]; then
+      l1_python_static_pass="PASS"
+    elif [[ "$l1_static_line" =~ l1_python_static:\ FAIL ]]; then
+      l1_python_static_pass="FAIL"
+      note_blocking "phase1/nat_semiring/l1/python_static_rejected"
+    fi
+  fi
+  if [[ "$l1_static_strict" == "1" && "$l1_static_status" -ne 0 ]]; then
+    l1_python_static_pass="FAIL"
+    note_blocking "phase1/nat_semiring/l1/python_static_rejected"
+  fi
+
+  export V4_PHASE1_NAT_SEMIRING_PYTHON="$python_bin"
   export V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT="$l1_runtime_strict"
   set +e
   bash "${root}/scripts/v4-phase1-nat-semiring-python-runtime-gate.sh"
@@ -392,6 +415,7 @@ fi
   echo "  rung0: ${rung0_pass}  (dag=${verdict[R0-dag-parse]} rust=${verdict[R0-rust-parse]} python=${verdict[R0-python-parse]} go=${verdict[R0-go-parse]})"
   echo "  rung1: ${rung1_pass}  (rust=${verdict[R1-rust-typecheck]})"
   echo "  rung2: ${rung2_pass}  (rust=${verdict[R2-rust-compile]} python=${verdict[R2-python-compile]} go=${verdict[R2-go-compile]})"
+  echo "  l1_python_static: ${l1_python_static_pass}  (pyright/mypy after py_compile; see ${out}.python-static-gate-summary.txt)"
   echo "  l1_python_runtime: ${l1_python_runtime_pass}  (python exec after py_compile; see ${out}.python-runtime-gate-summary.txt)"
   echo "blocking_receipt: ${blocking_receipt}"
   echo ""
@@ -409,6 +433,8 @@ if [[ "$strict" == "1" ]]; then
     exit 1
   fi
 elif [[ "$l1_runtime_strict" == "1" && "$l1_python_runtime_pass" == "FAIL" ]]; then
+  exit 1
+elif [[ "$l1_static_strict" == "1" && "$l1_python_static_pass" == "FAIL" ]]; then
   exit 1
 fi
 
