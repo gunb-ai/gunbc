@@ -5284,6 +5284,11 @@ data sample_pair: Pair<Int, String> = Pair {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_generic_data_annotation.rs");
+    let parsed = parse_source(source);
+    let module = parsed.module.as_ref().expect("module");
+    let item = module.children.iter().find(|i| i.name == "sample_pair").expect("sample_pair");
+    let ann = item.type_annotation.as_ref().expect("annotation");
+    eprintln!("annotation children: {} inferred: {:?} props: {}", ann.children.len(), ann.inferred, ann.properties.len());
     assert!(
         content.contains("pub fn sample_pair() -> Pair<i64, String>"),
         "generic data return type should preserve applied type args, got:\n{}",
