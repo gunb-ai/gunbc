@@ -16485,6 +16485,26 @@ pub fn emit_data_def(
                 _ => annotation_type_node.clone(),
             }
         };
+        if name.contains("run_phase1_nat_semiring_rung6_rust_mul_associativity")
+            || name.contains("nat_semiring_rung6_additive_monoid_runtime_value_rows")
+        {
+            eprintln!(
+                "DBG emit_data_def name={} type={} type_children={} anno={} anno_children={} render={} render_children={} value_inf={}",
+                name,
+                authored_name_at(scope.type_env.clone().source_indices.clone(), type_node.clone()),
+                type_node.children.clone().len(),
+                authored_name_at(scope.type_env.clone().source_indices.clone(), annotation_type_node.clone()),
+                annotation_type_node.children.clone().len(),
+                authored_name_at(scope.type_env.clone().source_indices.clone(), render_type_node.clone()),
+                render_type_node.children.clone().len(),
+                match value.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => authored_name_at(scope.type_env.clone().source_indices.clone(), rt.clone()),
+                    Some(InferredNode::CompilerError { message, .. }) => format!("ERR:{message}"),
+                    Some(InferredNode::TypeVariable { id, .. }) => format!("TV:{id}"),
+                    None => "none".to_string(),
+                }
+            );
+        }
         let raw_ty_str = render_rust_type(
             render_type_node,
             shared_types.clone(),
