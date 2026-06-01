@@ -103,7 +103,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "affected",
       name: none,
-      continue_on_error: true,
       runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
