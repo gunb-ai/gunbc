@@ -265,7 +265,9 @@ pub fn substitute_type_slots(
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum AliasKind {
     AliasParameterized,
@@ -826,7 +828,7 @@ pub fn resolve_node_bounded(
                                 transport: n.transport.clone(),
                                 properties: target_result.resolved.clone().properties.clone(),
                                 type_annotation: n.type_annotation.clone(),
-                                is_self_recursive: is_recursive,
+                                is_self_recursive: is_recursive.clone(),
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
@@ -839,7 +841,7 @@ pub fn resolve_node_bounded(
                                 children: resolved_args.clone(),
                                 connective: Connective::NoConnective,
                                 params: Rc::new(vec![]),
-                                inferred: Some(Rc::new(Resolved {
+                                inferred: Some(Rc::new(InferredNode::Resolved {
                                     node: expanded_node,
                                 })),
                                 return_cardinality: n.return_cardinality.clone(),
@@ -848,7 +850,7 @@ pub fn resolve_node_bounded(
                                 transport: n.transport.clone(),
                                 properties: target_result.resolved.clone().properties.clone(),
                                 type_annotation: n.type_annotation.clone(),
-                                is_self_recursive: is_recursive,
+                                is_self_recursive: is_recursive.clone(),
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
@@ -892,7 +894,7 @@ pub fn resolve_node_bounded(
                                 transport: n.transport.clone(),
                                 properties: decl.properties.clone(),
                                 type_annotation: n.type_annotation.clone(),
-                                is_self_recursive: is_recursive,
+                                is_self_recursive: is_recursive.clone(),
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
@@ -906,7 +908,7 @@ pub fn resolve_node_bounded(
                                     children: resolved_args.clone(),
                                     connective: Connective::NoConnective,
                                     params: Rc::new(vec![]),
-                                    inferred: Some(Rc::new(Resolved {
+                                    inferred: Some(Rc::new(InferredNode::Resolved {
                                         node: expanded_node,
                                     })),
                                     return_cardinality: n.return_cardinality.clone(),
@@ -915,7 +917,7 @@ pub fn resolve_node_bounded(
                                     transport: n.transport.clone(),
                                     properties: decl.properties.clone(),
                                     type_annotation: n.type_annotation.clone(),
-                                    is_self_recursive: is_recursive,
+                                    is_self_recursive: is_recursive.clone(),
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                     match_pattern: n.match_pattern.clone(),
                                     expr_data: n.expr_data.clone(),
@@ -1368,7 +1370,7 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 children: type_resolved.children.clone(),
                 connective: authored_type.connective.clone(),
                 params: authored_type.params.clone(),
-                inferred: Some(Rc::new(Resolved {
+                inferred: Some(Rc::new(InferredNode::Resolved {
                     node: type_resolved.clone(),
                 })),
                 return_cardinality: authored_type.return_cardinality.clone(),
@@ -1377,7 +1379,7 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 transport: authored_type.transport.clone(),
                 properties: type_resolved.properties.clone(),
                 type_annotation: authored_type.type_annotation.clone(),
-                is_self_recursive: authored_type.is_self_recursive,
+                is_self_recursive: authored_type.is_self_recursive.clone(),
                 has_non_tail_self_call: authored_type.has_non_tail_self_call.clone(),
                 match_pattern: authored_type.match_pattern.clone(),
                 expr_data: authored_type.expr_data.clone(),
