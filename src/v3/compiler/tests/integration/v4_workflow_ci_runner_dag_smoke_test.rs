@@ -420,14 +420,11 @@ fn data_body<'a>(
 }
 
 fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a SurfaceExpr {
-    let SurfaceExpr::Record { fields, .. } = body else {
-        panic!("expected record body, got {body:?}");
+    let fields = match body {
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields,
+        other => panic!("expected record body, got {other:?}"),
     };
-    fields
-        .iter()
-        .find(|field| field.name == field_name)
-        .map(|SurfaceRecordField { value, .. }| value)
-        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+    record_field_from_fields(fields, field_name)
 }
 
 fn expr_string(expr: &SurfaceExpr) -> &str {
@@ -461,6 +458,30 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
         SurfaceExpr::Var { name, .. } if name == "true" => true,
         SurfaceExpr::Var { name, .. } if name == "false" => false,
         other => panic!("expected bool literal expr, got {other:?}"),
+    }
+}
+
+fn record_field_from_fields<'a>(
+    fields: &'a [SurfaceRecordField],
+    field_name: &str,
+) -> &'a SurfaceExpr {
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|SurfaceRecordField { value, .. }| value)
+        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+}
+
+fn strict_env_binding(expr: &SurfaceExpr) -> Option<(&str, &str)> {
+    match expr {
+        SurfaceExpr::Var { name, .. } if name == "NoStrictEnvBinding" => None,
+        SurfaceExpr::VariantRecord { target, fields, .. } if target == "StrictEnvBinding" => {
+            Some((
+                expr_string(record_field_from_fields(fields, "var")),
+                expr_string(record_field_from_fields(fields, "value")),
+            ))
+        }
+        other => panic!("expected strict env binding expr, got {other:?}"),
     }
 }
 
@@ -646,12 +667,25 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: ci_pipeline must declare M1 job and gate"
     );
     let live_signal = data_body(&module, "m1_ci_live_workflow_signal");
+    let live_step = record_body_field(live_signal, "step");
     let binding_smoke_step_name =
-        expr_string(record_body_field(live_signal, "binding_smoke_step_name"));
-    let step_name = expr_string(record_body_field(live_signal, "step_name"));
-    let script_path = expr_string(record_body_field(live_signal, "script_path"));
-    let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
-    let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
+        expr_string(record_body_field(live_step, "binding_smoke_step_name"));
+    let step_name = expr_string(record_body_field(live_step, "step_name"));
+    let script_path = expr_string(record_body_field(live_step, "script_path"));
+    let non_blocking = expr_bool(record_body_field(live_step, "non_blocking"));
+    let timeout_minutes = expr_int(record_body_field(live_step, "timeout_minutes"));
+    let (strict_env_var, strict_env_value) =
+        strict_env_binding(record_body_field(live_step, "strict_env_binding"))
+            .unwrap_or_else(|| panic!("{CI_DAG_PATH}: M1 probe must model a strict env binding"));
+    let rust_emit_probe_policy = record_body_field(live_signal, "rust_emit_probe_policy");
+    let emit_preconditions_block_required_path = expr_bool(record_body_field(
+        rust_emit_probe_policy,
+        "emit_preconditions_block_required_path",
+    ));
+    let rustc_residuals_block_required_path = expr_bool(record_body_field(
+        rust_emit_probe_policy,
+        "rustc_residuals_block_required_path",
+    ));
     let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
     assert!(
         binding_smoke_step.contains(&format!(
@@ -665,8 +699,17 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` runs unconditionally on the safety floor (no component `if:`)"
     );
     assert!(
-        m1_step.contains("V4_M1_RUST_EMIT_PROBE_STRICT"),
-        "{CI_YML_PATH}: `{step_name}` must fail-closed (V4_M1_RUST_EMIT_PROBE_STRICT=1)"
+        m1_step.contains(&format!("{strict_env_var}: \"{strict_env_value}\"")),
+        "{CI_YML_PATH}: `{step_name}` strictness env must come from {CI_DAG_PATH}:m1_ci_live_workflow_signal"
+    );
+    assert_eq!(
+        strict_env_value == "1",
+        rustc_residuals_block_required_path,
+        "{CI_DAG_PATH}: strictness env and rustc residual required-path policy must agree"
+    );
+    assert!(
+        emit_preconditions_block_required_path,
+        "{CI_DAG_PATH}: required M1 probe must fail closed on missing compiler, v2 emit failure, and skipped cargo-check preconditions"
     );
     assert!(
         CI_DAG.contains(
@@ -733,8 +776,9 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
-        CI_DAG
-            .contains("data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal"),
+        CI_DAG.contains(
+            "data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal"
+        ),
         "{CI_DAG_PATH}: must model live-workflow binding for testclaim corpus eval"
     );
     assert!(
@@ -1253,7 +1297,11 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     let affected_idx = CI_WORKFLOW_DAG
         .find("id: \"affected\"")
         .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing `affected` job"));
-    let affected_window = &CI_WORKFLOW_DAG[affected_idx..affected_idx.saturating_add(512)];
+    let affected_tail = &CI_WORKFLOW_DAG[affected_idx..];
+    let affected_block_end = affected_tail.find("id: \"ci_floor\"").unwrap_or_else(|| {
+        panic!("{CI_WORKFLOW_DAG_PATH}: missing `ci_floor` job after `affected`")
+    });
+    let affected_window = &affected_tail[..affected_block_end];
     assert!(
         affected_window.contains("continue_on_error: true"),
         "{CI_WORKFLOW_DAG_PATH}: `affected` must be shadow-only (continue_on_error)"
