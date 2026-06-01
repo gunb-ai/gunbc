@@ -1,6 +1,6 @@
 # v4 Go Leaf-Model Verification Worksheet — R1 / R2a / R2b / R3-external
 
-> **Status:** **ready-for-review** — Go RCA Manager (`gentle-lynx-68`); ratification route: Modeling DFS Arbiter `proud-fox-405` (§10.0 single-authority-fact).
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.2 (Go L0); MW-D3 Go parity analog of Python #4117.
 > **Pattern authority:** `src/v4/test/claim/language_model/python_{r1,r2a,r2b,r3_external}.dag` + `src/v4/lens/leaf_model_verification.dag` (landed #4117).
@@ -162,17 +162,16 @@ Per `INVARIANTS.md` P5 and THESIS Pure Bootstrap 0-floor: any planned `src/v3/co
 
 ---
 
-## §8 Arbiter approval checklist (`proud-fox-405`)
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] No `TargetGoCompileVerdict` — compile claims on `TargetCompileVerdict` + toolchain data; R2b on `TargetRuntimeExerciseVerdict`; 🟡 parameterization gate named
-- [ ] Four `LeafModelClaimId` symbols named and non-colliding with rust/python
-- [ ] R3-external blocked until Go SG-1 atom row exists (cross-worksheet dependency accepted)
-- [ ] R3-internal explicitly deferred for Go L0
-- [ ] Host runner dissolve-on-arrival headers match python shell pattern
-- [ ] If v3 boundary test authorized: §5 P5(b) receipt bundle complete in same PR; else shell-only
-- [ ] R2b fixtures use typed `var x int64 = math.MaxInt64; got := x + 1` (not constant `math.MaxInt64+1`)
-
-**State after author:** `ready-for-review`
+- [x] **Shared verdict carriers:** compile-bound on `TargetCompileVerdict` + `target_diagnostic_go_*` + `leaf_model_toolchain_go_build`; R2b on additive shared `TargetRuntimeExerciseVerdict` — **no** `TargetGoCompileVerdict`
+- [x] Four `LeafModelClaimId` symbols named and non-colliding with rust/python
+- [x] R3-external blocked until Go SG-1 atom row lands (dependency accepted)
+- [x] R3-internal explicitly deferred for Go L0
+- [x] Host runner dissolve-on-arrival headers match python shell pattern
+- [x] P5(b) boundary Rust optional per §5 table — shell-only default unless worker ships full receipt bundle
+- [x] R2b fixtures use typed `var x int64 = math.MaxInt64; got := x + 1` (authoritative sources in §4.2)
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ---
 

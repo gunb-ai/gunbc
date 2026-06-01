@@ -1,6 +1,6 @@
 # v4 Go L1 Compiler-Slice Compile Worksheet — emit subset `go build` receipt
 
-> **Status:** **ready-for-review** — Go RCA Manager (`gentle-lynx-68`); ratification: Modeling DFS Arbiter `proud-fox-405`.
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). **Slice id:** `go_l1_nat_semiring_rung2` (post-L0 PROVEN).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.1 rung **L1**; Go row target "L0 complete + **L1 fixture-scale**".
 > **Prerequisites:** #4076 merged; L0 leaf-model claims PROVEN (sibling leaf-model worksheet); Go SG-1/SG-2 rows landed for atoms/generics touched by slice.
@@ -60,13 +60,13 @@ Metric allowed only as secondary:
 
 ---
 
-## §8 Approval checklist
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] Named slice id + FileSet bounds
-- [ ] Distinct from L0 leaf-model claims (different receipt type)
-- [ ] Does not claim L2/L3/L4
-
-**State:** `ready-for-review`
+- [x] Named slice id: **`go_l1_nat_semiring_rung2`** (`phase1/nat_semiring` Go emit path; ladder R2-go-compile)
+- [x] Distinct from L0 leaf-model claims (structured L1 receipt JSON)
+- [x] Does not claim L2/L3/L4
+- [x] Gated on L0 leaf-model claims PROVEN before dispatch
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ---
 

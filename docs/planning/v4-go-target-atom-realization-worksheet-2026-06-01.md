@@ -1,6 +1,6 @@
 # v4 Go TargetAtomRealization Worksheet — Symbol / Bool / Char / Int
 
-> **Status:** **ready-for-review** — Go RCA Manager (`gentle-lynx-68`); ratification: Modeling DFS Arbiter `proud-fox-405`; implementation lane: TR Manager `keen-heron-687` after §8.
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Implementation lane: TR Manager `keen-heron-687`.
 > **Date:** 2026-06-01
 > **Dispatch anchor:** SG-1 analog — `docs/planning/v4-sg1-target-atom-realization-worksheet-2026-05-30.md` (APPROVED); `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.
 > **Canonical home:** `src/v4/std/target_model.dag` (`TargetAtomRealization` carrier — **do not redefine**).
@@ -72,18 +72,13 @@ Metric allowed only as secondary:
 
 ---
 
-## §8 Approval checklist
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-**Arbiter (`proud-fox-405`):**
-- [ ] Reuses SG-1 approved carrier (no Go-local duplicate)
-- [ ] Char → `rune` mapping explicit (Go spec)
-- [ ] Int row authority is `go_facts_int`, not rust `i32` spelling
-
-**TR Manager (`keen-heron-687`) — implementation gate:**
-- [ ] §8 Arbiter boxes checked
-- [ ] Ordered relative to leaf-model R3-external worker
-
-**State:** `ready-for-review`
+- [x] Reuses SG-1 approved `TargetAtomRealization` carrier (no Go-local duplicate)
+- [x] Char → `rune` mapping explicit (Go spec)
+- [x] Int row authority is `go_facts_int`, not rust `i32` spelling
+- [x] TR handoff: `keen-heron-687` owns rows after §8; Go RCA does not land emit patches
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ---
 

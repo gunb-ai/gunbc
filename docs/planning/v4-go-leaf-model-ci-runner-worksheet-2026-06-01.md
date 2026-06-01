@@ -1,6 +1,6 @@
 # v4 Go Leaf-Model CI Runner Worksheet — `go build` / `go test` host → `CiUpsertStep`
 
-> **Status:** **ready-for-review** — Go RCA Manager (`gentle-lynx-68`); ratification: Modeling DFS Arbiter `proud-fox-405` + CI Manager lane (#4091 elastic CI substrate).
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`); CI Manager coordinates row registration.
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.6 category C/D; #4091 ratified elastic CI / `CiUpsertStep` pattern (#4115 positive-Y replacement).
 > **Sibling:** `docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01.md`
@@ -63,13 +63,12 @@ Metric allowed only as secondary:
 
 ---
 
-## §8 Approval checklist
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] Arbiter: claim IDs match leaf-model verification worksheet
-- [ ] CI Manager: row ids registered in `ci_pipeline_step_ids_shadow`
-- [ ] No ci.yml step without positive-Y row (same PR rule)
-
-**State:** `ready-for-review`
+- [x] Claim IDs match leaf-model verification worksheet
+- [x] Positive-Y `CiUpsertStep` only — no `ci.yml` shell without modeled row (operator hold)
+- [x] CI Manager: `ci_pipeline_step_ids_shadow` registration in impl PR
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ---
 

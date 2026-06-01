@@ -1,6 +1,6 @@
 # v4 Go TargetTypeExpressionProjection Worksheet — language row extension
 
-> **Status:** **ready-for-review** — Go RCA Manager (`gentle-lynx-68`); ratification: Modeling DFS Arbiter `proud-fox-405` (**shared-fact extension**, not a new SG-2 class).
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`) — SG-2 **language-row extension**, not new carrier.
 > **Date:** 2026-06-01
 > **Dispatch anchor:** SG-2 analog — `docs/planning/v4-sg2-type-expression-projection-worksheet-2026-05-30.md` (APPROVED); #4124 landed; `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.2 TargetTypeExpression Manager lane.
 > **Canonical home:** `src/v4/std/target_model.dag` (`TargetTypeExpressionProjection` — **do not redefine**).
@@ -67,14 +67,12 @@ Go generic syntax constraints for `instantiation_form` rows (impl worker + Arbit
 
 ---
 
-## §8 Approval checklist
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-**Arbiter (`proud-fox-405`):**
-- [ ] Classified as **extension** to SG-2 approved carrier (single authority preserved)
-- [ ] No duplicate `TargetTypeExpressionProjection` type definition in go.dag
-- [ ] Cross-target duplicates merged with TargetTypeExpression Manager if Rust+Go share a row shape
-
-**State:** `ready-for-review`
+- [x] Classified as **extension** to SG-2 approved carrier (single authority preserved)
+- [x] No duplicate `TargetTypeExpressionProjection` type definition in `go.dag`
+- [x] C1 escalation path named if Go cannot express std carrier without new behavior
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ---
 
