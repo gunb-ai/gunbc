@@ -2304,10 +2304,12 @@ fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
 }
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
-// feature:SG-COLLECTION-FREEMONOID-carrier-recognition — bind PR #4218 / node://adhoc-2d1d6d4b-023 —
-// dissolve-on: a canonical collection-carrier projection returns `(kind, element)` once for both
-// Set and FreeMonoid, deleting the paired Bool predicates and element accessors before a third
+// 🟡 gated — predicate-dissolution interim (INVARIANTS.md P3 / Practice 10) —
+// owner: vivid-lynx-81 / Rust RCA SG critical path; lane: SG-COLLECTION-PROJECTION;
+// planning-row: ROADMAP.md § "What v4 is building toward" rows `src/v4/std/` and
+// `Compiler stages`; bind: PR #4218 / node://adhoc-2d1d6d4b-023. Dissolve-on:
+// introduce a canonical collection-carrier projection returning `(kind, element)` once for
+// Set and FreeMonoid, then delete the paired Bool predicates/accessors before a third
 // collection carrier lands.
 fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
   match node.kind {
