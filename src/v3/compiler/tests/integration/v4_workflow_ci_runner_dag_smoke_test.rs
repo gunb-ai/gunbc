@@ -11,8 +11,15 @@
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
 //! **TASKS.md** T-21 + T-24; bankruptcy B0/B1 Tier-0 binding smoke: `docs/design-ci-bankruptcy-rebuild.md` §4.1
 //! Wave 1 §11.7.1 floor: `docs/planning/ci-required-surface-cut-2026-06-01.md` (`v4_workflow_ci_wave1_*`).
+//! Affected-set component receipt promotion: `affected` is now a live fail-closed receipt; Wave 3
+//! node-frontier TestClaim selection remains shadow until the whole-program Dag CI input lands.
 //! Wave 3 §11.7.2 shadow receipt Phase 1: same doc (`v4_workflow_ci_wave3_*`; P5(b) receipt table).
 //! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174).
+//!
+//! **INVARIANTS P5 — checkable receipt for this PR:** feature `affected-component-live-receipt`;
+//! consumers `v4_workflow_ci_wave1_*` and `v4_workflow_ci_wave3_node_selection_still_shadow_*`.
+//! Dissolve-on: A15 Shape-B/T-24 emitted `ci.yml` plus `.dag` TestClaim execution covers the
+//! live component receipt and Wave 3 deferral without this hand-Rust parse harness.
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
@@ -521,10 +528,17 @@ fn generated_workflow_job_block<'a>(workflow_dag: &'a str, job_id: &str) -> &'a 
 }
 
 /// Job-level `continue_on_error` is the last such field in a generated workflow job block.
-fn generated_workflow_job_continue_on_error_is_true(job_block: &str) -> bool {
-    job_block
-        .rfind("continue_on_error: ")
-        .is_some_and(|idx| job_block[idx..].starts_with("continue_on_error: true"))
+fn generated_workflow_job_continue_on_error_value(job_block: &str) -> Option<bool> {
+    let idx = job_block.rfind("continue_on_error: ")?;
+    let value = job_block[idx..]
+        .strip_prefix("continue_on_error: ")?
+        .split(|ch: char| ch == ',' || ch.is_whitespace())
+        .next()?;
+    match value {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
 }
 
 fn surface_declares_test_claim_data(
@@ -1065,14 +1079,13 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [ci_floor]")
-            || CI_YML.contains("needs: [ci_floor]\n"),
-        "{CI_YML_PATH}: branch-protection `ci` aggregator must need `ci_floor` only (not `affected`)"
+        CI_YML.contains("needs: [affected, ci_floor]")
+            || CI_YML.contains("needs: [affected, ci_floor]\n"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt plus `ci_floor`"
     );
     assert!(
-        !CI_YML.contains("needs: [affected, ci_floor]")
-            && !CI_YML.contains("needs.affected.result"),
-        "{CI_YML_PATH}: `affected` is shadow-only — not a §11.7.1 gate"
+        CI_YML.contains("needs.affected.result"),
+        "{CI_YML_PATH}: `affected` must be checked by the fail-closed aggregator"
     );
     assert!(
         !CI_YML.contains("needs.discipline.result") && !CI_YML.contains("  discipline:"),
@@ -1312,12 +1325,12 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "{CI_YML_PATH}: legacy parallel lanes dissolved"
     );
     assert!(
-        CI_YML.contains("needs: [ci_floor]"),
-        "{CI_YML_PATH}: `ci` aggregator must depend on `ci_floor` only"
+        CI_YML.contains("needs: [affected, ci_floor]"),
+        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt plus `ci_floor`"
     );
     assert!(
-        CI_YML.contains("continue-on-error: true") && CI_YML.contains("  affected:"),
-        "{CI_YML_PATH}: `affected` must run shadow-only (continue-on-error), not block merge"
+        CI_YML.contains("  affected:") && !CI_YML.contains("  affected:\n    if: github.event.pull_request.draft != true\n    continue-on-error: true"),
+        "{CI_YML_PATH}: component `affected` receipt must be live, not continue-on-error shadow"
     );
     for forbidden in [
         "check-pr-sg0-net-shrink-discipline.sh",
@@ -1341,13 +1354,15 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
         "{CI_WORKFLOW_DAG_PATH}: regen artifact must model `ci_floor`"
     );
     assert!(
-        CI_WORKFLOW_DAG.contains("id: \"ci\"") && CI_WORKFLOW_DAG.contains("needs: [\"ci_floor\"]"),
-        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need `ci_floor` only"
+        CI_WORKFLOW_DAG.contains("id: \"ci\"")
+            && CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_floor\"]"),
+        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt plus `ci_floor`"
     );
     let affected_job = generated_workflow_job_block(CI_WORKFLOW_DAG, "affected");
-    assert!(
-        generated_workflow_job_continue_on_error_is_true(affected_job),
-        "{CI_WORKFLOW_DAG_PATH}: `affected` must be shadow-only (continue_on_error)"
+    assert_eq!(
+        generated_workflow_job_continue_on_error_value(affected_job),
+        Some(false),
+        "{CI_WORKFLOW_DAG_PATH}: component `affected` receipt must be live"
     );
     assert!(
         !CI_WORKFLOW_DAG.contains("id: \"ci_integration\"")
@@ -1531,12 +1546,10 @@ fn v4_workflow_ci_wave3_live_emit_deferred_in_ci_yml() {
 }
 
 #[test]
-fn v4_workflow_ci_wave3_ci_floor_independent_of_affected() {
+fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live() {
     assert!(
-        CI_YML.contains("needs: [ci_floor]")
-            && !CI_YML.contains("needs: [affected, ci_floor]")
-            && !CI_YML.contains("needs.affected.result"),
-        "{CI_YML_PATH}: Wave 3 — floor must not depend on affected (shadow Class C only)"
+        CI_YML.contains("needs: [affected, ci_floor]") && CI_YML.contains("needs.affected.result"),
+        "{CI_YML_PATH}: component affected-set receipt must be live"
     );
     let ci_floor_block = CI_YML
         .split("  ci_floor:")
@@ -1546,6 +1559,11 @@ fn v4_workflow_ci_wave3_ci_floor_independent_of_affected() {
     assert!(
         !ci_floor_block.contains("needs: [affected]"),
         "{CI_YML_PATH}: `ci_floor` must not need `affected`"
+    );
+    assert!(
+        !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff")
+            && !CI_YML.contains("emit-ci-wave3-shadow-receipt"),
+        "{CI_YML_PATH}: Wave 3 node-frontier receipt emit remains deferred"
     );
 }
 
