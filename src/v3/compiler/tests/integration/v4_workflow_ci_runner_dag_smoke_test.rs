@@ -1253,9 +1253,13 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     let affected_idx = CI_WORKFLOW_DAG
         .find("id: \"affected\"")
         .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing `affected` job"));
-    let affected_window = &CI_WORKFLOW_DAG[affected_idx..affected_idx.saturating_add(512)];
+    let after_affected = &CI_WORKFLOW_DAG[affected_idx..];
+    let job_end = after_affected
+        .find("\n    }, {")
+        .unwrap_or(after_affected.len());
+    let affected_job = &after_affected[..job_end];
     assert!(
-        affected_window.contains("continue_on_error: true"),
+        affected_job.contains("continue_on_error: true"),
         "{CI_WORKFLOW_DAG_PATH}: `affected` must be shadow-only (continue_on_error)"
     );
     assert!(
