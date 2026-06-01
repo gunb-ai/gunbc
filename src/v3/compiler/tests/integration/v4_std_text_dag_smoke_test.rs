@@ -8,14 +8,17 @@
 //! same-path expansion):** explicit deferral to `_internal/ROADMAP_OPS.md` § **Nine lanes**
 //! row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap
 //! test floor). This parse-surface smoke dissolves when `.dag` `TestClaim` or generated
-//! harness coverage asserts the `HostStringText` carrier shape directly.
+//! harness coverage asserts the `HostStringText` carrier shape and its constructor/projection
+//! consumers directly.
 //! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs`
 //! lands in the same PR.
 
 use std::collections::BTreeSet;
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
+use v3_compiler::parse_surface::{
+    SurfaceField, SurfaceItem, SurfaceParam, SurfaceType, TypeAngleArg,
+};
 use v3_compiler::tokenize_for_test;
 
 const TEXT_DAG: &str = include_str!("../../../../v4/std/text.dag");
@@ -76,6 +79,41 @@ fn type_alias_target<'a>(
         .unwrap_or_else(|| panic!("missing type alias {name}"))
 }
 
+fn function_signature(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> (Vec<String>, String) {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Fn {
+                name: item_name,
+                params,
+                return_type,
+                ..
+            }
+            | SurfaceItem::FnExternalBody {
+                name: item_name,
+                params,
+                return_type,
+                ..
+            } if item_name == name => Some((
+                params
+                    .iter()
+                    .map(surface_param_signature)
+                    .collect::<Vec<_>>(),
+                surface_type_name(return_type),
+            )),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing function {name}"))
+}
+
+fn surface_param_signature(param: &SurfaceParam) -> String {
+    format!("{}: {}", param.name, surface_type_name(&param.ty))
+}
+
 fn surface_type_name(ty: &SurfaceType) -> String {
     match ty {
         SurfaceType::Named { name, .. } => name.clone(),
@@ -133,4 +171,25 @@ fn v4_std_text_dag_owns_host_string_text_boundary_fact() {
             "{TEXT_PATH}: text module must not redeclare byte/file/target carriers as text"
         );
     }
+}
+
+#[test]
+fn v4_std_text_dag_consumes_host_string_text_boundary_fact() {
+    let module = text_surface_or_panic();
+    assert_eq!(
+        function_signature(&module, "host_string_text"),
+        (
+            vec!["text: String".to_string()],
+            "HostStringText".to_string()
+        ),
+        "HostStringText must have a modeled constructor consumer for already-decoded host strings"
+    );
+    assert_eq!(
+        function_signature(&module, "host_string_text_value"),
+        (
+            vec!["value: HostStringText".to_string()],
+            "String".to_string()
+        ),
+        "HostStringText must have a modeled projection consumer before literal/value-form migrations consume it"
+    );
 }
