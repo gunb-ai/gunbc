@@ -38,7 +38,7 @@ fi
 should_run=false
 policy_check=false
 
-if git diff --name-only "$range" | grep -qE '^(src/v4/test/claim/(algebra_laws/nat_semiring|nat_semiring/)|scripts/v4-phase1-nat-semiring-rung-gate\.sh)'; then
+if git diff --name-only "$range" | grep -qE '^(src/v4/test/claim/(algebra_laws/nat_semiring|nat_semiring/)|scripts/v4-phase1-nat-semiring-rung-gate\.sh|scripts/v4-phase1-nat-semiring-python-runtime-gate\.sh)'; then
   should_run=true
 fi
 
@@ -48,7 +48,7 @@ if git diff --name-only "$range" | grep -qE "$workflow_paths"; then
   if [[ "$should_run" != true ]]; then
     if git diff "$range" -- .github/workflows/ci.yml src/v4/workflow/ci.dag dsl/gunbc/ci_github_actions_workflow.dag 2>/dev/null \
       | grep '^[-+]' | grep -v '^[-+][[:space:]]*#' \
-      | grep -qE 'v4-phase1-nat-semiring-rung-gate\.sh|V4_PHASE1_NAT_SEMIRING_STRICT|phase1_nat_semiring_rung_gate'; then
+      | grep -qE 'v4-phase1-nat-semiring-rung-gate\.sh|v4-phase1-nat-semiring-python-runtime-gate\.sh|V4_PHASE1_NAT_SEMIRING_STRICT|V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT|phase1_nat_semiring_rung_gate|phase1_nat_semiring_python_runtime'; then
       should_run=true
     fi
   fi

@@ -1074,6 +1074,40 @@ pub fn make_param_node(
     }
 }
 
+pub fn make_resolved_param_node(
+    name: String,
+    type_expr: Rc<Node>,
+    default_value: Option<Rc<Node>>,
+    properties: Rc<Vec<Rc<Node>>>,
+    span: Rc<SourceSpan>,
+    name_span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    let children = match default_value {
+        Some(dv) => Rc::new(vec![type_expr.clone(), dv]),
+        None => Rc::new(vec![type_expr.clone()]),
+    };
+    Rc::new(Node {
+        name: name.clone(),
+        span: span,
+        ident_span: default_ident_span(name.clone(), name_span),
+        children: children,
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved { node: type_expr })),
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: properties,
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
+    })
+}
+
 pub fn param_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

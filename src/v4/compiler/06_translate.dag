@@ -2745,7 +2745,7 @@ fn translate_sg_rc_bundle_apply_disposition(
           edge_name: target_model_edge_reference_layer_tokens
         ),
         f: fn(has_tokens) {
-          if !has_catalog && !has_tokens {
+          if has_catalog == false && has_tokens == false {
             outcome_accepted(false)
           } else {
             if has_catalog && has_tokens {
@@ -2803,6 +2803,37 @@ fn translate_apply_use_site_ownership_to_projected_type(
   )
 }
 
+// Arrow boundary ownership matches serialize_type_expr_boundary_bounded discipline:
+// SG-RC applies only when the projected wire is an atom; composite boundaries pass through.
+fn translate_apply_use_site_ownership_to_projected_boundary(
+  projected: Node,
+  source_for_binding: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_type_expr_emitted_wire_decode(node: projected, projection: projection),
+    f: fn(wire) {
+      match wire.kind {
+        TargetTypeExprAtom =>
+          bind_outcome(
+            o: type_expr_atom_binding(node: source_for_binding),
+            f: fn(binding) {
+              translate_apply_use_site_ownership_to_projected_type(
+                projected: projected,
+                source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                target: target,
+                use_site: use_site
+              )
+            }
+          )
+        _ => outcome_accepted(projected)
+      }
+    }
+  )
+}
+
 fn translate_project_arrow_input_types_go(
   remaining: Int,
   anchor: Node,
@@ -2828,10 +2859,11 @@ fn translate_project_arrow_input_types_go(
           ),
           f: fn(projected) {
             bind_outcome(
-              o: translate_apply_use_site_ownership_to_projected_type(
+              o: translate_apply_use_site_ownership_to_projected_boundary(
                 projected: projected,
-                source_carrier: split.head,
+                source_for_binding: split.head,
                 target: target,
+                projection: projection,
                 use_site: OwnershipAtFunctionParameter
               ),
               f: fn(wrapped) {
@@ -2877,10 +2909,11 @@ fn translate_project_arrow_split_types(
         ),
         f: fn(projected_output) {
           bind_outcome(
-            o: translate_apply_use_site_ownership_to_projected_type(
+            o: translate_apply_use_site_ownership_to_projected_boundary(
               projected: projected_output,
-              source_carrier: original_split.output,
+              source_for_binding: original_split.output,
               target: target,
+              projection: projection,
               use_site: OwnershipAtFunctionReturn
             ),
             f: fn(wrapped_output) {
@@ -2965,6 +2998,15 @@ fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
   }
 }
 
+fn function_boundary_site_to_ownership_use_site(
+  boundary_site: FunctionBoundarySite
+) -> TargetOwnershipUseSite {
+  match boundary_site {
+    FunctionBoundaryParam => OwnershipAtFunctionParameter
+    FunctionBoundaryReturn => OwnershipAtFunctionReturn
+  }
+}
+
 // Consult the per-language signature realization catalog for the fn-boundary atom at `emitted`.
 // Returns Present(row) on a (source_carrier, boundary_site) hit; Absent when the model carries no
 // signature catalog OR no row matches (both fall back to the SG-2/binding_spellings path); Rejected
@@ -3008,8 +3050,8 @@ fn translate_target_function_signature_realization_for_boundary(
 }
 
 // Serialize a fn-boundary atom: emit the signature realization's signature_type_form when a row
-// matches (SG-1b authority); otherwise fall back to the SG-2 binding-spelling path. Non-boundary
-// decl/type-alias atoms never reach here, so they retain SG-1/binding_spellings authority.
+// matches (SG-1b authority); otherwise consult TargetUseSiteOwnershipRealization for this
+// boundary role, then serialize the emitted wire (SG-RC + SG-2; no spelling-only bypass).
 fn serialize_type_expr_boundary_atom_bounded(
   remaining: Int,
   target: TargetModel,
@@ -3033,7 +3075,29 @@ fn serialize_type_expr_boundary_atom_bounded(
             emitted: row.signature_type_form.node
           )
         Absent =>
-          type_expr_spelling_for_atom(target: target, node: emitted)
+          bind_outcome(
+            o: type_expr_atom_binding(node: emitted),
+            f: fn(binding) {
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_projected_type(
+                  projected: emitted,
+                  source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                  target: target,
+                  use_site: function_boundary_site_to_ownership_use_site(
+                    boundary_site: boundary_site
+                  )
+                ),
+                f: fn(wrapped) {
+                  serialize_type_expr_emitted_bounded(
+                    remaining: remaining - 1,
+                    target: target,
+                    projection: projection,
+                    emitted: wrapped
+                  )
+                }
+              )
+            }
+          )
       }
   }
 }
@@ -3101,12 +3165,30 @@ fn translate_coerced_shell_at_use_site(
   target: TargetModel,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
-  match translate_coerced_shell_base(coerced: coerced, target: target) {
+  translate_coerced_shell_at_use_site_from_source(
+    coerced: coerced,
+    ownership_source_carrier: coerced,
+    target: target,
+    use_site: use_site
+  )
+}
+
+fn translate_coerced_shell_at_use_site_from_source(
+  coerced: Node,
+  ownership_source_carrier: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  match translate_coerced_type_shell_from_source(
+    source_carrier: ownership_source_carrier,
+    coerced: coerced,
+    target: target
+  ) {
     Accepted { value: shell, diagnostics: d } =>
       bind_outcome(
         o: translate_apply_use_site_ownership_to_type_shell(
           shell: shell,
-          source_carrier: coerced,
+          source_carrier: ownership_source_carrier,
           target: target,
           use_site: use_site
         ),
@@ -3116,12 +3198,40 @@ fn translate_coerced_shell_at_use_site(
   }
 }
 
+fn translate_coerced_type_shell_from_source(
+  source_carrier: Node,
+  coerced: Node,
+  target: TargetModel
+) -> Outcome<Node> {
+  match source_carrier.kind {
+    TypeNode { connective: Instantiation } =>
+      bind_outcome(
+        o: type_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          project_type_expression_node(
+            node: source_carrier,
+            target: target,
+            projection: projection
+          )
+        }
+      )
+    _ => translate_coerced_shell_base(coerced: coerced, target: target)
+  }
+}
+
 fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
   translate_coerced_shell_at_use_site(
     coerced: coerced,
     target: target,
     use_site: OwnershipAtBindingProjection
   )
+}
+
+fn translate_use_site_ownership_source_carrier(source: Node, coerced: Node) -> Node {
+  match source.kind {
+    TypeNode { connective: _ } => source
+    ComputationNode { behavior: _ } => coerced
+  }
 }
 fn target_atom_realizations_catalog_from_model(
   target: TargetModel,
@@ -3275,8 +3385,13 @@ fn translate_coerced_with_atom_realization_at_use_site(
   use_site: TargetOwnershipUseSite,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match translate_coerced_shell_at_use_site(
+  let ownership_source_carrier = translate_use_site_ownership_source_carrier(
+    source: source,
+    coerced: coerced
+  )
+  match translate_coerced_shell_at_use_site_from_source(
     coerced: coerced,
+    ownership_source_carrier: ownership_source_carrier,
     target: target,
     use_site: use_site
   ) {

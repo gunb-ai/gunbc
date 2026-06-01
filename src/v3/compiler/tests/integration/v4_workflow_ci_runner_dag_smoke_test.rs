@@ -10,7 +10,9 @@
 //!
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
 //! **TASKS.md** T-21 + T-24; bankruptcy B0/B1 Tier-0 binding smoke: `docs/design-ci-bankruptcy-rebuild.md` §4.1
-//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101).
+//! Wave 1 §11.7.1 floor: `docs/planning/ci-required-surface-cut-2026-06-01.md` (`v4_workflow_ci_wave1_*`).
+//! Wave 3 §11.7.2 shadow receipt Phase 1: same doc (`v4_workflow_ci_wave3_*`; P5(b) receipt table).
+//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174).
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
@@ -26,17 +28,21 @@ const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 const CI_WORKFLOW_DAG: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
+const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
+    include_str!("../../../../../scripts/v4-testclaim-corpus-eval.sh");
+const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_";
 const CI_MODEL_YAML_BINDING_STEP_NAME: &str = "M1 v4 workflow CI model/YAML binding smoke";
 const T15_SELF_HOST_STEP_NAME: &str = "T-15 self-host fixed-point harness (stage1==stage2)";
-const T15_SELF_HOST_HARNESS_TEST_FILTER: &str =
-    "v4_t15_self_host_fixed_point_harness_test::t_15_self_host_fixed_point";
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
+const WAVE3_ROSTER_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/wave3_shadow_roster.dag");
+const WAVE3_ROSTER_PATH: &str = "src/v4/test/claim/workflow/wave3_shadow_roster.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 
@@ -418,14 +424,11 @@ fn data_body<'a>(
 }
 
 fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a SurfaceExpr {
-    let SurfaceExpr::Record { fields, .. } = body else {
-        panic!("expected record body, got {body:?}");
+    let fields = match body {
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields,
+        other => panic!("expected record body, got {other:?}"),
     };
-    fields
-        .iter()
-        .find(|field| field.name == field_name)
-        .map(|SurfaceRecordField { value, .. }| value)
-        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+    record_field_from_fields(fields, field_name)
 }
 
 fn expr_string(expr: &SurfaceExpr) -> &str {
@@ -462,20 +465,28 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
     }
 }
 
-/// Top-level GHA job `if:` line (first `if:` after `  {job_id}:`).
-fn workflow_top_level_job_if<'a>(workflow_yml: &'a str, job_id: &str) -> &'a str {
-    let job_marker = format!("\n  {job_id}:");
-    let job_start = workflow_yml
-        .find(&job_marker)
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing top-level job `{job_id}`"));
-    let rest = &workflow_yml[job_start..];
-    let if_marker = "\n    if:";
-    let if_start = rest
-        .find(if_marker)
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: job `{job_id}` missing `if:`"));
-    let line = &rest[if_start + 1..];
-    let end = line.find('\n').unwrap_or(line.len());
-    &line[..end]
+fn record_field_from_fields<'a>(
+    fields: &'a [SurfaceRecordField],
+    field_name: &str,
+) -> &'a SurfaceExpr {
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|SurfaceRecordField { value, .. }| value)
+        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+}
+
+fn strict_env_binding(expr: &SurfaceExpr) -> Option<(&str, &str)> {
+    match expr {
+        SurfaceExpr::Var { name, .. } if name == "NoStrictEnvBinding" => None,
+        SurfaceExpr::VariantRecord { target, fields, .. } if target == "StrictEnvBinding" => {
+            Some((
+                expr_string(record_field_from_fields(fields, "var")),
+                expr_string(record_field_from_fields(fields, "value")),
+            ))
+        }
+        other => panic!("expected strict env binding expr, got {other:?}"),
+    }
 }
 
 /// True when `job_id` is a deleted bankruptcy legacy *workflow job* block (not `affected` outputs).
@@ -660,12 +671,25 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: ci_pipeline must declare M1 job and gate"
     );
     let live_signal = data_body(&module, "m1_ci_live_workflow_signal");
+    let live_step = record_body_field(live_signal, "step");
     let binding_smoke_step_name =
-        expr_string(record_body_field(live_signal, "binding_smoke_step_name"));
-    let step_name = expr_string(record_body_field(live_signal, "step_name"));
-    let script_path = expr_string(record_body_field(live_signal, "script_path"));
-    let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
-    let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
+        expr_string(record_body_field(live_step, "binding_smoke_step_name"));
+    let step_name = expr_string(record_body_field(live_step, "step_name"));
+    let script_path = expr_string(record_body_field(live_step, "script_path"));
+    let non_blocking = expr_bool(record_body_field(live_step, "non_blocking"));
+    let timeout_minutes = expr_int(record_body_field(live_step, "timeout_minutes"));
+    let (strict_env_var, strict_env_value) =
+        strict_env_binding(record_body_field(live_step, "strict_env_binding"))
+            .unwrap_or_else(|| panic!("{CI_DAG_PATH}: M1 probe must model a strict env binding"));
+    let rust_emit_probe_policy = record_body_field(live_signal, "rust_emit_probe_policy");
+    let emit_preconditions_block_required_path = expr_bool(record_body_field(
+        rust_emit_probe_policy,
+        "emit_preconditions_block_required_path",
+    ));
+    let rustc_residuals_block_required_path = expr_bool(record_body_field(
+        rust_emit_probe_policy,
+        "rustc_residuals_block_required_path",
+    ));
     let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
     assert!(
         binding_smoke_step.contains(&format!(
@@ -675,11 +699,21 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     let m1_step = workflow_step_block(CI_YML, step_name);
     assert!(
-        m1_step.contains("needs.affected.outputs.v4 == 'true'")
-            && m1_step.contains("needs.affected.outputs.workflow_policy == 'true'")
-            && m1_step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
-            && m1_step.contains("needs.affected.outputs.release_distribution == 'true'"),
-        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, workflow-policy, and release_distribution (M1 is upstream rust emit for corpus eval per #4091 §1.2)"
+        !m1_step.contains("needs.affected.outputs"),
+        "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` runs unconditionally on the safety floor (no component `if:`)"
+    );
+    assert!(
+        m1_step.contains(&format!("{strict_env_var}: \"{strict_env_value}\"")),
+        "{CI_YML_PATH}: `{step_name}` strictness env must come from {CI_DAG_PATH}:m1_ci_live_workflow_signal"
+    );
+    assert_eq!(
+        strict_env_value == "1",
+        rustc_residuals_block_required_path,
+        "{CI_DAG_PATH}: strictness env and rustc residual required-path policy must agree"
+    );
+    assert!(
+        emit_preconditions_block_required_path,
+        "{CI_DAG_PATH}: required M1 probe must fail closed on missing compiler, v2 emit failure, and skipped cargo-check preconditions"
     );
     assert!(
         CI_DAG.contains(
@@ -746,8 +780,9 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
-        CI_DAG
-            .contains("data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal"),
+        CI_DAG.contains(
+            "data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal"
+        ),
         "{CI_DAG_PATH}: must model live-workflow binding for testclaim corpus eval"
     );
     assert!(
@@ -764,45 +799,15 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let script_path = expr_string(record_body_field(live_signal, "script_path"));
     let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
     let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
-    let eval_step = workflow_step_block(CI_YML, step_name);
     assert!(
-        eval_step.contains("needs.affected.outputs.v4 == 'true'")
-            && eval_step.contains("needs.affected.outputs.testclaim_corpus == 'true'")
-            && eval_step.contains("needs.affected.outputs.workflow_policy == 'true'")
-            && eval_step.contains("needs.affected.outputs.release_distribution == 'true'"),
-        "{CI_YML_PATH}: `{step_name}` must run for v4, testclaim_corpus, workflow-policy, and release_distribution changes"
+        !CI_YML.contains(&format!("- name: {step_name}")),
+        "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` demoted from required path (modeled in ci.dag; Class C)"
     );
     assert!(
-        !eval_step.contains("v4-testclaim-corpus-gate.sh")
-            && !eval_step.contains("t22_testclaim_corpus_cache")
-            && !eval_step.contains("V4_TESTCLAIM_REUSE_RUST_OUT")
-            && !eval_step.contains("V4_TESTCLAIM_REUSE_DAG_OUT")
-            && !eval_step.contains("T-22 TestClaim corpus structural bridge"),
-        "{CI_YML_PATH}: P5 bridge negative authority must not appear in `{step_name}`"
+        CI_DAG.contains(&format!("script_path: \"{script_path}\"")),
+        "{CI_DAG_PATH}: T-22 corpus eval host transport remains modeled as `{script_path}`"
     );
-    assert!(
-        eval_step.contains("V4_M1_RUST_EMIT_OUT:") && eval_step.contains("V4_BOOTSTRAP_OUT:"),
-        "{CI_YML_PATH}: `{step_name}` must wire upstream M1 + bootstrap composition-edge env"
-    );
-    if non_blocking {
-        assert!(
-            eval_step.contains("continue-on-error: true"),
-            "{CI_YML_PATH}: `{step_name}` must set continue-on-error when modeled non_blocking is true"
-        );
-    } else {
-        assert!(
-            !eval_step.contains("continue-on-error: true"),
-            "{CI_YML_PATH}: `{step_name}` must not set continue-on-error when modeled non_blocking is false"
-        );
-    }
-    assert!(
-        eval_step.contains(&format!("timeout-minutes: {timeout_minutes}")),
-        "{CI_YML_PATH}: `{step_name}` must set timeout-minutes from modeled timeout_minutes"
-    );
-    assert!(
-        eval_step.contains(&format!("run: bash {script_path}")),
-        "{CI_YML_PATH}: `{step_name}` must invoke the modeled host transport"
-    );
+    let _ = (non_blocking, timeout_minutes);
     assert!(
         !CI_YML.contains("v4-testclaim-corpus-gate.sh"),
         "{CI_YML_PATH}: shell bridge script must be absent from workflow"
@@ -831,13 +836,9 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
         CI_DAG.contains("ci_all_gate_run_policies_resolve(gates: p.gates, jobs: p.jobs)"),
         "{CI_DAG_PATH}: ci_pipeline_well_formed must reject dangling gate run-policy jobs"
     );
-    let bootstrap_skip_guard = expr_string(data_body(
-        &module,
-        "ci_v4_bootstrap_gate_result_skip_guard_if",
-    ));
     assert!(
-        CI_YML.contains(&bootstrap_skip_guard),
-        "{CI_YML_PATH}: bootstrap gate result skip guard must match modeled ci_v4_bootstrap_gate_result_skip_guard_if"
+        CI_YML.contains("bash scripts/v4-bootstrap-viability.sh"),
+        "{CI_YML_PATH}: Wave 1 floor runs bootstrap viability directly (no advisory two-step gate)"
     );
     assert!(
         CI_DAG.contains("workflow_local_bootstrap_dag_upstream")
@@ -969,23 +970,17 @@ fn v4_workflow_ci_bankruptcy_tier0_legacy_top_level_jobs_deleted() {
         );
     }
     assert!(
-        CI_YML.contains("v3 determinism (Tier-0 I3)")
-            && CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
-        "{CI_YML_PATH}: Tier-0 I3/I4 must run inside the ci harness job"
+        !CI_YML.contains("v3 determinism (Tier-0 I3)")
+            && !CI_YML.contains("v3 self-host fixed point (Tier-0 I4)"),
+        "{CI_YML_PATH}: Wave 1 §11.7.3 — v3 integration permanently deleted from required CI"
     );
 }
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_ci_integration_job_if_includes_release_distribution() {
-    let ci_integration_job_if = CI_YML
-        .lines()
-        .skip_while(|line| !line.starts_with("  ci_integration:"))
-        .skip(1)
-        .find(|line| line.trim_start().starts_with("if:"))
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing ci_integration job `if`"));
     assert!(
-        ci_integration_job_if.contains("needs.affected.outputs.release_distribution == 'true'"),
-        "{CI_YML_PATH}: ci_integration job `if` must include release_distribution (RELEASE §5 binding step at :251 is inside this job)"
+        !CI_YML.contains("  ci_integration:"),
+        "{CI_YML_PATH}: Wave 1 — `ci_integration` job dissolved into `ci_floor`"
     );
 }
 
@@ -1024,23 +1019,27 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_integration, ci_v4]")
-            || CI_YML.contains("needs: [affected, ci_integration, ci_v4]\n"),
-        "{CI_YML_PATH}: branch-protection `ci` aggregator must not need `discipline` (B1 §3.5 — check-* off Tier-0 critical path)"
+        CI_YML.contains("needs: [ci_floor]")
+            || CI_YML.contains("needs: [ci_floor]\n"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must need `ci_floor` only (not `affected`)"
     );
     assert!(
-        !CI_YML.contains("needs.discipline.result"),
-        "{CI_YML_PATH}: `ci` Validate prerequisites must not fail-closed on discipline"
+        !CI_YML.contains("needs: [affected, ci_floor]")
+            && !CI_YML.contains("needs.affected.result"),
+        "{CI_YML_PATH}: `affected` is shadow-only — not a §11.7.1 gate"
     );
     assert!(
-        CI_YML.contains("needs: [affected]\n    runs-on:")
-            || CI_YML.contains("ci_integration:") && CI_YML.contains("needs: [affected]"),
-        "{CI_YML_PATH}: Tier-0 ci_integration must not need discipline"
+        !CI_YML.contains("needs.discipline.result") && !CI_YML.contains("  discipline:"),
+        "{CI_YML_PATH}: discipline job deleted per §11.7.3"
     );
+    let ci_floor_block = CI_YML
+        .split("  ci_floor:")
+        .nth(1)
+        .and_then(|rest| rest.split("\n  ci:").next())
+        .unwrap_or("");
     assert!(
-        CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_integration\", \"ci_v4\"]")
-            && !CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"discipline\""),
-        "{CI_WORKFLOW_DAG_PATH}: generated workflow must mirror ci.yml (P2 — discipline off aggregator)"
+        !ci_floor_block.contains("needs: [affected]"),
+        "{CI_YML_PATH}: `ci_floor` must not depend on `affected`"
     );
 }
 
@@ -1052,11 +1051,9 @@ fn v4_workflow_ci_bankruptcy_tier0_i4_if_matches_live_workflow_binding() {
         "ci_v3_self_host_fixed_point_ci_live_workflow_binding",
     );
     let i4_step_name = expr_string(record_body_field(i4_binding, "step_name"));
-    let i4_if_condition = expr_string(record_body_field(i4_binding, "if_condition"));
-    let i4_step = workflow_step_block(CI_YML, &i4_step_name);
     assert!(
-        i4_step.contains(&i4_if_condition),
-        "{CI_YML_PATH}: Tier-0 I4 step `if` must match modeled ci_v3_self_host_fixed_point_ci_live_workflow_binding (§3.3 / D1)"
+        !CI_YML.contains(&format!("- name: {i4_step_name}")),
+        "{CI_YML_PATH}: Wave 1 — I4 v3 self-host step not on required path (binding remains in ci.dag)"
     );
 }
 
@@ -1072,88 +1069,27 @@ fn v4_workflow_ci_bankruptcy_tier0_corpus_eval_uses_one_canonical_ci_job_row() {
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_t15_schedule_matches_ci_yml() {
-    let t15_step = workflow_step_block(CI_YML, T15_SELF_HOST_STEP_NAME);
     assert!(
-        t15_step.contains(T15_SELF_HOST_HARNESS_TEST_FILTER),
-        "{CI_YML_PATH}: `{T15_SELF_HOST_STEP_NAME}` must run the T-15 self-host fixed-point harness (I7)"
-    );
-    assert!(
-        !t15_step.contains("release_distribution"),
-        "{CI_YML_PATH}: T-15 step must not gate on release_distribution (single-authority with modeled mask)"
+        !CI_YML.contains(T15_SELF_HOST_STEP_NAME),
+        "{CI_YML_PATH}: Wave 1 — T-15 harness demoted from required path"
     );
     assert!(
         CI_DAG.contains(
             "V4T15SelfHostFixedPointCommand =>\n      ci_job_component_mask_row(\n        v2: false,\n        v3: false,\n        v4: true,\n        testclaim_corpus: false,\n        workflow_policy: true,\n        release_distribution: false\n      )"
         ),
-        "{CI_DAG_PATH}: V4T15SelfHostFixedPointCommand mask must match ci_v4 T-15 step if: axes"
-    );
-    assert!(
-        !t15_step.contains("needs.affected.outputs.v3 == 'true'"),
-        "{CI_YML_PATH}: T-15 step must not gate on v3 — I7 runs in ci_v4 lane only (parent job has no v3 disjunct)"
+        "{CI_DAG_PATH}: V4T15SelfHostFixedPointCommand mask remains modeled"
     );
     assert!(
         CI_DAG.contains("fn ci_v4_t15_scheduled(affected: CiComponentAffected, schedule: CiSchedulePolicy) -> Bool"),
         "{CI_DAG_PATH}: T-15 must model main-push schedule authority"
-    );
-    assert!(
-        CI_DAG.contains("V4T15SelfHostFixedPointCommand =>\n      ci_v4_t15_scheduled(affected: affected, schedule: schedule)"),
-        "{CI_DAG_PATH}: ci_job_scheduled_by_policy must select V4T15 on MainPush (YAML main-push disjunct)"
-    );
-    assert!(
-        t15_step.contains("github.event_name == 'push'") && t15_step.contains("refs/heads/main"),
-        "{CI_YML_PATH}: T-15 step must include main-push disjunct paired with modeled ci_v4_t15_scheduled"
-    );
-    let ci_v4_job_if = workflow_top_level_job_if(CI_YML, "ci_v4");
-    assert!(
-        ci_v4_job_if.contains("github.event_name == 'push'") && ci_v4_job_if.contains("refs/heads/main"),
-        "{CI_YML_PATH}: ci_v4 job `if` must include main-push so I7 T-15 can run when the job is not component-selected"
-    );
-    assert!(
-        ci_v4_job_if.contains("needs.affected.outputs.release_distribution == 'true'"),
-        "{CI_YML_PATH}: ci_v4 job `if` must include release_distribution (TestClaimCorpusEvalCommand mask axis)"
     );
 }
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_ci_v4_job_if_matches_generated_workflow() {
     assert!(
-        CI_WORKFLOW_DAG.contains("id: \"ci_v4\"")
-            && CI_WORKFLOW_DAG.contains(
-                "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
-            ),
-        "{CI_WORKFLOW_DAG_PATH}: ci_v4 job if_condition must mirror ci.yml (main-push + release_distribution)"
-    );
-    let t15_workflow_marker = format!("name: Some {{ value: \"{T15_SELF_HOST_STEP_NAME}\" }}");
-    let t15_workflow_idx = CI_WORKFLOW_DAG
-        .find(&t15_workflow_marker)
-        .unwrap_or_else(|| {
-            panic!("{CI_WORKFLOW_DAG_PATH}: missing modeled step `{T15_SELF_HOST_STEP_NAME}`")
-        });
-    let t15_workflow_window =
-        &CI_WORKFLOW_DAG[t15_workflow_idx..t15_workflow_idx.saturating_add(512)];
-    assert!(
-        !t15_workflow_window.contains("needs.affected.outputs.v3 == 'true'"),
-        "{CI_WORKFLOW_DAG_PATH}: T-15 step if_condition must not gate on v3 (P2 parity with ci.yml / ci.dag)"
-    );
-    assert!(
-        t15_workflow_window.contains(
-            "if_condition: Some { value: \"needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')\" }"
-        ),
-        "{CI_WORKFLOW_DAG_PATH}: T-15 step if_condition must mirror ci.yml (I7 / no v3 disjunct)"
-    );
-    let v2_build_workflow_marker =
-        "name: Some { value: \"Build v2 compiler (v4 bootstrap / host eval gate)\" }";
-    let v2_build_workflow_idx = CI_WORKFLOW_DAG
-        .find(v2_build_workflow_marker)
-        .unwrap_or_else(|| {
-            panic!("{CI_WORKFLOW_DAG_PATH}: missing modeled step `Build v2 compiler (v4 bootstrap / host eval gate)`")
-        });
-    let v2_build_workflow_window =
-        &CI_WORKFLOW_DAG[v2_build_workflow_idx..v2_build_workflow_idx.saturating_add(560)];
-    assert!(
-        v2_build_workflow_window.contains("github.event_name == 'push'")
-            && v2_build_workflow_window.contains("refs/heads/main"),
-        "{CI_WORKFLOW_DAG_PATH}: v2 compiler build if_condition must include main-push (T-15 needs v2_compile_src_v4)"
+        !CI_YML.contains("  ci_v4:"),
+        "{CI_YML_PATH}: Wave 1 — `ci_v4` job dissolved into `ci_floor`"
     );
 }
 
@@ -1235,23 +1171,15 @@ fn v4_workflow_ci_bankruptcy_tier0_upsert_slice_registers_tier0_jobs() {
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_v2_build_step_includes_main_push() {
-    let v2_bootstrap_build =
-        workflow_step_block(CI_YML, "Build v2 compiler (v4 bootstrap / host eval gate)");
+    let v2_build = workflow_step_block(CI_YML, "Build v2 compiler (v4 floor)");
     assert!(
-        v2_bootstrap_build.contains("needs.affected.outputs.v4 == 'true'")
-            && !v2_bootstrap_build.contains("needs.affected.outputs.v2 == 'true'"),
-        "{CI_YML_PATH}: v2 compiler build step must follow ci_v4 job gate (v4|testclaim|workflow_policy), not v2-only"
+        !v2_build.contains("needs.affected.outputs"),
+        "{CI_YML_PATH}: Wave 1 — v2 build runs unconditionally in `ci_floor`"
     );
+    let v2_bin_cache = workflow_step_block(CI_YML, "Cache gunbc binary (v4 floor)");
     assert!(
-        v2_bootstrap_build.contains("github.event_name == 'push'")
-            && v2_bootstrap_build.contains("refs/heads/main"),
-        "{CI_YML_PATH}: v2 compiler build step must include main-push when T-15 does (modeled needs: v2_compile_src_v4)"
-    );
-    let v2_bin_cache =
-        workflow_step_block(CI_YML, "Cache gunbc binary (v4 bootstrap / host eval gate)");
-    assert!(
-        v2_bin_cache.contains("github.event_name == 'push'") && v2_bin_cache.contains("refs/heads/main"),
-        "{CI_YML_PATH}: v2 compiler cache step must include main-push paired with build/T-15 needs closure"
+        !v2_bin_cache.contains("needs.affected.outputs"),
+        "{CI_YML_PATH}: Wave 1 — gunbc cache runs unconditionally in `ci_floor`"
     );
 }
 
@@ -1281,41 +1209,24 @@ fn v4_workflow_ci_bankruptcy_tier0_lens_ci_mask_matches_ci_yml() {
     let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
     let smoke_step_name = expr_string(record_body_field(live_signal, "smoke_step_name"));
     let semantic_step_name = expr_string(record_body_field(live_signal, "semantic_step_name"));
-    let smoke_step = workflow_step_block(CI_YML, &smoke_step_name);
-    let semantic_step = workflow_step_block(CI_YML, &semantic_step_name);
     assert!(
-        !smoke_step.contains("needs.affected.outputs.v3 == 'true'"),
-        "{CI_YML_PATH}: `{smoke_step_name}` must not gate on v3"
+        !CI_YML.contains(&format!("- name: {smoke_step_name}")),
+        "{CI_YML_PATH}: Wave 1 — `{smoke_step_name}` demoted from required path"
     );
     assert!(
-        smoke_step.contains("needs.affected.outputs.v4 == 'true'")
-            && smoke_step.contains("needs.affected.outputs.workflow_policy == 'true'"),
-        "{CI_YML_PATH}: `{smoke_step_name}` must gate on v4|workflow_policy"
-    );
-    assert!(
-        !semantic_step.contains("needs.affected.outputs.v3 == 'true'"),
-        "{CI_YML_PATH}: `{semantic_step_name}` must not gate on v3"
-    );
-    assert!(
-        semantic_step.contains("needs.affected.outputs.v4 == 'true'")
-            && semantic_step.contains("needs.affected.outputs.workflow_policy == 'true'"),
-        "{CI_YML_PATH}: `{semantic_step_name}` must gate on v4|workflow_policy"
+        !CI_YML.contains(&format!("- name: {semantic_step_name}")),
+        "{CI_YML_PATH}: Wave 1 — `{semantic_step_name}` demoted from required path"
     );
 }
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_binding_step_matches_generated_workflow() {
+    let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
-        CI_WORKFLOW_DAG.contains(&format!(
+        binding_step.contains(&format!(
             "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
         )),
-        "{CI_WORKFLOW_DAG_PATH}: M1 binding step run must use bankruptcy D3 prefix filter (P2 parity with {CI_YML_PATH})"
-    );
-    assert!(
-        CI_WORKFLOW_DAG.contains(
-            "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
-        ),
-        "{CI_WORKFLOW_DAG_PATH}: ci_integration job if_condition must mirror ci.yml (release_distribution for RELEASE §5 step)"
+        "{CI_YML_PATH}: binding step must run bankruptcy D3 prefix filter on the Wave 1 floor"
     );
 }
 
@@ -1333,6 +1244,275 @@ fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step()
             "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
         )),
         "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run bankruptcy D3 ratchet tests (prefix filter, one claim per test)"
+    );
+    assert!(
+        binding_step.contains("v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_"),
+        "{CI_YML_PATH}: binding step must run Wave 1 floor prefix filter"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
+    assert!(
+        CI_YML.contains("Wave 1 §11.7.1 safety floor"),
+        "{CI_YML_PATH}: must declare Wave 1 §11.7.1 safety floor"
+    );
+    assert!(
+        CI_YML.contains("  ci_floor:"),
+        "{CI_YML_PATH}: must define `ci_floor` job"
+    );
+    assert!(
+        !CI_YML.contains("  ci_integration:") && !CI_YML.contains("  ci_v4:"),
+        "{CI_YML_PATH}: legacy parallel lanes dissolved"
+    );
+    assert!(
+        CI_YML.contains("needs: [ci_floor]"),
+        "{CI_YML_PATH}: `ci` aggregator must depend on `ci_floor` only"
+    );
+    assert!(
+        CI_YML.contains("continue-on-error: true") && CI_YML.contains("  affected:"),
+        "{CI_YML_PATH}: `affected` must run shadow-only (continue-on-error), not block merge"
+    );
+    for forbidden in [
+        "check-pr-sg0-net-shrink-discipline.sh",
+        "determinism_test",
+        "self_host_fixed_point",
+        "v4-testclaim-corpus-eval.sh",
+        "v4-mvp1-e2e-gate.sh",
+        "v4-phase1-nat-semiring-rung-gate.sh",
+    ] {
+        assert!(
+            !CI_YML.contains(forbidden),
+            "{CI_YML_PATH}: Wave 1 cut — must not invoke `{forbidden}` on required path"
+        );
+    }
+}
+
+#[test]
+fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
+    assert!(
+        CI_WORKFLOW_DAG.contains("id: \"ci_floor\""),
+        "{CI_WORKFLOW_DAG_PATH}: regen artifact must model `ci_floor`"
+    );
+    assert!(
+        CI_WORKFLOW_DAG.contains("id: \"ci\"") && CI_WORKFLOW_DAG.contains("needs: [\"ci_floor\"]"),
+        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need `ci_floor` only"
+    );
+    let affected_idx = CI_WORKFLOW_DAG
+        .find("id: \"affected\"")
+        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing `affected` job"));
+    let affected_window = &CI_WORKFLOW_DAG[affected_idx..affected_idx.saturating_add(512)];
+    assert!(
+        affected_window.contains("continue_on_error: true"),
+        "{CI_WORKFLOW_DAG_PATH}: `affected` must be shadow-only (continue_on_error)"
+    );
+    assert!(
+        !CI_WORKFLOW_DAG.contains("id: \"ci_integration\"")
+            && !CI_WORKFLOW_DAG.contains("id: \"ci_v4\""),
+        "{CI_WORKFLOW_DAG_PATH}: legacy parallel lanes dissolved in regen artifact"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_wave1_no_new_shell_ratchet_wired() {
+    let ratchet_step = workflow_step_block(CI_YML, "no-new-shell ratchet (required CI path)");
+    assert!(
+        ratchet_step.contains("check-ci-no-new-shell.sh"),
+        "{CI_YML_PATH}: gate 5 must invoke no-new-shell ratchet"
+    );
+}
+
+// P5(b) receipt: `docs/planning/ci-required-surface-cut-2026-06-01.md` § P5(b) `v4_workflow_ci_wave3_*`
+// (SG-0 delta 0; ROADMAP T-PB-B; live emit deferred `node://adhoc-331899f9-19a`).
+
+#[test]
+fn v4_workflow_ci_wave3_roster_dag_tokenizes_and_parses() {
+    let _module = parse_module(WAVE3_ROSTER_DAG, WAVE3_ROSTER_PATH);
+}
+
+#[test]
+fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        !CI_DAG.contains("CiWave3ShadowReceipt"),
+        "{CI_DAG_PATH}: Wave 3 must extend CiSelectionReceipt — no parallel receipt type"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "compiler", "eval"],
+            "test_claim_claim_hash_digest"
+        ),
+        "{CI_DAG_PATH}: claim_projection_hash must import IRT-4 `test_claim_claim_hash_digest` from v4.compiler.eval"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "lens", "testgen"], "Generator")
+            && import_includes_name(&module, &["v4", "lens", "testgen"], "TestgenConcept"),
+        "{CI_DAG_PATH}: TestgenSlotSelection must import `Generator` + `TestgenConcept` from v4.lens.testgen"
+    );
+    for sym in [
+        "type CiActiveFloorSkipEvidence",
+        "type CiSelectionMode",
+        "type CiSelectionReceiptProvenance",
+        "type CiClaimSelectionReason",
+        "type CiTestClaimSelection",
+        "type TestgenSlotSelection",
+        "generator: Generator<TestgenConcept>",
+        "Active { skip_evidence: CiActiveFloorSkipEvidence }",
+        "fn ci_floor_held",
+        "fn ci_wave3_shadow_testclaims_selected",
+        "claim_projection_hash: test_claim_claim_hash_digest(c: claim)",
+        "data ci_wave3_shadow_fixture_fail_closed_receipt",
+        "data ci_wave3_shadow_fixture_receipt_ok",
+    ] {
+        assert!(
+            CI_DAG.contains(sym),
+            "{CI_DAG_PATH}: Wave 3 Phase 1 must declare `{sym}`"
+        );
+    }
+    let shadow_marker = "fn ci_selection_receipt_shadow(";
+    let shadow_start = CI_DAG
+        .find(shadow_marker)
+        .unwrap_or_else(|| panic!("{CI_DAG_PATH}: missing `{shadow_marker}`"));
+    let shadow_rest = &CI_DAG[shadow_start + shadow_marker.len()..];
+    let shadow_end = shadow_rest
+        .find("\nfn ")
+        .map(|idx| shadow_start + shadow_marker.len() + idx)
+        .unwrap_or(CI_DAG.len());
+    let shadow_body = &CI_DAG[shadow_start..shadow_end];
+    assert!(
+        !shadow_body.contains("provenance: CiSelectionReceiptProvenance")
+            && shadow_body.contains("provenance: FixtureReceipt")
+            && shadow_body.contains("testclaim_decisions: Empty"),
+        "{CI_DAG_PATH}: step-only ci_selection_receipt_shadow must hardcode FixtureReceipt (no caller provenance; empty claim/testgen until live entry)"
+    );
+    let heartbeat_body = extract_fn_body(CI_DAG, "ci_selection_receipt_shadow_heartbeat");
+    assert!(
+        heartbeat_body.contains("provenance: FixtureReceipt"),
+        "{CI_DAG_PATH}: shadow heartbeat must tag FixtureReceipt (synthetic path, not live PR git_diff)"
+    );
+    assert!(
+        !heartbeat_body.contains("provenance: LivePrGitDiff"),
+        "{CI_DAG_PATH}: shadow heartbeat must not mis-label synthetic receipt as LivePrGitDiff"
+    );
+    let fixture_binding = CI_DAG
+        .split("data ci_wave3_shadow_fixture_fail_closed_receipt:")
+        .nth(1)
+        .and_then(|rest| rest.split("\ndata ").next())
+        .unwrap_or("");
+    assert!(
+        fixture_binding.contains("provenance: FixtureReceipt"),
+        "{CI_DAG_PATH}: Wave 3 fixture receipt must construct with FixtureReceipt provenance"
+    );
+    assert!(
+        !fixture_binding.contains("provenance: LivePrGitDiff"),
+        "{CI_DAG_PATH}: Wave 3 fixture receipt must not use LivePrGitDiff"
+    );
+    assert!(
+        !CI_DAG.contains("floor_skip:"),
+        "{CI_DAG_PATH}: arbiter ruling — do not persist floor_skip; derive via ci_floor_held"
+    );
+    assert!(
+        CI_DAG.contains("reason: CiClaimSelectionReason"),
+        "{CI_DAG_PATH}: claim rows must use closed CiClaimSelectionReason coproduct"
+    );
+    assert!(
+        CI_DAG.contains("AffectedIntersectionNonempty")
+            && CI_DAG.contains("AffectedIntersectionEmpty")
+            && !CI_DAG.contains("| AffectedFrontierNonempty"),
+        "{CI_DAG_PATH}: claim reasons must use per-claim ∩ frontier semantics (not global-only AffectedFrontierNonempty)"
+    );
+    let reason_body = extract_fn_body(CI_DAG, "ci_wave3_shadow_testclaim_selection_reason");
+    assert!(
+        reason_body.contains("test_claim_in_rerun_frontier")
+            && reason_body.contains("AffectedIntersectionEmpty"),
+        "{CI_DAG_PATH}: unselected rows must distinguish global frontier empty vs claim outside nonempty frontier"
+    );
+    assert!(
+        !CI_DAG.contains("fn ci_test_claim_shadow_projection_node"),
+        "{CI_DAG_PATH}: claim_projection_hash must use IRT-4 test_claim_claim_hash_digest, not input-only projection"
+    );
+    assert!(
+        CI_DAG.contains("🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt"),
+        "{CI_DAG_PATH}: Wave 3 receipt carriers require dissolution disposition marks"
+    );
+    assert!(
+        !CI_DAG.contains("generator_slot: Symbol") && !CI_DAG.contains("concept_category: Symbol"),
+        "{CI_DAG_PATH}: TestgenSlotSelection must not flatten `Generator<TestgenConcept>` into Symbol labels"
+    );
+    for field in [
+        "generator: Generator<TestgenConcept>",
+        "emits_claim_anchor: ClaimAnchorKey",
+        "selected: Bool",
+    ] {
+        assert!(
+            CI_DAG.contains(field),
+            "{CI_DAG_PATH}: TestgenSlotSelection must carry `{field}` per worksheet §2.1 + v4.lens.testgen authority"
+        );
+    }
+    assert!(
+        CI_DAG.contains("provenance: FixtureReceipt"),
+        "{CI_DAG_PATH}: W1.5 + Wave 3 fixture receipts must tag FixtureReceipt (not LivePrGitDiff)"
+    );
+    assert!(
+        !CI_DAG.contains("provenance: LivePrGitDiff"),
+        "{CI_DAG_PATH}: Phase 1 — `LivePrGitDiff` is coproduct-only until `ci_selection_receipt_shadow_from_git_diff` lands; forbidden at construction sites"
+    );
+    assert!(
+        CI_DAG.contains("ci_wave3_shadow_claim_roster()"),
+        "{CI_DAG_PATH}: selection must consume wave3_shadow_roster authority"
+    );
+    let roster_module = parse_module(WAVE3_ROSTER_DAG, WAVE3_ROSTER_PATH);
+    for name in [
+        "ci_wave3_shadow_manual_claim_roster",
+        "ci_wave3_shadow_generated_claim_roster",
+        "ci_wave3_shadow_claim_roster",
+    ] {
+        assert!(
+            surface_declares_fn(&roster_module, name),
+            "{WAVE3_ROSTER_PATH}: must declare `{name}`"
+        );
+    }
+}
+
+#[test]
+fn v4_workflow_ci_wave3_live_emit_deferred_in_ci_yml() {
+    assert!(
+        !CI_YML.contains("emit-ci-wave3-shadow-receipt"),
+        "{CI_YML_PATH}: Phase 2 — live shadow emit waits on bootstrap eval entry (adhoc-331899f9-19a)"
+    );
+    assert!(
+        !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff"),
+        "{CI_YML_PATH}: modeled live entry not wired until eval harness lands"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_wave3_ci_floor_independent_of_affected() {
+    assert!(
+        CI_YML.contains("needs: [ci_floor]")
+            && !CI_YML.contains("needs: [affected, ci_floor]")
+            && !CI_YML.contains("needs.affected.result"),
+        "{CI_YML_PATH}: Wave 3 — floor must not depend on affected (shadow Class C only)"
+    );
+    let ci_floor_block = CI_YML
+        .split("  ci_floor:")
+        .nth(1)
+        .and_then(|rest| rest.split("\n  ci:").next())
+        .unwrap_or("");
+    assert!(
+        !ci_floor_block.contains("needs: [affected]"),
+        "{CI_YML_PATH}: `ci_floor` must not need `affected`"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_wave3_fixture_receipt_documents_live_ci_deferral() {
+    assert!(
+        CI_DAG.contains("data ci_wave3_shadow_fixture_fail_closed_receipt")
+            && CI_DAG.contains("FixtureReceipt")
+            && CI_DAG.contains("adhoc-331899f9-19a"),
+        "{CI_DAG_PATH}: must model fixture receipt and live-CI deferral"
     );
 }
 
@@ -1389,5 +1569,70 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
             SurfaceItem::TypeSum { name, .. } if name == "CiCommand"
         )),
         "{CI_DAG_PATH}: CiCommand sum type must exist"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
+    for needle in [
+        "src/v4_test_claim_workflow_manual_corpus_eval.rs",
+        "check_generated_corpus_eval",
+        "manual_corpus_all_pass",
+        "manual_corpus_gate",
+        "witness_manual_corpus_gate_closed",
+        "corpus_report_tally(report);",
+        "fail_deferred_conjunction",
+        "tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
+        "[^&|;=]*&&",
+        "&&",
+        "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
+        "[^&|;=]*(?:;|\\})",
+        "inline_empty_gate",
+        "if(?<!!)is_empty\\([^)]*report[^)]*entries",
+        "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
+        "manual_corpus_gate(run_manual_testclaim_corpus_eval())",
+    ] {
+        assert!(
+            TESTCLAIM_CORPUS_EVAL_SCRIPT.contains(needle),
+            "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: missing generated corpus-eval receipt probe `{needle}`"
+        );
+    }
+}
+
+#[test]
+fn v4_workflow_ci_t38_script_receipt_rejects_inverted_zero_predicates() {
+    let output = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(
+            r#"
+import re
+
+fail_deferred_conjunction = re.compile(
+    r"tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
+    r"[^&|;]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
+)
+
+assert fail_deferred_conjunction.search(
+    "tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}"
+)
+assert not fail_deferred_conjunction.search(
+    "(tally.fail==Zero)==false&&tally.deferred==Zero}"
+)
+assert not fail_deferred_conjunction.search(
+    "tally.fail==Zero&&(tally.deferred==Zero)==false}"
+)
+assert not fail_deferred_conjunction.search(
+    "tally.fail==NotZero&&tally.deferred==NotZero}"
+)
+"#,
+        )
+        .output()
+        .expect("python3 should run T-38 receipt regex regression");
+
+    assert!(
+        output.status.success(),
+        "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: generated corpus-eval receipt regex accepted an inverted zero predicate\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }
