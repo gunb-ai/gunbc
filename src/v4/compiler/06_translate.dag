@@ -2829,44 +2829,44 @@ fn serialize_type_expr_arrow_bounded(
           types: node_positional_child_targets(node: node),
           node: node
         ),
-      f: fn(split) {
-        bind_outcome(
-          o: serialize_type_expr_arrow_inputs_bounded(
-            remaining: remaining - 1,
-            target: target,
-            projection: projection,
-            form: form,
-            inputs: split.inputs,
-            anchor: node
-          ),
-          f: fn(inputs_source) {
-            bind_outcome(
-              o: lex_rules_literal(target: target, token_class: form.arrow),
-              f: fn(arrow_source) {
-                bind_outcome(
-                  o: serialize_type_expr_boundary_bounded(
-                    remaining: remaining - 1,
-                    target: target,
-                    projection: projection,
-                    boundary_site: FunctionBoundaryReturn,
-                    emitted: split.output
-                  ),
-                  f: fn(output_source) {
-                    Accepted {
-                      value: list_append(
-                        left: list_append(left: inputs_source, right: arrow_source),
-                        right: output_source
-                      ),
-                      diagnostics: None
+        f: fn(split) {
+          bind_outcome(
+            o: serialize_type_expr_arrow_inputs_bounded(
+              remaining: remaining - 1,
+              target: target,
+              projection: projection,
+              form: form,
+              inputs: split.inputs,
+              anchor: node
+            ),
+            f: fn(inputs_source) {
+              bind_outcome(
+                o: lex_rules_literal(target: target, token_class: form.arrow),
+                f: fn(arrow_source) {
+                  bind_outcome(
+                    o: serialize_type_expr_boundary_bounded(
+                      remaining: remaining - 1,
+                      target: target,
+                      projection: projection,
+                      boundary_site: FunctionBoundaryReturn,
+                      emitted: split.output
+                    ),
+                    f: fn(output_source) {
+                      Accepted {
+                        value: list_append(
+                          left: list_append(left: inputs_source, right: arrow_source),
+                          right: output_source
+                        ),
+                        diagnostics: None
+                      }
                     }
-                  }
-                )
-              }
-            )
-          }
-        )
-      }
-    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }

@@ -1134,7 +1134,7 @@ fn ts_mvp1_target_model() -> TargetModel {
 //   arrow         (T) => U positional wire from source projection today; arrow_form param slots +
 //                 TargetTypeExprArrowWireShape labeled serialize/decode staged on carrier — live
 //                 (a: T) => U emission awaits target-arrow-domain-param-list-carrier (see 🟡 below)
-// 🟡 gated — feature:target-arrow-domain-param-list-carrier — owner:Modeling DFS Arbiter — dissolve-on-arrival: substrate declares arrow-domain parameter-list vs record/product boundary and translate calls target_type_expr_arrow_emitted_named from source; until then forbidden: TS row claim or comment asserting live labeled-arrow emission from ordinary projected arrows.
+// 🟡 gated — feature:target-arrow-domain-param-list-carrier — owner:Modeling DFS Arbiter — dissolve-on-arrival: substrate declares arrow-domain parameter-list vs record/product boundary and translate_project_type_expression_arrow calls target_type_expr_arrow_emitted_named (not target_type_expr_arrow_emitted) from source; until then forbidden: TS row claim or comment asserting live labeled-arrow emission from ordinary projected arrows.
 //   cardinality   Head<args>  generic collection     (e.g. Set<T> — postfix head + angle brackets,
 //                                                      mirrors Rust; the Cardinality source carries a
 //                                                      head carrier, so a head-less tuple does not fit)
