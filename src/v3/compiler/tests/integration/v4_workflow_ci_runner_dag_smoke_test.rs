@@ -1227,6 +1227,10 @@ fn v4_workflow_ci_bankruptcy_tier0_upsert_slice_registers_tier0_jobs() {
             "{CI_DAG_PATH}: ci_upsert_v2_bootstrap_smoke_execution_inputs must include `{segment}` (P2 parity with ci_changed_path_affects_v2 / I2 selection)"
         );
     }
+    assert!(
+        !v2_i2_inputs.contains("segment: \"scripts/**\""),
+        "{CI_DAG_PATH}: I2 Upsert must not declare scripts/** — script paths route via v4/workflow_policy buckets, not ci_changed_path_affects_v2 (design-ci-bankruptcy-rebuild.md I2 frontier v2/compiler/**)"
+    );
 }
 
 #[test]

@@ -622,7 +622,6 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
 // Historical partial slices: `ci_upsert_steps_buckets_a_b_c_*` retained for bucket A/B/C landing ledger.
 
 data ci_upsert_v2_bootstrap_smoke_execution_inputs: List<UpsertInputRef> = [
-  ci_upsert_file_set_input(segment: "scripts/**"),
   ci_upsert_file_set_input(segment: "src/v2/**"),
   ci_upsert_file_set_input(segment: "Cargo.toml"),
   ci_upsert_file_set_input(segment: "Cargo.lock")
