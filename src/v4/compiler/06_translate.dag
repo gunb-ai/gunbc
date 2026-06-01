@@ -125,6 +125,8 @@ import v4.std.target_model {
   target_collection_repr_kind_from_atom,
   target_collection_set_no_representation,
   target_collection_set_no_representation_diagnostic,
+  target_collection_free_monoid_no_representation,
+  target_collection_free_monoid_no_representation_diagnostic,
   target_collection_select_choice,
   target_collection_set_element_type_node,
   target_collection_free_monoid_element_type_node,
@@ -1540,7 +1542,14 @@ fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
           diagnostics: None
         }
       } else {
-        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        if reason == target_collection_free_monoid_no_representation {
+          Accepted {
+            value: target_collection_free_monoid_no_representation_diagnostic(),
+            diagnostics: None
+          }
+        } else {
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        }
       }
     }
   )

@@ -162,6 +162,7 @@ import v4.std.target_model {
   target_collection_free_monoid_carrier,
   target_collection_free_monoid_carrier_node,
   target_collection_set_no_representation_diagnostic,
+  target_collection_free_monoid_no_representation,
   target_collection_trait_ord,
   target_collection_trait_hash,
   target_collection_trait_eq,
@@ -1761,7 +1762,7 @@ fn rust_set_collection_realization_bundle_node() -> Node {
       ),
       rust_named_edge(
         name: target_collection_row_field_fallback,
-        target: rust_inhabitant_atom(id: target_collection_set_no_representation)
+        target: rust_inhabitant_atom(id: target_collection_free_monoid_no_representation)
       )
     ]
   }
@@ -1833,19 +1834,17 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
         map_insert(
           map_insert(
             map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(empty_map(), rust_binding_fn_add, "add"),
-                  rust_binding_param_x,
-                  "x"
-                ),
-                rust_binding_param_y,
-                "y"
-              ),
-              rust_collection_surface_btree_set,
-              "std::collections::BTreeSet"
+              map_insert(empty_map(), rust_binding_fn_add, "add"),
+              rust_binding_param_x,
+              "x"
             ),
-            rust_collection_surface_hash_set,
+            rust_binding_param_y,
+            "y"
+          ),
+          rust_collection_surface_btree_set,
+          "std::collections::BTreeSet"
+        ),
+        rust_collection_surface_hash_set,
             "std::collections::HashSet"
           ),
           rust_collection_surface_vec,
@@ -1854,8 +1853,9 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
         target_collection_set_carrier,
         "Set"
       ),
-    target_collection_free_monoid_carrier,
-    "FreeMonoid"
+      target_collection_free_monoid_carrier,
+      "FreeMonoid"
+    )
   )
 }
 
@@ -3613,9 +3613,9 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
       rust_target_atom_type_spelling_string,
       "String"
     ),
-      rust_sg_rc_ctor_rc_new,
-      "Rc::new"
-    ),
+    rust_sg_rc_ctor_rc_new,
+    "Rc::new"
+  ),
     rust_sg_rc_ctor_box_new,
     "Box::new"
   )
