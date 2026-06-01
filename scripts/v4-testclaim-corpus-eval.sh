@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # scripts/v4-testclaim-corpus-eval.sh
 #
-# P5 Layer 2 / T-38: TestClaim corpus structural CI host transport.
+# P5 Layer 2+3 / T-38: TestClaim corpus runtime CI host transport.
 # Consumes upstream M1 rust emit + bootstrap dag artifacts (no host-owned compile).
 #
 # 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 +
 # docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 —
 # structural-slice: positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority.
-# T-38-PR2: verdict SURFACE migrated — receipt now reports the per-row TestClaimRun roster + the
-# modeled corpus tally witness (witness_manual_corpus_gate_closed: non-empty AND zero Fail AND zero
-# Deferred), retiring the opaque blocked_m1_subset string. The witness is an AUTHORING-TIME const
-# over the modeled CorpusEvalReport; per-row RUNTIME execution (cargo-clean M1 emitted subset OR
-# bootstrap-evaluator corpus path) is load-bearing/out-of-lane and tracked as escalated upward debt.
+# Runtime-slice: the modeled corpus entry rebuilds each rostered subject with bootstrap's
+# v4_evaluator runtime pin and invokes run_test_claim before folding CorpusEvalReport.
 #
 # Authority: src/v4/workflow/ci.dag (`TestClaimCorpusEvalCommand` +
 # `testclaim_corpus_eval_ci_live_workflow_signal`) +
@@ -70,7 +67,7 @@ if ! has_clean_compile_receipt "$dag_log"; then
   exit 1
 fi
 
-echo "=== T-22/P5: structural receipt over upstream M1 rust (${rust_out}) + bootstrap dag (${dag_out}) ==="
+echo "=== T-22/P5: runtime receipt over upstream M1 rust (${rust_out}) + bootstrap dag (${dag_out}) ==="
 
 require_file() {
   local path="$1"

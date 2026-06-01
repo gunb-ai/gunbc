@@ -148,6 +148,7 @@ jobs:
     - name: M1 v4 workflow CI model/YAML binding smoke
       run: |
         set -euo pipefail
+<<<<<<< HEAD
         cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
         cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet
         cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet
@@ -155,6 +156,32 @@ jobs:
       run: |
         bash scripts/check-ci-no-new-shell.sh --self-test
         bash scripts/check-ci-no-new-shell.sh
+=======
+        if [[ "${{ steps.v4_bootstrap_compile.outcome }}" == "success" ]]; then
+          echo "v4 bootstrap: full compile receipt"
+          exit 0
+        fi
+        echo "error: v4 bootstrap compile failed" >&2
+        exit 1
+    # P5 Layer 2+3 / T-22: modeled TestClaim corpus runtime check (positive-Y CiUpsertStep).
+    # Modeled authority: src/v4/workflow/ci.dag `testclaim_corpus_eval_execution` +
+    # `testclaim_corpus_eval_signal` + `testclaim_corpus_eval_ci_live_workflow_signal`.
+    - name: T-22 TestClaim corpus eval (modeled CiUpsertStep - runtime)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true'
+      timeout-minutes: 15
+      env:
+        V2_COMPILER: target/release/gunbc
+        V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
+        V4_M1_RUST_EMIT_LOG: ${{ runner.temp }}/v4-rust-emit.compile.log
+        V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
+        V4_TESTCLAIM_CORPUS_TIMEOUT_SECS: '480'
+      run: bash scripts/v4-testclaim-corpus-eval.sh
+  # Branch protection requires the `ci` check name (docs/admin/branch-protection-recommendation-
+  # 2026-05-09.md). Fail-closed aggregator over Tier-0 lanes only (ci_integration / ci_v4);
+  # `discipline` (scripts/check-*) stays off B1 critical path — design-ci-bankruptcy-rebuild.md §3.5.
+  # `always()` + explicit dep validation — a skipped required child must not let merge proceed.
+>>>>>>> 4acdb1b44 (WIP: P5 bootstrap-evaluator corpus runtime implementation per worksheet on ma)
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
     needs: [ci_floor]
