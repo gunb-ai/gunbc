@@ -903,6 +903,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (parsed-surface receipts only); fail-closed exercised by mvp1 TestClaimRun — see
     // INVARIANTS.md §SG-0 row `v4_compiler_emit_translate_smoke_test.rs`.
     // **PR #3798 (+0 paths):** extends `v4_python_language_model_declares_t11_translation_rules`.
+    // **PR #4156 (+0 paths):** adds TS alpha-lane L0 grammar-inverse G1/G2 production-anchor
+    // receipts for `mvp1_typescript_add_translate.dag` and `mvp1_typescript_record_task_translate.dag`.
+    // Explicit P5 deferral: ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero` plus
+    // TASKS.md T-22; dissolves when these anchors are asserted by `.dag` TestClaim execution or
+    // generated harness coverage instead of host parse-surface traversal.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
