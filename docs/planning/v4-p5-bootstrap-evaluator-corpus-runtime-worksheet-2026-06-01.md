@@ -1,6 +1,6 @@
 # P5 Worksheet — Bootstrap-evaluator corpus runtime (option ii)
 
-> **Status:** **WORKSHEET COMPLETE — READY-FOR-§8** (Modeling DFS Arbiter draft 2026-06-01; §8 self-ratification pending operator visibility on PR).
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §3.5, §6.5 #1, §8.5 #3; upward debt `node://adhoc-f8699326-d69`
 > **Predicate:** P5 strict — `src/v4/TASKS.md` "Definition of v4-done" bullet **TestClaim suite passes** (runtime execution, not authoring-time surface only)
@@ -11,9 +11,9 @@
 
 | Layer | State |
 | ----- | ----- |
-| **Worksheet** | **COMPLETE (content)** — §8 Modeling DFS Arbiter checklist **OPEN** (self-ratification on PR) |
+| **Worksheet** | **READY-FOR-WORKER-DISPATCH** — §8 closed 2026-06-01 (`proud-fox-405`) |
 | **Prerequisites on `origin/main`** | P5 Layer 1+2 CLOSED (#4115 structural bridge); T-38-PR2 verdict SURFACE (#4120); `v4-testclaim-corpus-eval.sh` positive-Y host transport; `testclaim_corpus_runner.dag` + `manual_corpus_eval.dag` authoring witnesses |
-| **Implementation dispatch** | **Blocked** until §8 closed — **authorized** after §8 + worksheet on `main` |
+| **Implementation dispatch** | **Authorized** after worksheet on `main` — Runtime/TestClaim Manager (`neat-hawk-413`) + Compiler Spine bootstrap entry |
 
 ---
 
@@ -219,15 +219,15 @@ Implement `BootstrapEvaluatorCorpusRuntimeEval` per §1–§5 on `main` after th
 
 ---
 
-## §8 Modeling DFS Arbiter approval checklist — OPEN
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] Single-authority fact: `BootstrapEvaluatorCorpusRuntimeEval` (runtime `run_test_claim` via bootstrap evaluator pin — §1)
-- [ ] Option (ii) vs (i) routing honored — (i) explicit non-goal (§1.1)
-- [ ] Distinct from P5 Layer 2 structural bridge (#4115) (§1.2)
-- [ ] Spot-fix forbidden: authoring-time const runs, grep witness pass, path (i) as this gate (§3)
-- [ ] Falsification table §4 (F1–F6) accepted
-- [ ] Landing order §5 + lane split accepted
-- [ ] **READY-FOR-WORKER-DISPATCH** (pending Arbiter sign-off on PR)
+- [x] Single-authority fact: `BootstrapEvaluatorCorpusRuntimeEval` (runtime `run_test_claim` via bootstrap evaluator pin — §1)
+- [x] Option (ii) vs (i) routing honored — (i) explicit non-goal (§1.1)
+- [x] Distinct from P5 Layer 2 structural bridge (#4115) (§1.2)
+- [x] Spot-fix forbidden: authoring-time const runs, grep witness pass, path (i) as this gate (§3)
+- [x] Falsification table §4 (F1–F6) accepted
+- [x] Landing order §5 + lane split accepted (Runtime/TestClaim + Compiler Spine)
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`, Modeling DFS Arbiter per #4137 §11.2)
 
 ---
 
