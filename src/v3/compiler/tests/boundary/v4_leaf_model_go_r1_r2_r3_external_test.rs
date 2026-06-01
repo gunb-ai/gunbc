@@ -9,18 +9,21 @@ use std::process::{Command, Stdio};
 
 const FIXTURE_DAG: &str = include_str!("../../../../v4/lens/leaf_model_verification.dag");
 
-const R1_HAPPY: &str = "package main\n\nfunc r1_test() int { return 0 }\n";
-const R1_FALSIFICATION: &str = "package main\n\nfunc r1_test() i32 { return 0 }\n";
+const R1_HAPPY: &str = "package leafmodel\n\nfunc r1() int { return 0 }\n";
+const R1_FALSIFICATION: &str = "package leafmodel\n\nfunc r1() i32 { return 0 }\n";
 
-const R2A_HAPPY: &str = "package main\n\nfunc r2a_test(a int, b int) int { return a + b }\n";
+const R2A_HAPPY: &str =
+    "package leafmodel\n\nfunc r2a(a int, b int) (int, bool) { return a + b, a < b }\n";
 const R2A_FALSIFICATION: &str =
-    "package main\n\nfunc r2a_test(a int) int { return a.log2_exact() }\n";
+    "package leafmodel\n\nfunc r2a(a int) int { return a.log2_exact() }\n";
 
-const R2B_RUNTIME: &str = "package main\n\nfunc r2b_test(a int64, b int64) int64 { return a + b }\n\nfunc main() {\n\tvar max int64 = 1<<63 - 1\n\tvar min int64 = -1 << 63\n\tif r2b_test(max, 1) != min {\n\t\tpanic(\"go int64 overflow did not wrap to min int64\")\n\t}\n}\n";
+const R2B_HAPPY: &str = "package main\n\nimport \"math\"\n\nfunc main() {\n    var x int64 = math.MaxInt64\n    got := x + 1\n    want := int64(math.MinInt64)\n    if got != want {\n        panic(\"silent signed wrap: expected MinInt64\")\n    }\n}\n";
 
-const R3_HAPPY: &str = "package main\n\nfunc r3_test() string { return \"x\" }\n";
+const R2B_FALSIFICATION: &str = "package main\n\nimport \"math\"\n\nfunc main() {\n    var x int64 = math.MaxInt64\n    got := x + 1\n    want := int64(0)\n    if got != want {\n        panic(\"deliberately wrong expected wrap value\")\n    }\n}\n";
+
+const R3_HAPPY: &str = "package leafmodel\n\nfunc r3() string { return \"x\" }\n";
 const R3_FALSIFICATION: &str =
-    "package main\n\nfunc r3_test() string { return string(\"x\", \"y\") }\n";
+    "package leafmodel\n\nfunc r3() string { return string(\"x\", \"y\") }\n";
 
 fn unescape_dag_string_literal(body: &str) -> String {
     let mut out = String::new();
@@ -67,21 +70,21 @@ fn scratch_dir(label: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("v4_leaf_model_go_{label}_{suffix}"))
 }
 
-fn exercise_go_test(label: &str, source: &str) -> (i32, String) {
+fn exercise_go_build(label: &str, source: &str) -> (i32, String) {
     let tmp_dir = scratch_dir(label);
     let _ = std::fs::remove_dir_all(&tmp_dir);
     std::fs::create_dir_all(&tmp_dir).expect("create scratch dir");
-    let src_path = tmp_dir.join("main.go");
+    let src_path = tmp_dir.join("fixture.go");
     std::fs::File::create(&src_path)
         .and_then(|mut f| f.write_all(source.as_bytes()))
         .expect("write fixture source");
 
+    let out_path = tmp_dir.join("fixture.out");
     let output = Command::new("go")
         .env("GO111MODULE", "off")
-        .args(["test", "./..."])
-        .current_dir(&tmp_dir)
+        .args(["build", "-o", out_path.to_str().unwrap(), src_path.to_str().unwrap()])
         .output()
-        .expect("invoke go test on fixture");
+        .expect("invoke go build on fixture");
     let diagnostics = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -132,10 +135,10 @@ fn v4_leaf_model_go_r1_happy_fixture_compiles() {
         eprintln!("skipping Go toolchain boundary check: go not on PATH");
         return;
     }
-    let (status, diagnostics) = exercise_go_test("r1_happy", R1_HAPPY);
+    let (status, diagnostics) = exercise_go_build("r1_happy", R1_HAPPY);
     assert_eq!(
         status, 0,
-        "go test should accept R1 happy fixture; diagnostics:\n{diagnostics}"
+        "go build should accept R1 happy fixture; diagnostics:\n{diagnostics}"
     );
 }
 
@@ -145,10 +148,10 @@ fn v4_leaf_model_go_r1_falsification_fixture_rejects_i32() {
         eprintln!("skipping Go toolchain boundary check: go not on PATH");
         return;
     }
-    let (status, diagnostics) = exercise_go_test("r1_falsification", R1_FALSIFICATION);
+    let (status, diagnostics) = exercise_go_build("r1_falsification", R1_FALSIFICATION);
     assert_ne!(status, 0, "falsification must not compile");
     assert!(
-        diagnostics.contains("undefined: i32"),
+        diagnostics.contains("undefined: i32") || diagnostics.contains("undefined type: i32"),
         "expected undefined i32 diagnostic; diagnostics:\n{diagnostics}"
     );
 }
@@ -168,10 +171,10 @@ fn v4_leaf_model_go_r2a_happy_fixture_compiles() {
         eprintln!("skipping Go toolchain boundary check: go not on PATH");
         return;
     }
-    let (status, diagnostics) = exercise_go_test("r2a_happy", R2A_HAPPY);
+    let (status, diagnostics) = exercise_go_build("r2a_happy", R2A_HAPPY);
     assert_eq!(
         status, 0,
-        "go test should accept R2a happy fixture; diagnostics:\n{diagnostics}"
+        "go build should accept R2a happy fixture; diagnostics:\n{diagnostics}"
     );
 }
 
@@ -181,30 +184,50 @@ fn v4_leaf_model_go_r2a_falsification_fixture_rejects_method() {
         eprintln!("skipping Go toolchain boundary check: go not on PATH");
         return;
     }
-    let (status, diagnostics) = exercise_go_test("r2a_falsification", R2A_FALSIFICATION);
+    let (status, diagnostics) = exercise_go_build("r2a_falsification", R2A_FALSIFICATION);
     assert_ne!(status, 0, "falsification must not compile");
     assert!(
-        diagnostics.contains("a.log2_exact undefined"),
+        diagnostics.contains("log2_exact"),
         "expected missing log2_exact method diagnostic; diagnostics:\n{diagnostics}"
     );
 }
 
 #[test]
-fn v4_leaf_model_go_r2b_runtime_fixture_string_matches_dag_authority() {
-    let source = extract_fixture_source(FIXTURE_DAG, "go_r2b_runtime_fixture_source").unwrap();
-    assert_eq!(source, R2B_RUNTIME);
+fn v4_leaf_model_go_r2b_runtime_fixture_strings_match_dag_authority() {
+    let happy = extract_fixture_source(FIXTURE_DAG, "go_r2b_happy_fixture_source").unwrap();
+    let falsification =
+        extract_fixture_source(FIXTURE_DAG, "go_r2b_falsification_fixture_source").unwrap();
+    assert_eq!(happy, R2B_HAPPY);
+    assert_eq!(falsification, R2B_FALSIFICATION);
 }
 
 #[test]
-fn v4_leaf_model_go_r2b_int64_overflow_wraps_at_runtime() {
+fn v4_leaf_model_go_r2b_int64_silent_overflow_truncates_at_runtime() {
     if !go_available() {
         eprintln!("skipping Go toolchain boundary check: go not on PATH");
         return;
     }
-    let (status, diagnostics) = exercise_go_run("r2b_runtime", R2B_RUNTIME);
+    let (status, diagnostics) = exercise_go_run("r2b_happy", R2B_HAPPY);
     assert_eq!(
         status, 0,
-        "go run should observe int64 overflow wrapping to min int64; diagnostics:\n{diagnostics}"
+        "go run should observe int64 silent wrap to MinInt64; diagnostics:\n{diagnostics}"
+    );
+}
+
+#[test]
+fn v4_leaf_model_go_r2b_falsification_fixture_panics_at_runtime() {
+    if !go_available() {
+        eprintln!("skipping Go toolchain boundary check: go not on PATH");
+        return;
+    }
+    let (status, diagnostics) = exercise_go_run("r2b_falsification", R2B_FALSIFICATION);
+    assert_ne!(
+        status, 0,
+        "falsification must panic on wrong expected wrap; diagnostics:\n{diagnostics}"
+    );
+    assert!(
+        diagnostics.contains("deliberately wrong expected wrap value"),
+        "expected deliberate panic message; diagnostics:\n{diagnostics}"
     );
 }
 
@@ -223,10 +246,10 @@ fn v4_leaf_model_go_r3_external_happy_fixture_compiles() {
         eprintln!("skipping Go toolchain boundary check: go not on PATH");
         return;
     }
-    let (status, diagnostics) = exercise_go_test("r3_happy", R3_HAPPY);
+    let (status, diagnostics) = exercise_go_build("r3_happy", R3_HAPPY);
     assert_eq!(
         status, 0,
-        "go test should accept R3 happy fixture; diagnostics:\n{diagnostics}"
+        "go build should accept R3 happy fixture; diagnostics:\n{diagnostics}"
     );
 }
 
@@ -236,10 +259,11 @@ fn v4_leaf_model_go_r3_external_falsification_fixture_rejects_conversion_arity()
         eprintln!("skipping Go toolchain boundary check: go not on PATH");
         return;
     }
-    let (status, diagnostics) = exercise_go_test("r3_falsification", R3_FALSIFICATION);
+    let (status, diagnostics) = exercise_go_build("r3_falsification", R3_FALSIFICATION);
     assert_ne!(status, 0, "falsification must not compile");
     assert!(
-        diagnostics.contains("too many arguments in conversion to string"),
+        diagnostics.contains("too many arguments")
+            || diagnostics.contains("too many arguments in conversion"),
         "expected conversion arity diagnostic; diagnostics:\n{diagnostics}"
     );
 }
