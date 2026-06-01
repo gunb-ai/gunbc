@@ -8,7 +8,6 @@ Read these docs before working:
   it should attach to. See the concept DAG layers in MODELING.md.
 - `CODING.md` — Rust implementation style (Google C++-style, pure functions, data + free functions).
 - `TESTING.md` — test discipline (hermetic, behavior-driven, unit-first; mocks over full-pipeline compile).
-- `docs/v3-spec.md` — v3 language surface and architectural context.
 
 ## Key Commands
 
