@@ -5266,6 +5266,36 @@ type Outer<S> {
     );
 }
 
+#[test]
+fn generic_data_annotation_preserves_type_args() {
+    let source = r#"
+module test_generic_data_annotation
+
+type Pair<A, B> {
+  first: A
+  second: B
+}
+
+data sample_pair: Pair<Int, String> = Pair {
+  first: 1
+  second: "ok"
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_generic_data_annotation.rs");
+    assert!(
+        content.contains("pub fn sample_pair() -> Pair<i64, String>"),
+        "generic data return type should preserve applied type args, got:\n{}",
+        content
+    );
+    assert!(
+        !content.contains("pub fn sample_pair() -> Pair {"),
+        "generic data return type must not emit bare Pair, got:\n{}",
+        content
+    );
+}
+
 // ── Targeted type rendering correctness tests ─────────────────────────
 
 fn test_leaf_node(name: &str) -> Rc<v2_compiler::v2_std_core::Node> {

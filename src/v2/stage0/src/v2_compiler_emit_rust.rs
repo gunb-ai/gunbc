@@ -16697,7 +16697,7 @@ pub fn emit_data_def_body(
     needs_rc: bool,
 ) -> String {
     {
-        let raw_ty_str = render_rust_type(
+        let raw_ty_str = render_rust_type_with_applied_binding(
             type_node.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
