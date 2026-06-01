@@ -120,6 +120,16 @@ pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
         };
         if is_error {
             Rc::new(PatternSubject::PatternLookupBlocked)
+        } else if (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0))
+            && (n.inferred.clone() != None))
+        {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    pattern_subject_from_node(target.clone())
+                }
+                _ => Rc::new(PatternSubject::PatternResolved { node: n.clone() }),
+            }
         } else {
             Rc::new(PatternSubject::PatternResolved { node: n.clone() })
         }
