@@ -250,14 +250,6 @@ fn normalize_generated_type(ty: &str) -> String {
     }
 }
 
-// INVARIANTS P1 / P2: checkable receipt that this gate stays tied to the
-// Brian-sanctioned worker brief and the generated-file manifest, not an
-// untracked hand-maintained mirror.
-const _: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../docs/briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md"
-));
-
 #[test]
 fn generated_value_body_file_is_manifested_as_producer_owned() {
     assert!(

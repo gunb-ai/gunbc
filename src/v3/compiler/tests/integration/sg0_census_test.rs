@@ -486,9 +486,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
-    // E6-G1.a Option 3 static lens mechanism (#1853 worker brief + #1857):
+    // E6-G1.a Option 3 static lens mechanism (#1853 + #1857):
     // `find_list_empty_constructor_tag` helper for opaque-`Dag` harness tags
-    // (P1/P5 compile-time brief receipts live in `e6_g1a_option3_static_lens_test.rs`).
+    // (P5 receipt: SG-0 census membership for `e6_g1a_option3_static_lens_test.rs`).
     "src/v3/compiler/tests/integration/common/list_variant_tags.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
@@ -527,8 +527,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // coverage owns the same carrier and first-row projection.
     "src/v3/compiler/tests/integration/dissolution_subsumption_carrier_test.rs",
     // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
-    // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
-    // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
+    // (#1853; witness-flow + TESTING.md split per #1857). SG-0 ratchet: hand-authored
+    // integration test census membership.
     "src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     // T-Substrate-Lens-Primitive Lens<EmissionProvenance> structural cementing

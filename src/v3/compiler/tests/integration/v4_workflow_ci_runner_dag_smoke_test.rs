@@ -31,6 +31,8 @@ const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
     include_str!("../../../../../scripts/v4-testclaim-corpus-eval.sh");
 const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
+const M1_RUST_EMIT_PROBE_SCRIPT: &str =
+    include_str!("../../../../../scripts/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
@@ -599,8 +601,8 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: M1 cargo jobs must not use reverse-engineered fleet fanout derivation"
     );
     assert!(
-        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
-        "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant in Wave-0"
+        CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
+        "{CI_DAG_PATH}: M1 cargo parallelism ceiling must be an explicit operator constant in Wave-0"
     );
     assert!(
         CI_DAG.contains("RerunNodeSetFailClosed { evidence: _ } => roster"),
@@ -761,18 +763,44 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
             && CI_DAG.contains("jobserver_token_cap: 36"),
         "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
     );
+    // Governor ceiling is the ONLY M1 parallelism constant — no static fallback. Actual jobs are
+    // jobserver-coupled (inherited MAKEFLAGS on GHA / ctrl-build in session containers) and pared
+    // below this ceiling by the host token pool.
     assert!(
-        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
-        "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant"
+        CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
+        "{CI_DAG_PATH}: M1 governor ceiling must be an explicit operator constant"
     );
-    let m1_jobs = ci_affected_components::runner_pool::m1_probe_cargo_check_jobs();
+    let m1_ceiling = ci_affected_components::runner_pool::m1_probe_cargo_check_jobs_ceiling();
     assert_eq!(
-        m1_jobs, 4,
-        "Rust transport mirror of m1_probe_cargo_check_jobs must match ci.dag operator constant"
+        m1_ceiling, 64,
+        "Rust transport mirror of m1_probe_cargo_check_jobs_ceiling must match ci.dag operator constant"
     );
     assert!(
-        m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),
-        "{CI_YML_PATH}: M1 step must project modeled cargo-check job cap"
+        m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS_CEILING: \"{m1_ceiling}\"")),
+        "{CI_YML_PATH}: M1 step must project modeled governor ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX)"
+    );
+    assert!(
+        !m1_step.contains("V4_M1_CARGO_CHECK_JOBS:"),
+        "{CI_YML_PATH}: M1 step must NOT project a static cargo-check fallback (fail-closed, no fallback)"
+    );
+    // The probe must route the emitted-tree check through the host compute governor, not a hand cap.
+    assert!(
+        CI_DAG.contains("feature:elastic-compute-fabric")
+            && CI_DAG.contains("dsl/std/compute_fabric.dag"),
+        "{CI_DAG_PATH}: M1 parallelism note must cite the compute_fabric dissolve-on-arrival authority"
+    );
+    // The probe must run jobserver-coupled: inherited MAKEFLAGS (GHA runner unit) or ctrl-build
+    // (session containers), and it still understands the ctrl-build governor for the latter.
+    assert!(
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("jobserver-auth")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
+        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to the host jobserver (MAKEFLAGS or ctrl-build)"
+    );
+    // No fallback: the probe must fail closed when NEITHER coupling source is present (operator policy).
+    assert!(
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
+        "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
     );
 }
 
