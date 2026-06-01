@@ -137,7 +137,7 @@ pub fn render_rust_type(
         ) {
             Some(applied) => {
                 if ((applied.children.clone().len() as i64) > 0) {
-                    render_rust_applied_type(
+                    render_rust_applied_type_shared(
                         applied.clone(),
                         Rc::new(vec![]),
                         shared_types,
@@ -169,7 +169,7 @@ pub fn render_rust_type_without_applied_binding(
         && ((n.children.clone().len() as i64) > 0))
         && !is_container_type(authored_name_at(source_indices.clone(), n.clone())))
     {
-        render_rust_applied_type(
+        render_rust_applied_type_shared(
             n.clone(),
             Rc::new(vec![]),
             shared_types,
@@ -278,15 +278,7 @@ pub fn render_rust_applied_type(
                 )
             }
         };
-        if (v2_rt::set_contains(
-            &shared_types,
-            authored_name_at(source_indices.clone(), n.clone()),
-        ) && !rust_type_is_rc_wrapped(applied.clone()))
-        {
-            wrap_shared_type(RenderTarget::Rust, applied.clone())
-        } else {
-            applied.clone()
-        }
+        applied
     }
 }
 
@@ -304,8 +296,10 @@ pub fn render_rust_applied_type_shared(
             source_indices.clone(),
         );
         let type_name = authored_name_at(source_indices.clone(), n.clone());
-        if v2_rt::set_contains(&shared_types, type_name) {
-            v2_rt::concat(v2_rt::concat("Rc<".to_string(), rendered), ">".to_string())
+        if (v2_rt::set_contains(&shared_types, type_name)
+            && !rust_type_is_rc_wrapped(rendered.clone()))
+        {
+            wrap_shared_type(RenderTarget::Rust, rendered)
         } else {
             rendered
         }
