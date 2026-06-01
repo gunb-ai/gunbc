@@ -32,6 +32,22 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # Shared host sccache server (ctrl-sccache.service on srv1/srv2).
+        # These jobs build directly on the self-hosted host, so rustc and
+        # every build path are real host paths the server can exec/read.
+        # Gate on the live socket so a host where the server isn't up (or a
+        # future non-self-hosted runner) cold-builds instead of failing; a
+        # missing socket degrades observably (warning), never silently.
+        # CARGO_INCREMENTAL=0 because sccache cannot cache incremental
+        # compilation — without it most rustc calls are non-cacheable.
+        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          echo "::notice::shared sccache enabled (UDS present)"
+        else
+          echo "::warning::shared sccache socket absent — cold build (RUSTC_WRAPPER unset)"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
@@ -67,6 +83,22 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # Shared host sccache server (ctrl-sccache.service on srv1/srv2).
+        # These jobs build directly on the self-hosted host, so rustc and
+        # every build path are real host paths the server can exec/read.
+        # Gate on the live socket so a host where the server isn't up (or a
+        # future non-self-hosted runner) cold-builds instead of failing; a
+        # missing socket degrades observably (warning), never silently.
+        # CARGO_INCREMENTAL=0 because sccache cannot cache incremental
+        # compilation — without it most rustc calls are non-cacheable.
+        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          echo "::notice::shared sccache enabled (UDS present)"
+        else
+          echo "::warning::shared sccache socket absent — cold build (RUSTC_WRAPPER unset)"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
@@ -96,6 +128,22 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # Shared host sccache server (ctrl-sccache.service on srv1/srv2).
+        # These jobs build directly on the self-hosted host, so rustc and
+        # every build path are real host paths the server can exec/read.
+        # Gate on the live socket so a host where the server isn't up (or a
+        # future non-self-hosted runner) cold-builds instead of failing; a
+        # missing socket degrades observably (warning), never silently.
+        # CARGO_INCREMENTAL=0 because sccache cannot cache incremental
+        # compilation — without it most rustc calls are non-cacheable.
+        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          echo "::notice::shared sccache enabled (UDS present)"
+        else
+          echo "::warning::shared sccache socket absent — cold build (RUSTC_WRAPPER unset)"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
