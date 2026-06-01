@@ -1254,8 +1254,8 @@ fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step()
 #[test]
 fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
     assert!(
-        CI_YML.contains("docs/planning/ci-required-surface-cut-2026-06-01.md"),
-        "{CI_YML_PATH}: must reference Wave 1 honesty ledger"
+        CI_YML.contains("Wave 1 §11.7.1 safety floor"),
+        "{CI_YML_PATH}: must declare Wave 1 §11.7.1 safety floor"
     );
     assert!(
         CI_YML.contains("  ci_floor:"),
@@ -1507,13 +1507,12 @@ fn v4_workflow_ci_wave3_ci_floor_independent_of_affected() {
 }
 
 #[test]
-fn v4_workflow_ci_wave3_honesty_ledger_documents_fixture_deferral() {
-    let ledger = include_str!("../../../../../docs/planning/ci-required-surface-cut-2026-06-01.md");
+fn v4_workflow_ci_wave3_fixture_receipt_documents_live_ci_deferral() {
     assert!(
-        ledger.contains("ci_wave3_shadow_fixture_fail_closed_receipt")
-            && ledger.contains("FixtureReceipt")
-            && ledger.contains("adhoc-331899f9-19a"),
-        "honesty ledger must name fixture receipt and live-CI deferral"
+        CI_DAG.contains("data ci_wave3_shadow_fixture_fail_closed_receipt")
+            && CI_DAG.contains("FixtureReceipt")
+            && CI_DAG.contains("adhoc-331899f9-19a"),
+        "{CI_DAG_PATH}: must model fixture receipt and live-CI deferral"
     );
 }
 
