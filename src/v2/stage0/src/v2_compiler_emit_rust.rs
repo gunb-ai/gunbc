@@ -3806,20 +3806,11 @@ pub fn emit_struct_field_from_child(
                                                     ),
                                                     ">".to_string(),
                                                 );
-                                                if v2_rt::set_contains(
-                                                    &shared_types,
+                                                render_rust_shared_type_if_needed(
                                                     rt_child_name.clone(),
-                                                ) {
-                                                    v2_rt::concat(
-                                                        v2_rt::concat(
-                                                            "Rc<".to_string(),
-                                                            with_params,
-                                                        ),
-                                                        ">".to_string(),
-                                                    )
-                                                } else {
-                                                    with_params
-                                                }
+                                                    with_params,
+                                                    shared_types.clone(),
+                                                )
                                             }
                                         } else {
                                             render_rust_type(
@@ -3866,10 +3857,7 @@ pub fn emit_struct_field_from_child(
                 ))
                 && !rust_type_is_rc_wrapped(generic_ty.clone()))
             {
-                v2_rt::concat(
-                    v2_rt::concat("Rc<".to_string(), generic_ty.clone()),
-                    ">".to_string(),
-                )
+                wrap_shared_type(RenderTarget::Rust, generic_ty.clone())
             } else {
                 generic_ty.clone()
             }
