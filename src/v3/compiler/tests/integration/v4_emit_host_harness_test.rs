@@ -96,7 +96,8 @@ const EMIT_HOST_PYTHON_FIXTURE_SOURCE: &str = "import sys\nsys.stdout.buffer.wri
 const PYTHON_FIXTURE_RUNTIME_REJECTED: &str = "raise NameError(\"probe F1 runtime rejected\")\n";
 
 /// Worksheet-B F2: exit 0 but stdout not parseable as MVP-2 runtime value.
-const PYTHON_FIXTURE_UNPARSABLE_STDOUT: &str = "import sys\nsys.stdout.buffer.write(b'\\x00\\x00\\x00')\n";
+const PYTHON_FIXTURE_UNPARSABLE_STDOUT: &str =
+    "import sys\nsys.stdout.buffer.write(b'\\x00\\x00\\x00')\n";
 
 /// Worksheet-B F3: exit 0, parseable length, wrong runtime bytes.
 const PYTHON_FIXTURE_VALUE_MISMATCH: &str =
@@ -509,10 +510,8 @@ fn python_emit_vs_eval_transport_fails_host_exit_on_runtime_rejection() {
 
 #[test]
 fn python_emit_vs_eval_transport_fails_parse_on_unparsable_stdout() {
-    let work_dir = emit_host_runner::default_work_dir(&format!(
-        "gunbc_py_parse_fail_{}",
-        std::process::id()
-    ));
+    let work_dir =
+        emit_host_runner::default_work_dir(&format!("gunbc_py_parse_fail_{}", std::process::id()));
     let inputs = emit_host_runner::EmitHostFixtureInputs {
         claim_input_root: "probe_f2_claim_input".to_string(),
         expected_eval_root: "probe_f2_expected_eval".to_string(),
@@ -558,7 +557,10 @@ fn python_emit_vs_eval_transport_fails_on_runtime_value_mismatch() {
         } => {
             assert!(emit_host_bridge::host_exit_holds(&host_receipt.exit));
             assert_eq!(host_stdout, [1, 2, 3, 4, 5]);
-            assert_eq!(expected_bytes, emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES);
+            assert_eq!(
+                expected_bytes,
+                emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES
+            );
         }
         other => panic!("F3: expected FailValueMismatch with Host evidence, got {other:?}"),
     }
