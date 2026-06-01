@@ -21,6 +21,13 @@
 //! `v4_go_language_model_declares_target_atom_realization_rows` per
 //! `docs/planning/v4-go-target-atom-realization-worksheet-2026-06-01.md` §9 (Int row
 //! fail-closed deferred until shared `TargetValueTemplateKind` gains integer literal arm).
+//! **This PR (+0 SG-0 paths):** TS L0 TargetAtomRealization same-path expansion —
+//! `v4_typescript_language_model_declares_target_atom_realization_rows` per
+//! `docs/planning/v4-ts-target-atom-realization-worksheet-2026-06-01.md` §8; ROADMAP row
+//! `_internal/ROADMAP_OPS.md` § **Nine lanes** / T-PB-B
+//! (`pb_rust_tests_outside_residual_zero`). Dissolves when `.dag` `TestClaim` /
+//! generated harness execution covers TS Symbol/Bool/String TargetAtomRealization catalog
+//! facts directly without this host Rust parse-surface smoke.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};

@@ -144,7 +144,7 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
   ValueBoolLiteral,
-  ValueSymbolToOwnedString
+  ValueStringLiteral
 }
 import v4.std.node {
   Arrow,
@@ -1254,7 +1254,7 @@ data ts_target_atom_realization_string: TargetAtomRealization = TargetAtomRealiz
   source_carrier: ts_std_text_string_type_node(),
   target_model: ts_target_atom_realization_target_model_staging(),
   type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_string),
-  value_form: target_value_template_for_kind(kind: ValueSymbolToOwnedString),
+  value_form: target_value_template_for_kind(kind: ValueStringLiteral),
   constructor_form: optional_absent(),
   display_name: ts_surface_spelling_string
 }
