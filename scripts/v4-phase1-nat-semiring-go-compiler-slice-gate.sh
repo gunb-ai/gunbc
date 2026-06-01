@@ -94,7 +94,8 @@ else
     verdict[R-L1-go-compiler-slice-compile]=PASS
   else
     verdict[R-L1-go-compiler-slice-compile]=FAIL
-    diagnostic_snippet="$(tail -20 "$build_log" 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ' | head -c 500)"
+    # tail -20 already bounds size; omit head -c to avoid SIGPIPE under pipefail.
+    diagnostic_snippet="$(tail -20 "$build_log" 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')"
     note_blocking "phase1/nat_semiring/l1/go_compiler_slice_build_rejected"
   fi
 fi
