@@ -57,6 +57,7 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
+  connective_edges_conform,
   fold_node,
   well_formed
 }
@@ -132,6 +133,9 @@ import v4.std.target_model {
   target_type_expr_arrow_labeled_codomain,
   target_type_expr_arrow_labeled_param_slots,
   target_type_expr_arrow_param_unlabeled,
+  target_type_expr_arrow_wire_shape,
+  TargetTypeExprArrowLabeledWire,
+  TargetTypeExprArrowPositionalWire,
   target_type_expr_atom_emitted,
   target_type_expr_field_arrow,
   target_type_expr_field_atom,

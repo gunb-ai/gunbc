@@ -1466,6 +1466,29 @@ data target_type_expr_field_codomain: Symbol = target_type_expr_field_codomain
 // Sentinel label on TargetTypeExprFieldSlot when the substrate carries no parameter name.
 data target_type_expr_arrow_param_unlabeled: Symbol = target_type_expr_arrow_param_unlabeled
 
+// SG-2 — arrow emitted wire shape: positional params+codomain vs named param slots + codomain edge.
+type TargetTypeExprArrowWireShape
+  = TargetTypeExprArrowPositionalWire
+  | TargetTypeExprArrowLabeledWire
+
+fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowWireShape> {
+  let positional = node_positional_child_targets(node: node)
+  if is_empty(xs: positional) {
+    match find_named_child(root: node, name: target_type_expr_field_codomain) {
+      Present { value: _ } =>
+        outcome_accepted(TargetTypeExprArrowLabeledWire)
+      Absent =>
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    }
+  } else {
+    if length(xs: positional) >= 2 {
+      outcome_accepted(TargetTypeExprArrowPositionalWire)
+    } else {
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    }
+  }
+}
+
 // SG-2 — atom type name: bound ident from source Atom identity via binding_spellings.
 type TargetAtomTypeShape {
   surface: Symbol
@@ -1909,18 +1932,12 @@ fn target_type_expr_emitted_validate_positional_arity(
         outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
       }
     TargetTypeExprArrow =>
-      if length(xs: positional) >= 2 {
-        Accepted { value: true, diagnostics: None }
-      } else {
-        if is_empty(xs: positional) {
-          match find_named_child(root: node, name: target_type_expr_field_codomain) {
-            Present { value: _ } => Accepted { value: true, diagnostics: None }
-            Absent =>
-              outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
-          }
-        } else {
+      match target_type_expr_arrow_wire_shape(node: node) {
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
+          Accepted { value: true, diagnostics: None }
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
           outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
-        }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     TargetTypeExprRecord =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
@@ -2018,18 +2035,20 @@ fn target_type_expr_emitted_validate_wire_shape(
         projection: projection
       )
     TargetTypeExprArrow =>
-      if is_empty(xs: node_positional_child_targets(node: node)) {
-        target_type_expr_emitted_validate_labeled_wire(
-          node: node,
-          kind: kind,
-          projection: projection
-        )
-      } else {
-        target_type_expr_emitted_validate_positional_wire(
-          node: node,
-          kind: kind,
-          projection: projection
-        )
+      match target_type_expr_arrow_wire_shape(node: node) {
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
+          target_type_expr_emitted_validate_labeled_wire(
+            node: node,
+            kind: kind,
+            projection: projection
+          )
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
+          target_type_expr_emitted_validate_positional_wire(
+            node: node,
+            kind: kind,
+            projection: projection
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     _ =>
       target_type_expr_emitted_validate_positional_wire(
