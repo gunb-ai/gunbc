@@ -33,8 +33,6 @@ const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_";
 const CI_MODEL_YAML_BINDING_STEP_NAME: &str = "M1 v4 workflow CI model/YAML binding smoke";
 const T15_SELF_HOST_STEP_NAME: &str = "T-15 self-host fixed-point harness (stage1==stage2)";
-const T15_SELF_HOST_HARNESS_TEST_FILTER: &str =
-    "v4_t15_self_host_fixed_point_harness_test::t_15_self_host_fixed_point";
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
@@ -461,22 +459,6 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
         SurfaceExpr::Var { name, .. } if name == "false" => false,
         other => panic!("expected bool literal expr, got {other:?}"),
     }
-}
-
-/// Top-level GHA job `if:` line (first `if:` after `  {job_id}:`).
-fn workflow_top_level_job_if<'a>(workflow_yml: &'a str, job_id: &str) -> &'a str {
-    let job_marker = format!("\n  {job_id}:");
-    let job_start = workflow_yml
-        .find(&job_marker)
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing top-level job `{job_id}`"));
-    let rest = &workflow_yml[job_start..];
-    let if_marker = "\n    if:";
-    let if_start = rest
-        .find(if_marker)
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: job `{job_id}` missing `if:`"));
-    let line = &rest[if_start + 1..];
-    let end = line.find('\n').unwrap_or(line.len());
-    &line[..end]
 }
 
 /// True when `job_id` is a deleted bankruptcy legacy *workflow job* block (not `affected` outputs).
@@ -1253,6 +1235,31 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
             "{CI_YML_PATH}: Wave 1 cut — must not invoke `{forbidden}` on required path"
         );
     }
+}
+
+#[test]
+fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
+    assert!(
+        CI_WORKFLOW_DAG.contains("id: \"ci_floor\""),
+        "{CI_WORKFLOW_DAG_PATH}: regen artifact must model `ci_floor`"
+    );
+    assert!(
+        CI_WORKFLOW_DAG.contains("id: \"ci\"") && CI_WORKFLOW_DAG.contains("needs: [\"ci_floor\"]"),
+        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need `ci_floor` only"
+    );
+    let affected_idx = CI_WORKFLOW_DAG
+        .find("id: \"affected\"")
+        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing `affected` job"));
+    let affected_window = &CI_WORKFLOW_DAG[affected_idx..affected_idx.saturating_add(512)];
+    assert!(
+        affected_window.contains("continue_on_error: true"),
+        "{CI_WORKFLOW_DAG_PATH}: `affected` must be shadow-only (continue_on_error)"
+    );
+    assert!(
+        !CI_WORKFLOW_DAG.contains("id: \"ci_integration\"")
+            && !CI_WORKFLOW_DAG.contains("id: \"ci_v4\""),
+        "{CI_WORKFLOW_DAG_PATH}: legacy parallel lanes dissolved in regen artifact"
+    );
 }
 
 #[test]
