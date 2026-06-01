@@ -27,10 +27,13 @@ fi
 eval "$(python3 - "$fixture_dag" <<'PY'
 from __future__ import annotations
 
-import re, shlex, sys
+import re
+import shlex
+import sys
 from pathlib import Path
 
-text = Path(sys.argv[1]).read_text()
+path = Path(sys.argv[1])
+text = path.read_text()
 
 def extract(name: str) -> str:
     pattern = rf'^data {name}: String = "(.*)"\s*$'
@@ -38,31 +41,63 @@ def extract(name: str) -> str:
         m = re.match(pattern, line)
         if m:
             return bytes(m.group(1), "utf-8").decode("unicode_escape")
-    raise SystemExit(f"missing {name}")
+    raise SystemExit(f"error: {path}: missing data {name}: String = ...")
 
 print(f"happy_source={shlex.quote(extract('python_l1_static_happy_fixture_source'))}")
 print(f"falsification_source={shlex.quote(extract('python_l1_static_falsification_fixture_source'))}")
+
+# The mypy fixture's modeled expected diagnostic_code (falsification case). Read from the
+# python_l1_static_mypy_fixture_pair block — the script must not re-author this fact.
+m = re.search(
+    r"python_l1_static_mypy_fixture_pair[\s\S]*?diagnostic_code:\s*(mypy_\w+)",
+    text,
+)
+if not m:
+    raise SystemExit(f"error: {path}: missing mypy falsification diagnostic_code symbol")
+print(f"expected_diag_code={shlex.quote(m.group(1))}")
 PY
 )"
 
-eval "$(python3 - "$mypy_profile_dag" <<'PY'
+# Single authority: profile facts from mypy_profile_l1 (mypy.dag), including strict and
+# show_error_codes; expected bracket code resolved via mypy_diagnostic_codes keyed by the
+# fixture's diagnostic_code symbol (same pattern as the pyright lane).
+eval "$(python3 - "$mypy_profile_dag" "$expected_diag_code" <<'PY'
 from __future__ import annotations
 
-import re, shlex, sys
+import re
+import shlex
+import sys
 from pathlib import Path
 
 text = Path(sys.argv[1]).read_text()
+expected_code = sys.argv[2]
+
 def field(name: str) -> str:
     m = re.search(rf'{name}:\s*"([^"]*)"', text)
     if not m:
-        raise SystemExit(f"missing mypy field {name}")
+        raise SystemExit(f"error: mypy.dag: missing mypy_profile_l1 field {name}")
     return m.group(1)
-code = re.search(r'code_id:\s*mypy_diag_return_value\s*,\s*code_name:\s*"([^"]*)"', text)
-if not code:
-    raise SystemExit("missing return-value diagnostic code")
+
+def bool_field(name: str) -> str:
+    m = re.search(rf'{name}:\s*(true|false)', text)
+    if not m:
+        raise SystemExit(f"error: mypy.dag: missing mypy_profile_l1 field {name}")
+    return m.group(1)
+
+code_m = re.search(
+    rf'code_id:\s*{re.escape(expected_code)}\s*,\s*code_name:\s*"([^"]*)"',
+    text,
+)
+if not code_m:
+    raise SystemExit(
+        f"error: mypy.dag: no mypy_diagnostic_codes row for code_id {expected_code}"
+    )
+
 print(f"mypy_version={shlex.quote(field('mypy_version'))}")
 print(f"mypy_python_version={shlex.quote(field('python_version'))}")
-print(f"mypy_expected_code={shlex.quote(code.group(1))}")
+print(f"mypy_strict={shlex.quote(bool_field('strict'))}")
+print(f"mypy_show_error_codes={shlex.quote(bool_field('show_error_codes'))}")
+print(f"mypy_expected_code={shlex.quote(code_m.group(1))}")
 PY
 )"
 
@@ -89,11 +124,15 @@ mypy_available=false
 happy_static_clean=false
 falsification_static_rejected=false
 
+mypy_profile_args=()
+[[ "$mypy_strict" == true ]] && mypy_profile_args+=(--strict)
+[[ "$mypy_show_error_codes" == true ]] && mypy_profile_args+=(--show-error-codes)
+
 mypy_run() {
   local target="$1" out="$2"
   local cmd
   if command -v mypy >/dev/null 2>&1 && mypy --version 2>/dev/null | grep -qw "$mypy_version"; then
-    cmd=(mypy --python-version "$mypy_python_version" --strict --show-error-codes "$target")
+    cmd=(mypy --python-version "$mypy_python_version" "${mypy_profile_args[@]}" "$target")
   elif command -v python3 >/dev/null 2>&1; then
     if [[ ! -x "${scratch}/mypy-venv/bin/mypy" ]]; then
       if python3 -m venv "${scratch}/mypy-venv" >/dev/null 2>&1; then
@@ -115,7 +154,7 @@ SH
         chmod +x "${scratch}/mypy-venv/bin/mypy"
       fi
     fi
-    cmd=("${scratch}/mypy-venv/bin/mypy" --python-version "$mypy_python_version" --strict --show-error-codes "$target")
+    cmd=("${scratch}/mypy-venv/bin/mypy" --python-version "$mypy_python_version" "${mypy_profile_args[@]}" "$target")
   else
     return 2
   fi
@@ -141,6 +180,8 @@ static_proven=false
 
 export V4_MYPY_VERSION="$mypy_version"
 export V4_MYPY_PYTHON_VERSION="$mypy_python_version"
+export V4_MYPY_STRICT="$mypy_strict"
+export V4_MYPY_SHOW_ERROR_CODES="$mypy_show_error_codes"
 export V4_MYPY_EXPECTED_CODE="$mypy_expected_code"
 export V4_MYPY_COMPILE_MISSES="$compile_authority_misses"
 export V4_MYPY_RUNTIME_MISSES="$runtime_authority_misses"
@@ -161,6 +202,8 @@ print(json.dumps({
         "id": "mypy",
         "version": os.environ["V4_MYPY_VERSION"],
         "python_version": os.environ["V4_MYPY_PYTHON_VERSION"],
+        "strict": b("V4_MYPY_STRICT"),
+        "show_error_codes": b("V4_MYPY_SHOW_ERROR_CODES"),
         "profile": "mypy_profile_l1 (single authority: src/v4/extdeps/typecheckers/mypy.dag)",
     },
     "authority_separation": {
