@@ -14,9 +14,9 @@ import v4.extdeps.languages.python {
   python_surface_spelling_int
 }
 import v4.extdeps.languages.typescript {
+  ts_atom_realization_symbol,
   ts_bigint_algebra_inhabitance_ts_facts_bigint,
-  ts_number_algebra_inhabitance_ts_facts_number,
-  ts_target_atom_realization_symbol
+  ts_number_algebra_inhabitance_ts_facts_number
 }
 import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
@@ -340,7 +340,7 @@ fn typescript_r2b_fixture() -> LeafModelTypeScriptRuntimeFixturePair {
 }
 
 // R3-external — ECMA Symbol() factory (happy) vs `new Symbol` (not constructable).
-data typescript_r3_external_claim_atom_realization_fact: Symbol = ts_target_atom_realization_symbol
+data typescript_r3_external_claim_atom_realization_fact: Symbol = ts_atom_realization_symbol
 
 data typescript_r3_external_happy_fixture_source: String = "const s: symbol = Symbol(\"x\");\n"
 
