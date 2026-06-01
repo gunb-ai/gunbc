@@ -294,13 +294,20 @@ pub fn render_rust_applied_type_shared(
             source_indices.clone(),
         );
         let type_name = authored_name_at(source_indices.clone(), n.clone());
-        if (v2_rt::set_contains(&shared_types, type_name)
-            && !rust_type_is_rc_wrapped(rendered.clone()))
-        {
-            wrap_shared_type(RenderTarget::Rust, rendered)
-        } else {
-            rendered
-        }
+        render_rust_shared_type_if_needed(type_name, rendered, shared_types)
+    }
+}
+
+pub fn render_rust_shared_type_if_needed(
+    type_name: String,
+    rendered: String,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+) -> String {
+    if (v2_rt::set_contains(&shared_types, type_name) && !rust_type_is_rc_wrapped(rendered.clone()))
+    {
+        wrap_shared_type(RenderTarget::Rust, rendered)
+    } else {
+        rendered
     }
 }
 
@@ -365,14 +372,11 @@ pub fn render_rust_decl_type(
                                         v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
                                         ">".to_string(),
                                     );
-                                    if v2_rt::set_contains(&shared_types, name.clone()) {
-                                        v2_rt::concat(
-                                            v2_rt::concat("Rc<".to_string(), applied_ty),
-                                            ">".to_string(),
-                                        )
-                                    } else {
-                                        applied_ty
-                                    }
+                                    render_rust_shared_type_if_needed(
+                                        name.clone(),
+                                        applied_ty,
+                                        shared_types.clone(),
+                                    )
                                 }
                             } else {
                                 render_rust_type_with_applied_binding(
@@ -424,14 +428,11 @@ pub fn render_rust_decl_type(
                                 v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
                                 ">".to_string(),
                             );
-                            if v2_rt::set_contains(&shared_types, name.clone()) {
-                                v2_rt::concat(
-                                    v2_rt::concat("Rc<".to_string(), applied_ty),
-                                    ">".to_string(),
-                                )
-                            } else {
-                                applied_ty
-                            }
+                            render_rust_shared_type_if_needed(
+                                name.clone(),
+                                applied_ty,
+                                shared_types.clone(),
+                            )
                         }
                     } else {
                         render_rust_type_with_applied_binding(
