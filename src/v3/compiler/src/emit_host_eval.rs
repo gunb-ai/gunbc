@@ -45,10 +45,7 @@ pub fn try_dispatch_emit_host_rust(
         Ok(inputs) => inputs,
         Err(err) => return Some(Err(err)),
     };
-    let work_dir = emit_host_runner::default_work_dir(&format!(
-        "gunbc_eval_emit_host_rust_{}",
-        std::process::id()
-    ));
+    let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_emit_host_rust");
     let receipt = match emit_host_runner::run_emit_host_rust(source, &inputs, &work_dir) {
         Ok(receipt) => receipt,
         Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
