@@ -2828,20 +2828,25 @@ fn translate_project_arrow_input_types_go(
           ),
           f: fn(projected) {
             bind_outcome(
-              o: translate_apply_use_site_ownership_to_projected_type(
-                projected: projected,
-                source_carrier: split.head,
-                target: target,
-                use_site: OwnershipAtFunctionParameter
-              ),
-              f: fn(wrapped) {
-                translate_project_arrow_input_types_go(
-                  remaining: remaining - 1,
-                  anchor: anchor,
-                  original_inputs: split.tail,
-                  target: target,
-                  projection: projection,
-                  acc: list_snoc_item(xs: acc, item: wrapped)
+              o: type_expr_atom_binding(node: split.head),
+              f: fn(binding) {
+                bind_outcome(
+                  o: translate_apply_use_site_ownership_to_projected_type(
+                    projected: projected,
+                    source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                    target: target,
+                    use_site: OwnershipAtFunctionParameter
+                  ),
+                  f: fn(wrapped) {
+                    translate_project_arrow_input_types_go(
+                      remaining: remaining - 1,
+                      anchor: anchor,
+                      original_inputs: split.tail,
+                      target: target,
+                      projection: projection,
+                      acc: list_snoc_item(xs: acc, item: wrapped)
+                    )
+                  }
                 )
               }
             )
@@ -2877,17 +2882,22 @@ fn translate_project_arrow_split_types(
         ),
         f: fn(projected_output) {
           bind_outcome(
-            o: translate_apply_use_site_ownership_to_projected_type(
-              projected: projected_output,
-              source_carrier: original_split.output,
-              target: target,
-              use_site: OwnershipAtFunctionReturn
-            ),
-            f: fn(wrapped_output) {
-              outcome_accepted(
-                TypeExprArrowSplit {
-                  inputs: wrapped_inputs,
-                  output: wrapped_output
+            o: type_expr_atom_binding(node: original_split.output),
+            f: fn(binding) {
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_projected_type(
+                  projected: projected_output,
+                  source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                  target: target,
+                  use_site: OwnershipAtFunctionReturn
+                ),
+                f: fn(wrapped_output) {
+                  outcome_accepted(
+                    TypeExprArrowSplit {
+                      inputs: wrapped_inputs,
+                      output: wrapped_output
+                    }
+                  )
                 }
               )
             }
@@ -2965,6 +2975,15 @@ fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
   }
 }
 
+fn function_boundary_site_to_ownership_use_site(
+  boundary_site: FunctionBoundarySite
+) -> TargetOwnershipUseSite {
+  match boundary_site {
+    FunctionBoundaryParam => OwnershipAtFunctionParameter
+    FunctionBoundaryReturn => OwnershipAtFunctionReturn
+  }
+}
+
 // Consult the per-language signature realization catalog for the fn-boundary atom at `emitted`.
 // Returns Present(row) on a (source_carrier, boundary_site) hit; Absent when the model carries no
 // signature catalog OR no row matches (both fall back to the SG-2/binding_spellings path); Rejected
@@ -3008,8 +3027,8 @@ fn translate_target_function_signature_realization_for_boundary(
 }
 
 // Serialize a fn-boundary atom: emit the signature realization's signature_type_form when a row
-// matches (SG-1b authority); otherwise fall back to the SG-2 binding-spelling path. Non-boundary
-// decl/type-alias atoms never reach here, so they retain SG-1/binding_spellings authority.
+// matches (SG-1b authority); otherwise consult TargetUseSiteOwnershipRealization for this
+// boundary role, then serialize the emitted wire (SG-RC + SG-2; no spelling-only bypass).
 fn serialize_type_expr_boundary_atom_bounded(
   remaining: Int,
   target: TargetModel,
@@ -3033,7 +3052,29 @@ fn serialize_type_expr_boundary_atom_bounded(
             emitted: row.signature_type_form.node
           )
         Absent =>
-          type_expr_spelling_for_atom(target: target, node: emitted)
+          bind_outcome(
+            o: type_expr_atom_binding(node: emitted),
+            f: fn(binding) {
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_projected_type(
+                  projected: emitted,
+                  source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                  target: target,
+                  use_site: function_boundary_site_to_ownership_use_site(
+                    boundary_site: boundary_site
+                  )
+                ),
+                f: fn(wrapped) {
+                  serialize_type_expr_emitted_bounded(
+                    remaining: remaining - 1,
+                    target: target,
+                    projection: projection,
+                    emitted: wrapped
+                  )
+                }
+              )
+            }
+          )
       }
   }
 }
