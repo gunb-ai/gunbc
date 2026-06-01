@@ -78,6 +78,10 @@ const MVP1_TYPESCRIPT_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_typescript_add_translate.dag");
 const MVP1_TYPESCRIPT_CLAIM_PATH: &str =
     "src/v4/test/claim/manual/mvp1_typescript_add_translate.dag";
+const MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_typescript_record_task_translate.dag");
+const MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/mvp1_typescript_record_task_translate.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -1039,6 +1043,14 @@ fn v4_mvp1_typescript_add_claim_tokenizes_and_parses() {
 }
 
 #[test]
+fn v4_mvp1_typescript_record_task_claim_tokenizes_and_parses() {
+    let _module = parse_module(
+        MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG,
+        MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH,
+    );
+}
+
+#[test]
 fn v4_mvp1_shape_a_add_claims_import_compile_inferred() {
     for (source, path) in [
         (MVP1_PYTHON_CLAIM_DAG, MVP1_PYTHON_CLAIM_PATH),
@@ -1054,6 +1066,65 @@ fn v4_mvp1_shape_a_add_claims_import_compile_inferred() {
         assert!(
             import_includes_name(&module, &["v4", "compiler", "emit"], "emit"),
             "{path}: grammar-inverse claim must import emit stage"
+        );
+    }
+}
+
+#[test]
+fn v4_mvp1_typescript_grammar_inverse_claims_name_l0_productions() {
+    let add_module = parse_module(MVP1_TYPESCRIPT_CLAIM_DAG, MVP1_TYPESCRIPT_CLAIM_PATH);
+    assert!(
+        import_includes_name(
+            &add_module,
+            &["v4", "extdeps", "languages", "typescript"],
+            "ts_production_mvp1_fn_add"
+        ),
+        "{MVP1_TYPESCRIPT_CLAIM_PATH}: G1 must import the MVP-1 add-fn production authority"
+    );
+    assert!(
+        data_body_var_name_equals(
+            &add_module,
+            "mvp1_ts_g1_grammar_inverse_production",
+            "ts_production_mvp1_fn_add"
+        ),
+        "{MVP1_TYPESCRIPT_CLAIM_PATH}: G1 anchor must bind ts_production_mvp1_fn_add"
+    );
+
+    let task_module = parse_module(
+        MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG,
+        MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH,
+    );
+    for production in [
+        "ts_production_wave2a_type_alias_decl",
+        "ts_production_wave2a_type_annotation",
+        "ts_production_wave2a_record_type",
+    ] {
+        assert!(
+            import_includes_name(
+                &task_module,
+                &["v4", "extdeps", "languages", "typescript"],
+                production
+            ),
+            "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 must import {production}"
+        );
+    }
+    for (anchor, expected) in [
+        (
+            "mvp1_ts_task_g2_grammar_inverse_production",
+            "ts_production_wave2a_type_alias_decl",
+        ),
+        (
+            "mvp1_ts_task_g2_type_annotation_production",
+            "ts_production_wave2a_type_annotation",
+        ),
+        (
+            "mvp1_ts_task_g2_record_type_production",
+            "ts_production_wave2a_record_type",
+        ),
+    ] {
+        assert!(
+            data_body_var_name_equals(&task_module, anchor, expected),
+            "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 anchor {anchor} must bind {expected}"
         );
     }
 }
@@ -1213,6 +1284,23 @@ fn data_body_source_contains(
     needle: &str,
 ) -> bool {
     data_body_source(module, source, name).is_some_and(|body| body.contains(needle))
+}
+
+fn data_body_var_name_equals(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+    expected: &str,
+) -> bool {
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(SurfaceExpr::Var { name: var_name, .. }),
+                ..
+            } if item_name == name && var_name == expected
+        )
+    })
 }
 
 fn data_list_element_surface_text(source: &str, element: &SurfaceExpr) -> String {
