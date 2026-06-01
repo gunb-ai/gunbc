@@ -16469,8 +16469,12 @@ pub fn emit_data_def(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        let render_type_node = match type_node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+            _ => type_node.clone(),
+        };
         let raw_ty_str = render_rust_type(
-            type_node.clone(),
+            render_type_node,
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
