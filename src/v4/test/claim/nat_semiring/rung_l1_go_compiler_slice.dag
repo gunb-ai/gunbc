@@ -27,6 +27,11 @@ import v4.std.verification {
 // Single authority for slice_id (worksheet + host JSON + structural subject must agree).
 data go_l1_nat_semiring_rung2: Symbol = go_l1_nat_semiring_rung2
 
+// Host transport + JSON receipt schema (worksheet §10 item 3); not the rung-gate R2 cell.
+data go_l1_nat_semiring_rung2_l1_host_gate: String = "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh"
+
+data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"
+
 // Receipt coordinate edge label on the Conj subject carrier.
 data l1_go_receipt_slice_edge: Symbol = l1_go_receipt_slice_edge
 
