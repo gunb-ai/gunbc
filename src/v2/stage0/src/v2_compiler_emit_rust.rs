@@ -630,6 +630,11 @@ pub fn rust_nominal_ord_coproduct_shape_eligible(n: Rc<Node>) -> bool {
             .all(|v| ((v.children.clone().len() as i64) == 0))
 }
 
+pub fn rust_nominal_ord_reference_shape_eligible(n: Rc<Node>) -> bool {
+    (((n.connective.clone() == NoConnective) && ((n.children.clone().len() as i64) == 0))
+        && ((n.params.clone().len() as i64) == 0))
+}
+
 pub fn rust_nominal_ord_derives_for_shape(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
@@ -667,9 +672,10 @@ pub fn rust_nominal_ord_type_eligible(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     let shape = rust_nominal_ord_resolved_shape(elem_node.clone());
-    ((rust_nominal_identity_carrier_shape_eligible(shape.clone(), source_indices.clone())
+    (((rust_nominal_identity_carrier_shape_eligible(shape.clone(), source_indices.clone())
         || rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()))
         || rust_nominal_ord_coproduct_shape_eligible(shape.clone()))
+        || rust_nominal_ord_reference_shape_eligible(shape.clone()))
 }
 
 pub fn rust_serde_tag_attr() -> String {
