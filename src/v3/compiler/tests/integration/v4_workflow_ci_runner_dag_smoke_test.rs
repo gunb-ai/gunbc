@@ -652,6 +652,8 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let script_path = expr_string(record_body_field(live_signal, "script_path"));
     let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
     let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
+    let strict_env_var = expr_string(record_body_field(live_signal, "strict_env_var"));
+    let strict_env_value = expr_string(record_body_field(live_signal, "strict_env_value"));
     let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
     assert!(
         binding_smoke_step.contains(&format!(
@@ -665,8 +667,8 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` runs unconditionally on the safety floor (no component `if:`)"
     );
     assert!(
-        m1_step.contains("V4_M1_RUST_EMIT_PROBE_STRICT: \"0\""),
-        "{CI_YML_PATH}: `{step_name}` must publish the M1 rustc residual receipt without failing the required path while P3 is below binary-build threshold"
+        m1_step.contains(&format!("{strict_env_var}: \"{strict_env_value}\"")),
+        "{CI_YML_PATH}: `{step_name}` strictness env must come from {CI_DAG_PATH}:m1_ci_live_workflow_signal"
     );
     assert!(
         CI_DAG.contains(

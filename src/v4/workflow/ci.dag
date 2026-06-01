@@ -405,6 +405,8 @@ type M1CiLiveWorkflowSignal {
   script_path: String
   non_blocking: Bool
   timeout_minutes: Int
+  strict_env_var: String
+  strict_env_value: String
 }
 
 
@@ -469,6 +471,8 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   script_path: "scripts/v4-m1-rust-emit-probe.sh"
   non_blocking: false
   timeout_minutes: 20
+  strict_env_var: "V4_M1_RUST_EMIT_PROBE_STRICT"
+  strict_env_value: "0"
 }
 
 data ci_v3_determinism_profile: CiBuildProfile = Release
@@ -548,6 +552,8 @@ data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSign
   script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
   non_blocking: true
   timeout_minutes: 20
+  strict_env_var: "V4_PHASE1_NAT_SEMIRING_STRICT"
+  strict_env_value: "1"
 }
 
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — consumer:v4.workflow.ci testclaim_corpus_eval_ci_live_workflow_signal — structural-slice CLOSED: shell bridge deleted + positive-Y CiUpsertStep sole structural authority; forward: T-38-PR2 amends when runtime per-row TestClaimRun verdict CI lands — dissolve-on-arrival: emitted/projected GitHub Actions reads `ci_pipeline`/`TestClaimCorpusEvalCommand` directly and this carrier is deleted; forbidden: adding corpus eval step facts outside `ci_pipeline` + this binding.
@@ -557,6 +563,8 @@ data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   script_path: "scripts/v4-testclaim-corpus-eval.sh"
   non_blocking: false
   timeout_minutes: 15
+  strict_env_var: ""
+  strict_env_value: ""
 }
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
