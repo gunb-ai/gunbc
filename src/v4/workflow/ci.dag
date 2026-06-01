@@ -149,8 +149,8 @@ type CiCommand
   | V3SelfHostFixedPointCommand { profile: CiBuildProfile, schedule: CiSchedulePolicy }
   | V4T15SelfHostFixedPointCommand
   | M1RustEmitProbeCommand
-  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); run_roster/report/tally/gate_witness must name the T-22 manual CorpusEvalReport surface (`manual_corpus_node_runtime_value_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed`) so per-row TestClaimRun verdict facts are projected, not replaced by a host string. Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
-  | TestClaimCorpusEvalCommand { selection_fn: Symbol, run_roster: Symbol, eval_report: Symbol, verdict_tally: Symbol, gate_witness: Symbol }
+  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); verdict_surface must name the T-22 manual CorpusEvalReport surface (`manual_corpus_node_runtime_value_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed`) using declaration-qualified authorities so per-row TestClaimRun verdict facts are projected, not replaced by host-owned strings. Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
+  | TestClaimCorpusEvalCommand { selection_fn: Symbol, verdict_surface: TestClaimCorpusVerdictSurfaceAuthority }
   // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
   | Phase1NatSemiringRungGateCommand
 
@@ -158,6 +158,22 @@ type CiJob {
   id: Symbol
   command: CiCommand
   needs: List<Symbol>
+}
+
+type TestClaimCorpusDeclarationAuthority {
+  module_name: Symbol
+  declaration: Symbol
+}
+
+// 🟡 bounded bridge — feature:t38-testclaim-corpus-eval-qualified-authority — dissolve-on-arrival:
+// generated item-registry reflection replaces these declaration-qualified handles with canonical
+// module/declaration references. Until then, this record is the command-local authority for the
+// manual T-22 corpus verdict surface; forbidden: raw unqualified Symbol fields for roster/report/tally/witness.
+type TestClaimCorpusVerdictSurfaceAuthority {
+  run_roster: TestClaimCorpusDeclarationAuthority
+  eval_report: TestClaimCorpusDeclarationAuthority
+  verdict_tally: TestClaimCorpusDeclarationAuthority
+  gate_witness: TestClaimCorpusDeclarationAuthority
 }
 
 type CiGate {
@@ -915,18 +931,46 @@ data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
   claim_rust_language_model_emit_subsumption_reverifies
 ]
 
-data ci_testclaim_corpus_run_roster_manual_corpus_node_runtime_value_rows: Symbol = ci_testclaim_corpus_run_roster_manual_corpus_node_runtime_value_rows
-data ci_testclaim_corpus_eval_report_run_manual_testclaim_corpus_eval: Symbol = ci_testclaim_corpus_eval_report_run_manual_testclaim_corpus_eval
-data ci_testclaim_corpus_verdict_tally_corpus_report_tally: Symbol = ci_testclaim_corpus_verdict_tally_corpus_report_tally
-data ci_testclaim_corpus_gate_witness_manual_corpus_gate_closed: Symbol = ci_testclaim_corpus_gate_witness_manual_corpus_gate_closed
+data ci_testclaim_corpus_module_manual_roster: Symbol = v4_test_claim_manual_manual_corpus_roster
+data ci_testclaim_corpus_module_runner: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
+data ci_testclaim_corpus_module_eval: Symbol = v4_test_claim_workflow_manual_corpus_eval
+data ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows: Symbol = manual_corpus_node_runtime_value_rows
+data ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval
+data ci_testclaim_corpus_decl_corpus_report_tally: Symbol = corpus_report_tally
+data ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed: Symbol = witness_manual_corpus_gate_closed
+
+fn ci_testclaim_corpus_declaration_authority(
+  module_name: Symbol,
+  declaration: Symbol
+) -> TestClaimCorpusDeclarationAuthority {
+  TestClaimCorpusDeclarationAuthority { module_name: module_name, declaration: declaration }
+}
+
+fn ci_testclaim_corpus_verdict_surface_authority() -> TestClaimCorpusVerdictSurfaceAuthority {
+  TestClaimCorpusVerdictSurfaceAuthority {
+    run_roster: ci_testclaim_corpus_declaration_authority(
+      module_name: ci_testclaim_corpus_module_manual_roster,
+      declaration: ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows
+    ),
+    eval_report: ci_testclaim_corpus_declaration_authority(
+      module_name: ci_testclaim_corpus_module_runner,
+      declaration: ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval
+    ),
+    verdict_tally: ci_testclaim_corpus_declaration_authority(
+      module_name: ci_testclaim_corpus_module_runner,
+      declaration: ci_testclaim_corpus_decl_corpus_report_tally
+    ),
+    gate_witness: ci_testclaim_corpus_declaration_authority(
+      module_name: ci_testclaim_corpus_module_eval,
+      declaration: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed
+    )
+  }
+}
 
 fn ci_testclaim_corpus_eval_command() -> CiCommand {
   TestClaimCorpusEvalCommand {
     selection_fn: ci_testclaim_corpus_selection_fn,
-    run_roster: ci_testclaim_corpus_run_roster_manual_corpus_node_runtime_value_rows,
-    eval_report: ci_testclaim_corpus_eval_report_run_manual_testclaim_corpus_eval,
-    verdict_tally: ci_testclaim_corpus_verdict_tally_corpus_report_tally,
-    gate_witness: ci_testclaim_corpus_gate_witness_manual_corpus_gate_closed
+    verdict_surface: ci_testclaim_corpus_verdict_surface_authority()
   }
 }
 
@@ -1474,16 +1518,10 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     M1RustEmitProbeCommand => true
     TestClaimCorpusEvalCommand {
       selection_fn: fn_name,
-      run_roster: roster,
-      eval_report: report,
-      verdict_tally: tally,
-      gate_witness: witness
+      verdict_surface: surface
     } =>
       (fn_name == ci_testclaim_corpus_selection_fn)
-        && (roster == ci_testclaim_corpus_run_roster_manual_corpus_node_runtime_value_rows)
-        && (report == ci_testclaim_corpus_eval_report_run_manual_testclaim_corpus_eval)
-        && (tally == ci_testclaim_corpus_verdict_tally_corpus_report_tally)
-        && (witness == ci_testclaim_corpus_gate_witness_manual_corpus_gate_closed)
+        && (surface == ci_testclaim_corpus_verdict_surface_authority())
     Phase1NatSemiringRungGateCommand => true
   }
 }
@@ -1568,10 +1606,13 @@ data ci_projection_command_produces_edge: Symbol = ci_projection_command_produce
 data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_name_edge
 data ci_projection_command_lenses_edge: Symbol = ci_projection_command_lenses_edge
 data ci_projection_command_selection_fn_edge: Symbol = ci_projection_command_selection_fn_edge
-data ci_projection_command_run_roster_edge: Symbol = ci_projection_command_run_roster_edge
-data ci_projection_command_eval_report_edge: Symbol = ci_projection_command_eval_report_edge
-data ci_projection_command_verdict_tally_edge: Symbol = ci_projection_command_verdict_tally_edge
-data ci_projection_command_gate_witness_edge: Symbol = ci_projection_command_gate_witness_edge
+data ci_projection_command_verdict_surface_edge: Symbol = ci_projection_command_verdict_surface_edge
+data ci_projection_corpus_surface_run_roster_edge: Symbol = ci_projection_corpus_surface_run_roster_edge
+data ci_projection_corpus_surface_eval_report_edge: Symbol = ci_projection_corpus_surface_eval_report_edge
+data ci_projection_corpus_surface_verdict_tally_edge: Symbol = ci_projection_corpus_surface_verdict_tally_edge
+data ci_projection_corpus_surface_gate_witness_edge: Symbol = ci_projection_corpus_surface_gate_witness_edge
+data ci_projection_declaration_module_edge: Symbol = ci_projection_declaration_module_edge
+data ci_projection_declaration_name_edge: Symbol = ci_projection_declaration_name_edge
 data ci_projection_gate_policy_job_edge: Symbol = ci_projection_gate_policy_job_edge
 data ci_projection_upsert_inputs_edge: Symbol = ci_projection_upsert_inputs_edge
 data ci_projection_upsert_verify_edge: Symbol = ci_projection_upsert_verify_edge
@@ -1986,22 +2027,57 @@ fn ci_command_projection_node(c: CiCommand) -> Node {
     M1RustEmitProbeCommand => ci_atom(sym: ci_cache_cmd_m1_probe_tag)
     TestClaimCorpusEvalCommand {
       selection_fn: fn_name,
-      run_roster: roster,
-      eval_report: report,
-      verdict_tally: tally,
-      gate_witness: witness
+      verdict_surface: surface
     } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
           ci_named_edge(name: ci_projection_command_selection_fn_edge, target: ci_atom(sym: fn_name)),
-          ci_named_edge(name: ci_projection_command_run_roster_edge, target: ci_atom(sym: roster)),
-          ci_named_edge(name: ci_projection_command_eval_report_edge, target: ci_atom(sym: report)),
-          ci_named_edge(name: ci_projection_command_verdict_tally_edge, target: ci_atom(sym: tally)),
-          ci_named_edge(name: ci_projection_command_gate_witness_edge, target: ci_atom(sym: witness))
+          ci_named_edge(
+            name: ci_projection_command_verdict_surface_edge,
+            target: ci_testclaim_corpus_verdict_surface_projection_node(surface: surface)
+          )
         ]
       }
     Phase1NatSemiringRungGateCommand => ci_atom(sym: ci_cache_cmd_phase1_nat_semiring_rung_gate_tag)
+  }
+}
+
+
+fn ci_declaration_authority_projection_node(a: TestClaimCorpusDeclarationAuthority) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(name: ci_projection_declaration_module_edge, target: ci_atom(sym: a.module_name)),
+      ci_named_edge(name: ci_projection_declaration_name_edge, target: ci_atom(sym: a.declaration))
+    ]
+  }
+}
+
+
+fn ci_testclaim_corpus_verdict_surface_projection_node(
+  surface: TestClaimCorpusVerdictSurfaceAuthority
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(
+        name: ci_projection_corpus_surface_run_roster_edge,
+        target: ci_declaration_authority_projection_node(a: surface.run_roster)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_eval_report_edge,
+        target: ci_declaration_authority_projection_node(a: surface.eval_report)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_verdict_tally_edge,
+        target: ci_declaration_authority_projection_node(a: surface.verdict_tally)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_gate_witness_edge,
+        target: ci_declaration_authority_projection_node(a: surface.gate_witness)
+      )
+    ]
   }
 }
 
@@ -3871,7 +3947,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         workflow_policy: true,
         release_distribution: false
       )
-    TestClaimCorpusEvalCommand { selection_fn: _, run_roster: _, eval_report: _, verdict_tally: _, gate_witness: _ } =>
+    TestClaimCorpusEvalCommand { selection_fn: _, verdict_surface: _ } =>
       ci_job_component_mask_row(
         v2: false,
         v3: false,
