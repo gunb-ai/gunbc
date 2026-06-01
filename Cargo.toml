@@ -5,7 +5,6 @@ members = [
     "src/v2/stage0",
     "src/v2/tests",
     "src/v3/compiler",
-    "tools/gen_gunbc_ci_workflow_dag",
     "tools/ci_affected_components",
     "tools/emit_host_runner",
     "src/v3/grounding_pilot",
