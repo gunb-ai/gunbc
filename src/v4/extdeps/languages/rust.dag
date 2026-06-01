@@ -3363,7 +3363,7 @@ fn rust_sg_rc_use_site_ownership_catalog() -> List<TargetUseSiteOwnershipRealiza
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_test_claim_node(),
-      source_projection: UseSiteOwnershipExactCarrier,
+      source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_test_claim_return
@@ -3419,7 +3419,7 @@ fn rust_sg_rc_use_site_ownership_catalog() -> List<TargetUseSiteOwnershipRealiza
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_test_claim_node(),
-      source_projection: UseSiteOwnershipExactCarrier,
+      source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_test_claim_binding
