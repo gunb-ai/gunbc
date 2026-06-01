@@ -221,52 +221,75 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
   }
 }
 
-fn target_model_node_subtree_count(n: Node) -> Int {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(_) { 1 },
-      step: fn(acc, _edge, child_count) { acc + child_count }
-    }
-  )
-}
+// 🟡 coproduct dissolution — local fold state for fail-closed encoded FreeMonoid<Char>
+// projection; dissolve-on: std.algebra exports the canonical string/free-monoid projection
+// named by the `free-monoid-node-projection` receipt below.
+type SourceAtomStringProjectionFold
+  = SourceAtomStringFoldInit
+  | SourceAtomStringFoldHeadSeen
+  | SourceAtomStringFoldTailSeen
+  | SourceAtomStringFoldChar
+  | SourceAtomStringFoldString
+  | SourceAtomStringFoldInvalid
 
-fn source_atom_string_projection_bounded(
-  remaining: Int,
-  source: Node
-) -> Optional<SourceAtomValue> {
-  if remaining <= 0 {
-    optional_absent()
-  } else {
+fn source_atom_string_projection_fold_init(source: Node) -> SourceAtomStringProjectionFold {
   match source.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == free_monoid_variant_empty {
-        optional_present(source_atom_string(value: source))
+        SourceAtomStringFoldString
       } else {
-        optional_absent()
+        match source_atom_char_projection_from_node(source: source) {
+          Present { value: _ } => SourceAtomStringFoldChar
+          Absent => SourceAtomStringFoldInvalid
+        }
       }
     TypeNode { connective: Conj } =>
-      match find_named_child(root: source, name: free_monoid_field_head) {
-        Accepted { value: head } =>
-          match find_named_child(root: source, name: free_monoid_field_tail) {
-            Accepted { value: tail } =>
-              match source_atom_char_projection_from_node(source: head) {
-                Present { value: _ } =>
-                  match source_atom_string_projection_bounded(
-                    remaining: remaining - 1,
-                    source: tail
-                  ) {
-                    Present { value: _ } => optional_present(source_atom_string(value: source))
-                    Absent => optional_absent()
-                  }
-                Absent => optional_absent()
-              }
-            Rejected { diagnostics: _ } => optional_absent()
-          }
-        Rejected { diagnostics: _ } => optional_absent()
+      if count(source.children) == 2 {
+        SourceAtomStringFoldInit
+      } else {
+        SourceAtomStringFoldInvalid
       }
-    _ => optional_absent()
+    _ => SourceAtomStringFoldInvalid
   }
+}
+
+fn source_atom_string_projection_fold_step(
+  acc: SourceAtomStringProjectionFold,
+  edge: Edge,
+  child: SourceAtomStringProjectionFold
+) -> SourceAtomStringProjectionFold {
+  match acc {
+    SourceAtomStringFoldInvalid => SourceAtomStringFoldInvalid
+    SourceAtomStringFoldString => SourceAtomStringFoldInvalid
+    SourceAtomStringFoldChar => SourceAtomStringFoldInvalid
+    _ =>
+      match edge.label {
+        Named { name: ename } =>
+          if ename == free_monoid_field_head {
+            match child {
+              SourceAtomStringFoldChar =>
+                match acc {
+                  SourceAtomStringFoldInit => SourceAtomStringFoldHeadSeen
+                  SourceAtomStringFoldTailSeen => SourceAtomStringFoldString
+                  _ => SourceAtomStringFoldInvalid
+                }
+              _ => SourceAtomStringFoldInvalid
+            }
+          } else if ename == free_monoid_field_tail {
+            match child {
+              SourceAtomStringFoldString =>
+                match acc {
+                  SourceAtomStringFoldInit => SourceAtomStringFoldTailSeen
+                  SourceAtomStringFoldHeadSeen => SourceAtomStringFoldString
+                  _ => SourceAtomStringFoldInvalid
+                }
+              _ => SourceAtomStringFoldInvalid
+            }
+          } else {
+            SourceAtomStringFoldInvalid
+          }
+        _ => SourceAtomStringFoldInvalid
+      }
   }
 }
 
@@ -277,10 +300,16 @@ fn source_atom_string_projection_bounded(
 // bounded to TS-ATOM-REALIZATION's String value-template bridge; forbidden: adding another
 // FreeMonoid storage walker outside this receipt.
 fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
-  source_atom_string_projection_bounded(
-    remaining: target_model_node_subtree_count(n: source),
-    source: source
-  )
+  match fold_node(
+    n: source,
+    algebra: NodeFold {
+      init: source_atom_string_projection_fold_init,
+      step: source_atom_string_projection_fold_step
+    }
+  ) {
+    SourceAtomStringFoldString => optional_present(source_atom_string(value: source))
+    _ => optional_absent()
+  }
 }
 
 fn source_atom_string(value: Node) -> SourceAtomValue {
