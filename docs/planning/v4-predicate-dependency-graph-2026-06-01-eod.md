@@ -239,3 +239,78 @@ Per Wave F F3 framing, TS is v4-alpha-only (not release-minimum). Parallel TS cl
 - **P5 (canonical "TestClaim suite passes" per TASKS.md): NOT fully GREEN today** — Layer 1 + Layer 2 closed but runtime-execution gate remains open at `node://adhoc-f8699326-d69`. P5 flips fully GREEN only when runtime-execution gate closes; do NOT treat as done.
 - **P2: deletion in flight** — pending merge of `adhoc-4cad7e9b-558` worker PR; then P2 fully GREEN
 - P3 multi-class cascade closed today but residual rustc count significant; long-horizon to binary builds
+
+## §11. Proposed next-iteration management structure
+
+This section captures the operator-ratified (pending re-review) management redesign for the post-Jun-1 next-iteration. Replaces the dissolved structure (proud-pike Modeling DFS Manager archived; sharp-otter Close/Receipt Manager archived; quick-tern Runtime/TestClaim Manager archived; keen-heron TR Manager archived; merry-badger burn-down remains active for #4141; sleek-heron remains active for #4140).
+
+### §11.1 Structural principle
+
+**Fan out RCA + worksheet authoring; centralize single-authority-fact approval.** Per `INVARIANTS.md` P2 (single authority), no implementation worker is dispatched until a §10.0 worksheet identifies the missing modeled fact. The bottleneck was historically a single Modeling DFS lane; the new structure parallelizes worksheet drafting across language/substrate domains while keeping approval centralized in one Modeling DFS Arbiter.
+
+### §11.2 Manager roles
+
+**Modeling DFS Arbiter** (NEW, fresh-spawn — NOT PM):
+- Scope: approves §10.0 single-authority-fact worksheets; rejects spot-fixes; detects cross-language shared facts; merges duplicate worksheets; decides whether a fix belongs in `std/`, target_model, `extdeps/language`, or compiler-spine
+- Deliverable by end of tenure: every active rustc residual class has either (a) a single-authority-fact-identified §10.0 worksheet on main + named implementation worker, OR (b) explicit retirement receipt
+- Exit criteria: P3 residual reaches the "binary builds" threshold (rustc errors near-zero on Rust compile path) OR operator dissolves role
+
+**Per-language RCA Managers** (5 lanes, parallel):
+
+| Manager | Scope | Deliverable by end of tenure | Exit criteria |
+|---|---|---|---|
+| **Rust RCA Manager** | Probe + residual cluster + worksheet draft + impl fanout for Rust target; coordinate with Modeling DFS Arbiter on shared facts | All rustc residual families have routed worksheets (existing or new); SG-8 + E0308 stratification + SG-2 residual + ownership/use-site + collection projection all under named worksheets | P3 rustc residual reaches binary-build threshold |
+| **Python RCA Manager** | Same shape, Python target | MW-D3 Python parity complete (R1+R2a+R2b+R3-external on main per #4117); Python suite passes against modeled emit | Python alpha-release-minimum bar met |
+| **Go RCA Manager** | Same shape, Go target | MW-D3 Go parity complete (R1+R2a+R2b+R3-external analog); Go suite passes against modeled emit; Go emit fix #4076 follow-ons closed | Go alpha-release-minimum bar met |
+| **TypeScript RCA Manager** (alpha/preview) | Same shape, TS target | TS leaf-model R2a/R2b/R3-external widening; TS TargetAtomRealization rows; TS TargetTypeExpressionProjection; TS algebra inhabitance; TS grammar-inverse TestClaims | TS alpha-preview-coverage bar met (operator-defined when authorized) |
+| **C++ RCA Manager** (LATER / capacity-permitting) | Same shape, C++ target | C++ language residual matrix produced; no impl until shared substrate authority resolved | Operator-defined when authorized |
+
+**Shared substrate managers** (6 lanes; named single-authority owners):
+
+| Manager | Scope | Deliverable by end of tenure | Exit criteria |
+|---|---|---|---|
+| **ModuleGraph / Import-Export Manager** | Owns module-graph / import-export / re-export authority across all language targets; first responder for SG-8 residual family (E0425/E0432/E0433) | SG-8 worksheet implementation on main; module/import authority projection lands; cross-language import-graph contract ratified | SG-8 residual = 0; no E0425/E0432/E0433 emitted in any target |
+| **TargetTypeExpression Manager** | Owns TargetTypeExpressionProjection across all targets; first responder for SG-2 residual family (E0107/E0282) | SG-2 residual worksheet (generic instantiation preservation across aliases, caches, signatures); higher-kinded-ish shape projection | SG-2 residual = 0 |
+| **TargetAtom / Primitive Realization Manager** | Owns TargetAtomRealization for all targets (carries: Symbol, Bool, Char, Int, etc); first responder for atom-related E0308 clusters | SG-1b follow-on closure; function-signature realization for atom-typed params/returns; cross-target atom contract ratified | Atom realization E0308 cluster = 0 |
+| **Collection / Algebra / Law Manager** | Owns TargetCollectionRealization + FreeMonoid/Vec/Rc boundary; algebra inhabitance + law preservation across targets | SG-COLLECTION-PROJECTION worksheet + impl; collection boundary projection row; law preservation receipts per target | Collection-boundary E0308 cluster = 0; law preservation receipts on main |
+| **Runtime / TestClaim Manager** | Owns T-22 eval execution + T-38 structured TestClaimRun verdicts + emitted-code run harness + falsification verdict receipts | P5 strict "suite passes" — runtime-execution gate closed via path (i) or (ii); bootstrap-evaluator corpus runtime modeled and implemented | P5 strict GREEN per `src/v4/TASKS.md` "TestClaim suite passes" |
+| **CI Manager** (NEW, explicit named role) | Owns `src/v4/workflow/ci.dag` substrate maintenance + extension; remaining shell-to-CiUpsertStep migrations (per standing `project_no_new_shell` directive); CI runtime drops + elastic redesign implementation per #4091; coordinates with Compiler Spine + Modeling DFS Arbiter | (a) Four-compile-redundancy in ci_v4 collapsed to ≤1; (b) every YAML step backed by `CiUpsertStep` row with receipt parity; (c) affected-set testing/building running via evaluator (not YAML+shell); (d) remaining shell scripts retired per dissolution policy | (a)+(b)+(c)+(d) all on main; CI runtime ≤10min wall on cold cache for v4 affected-set |
+
+### §11.3 Coordination protocol
+
+```
+1. Fresh probe lands (Close/Receipt-style worker; reports per-class delta).
+2. Modeling DFS Arbiter classifies residual families per shared substrate domain.
+3. Per-language RCA Managers + Shared substrate managers draft §10.0 worksheets in parallel.
+4. Arbiter reviews + approves single-authority facts (centralized chokepoint).
+5. Approved worksheets spawn implementation workers in batches (parallel within a wave).
+6. Wave merges → re-probe (not after every PR).
+7. Repeat.
+```
+
+**Mechanical rule preserved (unchanged from `INVARIANTS.md`):** NO worker dispatched on SG-class work until §10.0 worksheet identifies the single-authority fact to add or consume.
+
+### §11.4 Immediate next-wave dispatch (post-#4140 + #4137 merge)
+
+Once operator ratifies §11 structure and #4140 lands as measurement receipt:
+
+1. **Spawn Modeling DFS Arbiter** (fresh session)
+2. **Spawn 6 shared substrate managers** + **3-4 language RCA managers** in parallel
+3. **First wave authorizations** (per #4140 RCA fanout):
+   - SG-8 / ModuleGraph manager → impl wave on E0425/E0432/E0433 (biggest delta +420)
+   - E0308 stratification → Rust RCA + TargetAtom + Collection + Ownership managers split the cluster
+   - SG-2 residual → TargetTypeExpression manager
+   - P5 runtime gate path (ii) → Runtime/TestClaim manager authoring worksheet
+   - CI Manager → start migrating remaining YAML steps to CiUpsertStep rows
+4. **Re-probe after wave** (not per-PR)
+
+### §11.5 PM (this session) scope under new structure
+
+PM remains routing + escalation only:
+- Spawn new managers + dispatch their initial briefs
+- Receive sign-off requests; route to operator OR Modeling DFS Arbiter
+- Run cron tree-health checks; surface anomalies + receipts
+- Maintain dep graph snapshot (this doc + successors)
+- **DO NOT act as Modeling DFS Arbiter** (single-authority discipline)
+- **DO NOT approve substrate** (Arbiter only)
+- **DO NOT spawn implementation workers without ratified worksheet** (mechanical rule)
