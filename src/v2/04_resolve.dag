@@ -506,11 +506,12 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     Some { value: result } => Some { value: result.expr }
     None => none
   }
-  // Preserve applied generic shape for signature emission (matches struct-field path).
+  // Preserve applied generic shape for signature emission (matches struct-field path:
+  // field_to_child_node keeps the parse-time apply node in inferred, not the product).
   let sig_type_expr = match find_property(props: type_resolved.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) {
     Some { value: applied } =>
-      if applied.children |> count > 0 { applied } else { type_resolved }
-    None => type_resolved
+      if applied.children |> count > 0 { applied } else { authored_type }
+    None => authored_type
   }
   ParamResult {
     param: make_resolved_param_node(
@@ -886,10 +887,19 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let resolved_params = map(param_results, pr => pr.param)
   let param_diags = flat_map(param_results, pr => pr.diagnostics)
 
+  let authored_ret = match item.inferred {
+    Some { value: Resolved { node: r } } => r
+    _ => unit_type
+  }
   let ret_result = resolve_optional_node(n: item.inferred, env: env, module_name: module_name)
   let ret_resolved = ret_result.resolved
   let ret_diags = ret_result.diagnostics
-  let resolved_ret = if item.inferred == none { none } else { Some { value: Resolved { node: ret_resolved } } }
+  let sig_ret = match find_property(props: ret_resolved.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) {
+    Some { value: applied } =>
+      if applied.children |> count > 0 { applied } else { authored_ret }
+    None => authored_ret
+  }
+  let resolved_ret = if item.inferred == none { none } else { Some { value: Resolved { node: sig_ret } } }
 
   let use_results = map(item.uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
   let resolved_uses = map(use_results, ur => ur.resource_use)

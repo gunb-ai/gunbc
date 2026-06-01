@@ -1382,10 +1382,10 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 if ((applied.children.clone().len() as i64) > 0) {
                     applied
                 } else {
-                    type_resolved.clone()
+                    authored_type.clone()
                 }
             }
-            None => type_resolved.clone(),
+            None => authored_type.clone(),
         };
         Rc::new(ParamResult {
             param: make_resolved_param_node(
