@@ -248,6 +248,12 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
   }
 }
 
+// 🟡 gated — feature:free-monoid-node-projection — owner:Modeling DFS / std.algebra lane —
+// dissolve-on: std.algebra exports a canonical `Node -> Optional<FreeMonoid<T>>` (or
+// `Node -> Optional<String>`) projection over `free_monoid_type_node`'s encoded surface; replace
+// this local encoded-node projection with that accessor. The local recursion is fail-closed and
+// bounded to TS-ATOM-REALIZATION's String value-template bridge; forbidden: adding another
+// FreeMonoid storage walker outside this receipt.
 fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
   match source.kind {
     TypeNode { connective: Atom { identity: id } } =>
