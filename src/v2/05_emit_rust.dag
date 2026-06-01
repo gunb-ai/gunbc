@@ -2153,7 +2153,8 @@ fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared
 }
 
 fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let n = param_node_type_expr(n: param)
+  let authored = param_node_type_expr(n: param)
+  let n = if generic_param_names |> count > 0 { resolved_type(n: authored) } else { authored }
   let ty = emit_rust_param_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   concat("mut ", emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust), rust_items().param_type_sep, ty)
 }
