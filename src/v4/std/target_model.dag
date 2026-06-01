@@ -150,12 +150,12 @@ data target_value_template_symbol_to_owned_string: Symbol = target_value_templat
 data target_value_template_bool_literal: Symbol = target_value_template_bool_literal
 data target_value_template_char_unicode_scalar: Symbol = target_value_template_char_unicode_scalar
 data target_model_edge_value_expression: Symbol = target_model_edge_value_expression
-data target_value_expression_symbol_identity: Symbol = target_value_expression_symbol_identity
-data target_value_expression_symbol_to_owned_string: Symbol = target_value_expression_symbol_to_owned_string
-data target_value_expression_bool_literal: Symbol = target_value_expression_bool_literal
+data target_value_expression_symbol_identity_atom: Symbol = target_value_expression_symbol_identity
+data target_value_expression_symbol_to_owned_string_atom: Symbol = target_value_expression_symbol_to_owned_string
+data target_value_expression_bool_literal_atom: Symbol = target_value_expression_bool_literal
 data target_value_expression_bool_true: Symbol = target_value_expression_bool_true
 data target_value_expression_bool_false: Symbol = target_value_expression_bool_false
-data target_value_expression_char_unicode_scalar: Symbol = target_value_expression_char_unicode_scalar
+data target_value_expression_char_unicode_scalar_atom: Symbol = target_value_expression_char_unicode_scalar
 data target_value_expression_field_identity: Symbol = target_value_expression_field_identity
 data target_value_expression_field_value: Symbol = target_value_expression_field_value
 data target_value_expression_field_codepoint: Symbol = target_value_expression_field_codepoint
@@ -349,7 +349,7 @@ fn target_value_expression_symbol_identity(identity: Symbol) -> TargetValueExpre
     kind: TargetValueExprSymbolIdentity,
     node: Node {
       kind: TypeNode {
-        connective: Atom { identity: target_value_expression_symbol_identity }
+        connective: Atom { identity: target_value_expression_symbol_identity_atom }
       },
       children: [
         target_model_named_edge(
@@ -369,7 +369,7 @@ fn target_value_expression_symbol_to_owned_string(identity: Symbol) -> TargetVal
     kind: TargetValueExprSymbolToOwnedString,
     node: Node {
       kind: TypeNode {
-        connective: Atom { identity: target_value_expression_symbol_to_owned_string }
+        connective: Atom { identity: target_value_expression_symbol_to_owned_string_atom }
       },
       children: [
         target_model_named_edge(
@@ -389,7 +389,7 @@ fn target_value_expression_bool_literal(value: Bool) -> TargetValueExpression {
     kind: TargetValueExprBoolLiteral,
     node: Node {
       kind: TypeNode {
-        connective: Atom { identity: target_value_expression_bool_literal }
+        connective: Atom { identity: target_value_expression_bool_literal_atom }
       },
       children: [
         target_model_named_edge(
@@ -406,7 +406,7 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
     kind: TargetValueExprCharUnicodeScalar,
     node: Node {
       kind: TypeNode {
-        connective: Atom { identity: target_value_expression_char_unicode_scalar }
+        connective: Atom { identity: target_value_expression_char_unicode_scalar_atom }
       },
       children: [
         target_model_named_edge(
