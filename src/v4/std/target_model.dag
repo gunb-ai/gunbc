@@ -55,7 +55,7 @@ import v4.std.node {
   content_hash,
   fold_node
 }
-import v4.std.node_query { find_named_child, node_positional_child_targets }
+import v4.std.node_query { find_named_child, node_labeled_child_edges, node_positional_child_targets }
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
 
@@ -2275,23 +2275,25 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
         f: fn(_codomain) {
           if is_empty(xs: node_positional_child_targets(node: node)) {
             Accepted {
-              value: fold(node.children, init: Empty, f: fn(acc, e) {
-                match e.label {
-                  Named { name: label } =>
-                    if label == target_type_expr_field_surface ||
-                      label == target_type_expr_field_kind ||
-                      label == target_type_expr_field_codomain {
-                      acc
-                    } else {
-                      list_snoc_item(
-                        xs: acc,
-                        item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
-                      )
-                    }
-                  Positional =>
-                    acc
+              value: fold(
+                xs: node_labeled_child_edges(node: node),
+                init: Empty,
+                f: fn(acc, e) {
+                  match e.label {
+                    Named { name: label } =>
+                      if label == target_type_expr_field_surface ||
+                        label == target_type_expr_field_kind ||
+                        label == target_type_expr_field_codomain {
+                        acc
+                      } else {
+                        list_snoc_item(
+                          xs: acc,
+                          item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
+                        )
+                      }
+                  }
                 }
-              }),
+              ),
               diagnostics: d
             }
           } else {
