@@ -130,72 +130,93 @@ pub fn render_rust_type(
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
-        _ => {
-            if (((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) > 0))
-                && !is_container_type(authored_name_at(source_indices.clone(), n.clone())))
-            {
-                render_rust_applied_type(
-                    n.clone(),
-                    Rc::new(vec![]),
-                    shared_types,
-                    source_indices.clone(),
-                )
-            } else {
-                if node_is_set_collection(n.clone(), source_indices.clone()) {
-                    match n.children.clone().first().cloned() {
-                        Some(elem_child) => {
-                            let elem_node = child_type_node(elem_child.clone());
-                            let elem_is_type_var = if (elem_node.inferred.clone() != None) {
-                                is_type_variable(elem_node.inferred.clone().clone().unwrap())
-                            } else {
-                                false
-                            };
-                            if elem_is_type_var {
-                                emit_rust_compile_error_expr(
-                                    "Set element type unresolved".to_string(),
-                                )
-                            } else {
-                                if !rust_btree_set_element_ord_eligible(
-                                    elem_node.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    {
-                                        let elem_name = authored_name_at(
-                                            source_indices.clone(),
-                                            elem_node.clone(),
-                                        );
-                                        emit_rust_compile_error_expr(v2_rt::concat(
-                                            v2_rt::concat(
-                                                "Set element type ".to_string(),
-                                                elem_name,
-                                            ),
-                                            " is not Ord-eligible for BTreeSet".to_string(),
-                                        ))
-                                    }
-                                } else {
-                                    render_node_type(
-                                        n.clone(),
-                                        RenderTarget::Rust,
-                                        shared_types,
-                                        source_indices.clone(),
-                                    )
-                                }
-                            }
-                        }
-                        None => {
-                            emit_rust_compile_error_expr("Set missing element type".to_string())
-                        }
-                    }
+        _ => match find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => {
+                if ((applied.children.clone().len() as i64) > 0) {
+                    render_rust_applied_type(
+                        applied.clone(),
+                        Rc::new(vec![]),
+                        shared_types,
+                        source_indices.clone(),
+                    )
                 } else {
-                    render_node_type(
+                    render_rust_type_without_applied_binding(
                         n.clone(),
-                        RenderTarget::Rust,
                         shared_types,
                         source_indices.clone(),
                     )
                 }
             }
+            None => {
+                render_rust_type_without_applied_binding(n.clone(), shared_types, source_indices)
+            }
+        },
+    }
+}
+
+pub fn render_rust_type_without_applied_binding(
+    n: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if (((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) > 0))
+        && !is_container_type(authored_name_at(source_indices.clone(), n.clone())))
+    {
+        render_rust_applied_type(
+            n.clone(),
+            Rc::new(vec![]),
+            shared_types,
+            source_indices.clone(),
+        )
+    } else {
+        if node_is_set_collection(n.clone(), source_indices.clone()) {
+            match n.children.clone().first().cloned() {
+                Some(elem_child) => {
+                    let elem_node = child_type_node(elem_child.clone());
+                    let elem_is_type_var = if (elem_node.inferred.clone() != None) {
+                        is_type_variable(elem_node.inferred.clone().clone().unwrap())
+                    } else {
+                        false
+                    };
+                    if elem_is_type_var {
+                        emit_rust_compile_error_expr("Set element type unresolved".to_string())
+                    } else {
+                        if !rust_btree_set_element_ord_eligible(
+                            elem_node.clone(),
+                            source_indices.clone(),
+                        ) {
+                            {
+                                let elem_name =
+                                    authored_name_at(source_indices.clone(), elem_node.clone());
+                                emit_rust_compile_error_expr(v2_rt::concat(
+                                    v2_rt::concat("Set element type ".to_string(), elem_name),
+                                    " is not Ord-eligible for BTreeSet".to_string(),
+                                ))
+                            }
+                        } else {
+                            render_node_type(
+                                n.clone(),
+                                RenderTarget::Rust,
+                                shared_types,
+                                source_indices.clone(),
+                            )
+                        }
+                    }
+                }
+                None => emit_rust_compile_error_expr("Set missing element type".to_string()),
+            }
+        } else {
+            render_node_type(
+                n.clone(),
+                RenderTarget::Rust,
+                shared_types,
+                source_indices.clone(),
+            )
         }
     }
 }
