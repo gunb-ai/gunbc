@@ -1114,9 +1114,22 @@ fn ts_mvp1_target_model() -> TargetModel {
 //   atom          ident / keyword primitive (number, string, boolean, ...)
 //   conj          object type { ... }                (record)
 //   disj          union A | B                        (primary sum-type surface)
-//   arrow         (a: T) => U                         (fat-arrow function type)
+//   arrow         (T) => U  structural surface        (fat-arrow function type — see 🟡 below)
 //   cardinality   tuple [T, U]
 //   instantiation generic apply Foo<Bar, Baz>        (angle brackets — no Rust ::<>)
+//
+// 🟡 gated — shared-carrier faithfulness gap — feature:target-function-type-named-param-binding —
+// consumer:target_type_expr_arrow_emitted (v4.std.target_model) — carrier:TargetFunctionTypeShape
+// (open/close/arrow only; NO parameter-name slot) — owner:Modeling DFS Arbiter (carrier widening) —
+// scope:NOT this per-language row (carrier is shared + ratified; Rust's landed row has the identical
+// structural arrow `(X) -> Y`). The shared serializer wraps `inputs ++ [output]`, so a TS arrow
+// serializes structurally as `(T) => U`. TypeScript requires a parameter NAME in function-type
+// expressions — `(string) => void` parses as a param NAMED `string` of implicit `any`, not a
+// `string`-typed parameter. dissolve-on-arrival: TargetFunctionTypeShape gains a param-binding
+// shape (name token + per-param type slot) authored once via the Arbiter; this row then carries
+// named params. forbidden: redefining the shared carrier inside this single-language row, or
+// emitting a faithful-looking-but-wrong `(a: T) => U` claim. The L0 SG-2 falsification probe
+// (generic Instantiation `Rc<FooBar<X, Y>>`) does NOT exercise arrow param-name semantics.
 fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {
