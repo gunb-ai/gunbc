@@ -663,6 +663,40 @@ fn v4_typescript_language_model_declares_target_atom_realization_rows() {
     );
 }
 
+// P5 receipt: TS SG-2 same-path expansion beyond L0 row-2 (Conj) — Instantiation/Arrow/Disj probes.
+#[test]
+fn v4_typescript_language_model_declares_type_expression_projection_row() {
+    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
+    assert!(
+        surface_declares_fn(&module, "ts_type_expression_projection"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: per-language SG-2 row must be authored in typescript.dag"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_type_expression_projection_bundle_node"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: projection row must encode as TargetModel bundle child"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_type_expr_target_model"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: falsification probe target must carry projection edge"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("target_model_edge_type_expression_projection"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: SG-2 bundle edge name must wire on TS TargetModel"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_foobar_xy_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: golden FooBar<X,Y> Instantiation emitted node (beyond row-2)"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_arrow_xy_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: golden (X) => Y Arrow emitted node (beyond row-2)"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_sum_xy_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: golden X | Y Disj emitted node (beyond row-2)"
+    );
+}
+
 // P5 receipt: SG-RC-LAYERING worksheet §6 — same-path smoke expansion (parse surface only).
 #[test]
 fn v4_std_target_realization_declares_use_site_ownership_carrier() {
