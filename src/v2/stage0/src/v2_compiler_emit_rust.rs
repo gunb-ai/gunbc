@@ -422,13 +422,15 @@ pub fn render_rust_fn_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((generic_param_names.clone().len() as i64) > 0) {
-        render_node_type(
-            n,
-            RenderTarget::Rust,
-            shared_types,
-            source_indices,
-        )
+    if find_property(
+        n.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) != None
+    {
+        render_rust_type_with_applied_binding(n, shared_types, source_indices)
+    } else if ((generic_param_names.clone().len() as i64) > 0) {
+        render_node_type(n, RenderTarget::Rust, shared_types, source_indices)
     } else {
         render_rust_type_with_applied_binding(n, shared_types, source_indices)
     }
@@ -5283,27 +5285,50 @@ pub fn emit_tco_params(
     }
 }
 
-pub fn param_sig_type_node(
+pub fn render_rust_param_sig_type(
     param: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> String {
     let authored = param_node_type_expr(param.clone());
-    if ((generic_param_names.len() as i64) == 0) {
-        child_type_node(authored)
-    } else if (find_property(
+    if find_property(
+        param.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) != None
+    {
+        render_rust_type_with_applied_binding(param, shared_types, source_indices)
+    } else if find_property(
         authored.properties.clone(),
         "__applied_type_args".to_string(),
         source_indices.clone(),
-    ) != None)
+    ) != None
     {
-        authored
+        render_rust_type_with_applied_binding(authored, shared_types, source_indices)
+    } else if ((generic_param_names.len() as i64) > 0) {
+        if ((authored.connective.clone() == Connective::NoConnective)
+            && ((authored.children.clone().len() as i64) > 0))
+        {
+            render_node_type(authored, RenderTarget::Rust, shared_types, source_indices)
+        } else {
+            render_node_type(
+                child_type_node(authored),
+                RenderTarget::Rust,
+                shared_types,
+                source_indices,
+            )
+        }
     } else if ((authored.connective.clone() == Connective::NoConnective)
         && ((authored.children.clone().len() as i64) > 0))
     {
-        authored
+        render_rust_type(authored, shared_types, source_indices)
     } else {
-        resolved_type(param)
+        render_rust_type_with_applied_binding(
+            child_type_node(authored),
+            shared_types,
+            source_indices,
+        )
     }
 }
 
@@ -5314,17 +5339,27 @@ pub fn emit_tco_param(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let carrier = param_sig_type_node(
-            param.clone(),
-            generic_param_names.clone(),
-            source_indices.clone(),
-        );
-        let ty = emit_rust_param_type(
-            carrier,
-            generic_param_names.clone(),
-            shared_types,
-            source_indices.clone(),
-        );
+        let authored = param_node_type_expr(param.clone());
+        let ty = if ((authored.params.clone().len() as i64) > 0) {
+            let carrier = if ((generic_param_names.clone().len() as i64) > 0) {
+                authored
+            } else {
+                child_type_node(authored)
+            };
+            emit_rust_param_type(
+                carrier,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        } else {
+            render_rust_param_sig_type(
+                param.clone(),
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        };
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -5496,17 +5531,27 @@ pub fn emit_param(
     read_only_params: Rc<std::collections::BTreeSet<String>>,
 ) -> String {
     {
-        let carrier = param_sig_type_node(
-            param.clone(),
-            generic_param_names.clone(),
-            source_indices.clone(),
-        );
-        let ty = emit_rust_param_type(
-            carrier,
-            generic_param_names.clone(),
-            shared_types,
-            source_indices.clone(),
-        );
+        let authored = param_node_type_expr(param.clone());
+        let ty = if ((authored.params.clone().len() as i64) > 0) {
+            let carrier = if ((generic_param_names.clone().len() as i64) > 0) {
+                authored
+            } else {
+                child_type_node(authored)
+            };
+            emit_rust_param_type(
+                carrier,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        } else {
+            render_rust_param_sig_type(
+                param.clone(),
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        };
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         v2_rt::concat(
             v2_rt::concat(
