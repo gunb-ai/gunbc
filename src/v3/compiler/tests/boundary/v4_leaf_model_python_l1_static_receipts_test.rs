@@ -5,8 +5,15 @@
 //! `src/v4/test/claim/language_model/python_l1_static.dag`.
 //! Host runners: `scripts/v4-leaf-model-python-l1-{static,mypy-static}-verify.sh`.
 //!
-//! **P5 receipt:** temporary hand-Rust boundary ratchet until T-22 modeled
-//! `run_target_verification` executes the static receipts from `.dag`.
+//! **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+//! deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` + **TASKS.md** T-22/T-38 (Runtime/TestClaim
+//! verdict surface; interim host runners above). Lane: Python RCA release-minimum
+//! (#4137 §11.8) L1 static structural pyright/mypy fixture-scale receipts.
+//! **Dissolution:** delete when modeled `run_target_verification` exercises
+//! `src/v4/test/claim/language_model/python_l1_static.dag` and static profiles without
+//! this hand-Rust bridge. Same-PR SG-0 census literal: `sg0_census_test.rs`
+//! `EXPECTED_HAND_AUTHORED_TEST` entry for this path.
 
 const FIXTURE_DAG: &str = include_str!("../../../../v4/lens/leaf_model_verification.dag");
 const PYRIGHT_DAG: &str = include_str!("../../../../v4/extdeps/typecheckers/pyright.dag");
