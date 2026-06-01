@@ -2082,7 +2082,6 @@ fn target_type_expr_arrow_emitted(
 // ═══ SG-5 — TargetCollectionRealization (canonical home) ═══
 
 data target_model_edge_collection_realization: Symbol = target_model_edge_collection_realization
-data target_model_edge_free_monoid_collection_realization: Symbol = target_model_edge_free_monoid_collection_realization
 
 // 🟢 coproduct dissolution — SG-5 collection representation kind axis (M6 product; no duplicate-payload arms).
 type TargetCollectionReprKind
