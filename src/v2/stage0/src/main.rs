@@ -9,9 +9,9 @@ use std::rc::Rc;
 use v2_compiler::cli_run;
 use v2_compiler::v2_compiler_artifact;
 use v2_compiler::v2_compiler_compile;
-use v2_compiler::v2_compiler_compile::{PipelineResult, ResolvedPipelineResult};
+use v2_compiler::v2_compiler_compile::PipelineResult;
 use v2_compiler::v2_std_core::{
-    authored_name_at, byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at,
     CompilerDiagnostic, NewlineIndex,
 };
 
@@ -230,60 +230,6 @@ fn hard_errors(result: &PipelineResult) -> bool {
     })
 }
 
-fn pipeline_result_from_resolved(
-    resolved: &ResolvedPipelineResult,
-    target: v2_compiler_artifact::RenderTarget,
-) -> PipelineResult {
-    match resolved.graph.clone() {
-        None => PipelineResult {
-            files: Rc::new(vec![]),
-            diagnostics: resolved.diagnostics.clone(),
-            complexity: resolved.complexity.clone(),
-            ownership: resolved.ownership.clone(),
-            artifact_plan: v2_compiler_compile::empty_artifact_plan(),
-            newline_indices: resolved.newline_indices.clone(),
-        },
-        Some(typed) => {
-            let artifact_plan = v2_compiler_compile::default_artifact_plan(
-                Rc::new({
-                    let mut names = Vec::new();
-                    for m in typed.modules.iter() {
-                        names.push(authored_name_at(
-                            resolved.source_indices.clone(),
-                            m.module.clone(),
-                        ));
-                    }
-                    names
-                }),
-                target,
-            );
-            let emit_result =
-                v2_compiler_compile::emit_from_artifact_plan(typed, artifact_plan.clone());
-            let emit_errors = emit_result
-                .diagnostics
-                .iter()
-                .any(|d| v2_compiler::v2_std_core::is_error_diagnostic(d.diagnostic.clone()));
-            PipelineResult {
-                files: if emit_errors {
-                    Rc::new(vec![])
-                } else {
-                    emit_result.files.clone()
-                },
-                diagnostics: Rc::new({
-                    let mut diagnostics = Vec::new();
-                    diagnostics.extend(resolved.diagnostics.iter().cloned());
-                    diagnostics.extend(emit_result.diagnostics.iter().cloned());
-                    diagnostics
-                }),
-                complexity: resolved.complexity.clone(),
-                ownership: resolved.ownership.clone(),
-                artifact_plan,
-                newline_indices: resolved.newline_indices.clone(),
-            }
-        }
-    }
-}
-
 fn main() {
     let cli = Cli::parse();
     let _result = match cli.command {
@@ -397,7 +343,8 @@ fn main() {
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
                 for (name, render_target) in render_targets {
-                    let result = pipeline_result_from_resolved(&resolved, render_target);
+                    let result =
+                        v2_compiler_compile::emit_resolved_for_target(resolved.clone(), render_target);
                     let target_output_dir = format!("{}/{}", output_dir, name);
                     write_output_files(&target_output_dir, &result);
                     eprintln!(
