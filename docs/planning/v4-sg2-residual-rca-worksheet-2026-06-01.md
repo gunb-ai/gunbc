@@ -61,7 +61,7 @@ Deepest unsound boundary:
   The approved SG-2 carrier describes target type-expression projection, but residual sites still read raw carrier names from alias/cache/signature paths instead of carrying the instantiated type expression to those sites.
 
 Systemic fix:
-  Extend the SG-2 implementation brief to require every emitted type site to receive a `TargetTypeExpression` value, including cached statics and generated closure annotations. Fallback to raw carrier name is allowed only as a typed `ProjectionAbsent` diagnostic/shim with dissolve-on, not as successful Rust text.
+  Extend the SG-2 implementation brief to require every emitted type site to receive a `TargetTypeExpression` value, including cached statics and generated closure annotations. Fallback to raw carrier name is allowed only as a typed `ProjectionAbsent` diagnostic/shim with explicit dissolve-on: aliases, cached statics, function signatures, constructor result types, and closure annotations all consume `TargetTypeExpression`, and the `ProbePair<X,Y>` five-site probe passes. It is not successful Rust text.
 
 Non-goals:
   - Name-keyed arity table for Outcome/TestClaimRun/Witness.
@@ -86,4 +86,3 @@ Metric allowed only as secondary:
 ## Dispatch Decision
 
 Do not create a new SG-2 substrate carrier. The residual is a **consumer coverage slice** for the already-approved `TargetTypeExpressionProjection`: aliases, caches, signatures, and closure annotations must all consume the same projected type expression. Target Realization owns the consumer coverage; Runtime/TestClaim owns the falsification receipt.
-

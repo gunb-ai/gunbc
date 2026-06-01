@@ -62,7 +62,6 @@ Local result: v2 emit clean and E0308/SG-2/stable-band counts matched #4140 exac
 ## Fanout Order
 
 1. **SG-8:** wait for §8 ratification of `docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md`; then spawn implementation worker for `emit_imports` defining-module authority + parametric alias emission.
-2. **SG-2 residual:** fan out to Target Realization only after confirming the already-approved `TargetTypeExpressionProjection` implementation surface covers aliases, cached statics, and function signatures.
+2. **SG-2 residual:** fan out to Target Realization only after confirming the already-approved `TargetTypeExpressionProjection` implementation surface covers aliases, cached statics, function signatures, closure annotations, and constructor result types.
 3. **E0308 P0 slices:** route String/Symbol to SG-1b, Rc/raw/Box to SG-RC-LAYERING, FreeMonoid/Vec to SG-COLLECTION-PROJECTION, and TestClaim double-wrap to ownership/use-site rows. Do not dispatch "fix E0308".
 4. **Stable bands:** dispatch only the bands with independent single-authority facts (`E0277` trait eligibility, `E0560` record-field admission, `E0121` placeholder ban). Leave second-order bands attached to their primary route.
-
