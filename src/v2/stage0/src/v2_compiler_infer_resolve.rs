@@ -731,36 +731,6 @@ pub fn resolve_node_bounded(
                         }
                         __result
                     });
-<<<<<<< HEAD
-=======
-                    let applied_type_args = Rc::new(Node {
-                        name: type_name.clone(),
-                        span: n.span.clone(),
-                        ident_span: n.ident_span.clone(),
-                        children: resolved_args.clone(),
-                        connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: None,
-                        return_cardinality: n.return_cardinality.clone(),
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    });
-                    let applied_prop_span = kernel_span("__applied_type_args".to_string());
-                    let applied_type_args_property = make_field_init_node(
-                        "__applied_type_args".to_string(),
-                        applied_type_args,
-                        n.span.clone(),
-                        applied_prop_span,
-                    );
->>>>>>> origin/main
                     let slot_bindings = Rc::new(
                         decl.params
                             .clone()
@@ -1444,17 +1414,9 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
         Rc::new(ParamResult {
             param: make_resolved_param_node(
                 param_node_name_at(param.clone(), env.source_indices.clone()),
-<<<<<<< HEAD
                 rendered_type,
-                match default_resolved.clone() {
-                    Some(result) => Some(result.expr.clone()),
-                    None => None,
-                },
-=======
-                type_resolved.clone(),
                 default_expr,
                 v2_rt::concat(param.properties.clone(), type_resolved.properties.clone()),
->>>>>>> origin/main
                 param.span.clone(),
                 node_name_span(param.clone()),
             ),
@@ -2790,41 +2752,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         let resolved_ret = if (item.inferred.clone() == None) {
             None
         } else {
-            match item.inferred.clone().unwrap().as_ref().clone() {
-                InferredNode::Resolved {
-                    node: authored_ret, ..
-                } => {
-                    if ((authored_ret.children.clone().len() as i64) > 0) {
-                        Some(Rc::new(InferredNode::Resolved {
-                            node: Rc::new(Node {
-                                name: authored_ret.name.clone(),
-                                span: authored_ret.span.clone(),
-                                ident_span: authored_ret.ident_span.clone(),
-                                children: authored_ret.children.clone(),
-                                connective: authored_ret.connective.clone(),
-                                params: authored_ret.params.clone(),
-                                inferred: Some(Rc::new(Resolved {
-                                    node: ret_resolved.clone(),
-                                })),
-                                return_cardinality: authored_ret.return_cardinality.clone(),
-                                uses: authored_ret.uses.clone(),
-                                body: authored_ret.body.clone(),
-                                transport: authored_ret.transport.clone(),
-                                properties: ret_resolved.properties.clone(),
-                                type_annotation: authored_ret.type_annotation.clone(),
-                                is_self_recursive: authored_ret.is_self_recursive,
-                                has_non_tail_self_call: authored_ret.has_non_tail_self_call.clone(),
-                                match_pattern: authored_ret.match_pattern.clone(),
-                                expr_data: authored_ret.expr_data.clone(),
-                                ident: None,
-                            }),
-                        }))
-                    } else {
-                        Some(Rc::new(InferredNode::Resolved { node: ret_resolved }))
-                    }
-                }
-                _ => Some(Rc::new(InferredNode::Resolved { node: ret_resolved })),
-            }
+            Some(Rc::new(InferredNode::Resolved { node: ret_resolved }))
         };
         let use_results = Rc::new({
             let mut __result = Vec::new();
@@ -2888,35 +2816,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         let resolved_anno = if (item.type_annotation.clone() == None) {
             None
         } else {
-            {
-                let authored_anno = item.type_annotation.clone().unwrap();
-                if ((authored_anno.children.clone().len() as i64) > 0) {
-                    Some(Rc::new(Node {
-                        name: authored_anno.name.clone(),
-                        span: authored_anno.span.clone(),
-                        ident_span: authored_anno.ident_span.clone(),
-                        children: authored_anno.children.clone(),
-                        connective: authored_anno.connective.clone(),
-                        params: authored_anno.params.clone(),
-                        inferred: Some(Rc::new(Resolved {
-                            node: anno_resolved.resolved.clone(),
-                        })),
-                        return_cardinality: authored_anno.return_cardinality.clone(),
-                        uses: authored_anno.uses.clone(),
-                        body: authored_anno.body.clone(),
-                        transport: authored_anno.transport.clone(),
-                        properties: anno_resolved.resolved.clone().properties.clone(),
-                        type_annotation: authored_anno.type_annotation.clone(),
-                        is_self_recursive: authored_anno.is_self_recursive,
-                        has_non_tail_self_call: authored_anno.has_non_tail_self_call.clone(),
-                        match_pattern: authored_anno.match_pattern.clone(),
-                        expr_data: authored_anno.expr_data.clone(),
-                        ident: None,
-                    }))
-                } else {
-                    Some(anno_resolved.resolved.clone())
-                }
-            }
+            Some(anno_resolved.resolved.clone())
         };
         let anno_diags = anno_resolved.diagnostics.clone();
         let transport_resolved = if (item.transport.clone() == None) {

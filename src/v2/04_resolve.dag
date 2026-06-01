@@ -304,12 +304,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
-<<<<<<< HEAD
-=======
-    let applied_type_args = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: none, return_cardinality: n.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    let applied_prop_span = kernel_span(name: "__applied_type_args")
-    let applied_type_args_property = make_field_init_node(name: "__applied_type_args", value: applied_type_args, span: n.span, name_span: applied_prop_span)
->>>>>>> origin/main
     let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
       let idx = pair.first
       let slot_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
@@ -520,20 +514,11 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
   ParamResult {
     param: make_resolved_param_node(
       name: param_node_name_at(n: param, source_indices: env.source_indices),
-<<<<<<< HEAD
       type_expr: rendered_type,
-      default_value: match default_resolved {
-        Some { value: result } => Some { value: result.expr }
-        None => none
-      },
-      span: param.span, name_span: node_name_span(n: param)
-=======
-      type_expr: type_resolved,
       default_value: default_expr,
       properties: concat(param.properties, type_resolved.properties),
       span: param.span,
       name_span: node_name_span(n: param)
->>>>>>> origin/main
     ),
     diagnostics: concat(type_diags, default_diags)
   }
@@ -903,17 +888,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let ret_result = resolve_optional_node(n: item.inferred, env: env, module_name: module_name)
   let ret_resolved = ret_result.resolved
   let ret_diags = ret_result.diagnostics
-  let resolved_ret = if item.inferred == none { none } else {
-    match item.inferred.value {
-      Resolved { node: authored_ret } =>
-        if authored_ret.children |> count > 0 {
-          Some { value: Resolved { node: Node { name: authored_ret.name, span: authored_ret.span, ident_span: authored_ret.ident_span, children: authored_ret.children, connective: authored_ret.connective, params: authored_ret.params, inferred: Some { value: Resolved { node: ret_resolved } }, return_cardinality: authored_ret.return_cardinality, uses: authored_ret.uses, body: authored_ret.body, transport: authored_ret.transport, properties: ret_resolved.properties, type_annotation: authored_ret.type_annotation, is_self_recursive: authored_ret.is_self_recursive, has_non_tail_self_call: authored_ret.has_non_tail_self_call, match_pattern: authored_ret.match_pattern, expr_data: authored_ret.expr_data } } }
-        } else {
-          Some { value: Resolved { node: ret_resolved } }
-        }
-      _ => Some { value: Resolved { node: ret_resolved } }
-    }
-  }
+  let resolved_ret = if item.inferred == none { none } else { Some { value: Resolved { node: ret_resolved } } }
 
   let use_results = map(item.uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
   let resolved_uses = map(use_results, ur => ur.resource_use)
@@ -932,14 +907,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   } else {
     resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
   }
-  let resolved_anno = if item.type_annotation == none { none } else {
-    let authored_anno = item.type_annotation.value
-    if authored_anno.children |> count > 0 {
-      Some { value: Node { name: authored_anno.name, span: authored_anno.span, ident_span: authored_anno.ident_span, children: authored_anno.children, connective: authored_anno.connective, params: authored_anno.params, inferred: Some { value: Resolved { node: anno_resolved.resolved } }, return_cardinality: authored_anno.return_cardinality, uses: authored_anno.uses, body: authored_anno.body, transport: authored_anno.transport, properties: anno_resolved.resolved.properties, type_annotation: authored_anno.type_annotation, is_self_recursive: authored_anno.is_self_recursive, has_non_tail_self_call: authored_anno.has_non_tail_self_call, match_pattern: authored_anno.match_pattern, expr_data: authored_anno.expr_data } }
-    } else {
-      Some { value: anno_resolved.resolved }
-    }
-  }
+  let resolved_anno = if item.type_annotation == none { none } else { Some { value: anno_resolved.resolved } }
   let anno_diags = anno_resolved.diagnostics
 
   let transport_resolved = if item.transport == none {

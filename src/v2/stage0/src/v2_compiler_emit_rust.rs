@@ -238,22 +238,7 @@ pub fn render_rust_applied_type_arg(
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
-<<<<<<< HEAD
-        _ => {
-            if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) == 0))
-            {
-                coerce_primitive_type(
-                    RenderTarget::Rust,
-                    authored_name_at(source_indices, n.clone()),
-                )
-            } else {
-                render_rust_type(n.clone(), shared_types, source_indices)
-            }
-        }
-=======
         _ => render_rust_decl_type(n.clone(), generic_param_names, shared_types, source_indices),
->>>>>>> origin/main
     }
 }
 
@@ -3677,73 +3662,17 @@ pub fn render_rust_type_with_applied_binding(
     ) {
         Some(applied) => {
             if ((applied.children.clone().len() as i64) > 0) {
-<<<<<<< HEAD
-                let rendered = render_rust_applied_type(
-                    applied.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                );
-                let applied_name = authored_name_at(source_indices.clone(), applied.clone());
-                let resolved_is_wrapped = match n.inferred.clone().as_deref().cloned() {
-                    Some(Resolved { node: resolved, .. }) => rust_type_is_rc_wrapped(
-                        render_rust_type(resolved, shared_types.clone(), source_indices.clone()),
-                    ),
-                    _ => false,
-                };
-                if ((shared_types.contains(&applied_name) || resolved_is_wrapped)
-                    && !rust_type_is_rc_wrapped(rendered.clone()))
-                {
-                    wrap_shared_type(RenderTarget::Rust, rendered)
-                } else {
-                    rendered
-                }
-=======
                 render_rust_applied_type_shared(
                     applied.clone(),
                     Rc::new(vec![]),
                     shared_types,
                     source_indices.clone(),
                 )
->>>>>>> origin/main
             } else {
                 render_rust_type(n.clone(), shared_types, source_indices.clone())
             }
         }
-        None => match n.inferred.clone().as_deref().cloned() {
-            Some(Resolved { node: resolved, .. }) => match find_property(
-                resolved.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(applied) => {
-                    if ((applied.children.clone().len() as i64) > 0) {
-                        let rendered = render_rust_applied_type(
-                            applied.clone(),
-                            shared_types.clone(),
-                            source_indices.clone(),
-                        );
-                        let applied_name =
-                            authored_name_at(source_indices.clone(), applied.clone());
-                        let resolved_is_wrapped = rust_type_is_rc_wrapped(render_rust_type(
-                            resolved,
-                            shared_types.clone(),
-                            source_indices.clone(),
-                        ));
-                        if ((shared_types.contains(&applied_name) || resolved_is_wrapped)
-                            && !rust_type_is_rc_wrapped(rendered.clone()))
-                        {
-                            wrap_shared_type(RenderTarget::Rust, rendered)
-                        } else {
-                            rendered
-                        }
-                    } else {
-                        render_rust_type(n.clone(), shared_types, source_indices.clone())
-                    }
-                }
-                None => render_rust_type(n.clone(), shared_types, source_indices.clone()),
-            },
-            _ => render_rust_type(n.clone(), shared_types, source_indices.clone()),
-        },
+        None => render_rust_type(n.clone(), shared_types, source_indices.clone()),
     }
 }
 
@@ -5540,7 +5469,7 @@ pub fn emit_func_inferred(
     v2_rt::concat(
         v2_rt::concat(
             " -> Result<".to_string(),
-            render_rust_type_with_applied_binding(inferred, shared_types, source_indices),
+            render_rust_type(inferred, shared_types, source_indices),
         ),
         ", Box<dyn std::error::Error>>".to_string(),
     )
@@ -5582,11 +5511,7 @@ pub fn emit_rust_param_type(
             let param_types = Rc::new({
                 let mut __result = Vec::new();
                 for p in n.params.clone().iter().cloned() {
-<<<<<<< HEAD
-                    __result.push(render_rust_type_with_applied_binding(
-=======
                     __result.push(render_rust_fn_sig_type(
->>>>>>> origin/main
                         param_node_type_expr(p.clone()),
                         generic_param_names.clone(),
                         shared_types.clone(),
@@ -5597,22 +5522,12 @@ pub fn emit_rust_param_type(
             });
             let param_str = param_types.join(&", ".to_string());
             let ret_str = match n.inferred.clone().as_deref().cloned() {
-<<<<<<< HEAD
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    render_rust_type_with_applied_binding(
-                        rt.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                    )
-                }
-=======
                 Some(InferredNode::Resolved { node: rt, .. }) => render_rust_fn_sig_type(
                     rt.clone(),
                     generic_param_names.clone(),
                     shared_types.clone(),
                     source_indices.clone(),
                 ),
->>>>>>> origin/main
                 _ => "()".to_string(),
             };
             v2_rt::concat(
@@ -5627,23 +5542,12 @@ pub fn emit_rust_param_type(
             )
         }
     } else {
-<<<<<<< HEAD
-        {
-            let rendered = render_rust_type_with_applied_binding(
-                n.clone(),
-                shared_types.clone(),
-                source_indices.clone(),
-            );
-            rendered
-        }
-=======
         render_rust_fn_sig_type(
             n.clone(),
             generic_param_names.clone(),
             shared_types.clone(),
             source_indices.clone(),
         )
->>>>>>> origin/main
     }
 }
 
@@ -5690,11 +5594,7 @@ pub fn emit_inferred(
 ) -> String {
     v2_rt::concat(
         rust_items().return_arrow.clone(),
-<<<<<<< HEAD
-        render_rust_type_with_applied_binding(inferred, shared_types, source_indices),
-=======
         render_rust_fn_sig_type(inferred, generic_param_names, shared_types, source_indices),
->>>>>>> origin/main
     )
 }
 
@@ -16626,10 +16526,6 @@ pub fn emit_data_def(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-<<<<<<< HEAD
-        let raw_ty_str = render_rust_type_with_applied_binding(
-            type_node.clone(),
-=======
         let annotation_type_node = type_node.clone();
         let render_type_node = if ((annotation_type_node.children.clone().len() as i64) > 0) {
             annotation_type_node.clone()
@@ -16641,7 +16537,6 @@ pub fn emit_data_def(
         };
         let raw_ty_str = render_rust_type_with_applied_binding(
             render_type_node,
->>>>>>> origin/main
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
@@ -16808,7 +16703,7 @@ pub fn emit_data_def_body(
     needs_rc: bool,
 ) -> String {
     {
-        let raw_ty_str = render_rust_type_with_applied_binding(
+        let raw_ty_str = render_rust_type(
             type_node.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
