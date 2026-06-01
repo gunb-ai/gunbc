@@ -1,0 +1,57 @@
+// src/v4/test/claim/language_model/go_r3_external.dag
+// Scope: Phase 1 R3-external — go.dag Symbol atom realization projection vs Go compiler.
+// Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-go-r3-external-verify.sh.
+
+module v4.test.claim.language_model.go_r3_external
+
+import v4.extdeps.languages.go { go_atom_realization_symbol }
+import v4.lens.leaf_model_verification {
+  go_r3_external_fixture,
+  go_r3_external_falsification_fixture_source,
+  go_r3_external_happy_fixture_source
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.leaf_model_verification {
+  leaf_model_claim_go_r3_external_symbol_projection,
+  TargetCompileVerdict,
+  TargetCompileRejected,
+  target_diagnostic_go_too_many_conversion_args
+}
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Boundary,
+  manual_claim_anchor
+}
+
+data go_r3_external_claim_bool_true: Symbol = go_r3_external_claim_bool_true
+data go_r3_external_claim_bool_false: Symbol = go_r3_external_claim_bool_false
+
+fn go_r3_external_claim_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: go_r3_external_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: go_r3_external_claim_bool_false } }, children: [] }
+  }
+}
+
+data claim_go_r3_external_fixture_pair_wired: TestClaim = EqualsClaim {
+  label: "language_model/go_r3_external: fixture pair references go Symbol atom realization",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: go_r3_external_claim_bool_atom(b: true),
+  rhs: go_r3_external_claim_bool_atom(
+    b: go_r3_external_fixture().claim_id == leaf_model_claim_go_r3_external_symbol_projection
+      && go_r3_external_fixture().surface_spelling_fact == go_atom_realization_symbol
+      && go_r3_external_fixture().encoding_spelling_fact == go_atom_realization_symbol
+      && go_r3_external_fixture().happy.source == go_r3_external_happy_fixture_source
+      && go_r3_external_fixture().falsification.fixture.source == go_r3_external_falsification_fixture_source
+  ),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data go_r3_external_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
+  diagnostic_code: target_diagnostic_go_too_many_conversion_args
+}
