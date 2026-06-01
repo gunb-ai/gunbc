@@ -978,6 +978,7 @@ fn ci_testclaim_corpus_eval_command() -> CiCommand {
 data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/manual/**"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag"),
   ci_upsert_file_set_input(segment: "scripts/v4-testclaim-corpus-eval.sh")
 ]
 
