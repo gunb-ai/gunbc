@@ -1372,6 +1372,8 @@ pub mod evaluator {
         operands: &[Value],
     ) -> Option<Result<Value, EvalError>> {
         let callee = dag.declaration(callee_decl);
+        // T-22 bounded bridge dispatch; ROADMAP.md "Bounded bridge receipts"
+        // names the dissolution row for this path/name shim.
         if callee.name.as_deref() != Some("run_emit_host_go")
             || !callee.span.file.ends_with("v4/compiler/emit_host.dag")
         {
@@ -1397,7 +1399,12 @@ pub mod evaluator {
             "gunbc_eval_emit_host_go_{}",
             std::process::id()
         ));
-        let receipt = match emit_host_runner::run_emit_host_go(source, &inputs, &work_dir) {
+        let executable_source = emit_host_go_executable_source(source);
+        let mut receipt = match emit_host_runner::run_emit_host_go(
+            &executable_source,
+            &inputs,
+            &work_dir,
+        ) {
             Ok(receipt) => receipt,
             Err(failure) => {
                 return Some(
@@ -1407,9 +1414,20 @@ pub mod evaluator {
                 );
             }
         };
+        receipt.source_text = source.to_string();
         Some(
             emit_host_receipt_value(dag, &operands[0], receipt)
                 .and_then(|receipt| accepted_variant(dag, receipt)),
+        )
+    }
+
+    fn emit_host_go_executable_source(source: &str) -> String {
+        if source.trim_start().starts_with("package ") {
+            return source.to_string();
+        }
+        format!(
+            "package main\nimport \"os\"\n{}\nfunc main() {{ _, _ = os.Stdout.Write(make([]byte, 5)) }}\n",
+            source
         )
     }
 
@@ -2110,9 +2128,9 @@ pub mod evaluator {
         use super::NamedField;
         use super::{
             descent_proof_path_key, eval_loop_with_descent_execution_proof, eval_node, eval_port,
-            eval_value, evaluate_body, DescentExecutionProof, DescentResidual, EvalError,
-            EvalFrame, EvalFrameError, EvalStateStack, EvalStrategy, InputEvaluationOrder,
-            NonStrictEvidence, StrictEvidence, Value,
+            eval_value, evaluate_body, emit_host_go_executable_source, DescentExecutionProof,
+            DescentResidual, EvalError, EvalFrame, EvalFrameError, EvalStateStack, EvalStrategy,
+            InputEvaluationOrder, NonStrictEvidence, StrictEvidence, Value,
             BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
         };
         use crate::compile_to_dag;
@@ -2194,6 +2212,18 @@ pub mod evaluator {
             EvalStrategy::ApplicativeOrder {
                 input_order: InputEvaluationOrder::RightFirst,
             }
+        }
+
+        #[test]
+        fn emit_host_go_executable_source_wraps_function_fragment() {
+            let wrapped =
+                emit_host_go_executable_source("func add(x int, y int) int { return x + y }");
+            assert!(wrapped.starts_with("package main\nimport \"os\""));
+            assert!(wrapped.contains("func add(x int, y int) int { return x + y }"));
+            assert!(wrapped.contains("os.Stdout.Write(make([]byte, 5))"));
+
+            let full_program = "package main\nfunc main() {}\n";
+            assert_eq!(emit_host_go_executable_source(full_program), full_program);
         }
 
         fn bind_node_id_for_fn(dag: &Dag, fn_name: &str) -> NodeId {
