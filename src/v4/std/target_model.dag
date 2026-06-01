@@ -736,11 +736,12 @@ fn target_constructor_template_from_node(
 fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
   match edge.label {
     Named { name: n } =>
-      // Strip realization-catalog edges (atom SG-1 + signature SG-1b) so a row's encoded
-      // host_bundle (pre-catalog core) structurally matches core(live host) regardless of
-      // which catalogs the live host carries.
+      // Strip live-only catalog edges (SG-1 atom, SG-1b signature, SG-RC reference/use-site)
+      // so row-encoded host_bundle (staging core) matches target_model_bundle_core(live host).
       match n == target_model_edge_atom_realizations
-        || n == target_model_edge_signature_realizations {
+        || n == target_model_edge_signature_realizations
+        || n == target_model_edge_reference_layer_tokens
+        || n == target_model_edge_use_site_ownership_realizations {
         true => acc
         false => list_snoc_item(xs: acc, item: edge)
       }
