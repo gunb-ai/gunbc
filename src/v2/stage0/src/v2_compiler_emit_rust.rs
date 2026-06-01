@@ -3478,7 +3478,23 @@ pub fn render_rust_type_with_applied_binding(
                 render_rust_type(n.clone(), shared_types, source_indices.clone())
             }
         }
-        None => render_rust_type(n.clone(), shared_types, source_indices.clone()),
+        None => match n.inferred.clone().as_deref().cloned() {
+            Some(Resolved { node: resolved, .. }) => match find_property(
+                resolved.properties.clone(),
+                "__applied_type_args".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(applied) => {
+                    if ((applied.children.clone().len() as i64) > 0) {
+                        render_rust_applied_type(applied.clone(), shared_types, source_indices.clone())
+                    } else {
+                        render_rust_type(n.clone(), shared_types, source_indices.clone())
+                    }
+                }
+                None => render_rust_type(n.clone(), shared_types, source_indices.clone()),
+            },
+            _ => render_rust_type(n.clone(), shared_types, source_indices.clone()),
+        },
     }
 }
 
