@@ -39,7 +39,7 @@ pub fn try_dispatch_emit_host_rust(
         Ok(source) => source,
         Err(err) => return Some(Err(err)),
     };
-    let inputs = match emit_host_fixture_inputs(&operands[2]) {
+    let inputs = match emit_host_fixture_inputs(dag, &operands[2]) {
         Ok(inputs) => inputs,
         Err(err) => return Some(Err(err)),
     };
@@ -49,7 +49,7 @@ pub fn try_dispatch_emit_host_rust(
     ));
     let receipt = match emit_host_runner::run_emit_host_rust(source, &inputs, &work_dir) {
         Ok(receipt) => receipt,
-        Err(_setup) => return Some(run_emit_host_setup_rejected(dag)),
+        Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
     };
     let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
         Ok(id) => id,
@@ -72,7 +72,7 @@ pub fn try_dispatch_emit_host_rust(
         Err(err) => return Some(Err(err)),
     };
     Some(
-        eval_callable_declaration(
+        crate::evaluator::eval_callable_declaration(
             dag,
             callee,
             vec![
@@ -106,20 +106,13 @@ fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
         })
 }
 
-fn eval_callable_declaration(
+fn run_emit_host_setup_rejected(
     dag: &Dag,
-    callee_decl: DeclarationId,
-    operands: Vec<Value>,
-    state: &mut EvalStateStack<Value>,
-    strategy: &EvalStrategy,
+    setup: &HostSetupFailure,
 ) -> Result<Value, EvalError> {
-    crate::evaluator::eval_callable_declaration(dag, callee_decl, operands, state, strategy)
-}
-
-fn run_emit_host_setup_rejected(dag: &Dag) -> Result<Value, EvalError> {
     rejected_outcome_variant(
         dag,
-        non_empty_diagnostics_singleton(dag, emit_host_setup_failure_diagnostic(dag)?)?,
+        non_empty_diagnostics_singleton(dag, host_setup_failure_diagnostic(dag, setup)?)?,
     )
 }
 
@@ -133,34 +126,123 @@ fn expect_string_operand(value: &Value) -> Result<&str, EvalError> {
 }
 
 fn emit_host_fixture_inputs(
+    dag: &Dag,
     value: &Value,
 ) -> Result<emit_host_runner::EmitHostFixtureInputs, EvalError> {
-    let root = match value {
+    let root = inputs_root_field(value)?;
+    let pin = host_pin_from_inputs_root(dag, root)?;
+    Ok(emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: pin.clone(),
+        // Substrate passes only `claim_input_root` in `Inputs.root` for `run_emit_host` today
+        // (`emit_host.dag` `run_test_claim_emit_vs_eval_for_claim`); runner validates both pins.
+        expected_eval_root: pin,
+    })
+}
+
+fn inputs_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, EvalError> {
+    match inputs {
         Value::RecordValue(fields) => fields
             .iter()
             .find(|field| field.label == "root")
             .map(|field| &field.value)
             .ok_or(EvalError::BadTransformOperands {
                 reason: "expected Inputs.root field",
-            })?,
-        _ => {
-            return Err(EvalError::BadTransformOperands {
-                reason: "expected Inputs record",
-            });
-        }
-    };
+            }),
+        _ => Err(EvalError::BadTransformOperands {
+            reason: "expected Inputs record",
+        }),
+    }
+}
+
+/// Project `Inputs.root: Node` (eval carrier) to a non-empty runner pin string.
+fn host_pin_from_inputs_root(dag: &Dag, root: &Value) -> Result<String, EvalError> {
     let pin = match root {
         Value::LiteralValue(LiteralBits::String(s)) => s.clone(),
-        _ => {
-            return Err(EvalError::BadTransformOperands {
-                reason: "expected Inputs.root string literal",
-            });
-        }
+        node => node_primary_symbol(dag, node)
+            .unwrap_or_else(|| value_structural_digest(node, dag)),
     };
-    Ok(emit_host_runner::EmitHostFixtureInputs {
-        claim_input_root: pin.clone(),
-        expected_eval_root: pin,
-    })
+    if pin.is_empty() {
+        return Err(EvalError::BadTransformOperands {
+            reason: "Inputs.root projected to empty host pin",
+        });
+    }
+    Ok(pin)
+}
+
+fn node_primary_symbol(dag: &Dag, value: &Value) -> Option<String> {
+    let fields = record_fields(value)?;
+    let kind = fields.iter().find(|f| f.label == "kind")?;
+    connective_atom_symbol(dag, &kind.value)
+}
+
+fn connective_atom_symbol(dag: &Dag, value: &Value) -> Option<String> {
+    match value {
+        Value::RecordValue(fields) => fields
+            .iter()
+            .find(|f| f.label == "connective")
+            .and_then(|f| atom_identity_literal(&f.value)),
+        Value::VariantValue { tag, payload } => {
+            let arm = dag.declaration(*tag).name.as_deref()?;
+            if arm == "Atom" {
+                atom_identity_literal(payload)
+            } else {
+                connective_atom_symbol(dag, payload)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn atom_identity_literal(value: &Value) -> Option<String> {
+    match value {
+        Value::RecordValue(fields) => fields
+            .iter()
+            .find(|f| f.label == "identity")
+            .and_then(|f| match &f.value {
+                Value::LiteralValue(LiteralBits::String(s)) => Some(s.clone()),
+                _ => None,
+            }),
+        Value::VariantValue { payload, .. } => atom_identity_literal(payload),
+        _ => None,
+    }
+}
+
+fn record_fields(value: &Value) -> Option<&[NamedField]> {
+    match value {
+        Value::RecordValue(fields) => Some(fields),
+        Value::VariantValue { payload, .. } => record_fields(payload),
+        _ => None,
+    }
+}
+
+/// Deterministic structural digest for substrate `Node` values (no `Debug`).
+fn value_structural_digest(value: &Value, dag: &Dag) -> String {
+    match value {
+        Value::LiteralValue(LiteralBits::String(s)) => format!("S:{s}"),
+        Value::LiteralValue(LiteralBits::Int(i)) => format!("I:{i}"),
+        Value::LiteralValue(LiteralBits::Bool(b)) => format!("B:{b}"),
+        Value::RecordValue(fields) => {
+            let mut parts: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{}:{}", f.label, value_structural_digest(&f.value, dag)))
+                .collect();
+            parts.sort();
+            format!("R{{{}}}", parts.join(","))
+        }
+        Value::VariantValue { tag, payload } => {
+            let arm = dag
+                .declaration(*tag)
+                .name
+                .as_deref()
+                .unwrap_or("?");
+            format!(
+                "V:{arm}:{}",
+                value_structural_digest(payload, dag)
+            )
+        }
+        Value::NodeRef(id) => format!("N:{id:?}"),
+        Value::CardinalityValue(bound) => format!("C:{bound:?}"),
+    }
 }
 
 fn variant_decl_id(
@@ -474,8 +556,19 @@ fn emit_host_port_diagnostic(dag: &Dag, reason: &str) -> Result<Value, EvalError
     ]))
 }
 
-fn emit_host_setup_failure_diagnostic(dag: &Dag) -> Result<Value, EvalError> {
-    emit_host_port_diagnostic(dag, "emit_host_exit_not_ok")
+fn host_setup_failure_reason(failure: &HostSetupFailure) -> &'static str {
+    match failure {
+        HostSetupFailure::SpawnFailed { .. } => "emit_host_setup_spawn_failed",
+        HostSetupFailure::StdoutPipeMissing { .. } => "emit_host_setup_stdout_pipe_missing",
+        HostSetupFailure::StderrPipeMissing { .. } => "emit_host_setup_stderr_pipe_missing",
+        HostSetupFailure::TryWaitFailed { .. } => "emit_host_setup_try_wait_failed",
+        HostSetupFailure::StreamReadFailed { .. } => "emit_host_setup_stream_read_failed",
+        HostSetupFailure::WorkDirCreateFailed { .. } => "emit_host_setup_work_dir_create_failed",
+        HostSetupFailure::ManifestWriteFailed { .. } => "emit_host_setup_manifest_write_failed",
+        HostSetupFailure::SourceWriteFailed { .. } => "emit_host_setup_source_write_failed",
+        HostSetupFailure::EmptyClaimInputRoot => "emit_host_setup_empty_claim_input_root",
+        HostSetupFailure::EmptyExpectedEvalRoot => "emit_host_setup_empty_expected_eval_root",
+    }
 }
 
 fn host_logical_failure_diagnostic(
@@ -490,8 +583,11 @@ fn host_logical_failure_diagnostic(
     emit_host_port_diagnostic(dag, reason)
 }
 
-fn host_setup_failure_diagnostic(dag: &Dag, _failure: &HostSetupFailure) -> Result<Value, EvalError> {
-    emit_host_setup_failure_diagnostic(dag)
+fn host_setup_failure_diagnostic(
+    dag: &Dag,
+    failure: &HostSetupFailure,
+) -> Result<Value, EvalError> {
+    emit_host_port_diagnostic(dag, host_setup_failure_reason(failure))
 }
 
 fn witness_holds_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
@@ -547,21 +643,50 @@ fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::evaluator::EvalError;
-    use emit_host_runner::HostLogicalFailure;
+    use crate::dag::Dag;
+    use emit_host_runner::HostSetupFailure;
+
+    fn conj_node_value() -> Value {
+        Value::RecordValue(vec![
+            NamedField {
+                label: "kind".to_string(),
+                value: Value::RecordValue(vec![NamedField {
+                    label: "connective".to_string(),
+                    value: Value::RecordValue(vec![]),
+                }]),
+            },
+            NamedField {
+                label: "children".to_string(),
+                value: Value::RecordValue(vec![]),
+            },
+        ])
+    }
 
     #[test]
-    fn emit_host_fixture_inputs_rejects_non_string_root() {
-        let err = emit_host_fixture_inputs(&Value::RecordValue(vec![NamedField {
+    fn emit_host_fixture_inputs_accepts_node_shaped_inputs_root() {
+        let dag = Dag::new();
+        let inputs = Value::RecordValue(vec![NamedField {
             label: "root".to_string(),
-            value: Value::LiteralValue(LiteralBits::Int("1".to_string())),
-        }]))
-        .expect_err("non-string root");
-        assert!(matches!(
-            err,
-            EvalError::BadTransformOperands {
-                reason: "expected Inputs.root string literal",
-            }
-        ));
+            value: conj_node_value(),
+        }]);
+        let pins = emit_host_fixture_inputs(&dag, &inputs).expect("node-shaped Inputs.root");
+        assert!(!pins.claim_input_root.is_empty());
+        assert_eq!(pins.claim_input_root, pins.expected_eval_root);
+    }
+
+    #[test]
+    fn host_setup_failure_reason_maps_variant() {
+        assert_eq!(
+            host_setup_failure_reason(&HostSetupFailure::EmptyClaimInputRoot),
+            "emit_host_setup_empty_claim_input_root"
+        );
+    }
+
+    #[test]
+    fn value_structural_digest_is_nonempty_for_node_record() {
+        let dag = Dag::new();
+        let digest = value_structural_digest(&conj_node_value(), &dag);
+        assert!(digest.starts_with("R{"));
+        assert!(digest.len() > 4);
     }
 }
