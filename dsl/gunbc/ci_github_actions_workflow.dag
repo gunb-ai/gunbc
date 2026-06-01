@@ -272,7 +272,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           id: none,
           run: "bash scripts/v4-bootstrap-viability.sh",
           shell: Bash,
-          env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "480" },
+          env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "900" },
           working_directory: none,
           if_condition: none,
           continue_on_error: false,

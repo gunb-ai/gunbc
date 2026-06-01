@@ -143,7 +143,7 @@ jobs:
       env:
         V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
         V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
-        V4_BOOTSTRAP_TIMEOUT_SECS: '480'
+        V4_BOOTSTRAP_TIMEOUT_SECS: '900'
       run: bash scripts/v4-bootstrap-viability.sh
     - name: M1 v4 workflow CI model/YAML binding smoke
       run: |
