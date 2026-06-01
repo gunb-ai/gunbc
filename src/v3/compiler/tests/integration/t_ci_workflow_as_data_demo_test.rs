@@ -37,9 +37,8 @@
 //! `reflect_behavior_list(full_bootstrap.nodes)` even though `behavior_spine` / `is_empty` are
 //! live on the carrier type.
 //!
-//! **INVARIANTS P5 — checkable receipt:** hand-Rust integration coverage here is transitional T-PB-B
-//! surface; dissolution target is `.dag` `TestClaim` data per `sg0_census_test.rs` R1C-E notes.
-//! This crate fails to build if the cited worker brief is removed from the worktree.
+//! **INVARIANTS P5:** hand-Rust integration coverage here is transitional T-PB-B surface;
+//! dissolution target is `.dag` `TestClaim` data per `sg0_census_test.rs` R1C-E notes.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
