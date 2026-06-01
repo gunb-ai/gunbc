@@ -2250,39 +2250,59 @@ fn target_type_expr_arrow_emitted_named(
 }
 
 fn target_type_expr_arrow_labeled_codomain(node: Node) -> Outcome<Node> {
-  match find_named_child(root: node, name: target_type_expr_field_codomain) {
-    Accepted { value: child, diagnostics: d } =>
-      Accepted { value: child, diagnostics: d }
-    Rejected { diagnostics: _ } =>
+  match target_type_expr_arrow_wire_shape(node: node) {
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+      match find_named_child(root: node, name: target_type_expr_field_codomain) {
+        Accepted { value: child, diagnostics: dc } =>
+          Accepted {
+            value: child,
+            diagnostics: diagnostics_merge(outer: d, inner: dc)
+          }
+        Rejected { diagnostics: _ } =>
+          outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
 fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<TargetTypeExprArrowParamSlot>> {
-  bind_outcome(
-    o: target_type_expr_arrow_labeled_codomain(node: node),
-    f: fn(_codomain) {
-      Accepted {
-        value: fold(node.children, init: Empty, f: fn(acc, e) {
-          match e.label {
-            Named { name: label } =>
-              if label == target_type_expr_field_surface ||
-                label == target_type_expr_field_kind ||
-                label == target_type_expr_field_codomain {
-                acc
-              } else {
-                list_snoc_item(
-                  xs: acc,
-                  item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
-                )
-              }
-            Positional => acc
+  match target_type_expr_arrow_wire_shape(node: node) {
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+      bind_outcome(
+        o: target_type_expr_arrow_labeled_codomain(node: node),
+        f: fn(_codomain) {
+          if is_empty(xs: node_positional_child_targets(node: node)) {
+            Accepted {
+              value: fold(node.children, init: Empty, f: fn(acc, e) {
+                match e.label {
+                  Named { name: label } =>
+                    if label == target_type_expr_field_surface ||
+                      label == target_type_expr_field_kind ||
+                      label == target_type_expr_field_codomain {
+                      acc
+                    } else {
+                      list_snoc_item(
+                        xs: acc,
+                        item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
+                      )
+                    }
+                  Positional =>
+                    acc
+                }
+              }),
+              diagnostics: d
+            }
+          } else {
+            outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
           }
-        }),
-        diagnostics: None
-      }
-    }
-  )
+        }
+      )
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }
 
 // ═══ SG-5 — TargetCollectionRealization (canonical home) ═══

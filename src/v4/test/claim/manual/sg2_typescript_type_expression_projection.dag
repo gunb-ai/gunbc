@@ -30,6 +30,8 @@ import v4.extdeps.languages.typescript {
   ts_type_expression_projection
 }
 import v4.std.target_model {
+  target_type_expr_arrow_labeled_codomain,
+  target_type_expr_arrow_labeled_param_slots,
   target_type_expr_arrow_wire_shape,
   target_type_expr_emitted_wire_decode,
   TargetTypeExprArrowLabeledWire,
@@ -218,6 +220,17 @@ fn ts_sg2_arrow_mixed_wire_decode_rejects() -> Bool {
   }
 }
 
+fn ts_sg2_arrow_mixed_wire_labeled_accessors_reject() -> Bool {
+  match target_type_expr_arrow_labeled_codomain(node: ts_sg2_arrow_mixed_wire_emitted()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } =>
+      match target_type_expr_arrow_labeled_param_slots(node: ts_sg2_arrow_mixed_wire_emitted()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
 fn ts_sg2_conj_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: ts_sg2_conj_xy_emitted()) == ts_sg2_expected_conj_text
 }
@@ -319,7 +332,9 @@ data claim_ts_sg2_arrow_mixed_wire_rejects: TestClaim = CompilesClaim {
   label: "manual/sg2-ts: mixed positional+labeled arrow wire rejects fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(
-    ok: ts_sg2_arrow_mixed_wire_rejects() && ts_sg2_arrow_mixed_wire_decode_rejects()
+    ok: ts_sg2_arrow_mixed_wire_rejects() &&
+      ts_sg2_arrow_mixed_wire_decode_rejects() &&
+      ts_sg2_arrow_mixed_wire_labeled_accessors_reject()
   ),
   expected_value: ts_sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
