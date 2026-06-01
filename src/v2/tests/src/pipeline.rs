@@ -284,40 +284,6 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
 }
 
 #[test]
-#[ignore]
-fn debug_emit_gen_applied_compare() {
-    let struct_src = "\
-module test_same_name_generic_args
-
-type NodeFold<S> {
-  seed: S
-}
-
-type Outer<S> {
-  same: NodeFold<S>
-}
-";
-    let fn_src = "\
-module gen_applied_sig
-
-type NodeFold<S> {
-  seed: S
-}
-
-fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
-  fold
-}
-";
-    let s = compile_dag(struct_src);
-    let f = compile_dag(fn_src);
-    panic!(
-        "struct:\n{}\n---\nfn:\n{}",
-        find_file(&s, "src/test_same_name_generic_args.rs"),
-        find_file(&f, "src/gen_applied_sig.rs")
-    );
-}
-
-#[test]
 fn generic_fn_sig_preserves_applied_type_args() {
     // Signature receipt: generic applied param types must render with type args
     // and shared_types Rc wrap (same pattern as explicit_same_name_generic_args).

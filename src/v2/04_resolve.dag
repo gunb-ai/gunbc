@@ -6,7 +6,7 @@ import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex,
-  make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
+  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   generic_param_name_at,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -506,30 +506,15 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     Some { value: result } => Some { value: result.expr }
     None => none
   }
-  let children = match default_expr {
-    Some { value: dv } => [type_resolved, dv]
-    None => [type_resolved]
-  }
   ParamResult {
-    param: Node {
+    param: make_resolved_param_node(
       name: param_node_name_at(n: param, source_indices: env.source_indices),
-      span: param.span,
-      ident_span: node_name_span(n: param),
-      children: children,
-      connective: NoConnective,
-      params: [],
-      inferred: Some { value: Resolved { node: type_resolved } },
-      return_cardinality: Required,
-      uses: [],
-      body: none,
-      transport: none,
+      type_expr: type_resolved,
+      default_value: default_expr,
       properties: concat(param.properties, type_resolved.properties),
-      type_annotation: none,
-      is_self_recursive: false,
-      has_non_tail_self_call: false,
-      match_pattern: none,
-      expr_data: NoExprData
-    },
+      span: param.span,
+      name_span: node_name_span(n: param)
+    ),
     diagnostics: concat(type_diags, default_diags)
   }
 }
