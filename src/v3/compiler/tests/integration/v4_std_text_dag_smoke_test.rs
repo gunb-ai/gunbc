@@ -3,6 +3,14 @@
 //! E0308 W1-A2: `v4.std.text` owns the host-string/text-carrier boundary fact.
 //! Literal and value-form migrations can consume this carrier later without
 //! minting a second raw-string authority.
+//!
+//! **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST`
+//! same-path expansion):** explicit deferral to `_internal/ROADMAP_OPS.md` § **Nine lanes**
+//! row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap
+//! test floor). This parse-surface smoke dissolves when `.dag` `TestClaim` or generated
+//! harness coverage asserts the `HostStringText` carrier shape directly.
+//! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs`
+//! lands in the same PR.
 
 use std::collections::BTreeSet;
 
