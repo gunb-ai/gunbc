@@ -1170,8 +1170,8 @@ fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInha
 // Leaf-model Layer-A — derived fact exposure + GO-SG-1 TargetAtomRealization row (dual-name §3.1).
 data go_atom_realization_symbol: Symbol = go_atom_realization_symbol
 data go_atom_realization_symbol_node: Node = go_inhabitant_atom(id: go_atom_realization_symbol)
-data go_integer_algebra_inhabitance_go_facts_int: Symbol = go_integer_algebra_inhabitance_go_facts_int
-data go_integer_algebra_inhabitance_go_facts_int64: Symbol = go_integer_algebra_inhabitance_go_facts_int64
+data go_integer_algebra_inhabitance_go_facts_int: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int)
+data go_integer_algebra_inhabitance_go_facts_int64: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int64)
 
 fn go_leaf_model_fact_id_node_atom_realization_symbol() -> Node {
   go_atom_realization_symbol_node

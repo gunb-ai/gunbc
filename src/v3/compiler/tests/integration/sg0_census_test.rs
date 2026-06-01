@@ -399,7 +399,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     // Phase 1 leaf-model go R1/R2a/R2b/R3-external: boundary Go toolchain exercise for
     // R1 int surface spelling, R2a int algebra ops, R2b int64 overflow wrap, R3-external
-    // Symbol-as-string projection; host runners scripts/v4-leaf-model-go-r{1,2a,2b,3-external}-verify.sh.
+    // Symbol-as-string projection until T-22 modeled `run_target_verification` owns target
+    // verdicts; P5 deferral to ROADMAP.md `T-PB-B` / `pb_rust_tests_outside_residual_zero`.
+    // Interim host runners: scripts/v4-leaf-model-go-r{1,2a,2b,3-external}-verify.sh.
     "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs",
     // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
     // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
