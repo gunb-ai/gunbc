@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 48b531e4690694e209d6e202ab9e6d74834d0d6567d1c89a33386e779e11f9c2
+// Source-SHA256(.github/workflows/ci.yml): 3dec65b705345bdbcfc2bff038da69ac742c013d8b0aba9d339022818a1f8ff2
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 

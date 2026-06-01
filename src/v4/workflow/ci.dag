@@ -541,8 +541,10 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
 // its OWN runtime privilege on every run and fails closed the moment the runner is re-privileged.
 // It is a structural FLOOR, not a component-gated job: it runs unconditionally (no `affected`
 // mask, no draft gate) because the fork-PR exposure exists wherever a runner executes at all.
-// Authority for the ci.yml binding receipt: v4_workflow_ci_runner_dag_smoke_test
-// (v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml).
+// ci.yml coverage: the `infra_isolation` job + its carrier Job record are bound byte-for-byte by
+// the full-workflow carrier dsl/gunbc/ci_github_actions_workflow.dag (structural-match + SHA-pin
+// tests in t_ci_workflow_as_data_demo_test) — no dedicated hand-Rust binding test (P5: that carrier
+// already deep-covers the projection; a separate assertion would only grow src/v3 hand-Rust).
 // The check set is live-verified against the operator de-priv by calm-gull-119 (CI floor
 // coordination, 2026-06-01): the de-privileged `ghrunner` account is non-root, member of NONE of
 // {docker, sudo, lxd, wheel, root}, cannot read the GitHub App private key at
