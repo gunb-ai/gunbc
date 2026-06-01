@@ -422,8 +422,16 @@ pub fn render_rust_fn_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let _ = generic_param_names;
-    render_rust_type_with_applied_binding(n, shared_types, source_indices)
+    if ((generic_param_names.len() as i64) > 0) {
+        render_rust_decl_type(
+            n,
+            generic_param_names,
+            shared_types,
+            source_indices,
+        )
+    } else {
+        render_rust_type_with_applied_binding(n, shared_types, source_indices)
+    }
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -5281,8 +5289,17 @@ pub fn render_rust_param_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let _ = generic_param_names;
-    render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
+    let type_node = resolved_type(param.clone());
+    if ((generic_param_names.len() as i64) > 0) {
+        render_rust_decl_type(
+            type_node,
+            generic_param_names,
+            shared_types,
+            source_indices,
+        )
+    } else {
+        render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
+    }
 }
 
 pub fn emit_tco_param(

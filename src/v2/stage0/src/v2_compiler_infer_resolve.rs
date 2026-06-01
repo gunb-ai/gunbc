@@ -1372,38 +1372,18 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
             Some(result) => Some(result.expr.clone()),
             None => None,
         };
-        let children = match default_expr.clone() {
-            Some(dv) => Rc::new(vec![type_resolved.clone(), dv]),
-            None => Rc::new(vec![type_resolved.clone()]),
-        };
-        let pname = param_node_name_at(param.clone(), env.source_indices.clone());
-        let pname_span = node_name_span(param.clone());
         Rc::new(ParamResult {
-            param: Rc::new(Node {
-                name: pname.clone(),
-                span: param.span.clone(),
-                ident_span: default_ident_span(pname, pname_span),
-                children: children,
-                connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved {
-                    node: type_resolved.clone(),
-                })),
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
-                properties: v2_rt::concat(
+            param: make_resolved_param_node(
+                param_node_name_at(param.clone(), env.source_indices.clone()),
+                type_resolved.clone(),
+                default_expr,
+                v2_rt::concat(
                     param.properties.clone(),
                     type_resolved.properties.clone(),
                 ),
-                type_annotation: None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
-            }),
+                param.span.clone(),
+                node_name_span(param.clone()),
+            ),
             diagnostics: v2_rt::concat(type_diags, default_diags),
         })
     }
