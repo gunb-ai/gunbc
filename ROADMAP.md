@@ -46,6 +46,12 @@ Work is organized around closing the bootstrap loop, not a calendar:
 
 Earlier release-program lanes (complexity parity, testgen, multi-target emit, pure-bootstrap floors) informed v4 scope; detailed operational tracking for that era lives in [`_internal/ROADMAP_OPS.md`](_internal/ROADMAP_OPS.md) for maintainers migrating from the internal repo.
 
+## Active Deferrals
+
+| ID | Target | Dissolution trigger |
+|----|--------|---------------------|
+| `PB-Runtime-External-Toolchain-TestClaims` | Hand-authored Rust boundary tests that spawn external target toolchains while v4 leaf-model verification still uses host runners. | Delete the Rust boundary test when its corresponding `src/v4/test/claim/**` row is exercised by substrate `run_target_verification` / `ExecuteCommand`-style `.dag` `TestClaim` execution with typed verdicts. |
+
 ## How to read the tree
 
 ```
