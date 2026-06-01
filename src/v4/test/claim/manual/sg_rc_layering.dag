@@ -7,7 +7,9 @@ module v4.test.claim.manual.sg_rc_layering
 import v4.compiler.translate {
   target_serialize_source_from_model,
   translate_apply_use_site_ownership_to_value_expression,
+  translate_apply_use_site_ownership_to_projected_type,
   translate_coerced_shell,
+  project_type_expression_node,
   translate_coerced_shell_at_use_site
 }
 import v4.extdeps.languages.rust {
@@ -34,7 +36,9 @@ import v4.std.target_model {
   ReferenceLayerRc,
   target_carrier_diagnostics,
   target_carrier_diagnostics_node,
+  target_carrier_node,
   target_carrier_node_node,
+  target_carrier_outcome,
   target_carrier_probe_heap,
   target_carrier_probe_heap_node,
   target_reference_layer_apply_type_emitted,
@@ -46,7 +50,7 @@ import v4.std.target_model {
 }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
+import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, content_hash }
 import v4.std.text { String }
 import v4.std.verification {
   Boundary,
@@ -66,6 +70,7 @@ data sg_rc_expected_rc_node: String = "Rc<Node>"
 data sg_rc_expected_owned_node: String = "Node"
 data sg_rc_expected_box_node: String = "Box<Node>"
 data sg_rc_expected_rc_probe_heap: String = "Rc<ProbeHeap>"
+data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 
 fn sg_rc_pass_node() -> Node {
   Node {
@@ -131,6 +136,52 @@ fn sg_rc_serialized_type_text(emitted: Node) -> String {
     Accepted { value: source, diagnostics: _ } => source
     Rejected { diagnostics: _ } => sg_rc_fail_text
   }
+}
+
+fn sg_rc_outcome_node_source_type() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: target_carrier_outcome } },
+          children: []
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: target_carrier_node } },
+          children: []
+        }
+      }
+    ]
+  }
+}
+
+fn sg_rc_outcome_node_projected_type() -> Node {
+  match project_type_expression_node(node: sg_rc_outcome_node_source_type(), target: sg_rc_target()) {
+    Accepted { value: projected, diagnostics: _ } => projected
+    Rejected { diagnostics: _ } => sg_rc_fail_node()
+  }
+}
+
+fn sg_rc_outcome_node_return_shell() -> Node {
+  match translate_apply_use_site_ownership_to_projected_type(
+    projected: sg_rc_outcome_node_projected_type(),
+    source_carrier: sg_rc_outcome_node_source_type(),
+    target: sg_rc_target(),
+    use_site: OwnershipAtFunctionReturn
+  ) {
+    Accepted { value: wrapped, diagnostics: _ } => wrapped
+    Rejected { diagnostics: _ } => sg_rc_fail_node()
+  }
+}
+
+fn sg_rc_outcome_inner_sg2_args_preserved() -> Bool {
+  sg_rc_serialized_type_text(emitted: sg_rc_outcome_node_return_shell()) ==
+    sg_rc_expected_rc_outcome_node
 }
 
 // F1 — dual-boundary: Rc vs owned moves type text together (no mixed Rc<T> / T).
@@ -396,6 +447,14 @@ data claim_sg_rc_binding_projection_fold: TestClaim = EqualsClaim {
   label: "manual/sg-rc: default translate_coerced_shell applies binding-projection Rc row (P-RC-CONSUMER)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg_rc_claim_input(ok: sg_rc_binding_projection_fold_holds()),
+  rhs: sg_rc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data claim_sg_rc_outcome_inner_sg2_args_preserved: TestClaim = EqualsClaim {
+  label: "manual/sg-rc: Outcome<T> return wraps SG-2-projected inner type as Rc<Outcome<T>>",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: sg_rc_claim_input(ok: sg_rc_outcome_inner_sg2_args_preserved()),
   rhs: sg_rc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
