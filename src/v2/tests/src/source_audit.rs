@@ -1056,8 +1056,7 @@ fn l1_type_knowledge_ratchet() {
     }
 
     let v3 = ws.join("src/v3");
-    let constructor_pattern =
-        r"\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\b";
+    let constructor_pattern = r"\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\b";
     let typename_pattern = r#"\.name == "(Optional|Map|List|Set|Dynamic|Error|Int|String|Bool|Float|Unit|Bytes|Json|Secret|Tuple|Callable|None|Some)""#;
     for (label, pattern) in [
         ("type constructors", constructor_pattern),
