@@ -8,7 +8,11 @@ Forward projection of remaining work to v4-done as of Jun 1 release day end-of-d
 |---|---|---|
 | P1 | Every other scheduled task complete | YELLOW (~8-12/53 PROVEN; R3-internal added; per-lane GAP continues; no near-term GREEN candidate) |
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **GREEN.** P2-A probe (44-source closure 0 diagnostics) verified scope (a). M2 probe (#4097) confirmed bridge dead-weight. **#4139 MERGED 00:50Z (squash 12d1aa68c)** — `scripts/v4-bootstrap-resolve-posture-gate.sh` deleted from main; `.github/workflows/ci.yml` bridge step removed. P2 now fully GREEN. |
+<<<<<<< HEAD
 | P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (§8 approved 2026-06-01; see ratification log). **Residual rustc count: 7,724** per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 — substrate landings introduced new diagnostics absorbed back into existing classes). Per-class delta on review. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, deferred amendment). |
+=======
+| P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (impl gated on §8 sign-off). **Residual rustc count: 7,724** per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 — substrate landings introduced new diagnostics absorbed back into existing classes). Per-class delta on review. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, worksheet drafted for implementation routing). |
+>>>>>>> origin/main
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | RED — hard-gated on P3 binary builds (P2 now GREEN per #4139) |
 | P5 | TestClaim suite passes | **Layer 1 + Layer 2 BOTH CLOSED** via #4115 (P5 structural-bridge replaced + deleted). Strict P5 "suite passes" still gates on runtime-execution path: **option (ii) bootstrap-evaluator corpus runtime worksheet §8 APPROVED 2026-06-01** (not impl; see ratification log) per §8.5 #3. P3 cascade continues independently. T-38-PR2 verdict-SURFACE migration LANDED #4120. |
 | P6 | Hand-authored Rust not editable authority (proven by REPRODUCTION) | RED — hard-gated on P4 + P3 PROVEN |
@@ -77,7 +81,7 @@ Per-lane maintenance continues. Not Jun 1 GREEN candidate. R3-internal addition 
 | SG-3-CASCADE | **RETIRED** ✓ | #4126 squash 610be95a + #4130 | cascade-only determination; no §10.0; bands owned by primaries |
 | SG-8 | **worksheet on main, §8 approved** | #4127 squash 8c268005 | Implementation dispatchable under F1-F4 acceptance; see ratification log |
 | SG-1-FOLLOWON | routed (worker-only) | extend SG-1 worksheet | minor; not separately tracked |
-| SG-COLLECTION-PROJECTION | deferred | amend SG-5/SG-6 first | ~170 errors; tactical follow-on |
+| SG-COLLECTION-PROJECTION | worksheet-drafted | `docs/planning/v4-sg-collection-projection-worksheet-2026-06-01.md` | ~170 errors; FreeMonoid boundary projection stays separate from SG-5/SG-6 Set realization |
 
 **P3 PROVEN bar reminder**: Rust source compiles to a binary (not zero rustc errors as goal; not Python+Go alpha-targets). Each closure shrinks residual; binary builds when residual hits 0 on Rust path.
 
@@ -133,14 +137,20 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 | 3 | SG-8 §8 sign-off | **RESOLVED 2026-06-01** — dedicated Modeling DFS Arbiter spawned and approved the SG-8 worksheet; implementation worker is dispatchable under the worksheet's F1-F4 acceptance bar. | Modeling DFS Arbiter (`proud-fox-405`) | SG-8 implementation worker dispatchable |
 | 4 | Fresh M1 probe post-cascade | **AUTHORIZED + in flight** (PR #4140 sleek-heron-13) | work-item `adhoc-7b46e080-3cd` | residual = 7,724 (+549 vs #4122); per-class delta on review |
 | 5 | SG-1-FOLLOWON impl | routed | TR lane (keen-heron) | minor follow-on close |
-| 6 | SG-COLLECTION-PROJECTION amend | deferred | TR/proud-pike-successor | ~170 errors |
+| 6 | SG-COLLECTION-PROJECTION amend | worksheet-drafted | TR/proud-pike-successor | `docs/planning/v4-sg-collection-projection-worksheet-2026-06-01.md`; ~170 errors |
 
 ## §7. PM-side actionable items
 
 **Worker implementation dispatch state (aligned with §6.5 dispatch board + §8.5 resolutions):**
+<<<<<<< HEAD
 - **SG-8 impl: §8 approved 2026-06-01**; dispatch implementation under `docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md` and prove F1-F4.
 - **P5 runtime gate impl: worksheet §8 approved 2026-06-01** (operator decision #3 RESOLVED 01Z — option (ii)); dispatch implementation under `docs/planning/v4-p5-bootstrap-evaluator-corpus-runtime-worksheet-2026-06-01.md`.
 - All other P3 classes either closed today (per §3.3) OR have follow-on routing (SG-1-FOLLOWON minor, SG-COLLECTION-PROJECTION deferred)
+=======
+- **SG-8 impl: pending Modeling DFS Arbiter spawn** then §8 sign-off (operator decision #4 RESOLVED 01Z; Arbiter spawn is now the next step)
+- **P5 runtime gate impl: pending worksheet authoring** (operator decision #3 RESOLVED 01Z — option (ii) WORKSHEET authorized; Arbiter writes the worksheet, then impl spawns post-§8)
+- All other P3 classes either closed today (per §3.3) OR have follow-on routing (SG-1-FOLLOWON minor, SG-COLLECTION-PROJECTION worksheet drafted)
+>>>>>>> origin/main
 
 **PM dispatches from 2026-06-01T00:28Z operator authorization:** P2-B deletion DELIVERED via #4139 MERGED 00:50Z; fresh M1 probe in flight via PR #4140 (sleek-heron-13).
 
@@ -536,7 +546,7 @@ The CI Manager's work lane:
 |---|---|---|---|
 | **Rust** | Critical-path self-compile target; owns R1/R2a/R2b/R3 + emit residual closures + binary build path | **L1 in progress** (#4140 7,724 rustc residual being driven to 0); L2/L3/L4 gated on P3 binary build | L1 complete (binary builds); L2-L4 sequenced per P3+P4+P6 cascade |
 | **Go** | Release-minimum parity + future self-compile candidate; clean external verifier (`go build`); static-ish binary advantage | **L0** (Python R1 analog in flight; Go emit fix #4076 landed) | L0 complete + L1 fixture-scale; sequence toward L2 fixture-execution |
-| **Python** | Release-minimum parity; weaker static verifier (use `pyright`/`mypy` + runtime fixtures); cross-target behavioral parity emphasis | **L0 complete** (#4117 R1+R2a+R2b+R3-external on main); L1/L2 worksheets drafted at `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` | L1 fixture-scale + L2 cross-target behavioral parity receipts (vs Rust/Go) |
+| **Python** | Release-minimum parity; weaker static verifier (use `pyright`/`mypy` + runtime fixtures); cross-target behavioral parity emphasis | **L0 complete** (#4117); **§8 CLOSED** (#4170) — L1/L2 worksheets at `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md`; dispatch authority: `docs/planning/v4-active-authority-map-2026-06-01.md` (A ready; B/C blocked on Runtime/TestClaim) | L1 fixture-scale + L2 cross-target behavioral parity receipts (vs Rust/Go) |
 | **TypeScript** (alpha/preview) | Alpha/preview lane; not release-minimum; needs `tsc` + Node runtime semantics + module-layout modeling | **L0** (worksheets not started) | L0 complete per #4117 pattern: R2a/R2b/R3-external leaf-model widening + TargetAtomRealization + TargetTypeExpressionProjection + grammar-inverse TestClaims |
 | **C++** (later) | Capacity-permitting; produce language residual matrix only; no impl until shared substrate authority resolved | **none** | none unless operator authorizes; matrix only |
 

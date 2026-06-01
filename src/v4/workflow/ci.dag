@@ -122,6 +122,11 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.workflow.wave3_shadow_roster {
+  ci_wave3_shadow_claim_roster,
+  ci_wave3_shadow_generated_claim_roster,
+  ci_wave3_shadow_manual_claim_roster
+}
 
 
 // RULING-1: 🟢 pretty-much-done — Tier-0 CI build profile (bankruptcy I2–I4; docs/design-ci-bankruptcy-rebuild.md §2).
@@ -398,13 +403,31 @@ type LensCiLiveWorkflowSignal {
   semantic_target: String
 }
 
+// 🟡 gated — live-workflow projection interim (docs/modeling-discipline.md Practice 2/10) — feature:project-github-actions-landed — consumer:CiLiveWorkflowStepSignal strict env projection — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads typed step env from `ci_pipeline`/command policy rows and this bridge carrier is deleted; forbidden: encoding absent env bindings as empty strings.
+type StrictEnvBinding
+  = NoStrictEnvBinding
+  | StrictEnvBinding { var: String, value: String }
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
-type M1CiLiveWorkflowSignal {
+type CiLiveWorkflowStepSignal {
   binding_smoke_step_name: String
   step_name: String
   script_path: String
+  // GitHub Actions step transport policy. `false` means the script step itself
+  // must execute successfully; it does not imply rustc residuals fail the gate.
   non_blocking: Bool
   timeout_minutes: Int
+  strict_env_binding: StrictEnvBinding
+}
+
+type M1RustEmitProbePolicy {
+  emit_preconditions_block_required_path: Bool
+  rustc_residuals_block_required_path: Bool
+}
+
+type M1CiLiveWorkflowSignal {
+  step: CiLiveWorkflowStepSignal
+  rust_emit_probe_policy: M1RustEmitProbePolicy
 }
 
 
@@ -464,11 +487,18 @@ data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
 }
 
 data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
-  binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
-  step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
-  script_path: "scripts/v4-m1-rust-emit-probe.sh"
-  non_blocking: false
-  timeout_minutes: 20
+  step: CiLiveWorkflowStepSignal {
+    binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
+    step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
+    script_path: "scripts/v4-m1-rust-emit-probe.sh"
+    non_blocking: false
+    timeout_minutes: 20
+    strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" }
+  }
+  rust_emit_probe_policy: M1RustEmitProbePolicy {
+    emit_preconditions_block_required_path: true
+    rustc_residuals_block_required_path: false
+  }
 }
 
 data ci_v3_determinism_profile: CiBuildProfile = Release
@@ -542,21 +572,23 @@ data ci_job_v4_t15_self_host_fixed_point_execution_row: CiJob = ci_job_v4_t15_se
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding.
 // 🟡 gated — feature:phase1-nat-semiring-rust-rung-interim-nonblocking — bind #3955 §6 (rust rung emit not rustc-clean on main) — dissolve-on-arrival: flip non_blocking to false when rung1 rust_typecheck passes under V4_PHASE1_NAT_SEMIRING_STRICT=1; until then non_blocking: true (continue-on-error at workflow) while STRICT=1 still logs fail-closed rung receipts; forbidden: silent YAML-only continue-on-error without modeled parity.
 // 🟡 tracked-bridge — feature:phase1-nat-semiring-rung-gate-binding-smoke — owner:keen-crab-361 (Ladder/Fixture Manager) — bind node://adhoc-2b191c1e-6b3 ("phase1/nat_semiring rung gate binding-smoke test (mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml)") — consumer:src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs new test function asserting ci.dag step_name/script_path/non_blocking/timeout_minutes parity with .github/workflows/ci.yml step block — dissolve-on-arrival: binding_smoke_step_name carries the new test's step name (e.g. "phase1/nat_semiring rung gate model/YAML binding smoke") AND ci.yml runs the new test as a cargo-test step paired with the gate; forbidden: re-emptying binding_smoke_step_name after the test lands. Until the bound work item closes, ci.dag↔ci.yml single-authority for THIS signal is enforced by the four-field parity (step_name / script_path / non_blocking / timeout_minutes) under review checkpoint at PR-time — not by a CI binding test.
-data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
+data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
   binding_smoke_step_name: ""
   step_name: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)"
   script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
   non_blocking: true
   timeout_minutes: 20
+  strict_env_binding: StrictEnvBinding { var: "V4_PHASE1_NAT_SEMIRING_STRICT", value: "1" }
 }
 
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — consumer:v4.workflow.ci testclaim_corpus_eval_ci_live_workflow_signal — structural-slice CLOSED: shell bridge deleted + positive-Y CiUpsertStep sole structural authority; forward: T-38-PR2 amends when runtime per-row TestClaimRun verdict CI lands — dissolve-on-arrival: emitted/projected GitHub Actions reads `ci_pipeline`/`TestClaimCorpusEvalCommand` directly and this carrier is deleted; forbidden: adding corpus eval step facts outside `ci_pipeline` + this binding.
-data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
+data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
   binding_smoke_step_name: ""
   step_name: "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)"
   script_path: "scripts/v4-testclaim-corpus-eval.sh"
   non_blocking: false
   timeout_minutes: 15
+  strict_env_binding: NoStrictEnvBinding
 }
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
@@ -3196,6 +3228,74 @@ fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -
     rerun: affected_set_rerun_nodes(affected_set_value: affected)
   )
 }
+
+
+// ── Wave 3 TestClaim shadow selection (roster authority + frontier filter) ──────────────────────
+// Shadow / NON-GATING API. Narrows the single Wave-3 roster authority
+// (`ci_wave3_shadow_claim_roster` = manual corpus + accepted generated LBE claims, defined in
+// v4.test.claim.workflow.wave3_shadow_roster) by the affected-set rerun frontier via the EXISTING
+// `ci_select_*` lens. No host Rust lens reimplementation; no corpus execution — per-row
+// `TestClaimRun` RUNTIME verdicts are the T-38 / P5 bootstrap-evaluator corpus runtime lane
+// (docs/planning/v4-p5-bootstrap-evaluator-corpus-runtime-worksheet-2026-06-01.md), NOT this slice.
+fn ci_wave3_shadow_testclaims_selected(affected: AffectedSet) -> List<TestClaim> {
+  ci_select_from_affected_set(
+    roster: ci_wave3_shadow_claim_roster(),
+    affected: affected
+  )
+}
+
+
+fn ci_wave3_shadow_testclaims_selected_from_rerun(rerun: RerunNodeSet) -> List<TestClaim> {
+  ci_select_from_rerun_nodes(
+    roster: ci_wave3_shadow_claim_roster(),
+    rerun: rerun
+  )
+}
+
+
+// eval/print ENTRY scoping — NAMED-ONLY future CI-facing entrypoint.
+// 🟡 transport-blocked — feature:wave3-shadow-selection-receipt — consumer: future CI selection
+// receipt — the live entrypoint `ci_selection_receipt_shadow_from_git_diff(git_diff)` would route
+// GitDiffNameOnly → Diff → `affected_set_from_diff(read_model, post_edit_dag, dag, diff)`
+// (v4.lens.affected_set) → `ci_wave3_shadow_testclaims_selected`. It is NOT implemented here because
+// `affected_set_from_diff` requires the live whole-program `Dag` + `post_edit_dag` at CI time, which
+// no harness yet provides — blocked on Compiler Spine harness debt node://adhoc-331899f9-19a.
+// The honest model boundary that IS landed is `ci_wave3_shadow_testclaims_selected(affected)` above
+// (AffectedSet-in) plus the fixture receipts below. Forbidden: fabricating a git-diff→AffectedSet
+// shim that does not consult the live `Dag` (would falsely claim live PR selection).
+data ci_wave3_shadow_selection_receipt_reason: Symbol = ci_wave3_shadow_selection_receipt_reason
+
+// Fixture receipts (authoring-time witnesses) — fail-closed selects the FULL Wave-3 roster.
+data ci_wave3_shadow_fail_closed_reason: Symbol = ci_wave3_shadow_fail_closed_reason
+
+data ci_wave3_shadow_fail_closed_affected: AffectedSet = AffectedSetFailClosed {
+  changes: ChangeSet { changes: [] },
+  evidence: AffectedSetReason { reason: ci_wave3_shadow_fail_closed_reason }
+}
+
+// Fail-closed (no node frontier) returns the whole roster — roster authority preserved as superset.
+// NB: `==` kept on one line — the v2 M1-emit parser ends the expression at a pre-`==` line break.
+fn ci_wave3_shadow_fail_closed_selects_full_roster() -> Bool {
+  let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)
+  length(xs: selected) == length(xs: ci_wave3_shadow_claim_roster())
+}
+
+// Empty produced frontier touches no roster claim's evaluation nodes — none of the Wave-3 rows are
+// DiagnosticClaim (the only fail-closed-forced arm), so the selection narrows to the empty set.
+fn ci_wave3_shadow_empty_frontier_selects_none() -> Bool {
+  let selected = ci_wave3_shadow_testclaims_selected_from_rerun(rerun: RerunNodeSetProduced { nodes: [] })
+  length(xs: selected) == 0
+}
+
+// Roster authority cardinality: manual subset + generated subset = full roster (disjoint append).
+fn ci_wave3_shadow_roster_is_manual_plus_generated() -> Bool {
+  let parts = int_add(a: length(xs: ci_wave3_shadow_manual_claim_roster()), b: length(xs: ci_wave3_shadow_generated_claim_roster()))
+  parts == length(xs: ci_wave3_shadow_claim_roster())
+}
+
+data witness_ci_wave3_shadow_selection_holds: Bool = ci_wave3_shadow_fail_closed_selects_full_roster()
+  && ci_wave3_shadow_empty_frontier_selects_none()
+  && ci_wave3_shadow_roster_is_manual_plus_generated()
 
 
 fn ci_repo_path_has_prefix(path: RepoPath, prefix: RepoPath) -> Bool {
