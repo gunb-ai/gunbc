@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_compiler_compile_public_terminal_smoke_test.rs` (INVARIANTS §P5(b) tokenize/parse receipt for `00_compile.dag`, `validate_then_compile_public_terminal.dag`, `07_target_carriers.dag` cycle break). Follow-up dispatch to retire host smoke when `.dag` `TestClaim` / generated harness covers the same facts per ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero`; tracked gunbc#3481 (this PR) + `docs/design-v4-compiler-homomorphism.md` P3 commitment 6.

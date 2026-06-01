@@ -1,2 +1,0 @@
-
-SG-0 pairing: (c) Net +0 on `EXPECTED_HAND_AUTHORED_TEST` — same-path expansion of `v4_std_target_realization_dag_smoke_test.rs` (INVARIANTS §P5(b) parse/tokenize receipt for SG-5 `TargetCollectionRealization` + `06_translate` collection consumer + SG-6 `bounded_lattice_completeness` / `04_infer` gate wiring; substrate on `main` #3957 / #4085). Deferral: `_internal/ROADMAP_OPS.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`; dissolve when collection/BL surfaces execute from `.dag` `TestClaim` / T-22 eval only — gunb-ai/gunbc#4121.

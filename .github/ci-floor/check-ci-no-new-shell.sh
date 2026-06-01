@@ -3,22 +3,23 @@
 # Authority: src/v4/workflow/ci.dag Wave 1 §11.7.1 floor + project_no_new_shell.
 #
 # Scans .github/workflows/ci.yml for every scripts/<name>.sh reference (any shell
-# spelling: bash/sh/./-c). Only the three Wave-1 allowlisted transports may appear.
+# spelling: bash/sh/./-c) and for disallowed .github/ci-floor/ paths. Only the three
+# Wave-1 allowlisted ci-floor transports may appear.
 #
-# Usage: ./scripts/check-ci-no-new-shell.sh [--self-test]
+# Usage: ./.github/ci-floor/check-ci-no-new-shell.sh [--self-test]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
 CI_YML=".github/workflows/ci.yml"
 
 allowed=(
-  "scripts/v4-m1-rust-emit-probe.sh"
-  "scripts/v4-bootstrap-viability.sh"
-  "scripts/check-ci-no-new-shell.sh"
+  ".github/ci-floor/v4-m1-rust-emit-probe.sh"
+  ".github/ci-floor/v4-bootstrap-viability.sh"
+  ".github/ci-floor/check-ci-no-new-shell.sh"
 )
 
 is_allowlisted() {
@@ -32,12 +33,12 @@ is_allowlisted() {
   return 1
 }
 
-# Every scripts/<name>.sh token on a line (all occurrences).
-scripts_on_line() {
+# Every scripts/<name>.sh or .github/ci-floor/<name>.sh token on a line.
+shell_paths_on_line() {
   local line="$1"
   local rest="$line"
   local token
-  while [[ "$rest" =~ scripts/[a-zA-Z0-9_.-]+ ]]; do
+  while [[ "$rest" =~ (scripts/|\.github/ci-floor/)[a-zA-Z0-9_./-]+ ]]; do
     token="${BASH_REMATCH[0]}"
     printf '%s\n' "$token"
     rest="${rest#*"$token"}"
@@ -48,17 +49,23 @@ scan_lines() {
   local line script
   violations=0
   while IFS= read -r line; do
-    if [[ ! "$line" =~ scripts/ ]]; then
+    if [[ ! "$line" =~ (scripts/|\.github/ci-floor/) ]]; then
       continue
     fi
     while IFS= read -r script; do
       [[ -z "$script" ]] && continue
+      if [[ "$script" == scripts/* ]]; then
+        echo "error: scripts/ is deleted — disallowed reference on required CI path: $script" >&2
+        echo "       line: $line" >&2
+        violations=$((violations + 1))
+        continue
+      fi
       if ! is_allowlisted "$script"; then
-        echo "error: disallowed scripts/ reference on required CI path: $script" >&2
+        echo "error: disallowed shell path on required CI path: $script" >&2
         echo "       line: $line" >&2
         violations=$((violations + 1))
       fi
-    done < <(scripts_on_line "$line")
+    done < <(shell_paths_on_line "$line")
   done
 }
 
@@ -80,22 +87,20 @@ self_test_scan_must_fail() {
 
 if [[ "${1:-}" == "--self-test" ]]; then
   violations=0
-  # Multi-token on one line (prior bypass).
-  probe='run: bash scripts/v4-m1-rust-emit-probe.sh && bash scripts/evil-bypass.sh'
+  probe='run: bash .github/ci-floor/v4-m1-rust-emit-probe.sh && bash scripts/evil-bypass.sh'
   count=0
   while IFS= read -r script; do
     [[ -z "$script" ]] && continue
     count=$((count + 1))
-  done < <(scripts_on_line "$probe")
+  done < <(shell_paths_on_line "$probe")
   if [[ "$count" -ne 2 ]]; then
-    echo "check-ci-no-new-shell: self-test failed (expected 2 scripts on probe line, got $count)" >&2
+    echo "check-ci-no-new-shell: self-test failed (expected 2 paths on probe line, got $count)" >&2
     exit 1
   fi
+  self_test_scan_must_fail "scripts/" 'run: bash scripts/evil-bypass.sh'
   self_test_scan_must_fail "sh scripts/" 'run: sh scripts/evil-bypass.sh'
-  self_test_scan_must_fail "./scripts/" 'run: ./scripts/evil-bypass.sh'
-  self_test_scan_must_fail "bash ./scripts/" 'run: bash ./scripts/evil-bypass.sh'
+  self_test_scan_must_fail "disallowed ci-floor" 'run: bash .github/ci-floor/evil-bypass.sh'
   self_test_scan_must_fail "bash -c scripts/" "run: bash -c 'scripts/evil-bypass.sh'"
-  self_test_scan_must_fail "bash -e scripts/" 'run: bash -e scripts/evil-bypass.sh'
   echo "check-ci-no-new-shell: self-test ok"
   exit 0
 fi
@@ -114,4 +119,4 @@ if (( violations > 0 )); then
   exit 1
 fi
 
-echo "check-ci-no-new-shell: ok (${#allowed[@]} scripts allowlisted)"
+echo "check-ci-no-new-shell: ok (${#allowed[@]} ci-floor scripts allowlisted; scripts/ forbidden)"

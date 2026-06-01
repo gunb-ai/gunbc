@@ -2,7 +2,7 @@
 # Install gunbc from GitHub Releases (Linux musl + macOS binaries).
 #
 # Semantic authority: src/v4/install/install.dag (GitHubReleaseTarball channel).
-# Target detection: scripts/release-target-triples.sh (platform_detection.dag projection).
+# Target detection: install/release-target-triples.sh (platform_detection.dag projection).
 # Binary names: src/v4/workflow/release.dag `release_published_artifact_names`.
 #
 # Usage:

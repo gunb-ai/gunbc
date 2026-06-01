@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) dispatch remainder for substrate_gap_parser_grammar_closed / gate #60 row tracked gunbc#2818
