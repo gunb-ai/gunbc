@@ -5220,7 +5220,13 @@ fn generic_annotation_preserves_type_args_without_name_keyed_carrier_patch() {
     let source = r#"
 module test_generic_annotation_preservation
 
-type RuntimeValue
+type Node {
+  label: String
+}
+
+type RuntimeValue {
+  text: String
+}
 
 type ProbeClaimRun<S, A> {
   subject: S
@@ -5228,8 +5234,8 @@ type ProbeClaimRun<S, A> {
 }
 
 data cached_probe_run: ProbeClaimRun<Node, RuntimeValue> = ProbeClaimRun {
-  subject: Node
-  actual: RuntimeValue
+  subject: Node { label: "n" }
+  actual: RuntimeValue { text: "rv" }
 }
 
 fn probe_param(run: ProbeClaimRun<Node, RuntimeValue>) -> Int {
