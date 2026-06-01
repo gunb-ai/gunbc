@@ -236,30 +236,44 @@ fn source_atom_char(codepoint: Char) -> SourceAtomValue {
   }
 }
 
-fn source_atom_char_literal_node(source: Node) -> Bool {
+fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
   match source.kind {
     TypeNode { connective: Atom { identity: c } } =>
-      c != char_kernel_type_atom
-    _ => false
+      if c == char_kernel_type_atom {
+        optional_absent()
+      } else {
+        optional_present(source_atom_char(codepoint: c))
+      }
+    _ => optional_absent()
   }
 }
 
-fn source_atom_string_literal_node(source: Node) -> Bool {
+fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
   match source.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      id == free_monoid_variant_empty
+      if id == free_monoid_variant_empty {
+        optional_present(source_atom_string(value: source))
+      } else {
+        optional_absent()
+      }
     TypeNode { connective: Conj } =>
       match find_named_child(root: source, name: free_monoid_field_head) {
         Accepted { value: head } =>
           match find_named_child(root: source, name: free_monoid_field_tail) {
             Accepted { value: tail } =>
-              source_atom_char_literal_node(source: head) &&
-                source_atom_string_literal_node(source: tail)
-            Rejected { diagnostics: _ } => false
+              match source_atom_char_projection_from_node(source: head) {
+                Present { value: _ } =>
+                  match source_atom_string_projection_from_node(source: tail) {
+                    Present { value: _ } => optional_present(source_atom_string(value: source))
+                    Absent => optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            Rejected { diagnostics: _ } => optional_absent()
           }
-        Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => optional_absent()
       }
-    _ => false
+    _ => optional_absent()
   }
 }
 
@@ -310,21 +324,9 @@ fn source_atom_value_for_value_template(
         _ => optional_absent()
       }
     ValueCharUnicodeScalar =>
-      match source.kind {
-        TypeNode { connective: Atom { identity: c } } =>
-          if c == char_kernel_type_atom {
-            optional_absent()
-          } else {
-            optional_present(source_atom_char(codepoint: c))
-          }
-        _ => optional_absent()
-      }
+      source_atom_char_projection_from_node(source: source)
     ValueStringLiteral =>
-      if source_atom_string_literal_node(source: source) {
-        optional_present(source_atom_string(value: source))
-      } else {
-        optional_absent()
-      }
+      source_atom_string_projection_from_node(source: source)
   }
 }
 
