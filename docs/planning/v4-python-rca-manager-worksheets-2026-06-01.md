@@ -2,7 +2,7 @@
 
 > **Status:** **WORKSHEET APPROVED** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Worksheet A: **READY-FOR-WORKER-DISPATCH** (static). Worksheets B/C: **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (manager checklist item below still open).
 > **Date:** 2026-06-01
-> **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` Section 11.8, Python row.
+> **Dispatch anchor:** `docs/planning/v4-active-authority-map-2026-06-01.md` (Python lane) — §8 CLOSED #4170; predicate graph §11.8.2 defers here for L1/L2 dispatch state.
 > **Current rung:** L0 complete via #4117 (R1 + R2a + R2b + R3-external).
 > **Target rung:** L1 fixture-scale + L2 cross-target behavioral parity receipts versus Rust and Go.
 > **Manager role:** Python RCA Manager. Python is release-minimum parity with a weaker static verifier; runtime and cross-target behavior carry more weight than binary-like self-host framing.
