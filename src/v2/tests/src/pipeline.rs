@@ -5267,31 +5267,51 @@ type Outer<S> {
 }
 
 #[test]
-fn generic_data_annotation_preserves_type_args() {
+fn generic_annotation_preserves_type_args_without_name_keyed_carrier_patch() {
     let source = r#"
-module test_generic_data_annotation
+module test_generic_annotation_preservation
 
-type Pair<A, B> {
-  first: A
-  second: B
+type RuntimeValue
+
+type ProbeClaimRun<S, A> {
+  subject: S
+  actual: A
 }
 
-data sample_pair: Pair<Int, String> = Pair {
-  first: 1
-  second: "ok"
+data cached_probe_run: ProbeClaimRun<Node, RuntimeValue> = ProbeClaimRun {
+  subject: Node
+  actual: RuntimeValue
+}
+
+fn probe_param(run: ProbeClaimRun<Node, RuntimeValue>) -> Int {
+  1
+}
+
+fn probe_return() -> ProbeClaimRun<Node, RuntimeValue> {
+  cached_probe_run
 }
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test_generic_data_annotation.rs");
+    let content = find_file(&result, "src/test_generic_annotation_preservation.rs");
     assert!(
-        content.contains("pub fn sample_pair() -> Rc<Pair<i64, String>>"),
-        "generic data return type should preserve applied type args, got:\n{}",
+        content.contains("pub fn cached_probe_run() -> Rc<ProbeClaimRun<Node, RuntimeValue>>"),
+        "generic data cache return type should preserve applied type args, got:\n{}",
         content
     );
     assert!(
-        !content.contains("pub fn sample_pair() -> Pair {"),
-        "generic data return type must not emit bare Pair, got:\n{}",
+        content.contains("pub fn probe_param(run: Rc<ProbeClaimRun<Node, RuntimeValue>>) -> i64"),
+        "generic function parameter should preserve applied type args, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("pub fn probe_return() -> Rc<ProbeClaimRun<Node, RuntimeValue>>"),
+        "generic function return should preserve applied type args, got:\n{}",
+        content
+    );
+    assert!(
+        !content.contains("Rc<ProbeClaimRun>"),
+        "generic carrier must not be emitted bare, got:\n{}",
         content
     );
 }
