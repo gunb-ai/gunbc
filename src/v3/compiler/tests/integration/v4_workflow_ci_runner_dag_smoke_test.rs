@@ -1203,6 +1203,49 @@ fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step()
         )),
         "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run bankruptcy D3 ratchet tests (prefix filter, one claim per test)"
     );
+    assert!(
+        binding_step.contains("v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_"),
+        "{CI_YML_PATH}: binding step must run Wave 1 floor prefix filter"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
+    assert!(
+        CI_YML.contains("docs/planning/ci-required-surface-cut-2026-06-01.md"),
+        "{CI_YML_PATH}: must reference Wave 1 honesty ledger"
+    );
+    assert!(CI_YML.contains("  ci_floor:"), "{CI_YML_PATH}: must define `ci_floor` job");
+    assert!(
+        !CI_YML.contains("  ci_integration:") && !CI_YML.contains("  ci_v4:"),
+        "{CI_YML_PATH}: legacy parallel lanes dissolved"
+    );
+    assert!(
+        CI_YML.contains("needs: [affected, ci_floor]"),
+        "{CI_YML_PATH}: `ci` aggregator must depend on `ci_floor`"
+    );
+    for forbidden in [
+        "check-pr-sg0-net-shrink-discipline.sh",
+        "determinism_test",
+        "self_host_fixed_point",
+        "v4-testclaim-corpus-eval.sh",
+        "v4-mvp1-e2e-gate.sh",
+        "v4-phase1-nat-semiring-rung-gate.sh",
+    ] {
+        assert!(
+            !CI_YML.contains(forbidden),
+            "{CI_YML_PATH}: Wave 1 cut — must not invoke `{forbidden}` on required path"
+        );
+    }
+}
+
+#[test]
+fn v4_workflow_ci_wave1_no_new_shell_ratchet_wired() {
+    let ratchet_step = workflow_step_block(CI_YML, "no-new-shell ratchet (required CI path)");
+    assert!(
+        ratchet_step.contains("check-ci-no-new-shell.sh"),
+        "{CI_YML_PATH}: gate 5 must invoke no-new-shell ratchet"
+    );
 }
 
 #[test]
