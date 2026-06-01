@@ -535,6 +535,9 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
     );
 }
 
+// PR #4166 P0 closure delta: +3 parse-surface asserts below (fn-boundary serialize + atom-only
+// arrow projection). Mechanism (b) / T-PB-B deferral in module doc above; +0 SG-0 paths (no new
+// `EXPECTED_HAND_AUTHORED_TEST` row; no new `#[test]` fn).
 #[test]
 fn v4_translate_dag_imports_use_site_ownership_consumer() {
     let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
@@ -574,7 +577,10 @@ fn v4_translate_dag_imports_use_site_ownership_consumer() {
         "{TRANSLATE_PATH}: fn-boundary serialize must map to TargetOwnershipUseSite"
     );
     assert!(
-        surface_declares_fn(&module, "translate_apply_use_site_ownership_to_projected_boundary"),
+        surface_declares_fn(
+            &module,
+            "translate_apply_use_site_ownership_to_projected_boundary"
+        ),
         "{TRANSLATE_PATH}: arrow projection must apply SG-RC only on atom boundaries"
     );
     assert!(
