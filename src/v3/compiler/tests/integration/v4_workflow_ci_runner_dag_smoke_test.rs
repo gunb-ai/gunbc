@@ -509,8 +509,6 @@ fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
     &rest[..end]
 }
 
-<<<<<<< HEAD
-=======
 /// Slice one job record from the generated `ci_github_actions_workflow.dag` artifact.
 fn generated_workflow_job_block<'a>(workflow_dag: &'a str, job_id: &str) -> &'a str {
     let marker = format!("id: \"{job_id}\"");
@@ -529,7 +527,6 @@ fn generated_workflow_job_continue_on_error_is_true(job_block: &str) -> bool {
         .is_some_and(|idx| job_block[idx..].starts_with("continue_on_error: true"))
 }
 
->>>>>>> 3799dc335c (chore: cargo fmt (generated_workflow_job_block))
 fn surface_declares_test_claim_data(
     module: &v3_compiler::parse_surface::SurfaceModule,
     name: &str,
@@ -1350,12 +1347,9 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
         CI_WORKFLOW_DAG.contains("id: \"ci\"") && CI_WORKFLOW_DAG.contains("needs: [\"ci_floor\"]"),
         "{CI_WORKFLOW_DAG_PATH}: `ci` job must need `ci_floor` only"
     );
-    let affected_idx = CI_WORKFLOW_DAG
-        .find("id: \"affected\"")
-        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing `affected` job"));
-    let affected_window = &CI_WORKFLOW_DAG[affected_idx..affected_idx.saturating_add(512)];
+    let affected_job = generated_workflow_job_block(CI_WORKFLOW_DAG, "affected");
     assert!(
-        affected_window.contains("continue_on_error: true"),
+        generated_workflow_job_continue_on_error_is_true(affected_job),
         "{CI_WORKFLOW_DAG_PATH}: `affected` must be shadow-only (continue_on_error)"
     );
     assert!(
