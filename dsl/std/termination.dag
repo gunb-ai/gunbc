@@ -145,16 +145,9 @@ fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
 // Lifted lattice operations (concrete instances of algebra.dag patterns)
 // =========================================================================
 
-// optional_meet for DescentEvidence: None is identity (top).
+// optional_meet for DescentEvidence: thin alias until call sites import std.algebra directly.
 fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
-  match a {
-    None => b
-    Some { value: va } =>
-      match b {
-        None => a
-        Some { value: vb } => Some { value: descent_evidence_lattice_meet(a: va, b: vb) }
-      }
-  }
+  optional_meet(meet: descent_evidence_lattice_meet, a: a, b: b)
 }
 
 // map_merge_at for DescentEvidence: pointwise meet keyed by String.

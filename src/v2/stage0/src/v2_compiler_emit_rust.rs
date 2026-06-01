@@ -12,7 +12,9 @@ use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_types::is_container_type;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::Rust;
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
+pub use crate::v2_compiler_coercion::{
+    coerce_primitive_type, is_copy, lookup_checkpoint, target_optional_template,
+};
 pub use crate::v2_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v2_compiler_emit::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -129,7 +131,12 @@ pub fn render_rust_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
+        Some(InferredNode::TypeVariable { id: tv, .. }) => match n.return_cardinality.clone() {
+            Cardinality::CardOptional => {
+                apply_type_template1(target_optional_template(RenderTarget::Rust), tv.clone())
+            }
+            Cardinality::Required => tv.clone(),
+        },
         _ => match find_property(
             n.properties.clone(),
             "__applied_type_args".to_string(),
@@ -151,9 +158,11 @@ pub fn render_rust_type(
                     )
                 }
             }
-            None => {
-                render_rust_type_without_applied_binding(n.clone(), shared_types, source_indices)
-            }
+            None => render_rust_type_without_applied_binding(
+                n.clone(),
+                shared_types,
+                source_indices.clone(),
+            ),
         },
     }
 }
@@ -237,7 +246,12 @@ pub fn render_rust_applied_type_arg(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
+        Some(InferredNode::TypeVariable { id: tv, .. }) => match n.return_cardinality.clone() {
+            Cardinality::CardOptional => {
+                apply_type_template1(target_optional_template(RenderTarget::Rust), tv.clone())
+            }
+            Cardinality::Required => tv.clone(),
+        },
         _ => render_rust_decl_type(n.clone(), generic_param_names, shared_types, source_indices),
     }
 }
@@ -253,7 +267,7 @@ pub fn render_rust_applied_type(
             RenderTarget::Rust,
             authored_name_at(source_indices.clone(), n.clone()),
         );
-        let applied = if ((n.children.clone().len() as i64) == 0) {
+        if ((n.children.clone().len() as i64) == 0) {
             base
         } else {
             {
@@ -275,8 +289,7 @@ pub fn render_rust_applied_type(
                     ">".to_string(),
                 )
             }
-        };
-        applied
+        }
     }
 }
 
@@ -289,7 +302,7 @@ pub fn render_rust_applied_type_shared(
     {
         let rendered = render_rust_applied_type(
             n.clone(),
-            generic_param_names.clone(),
+            generic_param_names,
             shared_types.clone(),
             source_indices.clone(),
         );
@@ -297,9 +310,9 @@ pub fn render_rust_applied_type_shared(
         if (v2_rt::set_contains(&shared_types, type_name)
             && !rust_type_is_rc_wrapped(rendered.clone()))
         {
-            wrap_shared_type(RenderTarget::Rust, rendered)
+            wrap_shared_type(RenderTarget::Rust, rendered.clone())
         } else {
-            rendered
+            rendered.clone()
         }
     }
 }
@@ -311,80 +324,28 @@ pub fn render_rust_decl_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match find_property(
+        let applied_prop = find_property(
             n.properties.clone(),
             "__applied_type_args".to_string(),
             source_indices.clone(),
-        ) {
+        );
+        let applied_overlay = match applied_prop {
             Some(applied) => {
                 if ((applied.children.clone().len() as i64) > 0) {
-                    render_rust_applied_type_shared(
-                        applied.clone(),
-                        generic_param_names.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                    )
+                    Some(applied.clone())
                 } else {
-                    {
-                        let name = authored_name_at(source_indices.clone(), n.clone());
-                        if (((n.connective.clone() == Connective::NoConnective)
-                            && ((n.children.clone().len() as i64) == 0))
-                            && {
-                                let mut __found = false;
-                                for g in generic_param_names.clone().iter().cloned() {
-                                    if (g.clone().as_str() == name.clone().as_str()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            })
-                        {
-                            name.clone()
-                        } else {
-                            if ((n.connective.clone() == Connective::NoConnective)
-                                && ((n.children.clone().len() as i64) > 0))
-                            {
-                                {
-                                    let base =
-                                        coerce_primitive_type(RenderTarget::Rust, name.clone());
-                                    let args = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for arg in n.children.clone().iter().cloned() {
-                                            __result.push(render_rust_decl_type(
-                                                arg.clone(),
-                                                generic_param_names.clone(),
-                                                shared_types.clone(),
-                                                source_indices.clone(),
-                                            ));
-                                        }
-                                        __result
-                                    })
-                                    .join(&", ".to_string());
-                                    let applied_ty = v2_rt::concat(
-                                        v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
-                                        ">".to_string(),
-                                    );
-                                    if v2_rt::set_contains(&shared_types, name.clone()) {
-                                        v2_rt::concat(
-                                            v2_rt::concat("Rc<".to_string(), applied_ty),
-                                            ">".to_string(),
-                                        )
-                                    } else {
-                                        applied_ty
-                                    }
-                                }
-                            } else {
-                                render_rust_type_with_applied_binding(
-                                    n.clone(),
-                                    shared_types.clone(),
-                                    source_indices.clone(),
-                                )
-                            }
-                        }
-                    }
+                    None
                 }
             }
+            None => None,
+        };
+        match applied_overlay {
+            Some(applied) => render_rust_applied_type_shared(
+                applied.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ),
             None => {
                 let name = authored_name_at(source_indices.clone(), n.clone());
                 if (((n.connective.clone() == Connective::NoConnective)
@@ -400,7 +361,13 @@ pub fn render_rust_decl_type(
                         __found
                     })
                 {
-                    name.clone()
+                    match n.return_cardinality.clone() {
+                        Cardinality::CardOptional => apply_type_template1(
+                            target_optional_template(RenderTarget::Rust),
+                            name.clone(),
+                        ),
+                        Cardinality::Required => name.clone(),
+                    }
                 } else {
                     if ((n.connective.clone() == Connective::NoConnective)
                         && ((n.children.clone().len() as i64) > 0))
@@ -452,8 +419,8 @@ pub fn render_rust_fn_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((generic_param_names.len() as i64) > 0) {
-        render_rust_decl_type(n, generic_param_names, shared_types, source_indices)
+    if ((generic_param_names.clone().len() as i64) > 0) {
+        render_rust_decl_type(n, generic_param_names.clone(), shared_types, source_indices)
     } else {
         render_rust_type_with_applied_binding(n, shared_types, source_indices)
     }
@@ -596,7 +563,7 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
 
 pub fn rust_nominal_ord_resolved_shape(n: Rc<Node>) -> Rc<Node> {
     match n.inferred.clone().as_deref().cloned() {
-        Some(Resolved { node: rt, .. }) => rt.clone(),
+        Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
         _ => n.clone(),
     }
 }
@@ -605,27 +572,31 @@ pub fn rust_nominal_ord_record_shape_eligible(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((n.connective.clone() == Conj) && ((n.children.clone().len() as i64) == 1))
+    (((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 1))
         && match n.children.clone().first().cloned() {
-            Some(child) => rust_nominal_ord_type_eligible(
-                child_type_node(child.clone()),
-                source_indices.clone(),
-            ),
+            Some(child) => {
+                rust_nominal_ord_type_eligible(child_type_node(child.clone()), source_indices)
+            }
             None => false,
-        }
+        })
 }
 
 pub fn rust_nominal_ord_coproduct_shape_eligible(n: Rc<Node>) -> bool {
-    ((n.connective.clone() == Disj) && ((n.children.clone().len() as i64) > 0))
-        && n.children
-            .clone()
-            .iter()
-            .cloned()
-            .all(|v| ((v.children.clone().len() as i64) == 0))
+    (((n.connective.clone() == Connective::Disj) && ((n.children.clone().len() as i64) > 0)) && {
+        let mut __all = true;
+        for v in n.children.clone().iter().cloned() {
+            if !((v.children.clone().len() as i64) == 0) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    })
 }
 
 pub fn rust_nominal_ord_reference_shape_eligible(n: Rc<Node>) -> bool {
-    (((n.connective.clone() == NoConnective) && ((n.children.clone().len() as i64) == 0))
+    (((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) == 0))
         && ((n.params.clone().len() as i64) == 0))
 }
 
@@ -634,30 +605,32 @@ pub fn rust_nominal_ord_derives_for_shape(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let shape = Rc::new(Node {
-        name,
-        span: make_span(0, 0),
-        ident_span: None,
-        children,
-        connective: Conj,
-        params: Rc::new(vec![]),
-        inferred: None,
-        return_cardinality: Required,
-        uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
-        properties: Rc::new(vec![]),
-        type_annotation: None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: None,
-        expr_data: Rc::new(NoExprData),
-        ident: None,
-    });
-    if rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()) {
-        rust_ord_derives_text()
-    } else {
-        "".to_string()
+    {
+        let shape = Rc::new(Node {
+            name: name,
+            span: make_span(0, 0),
+            ident_span: None,
+            children: children,
+            connective: Connective::Conj,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        if rust_nominal_ord_record_shape_eligible(shape, source_indices) {
+            rust_ord_derives_text()
+        } else {
+            "".to_string()
+        }
     }
 }
 
@@ -665,11 +638,13 @@ pub fn rust_nominal_ord_type_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let shape = rust_nominal_ord_resolved_shape(elem_node.clone());
-    (((rust_nominal_identity_carrier_shape_eligible(shape.clone(), source_indices.clone())
-        || rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()))
-        || rust_nominal_ord_coproduct_shape_eligible(shape.clone()))
-        || rust_nominal_ord_reference_shape_eligible(shape.clone()))
+    {
+        let shape = rust_nominal_ord_resolved_shape(elem_node);
+        (((rust_nominal_identity_carrier_shape_eligible(shape.clone(), source_indices.clone())
+            || rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()))
+            || rust_nominal_ord_coproduct_shape_eligible(shape.clone()))
+            || rust_nominal_ord_reference_shape_eligible(shape.clone()))
+    }
 }
 
 pub fn rust_serde_tag_attr() -> String {
@@ -3957,9 +3932,13 @@ pub fn emit_rust_field_definition(
     }
 }
 
+pub fn rust_enum_ord_derives_eligible(name: String) -> bool {
+    ((name.clone().as_str() != "DescentEvidence".to_string().as_str())
+        && (name.clone().as_str() != "Ordering".to_string().as_str()))
+}
+
 pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
     {
-        let _ = name;
         let complex = Rc::new({
             let mut __result = Vec::new();
             for v in children.iter().cloned() {
@@ -3970,7 +3949,13 @@ pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
             __result
         });
         match ((complex.len() as i64) == 0) {
-            true => rust_ord_derives_copy_text(),
+            true => {
+                if rust_enum_ord_derives_eligible(name) {
+                    rust_ord_derives_copy_text()
+                } else {
+                    rust_enum_derives_copy_text()
+                }
+            }
             false => rust_enum_derives_text(),
         }
     }
@@ -5345,20 +5330,6 @@ pub fn emit_tco_params(
     }
 }
 
-pub fn render_rust_param_sig_type(
-    param: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    let type_node = resolved_type(param.clone());
-    if ((generic_param_names.len() as i64) > 0) {
-        render_rust_decl_type(type_node, generic_param_names, shared_types, source_indices)
-    } else {
-        render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
-    }
-}
-
 pub fn emit_tco_param(
     param: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -5369,15 +5340,15 @@ pub fn emit_tco_param(
         let authored = param_node_type_expr(param.clone());
         let ty = if ((authored.params.clone().len() as i64) > 0) {
             emit_rust_param_type(
-                authored,
-                generic_param_names.clone(),
+                authored.clone(),
+                generic_param_names,
                 shared_types,
                 source_indices.clone(),
             )
         } else {
             render_rust_param_sig_type(
                 param.clone(),
-                generic_param_names.clone(),
+                generic_param_names,
                 shared_types,
                 source_indices.clone(),
             )
@@ -5494,6 +5465,27 @@ pub fn emit_params(
     }
 }
 
+pub fn render_rust_param_sig_type(
+    param: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let type_node = resolved_type(param.clone());
+        if ((generic_param_names.clone().len() as i64) > 0) {
+            render_rust_decl_type(
+                type_node,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices,
+            )
+        } else {
+            render_rust_field_type_with_applied_binding(param.clone(), shared_types, source_indices)
+        }
+    }
+}
+
 pub fn emit_rust_param_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -5556,15 +5548,15 @@ pub fn emit_param(
         let authored = param_node_type_expr(param.clone());
         let ty = if ((authored.params.clone().len() as i64) > 0) {
             emit_rust_param_type(
-                authored,
-                generic_param_names.clone(),
+                authored.clone(),
+                generic_param_names,
                 shared_types,
                 source_indices.clone(),
             )
         } else {
             render_rust_param_sig_type(
                 param.clone(),
-                generic_param_names.clone(),
+                generic_param_names,
                 shared_types,
                 source_indices.clone(),
             )
@@ -18010,13 +18002,11 @@ pub fn emit_cli_param_type_node(
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         if is_optional {
-            v2_rt::concat(
-                v2_rt::concat(
-                    "Option<".to_string(),
-                    emit_cli_param_type_node(with_required_cardinality(n.clone()), source_indices),
-                ),
-                ">".to_string(),
-            )
+            {
+                let inner_ty =
+                    emit_cli_param_type_node(with_required_cardinality(n.clone()), source_indices);
+                apply_type_template1(target_optional_template(RenderTarget::Rust), inner_ty)
+            }
         } else {
             if has_structure {
                 "String".to_string()

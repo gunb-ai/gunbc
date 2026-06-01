@@ -130,6 +130,23 @@ pub struct BooleanAlgebra<T> {
     pub bottom: Box<T>,
 }
 
+pub fn optional_prefer_first_present<T>(left: T, right: T) -> T {
+    match left.clone() {
+        None => right,
+        Some(_) => left.clone(),
+    }
+}
+
+pub fn optional_meet<T>(meet: impl Fn(T, T) -> T + Clone, a: T, b: T) -> T {
+    match a.clone() {
+        None => b,
+        Some(va) => match b {
+            None => a.clone(),
+            Some(vb) => Some(meet(va.clone(), vb.clone())),
+        },
+    }
+}
+
 #[derive(Clone)]
 pub struct FreeMonoid<T> {
     pub concat: Rc<dyn Fn(Rc<FreeMonoid<T>>, Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>>>,
@@ -169,7 +186,9 @@ pub struct PartialFunction<K, V> {
     pub size: Rc<dyn Fn() -> i64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum Ordering {
     Less,
@@ -177,7 +196,9 @@ pub enum Ordering {
     Greater,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum AlgebraProfile {
     OrderedRingProfile,
@@ -234,7 +255,9 @@ pub enum AlgebraTypeTemplate {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum CollectionSizeEffect {
     ShrinkEffect,
@@ -242,7 +265,9 @@ pub enum CollectionSizeEffect {
     IdentityEffect,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum CostShape {
     ShapeConstant,
