@@ -20,6 +20,8 @@ import v4.compiler.eval {
 }
 import v4.compiler.translate { target_serialize_source_from_model }
 import v4.extdeps.languages.typescript {
+  ts_binding_param_x,
+  ts_binding_pr3_identity,
   ts_inhabitant_atom,
   ts_pr3_identity_source_text,
   ts_pr3_identity_typed_fn_emitted,
@@ -27,7 +29,6 @@ import v4.extdeps.languages.typescript {
   ts_production_pr3_typed_param,
   ts_production_wave2a_type_annotation,
   ts_production_wave2a_type_number,
-  ts_surface_typed_fn_decl,
   ts_token_ty_number,
   ts_pr3_identity_target_model_witness
 }
