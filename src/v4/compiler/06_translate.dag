@@ -1649,7 +1649,7 @@ fn collection_realization_from_target_edge(
   )
 }
 
-fn project_collection_type_node(
+fn project_set_collection_type_node_impl(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -1700,7 +1700,7 @@ fn project_set_collection_type_node(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  project_collection_type_node(
+  project_set_collection_type_node_impl(
     node: node,
     target: target,
     projection: projection
