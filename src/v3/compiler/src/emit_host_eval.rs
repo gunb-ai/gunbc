@@ -4,8 +4,8 @@
 //! executes real host-process transport when the evaluator calls `run_emit_host_*` (dissolves
 //! `emit_host_transport_not_wired` for wired rows without fabricating receipts in `.dag`).
 
-use crate::dag::{Dag, DeclarationId, LiteralBits, NamedField, TypeConnective, Value};
-use crate::evaluator::EvalError;
+use crate::dag::{Dag, DeclarationId, LiteralBits, TypeConnective};
+use crate::evaluator::{EvalError, NamedField, Value};
 
 /// Eval-time dispatch for `run_emit_host_rust` in `emit_host.dag`.
 pub fn try_dispatch_emit_host_rust(
