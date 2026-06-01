@@ -1,6 +1,6 @@
 # v4 SG-8 Worksheet — Module graph + carrier re-exports
 
-> **Status:** WORKSHEET COMPLETE (content) — Modeling DFS §8 sign-off **OPEN**. Worksheet PR [#4127](https://github.com/gunb-ai/gunbc/pull/4127) is **docs-only** (same split as SG-RC [#4100](https://github.com/gunb-ai/gunbc/pull/4100)). Target Realization implementation (`keen-heron-687`) is **authorized only after** §8 closes **and** #4127 is on `main` — merge alone does not authorize emitter work.
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Worksheet PR [#4127](https://github.com/gunb-ai/gunbc/pull/4127) is on `main` (docs-only, same split as SG-RC [#4100](https://github.com/gunb-ai/gunbc/pull/4100)). Target Realization implementation is **authorized** — dispatch under Rust RCA Manager per #4137 §11.2.
 > **Date:** 2026-05-31
 > **Dispatch anchor (on `main`, not re-committed here):** [`docs/audit/v4-rustc-error-catalog-2026-05-31.md`](https://github.com/gunb-ai/gunbc/blob/main/docs/audit/v4-rustc-error-catalog-2026-05-31.md) §5 — SG-8 **~796** (E0425+E0432+E0433) per [#4086](https://github.com/gunb-ai/gunbc/pull/4086). Fresh M1 probe histogram is **implementation-PR evidence only** (not worksheet authority).
 > **Primary consumer (implementation worker):** `src/v2/05_emit_rust.dag` `emit_imports` + generic type-alias emission (M1 v2 Rust emit path over full `src/v4` tree).
@@ -10,9 +10,9 @@
 
 | Layer | State |
 | ----- | ----- |
-| **Worksheet** | **COMPLETE (content)** — §8 Manager checklist **OPEN** |
-| **Worksheet PR** | [#4127](https://github.com/gunb-ai/gunbc/pull/4127) — docs-only; **merge requires §8 sign-off**; lands dispatch binding on `main` (no emitter) |
-| **Implementation dispatch** | **Blocked** until §8 closed; **authorized** after §8 closed + #4127 on `main` — Target Realization (`05_emit_rust.dag` items (1)+(2)); §4 falsification in implementation PR |
+| **Worksheet** | **READY-FOR-WORKER-DISPATCH** — §8 closed 2026-06-01 (`proud-fox-405`) |
+| **Worksheet PR** | [#4127](https://github.com/gunb-ai/gunbc/pull/4127) — on `main` (docs-only; no emitter) |
+| **Implementation dispatch** | **Authorized** — Target Realization (`05_emit_rust.dag` items (1)+(2)); §4 falsification in implementation PR; Rust RCA Manager fanout |
 
 ---
 
@@ -125,12 +125,14 @@ Implement §10.0 systemic fix (1)+(2) in `src/v2/05_emit_rust.dag` on `main` aft
 
 ---
 
-## §8 Manager approval checklist — OPEN
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] Single-authority fact: defining-module `pub use` + graph-type variant isolation (not import-site parent tables)
-- [ ] Spot-fix forbidden: per-error `pub use` patch tables / shim re-exports
-- [ ] Falsification probes F1–F4 accepted
-- [ ] Modeling DFS §8 sign-off
+- [x] Single-authority fact: defining-module `pub use` + graph-type variant isolation (not import-site parent tables) — export surface derived from resolve/admission facts in `03_name_resolve.dag`, consumed by `emit_imports` (§10.0 systemic fix (1)+(2))
+- [x] Spot-fix forbidden: per-error `pub use` patch tables / shim re-exports / hand-edited `src/v4_*.rs`
+- [x] Falsification probes F1–F4 accepted (structural `.dag TestClaim` or `src/v2/tests` for F4 — no prose-only PROVEN)
+- [x] DFS path lands in v2 `05_emit_rust.dag` for M1 emit (not duplicate `CarrierKind` in shims); follow-on `TargetModuleExportSurface` correctly deferred to separate dispatch (§5 step 4)
+- [x] Cross-language note: module/export facts are Rust-emit path first; shared `TargetModuleExportSurface` in `v4.std.target_model` is follow-on — no per-language reinvention required for this worksheet's core fix
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`, Modeling DFS Arbiter per #4137 §11.2)
 
 ## Related artifacts (committed on `main` — navigation only)
 

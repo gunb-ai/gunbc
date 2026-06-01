@@ -3,7 +3,7 @@
 > **Status:** MATURATION TRACKER — v0.1.1 narrative source; **not** a v0.1.0 release gate (D-REL-1 flavor iv). Companion: [`v4-done-predicate-tracker-2026-05-30.md`](v4-done-predicate-tracker-2026-05-30.md).  
 > **Authority:** `src/v4/TASKS.md:805-817`; PR [#3938](https://github.com/gunb-ai/gunbc/pull/3938) §8.D4 (all six collectively).  
 > **Session:** `merry-badger-222` (Self-host/Release Manager) · **Parent:** `nimble-dove-733`  
-> **Tree HEAD:** `483d82a78` (`main` 2026-06-01T00:18Z) — post-#4112 maintenance ([#4112](https://github.com/gunb-ai/gunbc/pull/4112)).  
+> **Tree HEAD:** `73305f9cf` (`main` 2026-06-01T00:50Z) — post-#4138 maintenance ([#4138](https://github.com/gunb-ai/gunbc/pull/4138)).  
 > **Wave posture:** MW-D8 **5/5 PROVEN — Wave 1 EXIT** ([#4073](https://github.com/gunb-ai/gunbc/pull/4073) + [#4082](https://github.com/gunb-ai/gunbc/pull/4082) C4). **Wave 2 TR-lane COMPLETE** (SG-1/2/5/6 on main, keen-heron 06:52Z). W2.3 A+B+C+E landed; W2.4+ post-Jun 1.  
 > **Public framing:** D-REL-1 flavor (iv) — `src/v4` ships **alpha/WIP-labeled**; see §Public ship disposition + [`docs/release/v0.1.0-v4-ship-disposition.md`](../release/v0.1.0-v4-ship-disposition.md) (#4023).
 
@@ -238,6 +238,7 @@ Post-#4021 merges — predicate attribution for maturation tracker (not v0.1.0 g
 | `8c01c15c1` | ~08:40 | P5 Layer 2 | **P5** | `dsl/std/compute_fabric.dag` Worksheet A §6 landed — Layer 2 substrate |
 | [#4111](https://github.com/gunb-ai/gunbc/pull/4111) | ~09:26 | Maintenance | *(tracker)* | Post-#4110 burn-down — #4102 + compute_fabric landing log |
 | [#4112](https://github.com/gunb-ai/gunbc/pull/4112) | ~00:18 | Maintenance | *(tracker)* | Post-#4111 burn-down — HEAD refresh + #4111 landing-log row |
+| [#4138](https://github.com/gunb-ai/gunbc/pull/4138) | ~00:50 | Maintenance | *(tracker)* | Post-#4112 burn-down — HEAD refresh + #4112 landing-log row |
 
 ---
 
