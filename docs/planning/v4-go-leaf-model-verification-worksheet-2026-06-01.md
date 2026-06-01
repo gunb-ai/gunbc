@@ -55,9 +55,11 @@ DFS path:
     - src/v4/test/claim/language_model/go_r3_external.dag
   lens fixtures:
     - src/v4/lens/leaf_model_verification.dag — go_r*_fixture* + fixture sources (mirror python_*)
-  host runner (dissolve-on-arrival per python shells):
+  host runner (dissolve-on-arrival per python shells — required Phase 1):
     - scripts/v4-leaf-model-go-{r1,r2a,r2b,r3-external}-verify.sh
-    - optional boundary test src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_test.rs
+  host bridge v3 hand-Rust (forbidden unless §5 P5(b) receipt bundle lands in same PR):
+    - src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_test.rs — NOT optional; omit entirely
+      if worker cannot supply SG-0 pairing + ROADMAP deferral (see §5)
 Deepest unsound boundary:
   No LeafModelClaimId rows or Go toolchain call sites on existing verdict carriers; Go zero.
 Systemic fix:
@@ -93,13 +95,70 @@ Metric allowed only as secondary:
 
 ### §4.2 Runtime-bound claim (`TargetRuntimeExerciseVerdict` — R2b only)
 
+Go spec ([Integer overflow](https://go.dev/ref/spec#Integer_overflow)): overflow is a **typed integer operation**, not an untyped constant fold. Fixtures MUST bind `math.MaxInt64` into a typed variable before `+ 1` so compile stays `TargetCompileAccepted` and only runtime exercises the wrap story.
+
+**Authoritative fixture sources (lens `go_r2b_*_fixture_source` must match verbatim):**
+
+Happy (`go_r2b_happy_fixture_source`):
+
+```go
+package main
+
+import "math"
+
+func main() {
+    var x int64 = math.MaxInt64
+    got := x + 1
+    want := int64(math.MinInt64)
+    if got != want {
+        panic("silent signed wrap: expected MinInt64")
+    }
+}
+```
+
+Negative probe (`go_r2b_falsification_fixture_source`) — **same typed source shape**; only `want` changes:
+
+```go
+package main
+
+import "math"
+
+func main() {
+    var x int64 = math.MaxInt64
+    got := x + 1
+    want := int64(0)
+    if got != want {
+        panic("deliberately wrong expected wrap value")
+    }
+}
+```
+
 | Claim ID | Fact anchor | Happy | Negative probe | Verdict carrier |
 |---|---|---|---|---|
-| `leaf_model_claim_go_r2b_int_silent_overflow_truncates` | `go_tag_overflow_signed_truncates` on `go_facts_int` | `go run` / `go test`: `math.MaxInt64+1` wraps as modeled | Same source with **wrong** expected wrap constant in assert → runtime failure | `TargetRuntimeExerciseVerdict` (compile phase: `TargetCompileAccepted` for identical source — mirror `python_r2b`) |
+| `leaf_model_claim_go_r2b_int_silent_overflow_truncates` | `go_tag_overflow_signed_truncates` on `go_facts_int` | `go run` on happy source above → wrap matches `want` | `go run` on falsification source → panic (wrong `want` only) | Runtime: `Accepted` / `Rejected`; compile: `TargetCompileAccepted` for **both** sources |
+
+**Forbidden R2b shapes:** `math.MaxInt64 + 1` as a single constant expression (may fail compile or fold at compile time); negative probe that changes the `+ 1` expression instead of `want`.
 
 **R2b note:** Go models **silent truncation** on typed integer overflow (`go.dag` L181). Not Rust debug/release dual claim IDs unless Arbiter directs.
 
 **Verifiers:** `go build` — R1/R2a/R3-external only. `go run` or `go test` — R2b only. `go vet` optional, not authority.
+
+---
+
+## §5 P5(b) / Pure Bootstrap — v3 hand-Rust bridge (if used)
+
+Per `INVARIANTS.md` P5 and THESIS Pure Bootstrap 0-floor: any planned `src/v3/compiler/tests/boundary/*.rs` bridge carries **exactly one** checkable receipt. Shell-only Phase 1 is valid (mirror early lanes); adding hand-Rust is **forbidden** without all items below in the **same** implementation PR.
+
+| Requirement | Authority |
+|---|---|
+| **SG-0 pairing** | PR body: `(c) Net +1 on EXPECTED_HAND_AUTHORED_TEST` for `v4_leaf_model_go_r1_test.rs` with one-line Phase 1 leaf-model Go R1 rationale (same shape as #3972 / #4022 append files under `scripts/ci-merge/`) |
+| **Deleted-scaffold** | N/A at first landing; bridge is net-new with dissolve header only |
+| **SG-0 shrink** | No shrink claimed on landing; retirement PR must pair delete with shrink or deferral row update |
+| **Lane + ROADMAP deferral** | Dissolve-on-arrival trigger names T-22 `run_target_verification` for `go_r1.dag`; retirement owner **T-PB-B** `pb_rust_tests_outside_residual_zero` in `_internal/ROADMAP_OPS.md` |
+| **integration.rs** | `#[path = "boundary/v4_leaf_model_go_r1_test.rs"]` mod registration (same as `v4_leaf_model_python_r1_test.rs`) |
+| **Pairs with** | `scripts/v4-leaf-model-go-r1-verify.sh` — single host-transport story, not duplicate authority |
+
+**Default dispatch (this worksheet):** Phase 1 Go leaf-model workers land **shell runners only** unless Arbiter explicitly authorizes the P5(b) bundle above. Do not author `v4_leaf_model_go_r1_test.rs` as an undocumented optional extra.
 
 ---
 
@@ -110,6 +169,8 @@ Metric allowed only as secondary:
 - [ ] R3-external blocked until Go SG-1 atom row exists (cross-worksheet dependency accepted)
 - [ ] R3-internal explicitly deferred for Go L0
 - [ ] Host runner dissolve-on-arrival headers match python shell pattern
+- [ ] If v3 boundary test authorized: §5 P5(b) receipt bundle complete in same PR; else shell-only
+- [ ] R2b fixtures use typed `var x int64 = math.MaxInt64; got := x + 1` (not constant `math.MaxInt64+1`)
 
 **State after author:** `ready-for-review`
 
