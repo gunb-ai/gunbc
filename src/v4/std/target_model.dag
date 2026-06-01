@@ -221,94 +221,61 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
   }
 }
 
-// 🟡 coproduct dissolution — local fold state for fail-closed encoded FreeMonoid<Char>
-// projection; dissolve-on: std.algebra exports the canonical string/free-monoid projection
-// named by the `free-monoid-node-projection` receipt below.
-type SourceAtomStringProjectionFold
-  = SourceAtomStringFoldInit
-  | SourceAtomStringFoldHeadSeen
-  | SourceAtomStringFoldTailSeen
-  | SourceAtomStringFoldChar
-  | SourceAtomStringFoldString
-  | SourceAtomStringFoldInvalid
-
-fn source_atom_string_projection_fold_init(source: Node) -> SourceAtomStringProjectionFold {
-  match source.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == free_monoid_variant_empty {
-        SourceAtomStringFoldString
-      } else {
-        match source_atom_char_projection_from_node(source: source) {
-          Present { value: _ } => SourceAtomStringFoldChar
-          Absent => SourceAtomStringFoldInvalid
-        }
-      }
-    TypeNode { connective: Conj } =>
-      if count(source.children) == 2 {
-        SourceAtomStringFoldInit
-      } else {
-        SourceAtomStringFoldInvalid
-      }
-    _ => SourceAtomStringFoldInvalid
-  }
-}
-
-fn source_atom_string_projection_fold_step(
-  acc: SourceAtomStringProjectionFold,
-  edge: Edge,
-  child: SourceAtomStringProjectionFold
-) -> SourceAtomStringProjectionFold {
-  match acc {
-    SourceAtomStringFoldInvalid => SourceAtomStringFoldInvalid
-    SourceAtomStringFoldString => SourceAtomStringFoldInvalid
-    SourceAtomStringFoldChar => SourceAtomStringFoldInvalid
-    _ =>
-      match edge.label {
-        Named { name: ename } =>
-          if ename == free_monoid_field_head {
-            match child {
-              SourceAtomStringFoldChar =>
-                match acc {
-                  SourceAtomStringFoldInit => SourceAtomStringFoldHeadSeen
-                  SourceAtomStringFoldTailSeen => SourceAtomStringFoldString
-                  _ => SourceAtomStringFoldInvalid
-                }
-              _ => SourceAtomStringFoldInvalid
-            }
-          } else if ename == free_monoid_field_tail {
-            match child {
-              SourceAtomStringFoldString =>
-                match acc {
-                  SourceAtomStringFoldInit => SourceAtomStringFoldTailSeen
-                  SourceAtomStringFoldHeadSeen => SourceAtomStringFoldString
-                  _ => SourceAtomStringFoldInvalid
-                }
-              _ => SourceAtomStringFoldInvalid
-            }
-          } else {
-            SourceAtomStringFoldInvalid
-          }
-        _ => SourceAtomStringFoldInvalid
-      }
-  }
-}
-
 // 🟡 gated — feature:free-monoid-node-projection — owner:Modeling DFS / std.algebra lane —
 // dissolve-on: std.algebra exports a canonical `Node -> Optional<FreeMonoid<T>>` (or
 // `Node -> Optional<String>`) projection over `free_monoid_type_node`'s encoded surface; replace
-// this local encoded-node projection with that accessor. The local recursion is fail-closed and
-// bounded to TS-ATOM-REALIZATION's String value-template bridge; forbidden: adding another
-// FreeMonoid storage walker outside this receipt.
+// this local encoded-node projection with that accessor. The bridge proves Empty or Cons(head:
+// Char, tail: String) with fuel derived from the input node tree size so malformed tails fail
+// closed without adding an arbitrary string-length cap; named-edge lookup remains delegated to
+// node_query. Forbidden: adding another FreeMonoid storage walker outside this receipt.
 fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
-  match fold_node(
+  source_atom_string_projection_from_node_bounded(source: source, fuel: source_atom_string_projection_node_count(source: source))
+}
+
+fn source_atom_string_projection_node_count(source: Node) -> Int {
+  fold_node(
     n: source,
     algebra: NodeFold {
-      init: source_atom_string_projection_fold_init,
-      step: source_atom_string_projection_fold_step
+      init: fn(_) { 1 },
+      step: fn(acc, _, child_count) { acc + child_count }
     }
-  ) {
-    SourceAtomStringFoldString => optional_present(source_atom_string(value: source))
-    _ => optional_absent()
+  )
+}
+
+fn source_atom_string_projection_from_node_bounded(source: Node, fuel: Int) -> Optional<SourceAtomValue> {
+  if fuel <= 0 {
+    optional_absent()
+  } else {
+    match source.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == free_monoid_variant_empty {
+          optional_present(source_atom_string(value: source))
+        } else {
+          optional_absent()
+        }
+      TypeNode { connective: Conj } =>
+        if (source.children |> count) != 2 {
+          optional_absent()
+        } else {
+          match find_named_child(root: source, name: free_monoid_field_head) {
+            Accepted { value: head } =>
+              match find_named_child(root: source, name: free_monoid_field_tail) {
+                Accepted { value: tail } =>
+                  match source_atom_char_projection_from_node(source: head) {
+                    Present { value: _ } =>
+                      match source_atom_string_projection_from_node_bounded(source: tail, fuel: fuel - 1) {
+                        Present { value: _ } => optional_present(source_atom_string(value: source))
+                        Absent => optional_absent()
+                      }
+                    Absent => optional_absent()
+                  }
+                Rejected { diagnostics: _ } => optional_absent()
+              }
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+        }
+      _ => optional_absent()
+    }
   }
 }
 
