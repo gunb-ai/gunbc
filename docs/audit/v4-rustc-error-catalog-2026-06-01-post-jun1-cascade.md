@@ -57,9 +57,10 @@ This is a measurement receipt, not a class closure claim. The dominant error rem
 | `E0505` | 1 | 1 | 0 | move while borrowed |
 | `E0422` | 1 | 1 | 0 | cannot find struct/variant |
 | `E0072` | 1 | 0 | +1 | recursive type without indirection |
+| #4122 outside top-25 singleton | 0 | 1 | -1 | prior baseline code outside the raw summary's displayed top-25 |
 | **TOTAL** | **7,724** | **7,175** | **+549** | |
 
-**Histogram reconciliation.** The 2026-06-01 top-25 lines in the raw probe summary sum to 7,723. The full rustc log has one additional `E0072` outside the displayed top-25, yielding the recorded total of 7,724. The #4122 comparison column has the same display-shape: its top-25 summary sums to 7,174, plus one code outside the displayed top-25, yielding the recorded baseline total of 7,175.
+**Histogram reconciliation.** The 2026-06-01 top-25 lines in the raw probe summary sum to 7,723. The full rustc log has one additional `E0072` outside the displayed top-25, yielding the recorded total of 7,724. The #4122 comparison column has the same display-shape: its top-25 summary sums to 7,174, plus one code outside the displayed top-25, yielding the recorded baseline total of 7,175. The explicit `#4122 outside top-25 singleton` row above carries that prior-only count so the visible row deltas reconcile to the headline +549.
 
 ---
 
