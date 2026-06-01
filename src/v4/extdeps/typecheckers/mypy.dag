@@ -1,0 +1,57 @@
+// src/v4/extdeps/typecheckers/mypy.dag
+// Scope: mypy static type-checker profile — tool identity, version/config policy,
+//   and the per-tool diagnostic-code namespace consumed by the shared
+//   TargetStaticAnalysisInvocation / TargetStaticAnalysisVerdict carriers
+//   (v4.std.leaf_model_verification). mypy is STATIC EVIDENCE, never CPython
+//   compile and never a substitute for L2 runtime parity.
+// Status: PY-L1-STATIC-STRUCTURAL substrate — Arbiter ruling proud-fox-405 (msg_41813c03).
+// Anchor: https://mypy.readthedocs.io/en/stable/error_code_list.html
+//   (error codes are emitted in brackets, e.g. [return-value], under --show-error-codes).
+
+module v4.extdeps.typecheckers.mypy
+
+import v4.std.collection { List }
+import v4.std.node { Symbol }
+import v4.std.text { String }
+
+// Stable tool identity referenced by TargetStaticAnalysisInvocation.tool_profile_ref
+// and StaticAnalysisRejected/Advisory.tool_id.
+data mypy_tool_id: Symbol = mypy_tool_id
+
+// mypy strictness posture — closed set (M4: enum, not string proxy). MypyStrict
+// corresponds to the aggregate `--strict` flag bundle.
+type MypyStrictness
+  = MypyLenient
+  | MypyStrict
+
+type MypyConfig {
+  mypy_version: String
+  python_version: String
+  strictness: MypyStrictness
+}
+
+data mypy_profile_l1: MypyConfig = MypyConfig {
+  mypy_version: "1.13.0",
+  python_version: "3.11",
+  strictness: MypyStrict,
+}
+
+// Per-tool diagnostic-code namespace (NOT shared across tools, per Arbiter ruling).
+// code_id is the Symbol carried in StaticAnalysisRejected/Advisory; error_code is the
+// literal mypy bracket code emitted under --show-error-codes.
+type MypyDiagnosticCode {
+  code_id: Symbol
+  error_code: String
+}
+
+data mypy_diag_return_value: Symbol = mypy_diag_return_value
+data mypy_diag_name_defined: Symbol = mypy_diag_name_defined
+data mypy_diag_attr_defined: Symbol = mypy_diag_attr_defined
+data mypy_diag_arg_type: Symbol = mypy_diag_arg_type
+
+data mypy_diagnostic_codes: List<MypyDiagnosticCode> = [
+  MypyDiagnosticCode { code_id: mypy_diag_return_value, error_code: "return-value" },
+  MypyDiagnosticCode { code_id: mypy_diag_name_defined, error_code: "name-defined" },
+  MypyDiagnosticCode { code_id: mypy_diag_attr_defined, error_code: "attr-defined" },
+  MypyDiagnosticCode { code_id: mypy_diag_arg_type, error_code: "arg-type" },
+]

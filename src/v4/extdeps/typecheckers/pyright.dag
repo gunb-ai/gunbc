@@ -1,0 +1,60 @@
+// src/v4/extdeps/typecheckers/pyright.dag
+// Scope: Pyright static type-checker profile — tool identity, version/config policy,
+//   and the per-tool diagnostic-rule namespace consumed by the shared
+//   TargetStaticAnalysisInvocation / TargetStaticAnalysisVerdict carriers
+//   (v4.std.leaf_model_verification). pyright is STATIC EVIDENCE, never CPython
+//   compile and never a substitute for L2 runtime parity.
+// Status: PY-L1-STATIC-STRUCTURAL substrate — Arbiter ruling proud-fox-405 (msg_41813c03).
+// Anchor: https://microsoft.github.io/pyright/#/configuration (typeCheckingMode, rule names);
+//   --outputjson emits `rule` per generalDiagnostics entry (pyright 1.1.410).
+
+module v4.extdeps.typecheckers.pyright
+
+import v4.std.collection { List }
+import v4.std.node { Symbol }
+import v4.std.text { String }
+
+// Stable tool identity referenced by TargetStaticAnalysisInvocation.tool_profile_ref
+// and StaticAnalysisRejected/Advisory.tool_id.
+data pyright_tool_id: Symbol = pyright_tool_id
+
+// pyright `typeCheckingMode` — a closed set (M4: enum, not string proxy).
+type PyrightTypeCheckingMode
+  = PyrightModeOff
+  | PyrightModeBasic
+  | PyrightModeStandard
+  | PyrightModeStrict
+
+// Version/config policy. The invocation pins a concrete pyright release and
+// target python version so the static-analysis receipt is reproducible.
+type PyrightConfig {
+  pyright_version: String
+  python_version: String
+  type_checking_mode: PyrightTypeCheckingMode
+}
+
+data pyright_profile_l1: PyrightConfig = PyrightConfig {
+  pyright_version: "1.1.410",
+  python_version: "3.11",
+  type_checking_mode: PyrightModeStandard,
+}
+
+// Per-tool diagnostic-rule namespace (NOT a shared cross-tool namespace, per Arbiter
+// ruling). code_id is the Symbol carried in StaticAnalysisRejected/Advisory;
+// rule_name is the literal pyright rule string emitted under --outputjson.
+type PyrightDiagnosticRule {
+  code_id: Symbol
+  rule_name: String
+}
+
+data pyright_diag_report_return_type: Symbol = pyright_diag_report_return_type
+data pyright_diag_report_undefined_variable: Symbol = pyright_diag_report_undefined_variable
+data pyright_diag_report_missing_imports: Symbol = pyright_diag_report_missing_imports
+data pyright_diag_report_general_type_issues: Symbol = pyright_diag_report_general_type_issues
+
+data pyright_diagnostic_rules: List<PyrightDiagnosticRule> = [
+  PyrightDiagnosticRule { code_id: pyright_diag_report_return_type, rule_name: "reportReturnType" },
+  PyrightDiagnosticRule { code_id: pyright_diag_report_undefined_variable, rule_name: "reportUndefinedVariable" },
+  PyrightDiagnosticRule { code_id: pyright_diag_report_missing_imports, rule_name: "reportMissingImports" },
+  PyrightDiagnosticRule { code_id: pyright_diag_report_general_type_issues, rule_name: "reportGeneralTypeIssues" },
+]

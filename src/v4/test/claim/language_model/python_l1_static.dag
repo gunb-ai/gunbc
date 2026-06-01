@@ -1,0 +1,98 @@
+// src/v4/test/claim/language_model/python_l1_static.dag
+// Scope: PY-L1-STATIC-STRUCTURAL — pyright static structural analysis as a third,
+//   distinct verification authority alongside CPython compile and runtime exec
+//   (docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md Worksheet A).
+// Authority: Modeling DFS Arbiter ruling proud-fox-405 (msg_41813c03).
+// Fixtures: src/v4/lens/leaf_model_verification.dag (python_l1_static_*).
+// Host runner: scripts/v4-leaf-model-python-l1-static-verify.sh exercises pyright.
+
+module v4.test.claim.language_model.python_l1_static
+
+import v4.extdeps.languages.python {
+  python_surface_spelling_int
+}
+import v4.extdeps.typecheckers.pyright {
+  pyright_tool_id,
+  pyright_diag_report_return_type
+}
+import v4.lens.leaf_model_verification {
+  python_l1_static_fixture
+}
+import v4.std.leaf_model_verification {
+  leaf_model_claim_python_l1_static_return_type,
+  StaticAnalysisAccepted,
+  StaticAnalysisRejected,
+  StaticAnalysisAdvisory,
+  Advisory,
+  BlockingForRung,
+  leaf_model_python_static_happy_verdict,
+  leaf_model_python_static_falsification_verdict
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Boundary,
+  manual_claim_anchor
+}
+
+data python_l1_static_claim_bool_true: Symbol = python_l1_static_claim_bool_true
+data python_l1_static_claim_bool_false: Symbol = python_l1_static_claim_bool_false
+
+fn python_l1_static_claim_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: python_l1_static_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: python_l1_static_claim_bool_false } }, children: [] }
+  }
+}
+
+// The fixture pair binds the L1 static claim id and the int surface-spelling fact,
+// and both cases are BlockingForRung invocations (fail-closed for the rung).
+fn python_l1_static_fixture_pair_wired() -> Bool {
+  python_l1_static_fixture().claim_id == leaf_model_claim_python_l1_static_return_type
+    && python_l1_static_fixture().surface_spelling_fact == python_surface_spelling_int
+    && match python_l1_static_fixture().happy.invocation.analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+    && match python_l1_static_fixture().falsification.invocation.analysis_role {
+         BlockingForRung => true
+         Advisory => false
+       }
+}
+
+data claim_python_l1_static_fixture_pair_wired: TestClaim = EqualsClaim {
+  label: "language_model/python_l1_static: fixture pair binds L1 static claim id + int surface-spelling fact, both cases BlockingForRung",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: python_l1_static_claim_bool_atom(b: python_l1_static_fixture_pair_wired()),
+  rhs: python_l1_static_claim_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+// Happy case expects StaticAnalysisAccepted; falsification expects a blocking
+// StaticAnalysisRejected carrying pyright tool_id + reportReturnType diagnostic.
+fn python_l1_static_expected_verdicts_wired() -> Bool {
+  match python_l1_static_fixture().happy.expected_verdict {
+    StaticAnalysisAccepted => true
+    StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
+    StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+  }
+  && match python_l1_static_fixture().falsification.expected_verdict {
+       StaticAnalysisAccepted => false
+       StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
+         t == pyright_tool_id && d == pyright_diag_report_return_type
+       StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
+     }
+}
+
+data claim_python_l1_static_expected_verdicts_wired: TestClaim = EqualsClaim {
+  label: "language_model/python_l1_static: happy=Accepted, falsification=Rejected{pyright,reportReturnType}",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: python_l1_static_claim_bool_atom(b: python_l1_static_expected_verdicts_wired()),
+  rhs: python_l1_static_claim_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}

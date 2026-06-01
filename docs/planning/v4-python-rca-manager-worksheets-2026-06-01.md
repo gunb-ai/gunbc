@@ -1,6 +1,6 @@
 # v4 Python RCA Manager worksheets - L1/L2 release-minimum runway
 
-> **Status:** DRAFT - ready for Modeling DFS Arbiter review. No implementation worker is authorized by this file until the relevant worksheet section is approved.
+> **Status:** Worksheet A (PY-L1-STATIC-STRUCTURAL) APPROVED by Modeling DFS Arbiter (proud-fox-405, msg_41813c03) and implemented in PR #4158 — see ruling section below. Worksheets B/C/D remain DRAFT; no implementation worker is authorized for those until the relevant section is approved.
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` Section 11.8, Python row.
 > **Current rung:** L0 complete via #4117 (R1 + R2a + R2b + R3-external).
@@ -251,5 +251,45 @@ Falsification probes:
 - [x] Runtime execution framed as the meaningful Python verifier.
 - [x] Cross-target parity extends #4081 Wc L5 instead of creating a new stdout shell authority.
 - [x] Python self-compile framed as compiler execution parity before binary-like self-host.
-- [ ] Modeling DFS Arbiter approval.
-- [ ] Runtime/TestClaim owner accepts runner-surface dispatch.
+- [x] Modeling DFS Arbiter approval — Worksheet A (PY-L1-STATIC-STRUCTURAL) APPROVED, see ruling below.
+- [ ] Runtime/TestClaim owner accepts runner-surface dispatch (Worksheets B/C still pending).
+
+## Modeling DFS Arbiter ruling — Worksheet A (PY-L1-STATIC-STRUCTURAL)
+
+> **Decision:** APPROVED on carrier shape. **Arbiter:** proud-fox-405 (msg_41813c03), 2026-06-01.
+
+1. **Carrier scope — SHARED (M2).** One cross-target pair lives in `src/v4/std/leaf_model_verification.dag`:
+   `TargetStaticAnalysisInvocation` + `TargetStaticAnalysisVerdict`. `TargetPythonExerciseVerdict`
+   is NOT extended; it stays L0 CPython compile-vs-exec only. Three distinct Python authorities:
+   (a) CPython compile → `TargetPythonCompileRejected`, (b) third-party static analysis →
+   `TargetStaticAnalysisVerdict`, (c) runtime → `TargetPythonExecRejected`. `tsc --noEmit` reuses
+   the same verdict carrier with a TS profile later; the Rust analyzer is out of scope for this slice.
+2. **Home + shape.** `TargetStaticAnalysisInvocation { tool_profile_ref: Symbol, input_artifact:
+   TargetArtifact, analysis_role: Advisory | BlockingForRung }`. `TargetStaticAnalysisVerdict =
+   StaticAnalysisAccepted | StaticAnalysisRejected{tool_id, diagnostic_code} |
+   StaticAnalysisAdvisory{tool_id, diagnostic_code}` (fail-closed: BlockingForRung + advisory-only
+   finding on the falsification path is a MISS). `host_run` stays runtime stdout/exit only — no
+   static-analysis facts there.
+3. **Per-tool profiles.** `src/v4/extdeps/typecheckers/pyright.dag` + `mypy.dag` (mirror the
+   `extdeps/formatters/black.dag` category layout). `diagnostic_code` Symbols are per-tool facts
+   declared in each extdeps file — NOT a shared cross-tool namespace. std carriers reference the
+   tool profile / diagnostic by Symbol only.
+
+**Landed in PR #4158 against this ruling:**
+
+- std carriers `TargetStaticAnalysisRole` / `TargetStaticAnalysisInvocation` /
+  `TargetStaticAnalysisVerdict`, claim id `leaf_model_claim_python_l1_static_return_type`, and the
+  `LeafModelPythonStaticCase` / `LeafModelPythonStaticFixturePair` fixture carriers
+  (`src/v4/std/leaf_model_verification.dag`).
+- per-tool profiles `src/v4/extdeps/typecheckers/pyright.dag` + `mypy.dag` (tool-id, config/version
+  policy, per-tool diagnostic namespace) + `compile_to_dag` smoke
+  `src/v3/compiler/tests/integration/v4_extdeps_typecheckers_dag_smoke_test.rs`.
+- F1 fixtures + claim: `python_l1_static_*` in `src/v4/lens/leaf_model_verification.dag`,
+  `src/v4/test/claim/language_model/python_l1_static.dag`.
+- F1 host receipt: `scripts/v4-leaf-model-python-l1-static-verify.sh` — pyright `reportReturnType`
+  catches a `-> int` function returning `str` that BOTH `py_compile` and `python3` exec accept,
+  proving the third distinct authority. Degrades to a recorded deferred/advisory when pyright is
+  unavailable (F2: tool-unavailable recorded honestly, never a runtime/behavioral failure).
+
+Naming nuance vs the ruling: the verdict's accept arm is spelled `StaticAnalysisAccepted` (prefix
+consistency with the other two arms) rather than bare `Accepted`; semantics unchanged.

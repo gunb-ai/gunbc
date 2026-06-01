@@ -12,6 +12,10 @@ import v4.extdeps.languages.python {
   python_integer_algebra_inhabitance_python_facts_int,
   python_surface_spelling_int
 }
+import v4.extdeps.typecheckers.pyright {
+  pyright_tool_id,
+  pyright_diag_report_return_type
+}
 import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
   rust_coercion_field_i32_spelling,
@@ -47,6 +51,7 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_python_r2a_int_algebra_operations,
   leaf_model_claim_python_r2b_int_arbitrary_precision_add,
   leaf_model_claim_python_r3_external_symbol_projection,
+  leaf_model_claim_python_l1_static_return_type,
   leaf_model_claim_rust_r1_i32_surface_spelling,
   leaf_model_claim_rust_r2a_i32_algebra_operations,
   leaf_model_claim_rust_r2b_debug_default_overflow,
@@ -60,6 +65,13 @@ import v4.std.leaf_model_verification {
   TargetCompileRejected,
   TargetPythonExerciseAccepted,
   TargetPythonExecRejected,
+  TargetArtifact,
+  TargetStaticAnalysisInvocation,
+  TargetStaticAnalysisRole,
+  BlockingForRung,
+  LeafModelPythonStaticHappyCase,
+  LeafModelPythonStaticFalsificationCase,
+  LeafModelPythonStaticFixturePair,
   target_diagnostic_e0308_type_mismatch,
   target_diagnostic_e0423_expected_value_found_type,
   target_diagnostic_e0599_method_not_found,
@@ -443,4 +455,40 @@ fn rust_r3_internal_emit_coupling_receipt() -> LeafModelEmitCouplingReceipt {
 
 fn rust_r3_internal_fixture() -> LeafModelEmitCouplingReceipt {
   rust_r3_internal_emit_coupling_receipt()
+}
+
+// --- PY-L1-STATIC-STRUCTURAL fixtures (Arbiter ruling proud-fox-405, msg_41813c03) ---
+// F1 demonstration: the falsification fixture returns a `str` from a function annotated
+// `-> int`. CPython `py_compile` ACCEPTS it and `python3` runs it with NO error
+// (the value is never used), so neither the compile nor the runtime authority catches
+// the defect — only static analysis (pyright `reportReturnType`) does. This is exactly
+// why static structural analysis is a third, distinct authority.
+data python_l1_static_happy_fixture_source: String = "def l1_test() -> int:\n    return 0\n"
+data python_l1_static_falsification_fixture_source: String = "def l1_test() -> int:\n    return \"not an int\"\n"
+
+fn python_l1_static_invocation(source: String, role: TargetStaticAnalysisRole) -> TargetStaticAnalysisInvocation {
+  TargetStaticAnalysisInvocation {
+    tool_profile_ref: pyright_tool_id,
+    input_artifact: TargetArtifact { source_text: source },
+    analysis_role: role
+  }
+}
+
+fn python_l1_static_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_return_type,
+    surface_spelling_fact: python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      invocation: python_l1_static_invocation(source: python_l1_static_happy_fixture_source, role: BlockingForRung)
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      invocation: python_l1_static_invocation(source: python_l1_static_falsification_fixture_source, role: BlockingForRung),
+      tool_id: pyright_tool_id,
+      diagnostic_code: pyright_diag_report_return_type
+    }
+  }
+}
+
+fn python_l1_static_fixture() -> LeafModelPythonStaticFixturePair {
+  python_l1_static_fixture_pair()
 }

@@ -101,6 +101,12 @@ type TargetPythonExerciseVerdict
 // Whether a static-analysis finding blocks a rung or is advisory evidence only.
 // Fail-closed semantics (Arbiter): a BlockingForRung invocation whose falsification
 // path yields only an advisory finding is a MISS, not a pass.
+// 🟢 coproduct dissolution — CP-PYL1-STATIC-ANALYSIS-ROLE-TERMINAL. Practice-4 PR review:
+//   tried dissolving into (a) a per-rung identity carrier — rejected, rung identity is
+//   carried by the consuming claim/gate context, not by the disposition itself; (b) a
+//   numeric severity threshold — rejected, the gate decision is a binary disposition, not
+//   an ordering. The advisory-vs-blocking distinction is an irreducible rung-policy
+//   disposition at the verification boundary; no richer source can be named.
 type TargetStaticAnalysisRole
   = Advisory
   | BlockingForRung
@@ -115,6 +121,13 @@ type TargetStaticAnalysisInvocation {
 // StaticAnalysisRejected: blocking finding (tool_id + per-tool diagnostic_code).
 // StaticAnalysisAdvisory: non-blocking finding recorded as evidence, never a
 //   compile/runtime verdict and never an L2 behavioral-parity claim.
+// 🟢 coproduct dissolution — CP-PYL1-STATIC-ANALYSIS-VERDICT-TERMINAL. Practice-4 PR review:
+//   mirrors the terminal TargetCompileVerdict / TargetPythonExerciseVerdict authority shape.
+//   Tried dissolving into (a) Verdict<Subj,T> — rejected, that generic carrier composes
+//   OVER this outcome (verdict.dag) rather than replacing the three target-static outcomes;
+//   (b) folding rejected/advisory into one arm discriminated by role — rejected, the
+//   accept/reject/advisory distinction is the verdict's own irreducible outcome and the
+//   richer per-tool detail is already carried by the tool_id + diagnostic_code Symbols.
 type TargetStaticAnalysisVerdict
   = StaticAnalysisAccepted
   | StaticAnalysisRejected { tool_id: Symbol, diagnostic_code: Symbol }
@@ -202,20 +215,44 @@ type LeafModelPythonFixturePair {
   falsification: LeafModelPythonFalsificationCase
 }
 
-// PY-L1-STATIC-STRUCTURAL fixture carrier. A static "case" is one artifact + its
-// invocation (tool profile + role) + the expected static-analysis verdict. The
-// fixture source lives in invocation.input_artifact.source_text. A pair bundles a
-// happy case (StaticAnalysisAccepted) and a falsification case (StaticAnalysisRejected).
-type LeafModelPythonStaticCase {
+// PY-L1-STATIC-STRUCTURAL fixture carriers. Polarity is STRUCTURAL, not prose:
+// the two cases are distinct types so illegal fixture states are unrepresentable —
+// a happy case can only mean StaticAnalysisAccepted, and a falsification case can
+// only mean a blocking StaticAnalysisRejected. Neither carries a free
+// TargetStaticAnalysisVerdict field, so "happy expects Rejected" / "falsification
+// expects Accepted" cannot be constructed. The fixture source lives in
+// invocation.input_artifact.source_text. The expected verdict for each case is
+// reconstructed by the accessor fns below (single authority, no stored free field).
+type LeafModelPythonStaticHappyCase {
   invocation: TargetStaticAnalysisInvocation
-  expected_verdict: TargetStaticAnalysisVerdict
+}
+
+// A falsification case carries only the blocking-rejection detail (tool + diagnostic);
+// its verdict is StaticAnalysisRejected { tool_id, diagnostic_code } by construction.
+type LeafModelPythonStaticFalsificationCase {
+  invocation: TargetStaticAnalysisInvocation
+  tool_id: Symbol
+  diagnostic_code: Symbol
 }
 
 type LeafModelPythonStaticFixturePair {
   claim_id: LeafModelClaimId
   surface_spelling_fact: Symbol
-  happy: LeafModelPythonStaticCase
-  falsification: LeafModelPythonStaticCase
+  happy: LeafModelPythonStaticHappyCase
+  falsification: LeafModelPythonStaticFalsificationCase
+}
+
+// Single-authority reconstruction of each case's expected verdict from its typed shape.
+fn leaf_model_python_static_happy_verdict(
+  c: LeafModelPythonStaticHappyCase
+) -> TargetStaticAnalysisVerdict {
+  StaticAnalysisAccepted
+}
+
+fn leaf_model_python_static_falsification_verdict(
+  c: LeafModelPythonStaticFalsificationCase
+) -> TargetStaticAnalysisVerdict {
+  StaticAnalysisRejected { tool_id: c.tool_id, diagnostic_code: c.diagnostic_code }
 }
 
 type LeafModelVerificationRunReceipt {

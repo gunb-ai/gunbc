@@ -295,6 +295,8 @@ mod v4_extdeps_coordination_dag_smoke_test;
 mod v4_extdeps_file_system_dag_smoke_test;
 #[path = "integration/v4_extdeps_formatters_black_dag_smoke_test.rs"]
 mod v4_extdeps_formatters_black_dag_smoke_test;
+#[path = "integration/v4_extdeps_typecheckers_dag_smoke_test.rs"]
+mod v4_extdeps_typecheckers_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
 #[path = "boundary/v4_leaf_model_python_r1_test.rs"]

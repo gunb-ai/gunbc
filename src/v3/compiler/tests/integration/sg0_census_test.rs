@@ -917,6 +917,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (zero diagnostics; `BlackConfigPatch` materializes `FieldPatch<T>` fields).
     // SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_extdeps_formatters_black_dag_smoke_test.rs",
+    // PY-L1-STATIC-STRUCTURAL: `compile_to_dag` smoke on the per-tool static-analysis
+    // profiles `src/v4/extdeps/typecheckers/pyright.dag` + `mypy.dag` (tool-id Symbol +
+    // per-tool diagnostic namespace consumed by the shared TargetStaticAnalysisInvocation/
+    // Verdict carriers). Arbiter ruling proud-fox-405 (msg_41813c03); host receipt
+    // `scripts/v4-leaf-model-python-l1-static-verify.sh`. SG-0 + INVARIANTS §P5(b) receipt.
+    "src/v3/compiler/tests/integration/v4_extdeps_typecheckers_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
