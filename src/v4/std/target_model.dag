@@ -48,10 +48,12 @@ import v4.std.node {
   Instantiation,
   Named,
   Node,
+  NodeFold,
   Positional,
   Symbol,
   TypeNode,
-  content_hash
+  content_hash,
+  fold_node
 }
 import v4.std.node_query { find_named_child, node_positional_child_targets }
 import v4.std.logic { Bool }
@@ -219,6 +221,78 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
   }
 }
 
+// 🟡 coproduct dissolution — local fold state for fail-closed encoded FreeMonoid<Char>
+// projection; dissolve-on: std.algebra exports the canonical string/free-monoid projection
+// named by the `free-monoid-node-projection` receipt below.
+type SourceAtomStringProjectionFold
+  = SourceAtomStringFoldInit
+  | SourceAtomStringFoldHeadSeen
+  | SourceAtomStringFoldTailSeen
+  | SourceAtomStringFoldChar
+  | SourceAtomStringFoldString
+  | SourceAtomStringFoldInvalid
+
+fn source_atom_string_projection_fold_init(source: Node) -> SourceAtomStringProjectionFold {
+  match source.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == free_monoid_variant_empty {
+        SourceAtomStringFoldString
+      } else {
+        match source_atom_char_projection_from_node(source: source) {
+          Present { value: _ } => SourceAtomStringFoldChar
+          Absent => SourceAtomStringFoldInvalid
+        }
+      }
+    TypeNode { connective: Conj } =>
+      if count(source.children) == 2 {
+        SourceAtomStringFoldInit
+      } else {
+        SourceAtomStringFoldInvalid
+      }
+    _ => SourceAtomStringFoldInvalid
+  }
+}
+
+fn source_atom_string_projection_fold_step(
+  acc: SourceAtomStringProjectionFold,
+  edge: Edge,
+  child: SourceAtomStringProjectionFold
+) -> SourceAtomStringProjectionFold {
+  match acc {
+    SourceAtomStringFoldInvalid => SourceAtomStringFoldInvalid
+    SourceAtomStringFoldString => SourceAtomStringFoldInvalid
+    SourceAtomStringFoldChar => SourceAtomStringFoldInvalid
+    _ =>
+      match edge.label {
+        Named { name: ename } =>
+          if ename == free_monoid_field_head {
+            match child {
+              SourceAtomStringFoldChar =>
+                match acc {
+                  SourceAtomStringFoldInit => SourceAtomStringFoldHeadSeen
+                  SourceAtomStringFoldTailSeen => SourceAtomStringFoldString
+                  _ => SourceAtomStringFoldInvalid
+                }
+              _ => SourceAtomStringFoldInvalid
+            }
+          } else if ename == free_monoid_field_tail {
+            match child {
+              SourceAtomStringFoldString =>
+                match acc {
+                  SourceAtomStringFoldInit => SourceAtomStringFoldTailSeen
+                  SourceAtomStringFoldHeadSeen => SourceAtomStringFoldString
+                  _ => SourceAtomStringFoldInvalid
+                }
+              _ => SourceAtomStringFoldInvalid
+            }
+          } else {
+            SourceAtomStringFoldInvalid
+          }
+        _ => SourceAtomStringFoldInvalid
+      }
+  }
+}
+
 // 🟡 gated — feature:free-monoid-node-projection — owner:Modeling DFS / std.algebra lane —
 // dissolve-on: std.algebra exports a canonical `Node -> Optional<FreeMonoid<T>>` (or
 // `Node -> Optional<String>`) projection over `free_monoid_type_node`'s encoded surface; replace
@@ -226,30 +300,14 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
 // bounded to TS-ATOM-REALIZATION's String value-template bridge; forbidden: adding another
 // FreeMonoid storage walker outside this receipt.
 fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
-  match source.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == free_monoid_variant_empty {
-        optional_present(source_atom_string(value: source))
-      } else {
-        optional_absent()
-      }
-    TypeNode { connective: Conj } =>
-      match find_named_child(root: source, name: free_monoid_field_head) {
-        Accepted { value: head } =>
-          match find_named_child(root: source, name: free_monoid_field_tail) {
-            Accepted { value: tail } =>
-              match source_atom_char_projection_from_node(source: head) {
-                Present { value: _ } =>
-                  match source_atom_string_projection_from_node(source: tail) {
-                    Present { value: _ } => optional_present(source_atom_string(value: source))
-                    Absent => optional_absent()
-                  }
-                Absent => optional_absent()
-              }
-            Rejected { diagnostics: _ } => optional_absent()
-          }
-        Rejected { diagnostics: _ } => optional_absent()
-      }
+  match fold_node(
+    n: source,
+    algebra: NodeFold {
+      init: source_atom_string_projection_fold_init,
+      step: source_atom_string_projection_fold_step
+    }
+  ) {
+    SourceAtomStringFoldString => optional_present(source_atom_string(value: source))
     _ => optional_absent()
   }
 }
@@ -1458,6 +1516,7 @@ data target_type_expr_field_ident_token: Symbol = target_type_expr_field_ident_t
 data target_type_expr_field_open: Symbol = target_type_expr_field_open
 data target_type_expr_field_close: Symbol = target_type_expr_field_close
 data target_type_expr_field_separator: Symbol = target_type_expr_field_separator
+data target_type_expr_field_field_label_separator: Symbol = target_type_expr_field_field_label_separator
 data target_type_expr_field_variant_separator: Symbol = target_type_expr_field_variant_separator
 data target_type_expr_field_param_ident_token: Symbol = target_type_expr_field_param_ident_token
 data target_type_expr_field_param_type_separator: Symbol = target_type_expr_field_param_type_separator
@@ -1509,6 +1568,7 @@ type TargetGenericApply {
   surface: Symbol
   open: Symbol
   separator: Symbol
+  field_label_separator: Optional<Symbol>
   close: Symbol
 }
 
@@ -2106,6 +2166,27 @@ fn target_type_expr_emitted_labeled_slot_nodes(node: Node) -> Outcome<List<Node>
   if is_empty(xs: node_positional_child_targets(node: node)) {
     Accepted {
       value: target_type_expr_emitted_slot_type_nodes(node: node),
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  }
+}
+
+fn target_type_expr_emitted_labeled_slot_edges(node: Node) -> Outcome<List<Edge>> {
+  if is_empty(xs: node_positional_child_targets(node: node)) {
+    Accepted {
+      value: fold(node.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          Named { name: n } =>
+            if n == target_type_expr_field_surface || n == target_type_expr_field_kind {
+              acc
+            } else {
+              list_snoc_item(xs: acc, item: e)
+            }
+          Positional => acc
+        }
+      }),
       diagnostics: None
     }
   } else {
