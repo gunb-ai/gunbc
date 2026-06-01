@@ -150,9 +150,23 @@ import v2.compiler.emit {
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
-    _ => if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
-      render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
-    } else if node_is_set_collection(n: n, source_indices: source_indices) {
+    _ =>
+      match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+        Some { value: applied } =>
+          if applied.children |> count > 0 {
+            render_rust_applied_type(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
+          } else {
+            render_rust_type_without_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
+          }
+        None => render_rust_type_without_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
+      }
+  }
+}
+
+fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
+    render_rust_applied_type(n: n, generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
+  } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Some { value: elem_child } =>
         let elem_node = child_type_node(ch: elem_child)
@@ -170,7 +184,6 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
   } else {
     render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
   }
-  }
 }
 
 fn empty_string_bool_map() -> Map<String, Bool> {
@@ -181,30 +194,31 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
   string_length(s: type_name) >= 3 && substring(s: type_name, start: 0, end: 3) == "Rc<"
 }
 
-fn render_rust_applied_type_arg(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
-    _ => if n.connective == NoConnective && n.children |> count == 0 {
-      authored_name_at(source_indices: source_indices, node: n)
-    } else {
-      render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
-    }
+    _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
-fn render_rust_applied_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let base = coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: n))
-  if n.children |> count == 0 {
+  let applied = if n.children |> count == 0 {
     base
   } else {
-    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
     concat(base, "<", args, ">")
+  }
+  if set_contains(shared_types, authored_name_at(source_indices: source_indices, node: n)) && !rust_type_is_rc_wrapped(type_name: applied) {
+    wrap_shared_type(target: Rust, inner: applied)
+  } else {
+    applied
   }
 }
 
 // Single authority: shared_types decides Rc<> on applied generic instantiations.
-fn render_rust_applied_type_shared(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let rendered = render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
+fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   let type_name = authored_name_at(source_indices: source_indices, node: n)
   if set_contains(shared_types, type_name) { concat("Rc<", rendered, ">") } else { rendered }
 }
@@ -220,7 +234,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
   match applied_overlay {
     Some { value: applied } =>
-      render_rust_applied_type_shared(n: applied, shared_types: shared_types, source_indices: source_indices)
+      render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
     None =>
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
@@ -329,9 +343,9 @@ fn rust_nominal_identity_carrier_def(name: String) -> String {
   concat(rust_ord_derives_text(), "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, "(pub String);")
 }
 
-// 🟡 gated — nominal Ord carrier whitelist for M3 Symbol/DiffId only.
-// Next nominal carrier must move this to a declared type property instead of
-// extending the string predicates below.
+// 🟡 gated — nominal Ord carrier shape derivation for M3 Symbol/DiffId and
+// structurally equivalent carriers. Dissolve into a declared type property when
+// type-level target traits land.
 fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
   type_name == "Symbol"
 }
@@ -341,20 +355,31 @@ fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<Str
     && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
 }
 
-fn rust_diff_id_ord_carrier_shape_eligible(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if name != "DiffId" || (children |> count) != 1 {
-    false
-  } else {
-    match children |> first {
-      Some { value: child } =>
-        rust_nominal_identity_carrier_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
-      None => false
-    }
+fn rust_nominal_ord_resolved_shape(n: Node) -> Node {
+  match n.inferred {
+    Some { value: Resolved { node: rt } } => rt
+    _ => n
   }
 }
 
+fn rust_nominal_ord_record_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.connective == Conj && (n.children |> count) == 1 && match n.children |> first {
+    Some { value: child } => rust_nominal_ord_type_eligible(elem_node: child_type_node(ch: child), source_indices: source_indices)
+    None => false
+  }
+}
+
+fn rust_nominal_ord_coproduct_shape_eligible(n: Node) -> Bool {
+  n.connective == Disj && (n.children |> count) > 0 && n.children |> all(v => (v.children |> count) == 0)
+}
+
+fn rust_nominal_ord_reference_shape_eligible(n: Node) -> Bool {
+  n.connective == NoConnective && (n.children |> count) == 0 && (n.params |> count) == 0
+}
+
 fn rust_nominal_ord_derives_for_shape(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
-  if rust_diff_id_ord_carrier_shape_eligible(name: name, children: children, source_indices: source_indices) {
+  let shape = Node { name: name, span: make_span(start: 0, end: 0), ident_span: none, children: children, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  if rust_nominal_ord_record_shape_eligible(n: shape, source_indices: source_indices) {
     rust_ord_derives_text()
   } else {
     ""
@@ -362,8 +387,11 @@ fn rust_nominal_ord_derives_for_shape(name: String, children: List<Node>, source
 }
 
 fn rust_nominal_ord_type_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  rust_nominal_identity_carrier_shape_eligible(n: elem_node, source_indices: source_indices)
-    || rust_diff_id_ord_carrier_shape_eligible(name: authored_name_at(source_indices: source_indices, node: elem_node), children: elem_node.children, source_indices: source_indices)
+  let shape = rust_nominal_ord_resolved_shape(n: elem_node)
+  rust_nominal_identity_carrier_shape_eligible(n: shape, source_indices: source_indices)
+    || rust_nominal_ord_record_shape_eligible(n: shape, source_indices: source_indices)
+    || rust_nominal_ord_coproduct_shape_eligible(n: shape)
+    || rust_nominal_ord_reference_shape_eligible(n: shape)
 }
 
 fn rust_serde_tag_attr() -> String {
@@ -1688,7 +1716,7 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Some { value: applied } =>
       if applied.children |> count > 0 {
-        render_rust_applied_type_shared(n: applied, shared_types: shared_types, source_indices: source_indices)
+        render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
       } else {
         render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
       }
@@ -1766,16 +1794,16 @@ fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: S
   concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
 }
 
-fn enum_derives(children: List<Node>) -> String {
+fn enum_derives(name: String, children: List<Node>) -> String {
   let complex = children |> filter(v => v.children |> count > 0)
   match complex |> count == 0 {
-    true => rust_enum_derives_copy_text()
+    true => rust_ord_derives_copy_text()
     false => rust_enum_derives_text()
   }
 }
 
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
-  let derives = enum_derives(children: children)
+  let derives = enum_derives(name: name, children: children)
   let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info))
   let variants_str = variant_lines |> join(separator: "\n")
   let tag_line = if serde_policy.enum_attr == "" { "" } else { concat(serde_policy.enum_attr, "\n") }
@@ -2217,15 +2245,9 @@ fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_typ
 // Parameter signature renderer: generic items use decl-type preservation;
 // non-generic items use field applied-binding facts flow (param.properties).
 fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let authored_type = param_node_type_expr(n: param)
+  let type_node = resolved_type(n: param)
   if generic_param_names |> count > 0 {
-    if find_property(props: param.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
-      render_rust_type_with_applied_binding(n: param, shared_types: shared_types, source_indices: source_indices)
-    } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
-      render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices)
-    } else {
-      render_rust_fn_sig_type(n: resolved_type(n: param), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
-    }
+    render_rust_decl_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   } else {
     render_rust_field_type_with_applied_binding(field: param, shared_types: shared_types, source_indices: source_indices)
   }
@@ -2253,14 +2275,7 @@ fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   }
   let pname = param_node_name_at(n: param, source_indices: source_indices)
-  let is_callable_param = authored.params |> count > 0
-  let is_borrowable = set_contains(read_only_params, pname)
-    && is_callable_param == false
-    && needs_reference_node(n: authored, source_indices: source_indices)
-  let final_ty = if is_borrowable {
-    apply_type_template1(template: sharing_for_target(target: Rust).borrow_param_template, arg0: ty)
-  } else { ty }
-  concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, final_ty)
+  concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_inferred(inferred: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -5926,7 +5941,16 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let annotation_type_node = type_node
+  let render_type_node = if annotation_type_node.children |> count > 0 {
+    annotation_type_node
+  } else {
+    match value.inferred {
+      Some { value: Resolved { node: rt } } => rt
+      _ => annotation_type_node
+    }
+  }
+  let raw_ty_str = render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
     match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
       Some { value: top_value } =>
@@ -5987,11 +6011,26 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
   if type_name == "BoundedLattice" {
     match value.expr_data {
       ExprRecordLit { parent_enum: _ } =>
-        let meet_str = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
+        let lattice_value = field_value_by_name(record: value, field_name: "lattice", source_indices: scope.type_env.source_indices)
+        let meet_value = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => Some { value: n }
+          None => match lattice_value {
+            Some { value: lattice } => field_value_by_name(record: lattice, field_name: "meet", source_indices: scope.type_env.source_indices)
+            None => none
+          }
+        }
+        let join_value = match field_value_by_name(record: value, field_name: "join", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => Some { value: n }
+          None => match lattice_value {
+            Some { value: lattice } => field_value_by_name(record: lattice, field_name: "join", source_indices: scope.type_env.source_indices)
+            None => none
+          }
+        }
+        let meet_str = match meet_value {
           Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           None => "compile_error!(\"BoundedLattice data missing meet\")"
         }
-        let join_str = match field_value_by_name(record: value, field_name: "join", source_indices: scope.type_env.source_indices) {
+        let join_str = match join_value {
           Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           None => "compile_error!(\"BoundedLattice data missing join\")"
         }
