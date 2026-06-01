@@ -749,19 +749,9 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: true,
           timeout_minutes: Some { value: 35 }
         }, RunStep {
-          name: Some { value: "v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)" },
-          id: Some { value: "v4_bootstrap_resolve_posture" },
-          run: "set -euo pipefail\nV4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1 \\\nV4_BOOTSTRAP_COMPILER_EXIT=\"${{ steps.v4_bootstrap_compile.outputs.exitcode }}\" \\\n  bash scripts/v4-bootstrap-resolve-posture-gate.sh\n",
-          shell: Bash,
-          env: { "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log" },
-          working_directory: none,
-          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')" },
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "v4 bootstrap gate result (compile or tracked bridge)" },
+          name: Some { value: "v4 bootstrap gate result" },
           id: none,
-          run: "set -euo pipefail\nif [[ \"${{ steps.v4_bootstrap_compile.outcome }}\" == \"success\" ]]; then\n  echo \"v4 bootstrap: full compile receipt\"\n  exit 0\nfi\nif [[ \"${{ steps.v4_bootstrap_resolve_posture.outcome }}\" == \"success\" ]]; then\n  echo \"v4 bootstrap: resolve-posture bridge receipt\"\n  exit 0\nfi\necho \"error: v4 bootstrap compile failed and resolve-posture bridge did not pass\" >&2\nexit 1\n",
+          run: "set -euo pipefail\nif [[ \"${{ steps.v4_bootstrap_compile.outcome }}\" == \"success\" ]]; then\n  echo \"v4 bootstrap: full compile receipt\"\n  exit 0\nfi\necho \"error: v4 bootstrap compile failed\" >&2\nexit 1\n",
           shell: Bash,
           env: none,
           working_directory: none,
