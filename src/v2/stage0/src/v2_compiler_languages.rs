@@ -115,7 +115,9 @@ pub struct SerializationSpec {
     pub default_value: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum TestNameStyle {
     SnakeCaseTestNames,
@@ -208,7 +210,9 @@ pub struct ForEachSyntax {
     pub separator: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum IfValueForm {
     IfExpression,
@@ -216,7 +220,9 @@ pub enum IfValueForm {
     IfStatement,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum MatchValueForm {
     MatchExpression,
@@ -243,7 +249,9 @@ pub struct VariantPatternSyntax {
     pub empty_suffix: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum NamingCase {
     PascalCase,
