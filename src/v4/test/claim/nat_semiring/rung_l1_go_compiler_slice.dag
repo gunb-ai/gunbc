@@ -24,16 +24,14 @@ import v4.std.verification {
 }
 
 
-// Single authority: slice id + predicate id are Symbols, not label prose.
-data go_l1_nat_semiring_rung2_slice_id: Symbol = go_l1_nat_semiring_rung2_slice_id
+// Single authority for slice_id (worksheet + host JSON + structural subject must agree).
+data go_l1_nat_semiring_rung2: Symbol = go_l1_nat_semiring_rung2
 
-data r_l1_go_compiler_slice_compile_predicate: Symbol = r_l1_go_compiler_slice_compile_predicate
-
-// Receipt coordinate edge labels (named edges on the Conj subject carrier).
+// Receipt coordinate edge label on the Conj subject carrier.
 data l1_go_receipt_slice_edge: Symbol = l1_go_receipt_slice_edge
 
-data l1_go_receipt_predicate_edge: Symbol = l1_go_receipt_predicate_edge
-
+// Ladder predicate id R-L1-go-compiler-slice-compile is label/host-only (hyphenated §2.4
+// matrix spelling; not a Symbol — mirrors rung_l1_python_runtime.dag predicate-in-label).
 
 fn l1_go_receipt_atom(sym: Symbol) -> Node {
   Node {
@@ -42,22 +40,15 @@ fn l1_go_receipt_atom(sym: Symbol) -> Node {
   }
 }
 
+data phase1_l1_go_compiler_slice_subject_slice_binding: Node = l1_go_receipt_atom(sym: go_l1_nat_semiring_rung2)
 
-data phase1_l1_go_compiler_slice_subject_slice_binding: Node = l1_go_receipt_atom(sym: go_l1_nat_semiring_rung2_slice_id)
-
-data phase1_l1_go_compiler_slice_subject_predicate_binding: Node = l1_go_receipt_atom(sym: r_l1_go_compiler_slice_compile_predicate)
-
-// CompilesClaim input/expected carry slice + predicate structurally (FACTS FLOW FORWARD).
+// CompilesClaim input/expected carry slice_id structurally (FACTS FLOW FORWARD).
 data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
       label: Named { name: l1_go_receipt_slice_edge },
       target: phase1_l1_go_compiler_slice_subject_slice_binding
-    },
-    Edge {
-      label: Named { name: l1_go_receipt_predicate_edge },
-      target: phase1_l1_go_compiler_slice_subject_predicate_binding
     }
   ]
 }

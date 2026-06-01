@@ -618,23 +618,12 @@ fn v4_nat_semiring_rung_l1_go_compiler_slice_dag_tokenizes_and_parses_claim_row(
         NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH,
     );
     assert!(
-        surface_declares_data(&module, "go_l1_nat_semiring_rung2_slice_id"),
-        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 slice id symbol"
-    );
-    assert!(
-        surface_declares_data(&module, "r_l1_go_compiler_slice_compile_predicate"),
-        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 predicate symbol"
+        surface_declares_data(&module, "go_l1_nat_semiring_rung2"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: canonical slice id symbol"
     );
     assert!(
         surface_declares_data(&module, "phase1_l1_go_compiler_slice_subject_slice_binding"),
         "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: slice id bound on receipt subject"
-    );
-    assert!(
-        surface_declares_data(
-            &module,
-            "phase1_l1_go_compiler_slice_subject_predicate_binding"
-        ),
-        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: predicate bound on receipt subject"
     );
     assert!(
         surface_declares_data(&module, "phase1_nat_semiring_l1_go_compiler_slice_subject"),
