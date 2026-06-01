@@ -167,11 +167,13 @@ Captures everything PM is waiting on operator to confirm/decide. Updated as item
 |---|---|---|---|
 | 1 | P2-B bridge deletion | **DONE 2026-06-01T00:50Z** (early deletion, 14-day window skipped) — #4139 MERGED (squash 12d1aa68c); script + ci.yml step removed from main | P2 flipped fully GREEN |
 | 2 | Fresh M1 probe post-cascade | **AUTHORIZED 2026-06-01T00:28Z** — work-item `adhoc-7b46e080-3cd` in flight (sharp-otter archived; fresh worker spawned) | Gives clean post-cascade P3 residual count |
-| 3 | P5 runtime gate (i) vs (ii) | PENDING | Choice (i) wait for P3 cascade → M1 cargo-clean subset emerges naturally; (ii) author bootstrap-evaluator corpus runtime (load-bearing per SELF_HOSTING; needs ratified Modeling DFS worksheet first). On `node://adhoc-f8699326-d69` |
-| 4 | SG-8 §8 sign-off authority routing | PENDING | Post-proud-pike archival. (a) PM acts as Modeling DFS; (b) spawn fresh Modeling DFS Manager session; (c) ratify keen-heron-687 expanded scope (Modeling DFS + TR). Blocks SG-8 impl worker dispatch. |
-| 5 | Modeling DFS Manager succession plan | PENDING (same as #4 one level up) | Once #4 resolved, this is implicit |
-| 6 | TypeScript / non-release-minimum work plan | PENDING | Operator authorization to dispatch TS class-closure work in parallel with Rust residual (TR-lane capacity); per Wave F F3 TS is v4-alpha-only |
-| 7 | stern-lynx Runtime/TestClaim Manager closeout | PENDING | Cond (a) ✓ + (b) ✓ already; only (c) "operator confirms role complete" remains |
+| 3 | P5 runtime gate (i) vs (ii) | **RESOLVED 2026-06-01T01** — option (ii) authorized as **WORKSHEET** (not implementation) in parallel with P3. Modeling DFS Arbiter authors bootstrap-evaluator corpus runtime worksheet; impl gated on single-authority-fact approval. P3 cascade continues independently. |
+| 4 | SG-8 §8 sign-off authority routing | **RESOLVED 2026-06-01T01** — dedicated Modeling DFS Manager to spawn; PM does NOT act as Modeling DFS; keen-heron remains TR (acting Modeling DFS only as temporary stopgap). |
+| 5 | Modeling DFS Manager succession plan | **RESOLVED 2026-06-01T01** — dedicated manager going forward (per #4). |
+| 6 | TypeScript / non-release-minimum work plan | **RESOLVED 2026-06-01T01** — authorized as alpha/preview language lane (NOT release-minimum per Wave F F3); spawn TS RCA Manager per §11.8 runway. |
+| 7 | Go / Python language RCA managers | **RESOLVED 2026-06-01T01** — authorized for self-compile runway (Rust+Python+Go release-minimum family per §11.8; rungs L0-L4 sequenced). |
+| 8 | CI Coverage Bankruptcy Wave 1 | **RESOLVED 2026-06-01T01** — APPROVED; spawn CI Manager to ship bankruptcy PR + four-compile collapse in parallel. |
+| 9 | stern-lynx Runtime/TestClaim Manager closeout | PENDING | Cond (a) ✓ + (b) ✓ already; only (c) "operator confirms role complete" remains (low-priority since Runtime/TestClaim role is being reconstituted under new structure anyway) |
 
 ## §8.6 Remaining P3 residual cascade — worksheet protocol clarity
 
@@ -392,7 +394,7 @@ scripts/test-check-*.sh                               # self-test scripts (test 
 |---|---|---|---|
 | 1 | `fmt --check` | Format hygiene | Cheap (~30s); near-universal in Rust projects |
 | 2 | Bootstrap minimal viability (v2→v4 compile path) | The tree compiles end-to-end via the path we ship | Currently `v4-bootstrap-viability.sh`; can stay shell short-term per Class A exception; the modeled `CiUpsertStep` replacement is Wave 2 work |
-| 3 | ONE Rust emit/probe path (NOT four) | Single sample of P3 surface ("does v4 emit Rust that rustc can chew on?") | Pick `M1 v4 full-tree rust emit probe` OR `T-22 corpus rust` — NOT both. Other 2-3 compiles → Class C (scheduled) |
+| 3 | **`M1 v4 full-tree rust emit probe`** (single Rust emit/probe) | Single sample of P3 surface ("does v4 emit Rust that rustc can chew on?") | Picked M1 over T-22 corpus rust: M1 is the canonical residual-count probe (drives #4086/#4122/#4140 catalogs informing dispatch); T-22 corpus rust duplicates same closure compile, no unique signal vs M1 → demoted to Class C scheduled |
 | 4 | `ci.dag` structural receipt + `CiUpsertStep` schema checks | Ensures modeled substrate stays well-formed | Already cheap; modeled-positive-Y |
 | 5 | no-new-shell / shell-retirement ratchet | Enforces `project_no_new_shell` directive | Mechanical check; ensures CI doesn't regress on shell-cut posture |
 
@@ -403,7 +405,7 @@ That's it. **Five required gates.** Cold PR target: ~5-10 minutes (vs current ~3
 | Class | Required on PR? | What happens now |
 |---|---|---|
 | **A. Safety floor** | Yes | The 5 items above; nothing else |
-| **B. Modeled positive-Y** | Yes if already modeled | Runs only if backed by `CiUpsertStep` / structured receipt |
+| **B. Modeled positive-Y** | **Only if part of current §11.7.1 safety floor OR selected by trusted affected-set/testgen** | "Already modeled" does NOT automatically mean "required on every PR" — that would let the required surface silently grow back. Until affected-set/testgen is trusted (post-Wave 3 receipts), modeled-positive checks outside the 5-gate floor run in shadow or scheduled. |
 | **C. Shadow / diagnostic** | No | Runs on demand, scheduled, or as shadow receipt; produces evidence but does not block |
 | **D. Cut until modeled** | No | Disabled/deleted from required CI; restoration path named (or permanently deleted for retired-lane items like v3) |
 
@@ -503,6 +505,39 @@ The CI Manager's work lane:
 - (f) v3 integration tests permanently deleted from CI (not moved to scheduled)
 
 **Long-pole (gated on P5 runtime gate)**: runtime authority migration (YAML→evaluator); same SELF_HOSTING substrate work as `adhoc-f8699326-d69`. Not on critical path for CI cut; arrives when bootstrap-evaluator corpus runtime ships.
+
+### §11.8 Language self-compile runway (operator-ratified 2026-06-01)
+
+**Goal**: every supported language target has a credible ladder toward "self-compile / compiler-subset execution". Not vague ambition — explicit rungs L0-L4 per language, with per-language manager scope.
+
+**Critical-path framing**: Rust is the only release-critical self-compile target (P3 → P4 → P6 chain). Go is the next-best candidate (clean external verifier via `go build`; static-ish binary). Python is release-minimum parity but with weaker static verification. TypeScript is alpha/preview lane (not release-minimum per Wave F F3).
+
+#### §11.8.1 The five rungs (per-language)
+
+| Rung | Bar | Receipt |
+|---|---|---|
+| **L0** | Leaf-model verification: language model claims checked against real toolchain | TestClaim receipts on `language.dag` R1/R2a/R2b/R3-external (the pattern landed for Rust via #4000/Python via #4117) |
+| **L1** | Compiler-subset emit: emit v4 compiler subset to target language; toolchain typechecks/compiles | rustc/tsc/pyright/go-build receipt on emitted subset (target-toolchain-clean) |
+| **L2** | Compiler-subset execution: emitted target compiler runs on small .dag fixture, output matches Rust/.dag eval | Cross-target equivalence receipt (analog of #4081 Wc L5 cross-target on nat_semiring) |
+| **L3** | Self-output / fixed point: target-emitted compiler emits itself or declared compiler slice, bit-identical to reference | T-15-style self-host fixed-point receipt for the target |
+| **L4** | Full self-compile: target backend is credible compiler-of-record path | P3-analog for the target language; full v4 compiler closure compiles via target toolchain |
+
+#### §11.8.2 Per-language manager scope + current rung
+
+| Language | Manager scope | Current rung | Target rung (by end of next iteration) |
+|---|---|---|---|
+| **Rust** | Critical-path self-compile target; owns R1/R2a/R2b/R3 + emit residual closures + binary build path | **L1 in progress** (#4140 7,724 rustc residual being driven to 0); L2/L3/L4 gated on P3 binary build | L1 complete (binary builds); L2-L4 sequenced per P3+P4+P6 cascade |
+| **Go** | Release-minimum parity + future self-compile candidate; clean external verifier (`go build`); static-ish binary advantage | **L0** (Python R1 analog in flight; Go emit fix #4076 landed) | L0 complete + L1 fixture-scale; sequence toward L2 fixture-execution |
+| **Python** | Release-minimum parity; weaker static verifier (use `pyright`/`mypy` + runtime fixtures); cross-target behavioral parity emphasis | **L0 complete** (#4117 R1+R2a+R2b+R3-external on main) | L1 fixture-scale + L2 cross-target behavioral parity receipts (vs Rust/Go) |
+| **TypeScript** (alpha/preview) | Alpha/preview lane; not release-minimum; needs `tsc` + Node runtime semantics + module-layout modeling | **L0** (worksheets not started) | L0 complete per #4117 pattern: R2a/R2b/R3-external leaf-model widening + TargetAtomRealization + TargetTypeExpressionProjection + grammar-inverse TestClaims |
+| **C++** (later) | Capacity-permitting; produce language residual matrix only; no impl until shared substrate authority resolved | **none** | none unless operator authorizes; matrix only |
+
+#### §11.8.3 Mechanical rules (preserved from §11.1)
+
+- Each language class needs its own §10.0 worksheet (single-authority fact rule)
+- Shared facts (e.g., `TargetTypeExpressionProjection` appearing in Rust + Python + Go + TS) go through Modeling DFS Arbiter — NOT per-language reinvention
+- Language manager finds symptoms; shared substrate managers own shared facts
+- Per-language verification fixtures are part of each rung's exit criteria (TestClaim receipts, not "compiles")
 
 ### §11.5 PM (this session) scope under new structure
 
