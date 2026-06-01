@@ -23,14 +23,14 @@
 
 | Concept | Canonical home | Per-target rows | §8 state | Forbidden |
 | ------- | -------------- | ----------------- | -------- | --------- |
-| **TargetAtomRealization** | `src/v4/std/target_model.dag` | `rust.dag`, `go.dag`, `python.dag`, `typescript.dag` | Rust APPROVED (#4099); Go APPROVED (#4149); TS PENDING (atom after type-expr; §8 follow-up) | `GoAtomRealization`, duplicate carrier in `go.dag` |
-| **TargetTypeExpressionProjection** | `src/v4/std/target_model.dag` | same extdeps | Rust APPROVED (#4124); Go APPROVED (#4149); TS PENDING (strict order **before** atom) | Name-keyed `Outcome`/`Witness` tables in emit |
+| **TargetAtomRealization** | `src/v4/std/target_model.dag` | `rust.dag`, `go.dag`, `python.dag`, `typescript.dag` | Rust APPROVED (#4099); Go APPROVED (#4149); TS APPROVED (#4169, after type-expr impl) | `GoAtomRealization`, duplicate carrier in `go.dag` |
+| **TargetTypeExpressionProjection** | `src/v4/std/target_model.dag` | same extdeps | Rust APPROVED (#4124); Go APPROVED (#4149); TS APPROVED (#4169, dispatch before atom) | Name-keyed `Outcome`/`Witness` tables in emit |
 | **TargetCollectionRealization** | `src/v4/std/target_model.dag` | same extdeps | SG-5/6 APPROVED; **SG-COLLECTION-PROJECTION** PENDING (vivid-lynx-81) | `Vec<Rc<T>>` shim in emit without monoid→Vec row |
 | **TargetBundleEdge / RC layering** | `v4.std.target_model` (`TargetBundleEdge`) | emit consumes via `target_bundle_edge_*` | SG-RC APPROVED (#4100) | Conflating with collection projection |
 | **Module graph / export surface** | `03_name_resolve.dag` + `05_emit_rust.dag` (M1) | follow-on `TargetModuleExportSurface` in `target_model` | SG-8 §8 APPROVED (#4143) | Per-error `pub use` patch tables |
 | **LeafModelClaimId + fixtures** | `src/v4/std/leaf_model_verification.dag` | claim files under `test/claim/language_model/` | Framework APPROVED; per-target claims PENDING | Parallel claim modules outside std IDs |
-| **TargetCompileVerdict** | `leaf_model_verification.dag` | `target_diagnostic_*` + `leaf_model_toolchain_*` symbols | LANDED (Rust); Go/TS worksheets route here for compile-bound claims | `TargetGoCompileVerdict`, `TargetTypeScriptCompileVerdict` |
-| **TargetRuntimeExerciseVerdict** | `leaf_model_verification.dag` (**additive**, shared) | same pattern | PENDING (Go R2b, TS R2b worksheets propose) | Per-target `Target*RuntimeVerdict` types |
+| **TargetCompileVerdict** | `leaf_model_verification.dag` | `target_diagnostic_*` + `leaf_model_toolchain_*` symbols | LANDED; Go/TS leaf-model compile-bound (#4149, #4169) | `TargetGoCompileVerdict`, `TargetTypeScriptCompileVerdict` |
+| **TargetRuntimeExerciseVerdict** | `leaf_model_verification.dag` (**additive**, shared) | Go R2b + TS R2b (#4149, #4169) | APPROVED worksheets; substrate landing in impl PRs | Per-target `Target*RuntimeVerdict` types |
 | **TargetPythonExerciseVerdict** | `leaf_model_verification.dag` | Python L0 only | LANDED (#4117) | Replacing L1/L2 runtime with stdout grep |
 | **TargetStaticAnalysisInvocation** | `leaf_model_verification.dag` or `host_run` (**proposed**, Python worksheet A) | pyright/mypy profiles, later `tsc --noEmit` | PENDING (Python L1 static worksheet) | CI-only pyright without modeled profile |
 | **BootstrapEvaluatorCorpusRuntimeEval** | `testclaim_corpus_runner.dag` + consume `05_eval.dag` | `v4_evaluator_runtime_id` pin | APPROVED (#4143); impl PENDING (`neat-hawk-413`) | Authoring-time `data run_*` as runtime pass |
@@ -95,7 +95,7 @@ Other residuals: see #4148 routing worksheets (not impl without §8)
 | -------- | ---- | ---------- | ------------- |
 | 1 | SG-COLLECTION-PROJECTION (new) | vivid-lynx-81 (pending author) | **BLOCKED** — awaiting worksheet |
 | 2 | Go L0/L1 bundle (5 worksheets) | #4149 (supersedes draft #4145 content + §8) | **ready-for-review** — all §8 CLOSED |
-| 3 | TS strict-order (5 worksheets) | #4147 merged; §8 follow-up PR TBD | **active** — shared verdict adjudication pending |
+| 3 | TS strict-order (5 worksheets) | #4169 §8 ratification | **ready-for-review** — all §8 CLOSED; strict order enforced |
 | 4 | Python L1/L2 | witty-ram-95 | **active** — review queue |
 
 ---
@@ -106,3 +106,4 @@ Other residuals: see #4148 routing worksheets (not impl without §8)
 | ---- | ------ | ------- |
 | 2026-06-01 | Initial map; P5 + SG-8 APPROVED; Go/TS verdict carrier consolidation | proud-fox-405 |
 | 2026-06-01 | Go five worksheets §8 APPROVED on #4149; map Go rows → APPROVED | proud-fox-405 |
+| 2026-06-01 | TS five worksheets §8 APPROVED on #4169; shared verdict carriers (no TargetTypeScript*Verdict) | proud-fox-405 |
