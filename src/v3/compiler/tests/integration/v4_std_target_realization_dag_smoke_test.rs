@@ -306,6 +306,14 @@ fn v4_translate_dag_imports_target_atom_realization_consumer() {
             .contains("Rejected { diagnostics: _ } => TargetAtomRealizationCatalogInvalid"),
         "{TARGET_MODEL_PATH}: catalog lookup must not swallow row decode failures"
     );
+    assert!(
+        TRANSLATE_DAG.contains("translate_value_ownership_use_site_for_atom_realization("),
+        "{TRANSLATE_PATH}: SG-1b follow-on must align Symbol value use_site with signature Return rows"
+    );
+    assert!(
+        TRANSLATE_DAG.contains("translate_target_function_signature_realization_for_boundary("),
+        "{TRANSLATE_PATH}: fn-boundary type serialize must consult signature realization catalog"
+    );
 }
 
 #[test]
@@ -346,6 +354,22 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
     assert!(
         bundle_core_body.contains("target_model_edge_collection_realization"),
         "{RUST_LANGUAGE_PATH}: row/catalog host_bundle must include collection_realization so target_model_bundle_core(host) decode matches"
+    );
+    assert!(
+        bundle_core_body.contains("target_model_edge_type_expression_projection"),
+        "{RUST_LANGUAGE_PATH}: MVP1 bundle_core must carry SG-2 projection for SG-1b boundary serialize"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("target_model_edge_signature_realizations"),
+        "{RUST_LANGUAGE_PATH}: rust_mvp1_target_model must wire signature-realization catalog (SG-1b follow-on)"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("rust_target_function_signature_realization_catalog"),
+        "{RUST_LANGUAGE_PATH}: MVP1 signature catalog must reference mvp1-staged rows"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("rust_sg2_target_function_signature_realization_catalog"),
+        "{RUST_LANGUAGE_PATH}: SG-2 probe model keeps its own signature catalog rows"
     );
 }
 
