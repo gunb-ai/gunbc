@@ -103,15 +103,18 @@ def field(name: str) -> str:
         raise SystemExit(f"error: pyright.dag: missing pyright_profile_l1 field {name}")
     return m.group(1)
 
-mode_map = {
-    "PyrightModeOff": "off",
-    "PyrightModeBasic": "basic",
-    "PyrightModeStandard": "standard",
-    "PyrightModeStrict": "strict",
-}
+# The typeCheckingMode keyword is NOT re-authored here — it is resolved from the modeled
+# pyright_type_checking_mode_spellings projection (single authority), keyed by the profile's
+# variant.
 m = re.search(r"type_checking_mode:\s*(PyrightMode\w+)", text)
-if not m or m.group(1) not in mode_map:
-    raise SystemExit("error: pyright.dag: missing/unknown pyright_profile_l1 type_checking_mode")
+if not m:
+    raise SystemExit("error: pyright.dag: missing pyright_profile_l1 type_checking_mode")
+variant = m.group(1)
+spell_m = re.search(
+    rf'variant_name:\s*"{re.escape(variant)}"\s*,\s*keyword:\s*"([^"]*)"', text
+)
+if not spell_m:
+    raise SystemExit(f"error: pyright.dag: no pyright_type_checking_mode_spellings row for {variant}")
 
 # Resolve the expected rule STRING from the modeled pyright_diagnostic_rules row whose
 # code_id matches the fixture's diagnostic_code — single authority, never a script literal.
@@ -123,7 +126,7 @@ if not rule_m:
 
 print(f"pyright_version={shlex.quote(field('pyright_version'))}")
 print(f"pyright_python_version={shlex.quote(field('python_version'))}")
-print(f"pyright_mode={shlex.quote(mode_map[m.group(1)])}")
+print(f"pyright_mode={shlex.quote(spell_m.group(1))}")
 print(f"pyright_expected_rule={shlex.quote(rule_m.group(1))}")
 PY
 )"
