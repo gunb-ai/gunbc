@@ -1171,10 +1171,10 @@ mod parse_stage4_prep {
     }
 
     #[test]
-    fn handwritten_parser_accepts_elastic_identity_dag() {
+    fn handwritten_parser_accepts_cache_identity_dag() {
         parse_file(
-            include_str!("../../../../dsl/std/elastic_identity.dag"),
-            "dsl/std/elastic_identity.dag",
+            include_str!("../../../../dsl/std/cache_identity.dag"),
+            "dsl/std/cache_identity.dag",
         );
     }
 

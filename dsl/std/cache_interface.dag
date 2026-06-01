@@ -7,13 +7,9 @@
 
 module std.cache_interface
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int }
-import std.elastic_identity {
-  CacheInterfaceId,
-  ArtifactKindId,
-  LogicalTime,
-  ByteSize,
-}
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
+import std.measure { ByteSize }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 
 // --- §1.6 dimension enums + branded carriers ---------------------------------
 //

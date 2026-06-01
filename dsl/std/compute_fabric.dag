@@ -8,15 +8,10 @@
 
 module std.compute_fabric
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int }
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.float { Float }
-import std.measure { Measure, Time, Memory, DataRate, One }
-import std.elastic_identity {
-  LogicalTime,
-  ByteSize,
-  CacheInterfaceId,
-  ArtifactKindId,
-}
+import std.measure { Measure, Time, DataRate, One, ByteSize }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
 type Witness<C> = Node
