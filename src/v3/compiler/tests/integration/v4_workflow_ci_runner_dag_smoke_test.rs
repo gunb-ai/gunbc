@@ -804,6 +804,52 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
 }
 
+/// #4091 §1.2 four-compile collapse: the modeled ci_pipeline jobs that re-ran a full src/v4
+/// 332-source closure compile must consume `v2_compile_src_v4`'s resolved closure via
+/// UpstreamUpsert (front-end shared once; each job re-emits its own target) instead of each
+/// independently re-running parse/lower/infer. Pins the artifact-consumption edge for m1,
+/// lens-CI, and the phase1 rung gate. (bootstrap-dag is split out: its dissolution target is
+/// `ModelMissingSubstrate { what: v4_bootstrap_dag_emit_ci_job }` — substrate, follow-up.)
+#[test]
+fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure() {
+    // Slice the `data <symbol>...` definition up to the next top-level `\ndata ` so the
+    // upstream-edge assertion is scoped to each job's own inputs block.
+    let block_for = |symbol: &str| -> &str {
+        let start = CI_DAG
+            .find(&format!("data {symbol}"))
+            .unwrap_or_else(|| panic!("{CI_DAG_PATH}: missing `data {symbol}`"));
+        let rest = &CI_DAG[start..];
+        let end = rest[1..].find("\ndata ").map(|i| i + 1).unwrap_or(rest.len());
+        &rest[..end]
+    };
+    let upstream_edge = "ci_upsert_upstream_job_input(job: v2_compile_src_v4)";
+    // Each formerly-recompiling job declares the upstream artifact edge on its CiUpsertStep
+    // inputs, mirroring the v4_t15 / testclaim_corpus_eval pattern at ci.dag:807.
+    assert!(
+        block_for("ci_upsert_m1_rust_emit_probe_execution_inputs").contains(upstream_edge),
+        "{CI_DAG_PATH}: M1 rust emit probe must consume v2_compile_src_v4's resolved closure via UpstreamUpsert (#4091 §1.2 four-compile collapse)"
+    );
+    assert!(
+        block_for("ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs")
+            .contains(upstream_edge),
+        "{CI_DAG_PATH}: phase1 rung gate must consume v2_compile_src_v4's resolved closure via UpstreamUpsert (#4091 §1.2 four-compile collapse)"
+    );
+    // lens-CI inputs are computed (list_snoc_item over per-lens refs); the upstream edge is
+    // appended in the data initializer.
+    assert!(
+        block_for("ci_upsert_lens_ci_registry_execution_inputs").contains(upstream_edge),
+        "{CI_DAG_PATH}: lens-CI registry execution must consume v2_compile_src_v4's resolved closure via UpstreamUpsert (#4091 §1.2 four-compile collapse)"
+    );
+    // The three jobs already declare v2_compile_src_v4 in `needs` (ordering); the collapse turns
+    // those ordering deps into real artifact-consumption edges (above). Spot-check needs stay.
+    assert!(
+        CI_DAG.contains("id: m1_rust_emit_probe_execution,")
+            && CI_DAG.contains("id: lens_ci_registry_execution,")
+            && CI_DAG.contains("id: phase1_nat_semiring_rung_gate_execution,"),
+        "{CI_DAG_PATH}: collapse must not remove the three modeled closure-compile jobs"
+    );
+}
+
 #[test]
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);

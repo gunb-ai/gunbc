@@ -879,11 +879,16 @@ fn ci_upsert_v2_compile_src_v4_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_v2_compile_src_v4: CiUpsertStepSymbol = ci_upsert_v2_compile_src_v4_mk()
 
+// #4091 §1.2 four-compile collapse — M1 consumes v2_compile_src_v4's resolved closure
+// (target-independent front-end) via UpstreamUpsert and re-emits its rust target, rather
+// than re-running parse/lower/infer over the 332-source src/v4 closure. `src/v4/**` stays
+// for affected-set invalidation (mirrors v4_t15 / testclaim_corpus_eval upstream pattern).
 data ci_upsert_m1_rust_emit_probe_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/**"),
   ci_upsert_file_set_input(segment: "scripts/v4-m1*"),
   ci_upsert_file_set_input(segment: "Cargo.toml"),
-  ci_upsert_file_set_input(segment: "Cargo.lock")
+  ci_upsert_file_set_input(segment: "Cargo.lock"),
+  ci_upsert_upstream_job_input(job: v2_compile_src_v4)
 ]
 
 fn ci_upsert_m1_rust_emit_probe_execution_mk() -> CiUpsertStepSymbol {
@@ -925,9 +930,13 @@ fn ci_upsert_leaf_model_go_verify_execution_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_leaf_model_go_verify_execution: CiUpsertStepSymbol = ci_upsert_leaf_model_go_verify_execution_mk()
 
+// #4091 §1.2 four-compile collapse — rung gate consumes v2_compile_src_v4's resolved closure
+// via UpstreamUpsert and re-emits its own rung targets, rather than re-running the front-end
+// over the 332-source src/v4 closure. `src/v4/**` stays for affected-set invalidation.
 data ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
-  ci_upsert_file_set_input(segment: "src/v4/**")
+  ci_upsert_file_set_input(segment: "src/v4/**"),
+  ci_upsert_upstream_job_input(job: v2_compile_src_v4)
 ]
 
 fn ci_upsert_phase1_nat_semiring_rung_gate_execution_mk() -> CiUpsertStepSymbol {
@@ -1003,7 +1012,13 @@ fn ci_upsert_testclaim_corpus_eval_execution_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_testclaim_corpus_eval_execution: CiUpsertStepSymbol = ci_upsert_testclaim_corpus_eval_execution_mk()
 
-data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses)
+// #4091 §1.2 four-compile collapse — lens-CI semantic v4 compile consumes v2_compile_src_v4's
+// resolved closure via UpstreamUpsert (appended to the per-lens output refs) and re-emits its
+// rust target, rather than re-running the front-end over the 332-source src/v4 closure.
+data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = list_snoc_item(
+  xs: ci_upsert_lens_inputs_from_required_lenses(lenses: lens_ci_required_lenses),
+  item: ci_upsert_upstream_job_input(job: v2_compile_src_v4)
+)
 
 fn ci_upsert_lens_ci_registry_execution_mk() -> CiUpsertStepSymbol {
   CiUpsertStepSymbol {
