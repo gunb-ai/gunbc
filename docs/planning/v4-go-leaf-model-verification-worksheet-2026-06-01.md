@@ -15,6 +15,11 @@
 
 Acceptance is dual-path verdict receipts (`happy` + `falsification`) per claim, not `go build` error-count reduction on full corpus.
 
+**Verdict authority split (Practice 11 — not one rule for all claims):**
+
+- **Compile-bound claims (R1, R2a, R3-external):** `go build` happy ACCEPTED + falsification REJECTED with modeled `target_diagnostic_go_*` on the existing **`TargetCompileVerdict`** carrier; toolchain is data on `TargetInvocation.toolchain` (`leaf_model_toolchain_go_build`), not a Go-named verdict type.
+- **Runtime-bound claim (R2b only):** `go run` / `go test` runtime assert happy ACCEPTED + negative runtime probe; compile phase stays ACCEPTED for the same source (mirror `python_r2b`). Uses **`TargetRuntimeExerciseVerdict`** (target-agnostic runtime authority) — not `TargetGoCompileVerdict`.
+
 **R3-internal (emit coupling receipt) is explicitly out of scope for Go L0** — same posture as Python #4117 (R3-external only). Rust retains R3-internal per `docs/planning/v4-leaf-model-verification-2026-05-30.md` §7.
 
 ---
@@ -30,9 +35,16 @@ Why forbidden:           Parallel authority; does not falsify model claims; P2 v
 DFS path:
   std/ authority:
     - LeafModelClaimId + fixture carriers at src/v4/std/leaf_model_verification.dag
-    - Phase 1 has TargetCompileVerdict (rustc) and TargetPythonExerciseVerdict only —
-      Go needs additive TargetGoCompileVerdict (+ go diagnostic Symbol rows) in SAME PR as
-      first Go claim, not a parallel verdict vocabulary elsewhere.
+    - Phase 1 verdict carriers today: TargetCompileVerdict (compile authority) and
+      TargetPythonExerciseVerdict (CPython compile+exec split). Go MUST NOT add
+      TargetGoCompileVerdict (Practice 11 — target-named duplicate of compile verdict).
+    - 🟡 gated — feature:leaf-model-verdict-parameterization — bind Modeling DFS / T-22 —
+      dissolve-on-arrival: TargetLeafModelToolchainVerdict subsumes TargetCompileVerdict +
+      TargetPythonExerciseVerdict + TargetRuntimeExerciseVerdict; Go rows become call sites only.
+    - Interim (this wave): (a) R1/R2a/R3-external consume TargetCompileVerdict + go diagnostic
+      Symbol rows + TargetInvocation.toolchain = leaf_model_toolchain_go_build; (b) R2b consumes
+      additive TargetRuntimeExerciseVerdict { Accepted | Rejected{diagnostic_code} } (runtime
+      authority only — not a third target-named compile carrier).
   extdeps/language authority:
     - go.dag: go_surface_spelling_int, go_facts_int, go_integer_algebra_inhabitance(go_facts_int),
       go_tag_overflow_signed_truncates, (R3) go_atom_realization_symbol — to be added per SG-1 Go worksheet
@@ -47,19 +59,22 @@ DFS path:
     - scripts/v4-leaf-model-go-{r1,r2a,r2b,r3-external}-verify.sh
     - optional boundary test src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_test.rs
 Deepest unsound boundary:
-  No LeafModelClaimId rows or TargetGo verdict carrier for Go; Python/Rust Phase 1 proven, Go zero.
+  No LeafModelClaimId rows or Go toolchain call sites on existing verdict carriers; Go zero.
 Systemic fix:
-  (1) Extend std leaf_model_verification with TargetGoCompileVerdict { Accepted | Rejected{code} }
-      and target_diagnostic_go_* for R1/R2a/R2b/R3-external probes below.
+  (1) Add target_diagnostic_go_* + leaf_model_toolchain_go_build; R1/R2a/R3-external on
+      TargetCompileVerdict; R2b on TargetRuntimeExerciseVerdict (see §4 split).
   (2) Add four LeafModelClaimId data rows + lens fixture pairs + claim .dag files.
-  (3) Host runners invoke `go build` on minimal module.main per fixture (see §4).
+  (3) Host runners: go build (compile-bound) or go run/test (R2b only) per §4.
 Non-goals:
   - R3-internal dual-emit mutation receipt (Rust-only L0 closure).
   - Full ~50-claim go.dag inventory (Phase 2 widening).
   - Complex128 algebra inhabitance (still 🟡 withheld in go.dag header).
   - Replacing T-22 modeled runner in this PR (shell bridge allowed; dissolve header required).
-Falsification probe (per claim):
-  Each claim: happy `go build` PASS + falsification `go build` FAIL with modeled diagnostic code.
+Falsification probe (split by authority — do not apply compile rule to R2b):
+  Compile-bound (R1, R2a, R3-external): happy go build ACCEPTED; falsification go build REJECTED
+    with modeled target_diagnostic_go_* on TargetCompileVerdict.
+  Runtime-bound (R2b only): happy go run/test ACCEPTED when runtime assert matches overflow model;
+    negative probe is wrong expected wrap value at runtime (compile stays ACCEPTED for same source).
 Metric allowed only as secondary:
   Weather/nat_semiring go build health post-#4076 — evidence only, not acceptance.
 ```
@@ -68,22 +83,29 @@ Metric allowed only as secondary:
 
 ## §4 Per-claim fixture contract (Go-specific)
 
-| Claim ID | Fact anchor (`go.dag`) | Happy fixture (sketch) | Falsification fixture | Expected falsification diagnostic |
+### §4.1 Compile-bound claims (`TargetCompileVerdict` + `leaf_model_toolchain_go_build`)
+
+| Claim ID | Fact anchor (`go.dag`) | Happy | Falsification | Expected falsification |
 |---|---|---|---|---|
-| `leaf_model_claim_go_r1_int_surface_spelling` | `go_surface_spelling_int` | `package main; func r1() int { return 0 }` | return type `i32` (invalid) | `undefined: i32` (compile error) |
-| `leaf_model_claim_go_r2a_int_algebra_operations` | `go_integer_algebra_inhabitance(go_facts_int)` | `func r2a(a,b int) (int,bool) { return a+b, a<b }` | call nonexistent method on `int` | method/operator not defined |
-| `leaf_model_claim_go_r2b_int_silent_overflow_truncates` | `go_tag_overflow_signed_truncates` on `go_facts_int` | runtime `math.MaxInt64+1` wrap assert in `main` | N/A — runtime-only; falsification arm documents unfalsifiable-at-compile-time (mirror python_r2b posture) | both paths `Accepted` at compile; runtime asserts overflow story |
-| `leaf_model_claim_go_r3_external_symbol_projection` | `go_atom_realization_symbol` (new) | emit per realization row (nominal `type Symbol string` or struct — **row content is SG-1 Go worksheet, not invented here**) | ctor/signature mismatch vs row | compile error on bad call |
+| `leaf_model_claim_go_r1_int_surface_spelling` | `go_surface_spelling_int` | `go build` PASS (`func r1() int { return 0 }`) | return type `i32` (invalid) | `TargetCompileRejected` + `target_diagnostic_go_undefined_type` |
+| `leaf_model_claim_go_r2a_int_algebra_operations` | `go_integer_algebra_inhabitance(go_facts_int)` | `go build` PASS (add/compare on `int`) | call nonexistent method on `int` | `TargetCompileRejected` + `target_diagnostic_go_undefined_method` |
+| `leaf_model_claim_go_r3_external_symbol_projection` | `go_atom_realization_symbol` (SG-1) | `go build` PASS per realization row | ctor/signature mismatch | `TargetCompileRejected` + modeled go diagnostic |
 
-**R2b note:** Go models **silent truncation** on typed integer overflow (`go.dag` L181 comment). R2b is a **runtime** receipt (`go run` / `go test`), not debug/release profile split like Rust. Do not import Rust's dual claim IDs unless Arbiter directs.
+### §4.2 Runtime-bound claim (`TargetRuntimeExerciseVerdict` — R2b only)
 
-**Verifier:** `go build` (minimum L0); R2b may add `go run` for runtime assert. `go vet` is optional secondary, not authority.
+| Claim ID | Fact anchor | Happy | Negative probe | Verdict carrier |
+|---|---|---|---|---|
+| `leaf_model_claim_go_r2b_int_silent_overflow_truncates` | `go_tag_overflow_signed_truncates` on `go_facts_int` | `go run` / `go test`: `math.MaxInt64+1` wraps as modeled | Same source with **wrong** expected wrap constant in assert → runtime failure | `TargetRuntimeExerciseVerdict` (compile phase: `TargetCompileAccepted` for identical source — mirror `python_r2b`) |
+
+**R2b note:** Go models **silent truncation** on typed integer overflow (`go.dag` L181). Not Rust debug/release dual claim IDs unless Arbiter directs.
+
+**Verifiers:** `go build` — R1/R2a/R3-external only. `go run` or `go test` — R2b only. `go vet` optional, not authority.
 
 ---
 
 ## §8 Arbiter approval checklist (`proud-fox-405`)
 
-- [ ] `TargetGoCompileVerdict` additive to `v4.std.leaf_model_verification` (no parallel module)
+- [ ] No `TargetGoCompileVerdict` — compile claims on `TargetCompileVerdict` + toolchain data; R2b on `TargetRuntimeExerciseVerdict`; 🟡 parameterization gate named
 - [ ] Four `LeafModelClaimId` symbols named and non-colliding with rust/python
 - [ ] R3-external blocked until Go SG-1 atom row exists (cross-worksheet dependency accepted)
 - [ ] R3-internal explicitly deferred for Go L0
