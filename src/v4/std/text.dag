@@ -12,6 +12,22 @@ import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 type Char = Nat
 type String = FreeMonoid<Char>
+
+// Host boundary fact: an already-decoded host string may enter the substrate as
+// Unicode text only through this text-side carrier. Byte-oriented boundaries
+// (`ByteString`, `FileBody`, stdout/stderr bytes) remain byte carriers until a
+// separate encoding witness admits them as text.
+type HostStringText {
+  text: String
+}
+
+fn host_string_text(text: String) -> HostStringText {
+  HostStringText { text: text }
+}
+fn host_string_text_value(value: HostStringText) -> String {
+  value.text
+}
+
 // 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
 type CharResult
   = CharFound { value: Char }
