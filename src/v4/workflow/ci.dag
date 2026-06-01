@@ -932,6 +932,13 @@ data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
   claim_rust_language_model_emit_subsumption_reverifies
 ]
 
+data v4_test_claim_manual_manual_corpus_roster: Symbol = v4_test_claim_manual_manual_corpus_roster
+data v4_test_claim_workflow_testclaim_corpus_runner: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
+data v4_test_claim_workflow_manual_corpus_eval: Symbol = v4_test_claim_workflow_manual_corpus_eval
+data manual_corpus_node_runtime_value_rows: Symbol = manual_corpus_node_runtime_value_rows
+data run_manual_testclaim_corpus_eval: Symbol = run_manual_testclaim_corpus_eval
+data corpus_report_tally: Symbol = corpus_report_tally
+data witness_manual_corpus_gate_closed: Symbol = witness_manual_corpus_gate_closed
 data ci_testclaim_corpus_module_manual_roster_path: Symbol = v4_test_claim_manual_manual_corpus_roster
 data ci_testclaim_corpus_module_runner_path: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
 data ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval
