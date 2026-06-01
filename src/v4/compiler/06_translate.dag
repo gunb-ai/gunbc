@@ -131,7 +131,9 @@ import v4.std.target_model {
   target_type_expr_arrow_emitted_named,
   target_type_expr_arrow_labeled_codomain,
   target_type_expr_arrow_labeled_param_slots,
-  target_type_expr_arrow_domain_is_named_param_conj,
+  target_type_expr_arrow_domain_projection,
+  TargetTypeExprArrowDomainNamedParams,
+  TargetTypeExprArrowDomainPositionalInput,
   target_type_expr_arrow_param_unlabeled,
   target_type_expr_arrow_wire_shape,
   TargetTypeExprArrowLabeledWire,
@@ -3162,63 +3164,64 @@ fn project_type_expression_arrow_emitted_from_original_split(
     bind_outcome(
       o: list_head_and_tail(xs: original_split.inputs, node: anchor),
       f: fn(head_tail) {
-        if target_type_expr_arrow_domain_is_named_param_conj(domain: head_tail.head) {
-          bind_outcome(
-            o: project_type_expression_arrow_param_slots(
-              remaining: node_subtree_count(n: head_tail.head),
-              node: head_tail.head,
-              target: target,
-              projection: projection
-            ),
-            f: fn(params) {
-              bind_outcome(
-                o: project_type_expression_node_bounded(
-                  remaining: node_subtree_count(n: original_split.output),
-                  node: original_split.output,
-                  target: target,
-                  projection: projection
-                ),
-                f: fn(projected_output) {
-                  bind_outcome(
-                    o: translate_apply_use_site_ownership_to_projected_boundary(
-                      projected: projected_output,
-                      source_for_binding: original_split.output,
-                      target: target,
-                      projection: projection,
-                      use_site: OwnershipAtFunctionReturn
-                    ),
-                    f: fn(wrapped_output) {
-                      outcome_accepted(
-                        target_type_expr_arrow_emitted_named(
-                          form: projection.arrow_form,
-                          params: params,
-                          output: wrapped_output
+        match target_type_expr_arrow_domain_projection(input: head_tail.head) {
+          TargetTypeExprArrowDomainNamedParams { domain: domain } =>
+            bind_outcome(
+              o: project_type_expression_arrow_param_slots(
+                remaining: node_subtree_count(n: domain),
+                node: domain,
+                target: target,
+                projection: projection
+              ),
+              f: fn(params) {
+                bind_outcome(
+                  o: project_type_expression_node_bounded(
+                    remaining: node_subtree_count(n: original_split.output),
+                    node: original_split.output,
+                    target: target,
+                    projection: projection
+                  ),
+                  f: fn(projected_output) {
+                    bind_outcome(
+                      o: translate_apply_use_site_ownership_to_projected_boundary(
+                        projected: projected_output,
+                        source_for_binding: original_split.output,
+                        target: target,
+                        projection: projection,
+                        use_site: OwnershipAtFunctionReturn
+                      ),
+                      f: fn(wrapped_output) {
+                        outcome_accepted(
+                          target_type_expr_arrow_emitted_named(
+                            form: projection.arrow_form,
+                            params: params,
+                            output: wrapped_output
+                          )
                         )
-                      )
-                    }
-                  )
-                }
-              )
-            }
-          )
-        } else {
-          bind_outcome(
-            o: translate_project_arrow_split_types(
-              original_split: original_split,
-              target: target,
-              projection: projection,
-              anchor: anchor
-            ),
-            f: fn(split) {
-              outcome_accepted(
-                target_type_expr_arrow_emitted(
-                  form: projection.arrow_form,
-                  inputs: split.inputs,
-                  output: split.output
+                      }
+                    )
+                  }
                 )
-              )
-            }
-          )
+              }
+            )
+          TargetTypeExprArrowDomainPositionalInput { input: _ } =>
+            bind_outcome(
+              o: translate_project_arrow_split_types(
+                original_split: original_split,
+                target: target,
+                projection: projection,
+                anchor: anchor
+              ),
+              f: fn(split) {
+                outcome_accepted(
+                  target_type_expr_arrow_emitted(
+                    form: projection.arrow_form,
+                    inputs: split.inputs,
+                    output: split.output
+                  )
+                )
+              }
+            )
         }
       }
     )

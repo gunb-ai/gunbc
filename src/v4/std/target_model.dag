@@ -1490,16 +1490,24 @@ fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowW
   }
 }
 
-// SG-2 — arrow source domain carries Named param slots (non-empty Conj with LabeledEdges discipline).
-fn target_type_expr_arrow_domain_is_named_param_conj(domain: Node) -> Bool {
-  match domain.kind {
+// SG-2 — arrow source domain projection: Named param conj vs single positional boundary.
+type TargetTypeExprArrowDomainProjection
+  = TargetTypeExprArrowDomainNamedParams { domain: Node }
+  | TargetTypeExprArrowDomainPositionalInput { input: Node }
+
+fn target_type_expr_arrow_domain_projection(input: Node) -> TargetTypeExprArrowDomainProjection {
+  match input.kind {
     TypeNode { connective: Conj } =>
-      if is_empty(xs: domain.children) {
-        false
+      if is_empty(xs: input.children) {
+        TargetTypeExprArrowDomainPositionalInput { input: input }
       } else {
-        connective_edges_conform(children: domain.children, c: Conj)
+        if connective_edges_conform(children: input.children, c: Conj) {
+          TargetTypeExprArrowDomainNamedParams { domain: input }
+        } else {
+          TargetTypeExprArrowDomainPositionalInput { input: input }
+        }
       }
-    _ => false
+    _ => TargetTypeExprArrowDomainPositionalInput { input: input }
   }
 }
 
