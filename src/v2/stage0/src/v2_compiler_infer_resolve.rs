@@ -29,14 +29,14 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
-    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
+    field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
+    is_compiler_error, is_container_type, is_kernel_type, is_local_transport, kernel_span,
+    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
+    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
+    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    resource_use_name_at, resource_use_resource, string_type, transport_request_body, unit_type,
     with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
     Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node,
     StringPart,
@@ -751,12 +751,11 @@ pub fn resolve_node_bounded(
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     });
-                    let applied_prop_span = kernel_span("__applied_type_args".to_string());
                     let applied_type_args_property = make_field_init_node(
                         "__applied_type_args".to_string(),
                         applied_type_args,
                         n.span.clone(),
-                        applied_prop_span,
+                        n.span.clone(),
                     );
                     let slot_bindings = Rc::new(
                         decl.params
@@ -2715,7 +2714,9 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         let resolved_ret = if (item.inferred.clone() == None) {
             None
         } else {
-            Some(Rc::new(InferredNode::Resolved { node: ret_resolved }))
+            Some(Rc::new(InferredNode::Resolved {
+                node: ret_resolved.clone(),
+            }))
         };
         let use_results = Rc::new({
             let mut __result = Vec::new();

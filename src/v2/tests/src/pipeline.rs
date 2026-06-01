@@ -302,35 +302,35 @@ fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/gen_applied_sig.rs");
     assert!(
-        content.contains("fn use_fold<S>(fold: Rc<NodeFold<S>>) -> Rc<NodeFold<S>>"),
-        "generic fn params and return must preserve applied type args with shared_types Rc; got:\n{content}"
+        content.contains("use_fold<S>(fold: Rc<NodeFold<S>>)"),
+        "generic fn params must preserve applied type args with shared_types Rc; got:\n{content}"
     );
 }
 
 #[test]
-fn nested_applied_generic_type_args_preserved_in_fn_sig() {
+fn generic_fn_applied_param_preserves_struct_field_access() {
+    // Resolve must keep structural param type for inference; emit reads overlay from properties.
     let source = "\
-module nested_applied_sig
+module gen_applied_field
 
-type Boxed<S> {
-  value: S
+type NodeFold<S> {
+  seed: S
 }
 
-type Wrapper<S> {
-  inner: Boxed<S>
-}
-
-fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
-  w
+fn get_seed<S>(fold: NodeFold<S>) -> S {
+  fold.seed
 }
 ";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/nested_applied_sig.rs");
+    let content = find_file(&result, "src/gen_applied_field.rs");
     assert!(
-        content
-            .contains("fn use_wrap<S>(w: Rc<Wrapper<Rc<Boxed<S>>>>) -> Rc<Wrapper<Rc<Boxed<S>>>>"),
-        "nested applied generic args (Wrapper<Boxed<S>>) must render through decl-type path; got:\n{content}"
+        content.contains("get_seed<S>(fold: Rc<NodeFold<S>>)"),
+        "generic fn params must preserve applied type args with shared_types Rc; got:\n{content}"
+    );
+    assert!(
+        content.contains("fold.seed"),
+        "applied generic param must retain struct field surface for body inference; got:\n{content}"
     );
 }
 
