@@ -2082,8 +2082,7 @@ fn target_type_expr_arrow_emitted(
 // ═══ SG-5 — TargetCollectionRealization (canonical home) ═══
 
 data target_model_edge_collection_realization: Symbol = target_model_edge_collection_realization
-data target_model_edge_free_monoid_collection_realization: Symbol =
-  target_model_edge_free_monoid_collection_realization
+data target_model_edge_free_monoid_collection_realization: Symbol = target_model_edge_free_monoid_collection_realization
 
 // 🟢 coproduct dissolution — SG-5 collection representation kind axis (M6 product; no duplicate-payload arms).
 type TargetCollectionReprKind
@@ -2134,10 +2133,8 @@ data target_collection_row_field_alternatives: Symbol = target_collection_row_fi
 data target_collection_row_field_fallback: Symbol = target_collection_row_field_fallback
 data target_collection_set_no_representation: Symbol = target_collection_set_no_representation
 data target_collection_set_no_representation_port: Symbol = target_collection_set_no_representation_port
-data target_collection_free_monoid_no_representation: Symbol =
-  target_collection_free_monoid_no_representation
-data target_collection_free_monoid_no_representation_port: Symbol =
-  target_collection_free_monoid_no_representation_port
+data target_collection_free_monoid_no_representation: Symbol = target_collection_free_monoid_no_representation
+data target_collection_free_monoid_no_representation_port: Symbol = target_collection_free_monoid_no_representation_port
 
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
