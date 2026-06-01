@@ -5,7 +5,18 @@
 
 module v4.std.target_model
 
-import v4.std.algebra { Cons, Empty, fold_list, is_empty, list_snoc_item, length, list_append }
+import v4.std.algebra {
+  Cons,
+  Empty,
+  fold_list,
+  free_monoid_field_head,
+  free_monoid_field_tail,
+  free_monoid_variant_empty,
+  is_empty,
+  list_snoc_item,
+  length,
+  list_append
+}
 import v4.std.collection {
   Absent,
   List,
@@ -225,6 +236,33 @@ fn source_atom_char(codepoint: Char) -> SourceAtomValue {
   }
 }
 
+fn source_atom_char_literal_node(source: Node) -> Bool {
+  match source.kind {
+    TypeNode { connective: Atom { identity: c } } =>
+      c != char_kernel_type_atom
+    _ => false
+  }
+}
+
+fn source_atom_string_literal_node(source: Node) -> Bool {
+  match source.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      id == free_monoid_variant_empty
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: source, name: free_monoid_field_head) {
+        Accepted { value: head } =>
+          match find_named_child(root: source, name: free_monoid_field_tail) {
+            Accepted { value: tail } =>
+              source_atom_char_literal_node(source: head) &&
+                source_atom_string_literal_node(source: tail)
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
+}
+
 fn source_atom_string(value: Node) -> SourceAtomValue {
   SourceAtomValue {
     kind: SourceAtomString,
@@ -282,7 +320,11 @@ fn source_atom_value_for_value_template(
         _ => optional_absent()
       }
     ValueStringLiteral =>
-      optional_present(source_atom_string(value: source))
+      if source_atom_string_literal_node(source: source) {
+        optional_present(source_atom_string(value: source))
+      } else {
+        optional_absent()
+      }
   }
 }
 
