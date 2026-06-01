@@ -531,6 +531,30 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
   ci_srv2_pool
 ]
 
+// 🟡 gated — CI build-cache projection NOT YET MODELED HERE — feature:elastic-cache-interface
+//   — bind docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md (APPROVED §8; PR #4095 merged)
+//   + docs/planning/elastic-ci-redesign-exploration-2026-05-31.md §4.0g.
+//   The backend substrate already landed in dsl/std/cache_interface.dag as first-authority
+//   `CacheInterfaceFacts` rows: `sccache_local_facts` (PerHostFilesystem),
+//   `cargo_target_dir_facts` (PerRunnerFilesystem), `gha_actions_cache_facts`,
+//   `buildbuddy_cas_facts`, `rustup_toolchain_store_facts`. The MISSING piece is this file's
+//   consumer (cache_interface.dag line 20: "consumer: ci harness cache projection"): nothing in
+//   src/v4/workflow/*.dag imports cache_interface yet, so the ci_floor cache transport is still
+//   hand-authored `actions/cache` blocks in .github/workflows/ci.yml.
+//   dissolve-on-arrival: when this projection lands, the ci_floor `Cache Cargo` / `Cache gunbc
+//   binary` steps in ci.yml are projected from cache_key_projection over these facts (identity =
+//   content_hash(canonical Upsert<T> subject), NOT hashFiles), and the interim hand blocks below
+//   are deleted. forbidden (exploration §717 + worksheet §10.0): hand-authored cache keys at any
+//   layer (`hashFiles(...)`, `cache_key:` strings, sccache `--cache-mode-key`) as the standing
+//   design, and stacking sccache/`RUSTC_WRAPPER` into ci.yml ahead of `CacheInterfaceFacts`
+//   projection (the named "immediate local patch" P2 violation).
+//   INTERIM (operator 2026-06-01, "stop the bleeding"): the ci.yml `Cache Cargo` key was
+//   de-churned (Cargo.lock+toolchain only) so restores actually hit and stop evicting the warm
+//   v2 `gunbc-bin` cache. This is transport repair of an existing block, not new design surface,
+//   and does NOT touch the two dominant ci_floor steps (M1 emit-probe cargo-check ~13m, v2→v4
+//   bootstrap ~9m) — those compile freshly-emitted trees in $RUNNER_TEMP whose target/ is
+//   discarded each run, so only content-addressed sccache (the modeled projection) can warm them.
+
 data lens_ci_required_lenses: List<LensIdV0> = [
   Complexity,
   Cost,
