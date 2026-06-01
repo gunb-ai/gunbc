@@ -6040,7 +6040,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           "                top: Box::new(", top_str, "),\n",
           "                bottom: Box::new(", bottom_str, "),\n",
           "            })")
-        if raw_ty_str == "Rc<BoundedLattice>" {
+        if needs_rc {
           concat("            Rc::new(", inner, ")")
         } else {
           concat("            ", inner)
