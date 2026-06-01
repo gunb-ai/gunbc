@@ -16775,7 +16775,7 @@ pub fn emit_data_def_body(
                         }
                     };
                     let inner = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: Box::new(".to_string()), top_str), "),\n".to_string()), "                bottom: Box::new(".to_string()), bottom_str), "),\n".to_string()), "            })".to_string());
-                    if (raw_ty_str.as_str() == "Rc<BoundedLattice>".to_string().as_str()) {
+                    if needs_rc.clone() {
                         v2_rt::concat(
                             v2_rt::concat("            Rc::new(".to_string(), inner),
                             ")".to_string(),
