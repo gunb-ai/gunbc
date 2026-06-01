@@ -328,14 +328,26 @@ data claim_ts_sg2_arrow_labeled_wire_shape: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_mixed_wire_rejects: TestClaim = CompilesClaim {
-  label: "manual/sg2-ts: mixed positional+labeled arrow wire rejects fail-closed",
+data claim_ts_sg2_arrow_mixed_wire_shape_rejects: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: mixed positional+labeled arrow wire-shape rejects fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: ts_sg2_claim_input(
-    ok: ts_sg2_arrow_mixed_wire_rejects() &&
-      ts_sg2_arrow_mixed_wire_decode_rejects() &&
-      ts_sg2_arrow_mixed_wire_labeled_accessors_reject()
-  ),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_rejects()),
+  expected_value: ts_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_ts_sg2_arrow_mixed_wire_decode_rejects: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: mixed positional+labeled arrow wire decode rejects fail-closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_decode_rejects()),
+  expected_value: ts_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_ts_sg2_arrow_mixed_wire_labeled_accessors_reject: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: mixed positional+labeled arrow labeled accessors reject fail-closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_labeled_accessors_reject()),
   expected_value: ts_sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
