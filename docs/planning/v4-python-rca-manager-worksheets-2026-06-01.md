@@ -282,8 +282,12 @@ Falsification probes:
   `LeafModelPythonStaticCase` / `LeafModelPythonStaticFixturePair` fixture carriers
   (`src/v4/std/leaf_model_verification.dag`).
 - per-tool profiles `src/v4/extdeps/typecheckers/pyright.dag` + `mypy.dag` (tool-id, config/version
-  policy, per-tool diagnostic namespace) + `compile_to_dag` smoke
-  `src/v3/compiler/tests/integration/v4_extdeps_typecheckers_dag_smoke_test.rs`.
+  policy, per-tool diagnostic namespace). Compile validation is via the whole-tree gate — the
+  `v2 → v4 bootstrap compile (fail-closed full)` step in `ci_floor` compiles all of `src/v4`
+  (including these profiles and the std carriers) with 0 diagnostics. (A bespoke v3
+  `compile_to_dag` smoke was tried and dropped: the isolated v3 flat-chain path cannot parse
+  `src/v4/std/logic.dag`'s `BoolWidthFact {}`, which the profiles transitively depend on; the
+  whole-tree v2 gate is the correct authority here.)
 - F1 fixtures + claim: `python_l1_static_*` in `src/v4/lens/leaf_model_verification.dag`,
   `src/v4/test/claim/language_model/python_l1_static.dag`.
 - F1 host receipt: `scripts/v4-leaf-model-python-l1-static-verify.sh` — pyright `reportReturnType`
