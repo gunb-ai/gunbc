@@ -2443,20 +2443,24 @@ type TargetUseSiteOwnershipLookup
   | TargetUseSiteOwnershipUnique { row: TargetUseSiteOwnershipRealization }
   | TargetUseSiteOwnershipAmbiguous
 
+type TargetUseSiteOwnershipSourceKey
+  = TargetUseSiteOwnershipSourceKeyFound { key: Node }
+  | TargetUseSiteOwnershipSourceKeyAbsent
+
 fn target_use_site_ownership_source_key(
   source_carrier: Node,
   projection: TargetUseSiteOwnershipSourceProjection
-) -> Node {
+) -> TargetUseSiteOwnershipSourceKey {
   match projection {
-    UseSiteOwnershipExactCarrier => source_carrier
+    UseSiteOwnershipExactCarrier => TargetUseSiteOwnershipSourceKeyFound { key: source_carrier }
     UseSiteOwnershipInstantiationHeadCarrier =>
       match source_carrier.kind {
         TypeNode { connective: Instantiation } =>
           match list_at_optional(xs: node_positional_child_targets(node: source_carrier), index: 0) {
-            Present { value: head } => head
-            Absent => source_carrier
+            Present { value: head } => TargetUseSiteOwnershipSourceKeyFound { key: head }
+            Absent => TargetUseSiteOwnershipSourceKeyAbsent
           }
-        _ => source_carrier
+        _ => TargetUseSiteOwnershipSourceKeyAbsent
       }
   }
 }
@@ -2468,20 +2472,23 @@ fn target_use_site_ownership_lookup_step(
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> TargetUseSiteOwnershipLookup {
-  let source_key = target_use_site_ownership_source_key(
+  match target_use_site_ownership_source_key(
     source_carrier: source_carrier,
     projection: row.source_projection
-  )
-  if content_hash(n: row.source_carrier) == content_hash(n: source_key)
-    && row.use_site == use_site
-  {
-    match acc {
-      TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipUnique { row: row }
-      TargetUseSiteOwnershipUnique { row: _ } => TargetUseSiteOwnershipAmbiguous
-      TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipAmbiguous
-    }
-  } else {
-    acc
+  ) {
+    TargetUseSiteOwnershipSourceKeyAbsent => acc
+    TargetUseSiteOwnershipSourceKeyFound { key: source_key } =>
+      if content_hash(n: row.source_carrier) == content_hash(n: source_key)
+        && row.use_site == use_site
+      {
+        match acc {
+          TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipUnique { row: row }
+          TargetUseSiteOwnershipUnique { row: _ } => TargetUseSiteOwnershipAmbiguous
+          TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipAmbiguous
+        }
+      } else {
+        acc
+      }
   }
 }
 
