@@ -32,6 +32,24 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
+        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
+        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
@@ -67,6 +85,24 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
+        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
+        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
@@ -96,6 +132,24 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
+        # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
+        # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
+        # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
+        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
+        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        else
+          echo "::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold"
+        fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
@@ -138,6 +192,13 @@ jobs:
       with:
         path: target/release/gunbc
         key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        # Broad restore-key fallback (independent of sccache): when the exact key misses (Cargo.lock /
+        # toolchain / stage0 churn), restore the most-recent prior gunbc binary instead of nothing. The
+        # build step below is gated on exact `cache-hit == 'true'`, so a partial restore still triggers a
+        # rebuild — but on top of the warm `target/` restored by the Cargo cache, that rebuild is
+        # incremental (~3-6 min saved) rather than cold. Safe: a stale binary is overwritten by the rebuild.
+        restore-keys: |
+          gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
