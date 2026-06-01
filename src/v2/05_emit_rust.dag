@@ -202,37 +202,46 @@ fn render_rust_applied_type(n: Node, shared_types: Set<String>, source_indices: 
   }
 }
 
+// Generic type-param leaves in applications (S, A in Pair<S, A>) compose with the
+// canonical renderer; direct self-recursion keeps regen_stage0 stacker guard.
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Some { value: applied } =>
       if applied.children |> count > 0 {
         render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
       } else {
-        render_rust_decl_type_body(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+        let name = authored_name_at(source_indices: source_indices, node: n)
+        if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
+          name
+        } else if n.connective == NoConnective && n.children |> count > 0 {
+          let base = coerce_primitive_type(target: Rust, dag_name: name)
+          let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+          let applied_ty = concat(base, "<", args, ">")
+          if set_contains(shared_types, name) { concat("Rc<", applied_ty, ">") } else { applied_ty }
+        } else {
+          render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
+        }
       }
-    None => render_rust_decl_type_body(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+    None =>
+      let name = authored_name_at(source_indices: source_indices, node: n)
+      if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
+        name
+      } else if n.connective == NoConnective && n.children |> count > 0 {
+        let base = coerce_primitive_type(target: Rust, dag_name: name)
+        let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+        let applied_ty = concat(base, "<", args, ">")
+        if set_contains(shared_types, name) { concat("Rc<", applied_ty, ">") } else { applied_ty }
+      } else {
+        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
+      }
   }
 }
 
-fn render_rust_decl_type_body(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let name = authored_name_at(source_indices: source_indices, node: n)
-  if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
-    name
-  } else if n.connective == NoConnective && n.children |> count > 0 {
-    let base = coerce_primitive_type(target: Rust, dag_name: name)
-    let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
-    concat(base, "<", args, ">")
-  } else {
-    render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
-  }
-}
-
-// Function signatures inside generic items: use the same resolved-type path as
-// generic struct fields (emit_struct_field_from_child) so applied type args
-// survive inference. Non-generic fns keep the __applied_type_args binding path.
+// Fn signatures: canonical outer renderer + generic-arg leaf preservation when
+// the enclosing item has type params (resolved param/return types from emit_fn_def).
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   if generic_param_names |> count > 0 {
-    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   } else {
     render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
   }
