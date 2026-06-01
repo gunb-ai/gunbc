@@ -109,9 +109,11 @@ import v4.std.target_model {
   ValueSymbolIdentityPassthrough,
   target_type_expr_atom_emitted,
   target_type_expr_arrow_emitted,
+  target_type_expr_arrow_emitted_named,
   target_type_expr_instantiation_emitted,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
+  TargetTypeExprArrowParamSlot,
   TargetTypeExprFieldSlot,
   TargetTypeExprVariantSlot
 }
@@ -142,6 +144,7 @@ import v4.std.target_model {
   target_type_expr_field_atom,
   target_type_expr_field_cardinality,
   target_type_expr_field_close,
+  target_type_expr_field_codomain,
   target_type_expr_field_conj,
   target_type_expr_field_disj,
   target_type_expr_field_ident_token,
@@ -1735,6 +1738,42 @@ fn ts_sg2_arrow_xy_emitted() -> Node {
       identity: ts_binding_sg2_y
     )
   )
+}
+
+fn ts_sg2_arrow_labeled_xy_emitted() -> Node {
+  target_type_expr_arrow_emitted_named(
+    form: ts_type_expression_projection().arrow_form,
+    params: [
+      TargetTypeExprArrowParamSlot {
+        label: ts_binding_sg2_x,
+        type_expr: target_type_expr_atom_emitted(
+          form: ts_type_expression_projection().atom_form,
+          identity: ts_binding_sg2_x
+        )
+      }
+    ],
+    output: target_type_expr_atom_emitted(
+      form: ts_type_expression_projection().atom_form,
+      identity: ts_binding_sg2_y
+    )
+  )
+}
+
+fn ts_sg2_arrow_mixed_wire_emitted() -> Node {
+  let golden = ts_sg2_arrow_xy_emitted()
+  Node {
+    kind: golden.kind,
+    children: list_snoc_item(
+      xs: golden.children,
+      item: ts_named_edge(
+        name: target_type_expr_field_codomain,
+        target: target_type_expr_atom_emitted(
+          form: ts_type_expression_projection().atom_form,
+          identity: ts_binding_sg2_y
+        )
+      )
+    )
+  }
 }
 
 fn ts_sg2_arrow_source_type_node() -> Node {

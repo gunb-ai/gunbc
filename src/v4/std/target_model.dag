@@ -1480,7 +1480,12 @@ fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowW
     }
   } else {
     if length(xs: positional) >= 2 {
-      outcome_accepted(TargetTypeExprArrowPositionalWire)
+      match target_type_expr_fold_named_metadata_edges(node: node) {
+        NamedMetadataFoldOk { kind_seen: true, surface_seen: true, extra_named: 0 } =>
+          outcome_accepted(TargetTypeExprArrowPositionalWire)
+        _ =>
+          outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
     } else {
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
     }

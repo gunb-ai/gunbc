@@ -649,6 +649,14 @@ fn v4_typescript_language_model_declares_type_expression_projection_row() {
         "{TYPESCRIPT_LANGUAGE_PATH}: golden (X) => Y Arrow emitted node (beyond row-2)"
     );
     assert!(
+        surface_declares_fn(&module, "ts_sg2_arrow_labeled_xy_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: golden (X: X) => Y labeled Arrow emitted node"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_arrow_mixed_wire_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: mixed positional+labeled arrow wire falsification probe"
+    );
+    assert!(
         surface_declares_fn(&module, "ts_sg2_sum_xy_emitted"),
         "{TYPESCRIPT_LANGUAGE_PATH}: golden X | Y Disj emitted node (beyond row-2)"
     );
