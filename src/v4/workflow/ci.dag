@@ -1525,6 +1525,26 @@ fn ci_no_diagnostics() -> Diagnostics {
 }
 
 
+fn ci_empty_edges() -> List<Edge> {
+  []
+}
+
+
+fn ci_empty_upsert_input_refs() -> List<UpsertInputRef> {
+  []
+}
+
+
+fn ci_empty_step_ids() -> List<CiStepId> {
+  []
+}
+
+
+fn ci_empty_step_selections() -> List<CiStepSelection> {
+  []
+}
+
+
 fn ci_symbol_digest(sym: Symbol) -> Hash {
   content_hash(n: ci_atom(sym: sym))
 }
