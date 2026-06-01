@@ -128,6 +128,7 @@ import v4.std.target_model {
   target_collection_free_monoid_no_representation_diagnostic,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
+  target_carrier_free_monoid_node,
   target_collection_set_element_type_node,
   target_collection_free_monoid_element_type_node,
   target_collection_type_node_is_set_carrier,
