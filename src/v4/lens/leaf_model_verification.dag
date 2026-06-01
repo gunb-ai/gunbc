@@ -16,7 +16,9 @@ import v4.extdeps.languages.python {
 import v4.extdeps.typecheckers.pyright {
   pyright_tool_id,
   pyright_profile_l1_id,
-  pyright_diag_report_return_type
+  pyright_diag_report_return_type,
+  pyright_diag_report_undefined_variable,
+  pyright_diag_report_missing_imports
 }
 import v4.extdeps.languages.typescript {
   ts_atom_realization_symbol,
@@ -32,7 +34,7 @@ import v4.extdeps.languages.rust {
   rust_target_atom_realization_symbol,
   rust_target_atom_type_form
 }
-import v4.std.collection { optional_absent }
+import v4.std.collection { List, optional_absent }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.target_model {
@@ -64,6 +66,8 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_python_r2b_int_arbitrary_precision_add,
   leaf_model_claim_python_r3_external_symbol_projection,
   leaf_model_claim_python_l1_static_return_type,
+  leaf_model_claim_python_l1_static_undefined_variable,
+  leaf_model_claim_python_l1_static_missing_import,
   leaf_model_claim_ts_r2a_number_algebra_operations,
   leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
   leaf_model_claim_ts_r3_external_symbol_projection,
@@ -605,4 +609,70 @@ fn python_l1_static_fixture_pair() -> LeafModelPythonStaticFixturePair {
 
 fn python_l1_static_fixture() -> LeafModelPythonStaticFixturePair {
   python_l1_static_fixture_pair()
+}
+
+// --- PY-L1-STATIC-STRUCTURAL fixture-scale roster ---
+// L1 fixture-scale: the single return-type pair above is widened to a roster of
+// distinct pyright structural diagnostic classes, each consuming the SAME shared
+// TargetStaticAnalysisInvocation / TargetStaticAnalysisVerdict carriers and the SAME
+// pyright_profile_l1 (no per-fixture tool config). Every falsification below holds the
+// same hard third-authority property as F1: CPython `py_compile` ACCEPTS it and `python3`
+// runs it with exit 0 (the defect sits in a function that is never called), so neither the
+// compile nor the runtime authority catches it — only pyright does, under the modeled
+// diagnostic rule. Each pair anchors `surface_spelling_fact: python_surface_spelling_int`
+// (every fixture annotates `-> int`). Roster membership is the single authority consumed by
+// scripts/v4-leaf-model-python-l1-static-verify.sh — the runner iterates this list.
+
+// reportUndefinedVariable: the dead function references a name that is never bound. pyright
+// flags it statically; py_compile accepts (names resolve at runtime) and the module runs
+// clean because the function is never invoked.
+data python_l1_static_undefined_variable_happy_fixture_source: String = "def l1_undefined_variable() -> int:\n    bound = 0\n    return bound\n"
+data python_l1_static_undefined_variable_falsification_fixture_source: String = "def l1_undefined_variable() -> int:\n    return undefined_symbol\n"
+
+// reportMissingImports: the dead function imports a module that does not exist. pyright
+// flags it statically; py_compile accepts and the module runs clean because the import is
+// inside a function that is never called (so no runtime ImportError fires).
+data python_l1_static_missing_import_happy_fixture_source: String = "def l1_missing_import() -> int:\n    import math\n    return int(math.floor(1.0))\n"
+data python_l1_static_missing_import_falsification_fixture_source: String = "def l1_missing_import() -> int:\n    import totally_not_a_real_module_xyz\n    return totally_not_a_real_module_xyz.value\n"
+
+fn python_l1_static_undefined_variable_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_undefined_variable,
+    surface_spelling_fact: python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_undefined_variable_happy_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_undefined_variable_falsification_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id,
+      tool_id: pyright_tool_id,
+      diagnostic_code: pyright_diag_report_undefined_variable
+    }
+  }
+}
+
+fn python_l1_static_missing_import_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_missing_import,
+    surface_spelling_fact: python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_missing_import_happy_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_missing_import_falsification_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id,
+      tool_id: pyright_tool_id,
+      diagnostic_code: pyright_diag_report_missing_imports
+    }
+  }
+}
+
+fn python_l1_static_fixture_roster() -> List<LeafModelPythonStaticFixturePair> {
+  [
+    python_l1_static_fixture_pair(),
+    python_l1_static_undefined_variable_fixture_pair(),
+    python_l1_static_missing_import_fixture_pair()
+  ]
 }

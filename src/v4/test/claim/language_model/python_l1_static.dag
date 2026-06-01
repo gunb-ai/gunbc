@@ -14,13 +14,20 @@ import v4.extdeps.languages.python {
 import v4.extdeps.typecheckers.pyright {
   pyright_tool_id,
   pyright_profile_l1_id,
-  pyright_diag_report_return_type
+  pyright_diag_report_return_type,
+  pyright_diag_report_undefined_variable,
+  pyright_diag_report_missing_imports
 }
 import v4.lens.leaf_model_verification {
-  python_l1_static_fixture
+  python_l1_static_fixture,
+  python_l1_static_undefined_variable_fixture_pair,
+  python_l1_static_missing_import_fixture_pair
 }
 import v4.std.leaf_model_verification {
+  LeafModelPythonStaticFixturePair,
   leaf_model_claim_python_l1_static_return_type,
+  leaf_model_claim_python_l1_static_undefined_variable,
+  leaf_model_claim_python_l1_static_missing_import,
   StaticAnalysisAccepted,
   StaticAnalysisRejected,
   StaticAnalysisAdvisory,
