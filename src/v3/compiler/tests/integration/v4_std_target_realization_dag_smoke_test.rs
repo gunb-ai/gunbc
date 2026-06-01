@@ -624,6 +624,40 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
 }
 
 #[test]
+fn v4_std_target_realization_named_child_lookup_fails_closed() {
+    assert!(
+        !TARGET_MODEL_DAG.contains("target_atom_realization_conj_child"),
+        "{TARGET_MODEL_PATH}: atom/signature/SG-RC row decoding must not use fabricated child fallback"
+    );
+    assert!(
+        TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_atom_realization_field_source_carrier)"
+        ) && TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_atom_realization_field_target_model_bundle)"
+        ) && TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_atom_realization_field_type_form)"
+        ) && TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_atom_realization_field_value_form)"
+        ) && TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_atom_realization_field_constructor_form)"
+        ),
+        "{TARGET_MODEL_PATH}: required atom realization row children must thread Outcome from find_named_child"
+    );
+    assert!(
+        TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_function_signature_realization_field_source_carrier)"
+        ) && TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_function_signature_realization_field_target_model_bundle)"
+        ) && TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_function_signature_realization_field_boundary_site)"
+        ) && TARGET_MODEL_DAG.contains(
+            "find_named_child(root: row_node, name: target_function_signature_realization_field_signature_type_form)"
+        ),
+        "{TARGET_MODEL_PATH}: required signature realization row children must thread Outcome from find_named_child"
+    );
+}
+
+#[test]
 fn v4_sg_rc_outcome_claim_preserves_sg2_inner_type_args() {
     assert!(
         SG_RC_LAYERING_CLAIM_DAG.contains("sg_rc_outcome_node_source_type"),
