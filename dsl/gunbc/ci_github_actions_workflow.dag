@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 0307067d3353c0744bef86743c3dcbbcef8672d53b32b68384fba623b0c1e156
+// Source-SHA256(.github/workflows/ci.yml): 0a3ec246787ecb65e32a30dd47ee71ea96a314dc8948b19feb57770541430bc3
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -36,7 +36,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -107,7 +107,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -188,7 +188,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
-          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n# INTERIM sccache transport (operator 2026-06-01 override; \"disregard the memo for now\").\n# Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag\n# sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.\n# The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +\n# SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level\n# env beats the runner default, so pinning the old shared socket forces EACCES and keeps\n# sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts\n# LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet\n# at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:\n# the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start\n# and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable\n# dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.\nif [ -n \"$SCCACHE_SERVER_UDS\" ] && [ -w \"$(dirname \"$SCCACHE_SERVER_UDS\")\" ]; then\n  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\nelse\n  echo \"::warning::sccache socket (SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-unset}) absent or not usable by runner user; building cold\"\nfi\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -246,7 +246,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "Cache gunbc binary (v4 floor)" },
           id: Some { value: "v4-v2-bin" },
           uses: { owner: "actions", repo: "cache", ref: "v4" },
-          with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}" },
+          with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-\n" },
           env: none,
           if_condition: none,
           continue_on_error: false,

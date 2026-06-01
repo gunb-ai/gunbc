@@ -15,7 +15,14 @@ import v4.compiler.infer {
 }
 import v4.std.algebra { fold_list }
 import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { List, Map, list_nth }
+import v4.std.collection {
+  List,
+  Map,
+  Optional,
+  list_nth,
+  optional_absent,
+  optional_present
+}
 import v4.std.verdict { Verdict, verdict_fail, verdict_fold }
 import v4.std.runtime {
   EnvironmentBindingKey,
@@ -162,6 +169,22 @@ type InterpretationCacheAuthority {
 // RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; runtime interpretation lives in eval.
 type Inputs {
   root: Node
+  // Host row: `claim_input_root` in `root`; rhs eval pin carried for `run_emit_host` (emit_host.dag).
+  expected_eval_root: Optional<Node>
+}
+
+fn inputs_root_only(root: Node) -> Inputs {
+  Inputs {
+    root: root,
+    expected_eval_root: optional_absent()
+  }
+}
+
+fn inputs_for_emit_host(claim_input_root: Node, expected_eval_root: Node) -> Inputs {
+  Inputs {
+    root: claim_input_root,
+    expected_eval_root: optional_present(value: expected_eval_root)
+  }
 }
 
 
@@ -1839,7 +1862,7 @@ fn run_test_claim_runtime_assert(
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
-      let expected = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: rhs })
+      let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
       } else {
@@ -1847,7 +1870,7 @@ fn run_test_claim_runtime_assert(
       }
     }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
-      let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: expected })
+      let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: expected))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
         Pass
       } else {
@@ -1909,7 +1932,7 @@ fn run_test_claim(
       let actual = eval(
         tree: subject.tree,
         interpretation: eval_context_interpretation(context: subject.context),
-        inputs: Inputs { root: subject.input.evaluator_input }
+        inputs: inputs_root_only(root: subject.input.evaluator_input)
       )
       TestClaimRun {
         cache: test_claim_cache_receipt_node(subject: subject),
