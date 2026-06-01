@@ -502,16 +502,34 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     Some { value: result } => result.diagnostics
     None => []
   }
+  let default_expr = match default_resolved {
+    Some { value: result } => Some { value: result.expr }
+    None => none
+  }
+  let children = match default_expr {
+    Some { value: dv } => [type_resolved, dv]
+    None => [type_resolved]
+  }
   ParamResult {
-    param: make_param_node(
+    param: Node {
       name: param_node_name_at(n: param, source_indices: env.source_indices),
-      type_expr: type_resolved,
-      default_value: match default_resolved {
-        Some { value: result } => Some { value: result.expr }
-        None => none
-      },
-      span: param.span, name_span: node_name_span(n: param)
-    ),
+      span: param.span,
+      ident_span: node_name_span(n: param),
+      children: children,
+      connective: NoConnective,
+      params: [],
+      inferred: none,
+      return_cardinality: Required,
+      uses: [],
+      body: none,
+      transport: none,
+      properties: concat(param.properties, type_resolved.properties),
+      type_annotation: none,
+      is_self_recursive: false,
+      has_non_tail_self_call: false,
+      match_pattern: none,
+      expr_data: NoExprData
+    },
     diagnostics: concat(type_diags, default_diags)
   }
 }
