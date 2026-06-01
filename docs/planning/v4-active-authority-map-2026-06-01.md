@@ -3,7 +3,7 @@
 > **Status:** LIVING — updated by Modeling DFS Arbiter (`proud-fox-405`) as worksheets ratify.
 > **Date:** 2026-06-01
 > **Purpose:** Prevent parallel carriers for the same concept across Rust / Go / Python / TS RCA lanes (operator directive post-#4137 §11.2).
-> **Companion:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11; per-class worksheets under `docs/planning/`.
+> **Companion:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11; `docs/planning/v4-modeling-dfs-ratification-log-2026-06-01.md`; per-class worksheets under `docs/planning/`.
 
 ---
 
@@ -123,5 +123,6 @@ Other residuals: see #4148 routing worksheets (not impl without §8)
 | 2026-06-01 | Go five worksheets §8 APPROVED on #4149; map Go rows → APPROVED | proud-fox-405 |
 | 2026-06-01 | Post-#4149 reconciliation: R2b `go_facts_int64` anchor; SG-1 §3.1 dual-name (`go_target_atom_realization_*` + `go_atom_realization_*`) | zesty-otter-480 |
 | 2026-06-01 | TS five worksheets §8 APPROVED on #4169; shared verdict carriers (no TargetTypeScript*Verdict) | proud-fox-405 |
+| 2026-06-01 | Ratification audit trail added at `docs/planning/v4-modeling-dfs-ratification-log-2026-06-01.md` | merry-ibex-873 |
 | 2026-06-01 | Added Rust RCA/E0308/stable-band emerging shared authorities; kept draft rows non-dispatchable | eager-deer-177 |
 | 2026-06-01 | Python L1/L2 worksheets §8 APPROVED (#4170); static/runtime shared carriers; SG-COLLECTION adjudication (extend TargetCollectionRealization) | proud-fox-405 |
