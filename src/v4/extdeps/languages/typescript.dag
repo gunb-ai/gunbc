@@ -1433,6 +1433,15 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
+// Leaf-model Layer-A — derived fact exposure (mirror python.dag:220-221,
+// rust.dag:809-813). Stable top-level fact IDs so the claim corpus can
+// reference algebra-inhabitance subjects by Symbol equality without
+// duplicating AlgebraInhabitanceDecl shapes. Per
+// docs/planning/v4-ts-algebra-inhabitance-widening-worksheet-2026-06-01.md §10.0.
+data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
+data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
+data ts_bool_algebra_inhabitance_ts_facts_boolean: AlgebraInhabitanceDecl = ts_bool_algebra_inhabitance()
+
 fn ts_numeric_algebra_inhabitance_step(
   acc: List<AlgebraInhabitanceDecl>,
   row: TsEcma262NumericPrimitiveFactsUnion
@@ -2316,6 +2325,11 @@ fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabi
     witness: ts_string_algebra_witness_node(facts: facts)
   }
 }
+
+// Leaf-model Layer-A — Phase 1.5 string fact exposure (Wave-2b carrier).
+// Stable fact ID for FreeMonoid-on-string-code-units inhabitance per
+// docs/planning/v4-ts-algebra-inhabitance-widening-worksheet-2026-06-01.md §10.0.
+data ts_string_algebra_inhabitance_ts_facts_string: AlgebraInhabitanceDecl = ts_string_algebra_inhabitance(facts: ts_facts_string)
 
 fn ts_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [
