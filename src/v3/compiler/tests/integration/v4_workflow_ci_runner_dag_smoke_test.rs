@@ -1167,25 +1167,13 @@ fn v4_workflow_ci_bankruptcy_tier0_lens_ci_mask_matches_ci_yml() {
     let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
     let smoke_step_name = expr_string(record_body_field(live_signal, "smoke_step_name"));
     let semantic_step_name = expr_string(record_body_field(live_signal, "semantic_step_name"));
-    let smoke_step = workflow_step_block(CI_YML, &smoke_step_name);
-    let semantic_step = workflow_step_block(CI_YML, &semantic_step_name);
     assert!(
-        !smoke_step.contains("needs.affected.outputs.v3 == 'true'"),
-        "{CI_YML_PATH}: `{smoke_step_name}` must not gate on v3"
+        !CI_YML.contains(&format!("- name: {smoke_step_name}")),
+        "{CI_YML_PATH}: Wave 1 — `{smoke_step_name}` demoted from required path"
     );
     assert!(
-        smoke_step.contains("needs.affected.outputs.v4 == 'true'")
-            && smoke_step.contains("needs.affected.outputs.workflow_policy == 'true'"),
-        "{CI_YML_PATH}: `{smoke_step_name}` must gate on v4|workflow_policy"
-    );
-    assert!(
-        !semantic_step.contains("needs.affected.outputs.v3 == 'true'"),
-        "{CI_YML_PATH}: `{semantic_step_name}` must not gate on v3"
-    );
-    assert!(
-        semantic_step.contains("needs.affected.outputs.v4 == 'true'")
-            && semantic_step.contains("needs.affected.outputs.workflow_policy == 'true'"),
-        "{CI_YML_PATH}: `{semantic_step_name}` must gate on v4|workflow_policy"
+        !CI_YML.contains(&format!("- name: {semantic_step_name}")),
+        "{CI_YML_PATH}: Wave 1 — `{semantic_step_name}` demoted from required path"
     );
 }
 
