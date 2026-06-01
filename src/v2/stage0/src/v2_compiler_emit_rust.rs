@@ -215,7 +215,10 @@ pub fn render_rust_applied_type_arg(
             if ((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) == 0))
             {
-                authored_name_at(source_indices, n.clone())
+                coerce_primitive_type(
+                    RenderTarget::Rust,
+                    authored_name_at(source_indices, n.clone()),
+                )
             } else {
                 render_rust_type(n.clone(), shared_types, source_indices)
             }

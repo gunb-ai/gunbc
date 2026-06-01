@@ -185,7 +185,7 @@ fn render_rust_applied_type_arg(n: Node, shared_types: Set<String>, source_indic
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
     _ => if n.connective == NoConnective && n.children |> count == 0 {
-      authored_name_at(source_indices: source_indices, node: n)
+      coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: n))
     } else {
       render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
     }
