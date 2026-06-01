@@ -2170,7 +2170,7 @@ fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared
 
 fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let authored = param_node_type_expr(n: param)
-  let n = if generic_param_names |> count > 0 { child_type_node(ch: authored) } else { authored }
+  let n = if generic_param_names |> count > 0 { authored } else { child_type_node(ch: authored) }
   let ty = emit_rust_param_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   concat("mut ", emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust), rust_items().param_type_sep, ty)
 }
@@ -2230,7 +2230,9 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
 
 fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
   let authored = param_node_type_expr(n: param)
-  let n = if generic_param_names |> count > 0 { child_type_node(ch: authored) } else { authored }
+  // Generic fn signatures: keep authored application shape (NodeFold<S>); resolved
+  // carriers can drop type-param children. Non-generic params use inferred carriers.
+  let n = if generic_param_names |> count > 0 { authored } else { child_type_node(ch: authored) }
   let ty = emit_rust_param_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, ty)
