@@ -622,11 +622,17 @@ fn v4_nat_semiring_rung_l1_go_compiler_slice_dag_tokenizes_and_parses_claim_row(
         "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 slice id"
     );
     assert!(
-        surface_declares_data(&module, "claim_phase1_nat_semiring_l1_go_compiler_slice_compile"),
+        surface_declares_data(
+            &module,
+            "claim_phase1_nat_semiring_l1_go_compiler_slice_compile"
+        ),
         "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 go compiler-slice claim"
     );
     assert!(
-        surface_declares_data(&module, "phase1_nat_semiring_l1_go_compiler_slice_claim_rows"),
+        surface_declares_data(
+            &module,
+            "phase1_nat_semiring_l1_go_compiler_slice_claim_rows"
+        ),
         "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 claim roster"
     );
 }
