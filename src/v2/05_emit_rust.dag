@@ -6040,11 +6040,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           "                top: Box::new(", top_str, "),\n",
           "                bottom: Box::new(", bottom_str, "),\n",
           "            })")
-        if needs_rc {
-          concat("            Rc::new(", inner, ")")
-        } else {
-          concat("            ", inner)
-        }
+        concat("            ", inner)
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
