@@ -106,7 +106,7 @@ import v4.std.target_model {
   TargetSumTypeShape,
   TargetTypeExpression,
   TargetTypeExpressionProjection,
-  ValueSymbolIdentityPassthrough,
+  ValueSymbolIdentityPassthrough
 }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -119,14 +119,18 @@ import v4.std.target_model {
   grammar_relation_field_tokens,
   serialize_source_field_source_grammar,
   serialize_source_field_source_text,
+  char_kernel_type_node,
   symbol_kernel_type_atom,
   symbol_kernel_type_node,
   target_atom_alias_type_expression,
+  target_atom_realization_catalog_node,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
   target_model_edge_serialize_source,
+  target_model_edge_atom_realizations,
   target_model_edge_type_expression_projection,
+  target_value_template_for_kind,
   target_type_expr_field_arrow,
   target_type_expr_field_atom,
   target_type_expr_field_cardinality,
@@ -139,7 +143,8 @@ import v4.std.target_model {
   target_type_expr_field_separator,
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
-  target_value_template_for_kind
+  ValueBoolLiteral,
+  ValueStringLiteral
 }
 import v4.std.node {
   Arrow,
@@ -152,7 +157,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v4.std.algebra {
   approximate_field_type_node,
   boolean_algebra_type_node,
@@ -1228,6 +1233,38 @@ fn ts_type_expression_projection_bundle_node() -> Node {
   }
 }
 
+fn ts_target_atom_realization_target_model_staging() -> TargetModel {
+  ts_sg2_type_expr_target_model()
+}
+
+data ts_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: bool_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_boolean),
+  value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
+  constructor_form: optional_absent(),
+  display_name: bool_node_symbol
+}
+
+fn ts_std_text_string_type_node() -> Node {
+  free_monoid_type_node(inhabitant: char_kernel_type_node())
+}
+
+data ts_target_atom_realization_string: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: ts_std_text_string_type_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_string),
+  value_form: target_value_template_for_kind(kind: ValueStringLiteral),
+  constructor_form: optional_absent(),
+  display_name: ts_surface_spelling_string
+}
+
+data ts_target_atom_realization_catalog: List<TargetAtomRealization> = [
+  ts_target_atom_realization_symbol,
+  ts_target_atom_realization_bool,
+  ts_target_atom_realization_string
+]
+
 // SG-2 lex: MVP-1 wave-1 rules plus the type-expression delimiter tokens this row references
 // (angle brackets for instantiation + cardinality generic collections, union pipe, fat arrow).
 // Additive — MVP-1 lex is untouched.
@@ -1263,6 +1300,22 @@ fn ts_sg2_type_expr_target_model_node() -> Node {
       item: ts_named_edge(
         name: target_model_edge_type_expression_projection,
         target: ts_type_expression_projection_bundle_node()
+      )
+    )
+  }
+}
+
+fn ts_target_atom_realization_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_snoc_item(
+      xs: ts_sg2_type_expr_target_model_node().children,
+      item: ts_named_edge(
+        name: target_model_edge_atom_realizations,
+        target: target_atom_realization_catalog_node(
+          rows: ts_target_atom_realization_catalog,
+          host_bundle: ts_sg2_type_expr_target_model_node()
+        )
       )
     )
   }
@@ -1327,7 +1380,7 @@ fn ts_wave2a_task_target_model_witness() -> Witness<TargetModel> {
 }
 
 fn ts_wave1_target_model() -> Node {
-  ts_mvp1_target_model_node()
+  ts_target_atom_realization_target_model_node()
 }
 
 fn ts_lex_rule(token_class: Symbol, text: String) -> LexRule {
@@ -1639,18 +1692,17 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
 // Phase 1 leaf-model claim subjects (algebra-inhabitance widening worksheet).
 data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
 data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
+// 🟡 Leaf-model Layer-A fact exposure (boolean) · E-6 bounded-exception · scaffold feature:ts-r2-leaf-model-claim-corpus · dissolve-on: typescript_r2a.dag/typescript_r2b.dag claim corpus references this fact ID by Symbol equality
+data ts_bool_algebra_inhabitance_ts_facts_boolean: AlgebraInhabitanceDecl = ts_bool_algebra_inhabitance()
 
-// Phase 1 SG-1 Symbol atom realization (alpha lane; catalog bundle edge deferred to SG-2 tranche).
+// Phase 1 SG-1 Symbol atom realization (alpha lane). TS-ATOM-REALIZATION extends this
+// single Symbol row into the shared atom catalog instead of declaring a parallel row.
 data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
-data ts_surface_type_symbol: Symbol = ts_surface_type_symbol
 
 fn ts_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
   target_atom_alias_type_expression(
     spelling: spelling,
-    atom_form: TargetAtomTypeShape {
-      surface: ts_surface_type_symbol,
-      ident_token: ts_token_ident
-    }
+    atom_form: ts_type_expression_projection().atom_form
   )
 }
 
@@ -1659,7 +1711,7 @@ data ts_atom_realization_symbol: Symbol = ts_atom_realization_symbol
 
 data ts_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
   source_carrier: symbol_kernel_type_node(),
-  target_model: ts_mvp1_target_model(),
+  target_model: ts_target_atom_realization_target_model_staging(),
   type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_symbol),
   value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
   constructor_form: optional_absent(),
@@ -2549,6 +2601,9 @@ fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabi
     witness: ts_string_algebra_witness_node(facts: facts)
   }
 }
+
+// 🟡 Leaf-model Layer-A fact exposure (Wave-2b string) · E-6 bounded-exception · scaffold feature:ts-r2-leaf-model-claim-corpus · dissolve-on: typescript_r2a.dag claim corpus references this fact ID by Symbol equality
+data ts_string_algebra_inhabitance_ts_facts_string: AlgebraInhabitanceDecl = ts_string_algebra_inhabitance(facts: ts_facts_string)
 
 fn ts_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [

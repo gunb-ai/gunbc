@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wave 1 §11.7.1 gate 5: fail-closed ratchet — no new shell steps on the required CI path.
-# Authority: docs/planning/ci-required-surface-cut-2026-06-01.md + project_no_new_shell.
+# Authority: src/v4/workflow/ci.dag Wave 1 §11.7.1 floor + project_no_new_shell.
 #
 # Scans .github/workflows/ci.yml for every scripts/<name>.sh reference (any shell
 # spelling: bash/sh/./-c). Only the three Wave-1 allowlisted transports may appear.
