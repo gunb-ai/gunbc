@@ -1,0 +1,57 @@
+// src/v4/test/claim/language_model/go_r2a.dag
+// Scope: Phase 1 R2a — go.dag int algebra inhabitance vs Go compiler.
+// Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-go-r2a-verify.sh.
+
+module v4.test.claim.language_model.go_r2a
+
+import v4.extdeps.languages.go { go_integer_algebra_inhabitance_go_facts_int }
+import v4.lens.leaf_model_verification {
+  go_r2a_fixture,
+  go_r2a_falsification_fixture_source,
+  go_r2a_happy_fixture_source
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.leaf_model_verification {
+  leaf_model_claim_go_r2a_int_algebra_operations,
+  TargetCompileVerdict,
+  TargetCompileRejected,
+  target_diagnostic_go_method_not_found
+}
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Boundary,
+  manual_claim_anchor
+}
+
+data go_r2a_claim_bool_true: Symbol = go_r2a_claim_bool_true
+data go_r2a_claim_bool_false: Symbol = go_r2a_claim_bool_false
+
+fn go_r2a_claim_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: go_r2a_claim_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: go_r2a_claim_bool_false } }, children: [] }
+  }
+}
+
+data claim_go_r2a_fixture_pair_wired: TestClaim = EqualsClaim {
+  label: "language_model/go_r2a: fixture pair references go int algebra inhabitance",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: go_r2a_claim_bool_atom(b: true),
+  rhs: go_r2a_claim_bool_atom(
+    b: go_r2a_fixture().claim_id == leaf_model_claim_go_r2a_int_algebra_operations
+      && go_r2a_fixture().surface_spelling_fact == go_integer_algebra_inhabitance_go_facts_int
+      && go_r2a_fixture().encoding_spelling_fact == go_integer_algebra_inhabitance_go_facts_int
+      && go_r2a_fixture().happy.source == go_r2a_happy_fixture_source
+      && go_r2a_fixture().falsification.fixture.source == go_r2a_falsification_fixture_source
+  ),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data go_r2a_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
+  diagnostic_code: target_diagnostic_go_method_not_found
+}
