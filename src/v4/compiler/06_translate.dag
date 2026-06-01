@@ -3179,7 +3179,11 @@ fn translate_coerced_shell_at_use_site_from_source(
   target: TargetModel,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
-  match translate_coerced_shell_base(coerced: coerced, target: target) {
+  match translate_coerced_type_shell_from_source(
+    source_carrier: ownership_source_carrier,
+    coerced: coerced,
+    target: target
+  ) {
     Accepted { value: shell, diagnostics: d } =>
       bind_outcome(
         o: translate_apply_use_site_ownership_to_type_shell(
@@ -3191,6 +3195,27 @@ fn translate_coerced_shell_at_use_site_from_source(
         f: fn(wrapped) { Accepted { value: wrapped, diagnostics: d } }
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn translate_coerced_type_shell_from_source(
+  source_carrier: Node,
+  coerced: Node,
+  target: TargetModel
+) -> Outcome<Node> {
+  match source_carrier.kind {
+    TypeNode { connective: Instantiation } =>
+      bind_outcome(
+        o: type_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          project_type_expression_node(
+            node: source_carrier,
+            target: target,
+            projection: projection
+          )
+        }
+      )
+    _ => translate_coerced_shell_base(coerced: coerced, target: target)
   }
 }
 
