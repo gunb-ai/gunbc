@@ -89,18 +89,13 @@ data target_model_edge_atom_realizations: Symbol = target_model_edge_atom_realiz
 // SG-1b function-boundary signature realization catalog (per-language; Param/Return sites only).
 data target_model_edge_signature_realizations: Symbol = target_model_edge_signature_realizations
 
-// --- SG-1 atom realization vocabulary (M6 product carriers on kind+payload axes) ---
+// --- SG-1 atom realization vocabulary (M6 coproduct carriers with variant payloads) ---
 
-type SourceAtomValueKind
-  = SourceAtomSymbol
-  | SourceAtomBool
-  | SourceAtomChar
-  | SourceAtomString
-
-type SourceAtomValue {
-  kind: SourceAtomValueKind
-  node: Node
-}
+type SourceAtomValue
+  = SourceAtomSymbol { identity: Symbol }
+  | SourceAtomBool { value: Bool }
+  | SourceAtomChar { codepoint: Char }
+  | SourceAtomString { value: Node }
 
 type TargetValueExpressionKind
   = TargetValueExprSymbolIdentity
@@ -195,45 +190,15 @@ fn char_kernel_type_node() -> Node {
 }
 
 fn source_atom_symbol(identity: Symbol) -> SourceAtomValue {
-  SourceAtomValue {
-    kind: SourceAtomSymbol,
-    node: Node {
-      kind: TypeNode { connective: Atom { identity: identity } },
-      children: []
-    }
-  }
+  SourceAtomSymbol { identity: identity }
 }
 
 fn source_atom_bool(value: Bool) -> SourceAtomValue {
-  SourceAtomValue {
-    kind: SourceAtomBool,
-    node: match value {
-      true =>
-        Node {
-          kind: TypeNode {
-            connective: Atom { identity: target_value_expression_bool_true }
-          },
-          children: []
-        }
-      false =>
-        Node {
-          kind: TypeNode {
-            connective: Atom { identity: target_value_expression_bool_false }
-          },
-          children: []
-        }
-    }
-  }
+  SourceAtomBool { value: value }
 }
 
 fn source_atom_char(codepoint: Char) -> SourceAtomValue {
-  SourceAtomValue {
-    kind: SourceAtomChar,
-    node: Node {
-      kind: TypeNode { connective: Atom { identity: codepoint } },
-      children: []
-    }
-  }
+  SourceAtomChar { codepoint: codepoint }
 }
 
 fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
@@ -284,10 +249,7 @@ fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomV
 }
 
 fn source_atom_string(value: Node) -> SourceAtomValue {
-  SourceAtomValue {
-    kind: SourceAtomString,
-    node: value
-  }
+  SourceAtomString { value: value }
 }
 
 fn target_model_named_edge(name: Symbol, target: Node) -> Edge {
@@ -344,48 +306,29 @@ fn source_atom_value_for_realization_row(
 }
 
 fn source_atom_value_as_symbol(value: SourceAtomValue) -> Optional<Symbol> {
-  match value.kind {
-    SourceAtomSymbol =>
-      match value.node.kind {
-        TypeNode { connective: Atom { identity: id } } => optional_present(id)
-        _ => optional_absent()
-      }
+  match value {
+    SourceAtomSymbol { identity: id } => optional_present(id)
     _ => optional_absent()
   }
 }
 
 fn source_atom_value_as_bool(value: SourceAtomValue) -> Optional<Bool> {
-  match value.kind {
-    SourceAtomBool =>
-      match value.node.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          if id == target_value_expression_bool_true {
-            optional_present(true)
-          } else if id == target_value_expression_bool_false {
-            optional_present(false)
-          } else {
-            optional_absent()
-          }
-        _ => optional_absent()
-      }
+  match value {
+    SourceAtomBool { value: b } => optional_present(b)
     _ => optional_absent()
   }
 }
 
 fn source_atom_value_as_char(value: SourceAtomValue) -> Optional<Char> {
-  match value.kind {
-    SourceAtomChar =>
-      match value.node.kind {
-        TypeNode { connective: Atom { identity: c } } => optional_present(c)
-        _ => optional_absent()
-      }
+  match value {
+    SourceAtomChar { codepoint: c } => optional_present(c)
     _ => optional_absent()
   }
 }
 
 fn source_atom_value_as_string(value: SourceAtomValue) -> Optional<Node> {
-  match value.kind {
-    SourceAtomString => optional_present(value.node)
+  match value {
+    SourceAtomString { value: s } => optional_present(s)
     _ => optional_absent()
   }
 }
