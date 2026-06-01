@@ -1,0 +1,17 @@
+// std/elastic_identity.dag — Shared carriers for elastic compute fabric + cache interface.
+//
+// P2 single authority: std.compute_fabric and std.cache_interface MUST NOT import each
+// other; digest-only cross-composition. Identity carriers live here.
+//
+// M9: NonEmptyStr brands (std.types); ByteSize = Measure<Memory, One> (std.measure).
+// std.types.Duration is Int milliseconds; std.compute_fabric.Duration is Measure<Time, One>.
+
+module std.elastic_identity
+
+import std.types { NonEmptyStr }
+import std.measure { Measure, Memory, One }
+
+type LogicalTime = NonEmptyStr where brand("LogicalTime")
+type ByteSize = Measure<Memory, One>
+type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
+type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")

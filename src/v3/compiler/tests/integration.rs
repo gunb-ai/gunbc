@@ -1171,6 +1171,22 @@ mod parse_stage4_prep {
     }
 
     #[test]
+    fn handwritten_parser_accepts_elastic_identity_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/elastic_identity.dag"),
+            "dsl/std/elastic_identity.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_compute_fabric_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/compute_fabric.dag"),
+            "dsl/std/compute_fabric.dag",
+        );
+    }
+
+    #[test]
     fn handwritten_parser_accepts_cache_interface_dag() {
         // P5 receipt (Dispatch-Discipline (b) deferral): Worksheet B gate P-CI-TYPE —
         // `docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md` §2 Parser gates.
