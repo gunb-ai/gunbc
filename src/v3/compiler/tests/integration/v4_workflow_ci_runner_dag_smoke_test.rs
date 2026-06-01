@@ -1601,6 +1601,7 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "ci_string_projection_node(s: a.module_path)",
         "ci_string_projection_node(s: a.declaration_name)",
         "ci_upsert_file_set_input(segment: \"src/v4/test/claim/workflow/manual_corpus_eval.dag\")",
+        "segment == \"src/v4/test/claim/workflow/manual_corpus_eval.dag\"",
     ] {
         assert!(
             CI_DAG.contains(needle),
