@@ -10,7 +10,7 @@ Forward projection of remaining work to v4-done as of Jun 1 release day end-of-d
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **GREEN.** P2-A probe (44-source closure 0 diagnostics) verified scope (a). M2 probe (#4097) confirmed bridge dead-weight. **#4139 MERGED 00:50Z (squash 12d1aa68c)** — `scripts/v4-bootstrap-resolve-posture-gate.sh` deleted from main; `.github/workflows/ci.yml` bridge step removed. P2 now fully GREEN. |
 | P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (§8 approved 2026-06-01; see ratification log). **Residual rustc count: 7,724** per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 — substrate landings introduced new diagnostics absorbed back into existing classes). Per-class delta on review. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, deferred amendment). |
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | RED — hard-gated on P3 binary builds (P2 now GREEN per #4139) |
-| P5 | TestClaim suite passes | **Layer 1 + Layer 2 BOTH CLOSED** via #4115 (P5 structural-bridge replaced + deleted). Strict P5 "suite passes" still gates on runtime-execution path: **option (ii) bootstrap-evaluator corpus runtime authorized 2026-06-01T01 as WORKSHEET** (not impl) per §8.5 #3; Modeling DFS Arbiter (to spawn) authors the worksheet. P3 cascade continues independently. T-38-PR2 verdict-SURFACE migration LANDED #4120. |
+| P5 | TestClaim suite passes | **Layer 1 + Layer 2 BOTH CLOSED** via #4115 (P5 structural-bridge replaced + deleted). Strict P5 "suite passes" still gates on runtime-execution path: **option (ii) bootstrap-evaluator corpus runtime worksheet §8 APPROVED 2026-06-01** (not impl; see ratification log) per §8.5 #3. P3 cascade continues independently. T-38-PR2 verdict-SURFACE migration LANDED #4120. |
 | P6 | Hand-authored Rust not editable authority (proven by REPRODUCTION) | RED — hard-gated on P4 + P3 PROVEN |
 
 ## §2. What closed today (2026-05-31 since 06:30Z)
@@ -25,7 +25,7 @@ This was the biggest single-day cascade of the project. Receipt-producing landin
 - SG-2 #4124 (worksheet §6 closure + P5 smoke receipts)
 - SG-RC-LAYERING #4116 + #4133 + #4135 (~700 errors / ~10% addressed)
 - SG-3-CASCADE #4126 (cascade-only determination — retired, no §10.0)
-- SG-8 worksheet #4127 (impl pending §8 sign-off)
+- SG-8 worksheet #4127 (§8 approved 2026-06-01; implementation follows F1-F4 acceptance)
 
 **P5 closure:**
 - P5 structural-bridge worksheet #4114 + implementation #4115 (positive-Y CiUpsertStep replaces shell, bridge deleted)
@@ -75,7 +75,7 @@ Per-lane maintenance continues. Not Jun 1 GREEN candidate. R3-internal addition 
 | SG-2 | **CLOSED** ✓ | #4124 squash 9414fc22 | TargetTypeExpressionProjection §6 |
 | SG-RC-LAYERING | **CLOSED** ✓ | #4116 + #4133 + #4135 | ~700 errors / ~10% closed via single-authority-fact substrate |
 | SG-3-CASCADE | **RETIRED** ✓ | #4126 squash 610be95a + #4130 | cascade-only determination; no §10.0; bands owned by primaries |
-| SG-8 | **worksheet on main, impl gated** | #4127 squash 8c268005 | §8 sign-off pending — see §6.5 blocker |
+| SG-8 | **worksheet on main, §8 approved** | #4127 squash 8c268005 | Implementation dispatchable under F1-F4 acceptance; see ratification log |
 | SG-1-FOLLOWON | routed (worker-only) | extend SG-1 worksheet | minor; not separately tracked |
 | SG-COLLECTION-PROJECTION | deferred | amend SG-5/SG-6 first | ~170 errors; tactical follow-on |
 
@@ -95,7 +95,7 @@ Hard-gated on P3 binary builds (P2 fully GREEN per #4139 MERGED 00:50Z). No acti
 
 **T-38-PR2 verdict-surface migration LANDED #4120**: `blocked_m1_subset` string retired; `host_verdict_surface_receipt_v3` with per-row Pass/Fail/Deferred counts.
 
-**Strict P5 "suite passes" reading still has upward debt** (`node://adhoc-f8699326-d69`): true runtime corpus execution gated on EITHER (i) M1 cargo-clean emitted subset OR (ii) new bootstrap-evaluator corpus runtime per SELF_HOSTING. **Routing decision RESOLVED 2026-06-01T01 per §8.5 #3: option (ii) authorized as WORKSHEET** (Modeling DFS Arbiter authors; not yet implemented). (i) remains the patient-wait path (downstream of P3 cascade closures). Gate itself stays OPEN until runtime ships + suite executes + passes.
+**Strict P5 "suite passes" reading still has upward debt** (`node://adhoc-f8699326-d69`): true runtime corpus execution gated on EITHER (i) M1 cargo-clean emitted subset OR (ii) new bootstrap-evaluator corpus runtime per SELF_HOSTING. **Routing decision RESOLVED 2026-06-01T01 per §8.5 #3: option (ii) authorized as WORKSHEET; §8 APPROVED 2026-06-01** (implementation not yet shipped). (i) remains the patient-wait path (downstream of P3 cascade closures). Gate itself stays OPEN until runtime ships + suite executes + passes.
 
 ### §3.6 P6 hand-Rust REPRODUCTION
 
@@ -103,11 +103,11 @@ Hard-gated on P4 + P3.
 
 ## §4. Critical paths forward — post-cascade
 
-**Path A: P5 strict "suite passes" (runtime gate)** — **option (ii) WORKSHEET authorized 2026-06-01T01** per §8.5 #3. Modeling DFS Arbiter (to spawn) authors bootstrap-evaluator corpus runtime worksheet; P3 cascade continues independently. P5 strict GREEN still requires `src/v4/TASKS.md` "TestClaim suite passes" satisfied by actual suite execution receipt — worksheet authorization unblocks the path, not the predicate.
+**Path A: P5 strict "suite passes" (runtime gate)** — **option (ii) bootstrap-evaluator corpus runtime worksheet §8 APPROVED 2026-06-01** per §8.5 #3 and the ratification log. P3 cascade continues independently. P5 strict GREEN still requires `src/v4/TASKS.md` "TestClaim suite passes" satisfied by actual suite execution receipt — worksheet approval unblocks the implementation path, not the predicate.
 
 **Path B: P2 GREEN flip** — **DONE.** #4139 MERGED 2026-06-01T00:50Z (squash 12d1aa68c); bridge script + ci.yml step removed from main.
 
-**Path C: P3 binary build (residual march)** — SG-8 impl worker can spawn once §8 sign-off resolves; SG-1-FOLLOWON + SG-COLLECTION-PROJECTION minor follow-ons; fresh M1 probe to reflect actual post-cascade count. Each class closure shrinks residual; binary builds when ≈0 on Rust path. Long-horizon.
+**Path C: P3 binary build (residual march)** — SG-8 impl worker is dispatchable under the approved worksheet; SG-1-FOLLOWON + SG-COLLECTION-PROJECTION minor follow-ons; fresh M1 probe to reflect actual post-cascade count. Each class closure shrinks residual; binary builds when ≈0 on Rust path. Long-horizon.
 
 **Path D: P1 + P4 + P6 cascade** — all gated on P2 + P3 above.
 
@@ -120,7 +120,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 | Blocker | Owner action |
 |---|---|
 | ~~P2-B bridge deletion authorization~~ | **RESOLVED + DELIVERED 2026-06-01T00:50Z** — #4139 MERGED (squash 12d1aa68c); script + ci.yml step gone from main |
-| **P5 runtime gate** (still OPEN) | Routing decision RESOLVED 01Z (option (ii) WORKSHEET) but gate itself OPEN — runtime not yet shipped, suite not yet executed. Modeling DFS Arbiter (to spawn) authors worksheet; impl follows. |
+| **P5 runtime gate** (still OPEN) | Routing decision RESOLVED 01Z and option (ii) worksheet §8 APPROVED 2026-06-01, but gate itself OPEN — runtime not yet shipped, suite not yet executed. Implementation follows the approved worksheet. |
 | **SG-8 §8 sign-off** | **RESOLVED** — Modeling DFS Arbiter `proud-fox-405` approved the SG-8 worksheet on 2026-06-01; implementation dispatch follows `docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md` and the audit trail in `docs/planning/v4-modeling-dfs-ratification-log-2026-06-01.md`. |
 | ~~Fresh M1 probe post-cascade~~ | **RESOLVED 2026-06-01T00:28Z** — authorized; work-item `adhoc-7b46e080-3cd` in flight (sleek-heron-13 auto-spawned; PR #4140 opened) |
 
@@ -128,7 +128,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 
 | Priority | Item | State | Owner | Exit receipt |
 |---|---|---|---|---|
-| 1 | P5 runtime gate (gate OPEN; routing RESOLVED) | Routing RESOLVED 01Z per §8.5 #3 — option (ii) WORKSHEET authorized | Modeling DFS Arbiter (to spawn) | bootstrap-evaluator corpus runtime worksheet authored + §8 approved + impl ships + suite executes |
+| 1 | P5 runtime gate (gate OPEN; worksheet APPROVED) | Routing RESOLVED 01Z per §8.5 #3; option (ii) worksheet §8 APPROVED 2026-06-01 | Runtime/TestClaim Manager (`neat-hawk-413`) | bootstrap-evaluator corpus runtime impl ships + suite executes |
 | 2 | P2-B bridge deletion | **DONE 2026-06-01T00:50Z** | #4139 MERGED (squash 12d1aa68c) | P2 fully GREEN |
 | 3 | SG-8 §8 sign-off | **RESOLVED 2026-06-01** — dedicated Modeling DFS Arbiter spawned and approved the SG-8 worksheet; implementation worker is dispatchable under the worksheet's F1-F4 acceptance bar. | Modeling DFS Arbiter (`proud-fox-405`) | SG-8 implementation worker dispatchable |
 | 4 | Fresh M1 probe post-cascade | **AUTHORIZED + in flight** (PR #4140 sleek-heron-13) | work-item `adhoc-7b46e080-3cd` | residual = 7,724 (+549 vs #4122); per-class delta on review |
@@ -139,7 +139,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 
 **Worker implementation dispatch state (aligned with §6.5 dispatch board + §8.5 resolutions):**
 - **SG-8 impl: §8 approved 2026-06-01**; dispatch implementation under `docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md` and prove F1-F4.
-- **P5 runtime gate impl: pending worksheet authoring** (operator decision #3 RESOLVED 01Z — option (ii) WORKSHEET authorized; Arbiter writes the worksheet, then impl spawns post-§8)
+- **P5 runtime gate impl: worksheet §8 approved 2026-06-01** (operator decision #3 RESOLVED 01Z — option (ii)); dispatch implementation under `docs/planning/v4-p5-bootstrap-evaluator-corpus-runtime-worksheet-2026-06-01.md`.
 - All other P3 classes either closed today (per §3.3) OR have follow-on routing (SG-1-FOLLOWON minor, SG-COLLECTION-PROJECTION deferred)
 
 **PM dispatches from 2026-06-01T00:28Z operator authorization:** P2-B deletion DELIVERED via #4139 MERGED 00:50Z; fresh M1 probe in flight via PR #4140 (sleek-heron-13).
@@ -155,7 +155,7 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 
 - **P3 cascade was massive but residual is still significant**: 7,724 rustc errors per fresh probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 baseline — substrate landings introduced new diagnostics absorbed into existing classes, not new class signatures). Per-class wins are smaller than SG-1's 37% magnitude per #4096 §8 honesty. Realistic horizon: weeks-to-months for residual → 0.
 - **P5 single authority**: P5 is **GREEN only when the canonical `src/v4/TASKS.md` "Definition of v4-done" bullet "TestClaim suite passes" is satisfied** — which requires the runtime-execution gate to close. Today's Layer 1 + Layer 2 closures are **partial progress toward P5**, not an alternate definition of GREEN. Surfaced explicitly by T-38-PR2 worker's honest scope analysis (cool-boar-841 identified 3 readings, chose surface migration + escalated runtime gate as upward debt at `node://adhoc-f8699326-d69`; correct discipline per project_spirit "stop and escalate"). Do not treat partial layer closure as P5 GREEN.
-- **proud-pike archival mid-day** consolidated Modeling DFS lane under keen-heron de facto. §8 sign-off authority needs explicit operator routing for SG-8 impl worker dispatch.
+- **proud-pike archival mid-day** temporarily consolidated Modeling DFS lane under keen-heron de facto. Operator routing subsequently spawned dedicated Modeling DFS Arbiter `proud-fox-405`, which recorded SG-8 §8 approval.
 - **#4112 operator-landed manually** despite dashboard recommending self-merge — operator chose to handle that specific PR, others all self-merged per current policy.
 - **Per-class delta for the 7,724 residual is still pending review** (sleek-heron-13 PR #4140 captures total + acknowledges substrate-absorbed-into-existing-classes pattern; granular per-class breakdown surfaces on PR review and informs whether new dominant classes need §10.0 worksheets).
 
@@ -232,7 +232,7 @@ Per Wave F F3 framing, TS is v4-alpha-only (not release-minimum). Parallel TS cl
 - Spawn Modeling DFS Arbiter (per §8.5 #4-#5)
 - Spawn CI Manager (per §8.5 #8) — Wave 1 bankruptcy PR + four-compile collapse
 - Spawn TypeScript/Go/Python language RCA managers (per §8.5 #6-#7 + §11.8 runway)
-- Modeling DFS Arbiter authors P5 runtime gate option (ii) worksheet (per §8.5 #3)
+- P5 runtime gate option (ii) implementation proceeds from approved worksheet (per §8.5 #3 and ratification log)
 
 **PM dispatches from 2026-06-01T00:28Z operator authorization:**
 - P2-B deletion DELIVERED via #4139 MERGED 00:50Z (squash 12d1aa68c) → P2 fully GREEN
