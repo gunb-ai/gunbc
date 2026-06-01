@@ -6579,7 +6579,7 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "            // Dual-emit: --target accepts a comma list (e.g. `rust,dag`). The\n",
     "            // front-end runs ONCE via compile_to_resolved; each target emits from\n",
     "            // the shared typed graph. Single target keeps the legacy flat layout\n",
-    "            // and receipt line; multiple targets write to {output_dir}/{target}/.\n",
+    "            // and receipt line; multiple targets write to OUT/<target>/ subdirs.\n",
     "            let target_to_render = |t: &str| -> ", artifact_mod, "::RenderTarget {\n",
     "                match t {\n",
     "                    \"rust\" => ", artifact_mod, "::RenderTarget::Rust,\n",
