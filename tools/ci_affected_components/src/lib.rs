@@ -109,7 +109,10 @@ pub fn ci_changed_path_affects_v2(path: &str) -> bool {
 }
 
 pub fn ci_changed_path_affects_v3(path: &str) -> bool {
-    path.starts_with("src/v3/") || path.starts_with("dsl/")
+    path.starts_with("src/v3/")
+        || path.starts_with("dsl/")
+        || path == "Cargo.toml"
+        || path == "Cargo.lock"
 }
 
 pub fn ci_changed_path_affects_v4(path: &str) -> bool {
@@ -165,13 +168,14 @@ mod tests {
     #[test]
     fn v2_workspace_deps_without_src_v2() {
         assert!(ci_changed_path_affects_v2("Cargo.lock"));
-        assert!(!ci_changed_path_affects_v3("Cargo.lock"));
+        assert!(ci_changed_path_affects_v3("Cargo.lock"));
         assert!(ci_changed_path_affects_v4("Cargo.lock"));
     }
 
     #[test]
-    fn v3_freeze_ignores_cargo_toml_for_v3_only() {
-        assert!(!ci_changed_path_affects_v3("Cargo.toml"));
+    fn v3_tier0_includes_workspace_deps_for_i3() {
+        assert!(ci_changed_path_affects_v3("Cargo.toml"));
+        assert!(ci_changed_path_affects_v3("Cargo.lock"));
         assert!(ci_changed_path_affects_v3("src/v3/compiler/src/lib.rs"));
         assert!(ci_changed_path_affects_v3("dsl/gunbc/ci.dag"));
         assert!(ci_changed_path_affects_v3("dsl/std/node.dag"));
