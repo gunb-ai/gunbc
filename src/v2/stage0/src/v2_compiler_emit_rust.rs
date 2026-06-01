@@ -5295,12 +5295,7 @@ pub fn render_rust_param_sig_type(
 ) -> String {
     let type_node = resolved_type(param.clone());
     if ((generic_param_names.len() as i64) > 0) {
-        render_node_type(
-            type_node,
-            RenderTarget::Rust,
-            shared_types,
-            source_indices,
-        )
+        render_node_type(type_node, RenderTarget::Rust, shared_types, source_indices)
     } else {
         render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
     }
