@@ -2715,7 +2715,9 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         let resolved_ret = if (item.inferred.clone() == None) {
             None
         } else {
-            Some(Rc::new(InferredNode::Resolved { node: ret_resolved }))
+            Some(Rc::new(InferredNode::Resolved {
+                node: ret_resolved.clone(),
+            }))
         };
         let use_results = Rc::new({
             let mut __result = Vec::new();

@@ -507,6 +507,8 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     Some { value: result } => Some { value: result.expr }
     None => none
   }
+  // Structural resolved type stays in type_expr/inferred for build_params_scope and
+  // field access; __applied_type_args on merged properties is the emit-only overlay.
   ParamResult {
     param: make_resolved_param_node(
       name: param_node_name_at(n: param, source_indices: env.source_indices),
