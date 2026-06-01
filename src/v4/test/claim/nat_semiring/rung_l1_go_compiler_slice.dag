@@ -11,7 +11,7 @@ module v4.test.claim.nat_semiring.rung_l1_go_compiler_slice
 
 
 import v4.std.collection { List }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.text { String }
 import v4.std.verification {
   ManualAnchorAbsent,
@@ -24,15 +24,42 @@ import v4.std.verification {
 }
 
 
+// Single authority: slice id + predicate id are Symbols, not label prose.
 data go_l1_nat_semiring_rung2_slice_id: Symbol = go_l1_nat_semiring_rung2_slice_id
 
-data phase1_nat_semiring_l1_go_compiler_slice_subject_symbol: Symbol = phase1_nat_semiring_l1_go_compiler_slice_subject_symbol
+data r_l1_go_compiler_slice_compile_predicate: Symbol = r_l1_go_compiler_slice_compile_predicate
 
+// Receipt coordinate edge labels (named edges on the Conj subject carrier).
+data l1_go_receipt_slice_edge: Symbol = l1_go_receipt_slice_edge
+
+data l1_go_receipt_predicate_edge: Symbol = l1_go_receipt_predicate_edge
+
+
+fn l1_go_receipt_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  }
+}
+
+
+data phase1_l1_go_compiler_slice_subject_slice_binding: Node = l1_go_receipt_atom(sym: go_l1_nat_semiring_rung2_slice_id)
+
+data phase1_l1_go_compiler_slice_subject_predicate_binding: Node = l1_go_receipt_atom(sym: r_l1_go_compiler_slice_compile_predicate)
+
+// CompilesClaim input/expected carry slice + predicate structurally (FACTS FLOW FORWARD).
 data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = Node {
-  kind: TypeNode {
-    connective: Atom { identity: phase1_nat_semiring_l1_go_compiler_slice_subject_symbol }
-  },
-  children: []
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: l1_go_receipt_slice_edge },
+      target: phase1_l1_go_compiler_slice_subject_slice_binding
+    },
+    Edge {
+      label: Named { name: l1_go_receipt_predicate_edge },
+      target: phase1_l1_go_compiler_slice_subject_predicate_binding
+    }
+  ]
 }
 
 fn phase1_l1_go_compiler_slice_claim(label: String) -> TestClaim {
