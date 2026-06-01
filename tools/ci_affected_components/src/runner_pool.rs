@@ -32,7 +32,13 @@ pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
 pub const CI_SELF_HOSTED_RUNNER_POOLS: [SelfHostedRunnerPool; 2] = [CI_SRV1_POOL, CI_SRV2_POOL];
 
 /// Operator M1 probe cargo-check parallelism (`data m1_probe_cargo_check_jobs` in `ci.dag`).
+/// Static fallback applied only when the host compute governor (ctrl-build) is unavailable.
 pub const M1_PROBE_CARGO_CHECK_JOBS: u32 = 4;
+
+/// Governor ceiling handed to ctrl-build as `CTRL_BUILD_DYNAMIC_JOBS_MAX`
+/// (`data m1_probe_cargo_check_jobs_ceiling` in `ci.dag`). Actual jobs are memory-denominated
+/// at or below this; the MemAvailable term binds on a 128c/96GiB host.
+pub const M1_PROBE_CARGO_CHECK_JOBS_CEILING: u32 = 64;
 
 pub fn ci_int_positive(n: u32) -> bool {
     n >= 1
@@ -55,6 +61,11 @@ pub fn m1_probe_cargo_check_jobs() -> u32 {
     M1_PROBE_CARGO_CHECK_JOBS
 }
 
+/// Modeled authority for `data m1_probe_cargo_check_jobs_ceiling` in `src/v4/workflow/ci.dag`.
+pub fn m1_probe_cargo_check_jobs_ceiling() -> u32 {
+    M1_PROBE_CARGO_CHECK_JOBS_CEILING
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,5 +84,8 @@ mod tests {
     fn m1_probe_cargo_check_jobs_is_operator_constant() {
         assert!(ci_runner_pool_fleet_capacities_valid());
         assert_eq!(m1_probe_cargo_check_jobs(), 4);
+        // Governor ceiling sits above the static fallback; memory governs the actual job count below it.
+        assert_eq!(m1_probe_cargo_check_jobs_ceiling(), 64);
+        assert!(m1_probe_cargo_check_jobs_ceiling() >= m1_probe_cargo_check_jobs());
     }
 }

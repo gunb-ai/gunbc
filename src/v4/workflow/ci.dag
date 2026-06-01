@@ -4038,10 +4038,25 @@ fn ci_runner_pool_fleet_capacities_valid() -> Bool {
 }
 
 
-// RULING-1: 🟢 operator fact — M1 rust-emit probe `cargo check --jobs` cap (operator 2026-05-28).
-// Wave-0: explicit constant, not fleet-derived (jobserver÷runner allocation rule unpublished).
+// RULING-1: 🟢 operator fact — M1 rust-emit probe parallelism. The probe now routes through the
+// host compute governor (ctrl-build): the actual job count is memory-denominated at runtime
+// (min(ceiling, cores-margin, MemAvailable/mem_per_job)) and drawn from the host jobserver token
+// pool, NOT a fixed projection. Two operator constants:
+//   `m1_probe_cargo_check_jobs`         — static fallback applied ONLY when ctrl-build is absent on
+//     the runner (no governor to bound the host-wide total); held at the incident-safe 2026-05-28 cap.
+//   `m1_probe_cargo_check_jobs_ceiling` — per-invocation ceiling handed to the governor as
+//     CTRL_BUILD_DYNAMIC_JOBS_MAX; on a 128c/96GiB host the MemAvailable term binds below it.
 // ci_srv1_pool/ci_srv2_pool retain host capacity facts for YamlStatic projection follow-on (T-24/#98).
+// 🟡 gated — feature:elastic-compute-fabric — the "jobserver÷runner allocation rule" (the old
+//   Wave-0 TODO) is realized at runtime by ctrl-build; its first-authority model is
+//   dsl/std/compute_fabric.dag (Worksheet A, landed PR #4095). dissolve-on-arrival: when
+//   compute_fabric's `satisfies` lease predicate lands (cases 7–8, currently a P-CF-WITNESS stub),
+//   these two scalars are replaced by a projected ComputeLease/WorkDemand over the
+//   SelfHostedRunnerPool supply rows. forbidden until then: fabricating a lease projection on the
+//   unfinished predicate, or re-pinning a single fixed `cargo check --jobs` operating point
+//   (parallelism is memory-governed, not a fixed number).
 data m1_probe_cargo_check_jobs: Int = 4
+data m1_probe_cargo_check_jobs_ceiling: Int = 64
 
 
 fn ci_char_projection_out_of_range_injective_witness() -> Bool {

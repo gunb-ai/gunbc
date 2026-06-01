@@ -145,7 +145,11 @@ jobs:
       timeout-minutes: 20
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
+        # Static fallback (ctrl-build absent) + governor ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX).
+        # Projected from v4.workflow.ci m1_probe_cargo_check_jobs / _ceiling. Actual parallelism is
+        # memory-denominated via the host compute governor — see src/v4/workflow/ci.dag note.
         V4_M1_CARGO_CHECK_JOBS: "4"
+        V4_M1_CARGO_CHECK_JOBS_CEILING: "64"
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash scripts/v4-m1-rust-emit-probe.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)

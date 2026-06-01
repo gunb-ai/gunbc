@@ -31,6 +31,8 @@ const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
     include_str!("../../../../../scripts/v4-testclaim-corpus-eval.sh");
 const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
+const M1_RUST_EMIT_PROBE_SCRIPT: &str =
+    include_str!("../../../../../scripts/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
@@ -772,7 +774,36 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),
-        "{CI_YML_PATH}: M1 step must project modeled cargo-check job cap"
+        "{CI_YML_PATH}: M1 step must project modeled cargo-check static fallback"
+    );
+    // Governor ceiling: actual parallelism is memory-denominated via ctrl-build, ≤ this ceiling.
+    assert!(
+        CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
+        "{CI_DAG_PATH}: M1 governor ceiling must be an explicit operator constant"
+    );
+    let m1_ceiling = ci_affected_components::runner_pool::m1_probe_cargo_check_jobs_ceiling();
+    assert_eq!(
+        m1_ceiling, 64,
+        "Rust transport mirror of m1_probe_cargo_check_jobs_ceiling must match ci.dag operator constant"
+    );
+    assert!(
+        m1_ceiling >= m1_jobs,
+        "governor ceiling must not sit below the static fallback"
+    );
+    assert!(
+        m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS_CEILING: \"{m1_ceiling}\"")),
+        "{CI_YML_PATH}: M1 step must project modeled governor ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX)"
+    );
+    // The probe must route the emitted-tree check through the host compute governor, not a hand cap.
+    assert!(
+        CI_DAG.contains("feature:elastic-compute-fabric")
+            && CI_DAG.contains("dsl/std/compute_fabric.dag"),
+        "{CI_DAG_PATH}: M1 parallelism note must cite the compute_fabric dissolve-on-arrival authority"
+    );
+    assert!(
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
+        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must route through the ctrl-build host governor"
     );
 }
 
