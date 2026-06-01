@@ -5479,7 +5479,7 @@ pub fn emit_func_inferred(
     v2_rt::concat(
         v2_rt::concat(
             " -> Result<".to_string(),
-            render_rust_type(inferred, shared_types, source_indices),
+            render_rust_type_with_applied_binding(inferred, shared_types, source_indices),
         ),
         ", Box<dyn std::error::Error>>".to_string(),
     )

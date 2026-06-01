@@ -2221,7 +2221,7 @@ fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<St
 }
 
 fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  concat(" -> Result<", render_rust_type(n: inferred, shared_types: shared_types, source_indices: source_indices), ", Box<dyn std::error::Error>>")
+  concat(" -> Result<", render_rust_type_with_applied_binding(n: inferred, shared_types: shared_types, source_indices: source_indices), ", Box<dyn std::error::Error>>")
 }
 
 // =========================================================================
