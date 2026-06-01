@@ -586,6 +586,10 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   }
 }
 
+data m1_rust_emit_probe_shared_dag_out_env: String = "V4_M1_DAG_EMIT_OUT"
+data m1_rust_emit_probe_shared_dag_log_env: String = "V4_M1_DAG_EMIT_LOG"
+data v4_bootstrap_reuse_log_env: String = "V4_BOOTSTRAP_REUSE_LOG"
+
 data ci_v3_determinism_profile: CiBuildProfile = Release
 data ci_v3_self_host_fixed_point_profile: CiBuildProfile = Release
 

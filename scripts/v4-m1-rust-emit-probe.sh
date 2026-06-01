@@ -11,8 +11,10 @@
 #
 # Env:
 #   V2_COMPILER              — v2-compiler binary (default: target/release/gunbc)
-#   V4_M1_RUST_EMIT_OUT       — emit output dir (default: /tmp/v4-rust-emit)
+#   V4_M1_RUST_EMIT_OUT       — rust emit output dir (default: /tmp/v4-rust-emit)
 #   V4_M1_RUST_EMIT_LOG       — v2 compile log (default: ${OUT}.compile.log)
+#   V4_M1_DAG_EMIT_OUT        — optional dag emit output dir for shared rust+dag closure
+#   V4_M1_DAG_EMIT_LOG        — dag compile receipt log (default: ${DAG_OUT}.compile.log)
 #   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
 #   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when rustc fails
 #   V4_M1_RUSTC_TIMEOUT_SECS  — optional timeout for cargo check (CI: 600)
@@ -59,14 +61,28 @@ compile_log="${V4_M1_RUST_EMIT_LOG:-${out}.compile.log}"
 rustc_log="${V4_M1_RUSTC_LOG:-${out}.rustc.log}"
 summary="${out}.m1-probe-summary.txt"
 strict="${V4_M1_RUST_EMIT_PROBE_STRICT:-0}"
+dag_out="${V4_M1_DAG_EMIT_OUT:-}"
+dag_log="${V4_M1_DAG_EMIT_LOG:-}"
+shared_out=""
+if [[ -n "$dag_out" ]]; then
+  shared_out="$(dirname "$out")/v4-shared-closure"
+  dag_log="${dag_log:-${dag_out}.compile.log}"
+fi
 
 if [[ ! -x "$bin" ]]; then
   echo "error: v2-compiler not found at $bin (build v2-compiler --release first)" >&2
   exit 1
 fi
 
-rm -rf "$out"
+if [[ -n "$dag_out" ]]; then
+  rm -rf "$shared_out" "$out" "$dag_out"
+else
+  rm -rf "$out"
+fi
 mkdir -p "$(dirname "$compile_log")"
+if [[ -n "$dag_log" ]]; then
+  mkdir -p "$(dirname "$dag_log")"
+fi
 
 emit_notice() {
   local title="$1"
@@ -79,11 +95,26 @@ emit_notice() {
   fi
 }
 
-echo "=== M1: v2-compiler compile --target rust src/v4 ==="
+if [[ -n "$dag_out" ]]; then
+  echo "=== M1: v2-compiler compile --target rust+dag src/v4 (single source closure) ==="
+else
+  echo "=== M1: v2-compiler compile --target rust src/v4 ==="
+fi
 set +e
-"$bin" compile --source-root src/v4 --output-dir "$out" --target rust 2>&1 | tee "$compile_log"
+if [[ -n "$dag_out" ]]; then
+  "$bin" compile --source-root src/v4 --output-dir "$shared_out" --target rust+dag 2>&1 | tee "$compile_log"
+else
+  "$bin" compile --source-root src/v4 --output-dir "$out" --target rust 2>&1 | tee "$compile_log"
+fi
 compile_status=${PIPESTATUS[0]}
 set -e
+
+if [[ -n "$dag_out" && -d "$shared_out/rust" && -d "$shared_out/dag" ]]; then
+  mv "$shared_out/rust" "$out"
+  mv "$shared_out/dag" "$dag_out"
+  rmdir "$shared_out" 2>/dev/null || true
+  cp "$compile_log" "$dag_log"
+fi
 
 compiled_receipt=""
 if [[ -f "$compile_log" ]]; then

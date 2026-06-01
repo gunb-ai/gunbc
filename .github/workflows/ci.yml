@@ -150,6 +150,8 @@ jobs:
         # containers): the host token pool pares actual concurrency below this ceiling — fill when idle,
         # pare under load. No static fallback: the probe fails closed if neither coupling is present.
         # See src/v4/workflow/ci.dag note.
+        V4_M1_DAG_EMIT_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_M1_DAG_EMIT_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
         V4_M1_CARGO_CHECK_JOBS_CEILING: "64"
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash scripts/v4-m1-rust-emit-probe.sh
@@ -158,6 +160,7 @@ jobs:
       env:
         V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
         V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
+        V4_BOOTSTRAP_REUSE_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
         V4_BOOTSTRAP_TIMEOUT_SECS: '900'
       run: bash scripts/v4-bootstrap-viability.sh
     - name: M1 v4 workflow CI model/YAML binding smoke
