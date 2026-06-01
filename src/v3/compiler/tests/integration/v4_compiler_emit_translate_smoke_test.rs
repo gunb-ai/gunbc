@@ -78,6 +78,10 @@ const MVP1_TYPESCRIPT_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_typescript_add_translate.dag");
 const MVP1_TYPESCRIPT_CLAIM_PATH: &str =
     "src/v4/test/claim/manual/mvp1_typescript_add_translate.dag";
+const MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_typescript_record_task_translate.dag");
+const MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/mvp1_typescript_record_task_translate.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -1039,6 +1043,14 @@ fn v4_mvp1_typescript_add_claim_tokenizes_and_parses() {
 }
 
 #[test]
+fn v4_mvp1_typescript_record_task_claim_tokenizes_and_parses() {
+    let _module = parse_module(
+        MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG,
+        MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH,
+    );
+}
+
+#[test]
 fn v4_mvp1_shape_a_add_claims_import_compile_inferred() {
     for (source, path) in [
         (MVP1_PYTHON_CLAIM_DAG, MVP1_PYTHON_CLAIM_PATH),
@@ -1054,6 +1066,52 @@ fn v4_mvp1_shape_a_add_claims_import_compile_inferred() {
         assert!(
             import_includes_name(&module, &["v4", "compiler", "emit"], "emit"),
             "{path}: grammar-inverse claim must import emit stage"
+        );
+    }
+}
+
+#[test]
+fn v4_mvp1_typescript_grammar_inverse_claims_name_l0_productions() {
+    let add_module = parse_module(MVP1_TYPESCRIPT_CLAIM_DAG, MVP1_TYPESCRIPT_CLAIM_PATH);
+    assert!(
+        import_includes_name(
+            &add_module,
+            &["v4", "extdeps", "languages", "typescript"],
+            "ts_production_mvp1_fn_add"
+        ),
+        "{MVP1_TYPESCRIPT_CLAIM_PATH}: G1 must import the MVP-1 add-fn production authority"
+    );
+    assert!(
+        surface_declares_data(&add_module, "mvp1_ts_g1_grammar_inverse_production"),
+        "{MVP1_TYPESCRIPT_CLAIM_PATH}: G1 must bind a grammar-inverse production anchor"
+    );
+
+    let task_module = parse_module(
+        MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG,
+        MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH,
+    );
+    for production in [
+        "ts_production_wave2a_type_alias_decl",
+        "ts_production_wave2a_type_annotation",
+        "ts_production_wave2a_record_type",
+    ] {
+        assert!(
+            import_includes_name(
+                &task_module,
+                &["v4", "extdeps", "languages", "typescript"],
+                production
+            ),
+            "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 must import {production}"
+        );
+    }
+    for anchor in [
+        "mvp1_ts_task_g2_grammar_inverse_production",
+        "mvp1_ts_task_g2_type_annotation_production",
+        "mvp1_ts_task_g2_record_type_production",
+    ] {
+        assert!(
+            surface_declares_data(&task_module, anchor),
+            "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 must bind {anchor}"
         );
     }
 }
