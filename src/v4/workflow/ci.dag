@@ -403,10 +403,13 @@ type M1CiLiveWorkflowSignal {
   binding_smoke_step_name: String
   step_name: String
   script_path: String
+  // GitHub Actions step transport policy. `false` means the script step itself
+  // must execute successfully; it does not imply rustc residuals fail the gate.
   non_blocking: Bool
   timeout_minutes: Int
   strict_env_var: String
   strict_env_value: String
+  rustc_residuals_block_required_path: Bool
 }
 
 
@@ -473,6 +476,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   timeout_minutes: 20
   strict_env_var: "V4_M1_RUST_EMIT_PROBE_STRICT"
   strict_env_value: "0"
+  rustc_residuals_block_required_path: false
 }
 
 data ci_v3_determinism_profile: CiBuildProfile = Release
@@ -554,6 +558,7 @@ data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSign
   timeout_minutes: 20
   strict_env_var: "V4_PHASE1_NAT_SEMIRING_STRICT"
   strict_env_value: "1"
+  rustc_residuals_block_required_path: false
 }
 
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — consumer:v4.workflow.ci testclaim_corpus_eval_ci_live_workflow_signal — structural-slice CLOSED: shell bridge deleted + positive-Y CiUpsertStep sole structural authority; forward: T-38-PR2 amends when runtime per-row TestClaimRun verdict CI lands — dissolve-on-arrival: emitted/projected GitHub Actions reads `ci_pipeline`/`TestClaimCorpusEvalCommand` directly and this carrier is deleted; forbidden: adding corpus eval step facts outside `ci_pipeline` + this binding.
@@ -565,6 +570,7 @@ data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   timeout_minutes: 15
   strict_env_var: ""
   strict_env_value: ""
+  rustc_residuals_block_required_path: true
 }
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
