@@ -1781,19 +1781,10 @@ pub mod evaluator {
                 non_empty_diagnostics(dag, emit_host_setup_failure_diagnostic(dag, &failure)?)?,
             )?,
         };
-        let logical_run = match &exit_outcome {
-            Value::VariantValue { tag, .. }
-                if *tag
-                    == variant_decl_id_in_file(
-                        dag,
-                        "Outcome",
-                        "src/v4/std/diagnostic.dag",
-                        "Rejected",
-                    )? =>
-            {
-                exit_outcome.clone()
-            }
-            _ if receipt.exit.exit_holds() => accepted_variant(
+        let logical_run = match &receipt.exit.outcome {
+            emit_host_runner::HostExitOutcome::Accepted(emit_host_runner::ExitWitness::Holds(
+                _,
+            )) => accepted_variant(
                 dag,
                 Value::RecordValue(vec![NamedField {
                     label: "stdout".to_string(),
@@ -1803,9 +1794,15 @@ pub mod evaluator {
                     }]),
                 }]),
             )?,
-            _ => rejected_variant(
+            emit_host_runner::HostExitOutcome::Accepted(
+                emit_host_runner::ExitWitness::Violates(failure),
+            ) => rejected_variant(
                 dag,
-                non_empty_diagnostics(dag, emit_host_diagnostic(dag, "emit_host_exit_not_ok")?)?,
+                non_empty_diagnostics(dag, emit_host_exit_failure_diagnostic(dag, failure)?)?,
+            )?,
+            emit_host_runner::HostExitOutcome::Rejected(failure) => rejected_variant(
+                dag,
+                non_empty_diagnostics(dag, emit_host_setup_failure_diagnostic(dag, failure)?)?,
             )?,
         };
         Ok(Value::RecordValue(vec![
