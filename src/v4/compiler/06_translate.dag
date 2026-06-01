@@ -2803,6 +2803,37 @@ fn translate_apply_use_site_ownership_to_projected_type(
   )
 }
 
+// Arrow boundary ownership matches serialize_type_expr_boundary_bounded discipline:
+// SG-RC applies only when the projected wire is an atom; composite boundaries pass through.
+fn translate_apply_use_site_ownership_to_projected_boundary(
+  projected: Node,
+  source_for_binding: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_type_expr_emitted_wire_decode(node: projected, projection: projection),
+    f: fn(wire) {
+      match wire.kind {
+        TargetTypeExprAtom =>
+          bind_outcome(
+            o: type_expr_atom_binding(node: source_for_binding),
+            f: fn(binding) {
+              translate_apply_use_site_ownership_to_projected_type(
+                projected: projected,
+                source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                target: target,
+                use_site: use_site
+              )
+            }
+          )
+        _ => outcome_accepted(projected)
+      }
+    }
+  )
+}
+
 fn translate_project_arrow_input_types_go(
   remaining: Int,
   anchor: Node,
@@ -2828,25 +2859,21 @@ fn translate_project_arrow_input_types_go(
           ),
           f: fn(projected) {
             bind_outcome(
-              o: type_expr_atom_binding(node: split.head),
-              f: fn(binding) {
-                bind_outcome(
-                  o: translate_apply_use_site_ownership_to_projected_type(
-                    projected: projected,
-                    source_carrier: translate_boundary_source_carrier_node(binding: binding),
-                    target: target,
-                    use_site: OwnershipAtFunctionParameter
-                  ),
-                  f: fn(wrapped) {
-                    translate_project_arrow_input_types_go(
-                      remaining: remaining - 1,
-                      anchor: anchor,
-                      original_inputs: split.tail,
-                      target: target,
-                      projection: projection,
-                      acc: list_snoc_item(xs: acc, item: wrapped)
-                    )
-                  }
+              o: translate_apply_use_site_ownership_to_projected_boundary(
+                projected: projected,
+                source_for_binding: split.head,
+                target: target,
+                projection: projection,
+                use_site: OwnershipAtFunctionParameter
+              ),
+              f: fn(wrapped) {
+                translate_project_arrow_input_types_go(
+                  remaining: remaining - 1,
+                  anchor: anchor,
+                  original_inputs: split.tail,
+                  target: target,
+                  projection: projection,
+                  acc: list_snoc_item(xs: acc, item: wrapped)
                 )
               }
             )
@@ -2882,22 +2909,18 @@ fn translate_project_arrow_split_types(
         ),
         f: fn(projected_output) {
           bind_outcome(
-            o: type_expr_atom_binding(node: original_split.output),
-            f: fn(binding) {
-              bind_outcome(
-                o: translate_apply_use_site_ownership_to_projected_type(
-                  projected: projected_output,
-                  source_carrier: translate_boundary_source_carrier_node(binding: binding),
-                  target: target,
-                  use_site: OwnershipAtFunctionReturn
-                ),
-                f: fn(wrapped_output) {
-                  outcome_accepted(
-                    TypeExprArrowSplit {
-                      inputs: wrapped_inputs,
-                      output: wrapped_output
-                    }
-                  )
+            o: translate_apply_use_site_ownership_to_projected_boundary(
+              projected: projected_output,
+              source_for_binding: original_split.output,
+              target: target,
+              projection: projection,
+              use_site: OwnershipAtFunctionReturn
+            ),
+            f: fn(wrapped_output) {
+              outcome_accepted(
+                TypeExprArrowSplit {
+                  inputs: wrapped_inputs,
+                  output: wrapped_output
                 }
               )
             }

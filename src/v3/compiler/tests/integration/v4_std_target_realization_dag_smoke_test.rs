@@ -574,6 +574,10 @@ fn v4_translate_dag_imports_use_site_ownership_consumer() {
         "{TRANSLATE_PATH}: fn-boundary serialize must map to TargetOwnershipUseSite"
     );
     assert!(
+        surface_declares_fn(&module, "translate_apply_use_site_ownership_to_projected_boundary"),
+        "{TRANSLATE_PATH}: arrow projection must apply SG-RC only on atom boundaries"
+    );
+    assert!(
         TRANSLATE_DAG.contains("translate_apply_use_site_ownership_to_projected_type")
             && TRANSLATE_DAG.contains("serialize_type_expr_boundary_atom_bounded"),
         "{TRANSLATE_PATH}: boundary atom serialize must consult SG-RC before emit"
