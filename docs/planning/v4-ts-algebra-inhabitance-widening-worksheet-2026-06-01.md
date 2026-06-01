@@ -1,6 +1,6 @@
 # v4 TS Algebra Inhabitance Widening Worksheet (stable fact IDs)
 
-> **Status:** DRAFT — `ready-for-review` (TypeScript RCA Manager `fierce-fox-719`; 2026-06-01).  
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`).  
 > **Lane:** ALPHA/PREVIEW — NOT release-minimum.  
 > **Analog:** W1.7 / Rust #4000 widening (`rust_integer_algebra_inhabitance_rust_facts_i32`); Python #4117 (`python_integer_algebra_inhabitance_python_facts_int`).  
 > **Authority:** `docs/planning/v4-leaf-model-verification-2026-05-30.md` §5 Layer A (model owns facts; claims reference fact IDs).
@@ -72,13 +72,13 @@ Metric allowed only as secondary:
 
 ---
 
-## §8 Manager approval checklist — OPEN
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] No new Subject/Expectation coproduct at Phase 1
-- [ ] `LeafModelClaimId` + fact Symbol discriminator only
-- [ ] Number vs bigint split explicit (no faux unified `Int`)
-- [ ] Worker may land **before** R2 host runners but **after** Arbiter approval
-- [ ] Worker dispatch — **forbidden** until Arbiter sign-off
+- [x] No new Subject/Expectation coproduct at Phase 1
+- [x] `LeafModelClaimId` + fact Symbol discriminator only
+- [x] Number vs bigint split explicit (no faux unified `Int`)
+- [x] Worker may land before R2 host runners but after type-expr + atom substrate order
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ## Related artifacts
 
