@@ -10,9 +10,7 @@
 //! owns host dispatch without this intercept (`emit_host_bridge.rs` retires with harness).
 
 use crate::dag::{Dag, DeclarationId, LiteralBits, TypeConnective};
-use crate::evaluator::{
-    EvalError, EvalStateStack, EvalStrategy, NamedField, Value,
-};
+use crate::evaluator::{EvalError, EvalStateStack, EvalStrategy, NamedField, Value};
 use emit_host_runner::{
     ExitWitness, HostExit, HostExitOutcome, HostLogicalFailure, HostSetupFailure,
 };
@@ -106,10 +104,7 @@ fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
         })
 }
 
-fn run_emit_host_setup_rejected(
-    dag: &Dag,
-    setup: &HostSetupFailure,
-) -> Result<Value, EvalError> {
+fn run_emit_host_setup_rejected(dag: &Dag, setup: &HostSetupFailure) -> Result<Value, EvalError> {
     rejected_outcome_variant(
         dag,
         non_empty_diagnostics_singleton(dag, host_setup_failure_diagnostic(dag, setup)?)?,
@@ -158,8 +153,9 @@ fn inputs_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, EvalError> {
 fn host_pin_from_inputs_root(dag: &Dag, root: &Value) -> Result<String, EvalError> {
     let pin = match root {
         Value::LiteralValue(LiteralBits::String(s)) => s.clone(),
-        node => node_primary_symbol(dag, node)
-            .unwrap_or_else(|| value_structural_digest(node, dag)),
+        node => {
+            node_primary_symbol(dag, node).unwrap_or_else(|| value_structural_digest(node, dag))
+        }
     };
     if pin.is_empty() {
         return Err(EvalError::BadTransformOperands {
@@ -195,13 +191,15 @@ fn connective_atom_symbol(dag: &Dag, value: &Value) -> Option<String> {
 
 fn atom_identity_literal(value: &Value) -> Option<String> {
     match value {
-        Value::RecordValue(fields) => fields
-            .iter()
-            .find(|f| f.label == "identity")
-            .and_then(|f| match &f.value {
-                Value::LiteralValue(LiteralBits::String(s)) => Some(s.clone()),
-                _ => None,
-            }),
+        Value::RecordValue(fields) => {
+            fields
+                .iter()
+                .find(|f| f.label == "identity")
+                .and_then(|f| match &f.value {
+                    Value::LiteralValue(LiteralBits::String(s)) => Some(s.clone()),
+                    _ => None,
+                })
+        }
         Value::VariantValue { payload, .. } => atom_identity_literal(payload),
         _ => None,
     }
@@ -230,15 +228,8 @@ fn value_structural_digest(value: &Value, dag: &Dag) -> String {
             format!("R{{{}}}", parts.join(","))
         }
         Value::VariantValue { tag, payload } => {
-            let arm = dag
-                .declaration(*tag)
-                .name
-                .as_deref()
-                .unwrap_or("?");
-            format!(
-                "V:{arm}:{}",
-                value_structural_digest(payload, dag)
-            )
+            let arm = dag.declaration(*tag).name.as_deref().unwrap_or("?");
+            format!("V:{arm}:{}", value_structural_digest(payload, dag))
         }
         Value::NodeRef(id) => format!("N:{id:?}"),
         Value::CardinalityValue(bound) => format!("C:{bound:?}"),
@@ -288,9 +279,7 @@ fn list_instantiation_for_element(
             else {
                 return None;
             };
-            (*template == list_decl.id
-                && arguments.len() == 1
-                && arguments[0].value == element_ty)
+            (*template == list_decl.id && arguments.len() == 1 && arguments[0].value == element_ty)
                 .then_some(decl.id)
         })
         .ok_or(EvalError::BadTransformOperands {
@@ -309,13 +298,15 @@ fn find_list_variant_tag(
             reason: "List type not found",
         })?;
     let arm_ty = match &list_decl.connective {
-        TypeConnective::Disj { variants } => variants
-            .iter()
-            .find(|v| v.label == variant)
-            .ok_or(EvalError::BadTransformOperands {
-                reason: "List variant arm not found",
-            })?
-            .ty,
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|v| v.label == variant)
+                .ok_or(EvalError::BadTransformOperands {
+                    reason: "List variant arm not found",
+                })?
+                .ty
+        }
         _ => {
             return Err(EvalError::BadTransformOperands {
                 reason: "List is not a sum type",
@@ -433,11 +424,8 @@ fn byte_value(dag: &Dag, byte: u8) -> Result<Value, EvalError> {
 }
 
 fn byte_string_value(dag: &Dag, bytes: &[u8]) -> Result<Value, EvalError> {
-    let elems: Result<Vec<Value>, EvalError> = bytes
-        .iter()
-        .copied()
-        .map(|b| byte_value(dag, b))
-        .collect();
+    let elems: Result<Vec<Value>, EvalError> =
+        bytes.iter().copied().map(|b| byte_value(dag, b)).collect();
     list_from_values(dag, byte_list_ty(dag)?, elems?)
 }
 

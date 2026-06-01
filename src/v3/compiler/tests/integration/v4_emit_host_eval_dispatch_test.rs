@@ -31,8 +31,8 @@ fn emit_host_eval_dispatch_runner_pass_fixture_holds_and_logical_run_projects() 
         "gunbc_emit_host_eval_dispatch_pass_{}",
         std::process::id()
     ));
-    let receipt = run_emit_host_rust(FIXTURE_SOURCE_PASS, &mvp2_inputs(), &work_dir)
-        .expect("host setup");
+    let receipt =
+        run_emit_host_rust(FIXTURE_SOURCE_PASS, &mvp2_inputs(), &work_dir).expect("host setup");
     assert!(
         receipt.exit.exit_holds(),
         "eval dispatch must preserve Holds exit for pass fixture, got {:?}",
@@ -51,12 +51,9 @@ fn emit_host_eval_dispatch_runner_nonzero_exit_denies_logical_run_projection() {
         "gunbc_emit_host_eval_dispatch_fail_{}",
         std::process::id()
     ));
-    let receipt = run_emit_host_rust(FIXTURE_SOURCE_NONZERO, &mvp2_inputs(), &work_dir)
-        .expect("host setup");
-    assert!(
-        !receipt.exit.exit_holds(),
-        "nonzero fixture must not Hold"
-    );
+    let receipt =
+        run_emit_host_rust(FIXTURE_SOURCE_NONZERO, &mvp2_inputs(), &work_dir).expect("host setup");
+    assert!(!receipt.exit.exit_holds(), "nonzero fixture must not Hold");
     assert!(
         emit_host_runner::host_logical_run_from_exit(&receipt.exit, receipt.stdout_bytes.clone())
             .is_none(),
