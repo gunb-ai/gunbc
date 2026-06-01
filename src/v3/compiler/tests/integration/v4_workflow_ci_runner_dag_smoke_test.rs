@@ -1586,6 +1586,7 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "\\breturn\\b",
         "inverted_zero_comparison",
         "(?<![A-Za-z0-9_:])(?:!\\(*|\\(*false\\)*={2}\\(*|\\(*true\\)*!=\\(*)",
+        "tally\\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b\\)*",
         "fail_deferred_conjunction",
         "(?:^|;)\\(*tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
         "\\)*&&",
