@@ -2292,6 +2292,10 @@ fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
 }
 
+fn target_collection_free_monoid_carrier_head(node: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
+}
+
 // 🟡 gated — predicate-dissolution interim (INVARIANTS.md P3 / Practice 10) —
 // owner: vivid-lynx-81 / Rust RCA SG critical path; lane: SG-COLLECTION-PROJECTION;
 // planning-row: ROADMAP.md § "What v4 is building toward" rows `src/v4/std/` and
@@ -2302,7 +2306,7 @@ fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
 fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Instantiation } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      match target_collection_free_monoid_carrier_head(node: node) {
         Present { value: head } =>
           match head.kind {
             TypeNode { connective: Atom { identity: id } } =>
