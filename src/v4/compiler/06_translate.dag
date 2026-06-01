@@ -135,6 +135,7 @@ import v4.std.target_model {
   target_type_expr_field_close,
   target_type_expr_field_conj,
   target_type_expr_field_disj,
+  target_type_expr_field_field_label_separator,
   target_type_expr_field_ident_token,
   target_type_expr_field_instantiation,
   target_type_expr_field_open,
@@ -142,6 +143,7 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
   target_type_expr_cardinality_emitted,
+  target_type_expr_emitted_labeled_slot_edges,
   target_type_expr_emitted_labeled_slot_nodes,
   target_type_expr_emitted_wire_decode,
   target_type_expr_instantiation_emitted,
@@ -1190,6 +1192,23 @@ fn type_expr_shape_symbol(parent: Node, field: Symbol) -> Outcome<Symbol> {
     f: fn(child) { node_atom_identity(node: child) }
   )
 }
+
+fn type_expr_optional_shape_symbol(parent: Node, field: Symbol) -> Outcome<Optional<Symbol>> {
+  bind_outcome(
+    o: conj_optional_named_child(parent: parent, edge_name: field),
+    f: fn(child) {
+      match child {
+        Some { value: n } =>
+          bind_outcome(
+            o: node_atom_identity(node: n),
+            f: fn(sym) { outcome_accepted(optional_present(value: sym)) }
+          )
+        None => outcome_accepted(optional_absent())
+      }
+    }
+  )
+}
+
 fn type_expr_atom_shape_from_node(node: Node) -> Outcome<TargetAtomTypeShape> {
   bind_outcome(
     o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_surface),
@@ -1219,15 +1238,21 @@ fn type_expr_generic_apply_shape_from_node(node: Node) -> Outcome<TargetGenericA
               bind_outcome(
                 o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_close),
                 f: fn(close) {
-                  Accepted {
-                    value: TargetGenericApply {
-                      surface: surface,
-                      open: open,
-                      separator: separator,
-                      close: close
-                    },
-                    diagnostics: None
-                  }
+                  bind_outcome(
+                    o: type_expr_optional_shape_symbol(parent: node, field: target_type_expr_field_field_label_separator),
+                    f: fn(field_label_separator) {
+                      Accepted {
+                        value: TargetGenericApply {
+                          surface: surface,
+                          open: open,
+                          separator: separator,
+                          field_label_separator: field_label_separator,
+                          close: close
+                        },
+                        diagnostics: None
+                      }
+                    }
+                  )
                 }
               )
             }
@@ -2405,6 +2430,125 @@ fn serialize_type_expr_separated_bounded(
     acc: Empty
   )
 }
+
+fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetSource> {
+  match edge.label {
+    Named { name: label } =>
+      match map_get(target.binding_spellings, label) {
+        Some { value: spelling } => Accepted { value: spelling, diagnostics: None }
+        None =>
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: translate_binding_spelling_not_found_diagnostic(binding: label)
+            )
+          }
+      }
+    Positional =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
+  }
+}
+
+fn serialize_type_expr_record_fields_go(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  separator: Symbol,
+  field_label_separator: Symbol,
+  fields: List<Edge>,
+  anchor: Node,
+  acc: TargetSource
+) -> Outcome<TargetSource> {
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
+    )
+  } else if is_empty(xs: fields) {
+    Accepted { value: acc, diagnostics: None }
+  } else {
+    bind_outcome(
+      o: edge_list_head_and_tail(edges: fields, node: anchor),
+      f: fn(split) {
+        bind_outcome(
+          o: serialize_type_expr_record_field_label(target: target, edge: split.head),
+          f: fn(label_source) {
+            bind_outcome(
+              o: lex_rules_literal(target: target, token_class: field_label_separator),
+              f: fn(label_sep_source) {
+                bind_outcome(
+                  o: serialize_type_expr_emitted_bounded(
+                    remaining: remaining - 1,
+                    target: target,
+                    projection: projection,
+                    emitted: split.head.target
+                  ),
+                  f: fn(field_type_source) {
+                    let field_source = list_append(
+                      left: list_append(left: label_source, right: label_sep_source),
+                      right: field_type_source
+                    )
+                    if is_empty(xs: acc) {
+                      serialize_type_expr_record_fields_go(
+                        remaining: remaining - 1,
+                        target: target,
+                        projection: projection,
+                        separator: separator,
+                        field_label_separator: field_label_separator,
+                        fields: split.tail,
+                        anchor: anchor,
+                        acc: field_source
+                      )
+                    } else {
+                      bind_outcome(
+                        o: lex_rules_literal(target: target, token_class: separator),
+                        f: fn(sep_source) {
+                          serialize_type_expr_record_fields_go(
+                            remaining: remaining - 1,
+                            target: target,
+                            projection: projection,
+                            separator: separator,
+                            field_label_separator: field_label_separator,
+                            fields: split.tail,
+                            anchor: anchor,
+                            acc: list_append(
+                              left: list_append(left: acc, right: sep_source),
+                              right: field_source
+                            )
+                          )
+                        }
+                      )
+                    }
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  }
+}
+
+fn serialize_type_expr_record_fields_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  separator: Symbol,
+  field_label_separator: Symbol,
+  fields: List<Edge>,
+  anchor: Node
+) -> Outcome<TargetSource> {
+  serialize_type_expr_record_fields_go(
+    remaining: remaining,
+    target: target,
+    projection: projection,
+    separator: separator,
+    field_label_separator: field_label_separator,
+    fields: fields,
+    anchor: anchor,
+    acc: Empty
+  )
+}
+
 fn serialize_type_expr_record_bounded(
   remaining: Int,
   target: TargetModel,
@@ -2412,40 +2556,45 @@ fn serialize_type_expr_record_bounded(
   form: TargetGenericApply,
   node: Node
 ) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: target_type_expr_emitted_labeled_slot_nodes(node: node),
-    f: fn(slots) {
+  match form.field_label_separator {
+    Present { value: field_label_separator } =>
       bind_outcome(
-        o: lex_rules_literal(target: target, token_class: form.open),
-        f: fn(open_source) {
+        o: target_type_expr_emitted_labeled_slot_edges(node: node),
+        f: fn(fields) {
           bind_outcome(
-            o: serialize_type_expr_separated_bounded(
-              remaining: remaining - 1,
-              target: target,
-              projection: projection,
-              separator: form.separator,
-              items: slots,
-              anchor: node
-            ),
-            f: fn(fields_source) {
+            o: lex_rules_literal(target: target, token_class: form.open),
+            f: fn(open_source) {
               bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.close),
-                f: fn(close_source) {
-                  Accepted {
-                    value: list_append(
-                      left: list_append(left: open_source, right: fields_source),
-                      right: close_source
-                    ),
-                    diagnostics: None
-                  }
+                o: serialize_type_expr_record_fields_bounded(
+                  remaining: remaining - 1,
+                  target: target,
+                  projection: projection,
+                  separator: form.separator,
+                  field_label_separator: field_label_separator,
+                  fields: fields,
+                  anchor: node
+                ),
+                f: fn(fields_source) {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.close),
+                    f: fn(close_source) {
+                      Accepted {
+                        value: list_append(
+                          left: list_append(left: open_source, right: fields_source),
+                          right: close_source
+                        ),
+                        diagnostics: None
+                      }
+                    }
+                  )
                 }
               )
             }
           )
         }
       )
-    }
-  )
+    Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
 }
 fn serialize_type_expr_sum_bounded(
   remaining: Int,
