@@ -398,6 +398,7 @@ type LensCiLiveWorkflowSignal {
   semantic_target: String
 }
 
+// 🟡 gated — live-workflow projection interim (docs/modeling-discipline.md Practice 2/10) — feature:project-github-actions-landed — consumer:CiLiveWorkflowStepSignal strict env projection — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads typed step env from `ci_pipeline`/command policy rows and this bridge carrier is deleted; forbidden: encoding absent env bindings as empty strings.
 type StrictEnvBinding
   = NoStrictEnvBinding
   | StrictEnvBinding { var: String, value: String }
