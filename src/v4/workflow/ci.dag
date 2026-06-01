@@ -532,8 +532,9 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
 ]
 
 // 🟡 gated — CI build-cache projection NOT YET MODELED HERE — feature:elastic-cache-interface
-//   — bind docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md (APPROVED §8; PR #4095 merged)
-//   + docs/planning/elastic-ci-redesign-exploration-2026-05-31.md §4.0g.
+//   — authority: dsl/std/cache_interface.dag (Modeling DFS Worksheet B; landed PR #4095). The
+//   internal planning worksheets (elastic-cache-interface / elastic-ci-redesign) were deleted in
+//   #4192 for the public-repo flip, so the in-repo substrate file + that PR are the durable refs.
 //   The backend substrate already landed in dsl/std/cache_interface.dag as first-authority
 //   `CacheInterfaceFacts` rows: `sccache_local_facts` (PerHostFilesystem),
 //   `cargo_target_dir_facts` (PerRunnerFilesystem), `gha_actions_cache_facts`,
@@ -544,10 +545,10 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
 //   dissolve-on-arrival: when this projection lands, the ci_floor `Cache Cargo` / `Cache gunbc
 //   binary` steps in ci.yml are projected from cache_key_projection over these facts (identity =
 //   content_hash(canonical Upsert<T> subject), NOT hashFiles), and the interim hand blocks below
-//   are deleted. forbidden (exploration §717 + worksheet §10.0): hand-authored cache keys at any
-//   layer (`hashFiles(...)`, `cache_key:` strings, sccache `--cache-mode-key`) as the standing
-//   design, and stacking sccache/`RUSTC_WRAPPER` into ci.yml ahead of `CacheInterfaceFacts`
-//   projection (the named "immediate local patch" P2 violation).
+//   are deleted. forbidden (per the cache_interface.dag identity discipline): hand-authored cache
+//   keys at any layer (`hashFiles(...)`, `cache_key:` strings, sccache `--cache-mode-key`) as the
+//   standing design, and stacking sccache/`RUSTC_WRAPPER` into ci.yml ahead of `CacheInterfaceFacts`
+//   projection (the "immediate local patch" the worksheet named as a P2 violation).
 //   INTERIM (operator 2026-06-01, "stop the bleeding"): the ci.yml `Cache Cargo` key was
 //   de-churned (Cargo.lock+toolchain only) so restores actually hit and stop evicting the warm
 //   v2 `gunbc-bin` cache. This is transport repair of an existing block, not new design surface,
