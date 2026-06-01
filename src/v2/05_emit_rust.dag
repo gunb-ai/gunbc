@@ -202,13 +202,20 @@ fn render_rust_applied_type(n: Node, shared_types: Set<String>, source_indices: 
   }
 }
 
+// Single authority: shared_types decides Rc<> on applied generic instantiations.
+fn render_rust_applied_type_shared(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let rendered = render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  let type_name = authored_name_at(source_indices: source_indices, node: n)
+  if set_contains(shared_types, type_name) { concat("Rc<", rendered, ">") } else { rendered }
+}
+
 // Generic type-param leaves in applications (S, A in Pair<S, A>) compose with the
 // canonical renderer; direct self-recursion keeps regen_stage0 stacker guard.
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Some { value: applied } =>
       if applied.children |> count > 0 {
-        render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
+        render_rust_applied_type_shared(n: applied, shared_types: shared_types, source_indices: source_indices)
       } else {
         let name = authored_name_at(source_indices: source_indices, node: n)
         if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
@@ -1684,7 +1691,7 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Some { value: applied } =>
       if applied.children |> count > 0 {
-        render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
+        render_rust_applied_type_shared(n: applied, shared_types: shared_types, source_indices: source_indices)
       } else {
         render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
       }
