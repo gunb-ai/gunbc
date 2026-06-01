@@ -310,23 +310,6 @@ pub fn render_rust_applied_type_shared(
     }
 }
 
-pub fn render_rust_applied_type_shared(
-    n: Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    {
-        let rendered =
-            render_rust_applied_type(n.clone(), shared_types.clone(), source_indices.clone());
-        let type_name = authored_name_at(source_indices.clone(), n.clone());
-        if v2_rt::set_contains(&shared_types, type_name) {
-            v2_rt::concat(v2_rt::concat("Rc<".to_string(), rendered), ">".to_string())
-        } else {
-            rendered
-        }
-    }
-}
-
 pub fn render_rust_decl_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
