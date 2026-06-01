@@ -3176,7 +3176,7 @@ fn project_type_expression_arrow_emitted_from_original_split(
       f: fn(head_tail) {
         if project_type_expression_arrow_domain_is_named_conj(domain: head_tail.head) {
           bind_outcome(
-            o: project_type_expression_field_slots(
+            o: project_type_expression_arrow_param_slots(
               remaining: node_subtree_count(n: head_tail.head),
               node: head_tail.head,
               target: target,
