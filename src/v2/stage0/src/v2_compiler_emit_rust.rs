@@ -16774,7 +16774,15 @@ pub fn emit_data_def_body(
                             "compile_error!(\"BoundedLattice data missing bottom\")".to_string()
                         }
                     };
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: Box::new(".to_string()), top_str), "),\n".to_string()), "                bottom: Box::new(".to_string()), bottom_str), "),\n".to_string()), "            })".to_string())
+                    let inner = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: Box::new(".to_string()), top_str), "),\n".to_string()), "                bottom: Box::new(".to_string()), bottom_str), "),\n".to_string()), "            })".to_string());
+                    if (raw_ty_str.as_str() == "Rc<BoundedLattice>".to_string().as_str()) {
+                        v2_rt::concat(
+                            v2_rt::concat("            Rc::new(".to_string(), inner),
+                            ")".to_string(),
+                        )
+                    } else {
+                        v2_rt::concat("            ".to_string(), inner)
+                    }
                 }
                 _ => "            compile_error!(\"BoundedLattice data must be a record\")"
                     .to_string(),
