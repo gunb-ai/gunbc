@@ -1,6 +1,6 @@
 # v4 Python RCA Manager worksheets - L1/L2 release-minimum runway
 
-> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). No implementation worker is authorized until Runtime/TestClaim accepts runner-surface dispatch for worksheets B/C.
+> **Status:** **WORKSHEET APPROVED** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Worksheet A: **READY-FOR-WORKER-DISPATCH** (static). Worksheets B/C: **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (manager checklist item below still open).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` Section 11.8, Python row.
 > **Current rung:** L0 complete via #4117 (R1 + R2a + R2b + R3-external).
@@ -258,13 +258,13 @@ Falsification probes:
 - [x] **Shared runtime carrier:** `TargetRuntimeExerciseVerdict` (additive, shared) for L1/L2 fixture execution
 - [x] `TargetPythonExerciseVerdict` remains L0 leaf-model bridge only until dissolved by shared runner
 - [x] Receipt path: `host_run` + `test_claim_falsification` — reject stdout/stderr shell compare as final authority
-- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`; Runtime/TestClaim coordinates roster)
+- [x] **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (`proud-fox-405`; Runtime/TestClaim coordinates roster)
 
 ### Worksheet C (PY-L2-CROSS-TARGET-BEHAVIORAL-PARITY)
 
 - [x] Reuse #4081 Wc L5 pattern; release-minimum set **Rust + Python + Go** per §11.8
 - [x] Shared `RuntimeValue` + `TestClaimRun` verdict vocabulary — no per-target expected-value tables
-- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`; depends on worksheet B runner surface)
+- [x] **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (`proud-fox-405`; depends on worksheet B runner surface + Runtime/TestClaim gate)
 
 ### Worksheet D (PY-SELF-COMPILE-FRAMING)
 
