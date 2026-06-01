@@ -2752,7 +2752,41 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         let resolved_ret = if (item.inferred.clone() == None) {
             None
         } else {
-            Some(Rc::new(InferredNode::Resolved { node: ret_resolved }))
+            match item.inferred.clone().unwrap().as_ref().clone() {
+                InferredNode::Resolved {
+                    node: authored_ret, ..
+                } => {
+                    if ((authored_ret.children.clone().len() as i64) > 0) {
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: Rc::new(Node {
+                                name: authored_ret.name.clone(),
+                                span: authored_ret.span.clone(),
+                                ident_span: authored_ret.ident_span.clone(),
+                                children: authored_ret.children.clone(),
+                                connective: authored_ret.connective.clone(),
+                                params: authored_ret.params.clone(),
+                                inferred: Some(Rc::new(Resolved {
+                                    node: ret_resolved.clone(),
+                                })),
+                                return_cardinality: authored_ret.return_cardinality.clone(),
+                                uses: authored_ret.uses.clone(),
+                                body: authored_ret.body.clone(),
+                                transport: authored_ret.transport.clone(),
+                                properties: ret_resolved.properties.clone(),
+                                type_annotation: authored_ret.type_annotation.clone(),
+                                is_self_recursive: authored_ret.is_self_recursive,
+                                has_non_tail_self_call: authored_ret.has_non_tail_self_call.clone(),
+                                match_pattern: authored_ret.match_pattern.clone(),
+                                expr_data: authored_ret.expr_data.clone(),
+                                ident: None,
+                            }),
+                        }))
+                    } else {
+                        Some(Rc::new(InferredNode::Resolved { node: ret_resolved }))
+                    }
+                }
+                _ => Some(Rc::new(InferredNode::Resolved { node: ret_resolved })),
+            }
         };
         let use_results = Rc::new({
             let mut __result = Vec::new();
@@ -2898,7 +2932,43 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                 }
             }
         };
-        let anno_diags = anno_resolved.diagnostics.clone();
+        let anno_arg_diags = if (item.type_annotation.clone() == None) {
+            Rc::new(vec![])
+        } else {
+            {
+                let authored_anno = item.type_annotation.clone().unwrap();
+                let has_applied_binding = (find_property(
+                    anno_resolved.resolved.clone().properties.clone(),
+                    "__applied_type_args".to_string(),
+                    env.source_indices.clone(),
+                ) != None);
+                if (((authored_anno.children.clone().len() as i64) > 0) && !has_applied_binding) {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for ar in Rc::new({
+                            let mut __result = Vec::new();
+                            for child in authored_anno.children.clone().iter().cloned() {
+                                __result.push(resolve_node(
+                                    child.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                ));
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend((*ar.diagnostics.clone()).iter().cloned());
+                        }
+                        __result
+                    })
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+        };
+        let anno_diags = v2_rt::concat(anno_resolved.diagnostics.clone(), anno_arg_diags);
         let transport_resolved = if (item.transport.clone() == None) {
             Rc::new(TransportResolveResult {
                 transport: local_transport_node(no_span()),

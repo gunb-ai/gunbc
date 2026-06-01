@@ -3674,7 +3674,25 @@ pub fn render_rust_type_with_applied_binding(
             ) {
                 Some(applied) => {
                     if ((applied.children.clone().len() as i64) > 0) {
-                        render_rust_applied_type(applied.clone(), shared_types, source_indices.clone())
+                        let rendered = render_rust_applied_type(
+                            applied.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                        );
+                        let applied_name =
+                            authored_name_at(source_indices.clone(), applied.clone());
+                        let resolved_is_wrapped = rust_type_is_rc_wrapped(render_rust_type(
+                            resolved,
+                            shared_types.clone(),
+                            source_indices.clone(),
+                        ));
+                        if ((shared_types.contains(&applied_name) || resolved_is_wrapped)
+                            && !rust_type_is_rc_wrapped(rendered.clone()))
+                        {
+                            wrap_shared_type(RenderTarget::Rust, rendered)
+                        } else {
+                            rendered
+                        }
                     } else {
                         render_rust_type(n.clone(), shared_types, source_indices.clone())
                     }
