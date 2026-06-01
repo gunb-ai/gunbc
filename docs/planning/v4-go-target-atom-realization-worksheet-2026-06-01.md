@@ -1,6 +1,6 @@
 # v4 Go TargetAtomRealization Worksheet — Symbol / Bool / Char / Int
 
-> **Status:** **ready-for-review** — Go RCA Manager (`gentle-lynx-68`); ratification: Modeling DFS Arbiter `proud-fox-405`; implementation lane: TR Manager `keen-heron-687` after §8.
+> **Status:** **ready-for-review** — Go RCA Manager (`gentle-lynx-68`); ratification: Modeling DFS Arbiter `proud-fox-405` (shared carrier §8); **implementation:** Go RCA Manager subtree after §8 (#4137 per-language lane — keen-heron archived).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** SG-1 analog — `docs/planning/v4-sg1-target-atom-realization-worksheet-2026-05-30.md` (APPROVED); `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.
 > **Canonical home:** `src/v4/std/target_model.dag` (`TargetAtomRealization` carrier — **do not redefine**).
@@ -68,7 +68,7 @@ Metric allowed only as secondary:
 | Char | `char_kernel_type_node()` | `rune` | rune literal | Go has no `char` type |
 | Int (platform) | `go_facts_int` inhabitant node | `int` | integer literal | Pairs with R1 claim; do not conflate with `int32` fixed width in atom row unless Arbiter splits |
 
-**Coordination:** TR Manager (`keen-heron-687`) owns implementation after §8. Go RCA Manager owns worksheet + fact IDs; does not land emit patches without ratified worksheet.
+**Dispatch:** Go RCA Manager (`gentle-lynx-68`) spawns implementation worker under own subtree after §8. Arbiter owns shared `TargetAtomRealization` carrier only; Go RCA owns `go.dag` rows + emit consumption.
 
 ---
 
@@ -79,9 +79,9 @@ Metric allowed only as secondary:
 - [ ] Char → `rune` mapping explicit (Go spec)
 - [ ] Int row authority is `go_facts_int`, not rust `i32` spelling
 
-**TR Manager (`keen-heron-687`) — implementation gate:**
+**Go RCA Manager — implementation gate:**
 - [ ] §8 Arbiter boxes checked
-- [ ] Ordered relative to leaf-model R3-external worker
+- [ ] Worker spawned under gentle-lynx-68; ordered before leaf-model R3-external
 
 **State:** `ready-for-review`
 
