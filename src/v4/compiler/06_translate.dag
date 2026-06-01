@@ -3619,34 +3619,36 @@ fn translate_coerced_with_atom_realization_at_use_site(
             target: target,
             use_site: effective_use_site
           ) {
-        Accepted { value: value_projection, diagnostics: vd } =>
-          Accepted {
-            value: match value_projection {
-              Absent => shell
-              Present { value: value_node } =>
-                translate_shell_attach_value_expression(
-                  shell: shell,
-                  value: value_node
+            Accepted { value: value_projection, diagnostics: vd } =>
+              Accepted {
+                value: match value_projection {
+                  Absent => shell
+                  Present { value: value_node } =>
+                    translate_shell_attach_value_expression(
+                      shell: shell,
+                      value: value_node
+                    )
+                },
+                diagnostics: diagnostics_merge(
+                  outer: diagnostics_merge(outer: pending, inner: sd),
+                  inner: vd
                 )
-            },
-            diagnostics: diagnostics_merge(
-              outer: diagnostics_merge(outer: pending, inner: sd),
-              inner: vd
-            )
+              }
+            Rejected { diagnostics: r } =>
+              Rejected {
+                diagnostics: rejected_with_pending(
+                  pending: diagnostics_merge(outer: pending, inner: sd),
+                  rejected: r
+                )
+              }
           }
         Rejected { diagnostics: r } =>
           Rejected {
-            diagnostics: rejected_with_pending(
-              pending: diagnostics_merge(outer: pending, inner: sd),
-              rejected: r
-            )
+            diagnostics: rejected_with_pending(pending: pending, rejected: r)
           }
       }
-    Rejected { diagnostics: r } =>
-      Rejected {
-        diagnostics: rejected_with_pending(pending: pending, rejected: r)
-      }
-  }
+    }
+  )
 }
 
 // Fold/MVP1 default coerce: binding-projection rows govern both type shell and value expr (P-RC-CONSUMER).

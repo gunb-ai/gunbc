@@ -1903,53 +1903,40 @@ data rust_sg2_target_function_signature_realization_catalog: List<TargetFunction
 ]
 
 fn rust_mvp1_target_model_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: target_model_edge_selection_policy,
-        target: rust_mvp1_selection_policy_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_declared_inhabitants,
-        target: rust_mvp1_declared_inhabitants_root()
-      ),
-      rust_named_edge(
-        name: target_model_edge_translation_rules,
-        target: rust_mvp1_translation_rules_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_serialize_source,
-        target: rust_mvp1_serialize_source_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_atom_realizations,
-        target: target_atom_realization_catalog_node(
-          rows: rust_target_atom_realization_catalog,
-          host_bundle: rust_mvp1_target_model_bundle_core()
+  match rust_mvp1_target_model_bundle_core().kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: list_append(
+          left: rust_mvp1_target_model_bundle_core().children,
+          right: [
+            rust_named_edge(
+              name: target_model_edge_atom_realizations,
+              target: target_atom_realization_catalog_node(
+                rows: rust_target_atom_realization_catalog,
+                host_bundle: rust_mvp1_target_model_bundle_core()
+              )
+            ),
+            rust_named_edge(
+              name: target_model_edge_reference_layer_tokens,
+              target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+            ),
+            rust_named_edge(
+              name: target_model_edge_use_site_ownership_realizations,
+              target: target_use_site_ownership_catalog_node(
+                rows: rust_sg_rc_use_site_ownership_catalog()
+              )
+            ),
+            rust_named_edge(
+              name: target_model_edge_signature_realizations,
+              target: target_function_signature_realization_catalog_node(
+                rows: rust_target_function_signature_realization_catalog
+              )
+            )
+          ]
         )
-      ),
-      rust_named_edge(
-        name: target_model_edge_reference_layer_tokens,
-        target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
-      ),
-      rust_named_edge(
-        name: target_model_edge_use_site_ownership_realizations,
-        target: target_use_site_ownership_catalog_node(
-          rows: rust_sg_rc_use_site_ownership_catalog()
-        )
-      ),
-      rust_named_edge(
-        name: target_model_edge_signature_realizations,
-        target: target_function_signature_realization_catalog_node(
-          rows: rust_target_function_signature_realization_catalog
-        )
-      )
-    ]
+      }
+    _ => rust_mvp1_target_model_bundle_core()
   }
 }
 

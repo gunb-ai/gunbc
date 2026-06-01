@@ -307,6 +307,10 @@ fn v4_translate_dag_imports_target_atom_realization_consumer() {
         "{TARGET_MODEL_PATH}: catalog lookup must not swallow row decode failures"
     );
     assert!(
+        TRANSLATE_DAG.contains("translate_signature_realization_present_for_carrier("),
+        "{TRANSLATE_PATH}: SG-1b follow-on must lookup signature Return rows fail-closed (Outcome)"
+    );
+    assert!(
         TRANSLATE_DAG.contains("translate_value_ownership_use_site_for_atom_realization("),
         "{TRANSLATE_PATH}: SG-1b follow-on must align Symbol value use_site with signature Return rows"
     );
@@ -358,6 +362,10 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
     assert!(
         bundle_core_body.contains("target_model_edge_type_expression_projection"),
         "{RUST_LANGUAGE_PATH}: MVP1 bundle_core must carry SG-2 projection for SG-1b boundary serialize"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("left: rust_mvp1_target_model_bundle_core().children"),
+        "{RUST_LANGUAGE_PATH}: live MVP1 bundle must compose bundle_core children (projection present on rust_mvp1_target_model)"
     );
     assert!(
         RUST_LANGUAGE_DAG.contains("target_model_edge_signature_realizations"),
