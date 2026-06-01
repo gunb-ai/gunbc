@@ -3248,33 +3248,28 @@ data ci_wave3_shadow_fail_closed_affected: AffectedSet = AffectedSetFailClosed {
 }
 
 // Fail-closed (no node frontier) returns the whole roster — roster authority preserved as superset.
+// NB: `==` kept on one line — the v2 M1-emit parser ends the expression at a pre-`==` line break.
 fn ci_wave3_shadow_fail_closed_selects_full_roster() -> Bool {
-  length(xs: ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected))
-    == length(xs: ci_wave3_shadow_claim_roster())
+  let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)
+  length(xs: selected) == length(xs: ci_wave3_shadow_claim_roster())
 }
 
 // Empty produced frontier touches no roster claim's evaluation nodes — none of the Wave-3 rows are
 // DiagnosticClaim (the only fail-closed-forced arm), so the selection narrows to the empty set.
 fn ci_wave3_shadow_empty_frontier_selects_none() -> Bool {
-  length(
-    xs: ci_wave3_shadow_testclaims_selected_from_rerun(
-      rerun: RerunNodeSetProduced { nodes: [] }
-    )
-  ) == 0
+  let selected = ci_wave3_shadow_testclaims_selected_from_rerun(rerun: RerunNodeSetProduced { nodes: [] })
+  length(xs: selected) == 0
 }
 
 // Roster authority cardinality: manual subset + generated subset = full roster (disjoint append).
 fn ci_wave3_shadow_roster_is_manual_plus_generated() -> Bool {
-  nat_add(
-    a: length(xs: ci_wave3_shadow_manual_claim_roster()),
-    b: length(xs: ci_wave3_shadow_generated_claim_roster())
-  ) == length(xs: ci_wave3_shadow_claim_roster())
+  let parts = nat_add(a: length(xs: ci_wave3_shadow_manual_claim_roster()), b: length(xs: ci_wave3_shadow_generated_claim_roster()))
+  parts == length(xs: ci_wave3_shadow_claim_roster())
 }
 
-data witness_ci_wave3_shadow_selection_holds: Bool =
-  ci_wave3_shadow_fail_closed_selects_full_roster()
-    && ci_wave3_shadow_empty_frontier_selects_none()
-    && ci_wave3_shadow_roster_is_manual_plus_generated()
+data witness_ci_wave3_shadow_selection_holds: Bool = ci_wave3_shadow_fail_closed_selects_full_roster()
+  && ci_wave3_shadow_empty_frontier_selects_none()
+  && ci_wave3_shadow_roster_is_manual_plus_generated()
 
 
 fn ci_repo_path_has_prefix(path: RepoPath, prefix: RepoPath) -> Bool {
