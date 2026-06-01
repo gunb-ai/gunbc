@@ -217,7 +217,6 @@ type LeafModelPythonFixturePair {
   falsification: LeafModelPythonFalsificationCase
 }
 
-<<<<<<< HEAD
 // PY-L1-STATIC-STRUCTURAL fixture carriers. Polarity AND role are STRUCTURAL, not prose:
 //  - the two cases are distinct types so illegal fixture states are unrepresentable —
 //    a happy case can only mean StaticAnalysisAccepted, a falsification case can only mean
@@ -284,7 +283,8 @@ fn leaf_model_python_static_falsification_verdict(
   c: LeafModelPythonStaticFalsificationCase
 ) -> TargetStaticAnalysisVerdict {
   StaticAnalysisRejected { tool_id: c.tool_id, diagnostic_code: c.diagnostic_code }
-=======
+}
+
 // 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — bind PR #4157 Phase 1 MW-D3 alpha lane —
 // dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
 // forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands
@@ -323,7 +323,6 @@ type LeafModelTypeScriptRuntimeFixturePair {
   expected_happy_verdict: TargetTypeScriptRuntimeVerdict
   falsification: LeafModelTypeScriptRuntimeFixture
   expected_falsification_verdict: TargetTypeScriptRuntimeVerdict
->>>>>>> origin/main
 }
 
 type LeafModelVerificationRunReceipt {

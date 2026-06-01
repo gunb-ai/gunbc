@@ -13,17 +13,15 @@ import v4.extdeps.languages.python {
   python_integer_algebra_inhabitance_python_facts_int,
   python_surface_spelling_int
 }
-<<<<<<< HEAD
 import v4.extdeps.typecheckers.pyright {
   pyright_tool_id,
   pyright_profile_l1_id,
   pyright_diag_report_return_type
-=======
+}
 import v4.extdeps.languages.typescript {
   ts_atom_realization_symbol,
   ts_bigint_algebra_inhabitance_ts_facts_bigint,
   ts_number_algebra_inhabitance_ts_facts_number
->>>>>>> origin/main
 }
 import v4.extdeps.languages.rust {
   rust_atom_realization_symbol,
@@ -65,13 +63,10 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_python_r2a_int_algebra_operations,
   leaf_model_claim_python_r2b_int_arbitrary_precision_add,
   leaf_model_claim_python_r3_external_symbol_projection,
-<<<<<<< HEAD
   leaf_model_claim_python_l1_static_return_type,
-=======
   leaf_model_claim_ts_r2a_number_algebra_operations,
   leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
   leaf_model_claim_ts_r3_external_symbol_projection,
->>>>>>> origin/main
   leaf_model_claim_rust_r1_i32_surface_spelling,
   leaf_model_claim_rust_r2a_i32_algebra_operations,
   leaf_model_claim_rust_r2b_debug_default_overflow,

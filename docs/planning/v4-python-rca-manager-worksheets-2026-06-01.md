@@ -1,10 +1,6 @@
 # v4 Python RCA Manager worksheets - L1/L2 release-minimum runway
 
-<<<<<<< HEAD
-> **Status:** Worksheet A (PY-L1-STATIC-STRUCTURAL) APPROVED by Modeling DFS Arbiter (proud-fox-405, msg_41813c03) and implemented in PR #4158 — see ruling section below. Worksheets B/C/D remain DRAFT; no implementation worker is authorized for those until the relevant section is approved.
-=======
-> **Status:** **WORKSHEET APPROVED** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Worksheet A: **READY-FOR-WORKER-DISPATCH** (static). Worksheets B/C: **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (manager checklist item below still open).
->>>>>>> origin/main
+> **Status:** **WORKSHEET APPROVED** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Worksheet A (PY-L1-STATIC-STRUCTURAL): **IMPLEMENTED in PR #4158** (pyright slice; mypy deferred — see ruling + mypy follow-up below). Worksheets B/C: **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (manager checklist item below still open).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-active-authority-map-2026-06-01.md` (Python lane) — §8 CLOSED #4170; predicate graph §11.8.2 defers here for L1/L2 dispatch state.
 > **Current rung:** L0 complete via #4117 (R1 + R2a + R2b + R3-external).
@@ -285,7 +281,6 @@ Falsification probes:
 - [x] Runtime execution framed as the meaningful Python verifier.
 - [x] Cross-target parity extends #4081 Wc L5 instead of creating a new stdout shell authority.
 - [x] Python self-compile framed as compiler execution parity before binary-like self-host.
-<<<<<<< HEAD
 - [x] Modeling DFS Arbiter approval — Worksheet A (PY-L1-STATIC-STRUCTURAL) APPROVED, see ruling below.
 - [ ] Runtime/TestClaim owner accepts runner-surface dispatch (Worksheets B/C still pending).
 
@@ -356,7 +351,3 @@ installable in the current verification environment, so a mypy F1 receipt cannot
 - **Why deferred, not dormant:** E-6 requires a same-PR consumer for new target-spec extdeps facts;
   shipping mypy profile data with no consumer would be untracked scaffold. Removing it keeps every
   landed extdeps fact consumed and records the mypy work as bounded debt here.
-=======
-- [x] Modeling DFS Arbiter approval.
-- [ ] Runtime/TestClaim owner accepts runner-surface dispatch.
->>>>>>> origin/main
