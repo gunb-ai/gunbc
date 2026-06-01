@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 97e97955d0361d4318a9c9f4d555aa2825cd65fc433dcb3cf3424d665a8d7157
+// Source-SHA256(.github/workflows/ci.yml): 0307067d3353c0744bef86743c3dcbbcef8672d53b32b68384fba623b0c1e156
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -266,7 +266,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           id: none,
           run: "bash scripts/v4-m1-rust-emit-probe.sh",
           shell: Bash,
-          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_CARGO_CHECK_JOBS": "4", "V4_M1_CARGO_CHECK_JOBS_CEILING": "64", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
+          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_CARGO_CHECK_JOBS_CEILING": "64", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
           working_directory: none,
           if_condition: none,
           continue_on_error: false,

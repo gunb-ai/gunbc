@@ -16,8 +16,9 @@
 #   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
 #   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when rustc fails
 #   V4_M1_RUSTC_TIMEOUT_SECS  — optional timeout for cargo check (CI: 600)
-#   V4_M1_CARGO_CHECK_JOBS    — parallelism cap for cargo check (default: 4; modeled
-#                               as m1_probe_cargo_check_jobs in src/v4/workflow/ci.dag)
+#   V4_M1_CARGO_CHECK_JOBS_CEILING — host-governor job ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX,
+#                               default 64; modeled as m1_probe_cargo_check_jobs_ceiling in
+#                               src/v4/workflow/ci.dag). Actual jobs are memory-denominated below it.
 
 set -euo pipefail
 
@@ -30,21 +31,29 @@ if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_M1_RUST_EMIT_OUT:-}" ]]; then
 else
   out="${V4_M1_RUST_EMIT_OUT:-/tmp/v4-rust-emit}"
 fi
-# Prefer the host build governor (ctrl-build) for the emitted-tree cargo check: it sizes
-# CARGO_BUILD_JOBS to live MemAvailable, joins the host jobserver FIFO (race-free cross-runner
-# token sharing), and shares sccache — the memory-denominated allocation modeled in
-# dsl/std/compute_fabric.dag. The emitted tree lives on the runner filesystem; ctrl-build runs
-# locally by default, so the historical "avoid ctrl-build" bypass no longer applies. Falls back
-# to a static --jobs cap when ctrl-build is absent so the floor stays safe (set V4_M1_USE_CTRL_BUILD=0
-# to force the fallback).
+# The emitted-tree cargo check must run JOBSERVER-COUPLED: cargo draws a host jobserver token per
+# rustc, so parallelism fills the machine when idle and pares down under load (the host pool bounds
+# rustc processes across all runners). Two coupling sources, in order:
+#   1. inherited MAKEFLAGS carrying --jobserver-auth — GHA runners get this from the
+#      actions-runner@.service systemd unit; raw cargo joins the pool directly (no ctrl-build on GHA).
+#   2. ctrl-build — in session containers MAKEFLAGS is unset, so route through ctrl-build, which sets
+#      MAKEFLAGS from CTRL_JOBSERVER_FIFO (and adds the MemAvailable picker + sccache).
+# NO FALLBACK: if neither is present the probe fails closed (a missing jobserver coupling surfaces
+# immediately rather than silently running an uncoupled check). Modeled in dsl/std/compute_fabric.dag.
 if [[ -x /opt/cargo/bin/cargo ]]; then
   cargo_bin="/opt/cargo/bin/cargo"
 else
   cargo_bin="${CARGO_BIN:-cargo}"
 fi
 ctrl_build_bin=""
-if [[ "${V4_M1_USE_CTRL_BUILD:-1}" != "0" ]] && command -v ctrl-build >/dev/null 2>&1; then
+if [[ "${MAKEFLAGS:-}" == *jobserver-auth* ]]; then
+  : # already coupled via inherited MAKEFLAGS (GHA runner unit) — run raw cargo
+elif command -v ctrl-build >/dev/null 2>&1; then
   ctrl_build_bin="$(command -v ctrl-build)"
+else
+  echo "error: M1 emit-probe requires a host jobserver coupling — neither an inherited" >&2
+  echo "       MAKEFLAGS=--jobserver-auth (GHA runner unit) nor ctrl-build is present (no fallback)." >&2
+  exit 1
 fi
 compile_log="${V4_M1_RUST_EMIT_LOG:-${out}.compile.log}"
 rustc_log="${V4_M1_RUSTC_LOG:-${out}.rustc.log}"
@@ -121,16 +130,14 @@ if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
   if [[ -n "${GITHUB_ACTIONS:-}" && -z "$rustc_timeout" ]]; then
     rustc_timeout=600
   fi
-  # Parallelism is governed by the host compute fabric, not a hand cap. Under ctrl-build,
-  # CARGO_BUILD_JOBS = min(ceiling, cores-margin, MemAvailable/mem_per_job) and the check joins
-  # the host jobserver so concurrent CI runs share ONE bounded token pool — strictly safer than
-  # the old static cap, since the 2026-05-28 swap incident was static-cap × N-runners
-  # oversubscription (each job blind to the others). The jobserver bounds the host-wide total.
+  # Parallelism is jobserver-governed: the host token pool bounds rustc processes across all runners,
+  # so the check fills the machine when idle and pares down under load. Capped per-invocation at the
+  # ceiling. The 2026-05-28 swap incident was a static cap × N-runners with no shared pool; the
+  # jobserver bounds the host-wide total instead.
   #   V4_M1_CARGO_CHECK_JOBS_CEILING (v4.workflow.ci `m1_probe_cargo_check_jobs_ceiling`) — the
-  #     per-invocation ceiling handed to the governor; actual jobs land at or below it.
-  #   V4_M1_CARGO_CHECK_JOBS (`m1_probe_cargo_check_jobs`) — static fallback applied ONLY when
-  #     ctrl-build is unavailable (no governor to bound the host total).
-  cargo_check_jobs="${V4_M1_CARGO_CHECK_JOBS:-4}"
+  #     per-invocation --jobs ceiling (raw/GHA path); the jobserver pares actual concurrency below it.
+  cargo_check_jobs="${V4_M1_CARGO_CHECK_JOBS_CEILING:-64}"
+  echo "M1 jobserver coupling: MAKEFLAGS=${MAKEFLAGS:-<empty>}; ctrl_build=${ctrl_build_bin:-<none>}; --jobs ceiling=${cargo_check_jobs}"
   check_cmd=()
   if [[ -n "$rustc_timeout" ]]; then
     check_cmd+=(timeout --preserve-status "$rustc_timeout")
@@ -140,7 +147,8 @@ if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
   fi
   check_cmd+=("$cargo_bin" check --manifest-path "$out/Cargo.toml")
   if [[ -z "$ctrl_build_bin" ]]; then
-    # Fallback only: no host governor, so apply the static safety cap directly.
+    # Raw/GHA path: cap at the ceiling; the inherited MAKEFLAGS jobserver pares concurrency below it.
+    # (The ctrl-build path uses its own MemAvailable CARGO_BUILD_JOBS picker — don't override with --jobs.)
     check_cmd+=(--jobs "$cargo_check_jobs")
   fi
   set +e
