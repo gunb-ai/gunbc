@@ -1082,8 +1082,13 @@ fn v4_mvp1_typescript_grammar_inverse_claims_name_l0_productions() {
         "{MVP1_TYPESCRIPT_CLAIM_PATH}: G1 must import the MVP-1 add-fn production authority"
     );
     assert!(
-        surface_declares_data(&add_module, "mvp1_ts_g1_grammar_inverse_production"),
-        "{MVP1_TYPESCRIPT_CLAIM_PATH}: G1 must bind a grammar-inverse production anchor"
+        data_body_source_equals(
+            &add_module,
+            MVP1_TYPESCRIPT_CLAIM_DAG,
+            "mvp1_ts_g1_grammar_inverse_production",
+            "ts_production_mvp1_fn_add"
+        ),
+        "{MVP1_TYPESCRIPT_CLAIM_PATH}: G1 anchor must bind ts_production_mvp1_fn_add"
     );
 
     let task_module = parse_module(
@@ -1104,14 +1109,28 @@ fn v4_mvp1_typescript_grammar_inverse_claims_name_l0_productions() {
             "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 must import {production}"
         );
     }
-    for anchor in [
-        "mvp1_ts_task_g2_grammar_inverse_production",
-        "mvp1_ts_task_g2_type_annotation_production",
-        "mvp1_ts_task_g2_record_type_production",
+    for (anchor, expected) in [
+        (
+            "mvp1_ts_task_g2_grammar_inverse_production",
+            "ts_production_wave2a_type_alias_decl",
+        ),
+        (
+            "mvp1_ts_task_g2_type_annotation_production",
+            "ts_production_wave2a_type_annotation",
+        ),
+        (
+            "mvp1_ts_task_g2_record_type_production",
+            "ts_production_wave2a_record_type",
+        ),
     ] {
         assert!(
-            surface_declares_data(&task_module, anchor),
-            "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 must bind {anchor}"
+            data_body_source_equals(
+                &task_module,
+                MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG,
+                anchor,
+                expected
+            ),
+            "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 anchor {anchor} must bind {expected}"
         );
     }
 }
@@ -1271,6 +1290,15 @@ fn data_body_source_contains(
     needle: &str,
 ) -> bool {
     data_body_source(module, source, name).is_some_and(|body| body.contains(needle))
+}
+
+fn data_body_source_equals(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    name: &str,
+    expected: &str,
+) -> bool {
+    data_body_source(module, source, name).is_some_and(|body| body.trim() == expected)
 }
 
 fn data_list_element_surface_text(source: &str, element: &SurfaceExpr) -> String {
