@@ -172,7 +172,17 @@ pub fn resolve_scrutinee_type_node_seen(
             return n.clone();
         }
         let normed = normalize_access_type_node(n.clone());
-        if ((normed.connective.clone() == Connective::NoConnective)
+        if (((normed.connective.clone() == Connective::NoConnective)
+            && ((normed.children.clone().len() as i64) > 0))
+            && (normed.inferred.clone() != None))
+        {
+            match normed.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen)
+                }
+                _ => normed.clone(),
+            }
+        } else if ((normed.connective.clone() == Connective::NoConnective)
             && ((normed.children.clone().len() as i64) == 0))
         {
             {
