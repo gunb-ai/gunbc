@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): feb57d482e3c7612f24c372c2d0e654006a30745a2e97e566d9b4c0332f4fb1a
+// Source-SHA256(.github/workflows/ci.yml): 64639ba1171c41eae859addc6189cebcc4f15bfb7c49868bac15f75c5d7722f1
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -246,7 +246,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "Cache gunbc binary (v4 floor)" },
           id: Some { value: "v4-v2-bin" },
           uses: { owner: "actions", repo: "cache", ref: "v4" },
-          with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}" },
+          with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-\n" },
           env: none,
           if_condition: none,
           continue_on_error: false,
