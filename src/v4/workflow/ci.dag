@@ -398,6 +398,10 @@ type LensCiLiveWorkflowSignal {
   semantic_target: String
 }
 
+type StrictEnvBinding
+  = NoStrictEnvBinding
+  | StrictEnvBinding { var: String, value: String }
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
 type M1CiLiveWorkflowSignal {
   binding_smoke_step_name: String
@@ -407,8 +411,7 @@ type M1CiLiveWorkflowSignal {
   // must execute successfully; it does not imply rustc residuals fail the gate.
   non_blocking: Bool
   timeout_minutes: Int
-  strict_env_var: String
-  strict_env_value: String
+  strict_env_binding: StrictEnvBinding
   emit_preconditions_block_required_path: Bool
   rustc_residuals_block_required_path: Bool
 }
@@ -475,8 +478,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   script_path: "scripts/v4-m1-rust-emit-probe.sh"
   non_blocking: false
   timeout_minutes: 20
-  strict_env_var: "V4_M1_RUST_EMIT_PROBE_STRICT"
-  strict_env_value: "0"
+  strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" }
   emit_preconditions_block_required_path: true
   rustc_residuals_block_required_path: false
 }
@@ -558,8 +560,7 @@ data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSign
   script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
   non_blocking: true
   timeout_minutes: 20
-  strict_env_var: "V4_PHASE1_NAT_SEMIRING_STRICT"
-  strict_env_value: "1"
+  strict_env_binding: StrictEnvBinding { var: "V4_PHASE1_NAT_SEMIRING_STRICT", value: "1" }
   emit_preconditions_block_required_path: true
   rustc_residuals_block_required_path: false
 }
@@ -571,8 +572,7 @@ data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   script_path: "scripts/v4-testclaim-corpus-eval.sh"
   non_blocking: false
   timeout_minutes: 15
-  strict_env_var: ""
-  strict_env_value: ""
+  strict_env_binding: NoStrictEnvBinding
   emit_preconditions_block_required_path: true
   rustc_residuals_block_required_path: true
 }

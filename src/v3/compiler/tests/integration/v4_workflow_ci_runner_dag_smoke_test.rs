@@ -464,6 +464,30 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
     }
 }
 
+fn record_field_from_fields<'a>(
+    fields: &'a [SurfaceRecordField],
+    field_name: &str,
+) -> &'a SurfaceExpr {
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|SurfaceRecordField { value, .. }| value)
+        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+}
+
+fn strict_env_binding(expr: &SurfaceExpr) -> Option<(&str, &str)> {
+    match expr {
+        SurfaceExpr::Var { name, .. } if name == "NoStrictEnvBinding" => None,
+        SurfaceExpr::VariantRecord { target, fields, .. } if target == "StrictEnvBinding" => {
+            Some((
+                expr_string(record_field_from_fields(fields, "var")),
+                expr_string(record_field_from_fields(fields, "value")),
+            ))
+        }
+        other => panic!("expected strict env binding expr, got {other:?}"),
+    }
+}
+
 /// True when `job_id` is a deleted bankruptcy legacy *workflow job* block (not `affected` outputs).
 fn ci_yml_has_deleted_legacy_top_level_job(workflow_yml: &str, job_id: &str) -> bool {
     // Legacy jobs used `if:` before `needs:` / `runs-on:` (see main pre-bankruptcy ci.yml).
@@ -652,8 +676,9 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let script_path = expr_string(record_body_field(live_signal, "script_path"));
     let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
     let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
-    let strict_env_var = expr_string(record_body_field(live_signal, "strict_env_var"));
-    let strict_env_value = expr_string(record_body_field(live_signal, "strict_env_value"));
+    let (strict_env_var, strict_env_value) =
+        strict_env_binding(record_body_field(live_signal, "strict_env_binding"))
+            .unwrap_or_else(|| panic!("{CI_DAG_PATH}: M1 probe must model a strict env binding"));
     let emit_preconditions_block_required_path = expr_bool(record_body_field(
         live_signal,
         "emit_preconditions_block_required_path",
