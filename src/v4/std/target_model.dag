@@ -1459,6 +1459,12 @@ data target_type_expr_field_open: Symbol = target_type_expr_field_open
 data target_type_expr_field_close: Symbol = target_type_expr_field_close
 data target_type_expr_field_separator: Symbol = target_type_expr_field_separator
 data target_type_expr_field_variant_separator: Symbol = target_type_expr_field_variant_separator
+data target_type_expr_field_param_ident_token: Symbol = target_type_expr_field_param_ident_token
+data target_type_expr_field_param_type_separator: Symbol = target_type_expr_field_param_type_separator
+data target_type_expr_field_param_list_separator: Symbol = target_type_expr_field_param_list_separator
+data target_type_expr_field_codomain: Symbol = target_type_expr_field_codomain
+// Sentinel label on TargetTypeExprFieldSlot when the substrate carries no parameter name.
+data target_type_expr_arrow_param_unlabeled: Symbol = target_type_expr_arrow_param_unlabeled
 
 // SG-2 — atom type name: bound ident from source Atom identity via binding_spellings.
 type TargetAtomTypeShape {
@@ -1498,6 +1504,9 @@ type TargetFunctionTypeShape {
   open: Symbol
   close: Symbol
   arrow: Symbol
+  param_ident_token: Symbol
+  param_type_separator: Symbol
+  param_list_separator: Symbol
 }
 
 // 🟢 coproduct dissolution — SG-2 declared emitted type-expression wire authority (M6 product carrier; kind axis is TargetTypeExprKind).
@@ -1903,7 +1912,15 @@ fn target_type_expr_emitted_validate_positional_arity(
       if length(xs: positional) >= 2 {
         Accepted { value: true, diagnostics: None }
       } else {
-        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+        if is_empty(xs: positional) {
+          match find_named_child(root: node, name: target_type_expr_field_codomain) {
+            Present { value: _ } => Accepted { value: true, diagnostics: None }
+            Absent =>
+              outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+          }
+        } else {
+          outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+        }
       }
     TargetTypeExprRecord =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
@@ -2000,6 +2017,20 @@ fn target_type_expr_emitted_validate_wire_shape(
         kind: kind,
         projection: projection
       )
+    TargetTypeExprArrow =>
+      if is_empty(xs: node_positional_child_targets(node: node)) {
+        target_type_expr_emitted_validate_labeled_wire(
+          node: node,
+          kind: kind,
+          projection: projection
+        )
+      } else {
+        target_type_expr_emitted_validate_positional_wire(
+          node: node,
+          kind: kind,
+          projection: projection
+        )
+      }
     _ =>
       target_type_expr_emitted_validate_positional_wire(
         node: node,
@@ -2076,6 +2107,62 @@ fn target_type_expr_arrow_emitted(
     kind: TargetTypeExprArrow,
     surface: form.surface,
     children: list_append(left: inputs, right: Cons { head: output, tail: Empty })
+  )
+}
+
+fn target_type_expr_arrow_emitted_named(
+  form: TargetFunctionTypeShape,
+  params: List<TargetTypeExprFieldSlot>,
+  output: Node
+) -> Node {
+  target_type_expr_wrapped_emitted_labeled(
+    kind: TargetTypeExprArrow,
+    surface: form.surface,
+    slot_edges: list_append(
+      left: target_type_expr_field_slot_edges(fields: params),
+      right: Cons {
+        head: Edge {
+          label: Named { name: target_type_expr_field_codomain },
+          target: output
+        },
+        tail: Empty
+      }
+    )
+  )
+}
+
+fn target_type_expr_arrow_labeled_codomain(node: Node) -> Outcome<Node> {
+  match find_named_child(root: node, name: target_type_expr_field_codomain) {
+    Present { value: child } => Accepted { value: child, diagnostics: None }
+    Absent =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+  }
+}
+
+fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<TargetTypeExprFieldSlot>> {
+  bind_outcome(
+    o: target_type_expr_arrow_labeled_codomain(node: node),
+    f: fn(_codomain) {
+      Accepted {
+        value: fold(node.children, init: Empty, f: fn(acc, e) {
+          match e.label {
+            Named { name: label } =>
+              if label == target_type_expr_field_surface ||
+                label == target_type_expr_field_kind ||
+                label == target_type_expr_field_codomain {
+                acc
+              } else {
+                list_snoc_item(
+                  xs: acc,
+                  item: TargetTypeExprFieldSlot { label: label, type_expr: e.target }
+                )
+              }
+            Positional => acc
+          }
+        }),
+        diagnostics: None
+      }
+    }
   )
 }
 

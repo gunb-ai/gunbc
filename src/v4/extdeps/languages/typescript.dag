@@ -140,6 +140,9 @@ import v4.std.target_model {
   target_type_expr_field_ident_token,
   target_type_expr_field_instantiation,
   target_type_expr_field_open,
+  target_type_expr_field_param_ident_token,
+  target_type_expr_field_param_list_separator,
+  target_type_expr_field_param_type_separator,
   target_type_expr_field_separator,
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
@@ -1128,12 +1131,11 @@ fn ts_mvp1_target_model() -> TargetModel {
 //   atom          ident / keyword primitive (number, string, boolean, ...)
 //   conj          { ... }  structural surface only   (object type — see 🟡 record gap below)
 //   disj          union A | B                        (primary sum-type surface)
-//   arrow         (T) => U  structural surface only   (fat-arrow function type — see 🟡 below)
+//   arrow         (a: T) => U  via shared TargetFunctionTypeShape param slots + named wire
 //   cardinality   Head<args>  generic collection     (e.g. Set<T> — postfix head + angle brackets,
 //                                                      mirrors Rust; the Cardinality source carries a
 //                                                      head carrier, so a head-less tuple does not fit)
 //   instantiation generic apply Foo<Bar, Baz>        (angle brackets — no Rust ::<>)
-// 🟡 gated — feature:target-function-type-named-param-binding — carrier:TargetFunctionTypeShape (open/close/arrow only, no param-name slot; Rust row identical) — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains param-name+per-param-type slot, then TS arrow carries named params — forbidden: redefining the shared carrier in this row, or claiming faithful `(a: T) => U`. (rationale in PR #4176 / commit a89bbcb8)
 // 🟡 gated — feature:target-record-field-label-binding — carrier:TargetGenericApply conj_form (open/separator/close, no field-label `:` token) + serializer:serialize_type_expr_record_bounded (06_translate) drops slot labels; Rust conj_form identical — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains field-label-separator token AND the shared record serializer emits each slot's Named label + `:`, then TS records serialize as `{ id: T, ... }` — forbidden: redefining the shared carrier or the load-bearing 06_translate serializer in this row, or claiming faithful labeled `{ id: T }`. L0 SG-2 probe (Instantiation `Rc<FooBar<X,Y>>`) does not exercise record field-name fidelity. (rationale in PR #4176)
 fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
@@ -1155,7 +1157,10 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: ts_surface_type_arrow,
       open: ts_token_lparen,
       close: ts_token_rparen,
-      arrow: ts_token_fat_arrow
+      arrow: ts_token_fat_arrow,
+      param_ident_token: ts_token_ident,
+      param_type_separator: ts_token_colon,
+      param_list_separator: ts_token_comma
     },
     cardinality_form: TargetGenericApply {
       surface: ts_surface_type_cardinality,
@@ -1211,7 +1216,19 @@ fn ts_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
       ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
       ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
       ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close)),
-      ts_named_edge(name: target_type_expr_field_arrow, target: ts_inhabitant_atom(id: form.arrow))
+      ts_named_edge(name: target_type_expr_field_arrow, target: ts_inhabitant_atom(id: form.arrow)),
+      ts_named_edge(
+        name: target_type_expr_field_param_ident_token,
+        target: ts_inhabitant_atom(id: form.param_ident_token)
+      ),
+      ts_named_edge(
+        name: target_type_expr_field_param_type_separator,
+        target: ts_inhabitant_atom(id: form.param_type_separator)
+      ),
+      ts_named_edge(
+        name: target_type_expr_field_param_list_separator,
+        target: ts_inhabitant_atom(id: form.param_list_separator)
+      )
     ]
   }
 }

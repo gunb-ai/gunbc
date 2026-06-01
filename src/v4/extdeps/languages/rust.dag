@@ -188,6 +188,9 @@ import v4.std.target_model {
   target_type_expr_field_ident_token,
   target_type_expr_field_instantiation,
   target_type_expr_field_open,
+  target_type_expr_field_param_ident_token,
+  target_type_expr_field_param_list_separator,
+  target_type_expr_field_param_type_separator,
   target_type_expr_field_separator,
   target_type_expr_field_variant_separator,
   target_type_expr_field_surface,
@@ -3295,7 +3298,10 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: rust_surface_type_arrow,
       open: rust_token_lparen,
       close: rust_token_rparen,
-      arrow: rust_token_arrow
+      arrow: rust_token_arrow,
+      param_ident_token: rust_token_ident,
+      param_type_separator: rust_token_colon,
+      param_list_separator: rust_token_comma
     },
     cardinality_form: TargetGenericApply {
       surface: rust_surface_type_cardinality,
@@ -3679,7 +3685,19 @@ fn rust_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
       rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
       rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
       rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close)),
-      rust_named_edge(name: target_type_expr_field_arrow, target: rust_inhabitant_atom(id: form.arrow))
+      rust_named_edge(name: target_type_expr_field_arrow, target: rust_inhabitant_atom(id: form.arrow)),
+      rust_named_edge(
+        name: target_type_expr_field_param_ident_token,
+        target: rust_inhabitant_atom(id: form.param_ident_token)
+      ),
+      rust_named_edge(
+        name: target_type_expr_field_param_type_separator,
+        target: rust_inhabitant_atom(id: form.param_type_separator)
+      ),
+      rust_named_edge(
+        name: target_type_expr_field_param_list_separator,
+        target: rust_inhabitant_atom(id: form.param_list_separator)
+      )
     ]
   }
 }
