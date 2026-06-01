@@ -13,7 +13,8 @@
 #   V4_PHASE1_NAT_SEMIRING_OUT — emit output dir (same as rung gate; required)
 #   V4_PHASE1_NAT_SEMIRING_PYTHON — python3 binary (default: python3)
 #   V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS — per-invocation timeout (default: 300)
-#   V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT — exit 1 on FAIL when 1
+#   V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT — exit 1 on FAIL when 1 (when chained from
+#     rung gate, parent sets this from PYTHON_RUNTIME_STRICT and/or V4_PHASE1_NAT_SEMIRING_STRICT)
 
 set -euo pipefail
 
