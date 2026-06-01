@@ -48,7 +48,7 @@ import v4.std.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.collection { List, Map, Set, empty_map, map_insert, optional_absent }
+import v4.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent, optional_present }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -185,6 +185,7 @@ import v4.std.target_model {
   target_type_expr_field_close,
   target_type_expr_field_conj,
   target_type_expr_field_disj,
+  target_type_expr_field_field_label_separator,
   target_type_expr_field_ident_token,
   target_type_expr_field_instantiation,
   target_type_expr_field_open,
@@ -1565,6 +1566,7 @@ fn rust_set_collection_apply_btree() -> TargetGenericApply {
     surface: rust_collection_surface_btree_set,
     open: rust_token_lt,
     separator: rust_token_comma,
+    field_label_separator: optional_absent(),
     close: rust_token_gt
   }
 }
@@ -1574,6 +1576,7 @@ fn rust_set_collection_apply_hash() -> TargetGenericApply {
     surface: rust_collection_surface_hash_set,
     open: rust_token_lt,
     separator: rust_token_comma,
+    field_label_separator: optional_absent(),
     close: rust_token_gt
   }
 }
@@ -3285,6 +3288,7 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: rust_surface_type_record,
       open: rust_token_lbrace,
       separator: rust_token_comma,
+      field_label_separator: optional_present(value: rust_token_colon),
       close: rust_token_rbrace
     },
     disj_form: TargetSumTypeShape {
@@ -3301,12 +3305,14 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: rust_surface_type_cardinality,
       open: rust_token_lt,
       separator: rust_token_comma,
+      field_label_separator: optional_absent(),
       close: rust_token_gt
     },
     instantiation_form: TargetGenericApply {
       surface: rust_surface_type_generic_apply,
       open: rust_token_lt,
       separator: rust_token_comma,
+      field_label_separator: optional_absent(),
       close: rust_token_gt
     }
   }
@@ -3653,12 +3659,25 @@ fn rust_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
 fn rust_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
-      rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
-      rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
-      rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
-    ]
+    children: match form.field_label_separator {
+      Present { value: s } =>
+        list_snoc_item(
+          xs: [
+            rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+            rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
+            rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
+            rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
+          ],
+          item: rust_named_edge(name: target_type_expr_field_field_label_separator, target: rust_inhabitant_atom(id: s))
+        )
+      Absent =>
+        [
+          rust_named_edge(name: target_type_expr_field_surface, target: rust_inhabitant_atom(id: form.surface)),
+          rust_named_edge(name: target_type_expr_field_open, target: rust_inhabitant_atom(id: form.open)),
+          rust_named_edge(name: target_type_expr_field_separator, target: rust_inhabitant_atom(id: form.separator)),
+          rust_named_edge(name: target_type_expr_field_close, target: rust_inhabitant_atom(id: form.close))
+        ]
+    }
   }
 }
 

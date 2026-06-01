@@ -260,7 +260,7 @@ fn v4_translate_dag_imports_target_atom_realization_consumer() {
         "{TRANSLATE_PATH}: type shell must apply row.type_form.node from catalog lookup"
     );
     assert!(
-        TRANSLATE_DAG.contains("target_value_expression_node(expr: expr)"),
+        TRANSLATE_DAG.contains("target_value_expression_node(expr:"),
         "{TRANSLATE_PATH}: value realization must project TargetValueExpression onto emitted Node"
     );
     assert!(
@@ -437,6 +437,13 @@ fn v4_std_target_model_declares_target_type_expression_projection_carrier() {
         "TargetTypeExpression.node must carry emitted subtree authority"
     );
     let proj_fields = type_record_fields(&module, "TargetTypeExpressionProjection");
+    let generic_apply_fields = type_record_fields(&module, "TargetGenericApply");
+    assert!(
+        generic_apply_fields
+            .iter()
+            .any(|(n, ty)| n == "field_label_separator" && ty == "Optional<Symbol>"),
+        "TargetGenericApply.field_label_separator must carry optional record field-label binding token"
+    );
     assert!(
         proj_fields.iter().any(|(n, _)| n == "instantiation_form"),
         "instantiation_form must be present for generic-apply connective"
@@ -448,6 +455,10 @@ fn v4_std_target_model_declares_target_type_expression_projection_carrier() {
     assert!(
         surface_declares_fn(&module, "target_type_expr_emitted_wire_decode"),
         "{TARGET_MODEL_PATH}: bidirectional wire decode must share projection row (§10.6)"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_type_expr_emitted_labeled_slot_edges"),
+        "{TARGET_MODEL_PATH}: record serializers must preserve slot labels, not just type nodes"
     );
 }
 
@@ -477,6 +488,14 @@ fn v4_translate_dag_imports_type_expression_projection_consumer() {
     assert!(
         surface_declares_fn(&module, "project_type_expression_node"),
         "{TRANSLATE_PATH}: TypeNode subtrees must project via SG-2 row"
+    );
+    assert!(
+        surface_declares_fn(&module, "serialize_type_expr_record_field_label"),
+        "{TRANSLATE_PATH}: record type serialization must bind field labels through target spellings"
+    );
+    assert!(
+        TRANSLATE_DAG.contains("field_label_separator: field_label_separator"),
+        "{TRANSLATE_PATH}: record serializer must consume the shared field-label separator carrier"
     );
     assert!(
         surface_declares_fn(&module, "translate_node_with_projection"),
@@ -510,6 +529,24 @@ fn v4_rust_language_model_declares_type_expression_projection_row() {
     assert!(
         RUST_LANGUAGE_DAG.contains("fn rust_sg2_rc_foobar_xy_emitted()"),
         "{RUST_LANGUAGE_PATH}: golden Rc<FooBar<X,Y>> emitted node for falsification probe"
+    );
+}
+
+#[test]
+fn v4_typescript_language_model_binds_record_field_label_separator_in_shared_row() {
+    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
+    assert!(
+        surface_declares_fn(&module, "ts_type_expression_projection"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript SG-2 row must be authored"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG
+            .contains("field_label_separator: optional_present(value: ts_token_colon)"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS record row must bind ':' through shared TargetGenericApply"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("target_type_expr_field_field_label_separator"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS projection bundle must encode the shared field-label separator edge"
     );
 }
 
