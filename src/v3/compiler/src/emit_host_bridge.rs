@@ -223,9 +223,19 @@ fn cross_target_parity_verdict_from_stdout(
     }
 }
 
-/// L2 cross-target behavioral parity: Rust, Python, and Go must all execute, parse into the
-/// same MVP-2 runtime-value carrier, and agree on observed stdout for the same fixture subject.
-pub fn run_cross_target_mvp2_python_parity_transport(
+type EmitHostRunner = fn(
+    &str,
+    &EmitHostFixtureInputs,
+    &std::path::Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure>;
+
+struct CrossTargetMvp2Runners {
+    rust: EmitHostRunner,
+    python: EmitHostRunner,
+    go: EmitHostRunner,
+}
+
+fn run_cross_target_mvp2_python_parity_with_runners(
     rust_source: &str,
     python_source: &str,
     go_source: &str,
@@ -233,8 +243,9 @@ pub fn run_cross_target_mvp2_python_parity_transport(
     rust_work_dir: &std::path::Path,
     python_work_dir: &std::path::Path,
     go_work_dir: &std::path::Path,
+    runners: CrossTargetMvp2Runners,
 ) -> EmitHostCrossTargetParityVerdict {
-    let rust_receipt = match run_emit_host_rust_transport(rust_source, inputs, rust_work_dir) {
+    let rust_receipt = match (runners.rust)(rust_source, inputs, rust_work_dir) {
         Ok(receipt) => receipt,
         Err(setup) => {
             return EmitHostCrossTargetParityVerdict::FailSetup {
@@ -243,17 +254,16 @@ pub fn run_cross_target_mvp2_python_parity_transport(
             };
         }
     };
-    let python_receipt =
-        match run_emit_host_python_transport(python_source, inputs, python_work_dir) {
-            Ok(receipt) => receipt,
-            Err(setup) => {
-                return EmitHostCrossTargetParityVerdict::FailSetup {
-                    target: "python",
-                    setup,
-                };
-            }
-        };
-    let go_receipt = match run_emit_host_go_transport(go_source, inputs, go_work_dir) {
+    let python_receipt = match (runners.python)(python_source, inputs, python_work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => {
+            return EmitHostCrossTargetParityVerdict::FailSetup {
+                target: "python",
+                setup,
+            };
+        }
+    };
+    let go_receipt = match (runners.go)(go_source, inputs, go_work_dir) {
         Ok(receipt) => receipt,
         Err(setup) => {
             return EmitHostCrossTargetParityVerdict::FailSetup {
@@ -287,6 +297,33 @@ pub fn run_cross_target_mvp2_python_parity_transport(
         };
 
     cross_target_parity_verdict_from_stdout(rust_stdout, python_stdout, go_stdout)
+}
+
+/// L2 cross-target behavioral parity: Rust, Python, and Go must all execute, parse into the
+/// same MVP-2 runtime-value carrier, and agree on observed stdout for the same fixture subject.
+pub fn run_cross_target_mvp2_python_parity_transport(
+    rust_source: &str,
+    python_source: &str,
+    go_source: &str,
+    inputs: &EmitHostFixtureInputs,
+    rust_work_dir: &std::path::Path,
+    python_work_dir: &std::path::Path,
+    go_work_dir: &std::path::Path,
+) -> EmitHostCrossTargetParityVerdict {
+    run_cross_target_mvp2_python_parity_with_runners(
+        rust_source,
+        python_source,
+        go_source,
+        inputs,
+        rust_work_dir,
+        python_work_dir,
+        go_work_dir,
+        CrossTargetMvp2Runners {
+            rust: run_emit_host_rust_transport,
+            python: run_emit_host_python_transport,
+            go: run_emit_host_go_transport,
+        },
+    )
 }
 
 #[cfg(test)]
