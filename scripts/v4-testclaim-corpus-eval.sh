@@ -457,7 +457,65 @@ except ReceiptError as err:
 PY
 }
 
+run_emitted_manual_corpus_gate() {
+  local manifest="${rust_out}/Cargo.toml"
+  if [[ ! -s "$manifest" ]]; then
+    echo "error: emitted Rust crate missing Cargo.toml at $manifest" >&2
+    exit 1
+  fi
+
+  local package_name crate_name test_dir test_file
+  package_name="$(
+    sed -n '/^\[package\]/,/^\[/p' "$manifest" \
+      | sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+      | head -1
+  )"
+  if [[ -z "$package_name" ]]; then
+    echo "error: emitted Rust crate Cargo.toml has no [package] name: $manifest" >&2
+    exit 1
+  fi
+  crate_name="${package_name//-/_}"
+  test_dir="${rust_out}/tests"
+  test_file="${test_dir}/testclaim_corpus_runtime_gate.rs"
+  mkdir -p "$test_dir"
+  cat > "$test_file" <<RS
+#[test]
+fn manual_corpus_gate_closes_from_runtime_report() {
+    let closed = ${crate_name}::v4_test_claim_workflow_manual_corpus_eval::witness_manual_corpus_gate_closed();
+    assert_eq!(
+        format!("{:?}", closed),
+        "true",
+        "witness_manual_corpus_gate_closed must evaluate true from the runtime-produced CorpusEvalReport"
+    );
+}
+RS
+
+  local cargo_bin
+  if [[ -x /opt/cargo/bin/cargo ]]; then
+    cargo_bin="/opt/cargo/bin/cargo"
+  else
+    cargo_bin="${CARGO_BIN:-cargo}"
+  fi
+
+  echo "=== T-22/P5: executing emitted manual corpus gate ==="
+  local corpus_timeout="${V4_TESTCLAIM_CORPUS_TIMEOUT_SECS:-}"
+  set +e
+  if [[ -n "$corpus_timeout" ]]; then
+    timeout --preserve-status "$corpus_timeout" \
+      "$cargo_bin" test --manifest-path "$manifest" --test testclaim_corpus_runtime_gate -- --exact manual_corpus_gate_closes_from_runtime_report
+  else
+    "$cargo_bin" test --manifest-path "$manifest" --test testclaim_corpus_runtime_gate -- --exact manual_corpus_gate_closes_from_runtime_report
+  fi
+  local test_status=$?
+  set -e
+  if [[ "$test_status" -ne 0 ]]; then
+    echo "error: emitted manual corpus runtime gate failed (exit ${test_status})" >&2
+    exit "$test_status"
+  fi
+}
+
 check_generated_rust_receipt
+run_emitted_manual_corpus_gate
 
 artifact="${dag_out}/dag-artifact.json"
 if [[ ! -s "$artifact" ]]; then
