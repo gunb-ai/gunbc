@@ -287,6 +287,8 @@ mod v4_compiler_compile_public_terminal_smoke_test;
 mod v4_compiler_emit_translate_smoke_test;
 #[path = "integration/v4_compiler_parse_table_dag_smoke_test.rs"]
 mod v4_compiler_parse_table_dag_smoke_test;
+#[path = "integration/v4_emit_host_eval_dispatch_test.rs"]
+mod v4_emit_host_eval_dispatch_test;
 #[path = "integration/v4_emit_host_harness_test.rs"]
 mod v4_emit_host_harness_test;
 #[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
