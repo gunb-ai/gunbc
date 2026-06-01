@@ -1,6 +1,6 @@
 # v4 Python RCA Manager worksheets - L1/L2 release-minimum runway
 
-> **Status:** **WORKSHEET APPROVED** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Worksheet A: **READY-FOR-WORKER-DISPATCH** (static). Worksheets B/C: **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (manager checklist item below still open).
+> **Status:** **WORKSHEET APPROVED** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Worksheet A (PY-L1-STATIC-STRUCTURAL): **IMPLEMENTED in PR #4158** (pyright slice; mypy deferred — see ruling + mypy follow-up below). Worksheets B/C: **ARBITER-APPROVED — BLOCKED-ON-RUNTIME/TESTCLAIM-ACCEPTANCE** (manager checklist item below still open).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-active-authority-map-2026-06-01.md` (Python lane) — §8 CLOSED #4170; predicate graph §11.8.2 defers here for L1/L2 dispatch state.
 > **Current rung:** L0 complete via #4117 (R1 + R2a + R2b + R3-external).
@@ -281,5 +281,73 @@ Falsification probes:
 - [x] Runtime execution framed as the meaningful Python verifier.
 - [x] Cross-target parity extends #4081 Wc L5 instead of creating a new stdout shell authority.
 - [x] Python self-compile framed as compiler execution parity before binary-like self-host.
-- [x] Modeling DFS Arbiter approval.
-- [ ] Runtime/TestClaim owner accepts runner-surface dispatch.
+- [x] Modeling DFS Arbiter approval — Worksheet A (PY-L1-STATIC-STRUCTURAL) APPROVED, see ruling below.
+- [ ] Runtime/TestClaim owner accepts runner-surface dispatch (Worksheets B/C still pending).
+
+## Modeling DFS Arbiter ruling — Worksheet A (PY-L1-STATIC-STRUCTURAL)
+
+> **Decision:** APPROVED on carrier shape. **Arbiter:** proud-fox-405 (msg_41813c03), 2026-06-01.
+
+1. **Carrier scope — SHARED (M2).** One cross-target pair lives in `src/v4/std/leaf_model_verification.dag`:
+   `TargetStaticAnalysisInvocation` + `TargetStaticAnalysisVerdict`. `TargetPythonExerciseVerdict`
+   is NOT extended; it stays L0 CPython compile-vs-exec only. Three distinct Python authorities:
+   (a) CPython compile → `TargetPythonCompileRejected`, (b) third-party static analysis →
+   `TargetStaticAnalysisVerdict`, (c) runtime → `TargetPythonExecRejected`. `tsc --noEmit` reuses
+   the same verdict carrier with a TS profile later; the Rust analyzer is out of scope for this slice.
+2. **Home + shape.** `TargetStaticAnalysisInvocation { tool_profile_ref: Symbol, input_artifact:
+   TargetArtifact, analysis_role: Advisory | BlockingForRung }`. `TargetStaticAnalysisVerdict =
+   StaticAnalysisAccepted | StaticAnalysisRejected{tool_id, diagnostic_code} |
+   StaticAnalysisAdvisory{tool_id, diagnostic_code}` (fail-closed: BlockingForRung + advisory-only
+   finding on the falsification path is a MISS). `host_run` stays runtime stdout/exit only — no
+   static-analysis facts there.
+3. **Per-tool profiles.** `src/v4/extdeps/typecheckers/pyright.dag` (mirror the
+   `extdeps/formatters/black.dag` category layout). `diagnostic_code` Symbols are per-tool facts
+   declared in each extdeps file — NOT a shared cross-tool namespace. std carriers reference the
+   tool profile / diagnostic by Symbol only. (A `mypy.dag` profile was authored under the same
+   shape but is **deferred to a follow-up** — see the mypy follow-up note below.)
+
+**Landed in PR #4158 against this ruling:**
+
+- std carriers `TargetStaticAnalysisRole` / `TargetStaticAnalysisInvocation` /
+  `TargetStaticAnalysisVerdict`, claim id `leaf_model_claim_python_l1_static_return_type`, and the
+  `LeafModelPythonStaticCase` / `LeafModelPythonStaticFixturePair` fixture carriers
+  (`src/v4/std/leaf_model_verification.dag`).
+- per-tool profile `src/v4/extdeps/typecheckers/pyright.dag` (tool-id, config/version policy,
+  per-tool diagnostic namespace, typeCheckingMode keyword projection). Compile validation is via
+  the whole-tree gate — the `v2 → v4 bootstrap compile (fail-closed full)` step in `ci_floor`
+  compiles all of `src/v4` (including the profile and the std carriers) with 0 diagnostics. (A
+  bespoke v3 `compile_to_dag` smoke was tried and dropped: the isolated v3 flat-chain path cannot
+  parse `src/v4/std/logic.dag`'s `BoolWidthFact {}`, which the profile transitively depends on; the
+  whole-tree v2 gate is the correct authority here.)
+- F1 fixtures + claim: `python_l1_static_*` in `src/v4/lens/leaf_model_verification.dag`,
+  `src/v4/test/claim/language_model/python_l1_static.dag`.
+- F1 host receipt: `scripts/v4-leaf-model-python-l1-static-verify.sh` — pyright `reportReturnType`
+  catches a `-> int` function returning `str` that BOTH `py_compile` and `python3` exec accept,
+  proving the third distinct authority. **Fail-closed** for the modeled `BlockingForRung` role:
+  the script exits non-zero unless pyright POSITIVELY proves it caught the falsification; a
+  pyright-unavailable run records an honest tool-unavailable receipt (F2: not misattributed as a
+  behavioral failure) but still exits non-zero — a blocking static check that was not proven is a
+  MISS, never a deferred pass. Run on demand (and in any feature-level CI lane); it is NOT added to
+  the §11.7.1 required CI floor because the `no-new-shell` ratchet
+  (`docs/planning/ci-required-surface-cut-2026-06-01.md`) allows only the three allowlisted
+  transports there. The v4 substrate itself (carriers + profiles + fixtures + claim) IS validated on
+  the required path by the `v2→v4 bootstrap compile (fail-closed full)` gate in `ci_floor`, which
+  compiles the whole `src/v4` tree.
+
+Naming nuance vs the ruling: the verdict's accept arm is spelled `StaticAnalysisAccepted` (prefix
+consistency with the other two arms) rather than bare `Accepted`; semantics unchanged.
+
+**mypy follow-up (tracked debt — E-6 / Boundary Discipline).** The ruling names a per-tool profile
+for *both* pyright and mypy. This PR lands the **pyright** profile fully consumed (fixture + `.dag`
+claim + fail-closed host receipt), but does **not** land mypy: a `mypy.dag` profile + diagnostic
+namespace authored under the same shape was **removed from this slice** rather than left as dormant
+extdeps surface, because there is no same-PR mypy fixture/claim/runner consumer (and mypy is not
+installable in the current verification environment, so a mypy F1 receipt cannot be proven here).
+- **Owner / lane:** Python RCA Manager (witty-ram-95), PY-L1-STATIC-STRUCTURAL mypy follow-up.
+- **Bound / trigger:** land `src/v4/extdeps/typecheckers/mypy.dag` *together with* a mypy fixture +
+  `.dag` claim + a fail-closed host receipt that consumes it (mirroring the pyright path), in an
+  environment where mypy is installable. The shared `TargetStaticAnalysis*` carriers already accept
+  a mypy tool profile by `Symbol`, so the follow-up is additive — no carrier change.
+- **Why deferred, not dormant:** E-6 requires a same-PR consumer for new target-spec extdeps facts;
+  shipping mypy profile data with no consumer would be untracked scaffold. Removing it keeps every
+  landed extdeps fact consumed and records the mypy work as bounded debt here.
