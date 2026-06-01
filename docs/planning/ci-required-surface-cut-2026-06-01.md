@@ -14,7 +14,7 @@ Reduced required confidence is explicit. This is triage, not a modeling victory.
 |---|------|----------------------|-------|
 | 1 | `fmt --check` | `fmt` job | ~30s |
 | 2 | Bootstrap minimal viability | `ci_floor` → `v4-bootstrap-viability.sh` | v2→v4 `--target dag`; Class A shell exception until Wave 2 `CiUpsertStep` |
-| 3 | M1 v4 full-tree rust emit probe | `ci_floor` → `v4-m1-rust-emit-probe.sh` with `V4_M1_RUST_EMIT_PROBE_STRICT=1` | **One** rust emit path; T-22 corpus rust **not** required |
+| 3 | M1 v4 full-tree rust emit probe | `ci_floor` → `v4-m1-rust-emit-probe.sh` with `emit_preconditions_block_required_path=true` and `V4_M1_RUST_EMIT_PROBE_STRICT=0` / `rustc_residuals_block_required_path=false` | **One** rust emit path; T-22 corpus rust **not** required; missing compiler, v2 emit failure, and skipped cargo-check preconditions fail closed; rustc residuals are a required receipt until P3 reaches binary-build threshold |
 | 4 | `ci.dag` structural receipt + `CiUpsertStep` schema | `ci_floor` → `v4_workflow_ci_*` integration prefix filters | Modeled-positive-Y via parse harness |
 | 5 | no-new-shell ratchet | `ci_floor` → `check-ci-no-new-shell.sh` | Allowlist of shell scripts on required path |
 
@@ -39,7 +39,7 @@ Reduced required confidence is explicit. This is triage, not a modeling victory.
 | **ROADMAP / charter row** | `ROADMAP.md` **T-PB-B** (`pb_rust_tests_outside_residual_zero`); `TASKS.md` T-21 + T-24; `#4137` §11.7.2 Wave 3 shadow receipts; `docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md` |
 | **Deferral / dissolution** | `v4_workflow_ci_wave3_*` parse/YAML/ledger assertions dissolve when (1) `emit-ci-wave3-shadow-receipt` + `ci_selection_receipt_shadow_from_git_diff` live on CI (`node://adhoc-331899f9-19a` / Compiler Spine eval harness) and (2) `.dag` TestClaim execution retires this hand-Rust binding harness (A15 Shape-B `ci.yml` emission posture — same as Wave 1 header) |
 
-**Four-compile collapse (Wave 1):** Removed duplicate compiles from retired `ci_v4` path (Lens-CI semantic compile, MVP-1, T-15 harness, T-22 corpus eval, phase1 rung gate). Required path now runs **one** v2 `gunbc` build + **two** full-tree compiles (M1 `--target rust`, bootstrap `--target dag`) — not four.
+**Four-compile collapse (Wave 1):** Removed duplicate compiles from retired `ci_v4` path (Lens-CI semantic compile, MVP-1, T-15 harness, T-22 corpus eval, phase1 rung gate). Required path now runs **one** v2 `gunbc` build + **two** full-tree compiles (M1 `--target rust`, bootstrap `--target dag`) — not four. The M1 Rust probe must run and publish its residual surface, but does not fail the required path on the known rustc residual population while P3 remains below the binary-build threshold.
 
 ---
 
