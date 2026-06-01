@@ -5,14 +5,14 @@
 //! `src/v4/test/claim/language_model/python_l1_static.dag`.
 //! Host runners: `scripts/v4-leaf-model-python-l1-{static,mypy-static}-verify.sh`.
 //!
-//! **P5 receipt (`.github/PULL_REQUEST_TEMPLATE.md` Per-PR gate, disposition (2)):** same-PR
-//! `EXPECTED_HAND_AUTHORED_TEST` census delta **166 → 167** paths (literal in
-//! `sg0_census_test.rs`; T-PB-B partition: module doc lines 9–10 +
-//! `tests/boundary/README.md`). Workstream/lane (in-tree):
-//! `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet B (#4137 §11.8).
-//! **Dissolution:** delete this path when host runners are superseded by modeled verification
-//! over `src/v4/test/claim/language_model/python_l1_static.dag` (`src/v4/std/leaf_model_verification.dag`
-//! gated `run_target_verification` note).
+//! **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`, Mechanism (b)):** explicit
+//! deferral to **`_internal/ROADMAP_OPS.md`** § **Nine lanes** row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (operational lane authority; `ROADMAP.md` points
+//! maintainers there). Workstream detail: `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md`
+//! Worksheet B (#4137 §11.8 Python RCA L1 static pyright/mypy). **Mechanism (b):** matching
+//! `_internal/INVARIANTS_OPS.md` row + same-PR `EXPECTED_HAND_AUTHORED_TEST` literal
+//! (168 → 169 paths). **Dissolution:** delete when T-22 modeled `run_target_verification`
+//! exercises `src/v4/test/claim/language_model/python_l1_static.dag` without this hand-Rust bridge.
 
 const FIXTURE_DAG: &str = include_str!("../../../../v4/lens/leaf_model_verification.dag");
 const PYRIGHT_DAG: &str = include_str!("../../../../v4/extdeps/typecheckers/pyright.dag");
