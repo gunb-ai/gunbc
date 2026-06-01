@@ -420,15 +420,15 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
         )
     gate_body = generated_function(source, "manual_corpus_gate", corpus_eval_rs)
     normalized_gate = "".join(gate_body.split())
-    gate_order = re.compile(
-        r"manual_corpus_report_has_evidence\([^)]*report[^)]*\)"
-        r".*manual_corpus_all_pass\([^)]*report[^)]*\)"
+    inline_empty_gate = re.compile(
+        r"is_empty\([^)]*report[^)]*entries[^)]*\)"
         r".*false"
+        r".*manual_corpus_all_pass\([^)]*report[^)]*\)"
     )
-    if not gate_order.search(normalized_gate):
+    if not inline_empty_gate.search(normalized_gate):
         raise ReceiptError(
-            f"{corpus_eval_rs}: manual_corpus_gate must check non-empty roster "
-            "evidence before manual_corpus_all_pass and retain a false fallback"
+            f"{corpus_eval_rs}: manual_corpus_gate must mirror the modeled inline "
+            "is_empty(report.entries) false fallback before manual_corpus_all_pass"
         )
     require_order(
         generated_function(source, "witness_manual_corpus_gate_closed", corpus_eval_rs),
