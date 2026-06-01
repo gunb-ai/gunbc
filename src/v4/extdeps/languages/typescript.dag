@@ -67,7 +67,8 @@ import v4.std.collection {
   Set,
   empty_map,
   map_insert,
-  optional_absent
+  optional_absent,
+  optional_present
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -146,6 +147,7 @@ import v4.std.target_model {
   target_type_expr_field_disj,
   target_type_expr_field_ident_token,
   target_type_expr_field_instantiation,
+  target_type_expr_field_field_label_separator,
   target_type_expr_field_open,
   target_type_expr_field_separator,
   target_type_expr_field_surface,
@@ -1419,7 +1421,6 @@ fn ts_mvp1_target_model() -> TargetModel {
 //                                                      head carrier, so a head-less tuple does not fit)
 //   instantiation generic apply Foo<Bar, Baz>        (angle brackets — no Rust ::<>)
 // 🟡 gated — feature:target-function-type-named-param-binding — carrier:TargetFunctionTypeShape (open/close/arrow only, no param-name slot; Rust row identical) — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains param-name+per-param-type slot, then TS arrow carries named params — forbidden: redefining the shared carrier in this row, or claiming faithful `(a: T) => U`. (rationale in PR #4176 / commit a89bbcb8)
-// 🟡 gated — feature:target-record-field-label-binding — carrier:TargetGenericApply conj_form (open/separator/close, no field-label `:` token) + serializer:serialize_type_expr_record_bounded (06_translate) drops slot labels; Rust conj_form identical — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains field-label-separator token AND the shared record serializer emits each slot's Named label + `:`, then TS records serialize as `{ id: T, ... }` — forbidden: redefining the shared carrier or the load-bearing 06_translate serializer in this row, or claiming faithful labeled `{ id: T }`. L0 SG-2 probe (Instantiation `Rc<FooBar<X,Y>>`) does not exercise record field-name fidelity. (rationale in PR #4176)
 fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {
@@ -1430,6 +1431,7 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: ts_surface_type_record,
       open: ts_token_lbrace,
       separator: ts_token_comma,
+      field_label_separator: optional_present(value: ts_token_colon),
       close: ts_token_rbrace
     },
     disj_form: TargetSumTypeShape {
@@ -1446,12 +1448,14 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: ts_surface_type_cardinality,
       open: ts_token_lt,
       separator: ts_token_comma,
+      field_label_separator: optional_absent(),
       close: ts_token_gt
     },
     instantiation_form: TargetGenericApply {
       surface: ts_surface_type_generic_apply,
       open: ts_token_lt,
       separator: ts_token_comma,
+      field_label_separator: optional_absent(),
       close: ts_token_gt
     }
   }
@@ -1470,12 +1474,25 @@ fn ts_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
 fn ts_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
-      ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
-      ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
-      ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
-    ]
+    children: match form.field_label_separator {
+        Present { value: s } =>
+          list_snoc_item(
+            xs: [
+              ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
+              ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
+              ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
+              ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
+            ],
+            item: ts_named_edge(name: target_type_expr_field_field_label_separator, target: ts_inhabitant_atom(id: s))
+          )
+        Absent =>
+          [
+            ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
+            ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
+            ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
+            ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
+          ]
+      }
   }
 }
 
