@@ -578,6 +578,10 @@ fn v4_translate_dag_imports_collection_realization_consumer() {
     );
 }
 
+// P5 receipt: same-path hand-Rust smoke expansion in an existing SG-0-listed file,
+// explicitly deferred to `_internal/ROADMAP_OPS.md` § Nine lanes / T-PB-B
+// (`pb_rust_tests_outside_residual_zero`). Dissolves when the `.dag` manual-claim runner
+// executes `src/v4/test/claim/manual/sg_collection_projection.dag` directly.
 #[test]
 fn v4_sg_collection_projection_claim_declares_vec_rc_receipt() {
     let module = parse_module(
