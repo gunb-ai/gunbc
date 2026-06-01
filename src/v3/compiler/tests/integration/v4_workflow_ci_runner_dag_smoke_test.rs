@@ -12,7 +12,7 @@
 //! **TASKS.md** T-21 + T-24; bankruptcy B0/B1 Tier-0 binding smoke: `docs/design-ci-bankruptcy-rebuild.md` §4.1
 //! Wave 1 §11.7.1 floor: `docs/planning/ci-required-surface-cut-2026-06-01.md` (`v4_workflow_ci_wave1_*`).
 //! Wave 3 §11.7.2 shadow receipt Phase 1: same doc (`v4_workflow_ci_wave3_*`; P5(b) receipt table).
-//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174).
+//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174 / #4214).
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
@@ -803,6 +803,10 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
     );
 }
+
+// P5(b) receipt: `ROADMAP.md` § **Nine lanes** **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
+// same-path expansion in this file (SG-0 delta 0 — path already in `EXPECTED_HAND_AUTHORED_TEST`;
+// #4091 §1.2 four-compile collapse modeled UpstreamUpsert pin for m1 / lens-CI / phase1 rung gate).
 
 /// #4091 §1.2 four-compile collapse: the modeled ci_pipeline jobs that re-ran a full src/v4
 /// 332-source closure compile must consume `v2_compile_src_v4`'s resolved closure via
