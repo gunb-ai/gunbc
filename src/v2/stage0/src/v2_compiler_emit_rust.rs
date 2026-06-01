@@ -5293,9 +5293,22 @@ pub fn render_rust_param_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let type_node = resolved_type(param.clone());
     if ((generic_param_names.len() as i64) > 0) {
-        render_node_type(type_node, RenderTarget::Rust, shared_types, source_indices)
+        if (find_property(
+            param.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) != None)
+        {
+            render_rust_type_with_applied_binding(param, shared_types, source_indices)
+        } else {
+            render_node_type(
+                resolved_type(param.clone()),
+                RenderTarget::Rust,
+                shared_types,
+                source_indices,
+            )
+        }
     } else {
         render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
     }
