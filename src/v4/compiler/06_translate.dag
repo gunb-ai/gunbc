@@ -3198,67 +3198,6 @@ fn translate_target_function_signature_realization_for_boundary(
   }
 }
 
-// SG-1b follow-on: when a Symbol-kernel atom has a signature-realization Return row, value
-// projection must use OwnershipAtFunctionReturn (same boundary as serialize_type_expr_boundary).
-// Mirrors translate_target_function_signature_realization_for_boundary: lookup-miss => false;
-// decode/ambiguity errors propagate (fail-closed).
-fn translate_signature_realization_present_for_carrier(
-  source_carrier: Node,
-  target: TargetModel,
-  boundary_site: FunctionBoundarySite
-) -> Outcome<Bool> {
-  match target_bundle_optional_child(
-    target: target,
-    edge_name: target_model_edge_signature_realizations
-  ) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: optional_catalog, diagnostics: _ } =>
-      match optional_catalog {
-        None => outcome_accepted(false)
-        Some { value: catalog } =>
-          match target_function_signature_realization_lookup_in_catalog_node(
-            catalog: catalog,
-            source_carrier: source_carrier,
-            boundary_site: boundary_site,
-            host_target_model: target
-          ) {
-            Accepted { value: _, diagnostics: _ } => outcome_accepted(true)
-            Rejected { diagnostics: r } =>
-              if translate_outcome_is_signature_realization_miss(diagnostics: r) {
-                outcome_accepted(false)
-              } else {
-                Rejected { diagnostics: r }
-              }
-          }
-      }
-  }
-}
-
-fn translate_value_ownership_use_site_for_atom_realization(
-  source_carrier: Node,
-  target: TargetModel,
-  requested: TargetOwnershipUseSite
-) -> Outcome<TargetOwnershipUseSite> {
-  match requested {
-    OwnershipAtBindingProjection =>
-      bind_outcome(
-        o: translate_signature_realization_present_for_carrier(
-          source_carrier: source_carrier,
-          target: target,
-          boundary_site: FunctionBoundaryReturn
-        ),
-        f: fn(present) {
-          if present {
-            outcome_accepted(OwnershipAtFunctionReturn)
-          } else {
-            outcome_accepted(requested)
-          }
-        }
-      )
-    _ => outcome_accepted(requested)
-  }
-}
-
 // Serialize a fn-boundary atom: emit the signature realization's signature_type_form when a row
 // matches (SG-1b authority); otherwise consult TargetUseSiteOwnershipRealization for this
 // boundary role, then serialize the emitted wire (SG-RC + SG-2; no spelling-only bypass).
@@ -3599,56 +3538,47 @@ fn translate_coerced_with_atom_realization_at_use_site(
     source: source,
     coerced: coerced
   )
-  bind_outcome(
-    o: translate_value_ownership_use_site_for_atom_realization(
-      source_carrier: ownership_source_carrier,
-      target: target,
-      requested: use_site
-    ),
-    f: fn(effective_use_site) {
-      match translate_coerced_shell_at_use_site_from_source(
+  match translate_coerced_shell_at_use_site_from_source(
+    coerced: coerced,
+    ownership_source_carrier: ownership_source_carrier,
+    target: target,
+    use_site: use_site
+  ) {
+    Accepted { value: shell, diagnostics: sd } =>
+      match translate_atom_realization_value_from_source_at_use_site(
+        source: source,
         coerced: coerced,
-        ownership_source_carrier: ownership_source_carrier,
         target: target,
-        use_site: effective_use_site
+        use_site: use_site
       ) {
-        Accepted { value: shell, diagnostics: sd } =>
-          match translate_atom_realization_value_from_source_at_use_site(
-            source: source,
-            coerced: coerced,
-            target: target,
-            use_site: effective_use_site
-          ) {
-            Accepted { value: value_projection, diagnostics: vd } =>
-              Accepted {
-                value: match value_projection {
-                  Absent => shell
-                  Present { value: value_node } =>
-                    translate_shell_attach_value_expression(
-                      shell: shell,
-                      value: value_node
-                    )
-                },
-                diagnostics: diagnostics_merge(
-                  outer: diagnostics_merge(outer: pending, inner: sd),
-                  inner: vd
+        Accepted { value: value_projection, diagnostics: vd } =>
+          Accepted {
+            value: match value_projection {
+              Absent => shell
+              Present { value: value_node } =>
+                translate_shell_attach_value_expression(
+                  shell: shell,
+                  value: value_node
                 )
-              }
-            Rejected { diagnostics: r } =>
-              Rejected {
-                diagnostics: rejected_with_pending(
-                  pending: diagnostics_merge(outer: pending, inner: sd),
-                  rejected: r
-                )
-              }
+            },
+            diagnostics: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: sd),
+              inner: vd
+            )
           }
         Rejected { diagnostics: r } =>
           Rejected {
-            diagnostics: rejected_with_pending(pending: pending, rejected: r)
+            diagnostics: rejected_with_pending(
+              pending: diagnostics_merge(outer: pending, inner: sd),
+              rejected: r
+            )
           }
       }
-    }
-  )
+    Rejected { diagnostics: r } =>
+      Rejected {
+        diagnostics: rejected_with_pending(pending: pending, rejected: r)
+      }
+  }
 }
 
 // Fold/MVP1 default coerce: binding-projection rows govern both type shell and value expr (P-RC-CONSUMER).

@@ -307,14 +307,6 @@ fn v4_translate_dag_imports_target_atom_realization_consumer() {
         "{TARGET_MODEL_PATH}: catalog lookup must not swallow row decode failures"
     );
     assert!(
-        TRANSLATE_DAG.contains("translate_signature_realization_present_for_carrier("),
-        "{TRANSLATE_PATH}: SG-1b follow-on must lookup signature Return rows fail-closed (Outcome)"
-    );
-    assert!(
-        TRANSLATE_DAG.contains("translate_value_ownership_use_site_for_atom_realization("),
-        "{TRANSLATE_PATH}: SG-1b follow-on must align Symbol value use_site with signature Return rows"
-    );
-    assert!(
         TRANSLATE_DAG.contains("translate_target_function_signature_realization_for_boundary("),
         "{TRANSLATE_PATH}: fn-boundary type serialize must consult signature realization catalog"
     );
