@@ -232,7 +232,7 @@ pub fn render_rust_applied_type(
             RenderTarget::Rust,
             authored_name_at(source_indices.clone(), n.clone()),
         );
-        if ((n.children.clone().len() as i64) == 0) {
+        let applied = if ((n.children.clone().len() as i64) == 0) {
             base
         } else {
             {
@@ -254,6 +254,15 @@ pub fn render_rust_applied_type(
                     ">".to_string(),
                 )
             }
+        };
+        if (v2_rt::set_contains(
+            &shared_types,
+            authored_name_at(source_indices.clone(), n.clone()),
+        ) && !rust_type_is_rc_wrapped(applied.clone()))
+        {
+            wrap_shared_type(RenderTarget::Rust, applied)
+        } else {
+            applied
         }
     }
 }

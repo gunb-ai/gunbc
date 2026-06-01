@@ -190,11 +190,16 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let base = coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: n))
-  if n.children |> count == 0 {
+  let applied = if n.children |> count == 0 {
     base
   } else {
     let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
     concat(base, "<", args, ">")
+  }
+  if set_contains(shared_types, authored_name_at(source_indices: source_indices, node: n)) && !rust_type_is_rc_wrapped(type_name: applied) {
+    wrap_shared_type(target: Rust, inner: applied)
+  } else {
+    applied
   }
 }
 
