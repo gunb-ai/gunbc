@@ -121,6 +121,7 @@ Other residuals: see #4148 routing worksheets (not impl without §8)
 | ---- | ------ | ------- |
 | 2026-06-01 | Initial map; P5 + SG-8 APPROVED; Go/TS verdict carrier consolidation | proud-fox-405 |
 | 2026-06-01 | Go five worksheets §8 APPROVED on #4149; map Go rows → APPROVED | proud-fox-405 |
+| 2026-06-01 | Post-#4149 reconciliation: R2b `go_facts_int64` anchor; SG-1 §3.1 dual-name (`go_target_atom_realization_*` + `go_atom_realization_*`) | zesty-otter-480 |
 | 2026-06-01 | TS five worksheets §8 APPROVED on #4169; shared verdict carriers (no TargetTypeScript*Verdict) | proud-fox-405 |
 | 2026-06-01 | Added Rust RCA/E0308/stable-band emerging shared authorities; kept draft rows non-dispatchable | eager-deer-177 |
 | 2026-06-01 | Python L1/L2 worksheets §8 APPROVED (#4170); static/runtime shared carriers; SG-COLLECTION adjudication (extend TargetCollectionRealization) | proud-fox-405 |

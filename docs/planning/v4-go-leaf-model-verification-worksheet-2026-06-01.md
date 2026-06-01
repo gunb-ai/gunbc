@@ -1,11 +1,11 @@
 # v4 Go Leaf-Model Verification Worksheet — R1 / R2a / R2b / R3-external
 
-> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`).
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Post-#4149 reconciliation 2026-06-01 (`zesty-otter-480`): R2b `go_facts_int64` anchor (fixtures use `int64`, not platform `int`).
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.2 (Go L0); MW-D3 Go parity analog of Python #4117.
 > **Pattern authority:** `src/v4/test/claim/language_model/python_{r1,r2a,r2b,r3_external}.dag` + `src/v4/lens/leaf_model_verification.dag` (landed #4117).
 > **Model authority:** `src/v4/extdeps/languages/go.dag` (T-4.17 wave-2b; `go_surface_spelling_int`, `go_integer_algebra_inhabitance`, overflow facts).
-> **Prerequisite for R3-external impl:** Go `TargetAtomRealization` rows worksheet (`docs/planning/v4-go-target-atom-realization-worksheet-2026-06-01.md`) ratified + `go_atom_realization_symbol` fact declared in `go.dag`.
+> **Prerequisite for R3-external impl:** SG-1 Go worksheet ratified + `go.dag` lands **`go_target_atom_realization_symbol`** row and **`go_atom_realization_symbol`** fact_id (Rust dual-name pattern; R3 claim anchors fact_id only).
 
 ---
 
@@ -47,7 +47,8 @@ DFS path:
       authority only — not a third target-named compile carrier).
   extdeps/language authority:
     - go.dag: go_surface_spelling_int, go_facts_int, go_integer_algebra_inhabitance(go_facts_int),
-      go_tag_overflow_signed_truncates, (R3) go_atom_realization_symbol — to be added per SG-1 Go worksheet
+      go_facts_int64 + go_tag_overflow_signed_truncates on that bundle (R2b only — fixtures use int64),
+      (R3) go_atom_realization_symbol fact_id → go_target_atom_realization_symbol row (SG-1 Go worksheet)
   claim corpus (sibling files, per planning §4 D-LMV-4 option b):
     - src/v4/test/claim/language_model/go_r1.dag
     - src/v4/test/claim/language_model/go_r2a.dag
@@ -91,7 +92,7 @@ Metric allowed only as secondary:
 |---|---|---|---|---|
 | `leaf_model_claim_go_r1_int_surface_spelling` | `go_surface_spelling_int` | `go build` PASS (`func r1() int { return 0 }`) | return type `i32` (invalid) | `TargetCompileRejected` + `target_diagnostic_go_undefined_type` |
 | `leaf_model_claim_go_r2a_int_algebra_operations` | `go_integer_algebra_inhabitance(go_facts_int)` | `go build` PASS (add/compare on `int`) | call nonexistent method on `int` | `TargetCompileRejected` + `target_diagnostic_go_undefined_method` |
-| `leaf_model_claim_go_r3_external_symbol_projection` | `go_atom_realization_symbol` (SG-1) | `go build` PASS per realization row | ctor/signature mismatch | `TargetCompileRejected` + modeled go diagnostic |
+| `leaf_model_claim_go_r3_external_symbol_projection` | `go_atom_realization_symbol` (fact_id; row = `go_target_atom_realization_symbol`) | `go build` PASS per realization row | ctor/signature mismatch | `TargetCompileRejected` + modeled go diagnostic |
 
 ### §4.2 Runtime-bound claim (`TargetRuntimeExerciseVerdict` — R2b only)
 
@@ -135,11 +136,11 @@ func main() {
 
 | Claim ID | Fact anchor | Happy | Negative probe | Verdict carrier |
 |---|---|---|---|---|
-| `leaf_model_claim_go_r2b_int_silent_overflow_truncates` | `go_tag_overflow_signed_truncates` on `go_facts_int` | `go run` on happy source above → wrap matches `want` | `go run` on falsification source → panic (wrong `want` only) | Runtime: `Accepted` / `Rejected`; compile: `TargetCompileAccepted` for **both** sources |
+| `leaf_model_claim_go_r2b_int64_silent_overflow_truncates` | `go_facts_int64` bundle — overflow axis `go_tag_overflow_signed_truncates` via `go_integer_facts_node(facts: go_facts_int64)` (same disposition as other signed typed widths; **not** `go_facts_int` / platform `int`) | `go run` on happy source above → wrap matches `want` | `go run` on falsification source → panic (wrong `want` only) | Runtime: `Accepted` / `Rejected`; compile: `TargetCompileAccepted` for **both** sources |
 
 **Forbidden R2b shapes:** `math.MaxInt64 + 1` as a single constant expression (may fail compile or fold at compile time); negative probe that changes the `+ 1` expression instead of `want`.
 
-**R2b note:** Go models **silent truncation** on typed integer overflow (`go.dag` L181). Not Rust debug/release dual claim IDs unless Arbiter directs.
+**R2b note:** Go models **silent truncation** on typed integer overflow (`go.dag` L181). Claim ↔ fixture width must match: **`go_facts_int64`** + `int64` source (R2a remains **`go_facts_int`** / platform `int`). Not Rust debug/release dual claim IDs unless Arbiter directs.
 
 **Verifiers:** `go build` — R1/R2a/R3-external only. `go run` or `go test` — R2b only. `go vet` optional, not authority.
 
@@ -171,6 +172,7 @@ Per `INVARIANTS.md` P5 and THESIS Pure Bootstrap 0-floor: any planned `src/v3/co
 - [x] Host runner dissolve-on-arrival headers match python shell pattern
 - [x] P5(b) boundary Rust optional per §5 table — shell-only default unless worker ships full receipt bundle
 - [x] R2b fixtures use typed `var x int64 = math.MaxInt64; got := x + 1` (authoritative sources in §4.2)
+- [x] R2b claim anchors `go_facts_int64`, not `go_facts_int` (width-aligned with fixtures; post-#4149 reconciliation)
 - [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ---
