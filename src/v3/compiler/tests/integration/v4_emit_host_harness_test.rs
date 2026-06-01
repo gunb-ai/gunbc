@@ -982,42 +982,19 @@ fn cross_target_mvp2_stdout_parity_rust_python_go() {
     let rust_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_rust_{pid}"));
     let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_py_{pid}"));
     let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_go_{pid}"));
-    let rust = emit_host_bridge::run_emit_host_rust_transport(
+    let verdict = emit_host_bridge::run_cross_target_mvp2_python_parity_transport(
         EMIT_HOST_FIXTURE_SOURCE,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+        EMIT_HOST_GO_FIXTURE_SOURCE,
         &inputs,
         &rust_dir,
-    )
-    .expect("rust transport");
-    let python = emit_host_bridge::run_emit_host_python_transport(
-        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
-        &inputs,
         &py_dir,
-    )
-    .expect("python transport");
-    let go =
-        emit_host_bridge::run_emit_host_go_transport(EMIT_HOST_GO_FIXTURE_SOURCE, &inputs, &go_dir)
-            .expect("go transport");
-    for (label, receipt) in [("rust", &rust), ("python", &python), ("go", &go)] {
-        assert!(
-            emit_host_bridge::host_exit_holds(&receipt.exit),
-            "{label}: expected Holds exit"
-        );
-    }
-    let rust_stdout = emit_host_bridge::host_stdout_bytes(&rust.exit, rust.stdout_bytes)
-        .expect("rust logical stdout");
-    let python_stdout = emit_host_bridge::host_stdout_bytes(&python.exit, python.stdout_bytes)
-        .expect("python logical stdout");
-    let go_stdout =
-        emit_host_bridge::host_stdout_bytes(&go.exit, go.stdout_bytes).expect("go logical stdout");
-    assert_eq!(
-        rust_stdout, python_stdout,
-        "rust/python MVP-2 stdout must agree for cross-target equivalence"
+        &go_dir,
     );
     assert_eq!(
-        rust_stdout, go_stdout,
-        "rust/go MVP-2 stdout must agree for cross-target equivalence"
+        verdict,
+        emit_host_bridge::EmitHostCrossTargetParityVerdict::Pass
     );
-    assert_eq!(rust_stdout.len(), 5);
 }
 
 #[test]

@@ -7,7 +7,8 @@
 
 use emit_host_runner::{
     host_logical_run_from_exit, run_emit_host_go, run_emit_host_python, run_emit_host_rust,
-    EmitHostFixtureInputs, EmitHostRunReceipt, HostExit, RuntimeValueParseFailure,
+    EmitHostFixtureInputs, EmitHostRunReceipt, HostExit, HostSetupFailure,
+    RuntimeValueParseFailure,
 };
 
 /// MVP-2 / `eval_runtime_mvp` alignment: five stdout bytes denote runtime value `5`.
@@ -28,6 +29,30 @@ pub enum EmitHostEmitVsEvalVerdict {
     },
     FailHostExit {
         host_receipt: EmitHostRunReceipt,
+    },
+}
+
+/// Release-minimum L2 parity verdict for Rust/Python/Go over one runtime-value fixture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EmitHostCrossTargetParityVerdict {
+    Pass,
+    FailSetup {
+        target: &'static str,
+        setup: HostSetupFailure,
+    },
+    FailHostExit {
+        target: &'static str,
+        host_receipt: EmitHostRunReceipt,
+    },
+    FailParse {
+        target: &'static str,
+        host_receipt: EmitHostRunReceipt,
+        parse: RuntimeValueParseFailure,
+    },
+    FailBehaviorMismatch {
+        rust_stdout: Vec<u8>,
+        python_stdout: Vec<u8>,
+        go_stdout: Vec<u8>,
     },
 }
 
@@ -152,10 +177,161 @@ pub fn run_emit_vs_eval_mvp2_go_transport(
     ))
 }
 
+fn cross_target_stdout_bytes(
+    target: &'static str,
+    receipt: EmitHostRunReceipt,
+    parse_stdout: fn(&[u8]) -> Result<(), RuntimeValueParseFailure>,
+) -> Result<Vec<u8>, EmitHostCrossTargetParityVerdict> {
+    if !host_exit_holds(&receipt.exit) {
+        return Err(EmitHostCrossTargetParityVerdict::FailHostExit {
+            target,
+            host_receipt: receipt,
+        });
+    }
+    let stdout = match host_stdout_bytes(&receipt.exit, receipt.stdout_bytes.clone()) {
+        Some(bytes) => bytes,
+        None => {
+            return Err(EmitHostCrossTargetParityVerdict::FailHostExit {
+                target,
+                host_receipt: receipt,
+            });
+        }
+    };
+    if let Err(parse) = parse_stdout(&stdout) {
+        return Err(EmitHostCrossTargetParityVerdict::FailParse {
+            target,
+            host_receipt: receipt,
+            parse,
+        });
+    }
+    Ok(stdout)
+}
+
+fn cross_target_parity_verdict_from_stdout(
+    rust_stdout: Vec<u8>,
+    python_stdout: Vec<u8>,
+    go_stdout: Vec<u8>,
+) -> EmitHostCrossTargetParityVerdict {
+    if rust_stdout == python_stdout && rust_stdout == go_stdout {
+        EmitHostCrossTargetParityVerdict::Pass
+    } else {
+        EmitHostCrossTargetParityVerdict::FailBehaviorMismatch {
+            rust_stdout,
+            python_stdout,
+            go_stdout,
+        }
+    }
+}
+
+type EmitHostRunner = fn(
+    &str,
+    &EmitHostFixtureInputs,
+    &std::path::Path,
+) -> Result<EmitHostRunReceipt, HostSetupFailure>;
+
+struct CrossTargetMvp2Runners {
+    rust: EmitHostRunner,
+    python: EmitHostRunner,
+    go: EmitHostRunner,
+}
+
+fn run_cross_target_mvp2_python_parity_with_runners(
+    rust_source: &str,
+    python_source: &str,
+    go_source: &str,
+    inputs: &EmitHostFixtureInputs,
+    rust_work_dir: &std::path::Path,
+    python_work_dir: &std::path::Path,
+    go_work_dir: &std::path::Path,
+    runners: CrossTargetMvp2Runners,
+) -> EmitHostCrossTargetParityVerdict {
+    let rust_receipt = match (runners.rust)(rust_source, inputs, rust_work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => {
+            return EmitHostCrossTargetParityVerdict::FailSetup {
+                target: "rust",
+                setup,
+            };
+        }
+    };
+    let python_receipt = match (runners.python)(python_source, inputs, python_work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => {
+            return EmitHostCrossTargetParityVerdict::FailSetup {
+                target: "python",
+                setup,
+            };
+        }
+    };
+    let go_receipt = match (runners.go)(go_source, inputs, go_work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => {
+            return EmitHostCrossTargetParityVerdict::FailSetup {
+                target: "go",
+                setup,
+            };
+        }
+    };
+
+    let rust_stdout = match cross_target_stdout_bytes(
+        "rust",
+        rust_receipt,
+        emit_host_runner::runtime_value_parse_rust,
+    ) {
+        Ok(stdout) => stdout,
+        Err(verdict) => return verdict,
+    };
+    let python_stdout = match cross_target_stdout_bytes(
+        "python",
+        python_receipt,
+        emit_host_runner::runtime_value_parse_python,
+    ) {
+        Ok(stdout) => stdout,
+        Err(verdict) => return verdict,
+    };
+    let go_stdout =
+        match cross_target_stdout_bytes("go", go_receipt, emit_host_runner::runtime_value_parse_go)
+        {
+            Ok(stdout) => stdout,
+            Err(verdict) => return verdict,
+        };
+
+    cross_target_parity_verdict_from_stdout(rust_stdout, python_stdout, go_stdout)
+}
+
+/// L2 cross-target behavioral parity: Rust, Python, and Go must all execute, parse into the
+/// same MVP-2 runtime-value carrier, and agree on observed stdout for the same fixture subject.
+pub fn run_cross_target_mvp2_python_parity_transport(
+    rust_source: &str,
+    python_source: &str,
+    go_source: &str,
+    inputs: &EmitHostFixtureInputs,
+    rust_work_dir: &std::path::Path,
+    python_work_dir: &std::path::Path,
+    go_work_dir: &std::path::Path,
+) -> EmitHostCrossTargetParityVerdict {
+    run_cross_target_mvp2_python_parity_with_runners(
+        rust_source,
+        python_source,
+        go_source,
+        inputs,
+        rust_work_dir,
+        python_work_dir,
+        go_work_dir,
+        CrossTargetMvp2Runners {
+            rust: run_emit_host_rust_transport,
+            python: run_emit_host_python_transport,
+            go: run_emit_host_go_transport,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use emit_host_runner::default_work_dir;
+    use emit_host_runner::{
+        default_work_dir, BuildLog, HostLogicalFailure, HostPhase, HostSetupFailure, HostStream,
+    };
 
     const FIXTURE_SOURCE_PASS: &str =
         "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }";
@@ -169,6 +345,86 @@ mod tests {
             claim_input_root: "bridge_claim_input".into(),
             expected_eval_root: "bridge_expected_eval".into(),
         }
+    }
+
+    fn receipt_with_stdout(stdout_bytes: &[u8]) -> EmitHostRunReceipt {
+        EmitHostRunReceipt {
+            source_text: "fixture".to_string(),
+            exit: HostExit::holds(0),
+            stdout_bytes: stdout_bytes.to_vec(),
+            stderr_bytes: Vec::new(),
+            build_log: BuildLog { lines: Vec::new() },
+        }
+    }
+
+    fn receipt_with_exit_failure() -> EmitHostRunReceipt {
+        EmitHostRunReceipt {
+            source_text: "fixture".to_string(),
+            exit: HostExit::logical_violation(HostLogicalFailure::ExitedNonzero {
+                phase: HostPhase::FixtureRun,
+                code: Some(1),
+            }),
+            stdout_bytes: Vec::new(),
+            stderr_bytes: b"runtime failure".to_vec(),
+            build_log: BuildLog { lines: Vec::new() },
+        }
+    }
+
+    fn fake_transport_pass(
+        _source: &str,
+        _inputs: &EmitHostFixtureInputs,
+        _work_dir: &std::path::Path,
+    ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+        Ok(receipt_with_stdout(&MVP2_RUNTIME_VALUE_FIVE_BYTES))
+    }
+
+    fn fake_transport_python_mismatch(
+        _source: &str,
+        _inputs: &EmitHostFixtureInputs,
+        _work_dir: &std::path::Path,
+    ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+        Ok(receipt_with_stdout(&[1, 2, 3, 4, 5]))
+    }
+
+    fn fake_transport_python_parse_fail(
+        _source: &str,
+        _inputs: &EmitHostFixtureInputs,
+        _work_dir: &std::path::Path,
+    ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+        Ok(receipt_with_stdout(&[0, 0, 0]))
+    }
+
+    fn fake_transport_python_exit_fail(
+        _source: &str,
+        _inputs: &EmitHostFixtureInputs,
+        _work_dir: &std::path::Path,
+    ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+        Ok(receipt_with_exit_failure())
+    }
+
+    fn fake_transport_python_setup_fail(
+        _source: &str,
+        _inputs: &EmitHostFixtureInputs,
+        _work_dir: &std::path::Path,
+    ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
+        Err(HostSetupFailure::StreamReadFailed {
+            phase: HostPhase::FixtureRun,
+            stream: HostStream::Stdout,
+            source: "setup failed".to_string(),
+        })
+    }
+
+    fn run_fake_cross_target(runners: CrossTargetMvp2Runners) -> EmitHostCrossTargetParityVerdict {
+        run_cross_target_mvp2_python_parity_with_runners(
+            "rust",
+            "python",
+            "go",
+            &mvp2_inputs(),
+            std::path::Path::new("rust"),
+            std::path::Path::new("python"),
+            std::path::Path::new("go"),
+            runners,
+        )
     }
 
     #[test]
@@ -297,5 +553,107 @@ mod tests {
         )
         .expect("transport setup");
         assert_eq!(verdict, EmitHostEmitVsEvalVerdict::Pass);
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_classifies_matching_three_target_stdout() {
+        let verdict = cross_target_parity_verdict_from_stdout(
+            MVP2_RUNTIME_VALUE_FIVE_BYTES.to_vec(),
+            MVP2_RUNTIME_VALUE_FIVE_BYTES.to_vec(),
+            MVP2_RUNTIME_VALUE_FIVE_BYTES.to_vec(),
+        );
+        assert_eq!(verdict, EmitHostCrossTargetParityVerdict::Pass);
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_classifies_python_behavior_mismatch() {
+        let verdict = cross_target_parity_verdict_from_stdout(
+            MVP2_RUNTIME_VALUE_FIVE_BYTES.to_vec(),
+            vec![1, 2, 3, 4, 5],
+            MVP2_RUNTIME_VALUE_FIVE_BYTES.to_vec(),
+        );
+        match verdict {
+            EmitHostCrossTargetParityVerdict::FailBehaviorMismatch {
+                rust_stdout,
+                python_stdout,
+                go_stdout,
+            } => {
+                assert_eq!(rust_stdout, MVP2_RUNTIME_VALUE_FIVE_BYTES);
+                assert_eq!(python_stdout, [1, 2, 3, 4, 5]);
+                assert_eq!(go_stdout, MVP2_RUNTIME_VALUE_FIVE_BYTES);
+            }
+            other => panic!("expected Python behavior mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_transport_passes_when_three_targets_match() {
+        let verdict = run_fake_cross_target(CrossTargetMvp2Runners {
+            rust: fake_transport_pass,
+            python: fake_transport_pass,
+            go: fake_transport_pass,
+        });
+        assert_eq!(verdict, EmitHostCrossTargetParityVerdict::Pass);
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_transport_reports_python_setup_failure() {
+        let verdict = run_fake_cross_target(CrossTargetMvp2Runners {
+            rust: fake_transport_pass,
+            python: fake_transport_python_setup_fail,
+            go: fake_transport_pass,
+        });
+        assert!(matches!(
+            verdict,
+            EmitHostCrossTargetParityVerdict::FailSetup {
+                target: "python",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_transport_reports_python_host_exit_failure() {
+        let verdict = run_fake_cross_target(CrossTargetMvp2Runners {
+            rust: fake_transport_pass,
+            python: fake_transport_python_exit_fail,
+            go: fake_transport_pass,
+        });
+        assert!(matches!(
+            verdict,
+            EmitHostCrossTargetParityVerdict::FailHostExit {
+                target: "python",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_transport_reports_python_parse_failure() {
+        let verdict = run_fake_cross_target(CrossTargetMvp2Runners {
+            rust: fake_transport_pass,
+            python: fake_transport_python_parse_fail,
+            go: fake_transport_pass,
+        });
+        assert!(matches!(
+            verdict,
+            EmitHostCrossTargetParityVerdict::FailParse {
+                target: "python",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn cross_target_mvp2_python_parity_transport_reports_python_behavior_mismatch() {
+        let verdict = run_fake_cross_target(CrossTargetMvp2Runners {
+            rust: fake_transport_pass,
+            python: fake_transport_python_mismatch,
+            go: fake_transport_pass,
+        });
+        assert!(matches!(
+            verdict,
+            EmitHostCrossTargetParityVerdict::FailBehaviorMismatch { .. }
+        ));
     }
 }
