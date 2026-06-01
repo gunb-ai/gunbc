@@ -29,7 +29,7 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
+    field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
     is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
     local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
     make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
@@ -2816,7 +2816,89 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         let resolved_anno = if (item.type_annotation.clone() == None) {
             None
         } else {
-            Some(anno_resolved.resolved.clone())
+            {
+                let authored_anno = item.type_annotation.clone().unwrap();
+                let has_applied_binding = (find_property(
+                    anno_resolved.resolved.clone().properties.clone(),
+                    "__applied_type_args".to_string(),
+                    env.source_indices.clone(),
+                ) != None);
+                if (((authored_anno.children.clone().len() as i64) > 0) && !has_applied_binding) {
+                    let arg_results = Rc::new({
+                        let mut __result = Vec::new();
+                        for child in authored_anno.children.clone().iter().cloned() {
+                            __result.push(resolve_node(
+                                child.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let resolved_args = Rc::new({
+                        let mut __result = Vec::new();
+                        for ar in arg_results.clone().iter().cloned() {
+                            __result.push(ar.resolved.clone());
+                        }
+                        __result
+                    });
+                    let applied_type_args = Rc::new(Node {
+                        name: authored_name(env.clone(), authored_anno.clone()),
+                        span: authored_anno.span.clone(),
+                        ident_span: authored_anno.ident_span.clone(),
+                        children: resolved_args,
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: None,
+                        return_cardinality: authored_anno.return_cardinality.clone(),
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    });
+                    let applied_type_args_property = make_field_init_node(
+                        "__applied_type_args".to_string(),
+                        applied_type_args,
+                        authored_anno.span.clone(),
+                        authored_anno.span.clone(),
+                    );
+                    Some(Rc::new(Node {
+                        name: anno_resolved.resolved.clone().name.clone(),
+                        span: anno_resolved.resolved.clone().span.clone(),
+                        ident_span: anno_resolved.resolved.clone().ident_span.clone(),
+                        children: anno_resolved.resolved.clone().children.clone(),
+                        connective: anno_resolved.resolved.clone().connective.clone(),
+                        params: anno_resolved.resolved.clone().params.clone(),
+                        inferred: anno_resolved.resolved.clone().inferred.clone(),
+                        return_cardinality: anno_resolved.resolved.clone().return_cardinality.clone(),
+                        uses: anno_resolved.resolved.clone().uses.clone(),
+                        body: anno_resolved.resolved.clone().body.clone(),
+                        transport: anno_resolved.resolved.clone().transport.clone(),
+                        properties: v2_rt::concat(
+                            anno_resolved.resolved.clone().properties.clone(),
+                            Rc::new(vec![applied_type_args_property]),
+                        ),
+                        type_annotation: anno_resolved.resolved.clone().type_annotation.clone(),
+                        is_self_recursive: anno_resolved.resolved.clone().is_self_recursive,
+                        has_non_tail_self_call: anno_resolved
+                            .resolved
+                            .clone()
+                            .has_non_tail_self_call
+                            .clone(),
+                        match_pattern: anno_resolved.resolved.clone().match_pattern.clone(),
+                        expr_data: anno_resolved.resolved.clone().expr_data.clone(),
+                        ident: None,
+                    }))
+                } else {
+                    Some(anno_resolved.resolved.clone())
+                }
+            }
         };
         let anno_diags = anno_resolved.diagnostics.clone();
         let transport_resolved = if (item.transport.clone() == None) {
