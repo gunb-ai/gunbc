@@ -1112,12 +1112,13 @@ fn ts_mvp1_target_model() -> TargetModel {
 // (no name-keyed Outcome/Witness/Refined special cases — INVARIANTS P3 / SG-2 worksheet).
 // Connective → TS surface (ECMA / TS Handbook):
 //   atom          ident / keyword primitive (number, string, boolean, ...)
-//   conj          object type { ... }                (record)
+//   conj          { ... }  structural surface only   (object type — see 🟡 record gap below)
 //   disj          union A | B                        (primary sum-type surface)
 //   arrow         (T) => U  structural surface only   (fat-arrow function type — see 🟡 below)
 //   cardinality   tuple [T, U]
 //   instantiation generic apply Foo<Bar, Baz>        (angle brackets — no Rust ::<>)
 // 🟡 gated — feature:target-function-type-named-param-binding — carrier:TargetFunctionTypeShape (open/close/arrow only, no param-name slot; Rust row identical) — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains param-name+per-param-type slot, then TS arrow carries named params — forbidden: redefining the shared carrier in this row, or claiming faithful `(a: T) => U`. (rationale in PR #4176 / commit a89bbcb8)
+// 🟡 gated — feature:target-record-field-label-binding — carrier:TargetGenericApply conj_form (open/separator/close, no field-label `:` token) + serializer:serialize_type_expr_record_bounded (06_translate) drops slot labels; Rust conj_form identical — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains field-label-separator token AND the shared record serializer emits each slot's Named label + `:`, then TS records serialize as `{ id: T, ... }` — forbidden: redefining the shared carrier or the load-bearing 06_translate serializer in this row, or claiming faithful labeled `{ id: T }`. L0 SG-2 probe (Instantiation `Rc<FooBar<X,Y>>`) does not exercise record field-name fidelity. (rationale in PR #4176)
 fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {
