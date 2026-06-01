@@ -1870,8 +1870,7 @@ fn run_test_claim_runtime_assert(
       }
     }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
-      let expected_outcome =
-        eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: expected))
+      let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: expected))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
         Pass
       } else {
