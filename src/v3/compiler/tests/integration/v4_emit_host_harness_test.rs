@@ -23,6 +23,9 @@
 //! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
 //! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
+//! **Go L1 (release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate claim and
+//! `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured JSON receipt; chained
+//! from rung gate after R2-go-compile).
 //! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte
 //! stdout contract; not per-law emitted artifacts until emit pipeline wires law subjects).
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
@@ -60,6 +63,10 @@ const NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_l1_python_runtime.dag");
 const NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH: &str =
     "src/v4/test/claim/nat_semiring/rung_l1_python_runtime.dag";
+const NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_l1_go_compiler_slice.dag");
+const NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH: &str =
+    "src/v4/test/claim/nat_semiring/rung_l1_go_compiler_slice.dag";
 const NAT_SEMIRING_RUNG5_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung5_eval.dag");
 const NAT_SEMIRING_RUNG5_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung5_eval.dag";
@@ -601,6 +608,26 @@ fn v4_nat_semiring_rung_l1_python_runtime_dag_tokenizes_and_parses_claim_row() {
     assert!(
         surface_declares_data(&module, "phase1_nat_semiring_l1_python_runtime_claim_rows"),
         "{NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH}: L1 claim roster"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_rung_l1_go_compiler_slice_dag_tokenizes_and_parses_claim_row() {
+    let module = parse_module(
+        NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG,
+        NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH,
+    );
+    assert!(
+        surface_declares_data(&module, "go_l1_nat_semiring_rung2_slice_id"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 slice id"
+    );
+    assert!(
+        surface_declares_data(&module, "claim_phase1_nat_semiring_l1_go_compiler_slice_compile"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 go compiler-slice claim"
+    );
+    assert!(
+        surface_declares_data(&module, "phase1_nat_semiring_l1_go_compiler_slice_claim_rows"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 claim roster"
     );
 }
 
