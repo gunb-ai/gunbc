@@ -1,4 +1,4 @@
-//! Structural mirror of `SelfHostedRunnerPool` / `m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
+//! Structural mirror of `SelfHostedRunnerPool` / `m1_probe_cargo_check_jobs_ceiling` in `src/v4/workflow/ci.dag`.
 //! Lives outside `v3-compiler` (same crate as affected-set host transport).
 
 /// Structural mirror of `SelfHostedRunnerPool` in `src/v4/workflow/ci.dag`.
@@ -52,11 +52,6 @@ pub fn ci_runner_pool_fleet_capacities_valid() -> bool {
         .all(|pool| ci_runner_pool_capacity_valid(*pool))
 }
 
-/// Modeled authority for `data m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
-pub fn m1_probe_cargo_check_jobs() -> u32 {
-    M1_PROBE_CARGO_CHECK_JOBS
-}
-
 /// Modeled authority for `data m1_probe_cargo_check_jobs_ceiling` in `src/v4/workflow/ci.dag`.
 pub fn m1_probe_cargo_check_jobs_ceiling() -> u32 {
     M1_PROBE_CARGO_CHECK_JOBS_CEILING
@@ -79,9 +74,8 @@ mod tests {
     #[test]
     fn m1_probe_cargo_check_jobs_is_operator_constant() {
         assert!(ci_runner_pool_fleet_capacities_valid());
-        assert_eq!(m1_probe_cargo_check_jobs(), 4);
-        // Governor ceiling sits above the static fallback; memory governs the actual job count below it.
+        // Governor ceiling only — no static fallback (the probe fails closed without ctrl-build).
+        // Actual job count is memory/pids-denominated by the host governor below this ceiling.
         assert_eq!(m1_probe_cargo_check_jobs_ceiling(), 64);
-        assert!(m1_probe_cargo_check_jobs_ceiling() >= m1_probe_cargo_check_jobs());
     }
 }
