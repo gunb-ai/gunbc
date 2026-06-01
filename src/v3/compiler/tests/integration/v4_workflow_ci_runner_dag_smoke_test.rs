@@ -665,8 +665,8 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` runs unconditionally on the safety floor (no component `if:`)"
     );
     assert!(
-        m1_step.contains("V4_M1_RUST_EMIT_PROBE_STRICT"),
-        "{CI_YML_PATH}: `{step_name}` must fail-closed (V4_M1_RUST_EMIT_PROBE_STRICT=1)"
+        m1_step.contains("V4_M1_RUST_EMIT_PROBE_STRICT: \"0\""),
+        "{CI_YML_PATH}: `{step_name}` must publish the M1 rustc residual receipt without failing the required path while P3 is below binary-build threshold"
     );
     assert!(
         CI_DAG.contains(
