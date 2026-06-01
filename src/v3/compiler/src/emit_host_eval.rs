@@ -737,8 +737,79 @@ fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{Dag, DeclarationId};
+    use crate::dag::{AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, TypeConnective};
+    use crate::diagnostics::SourceSpan;
+    use crate::evaluator::{EvalFrame, InputEvaluationOrder};
     use emit_host_runner::HostSetupFailure;
+
+    fn span(file: &str) -> SourceSpan {
+        SourceSpan::new(file, 0, 1)
+    }
+
+    fn atom_decl(dag: &mut Dag, name: &str, file: &str) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam(name.to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn run_emit_host_decl(dag: &mut Dag, name: &str, file: &str) -> DeclarationId {
+        let target = atom_decl(dag, "TargetModel", file);
+        let source = atom_decl(dag, "TargetSource", file);
+        let inputs = atom_decl(dag, "Inputs", file);
+        let output = atom_decl(dag, "OutcomeEmitHostRunReceipt", file);
+        let body_value = dag.push_value(LiteralBits::Bool(false), span(file));
+        let bind = dag.push_bind(
+            "transport_not_wired_body",
+            body_value,
+            Vec::new(),
+            span(file),
+        );
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Arrow {
+                inputs: vec![target, source, inputs],
+                output,
+                body: ArrowBody::UserDefined(
+                    BindNodeId::from_bind_node(dag, bind).expect("bind body"),
+                ),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn empty_state() -> EvalStateStack<Value> {
+        EvalStateStack::with_root_frame(EvalFrame::empty())
+    }
+
+    fn eager_strategy() -> EvalStrategy {
+        EvalStrategy::ApplicativeOrder {
+            input_order: InputEvaluationOrder::LeftFirst,
+        }
+    }
 
     #[test]
     fn emit_host_fixture_inputs_projects_distinct_claim_and_expected_roots() {
@@ -773,6 +844,44 @@ mod tests {
         assert_eq!(
             host_setup_failure_reason(&HostSetupFailure::EmptyClaimInputRoot),
             "emit_host_setup_empty_claim_input_root"
+        );
+    }
+
+    #[test]
+    fn go_eval_dispatch_claims_only_emit_host_authority_decl() {
+        let mut dag = Dag::new();
+        let go_decl = run_emit_host_decl(
+            &mut dag,
+            "run_emit_host_go",
+            "src/v4/compiler/emit_host.dag",
+        );
+        let lookalike_decl =
+            run_emit_host_decl(&mut dag, "run_emit_host_go", "src/v4/compiler/other.dag");
+        let rust_decl = run_emit_host_decl(
+            &mut dag,
+            "run_emit_host_rust",
+            "src/v4/compiler/emit_host.dag",
+        );
+        let mut state = empty_state();
+        let strategy = eager_strategy();
+
+        let claimed =
+            try_dispatch_emit_host_go(&dag, go_decl, &[], &mut state, &strategy).expect("claimed");
+        assert_eq!(
+            claimed,
+            Err(EvalError::TransformArityMismatch {
+                expected: 3,
+                got: 0
+            }),
+            "the Go hook must claim the substrate run_emit_host_go declaration before user-body eval"
+        );
+        assert!(
+            try_dispatch_emit_host_go(&dag, lookalike_decl, &[], &mut state, &strategy).is_none(),
+            "same-name declarations outside emit_host.dag must not be intercepted"
+        );
+        assert!(
+            try_dispatch_emit_host_go(&dag, rust_decl, &[], &mut state, &strategy).is_none(),
+            "run_emit_host_rust must stay on the Rust dispatch hook"
         );
     }
 }
