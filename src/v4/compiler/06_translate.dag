@@ -207,6 +207,7 @@ import v4.std.collection {
 import v4.std.algebra {
   Cons,
   Empty,
+  FreeMonoid,
   TailAbsent,
   TailFound,
   fold_list,
@@ -1624,7 +1625,7 @@ fn free_monoid_collection_realization_from_target(
 }
 
 fn target_collection_realization_find_by_source_carrier(
-  rows: List<TargetCollectionRealization>,
+  rows: FreeMonoid<TargetCollectionRealization>,
   expected_source_carrier: Node
 ) -> Outcome<TargetCollectionRealization> {
   match rows {
