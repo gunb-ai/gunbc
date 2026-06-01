@@ -3,10 +3,11 @@
 //! E6-G1.a Option 3 — static `Lens<Int>` consumer wiring (argument-opaque `Dag` / `Behavior`).
 //!
 //! Authority: E6-G1.a Option 3 static `Lens<Int>` mechanism landed in `gunbc#1853`; SG-0
-//! `EXPECTED_HAND_AUTHORED_TEST` census membership is the P5 checkable receipt for this
-//! hand-authored integration harness.
-//! Mechanism demonstration only; lens-over-`Dag` folding is deferred to `ReflectedProgram<T>` /
-//! typed declaration-reference carrier work (Q-Reification).
+//! `EXPECTED_HAND_AUTHORED_TEST` census membership keeps this hand-authored integration harness
+//! visible to the P5 subratchet.
+//! Mechanism demonstration only; dissolve-on: Q-Reification `ReflectedProgram<T>` / typed
+//! declaration-reference carrier work migrates lens-over-`Dag` folding to substrate data and the
+//! corresponding `.dag` `TestClaim` receipt replaces this host harness.
 //!
 //! **Hard bars:** no `lens_declaration_apply`, `eval_substrate_reify`, or reflection-helper imports/calls.
 //!
