@@ -601,8 +601,8 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: M1 cargo jobs must not use reverse-engineered fleet fanout derivation"
     );
     assert!(
-        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
-        "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant in Wave-0"
+        CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
+        "{CI_DAG_PATH}: M1 cargo parallelism ceiling must be an explicit operator constant in Wave-0"
     );
     assert!(
         CI_DAG.contains("RerunNodeSetFailClosed { evidence: _ } => roster"),
@@ -763,20 +763,8 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
             && CI_DAG.contains("jobserver_token_cap: 36"),
         "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
     );
-    assert!(
-        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int = 4"),
-        "{CI_DAG_PATH}: M1 cargo parallelism must be an explicit operator constant"
-    );
-    let m1_jobs = ci_affected_components::runner_pool::m1_probe_cargo_check_jobs();
-    assert_eq!(
-        m1_jobs, 4,
-        "Rust transport mirror of m1_probe_cargo_check_jobs must match ci.dag operator constant"
-    );
-    assert!(
-        m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),
-        "{CI_YML_PATH}: M1 step must project modeled cargo-check static fallback"
-    );
-    // Governor ceiling: actual parallelism is memory-denominated via ctrl-build, ≤ this ceiling.
+    // Governor ceiling is the ONLY M1 parallelism constant — no static fallback. Actual jobs are
+    // memory/pids-denominated by the host governor (ctrl-build) at or below this ceiling.
     assert!(
         CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
         "{CI_DAG_PATH}: M1 governor ceiling must be an explicit operator constant"
@@ -787,12 +775,12 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "Rust transport mirror of m1_probe_cargo_check_jobs_ceiling must match ci.dag operator constant"
     );
     assert!(
-        m1_ceiling >= m1_jobs,
-        "governor ceiling must not sit below the static fallback"
-    );
-    assert!(
         m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS_CEILING: \"{m1_ceiling}\"")),
         "{CI_YML_PATH}: M1 step must project modeled governor ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX)"
+    );
+    assert!(
+        !m1_step.contains("V4_M1_CARGO_CHECK_JOBS:"),
+        "{CI_YML_PATH}: M1 step must NOT project a static cargo-check fallback (fail-closed, no fallback)"
     );
     // The probe must route the emitted-tree check through the host compute governor, not a hand cap.
     assert!(
@@ -804,6 +792,16 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
             && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
         "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must route through the ctrl-build host governor"
+    );
+    // No fallback: the probe must fail closed when ctrl-build is unavailable (operator policy), and
+    // no static `--jobs` cap path may remain.
+    assert!(
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("requires the host build governor (no fallback)"),
+        "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed without ctrl-build"
+    );
+    assert!(
+        !M1_RUST_EMIT_PROBE_SCRIPT.contains("--jobs"),
+        "scripts/v4-m1-rust-emit-probe.sh: no static --jobs fallback path may remain"
     );
 }
 
