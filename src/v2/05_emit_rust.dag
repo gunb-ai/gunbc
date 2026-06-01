@@ -236,11 +236,16 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
 }
 
-// Compose generic-arg preservation with canonical rendering — do not replace the
-// applied-binding path when the enclosing item has type params.
+// Compose generic-arg preservation with canonical rendering — keep
+// render_rust_type_with_applied_binding as the outer path when the overlay is
+// present; only delegate to render_rust_decl_type for generic-leaf substitution.
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   if generic_param_names |> count > 0 {
-    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+    if find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
+      render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
+    } else {
+      render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+    }
   } else {
     render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
   }
@@ -2219,10 +2224,8 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
       render_rust_type_with_applied_binding(n: param, shared_types: shared_types, source_indices: source_indices)
     } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
       render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices)
-    } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
-      render_rust_decl_type(n: authored_type, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
     } else {
-      render_rust_decl_type(n: resolved_type(n: param), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+      render_rust_fn_sig_type(n: resolved_type(n: param), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
     }
   } else {
     render_rust_field_type_with_applied_binding(field: param, shared_types: shared_types, source_indices: source_indices)
