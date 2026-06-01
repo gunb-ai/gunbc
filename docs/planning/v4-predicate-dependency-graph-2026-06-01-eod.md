@@ -95,7 +95,7 @@ Hard-gated on P3 binary builds (P2 fully GREEN per #4139 MERGED 00:50Z). No acti
 
 **T-38-PR2 verdict-surface migration LANDED #4120**: `blocked_m1_subset` string retired; `host_verdict_surface_receipt_v3` with per-row Pass/Fail/Deferred counts.
 
-**Strict P5 "suite passes" reading still has upward debt** (`node://adhoc-f8699326-d69`): true runtime corpus execution gated on EITHER (i) M1 cargo-clean emitted subset OR (ii) new bootstrap-evaluator corpus runtime per SELF_HOSTING. Operator decision pending. (i) is downstream of P3 cascade closures; (ii) is load-bearing substrate work.
+**Strict P5 "suite passes" reading still has upward debt** (`node://adhoc-f8699326-d69`): true runtime corpus execution gated on EITHER (i) M1 cargo-clean emitted subset OR (ii) new bootstrap-evaluator corpus runtime per SELF_HOSTING. **Routing decision RESOLVED 2026-06-01T01 per §8.5 #3: option (ii) authorized as WORKSHEET** (Modeling DFS Arbiter authors; not yet implemented). (i) remains the patient-wait path (downstream of P3 cascade closures). Gate itself stays OPEN until runtime ships + suite executes + passes.
 
 ### §3.6 P6 hand-Rust REPRODUCTION
 
