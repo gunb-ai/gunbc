@@ -18,22 +18,21 @@ import v4.std.text { String }
 // and StaticAnalysisRejected/Advisory.tool_id.
 data mypy_tool_id: Symbol = mypy_tool_id
 
-// mypy strictness posture — closed set (M4: enum, not string proxy). MypyStrict
-// corresponds to the aggregate `--strict` flag bundle.
-type MypyStrictness
-  = MypyLenient
-  | MypyStrict
-
+// `strict` models mypy's `--strict` CLI flag verbatim — a single boolean toggle that
+// enables mypy's aggregate strict-checks bundle. It is NOT a coproduct: `--strict` is a
+// real boolean flag, and its decomposition into individual `--disallow-*` / `--warn-*`
+// flags is the namable richer source, so an enum here would be unfinished modeling. When
+// a consumer needs per-flag control, add the decomposed flag facts directly (no enum proxy).
 type MypyConfig {
   mypy_version: String
   python_version: String
-  strictness: MypyStrictness
+  strict: Bool
 }
 
 data mypy_profile_l1: MypyConfig = MypyConfig {
   mypy_version: "1.13.0",
   python_version: "3.11",
-  strictness: MypyStrict,
+  strict: true,
 }
 
 // Per-tool diagnostic-code namespace (NOT shared across tools, per Arbiter ruling).

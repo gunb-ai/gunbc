@@ -19,6 +19,10 @@ import v4.std.text { String }
 data pyright_tool_id: Symbol = pyright_tool_id
 
 // pyright `typeCheckingMode` — a closed set (M4: enum, not string proxy).
+// 🟢 coproduct dissolution — CP-PYRIGHT-TYPE-CHECKING-MODE-TERMINAL. Practice-4 PR review:
+//   these are the four irreducible `typeCheckingMode` keyword values fixed by the pyright
+//   configuration spec (off/basic/standard/strict); they are external-spec literals at the
+//   config boundary, so no richer source can be named.
 type PyrightTypeCheckingMode
   = PyrightModeOff
   | PyrightModeBasic

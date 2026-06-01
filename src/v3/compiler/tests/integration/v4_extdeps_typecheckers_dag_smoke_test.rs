@@ -24,6 +24,20 @@ const TEXT_DAG: &str = include_str!("../../../../v4/std/text.dag");
 const PYRIGHT_DAG: &str = include_str!("../../../../v4/extdeps/typecheckers/pyright.dag");
 const MYPY_DAG: &str = include_str!("../../../../v4/extdeps/typecheckers/mypy.dag");
 
+// Full std chain for the shared static-analysis carriers' home module
+// (`v4.std.leaf_model_verification`), which is otherwise not compile-tested in CI.
+const WITNESS_DAG: &str = include_str!("../../../../v4/std/witness.dag");
+const MACHINE_DAG: &str = include_str!("../../../../v4/std/machine.dag");
+const LEXING_DAG: &str = include_str!("../../../../v4/std/lexing.dag");
+const NODE_QUERY_DAG: &str = include_str!("../../../../v4/std/node_query.dag");
+const TARGET_MODEL_DAG: &str = include_str!("../../../../v4/std/target_model.dag");
+const HOST_RUN_DAG: &str = include_str!("../../../../v4/std/host_run.dag");
+const TEST_CLAIM_FALSIFICATION_DAG: &str =
+    include_str!("../../../../v4/std/test_claim_falsification.dag");
+const VERDICT_DAG: &str = include_str!("../../../../v4/std/verdict.dag");
+const LEAF_MODEL_VERIFICATION_DAG: &str =
+    include_str!("../../../../v4/std/leaf_model_verification.dag");
+
 fn std_prefix() -> Vec<(&'static str, &'static str)> {
     vec![
         (NODE_DAG, "src/v4/std/node.dag"),
@@ -69,6 +83,63 @@ fn v4_extdeps_typecheckers_pyright_dag_compiles() {
         assert!(
             dag.declaration_by_name(name).is_some(),
             "pyright.dag should declare `{name}`"
+        );
+    }
+}
+
+#[test]
+fn v4_std_leaf_model_verification_static_analysis_carriers_compile() {
+    let sources = [
+        (NODE_DAG, "src/v4/std/node.dag"),
+        (ALGEBRA_DAG, "src/v4/std/algebra.dag"),
+        (LOGIC_DAG, "src/v4/std/logic.dag"),
+        (DIAGNOSTIC_DAG, "src/v4/std/diagnostic.dag"),
+        (WITNESS_DAG, "src/v4/std/witness.dag"),
+        (COLLECTION_DAG, "src/v4/std/collection.dag"),
+        (NAT_DAG, "src/v4/std/nat.dag"),
+        (TEXT_DAG, "src/v4/std/text.dag"),
+        (MACHINE_DAG, "src/v4/std/machine.dag"),
+        (LEXING_DAG, "src/v4/std/lexing.dag"),
+        (NODE_QUERY_DAG, "src/v4/std/node_query.dag"),
+        (TARGET_MODEL_DAG, "src/v4/std/target_model.dag"),
+        (HOST_RUN_DAG, "src/v4/std/host_run.dag"),
+        (
+            TEST_CLAIM_FALSIFICATION_DAG,
+            "src/v4/std/test_claim_falsification.dag",
+        ),
+        (VERDICT_DAG, "src/v4/std/verdict.dag"),
+        (
+            LEAF_MODEL_VERIFICATION_DAG,
+            "src/v4/std/leaf_model_verification.dag",
+        ),
+    ];
+    let dag = match compile_to_dag_modules_in_order(&sources) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "leaf_model_verification.dag: semantic errors: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("leaf_model_verification.dag: {other:?}"),
+    };
+    assert!(
+        dag.diagnostics().is_empty(),
+        "leaf_model_verification.dag: expected empty diagnostics, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    for name in [
+        "TargetStaticAnalysisRole",
+        "TargetStaticAnalysisInvocation",
+        "TargetStaticAnalysisVerdict",
+        "LeafModelPythonStaticHappyCase",
+        "LeafModelPythonStaticFalsificationCase",
+        "LeafModelPythonStaticFixturePair",
+        "leaf_model_python_static_happy_verdict",
+        "leaf_model_python_static_falsification_verdict",
+        "leaf_model_claim_python_l1_static_return_type",
+    ] {
+        assert!(
+            dag.declaration_by_name(name).is_some(),
+            "leaf_model_verification.dag should declare `{name}`"
         );
     }
 }

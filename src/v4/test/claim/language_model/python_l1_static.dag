@@ -73,15 +73,16 @@ data claim_python_l1_static_fixture_pair_wired: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// Happy case expects StaticAnalysisAccepted; falsification expects a blocking
+// Polarity is structural: the happy case's reconstructed verdict can only be
+// StaticAnalysisAccepted and the falsification case's can only be a blocking
 // StaticAnalysisRejected carrying pyright tool_id + reportReturnType diagnostic.
 fn python_l1_static_expected_verdicts_wired() -> Bool {
-  match python_l1_static_fixture().happy.expected_verdict {
+  match leaf_model_python_static_happy_verdict(c: python_l1_static_fixture().happy) {
     StaticAnalysisAccepted => true
     StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
     StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
   }
-  && match python_l1_static_fixture().falsification.expected_verdict {
+  && match leaf_model_python_static_falsification_verdict(c: python_l1_static_fixture().falsification) {
        StaticAnalysisAccepted => false
        StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
          t == pyright_tool_id && d == pyright_diag_report_return_type
