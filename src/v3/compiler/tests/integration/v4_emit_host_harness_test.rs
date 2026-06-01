@@ -24,8 +24,8 @@
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
 //! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
 //! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target plus L2 Rust/Python/Go stdout
-//! parity across the six-law roster via `emit_host_bridge` (five-byte stdout contract; not
-//! per-law emitted artifacts until emit pipeline wires law subjects).
+//! parity across the six-law roster via `emit_host_bridge` integration harness (five-byte stdout
+//! contract; not a `.dag` TestClaim until emit pipeline wires law subjects into host transport).
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
 //! **TASKS.md** T-22 T-38.
 //!
@@ -1015,8 +1015,6 @@ fn v4_nat_semiring_rung_5_dag_tokenizes_and_parses_full_law_roster_three_targets
         "run_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval",
         "run_phase1_nat_semiring_rung5_python_mul_associativity_emit_equals_eval",
         "run_phase1_nat_semiring_rung5_go_mul_annihilator_emit_equals_eval",
-        "claim_phase1_nat_semiring_rung5_l2_add_left_identity_python_rust_go_stdout_parity",
-        "claim_phase1_nat_semiring_rung5_l2_mul_associativity_python_rust_go_stdout_parity",
     ] {
         assert!(
             surface_declares_data(&module, name),
@@ -1029,13 +1027,6 @@ fn v4_nat_semiring_rung_5_dag_tokenizes_and_parses_full_law_roster_three_targets
             "phase1_nat_semiring_rung5_full_law_roster_runtime_value_rows"
         ),
         "{NAT_SEMIRING_RUNG_5_PATH}: 6 laws × 3 targets roster"
-    );
-    assert!(
-        surface_declares_data(
-            &module,
-            "phase1_nat_semiring_rung5_l2_cross_target_python_parity_claim_rows"
-        ),
-        "{NAT_SEMIRING_RUNG_5_PATH}: 6-law L2 python/rust/go parity claim roster"
     );
     let common = parse_module(RUNG_5_6_COMMON_DAG, RUNG_5_6_COMMON_PATH);
     assert!(
