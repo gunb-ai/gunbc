@@ -65,7 +65,8 @@ import v4.std.collection {
   Present,
   Set,
   empty_map,
-  map_insert
+  map_insert,
+  optional_absent
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -97,10 +98,12 @@ import v4.std.diagnostic {
 import v4.std.node_query { find_named_child }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
+  TargetAtomRealization,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
   TargetSumTypeShape,
+  TargetTypeExpression,
   TargetTypeExpressionProjection
 }
 import v4.std.target_model {
@@ -114,11 +117,19 @@ import v4.std.target_model {
   grammar_relation_field_tokens,
   serialize_source_field_source_grammar,
   serialize_source_field_source_text,
+  string_kernel_type_atom,
+  string_kernel_type_node,
+  symbol_kernel_type_atom,
+  symbol_kernel_type_node,
+  target_atom_alias_type_expression,
+  target_atom_realization_catalog_node,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
   target_model_edge_serialize_source,
+  target_model_edge_atom_realizations,
   target_model_edge_type_expression_projection,
+  target_value_template_for_kind,
   target_type_expr_field_arrow,
   target_type_expr_field_atom,
   target_type_expr_field_cardinality,
@@ -130,7 +141,10 @@ import v4.std.target_model {
   target_type_expr_field_open,
   target_type_expr_field_separator,
   target_type_expr_field_surface,
-  target_type_expr_field_variant_separator
+  target_type_expr_field_variant_separator,
+  ValueBoolLiteral,
+  ValueSymbolIdentityPassthrough,
+  ValueSymbolToOwnedString
 }
 import v4.std.node {
   Arrow,
@@ -143,7 +157,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v4.std.algebra {
   approximate_field_type_node,
   boolean_algebra_type_node,
