@@ -149,24 +149,6 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
     })
 }
 
-fn data_body<'a>(
-    module: &'a v3_compiler::parse_surface::SurfaceModule,
-    name: &str,
-) -> &'a SurfaceExpr {
-    module
-        .items
-        .iter()
-        .find_map(|item| match item {
-            SurfaceItem::Data {
-                name: item_name,
-                body: Some(body),
-                ..
-            } if item_name == name => Some(body),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("missing data body `{name}`"))
-}
-
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
     module.items.iter().any(|item| {
         matches!(
