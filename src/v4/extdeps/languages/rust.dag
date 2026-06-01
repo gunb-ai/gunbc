@@ -114,7 +114,6 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_type_expression_projection,
   target_model_edge_collection_realization,
-  target_model_edge_free_monoid_collection_realization,
   target_model_edge_use_site_ownership_realizations,
   target_model_edge_reference_layer_tokens,
   TargetUseSiteOwnershipRealization,
@@ -1793,6 +1792,16 @@ fn rust_free_monoid_collection_realization_bundle_node() -> Node {
   }
 }
 
+fn rust_collection_realization_catalog_node() -> Node {
+  fold_list_node(
+    xs: Cons {
+      head: rust_set_collection_realization_bundle_node(),
+      tail: Cons { head: rust_free_monoid_collection_realization_bundle_node(), tail: Empty }
+    },
+    item_node: fn(row) { row }
+  )
+}
+
 fn rust_mvp1_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1815,11 +1824,7 @@ fn rust_mvp1_target_model_bundle_core() -> Node {
       ),
       rust_named_edge(
         name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_free_monoid_collection_realization,
-        target: rust_free_monoid_collection_realization_bundle_node()
+        target: rust_collection_realization_catalog_node()
       )
     ]
   }
@@ -1938,11 +1943,7 @@ fn rust_mvp1_target_model_node() -> Node {
       ),
       rust_named_edge(
         name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_free_monoid_collection_realization,
-        target: rust_free_monoid_collection_realization_bundle_node()
+        target: rust_collection_realization_catalog_node()
       ),
       rust_named_edge(
         name: target_model_edge_atom_realizations,
@@ -3585,11 +3586,7 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
       ),
       rust_named_edge(
         name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_free_monoid_collection_realization,
-        target: rust_free_monoid_collection_realization_bundle_node()
+        target: rust_collection_realization_catalog_node()
       ),
       rust_named_edge(
         name: target_model_edge_reference_layer_tokens,

@@ -516,8 +516,8 @@ fn v4_rust_language_model_declares_type_expression_projection_row() {
         "{RUST_LANGUAGE_PATH}: golden Rc<FooBar<X,Y>> emitted node for falsification probe"
     );
     assert!(
-        RUST_LANGUAGE_DAG.contains("target_model_edge_free_monoid_collection_realization"),
-        "{RUST_LANGUAGE_PATH}: Rust SG-2 target model must expose FreeMonoid collection row"
+        surface_declares_fn(&module, "rust_collection_realization_catalog_node"),
+        "{RUST_LANGUAGE_PATH}: Rust target model must expose collection rows through one carrier-keyed catalog"
     );
 }
 
