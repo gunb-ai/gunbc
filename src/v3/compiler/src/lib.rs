@@ -1779,22 +1779,6 @@ pub mod evaluator {
             }
         }
 
-        #[test]
-        fn emit_host_go_executable_source_wraps_function_fragment() {
-            let wrapped = crate::emit_host_eval::emit_host_go_executable_source(
-                "func add(x int, y int) int { return x + y }",
-            );
-            assert!(wrapped.starts_with("package main\nimport \"os\""));
-            assert!(wrapped.contains("func add(x int, y int) int { return x + y }"));
-            assert!(wrapped.contains("os.Stdout.Write(make([]byte, 5))"));
-
-            let full_program = "package main\nfunc main() {}\n";
-            assert_eq!(
-                crate::emit_host_eval::emit_host_go_executable_source(full_program),
-                full_program
-            );
-        }
-
         fn bind_node_id_for_fn(dag: &Dag, fn_name: &str) -> NodeId {
             let decl = dag
                 .declaration_by_name(fn_name)

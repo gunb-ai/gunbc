@@ -118,13 +118,10 @@ pub fn try_dispatch_emit_host_go(
         Err(err) => return Some(Err(err)),
     };
     let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_emit_host_go");
-    let executable_source = emit_host_go_executable_source(source);
-    let mut receipt =
-        match emit_host_runner::run_emit_host_go(&executable_source, &inputs, &work_dir) {
-            Ok(receipt) => receipt,
-            Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
-        };
-    receipt.source_text = source.to_string();
+    let receipt = match emit_host_runner::run_emit_host_go(source, &inputs, &work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
+    };
     let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
         Ok(id) => id,
         Err(err) => return Some(Err(err)),
@@ -184,16 +181,6 @@ fn is_run_emit_host_decl(dag: &Dag, callee_decl: DeclarationId, name: &str) -> b
         return false;
     };
     inputs.len() == 3 && matches!(body, ArrowBody::UserDefined(_))
-}
-
-pub(crate) fn emit_host_go_executable_source(source: &str) -> String {
-    if source.trim_start().starts_with("package ") {
-        return source.to_string();
-    }
-    format!(
-        "package main\nimport \"os\"\n{}\nfunc main() {{ _, _ = os.Stdout.Write(make([]byte, 5)) }}\n",
-        source
-    )
 }
 
 fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
