@@ -296,8 +296,8 @@ type Pair<S, A> {
   second: A
 }
 
-fn takes_pair<S, A>(p: Pair<S, A>) -> () {
-  ()
+fn takes_pair<S, A>(p: Pair<S, A>) -> Int {
+  0
 }
 ";
     let result = compile_dag(source);
