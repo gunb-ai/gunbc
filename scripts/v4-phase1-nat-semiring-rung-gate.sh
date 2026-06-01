@@ -18,12 +18,15 @@
 # Env:
 #   V2_COMPILER                — v2-compiler binary (default: target/release/gunbc)
 #   V4_PHASE1_NAT_SEMIRING_OUT — emit output dir (default: /tmp/v4-phase1-nat-semiring)
-#   V4_PHASE1_NAT_SEMIRING_STRICT — if 1, exit non-zero on any rung failure
+#   V4_PHASE1_NAT_SEMIRING_STRICT — if 1, exit non-zero on any rung failure (implies L1 strict)
+#   V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT — if 1, L1 runtime gate fail-closed even when
+#     parent STRICT=0 (merged into child export; parent exit honors either knob)
 #   V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS — timeout per toolchain check (CI: 300)
 #   V4_PHASE1_NAT_SEMIRING_PYTHON — python3 binary (default: python3)
 #   V4_PHASE1_NAT_SEMIRING_GO     — go binary (default: go)
 #   V4_PHASE1_NAT_SEMIRING_RUSTC  — rustc binary (default: rustc)
 #   V4_PHASE1_NAT_SEMIRING_GOFMT  — gofmt binary (default: gofmt)
+#   V4_GO_L1_NAT_SEMIRING_RECEIPT — Go L1 JSON receipt path (default: ${out}.go-l1-receipt.json)
 
 set -euo pipefail
 
@@ -32,6 +35,7 @@ cd "$root"
 
 fixture_module_path="src/v4/test/claim/algebra_laws/nat_semiring.dag"
 fixture_id="phase1/nat_semiring"
+go_l1_slice_id="go_l1_nat_semiring_rung2"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
 if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_PHASE1_NAT_SEMIRING_OUT:-}" ]]; then
@@ -50,7 +54,12 @@ rustc_bin="${V4_PHASE1_NAT_SEMIRING_RUSTC:-rustc}"
 gofmt_bin="${V4_PHASE1_NAT_SEMIRING_GOFMT:-gofmt}"
 timeout_secs="${V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS:-300}"
 strict="${V4_PHASE1_NAT_SEMIRING_STRICT:-0}"
+l1_runtime_strict="${V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT:-0}"
+if [[ "$strict" == "1" ]]; then
+  l1_runtime_strict="1"
+fi
 summary="${out}.rung-gate-summary.txt"
+go_l1_receipt="${V4_GO_L1_NAT_SEMIRING_RECEIPT:-${out}.go-l1-receipt.json}"
 
 if [[ ! -f "$fixture_module_path" ]]; then
   echo "error: fixture module not found at $fixture_module_path" >&2
@@ -342,6 +351,51 @@ else
   note_blocking "upstream_blocked:R0-go-parse"
 fi
 
+go_l1_diagnostic_source="$out/logs/go_build.log"
+go_l1_blocking_receipt="none"
+case "${verdict[R2-go-compile]}" in
+  PASS) go_l1_blocking_receipt="none" ;;
+  FAIL) go_l1_blocking_receipt="phase1/nat_semiring/rung2/go_compile_failed" ;;
+  *) go_l1_blocking_receipt="upstream_blocked:R0-go-parse" ;;
+esac
+if [[ "${verdict[R0-go-parse]}" != "PASS" ]]; then
+  go_l1_diagnostic_source="$out/logs/go_parse.log"
+fi
+if [[ "$go_emit_status" -ne 0 || "${go_file_count:-0}" -lt 1 ]]; then
+  go_l1_diagnostic_source="$out/logs/go_emit.log"
+  if [[ "$go_emit_status" -ne 0 ]]; then
+    go_l1_blocking_receipt="phase1/nat_semiring/rung0/go_emit_parse_rejected"
+  else
+    go_l1_blocking_receipt="phase1/nat_semiring/rung0/go_emit_unavailable"
+  fi
+fi
+mkdir -p "$(dirname "$go_l1_receipt")"
+"$python_bin" - "$go_l1_receipt" "$go_l1_slice_id" "$out/go" "${verdict[R2-go-compile]}" "$go_l1_blocking_receipt" "$go_l1_diagnostic_source" <<'PY'
+import json
+import pathlib
+import sys
+
+receipt_path, slice_id, go_module_root, verdict, blocking_receipt, diagnostic_source = sys.argv[1:7]
+diagnostic_snippet = None
+diagnostic_path = pathlib.Path(diagnostic_source)
+if verdict != "PASS" and diagnostic_path.exists():
+    text = diagnostic_path.read_text(encoding="utf-8", errors="replace").strip()
+    if text:
+        diagnostic_snippet = "\n".join(text.splitlines()[-20:])
+
+payload = {
+    "schema": "scripts/v4-phase1-nat-semiring-rung-gate.sh::go_l1_compile_receipt_v1",
+    "slice_id": slice_id,
+    "fixture": "phase1/nat_semiring",
+    "predicate": "R2-go-compile",
+    "go_module_root": go_module_root,
+    "verdict": verdict,
+    "blocking_receipt": blocking_receipt,
+    "diagnostic_snippet": diagnostic_snippet,
+}
+pathlib.Path(receipt_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+
 # --- Rung roll-up (§2.4): row PASS iff every cell PASS; otherwise FAIL (all-SKIP → FAIL). ---
 row_aggregate() {
   local row_pass="PASS"
@@ -355,12 +409,40 @@ rung0_pass="$(row_aggregate R0-dag-parse R0-rust-parse R0-python-parse R0-go-par
 rung1_pass="$(row_aggregate R1-rust-typecheck)"
 rung2_pass="$(row_aggregate R2-rust-compile R2-python-compile R2-go-compile)"
 
+l1_python_runtime_pass="SKIP"
+# L1 runtime exec requires R2-python-compile PASS (py_compile receipt); R0 alone is insufficient.
+if [[ "${verdict[R2-python-compile]}" == "PASS" ]]; then
+  export V4_PHASE1_NAT_SEMIRING_OUT="$out"
+  export V4_PHASE1_NAT_SEMIRING_PYTHON="$python_bin"
+  export V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS="$timeout_secs"
+  export V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT="$l1_runtime_strict"
+  set +e
+  bash "${root}/scripts/v4-phase1-nat-semiring-python-runtime-gate.sh"
+  l1_status=$?
+  set -e
+  if [[ -f "${out}.python-runtime-gate-summary.txt" ]]; then
+    l1_line="$(grep -E '^  l1_python_runtime:' "${out}.python-runtime-gate-summary.txt" || true)"
+    if [[ "$l1_line" =~ l1_python_runtime:\ PASS ]]; then
+      l1_python_runtime_pass="PASS"
+    elif [[ "$l1_line" =~ l1_python_runtime:\ FAIL ]]; then
+      l1_python_runtime_pass="FAIL"
+      note_blocking "phase1/nat_semiring/l1/python_runtime_exec_rejected"
+    fi
+  fi
+  if [[ "$l1_runtime_strict" == "1" && "$l1_status" -ne 0 ]]; then
+    l1_python_runtime_pass="FAIL"
+    note_blocking "phase1/nat_semiring/l1/python_runtime_exec_rejected"
+  fi
+fi
+
 {
   echo "fixture=${fixture_id}"
   echo "  rung0: ${rung0_pass}  (dag=${verdict[R0-dag-parse]} rust=${verdict[R0-rust-parse]} python=${verdict[R0-python-parse]} go=${verdict[R0-go-parse]})"
   echo "  rung1: ${rung1_pass}  (rust=${verdict[R1-rust-typecheck]})"
   echo "  rung2: ${rung2_pass}  (rust=${verdict[R2-rust-compile]} python=${verdict[R2-python-compile]} go=${verdict[R2-go-compile]})"
+  echo "  l1_python_runtime: ${l1_python_runtime_pass}  (python exec after py_compile; see ${out}.python-runtime-gate-summary.txt)"
   echo "blocking_receipt: ${blocking_receipt}"
+  echo "go_l1_receipt: ${go_l1_receipt}"
   echo ""
   echo "logs: ${out}/logs/"
 } | tee "$summary"
@@ -372,9 +454,11 @@ if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
 fi
 
 if [[ "$strict" == "1" ]]; then
-  if [[ "$rung0_pass" != "PASS" || "$rung1_pass" != "PASS" || "$rung2_pass" != "PASS" ]]; then
+  if [[ "$rung0_pass" != "PASS" || "$rung1_pass" != "PASS" || "$rung2_pass" != "PASS" || "$l1_python_runtime_pass" == "FAIL" ]]; then
     exit 1
   fi
+elif [[ "$l1_runtime_strict" == "1" && "$l1_python_runtime_pass" == "FAIL" ]]; then
+  exit 1
 fi
 
 exit 0

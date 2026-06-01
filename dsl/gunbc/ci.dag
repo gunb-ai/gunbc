@@ -24,8 +24,8 @@
 // Consumers:
 //   .github/workflows/ci.yml — sole live Actions transport for gunbc CI (single authority).
 //   dsl/gunbc/ci.dag — compiler-intent gates (`CIPipeline` / `CIGate`) plus the pinned GitHub
-//     Actions `Workflow` carrier field on `CIWorkflowDag` (regenerated from `.github/workflows/ci.yml`
-//     into `dsl/gunbc/ci_github_actions_workflow.dag` — single structural consumer; no hand-parallel
+//     Actions `Workflow` carrier field on `CIWorkflowDag` (from
+//     `dsl/gunbc/ci_github_actions_workflow.dag` — single structural consumer; no hand-parallel
 //     `Workflow` mirror elsewhere in this module).
 //   dsl/gunbc/ci_emission.dag — WI-2 / Slice 4: `WorkflowRuntime` + `project_github_actions` +
 //     pinned `gunbc_ci_yml_workflow` (`project_github_actions(ci_workflow_dag, YamlStatic)`).
@@ -111,15 +111,14 @@ type CIGateEdge {
 }
 
 // `github_actions_workflow` does not author `pipeline` / `edges` (sole gate-topology
-// authority remains those fields). It pins the typed Actions `Workflow` carrier regenerated from
-// `.github/workflows/ci.yml` into `dsl/gunbc/ci_github_actions_workflow.dag`
-// (**R3 gate #98**, `ci_yml_hand_authority_dissolved`):
-// `.github/workflows/ci.yml` matches deterministic `serde_yaml` serialization after
-// `tools/gen_gunbc_ci_workflow_dag` validates the modeled `Workflow` subset (integration test:
-// `ci_yml_hand_authority_dissolved`). Gate #59 YAML→`.dag` byte drift stays orthogonal.
-// That mechanical encoding is not a second editorial source for
-// which compiler gates exist; gate-vs-Actions alignment is process + follow-on projection
-// (WI-2), not dual authority over the same axis (INVARIANTS P2 / modeling Practices 3+5).
+// authority remains those fields). It pins the committed typed Actions `Workflow` carrier from
+// `dsl/gunbc/ci_github_actions_workflow.dag`.
+// `.github/workflows/ci.yml` remains the hand-edited source of truth until the T-24 CI model emits it.
+// The pinned carrier is an interim static input, not a second editorial source for which compiler
+// gates exist; gate-vs-Actions alignment is process + follow-on projection (WI-2), not dual
+// authority over the same axis (INVARIANTS P2 / modeling Practices 3+5).
+// Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
+// the static carrier.
 type CIWorkflowDag {
   pipeline: CIPipeline
   edges: List<CIGateEdge>

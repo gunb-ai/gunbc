@@ -9,10 +9,25 @@
 //! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` +
 //! `_internal/INVARIANTS_OPS.md` row land in the same PR. **+0 SG-0 paths** (no new census entry).
 //! SG-RC ctor `binding_spellings` receipts live in `src/v4/test/claim/manual/sg_rc_layering.dag`.
+//! Outcome/Rc<Outcome> receipt: this PR adds assertion-only same-file smoke over
+//! `claim_sg_rc_outcome_inner_sg2_args_preserved`; SG-0 implementation-surface posture remains +0,
+//! and the dissolve trigger is direct v4 manual-claim runner execution of `sg_rc_layering.dag`.
 //!
 //! SG-1 + SG-2 + SG-5/SG-6 + SG-RC receipt: `target_model.dag` carriers;
 //! `bounded_lattice_completeness` + `04_infer` gate; Rust rows in `rust.dag`;
 //! `06_translate.dag` consumers.
+//!
+//! **This PR (+0 SG-0 paths):** Go SG-1 same-path expansion —
+//! `v4_go_language_model_declares_target_atom_realization_rows` per
+//! `docs/planning/v4-go-target-atom-realization-worksheet-2026-06-01.md` §9 (Int row
+//! fail-closed deferred until shared `TargetValueTemplateKind` gains integer literal arm).
+//! **This PR (+0 SG-0 paths):** TS L0 TargetAtomRealization same-path expansion —
+//! `v4_typescript_language_model_declares_target_atom_realization_rows` per
+//! `docs/planning/v4-ts-target-atom-realization-worksheet-2026-06-01.md` §8; ROADMAP row
+//! `_internal/ROADMAP_OPS.md` § **Nine lanes** / T-PB-B
+//! (`pb_rust_tests_outside_residual_zero`). Dissolves when `.dag` `TestClaim` /
+//! generated harness execution covers TS Symbol/Bool/String TargetAtomRealization catalog
+//! facts directly without this host Rust parse-surface smoke.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
@@ -24,6 +39,14 @@ const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.d
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
+const TYPESCRIPT_LANGUAGE_DAG: &str =
+    include_str!("../../../../v4/extdeps/languages/typescript.dag");
+const TYPESCRIPT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/typescript.dag";
+const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
+const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
+const SG_RC_LAYERING_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/sg_rc_layering.dag");
+const SG_RC_LAYERING_CLAIM_PATH: &str = "src/v4/test/claim/manual/sg_rc_layering.dag";
 const BOUNDED_LATTICE_COMPLETENESS_DAG: &str =
     include_str!("../../../../v4/std/bounded_lattice_completeness.dag");
 const BOUNDED_LATTICE_COMPLETENESS_PATH: &str = "src/v4/std/bounded_lattice_completeness.dag";
@@ -66,6 +89,17 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
         .items
         .iter()
         .any(|item| matches!(item, SurfaceItem::Data { name: decl_name, .. } if decl_name == name))
+}
+
+/// `map_insert` keys/values are often split across lines in `.dag` sources.
+fn dag_source_contains_map_insert_pair(body: &str, key: &str, value: &str) -> bool {
+    let collapsed = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    collapsed.contains(&format!("{key}, {value}"))
+}
+
+fn dag_source_contains_collapsed(body: &str, needle: &str) -> bool {
+    let collapsed = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    collapsed.contains(&needle.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
 fn surface_type_name(ty: &SurfaceType) -> String {
@@ -231,7 +265,7 @@ fn v4_translate_dag_imports_target_atom_realization_consumer() {
         "{TRANSLATE_PATH}: type shell must apply row.type_form.node from catalog lookup"
     );
     assert!(
-        TRANSLATE_DAG.contains("target_value_expression_node(expr: expr)"),
+        TRANSLATE_DAG.contains("target_value_expression_node(expr:"),
         "{TRANSLATE_PATH}: value realization must project TargetValueExpression onto emitted Node"
     );
     assert!(
@@ -315,6 +349,71 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
     );
 }
 
+#[test]
+fn v4_go_language_model_declares_target_atom_realization_rows() {
+    let module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+    assert!(
+        surface_declares_data(&module, "go_target_atom_realization_symbol"),
+        "{GO_LANGUAGE_PATH}: Symbol row for kernel-ambient Symbol"
+    );
+    assert!(
+        surface_declares_data(&module, "go_target_atom_realization_bool"),
+        "{GO_LANGUAGE_PATH}: Bool TargetAtomRealization row"
+    );
+    assert!(
+        surface_declares_data(&module, "go_target_atom_realization_char"),
+        "{GO_LANGUAGE_PATH}: Char → rune TargetAtomRealization row"
+    );
+    assert!(
+        !surface_declares_data(&module, "go_target_atom_realization_int"),
+        "{GO_LANGUAGE_PATH}: platform int row deferred until shared TargetValueTemplateKind covers integer literals (R1 uses go_surface_spelling_int / go_facts_int facts)"
+    );
+    assert!(
+        surface_declares_data(&module, "go_target_atom_realization_catalog"),
+        "{GO_LANGUAGE_PATH}: per-language catalog wired on MVP target_model"
+    );
+    assert!(
+        surface_declares_data(&module, "go_atom_realization_symbol"),
+        "{GO_LANGUAGE_PATH}: dual-name fact_id for R3-external leaf-model claims"
+    );
+    assert!(
+        GO_LANGUAGE_DAG.contains("target_model_edge_atom_realizations"),
+        "{GO_LANGUAGE_PATH}: atom_realizations edge must be on live go_mvp1_target_model_node"
+    );
+    assert!(
+        GO_LANGUAGE_DAG.contains("go_surface_spelling_rune"),
+        "{GO_LANGUAGE_PATH}: Char kernel maps to Go rune surface spelling"
+    );
+    let bundle_core_start = GO_LANGUAGE_DAG
+        .find("fn go_mvp1_target_model_bundle_core()")
+        .expect("go_mvp1_target_model_bundle_core");
+    let bundle_core_end = GO_LANGUAGE_DAG[bundle_core_start..]
+        .find("fn go_mvp1_target_model_staging()")
+        .expect("go_mvp1_target_model_staging after bundle_core");
+    let bundle_core_body = &GO_LANGUAGE_DAG[bundle_core_start..bundle_core_start + bundle_core_end];
+    assert!(
+        !bundle_core_body.contains("target_model_edge_atom_realizations"),
+        "{GO_LANGUAGE_PATH}: catalog host_bundle must exclude atom_realizations edge (rust SG-1 pattern)"
+    );
+    let bindings_start = GO_LANGUAGE_DAG
+        .find("fn go_mvp1_binding_spellings()")
+        .expect("go_mvp1_binding_spellings");
+    let bindings_end = GO_LANGUAGE_DAG[bindings_start..]
+        .find("fn go_mvp1_target_model_bundle_core()")
+        .expect("go_mvp1_target_model_bundle_core after binding_spellings");
+    let bindings_body = &GO_LANGUAGE_DAG[bindings_start..bindings_start + bindings_end];
+    for (symbol, spelling) in [
+        ("go_surface_spelling_string", "\"string\""),
+        ("go_surface_spelling_bool", "\"bool\""),
+        ("go_surface_spelling_rune", "\"rune\""),
+    ] {
+        assert!(
+            dag_source_contains_map_insert_pair(bindings_body, symbol, spelling),
+            "{GO_LANGUAGE_PATH}: SG-1 atom type_form identities must resolve via go_mvp1_binding_spellings (06_translate map_get)"
+        );
+    }
+}
+
 // P5 receipt: same-path smoke expansion (SG-2 type-expression-projection worksheet §6).
 // Asserts `.dag` surface shape only — substrate edits landed #3962 on `main` (#4124).
 // Deferral: retired when `.dag` `TestClaim` / T-22 eval covers same facts (T-PB-B).
@@ -343,6 +442,13 @@ fn v4_std_target_model_declares_target_type_expression_projection_carrier() {
         "TargetTypeExpression.node must carry emitted subtree authority"
     );
     let proj_fields = type_record_fields(&module, "TargetTypeExpressionProjection");
+    let generic_apply_fields = type_record_fields(&module, "TargetGenericApply");
+    assert!(
+        generic_apply_fields
+            .iter()
+            .any(|(n, ty)| n == "field_label_separator" && ty == "Optional<Symbol>"),
+        "TargetGenericApply.field_label_separator must carry optional record field-label binding token"
+    );
     assert!(
         proj_fields.iter().any(|(n, _)| n == "instantiation_form"),
         "instantiation_form must be present for generic-apply connective"
@@ -354,6 +460,10 @@ fn v4_std_target_model_declares_target_type_expression_projection_carrier() {
     assert!(
         surface_declares_fn(&module, "target_type_expr_emitted_wire_decode"),
         "{TARGET_MODEL_PATH}: bidirectional wire decode must share projection row (§10.6)"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_type_expr_emitted_labeled_slot_edges"),
+        "{TARGET_MODEL_PATH}: record serializers must preserve slot labels, not just type nodes"
     );
 }
 
@@ -385,12 +495,55 @@ fn v4_translate_dag_imports_type_expression_projection_consumer() {
         "{TRANSLATE_PATH}: TypeNode subtrees must project via SG-2 row"
     );
     assert!(
+        surface_declares_fn(&module, "serialize_type_expr_record_field_label"),
+        "{TRANSLATE_PATH}: record type serialization must bind field labels through target spellings"
+    );
+    assert!(
+        TRANSLATE_DAG.contains("field_label_separator: field_label_separator"),
+        "{TRANSLATE_PATH}: record serializer must consume the shared field-label separator carrier"
+    );
+    assert!(
         surface_declares_fn(&module, "translate_node_with_projection"),
         "{TRANSLATE_PATH}: projection-present targets must use dedicated translate path"
     );
     assert!(
         TRANSLATE_DAG.contains("translate_node_with_projection("),
         "{TRANSLATE_PATH}: translate_node must route ProjectionPresent to projection path"
+    );
+}
+
+#[test]
+fn v4_translate_record_type_serialization_emits_field_labels() {
+    assert!(
+        dag_source_contains_collapsed(
+            TRANSLATE_DAG,
+            "o: target_type_expr_emitted_labeled_slot_edges(node: node)"
+        ),
+        "{TRANSLATE_PATH}: record serialization must retain labeled slot edges"
+    );
+    assert!(
+        dag_source_contains_collapsed(
+            TRANSLATE_DAG,
+            "o: serialize_type_expr_record_field_label(target: target, edge: split.head)"
+        ),
+        "{TRANSLATE_PATH}: record serialization must resolve each field label through binding spellings"
+    );
+    assert!(
+        dag_source_contains_collapsed(
+            TRANSLATE_DAG,
+            "o: lex_rules_literal(target: target, token_class: field_label_separator)"
+        ),
+        "{TRANSLATE_PATH}: record serialization must emit the target field-label separator"
+    );
+    assert!(
+        dag_source_contains_collapsed(
+            TRANSLATE_DAG,
+            "let field_source = list_append(
+              left: list_append(left: label_source, right: label_sep_source),
+              right: field_type_source
+            )"
+        ),
+        "{TRANSLATE_PATH}: record field emission must be label + ':' + serialized type, not bare type"
     );
 }
 
@@ -414,8 +567,41 @@ fn v4_rust_language_model_declares_type_expression_projection_row() {
         "{RUST_LANGUAGE_PATH}: SG-2 bundle edge name must wire on rust TargetModel"
     );
     assert!(
+        dag_source_contains_collapsed(
+            RUST_LANGUAGE_DAG,
+            "rust_lex_rule(token_class: rust_token_colon, text: \": \")"
+        ),
+        "{RUST_LANGUAGE_PATH}: SG-2 target model lex rules must realize the record field-label separator"
+    );
+    assert!(
         RUST_LANGUAGE_DAG.contains("fn rust_sg2_rc_foobar_xy_emitted()"),
         "{RUST_LANGUAGE_PATH}: golden Rc<FooBar<X,Y>> emitted node for falsification probe"
+    );
+}
+
+#[test]
+fn v4_typescript_language_model_binds_record_field_label_separator_in_shared_row() {
+    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
+    assert!(
+        surface_declares_fn(&module, "ts_type_expression_projection"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript SG-2 row must be authored"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "collection"],
+            "Present"
+        ) && import_includes_name(&module, &["v4", "std", "collection"], "Absent"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: projection bundle match arms must import Optional constructors explicitly"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG
+            .contains("field_label_separator: optional_present(value: ts_token_colon)"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS record row must bind ':' through shared TargetGenericApply"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("target_type_expr_field_field_label_separator"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS projection bundle must encode the shared field-label separator edge"
     );
 }
 
@@ -493,6 +679,73 @@ fn v4_bounded_lattice_completeness_and_infer_gate_are_wired() {
     );
 }
 
+#[test]
+fn v4_typescript_language_model_declares_target_atom_realization_rows() {
+    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_symbol"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS Symbol TargetAtomRealization row must be authored in typescript.dag"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_bool"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS Bool TargetAtomRealization row must be authored in typescript.dag"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_string"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS String TargetAtomRealization row substitutes for Rust Char"
+    );
+    assert!(
+        surface_declares_data(&module, "ts_target_atom_realization_catalog"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS TargetModel must expose atom rows through the shared catalog"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("target_model_edge_atom_realizations"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: live TS TargetModel bundle must expose atom_realizations edge"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("ts_type_expression_projection().atom_form"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: atom rows must consume the SG-2 TypeScript type-expression row"
+    );
+    assert!(
+        !TYPESCRIPT_LANGUAGE_DAG.contains("ts_target_atom_realization_char"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TS L0 substitutes String; it must not copy the Rust Char row"
+    );
+}
+
+// P5 receipt: TS SG-2 same-path expansion beyond L0 row-2 (Conj) — Instantiation/Arrow/Disj probes.
+#[test]
+fn v4_typescript_language_model_declares_type_expression_projection_row() {
+    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
+    assert!(
+        surface_declares_fn(&module, "ts_type_expression_projection"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: per-language SG-2 row must be authored in typescript.dag"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_type_expression_projection_bundle_node"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: projection row must encode as TargetModel bundle child"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_type_expr_target_model"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: falsification probe target must carry projection edge"
+    );
+    assert!(
+        TYPESCRIPT_LANGUAGE_DAG.contains("target_model_edge_type_expression_projection"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: SG-2 bundle edge name must wire on TS TargetModel"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_foobar_xy_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: golden FooBar<X,Y> Instantiation emitted node (beyond row-2)"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_arrow_xy_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: golden (X) => Y Arrow emitted node (beyond row-2)"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_sum_xy_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: golden X | Y Disj emitted node (beyond row-2)"
+    );
+}
+
 // P5 receipt: SG-RC-LAYERING worksheet §6 — same-path smoke expansion (parse surface only).
 #[test]
 fn v4_std_target_realization_declares_use_site_ownership_carrier() {
@@ -518,6 +771,10 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
         "{TARGET_MODEL_PATH}: per (carrier, use_site) lookup must be structural"
     );
     assert!(
+        surface_declares_fn(&module, "target_use_site_ownership_source_key"),
+        "{TARGET_MODEL_PATH}: SG-RC lookup must use row-authored carrier key projection so Outcome rows compose with SG-2"
+    );
+    assert!(
         surface_declares_fn(&module, "target_reference_layer_apply_type_emitted"),
         "{TARGET_MODEL_PATH}: type emit must wrap SG-2 inner via reference_layer row"
     );
@@ -532,6 +789,26 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
     assert!(
         surface_declares_data(&module, "target_reference_layer_tokens_decode_invalid"),
         "{TARGET_MODEL_PATH}: non-Conj token bundle must fail-closed"
+    );
+}
+
+#[test]
+fn v4_sg_rc_outcome_claim_preserves_sg2_inner_type_args() {
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("sg_rc_outcome_node_source_type"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: must include an Outcome<T> SG-RC fixture"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("project_type_expression_node"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: Outcome<T> fixture must project inner type through SG-2 before SG-RC wrapping"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("Rc<Outcome<Node>>"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: Outcome<T> receipt must assert Rc<Outcome<Node>>, not bare Rc<Outcome>"
+    );
+    assert!(
+        SG_RC_LAYERING_CLAIM_DAG.contains("claim_sg_rc_outcome_inner_sg2_args_preserved"),
+        "{SG_RC_LAYERING_CLAIM_PATH}: manual TestClaim must pin Outcome<T> SG-2 + SG-RC composition"
     );
 }
 

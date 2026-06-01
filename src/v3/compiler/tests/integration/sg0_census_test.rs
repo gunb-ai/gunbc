@@ -316,6 +316,14 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // § SG-0 hand-authored compiler non-test paths (`T-PB-B` / `pb_rust_tests_outside_residual_zero`).
     // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
     "src/v3/compiler/src/emit_host_bridge.rs",
+    // T-22: substrate eval intercept for `run_emit_host_rust` → `emit_host_runner` (rust row only).
+    // Receipt assembly delegates to `emit_host_receipt_from_source` via `eval_callable_declaration`.
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** paired TEST row
+    // `v4_emit_host_eval_dispatch_test.rs`; explicit deferral ROADMAP `T-PB-B` /
+    // `pb_rust_tests_outside_residual_zero` plus `src/v4/compiler/emit_host.dag` T-22 rust row.
+    // Dissolution: substrate Callable dispatch owns transport without this intercept; retires with
+    // `emit_host_bridge.rs` when the T-PB-B lane closes.
+    "src/v3/compiler/src/emit_host_eval.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
@@ -397,6 +405,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
+    // Phase 1 leaf-model go R1/R2a/R2b/R3-external: boundary Go toolchain exercise for
+    // R1 int surface spelling, R2a int algebra ops, R2b int64 overflow wrap, R3-external
+    // Symbol-as-string projection until T-22 modeled `run_target_verification` owns target
+    // verdicts; P5 deferral to ROADMAP.md `PB-Runtime-External-Toolchain-TestClaims`.
+    // Interim host runners: scripts/v4-leaf-model-go-r{1,2a,2b,3-external}-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs",
     // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
     // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
     // `run_target_verification` owns target verdicts; interim host runner
@@ -431,6 +445,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolution: delete when modeled runner exercises
     // `RustEmitProjectionEqualityExpectation` without this hand-Rust bridge.
     "src/v3/compiler/tests/boundary/v4_leaf_model_rust_r3_internal_emit_coupling_test.rs",
+    // Phase 1 leaf-model typescript R2a/R2b/R3-external (MW-D3 alpha lane): boundary tsc + Node
+    // exercise for R2a number algebra ops (TS2339 falsification), R2b bigint runtime vs number
+    // lane divergence, R3-external Symbol() factory vs `new Symbol` (TS7009); host runners
+    // scripts/v4-leaf-model-typescript-r2{a,b,r3-external}-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_typescript_r2_r3_external_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
@@ -481,9 +500,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
-    // E6-G1.a Option 3 static lens mechanism (#1853 worker brief + #1857):
+    // E6-G1.a Option 3 static lens mechanism (#1853 + #1857):
     // `find_list_empty_constructor_tag` helper for opaque-`Dag` harness tags
-    // (P1/P5 compile-time brief receipts live in `e6_g1a_option3_static_lens_test.rs`).
+    // (P5 receipt: SG-0 census membership for `e6_g1a_option3_static_lens_test.rs`).
     "src/v3/compiler/tests/integration/common/list_variant_tags.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
@@ -522,8 +541,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // coverage owns the same carrier and first-row projection.
     "src/v3/compiler/tests/integration/dissolution_subsumption_carrier_test.rs",
     // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
-    // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
-    // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
+    // (#1853; witness-flow + TESTING.md split per #1857). SG-0 ratchet: hand-authored
+    // integration test census membership.
     "src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     // T-Substrate-Lens-Primitive Lens<EmissionProvenance> structural cementing
@@ -898,6 +917,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (parsed-surface receipts only); fail-closed exercised by mvp1 TestClaimRun — see
     // INVARIANTS.md §SG-0 row `v4_compiler_emit_translate_smoke_test.rs`.
     // **PR #3798 (+0 paths):** extends `v4_python_language_model_declares_t11_translation_rules`.
+    // **PR #4156 (+0 paths):** adds TS alpha-lane L0 grammar-inverse G1/G2 production-anchor
+    // receipts for `mvp1_typescript_add_translate.dag` and `mvp1_typescript_record_task_translate.dag`.
+    // **TS next-wave 3 (+0 paths):** extends G3+ grammar-inverse (`mvp1_typescript_pr3_typed_fn_translate.dag`)
+    // and SG-2 projection beyond L0 row-2 (`sg2_typescript_type_expression_projection.dag` +
+    // `v4_typescript_language_model_declares_type_expression_projection_row`).
+    // Explicit P5 deferral: ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero` plus
+    // TASKS.md T-22; dissolves when these anchors are asserted by `.dag` TestClaim execution or
+    // generated harness coverage instead of host parse-surface traversal.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
@@ -906,8 +933,17 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
     // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
     // MVP-2 bridge proofs (law×target); `emit_host_bridge.rs` python row (+0 NON_TEST — #4047).
-    // SG-0 + INVARIANTS §P5(b) receipt. Dissolves: ROADMAP T-PB-B / TASKS T-22 T-38.
+    // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
+    // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
+    // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
+    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Dissolves: T-PB-B / T-22 T-38.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
+    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
+    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
+    // replaces host-runner receipts.
+    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
     "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
@@ -951,6 +987,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
     // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
     "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
+    // E0308 W1-A2: `src/v4/std/text.dag` HostStringText host-string/text-carrier boundary.
+    // Explicit P5 deferral: ROADMAP.md § "Nine lanes" row `T-PB-B` /
+    // `pb_rust_tests_outside_residual_zero`; dissolves when `.dag` TestClaim or
+    // generated harness coverage asserts this carrier shape and its consumers directly.
+    "src/v3/compiler/tests/integration/v4_std_text_dag_smoke_test.rs",
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.

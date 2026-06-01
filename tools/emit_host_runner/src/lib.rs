@@ -19,9 +19,12 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+
+static WORK_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Wall-clock bound for `cargo build` of the ephemeral fixture crate.
 pub const HOST_BUILD_TIMEOUT: Duration = Duration::from_secs(300);
@@ -504,7 +507,14 @@ pub fn run_emit_host_go(
     })
 }
 
-/// Run `source` as a Python script in `work_dir` via `python3`, capture stdout/stderr.
+/// Host python interpreter — override via `GUNBC_PYTHON` or `V4_PHASE1_NAT_SEMIRING_PYTHON`.
+pub fn python3_binary() -> String {
+    std::env::var("GUNBC_PYTHON")
+        .or_else(|_| std::env::var("V4_PHASE1_NAT_SEMIRING_PYTHON"))
+        .unwrap_or_else(|_| "python3".to_string())
+}
+
+/// Run `source` as a Python script in `work_dir`, capture stdout/stderr.
 pub fn run_emit_host_python(
     source: &str,
     inputs: &EmitHostFixtureInputs,
@@ -520,7 +530,7 @@ pub fn run_emit_host_python(
         source: e.to_string(),
     })?;
 
-    let mut run_cmd = Command::new("python3");
+    let mut run_cmd = Command::new(python3_binary());
     run_cmd.arg(&script_path);
     let run = run_command_bounded(run_cmd, HOST_RUN_TIMEOUT, HostPhase::FixtureRun)?;
     let build_log = bounded_output_to_log(&run, "run");
@@ -538,6 +548,12 @@ pub fn default_work_dir(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(prefix)
 }
 
+/// Hermetic work directory unique per process and per call (concurrent eval / parallel tests safe).
+pub fn unique_work_dir(prefix: &str) -> PathBuf {
+    let seq = WORK_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+    default_work_dir(&format!("{prefix}_{}_{seq}", std::process::id()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -546,6 +562,16 @@ mod tests {
     fn runtime_value_parse_rust_accepts_five_bytes() {
         assert!(runtime_value_parse_rust(&[0, 0, 0, 0, 0]).is_ok());
         assert!(runtime_value_parse_rust(&[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn unique_work_dir_differs_per_call_in_process() {
+        let a = unique_work_dir("gunbc_emit_host_unique_test");
+        let b = unique_work_dir("gunbc_emit_host_unique_test");
+        assert_ne!(
+            a, b,
+            "concurrent eval calls must not share a work directory"
+        );
     }
 
     #[test]

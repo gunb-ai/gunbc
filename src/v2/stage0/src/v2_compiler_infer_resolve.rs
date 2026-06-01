@@ -33,12 +33,13 @@ pub use crate::v2_std_core::{
     is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
     local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
     make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resource_use_node, make_text_part_node,
-    make_transport_node, map_children, no_span, node_name_span, param_node_default_value,
-    param_node_name_at, param_node_type_expr, resource_use_name_at, resource_use_resource,
-    string_type, transport_request_body, unit_type, with_optional_cardinality,
-    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node, StringPart,
+    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
+    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
+    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
+    resource_use_resource, string_type, transport_request_body, unit_type,
+    with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
+    Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node,
+    StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -730,32 +731,6 @@ pub fn resolve_node_bounded(
                         }
                         __result
                     });
-                    let applied_type_args = Rc::new(Node {
-                        name: type_name.clone(),
-                        span: n.span.clone(),
-                        ident_span: n.ident_span.clone(),
-                        children: resolved_args.clone(),
-                        connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: None,
-                        return_cardinality: n.return_cardinality.clone(),
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    });
-                    let applied_type_args_property = make_field_init_node(
-                        "__applied_type_args".to_string(),
-                        applied_type_args,
-                        n.span.clone(),
-                        n.span.clone(),
-                    );
                     let slot_bindings = Rc::new(
                         decl.params
                             .clone()
@@ -838,22 +813,41 @@ pub fn resolve_node_bounded(
                             );
                             let is_recursive =
                                 is_recursive_type_by_name(env.clone(), type_name.clone());
-                            let resolved_node = Rc::new(Node {
+                            let expanded_node = Rc::new(Node {
                                 name: type_name.clone(),
                                 span: n.span.clone(),
                                 ident_span: n.ident_span.clone(),
                                 children: target_result.resolved.clone().children.clone(),
                                 connective: target_result.resolved.clone().connective.clone(),
                                 params: Rc::new(vec![]),
-                                inferred: n.inferred.clone(),
+                                inferred: target_result.resolved.clone().inferred.clone(),
                                 return_cardinality: n.return_cardinality.clone(),
                                 uses: n.uses.clone(),
                                 body: n.body.clone(),
                                 transport: n.transport.clone(),
-                                properties: v2_rt::concat(
-                                    target_result.resolved.clone().properties.clone(),
-                                    Rc::new(vec![applied_type_args_property]),
-                                ),
+                                properties: target_result.resolved.clone().properties.clone(),
+                                type_annotation: n.type_annotation.clone(),
+                                is_self_recursive: is_recursive,
+                                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                                match_pattern: n.match_pattern.clone(),
+                                expr_data: n.expr_data.clone(),
+                                ident: None,
+                            });
+                            let resolved_node = Rc::new(Node {
+                                name: type_name.clone(),
+                                span: n.span.clone(),
+                                ident_span: n.ident_span.clone(),
+                                children: resolved_args.clone(),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: Some(Rc::new(Resolved {
+                                    node: expanded_node,
+                                })),
+                                return_cardinality: n.return_cardinality.clone(),
+                                uses: n.uses.clone(),
+                                body: n.body.clone(),
+                                transport: n.transport.clone(),
+                                properties: target_result.resolved.clone().properties.clone(),
                                 type_annotation: n.type_annotation.clone(),
                                 is_self_recursive: is_recursive,
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
@@ -885,23 +879,42 @@ pub fn resolve_node_bounded(
                             });
                             let is_recursive =
                                 is_recursive_type_by_name(env.clone(), type_name.clone());
+                            let expanded_node = Rc::new(Node {
+                                name: type_name.clone(),
+                                span: n.span.clone(),
+                                ident_span: n.ident_span.clone(),
+                                children: substituted_children,
+                                connective: decl.connective.clone(),
+                                params: Rc::new(vec![]),
+                                inferred: n.inferred.clone(),
+                                return_cardinality: n.return_cardinality.clone(),
+                                uses: n.uses.clone(),
+                                body: n.body.clone(),
+                                transport: n.transport.clone(),
+                                properties: decl.properties.clone(),
+                                type_annotation: n.type_annotation.clone(),
+                                is_self_recursive: is_recursive,
+                                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                                match_pattern: n.match_pattern.clone(),
+                                expr_data: n.expr_data.clone(),
+                                ident: None,
+                            });
                             let result = Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
                                     name: type_name.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
-                                    children: substituted_children,
-                                    connective: decl.connective.clone(),
+                                    children: resolved_args.clone(),
+                                    connective: Connective::NoConnective,
                                     params: Rc::new(vec![]),
-                                    inferred: n.inferred.clone(),
+                                    inferred: Some(Rc::new(Resolved {
+                                        node: expanded_node,
+                                    })),
                                     return_cardinality: n.return_cardinality.clone(),
                                     uses: n.uses.clone(),
                                     body: n.body.clone(),
                                     transport: n.transport.clone(),
-                                    properties: v2_rt::concat(
-                                        decl.properties.clone(),
-                                        Rc::new(vec![applied_type_args_property]),
-                                    ),
+                                    properties: decl.properties.clone(),
                                     type_annotation: n.type_annotation.clone(),
                                     is_self_recursive: is_recursive,
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
@@ -1348,6 +1361,32 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
         let authored_type = param_node_type_expr(param.clone());
         let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
         let type_resolved = type_result.resolved.clone();
+        let rendered_type = if ((authored_type.children.clone().len() as i64) > 0) {
+            Rc::new(Node {
+                name: authored_type.name.clone(),
+                span: authored_type.span.clone(),
+                ident_span: authored_type.ident_span.clone(),
+                children: type_resolved.children.clone(),
+                connective: authored_type.connective.clone(),
+                params: authored_type.params.clone(),
+                inferred: Some(Rc::new(Resolved {
+                    node: type_resolved.clone(),
+                })),
+                return_cardinality: authored_type.return_cardinality.clone(),
+                uses: authored_type.uses.clone(),
+                body: authored_type.body.clone(),
+                transport: authored_type.transport.clone(),
+                properties: type_resolved.properties.clone(),
+                type_annotation: authored_type.type_annotation.clone(),
+                is_self_recursive: authored_type.is_self_recursive,
+                has_non_tail_self_call: authored_type.has_non_tail_self_call.clone(),
+                match_pattern: authored_type.match_pattern.clone(),
+                expr_data: authored_type.expr_data.clone(),
+                ident: None,
+            })
+        } else {
+            type_resolved.clone()
+        };
         let type_diags = v2_rt::concat(
             type_result.diagnostics.clone(),
             missing_generic_args_diagnostics(
@@ -1368,14 +1407,16 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
             Some(result) => result.diagnostics.clone(),
             None => Rc::new(vec![]),
         };
+        let default_expr = match default_resolved.clone() {
+            Some(result) => Some(result.expr.clone()),
+            None => None,
+        };
         Rc::new(ParamResult {
-            param: make_param_node(
+            param: make_resolved_param_node(
                 param_node_name_at(param.clone(), env.source_indices.clone()),
-                type_resolved,
-                match default_resolved.clone() {
-                    Some(result) => Some(result.expr.clone()),
-                    None => None,
-                },
+                rendered_type,
+                default_expr,
+                v2_rt::concat(param.properties.clone(), type_resolved.properties.clone()),
                 param.span.clone(),
                 node_name_span(param.clone()),
             ),

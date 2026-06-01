@@ -135,6 +135,7 @@ import v4.std.target_model {
   target_type_expr_field_close,
   target_type_expr_field_conj,
   target_type_expr_field_disj,
+  target_type_expr_field_field_label_separator,
   target_type_expr_field_ident_token,
   target_type_expr_field_instantiation,
   target_type_expr_field_open,
@@ -142,6 +143,7 @@ import v4.std.target_model {
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
   target_type_expr_cardinality_emitted,
+  target_type_expr_emitted_labeled_slot_edges,
   target_type_expr_emitted_labeled_slot_nodes,
   target_type_expr_emitted_wire_decode,
   target_type_expr_instantiation_emitted,
@@ -1190,6 +1192,23 @@ fn type_expr_shape_symbol(parent: Node, field: Symbol) -> Outcome<Symbol> {
     f: fn(child) { node_atom_identity(node: child) }
   )
 }
+
+fn type_expr_optional_shape_symbol(parent: Node, field: Symbol) -> Outcome<Optional<Symbol>> {
+  bind_outcome(
+    o: conj_optional_named_child(parent: parent, edge_name: field),
+    f: fn(child) {
+      match child {
+        Some { value: n } =>
+          bind_outcome(
+            o: node_atom_identity(node: n),
+            f: fn(sym) { outcome_accepted(optional_present(value: sym)) }
+          )
+        None => outcome_accepted(optional_absent())
+      }
+    }
+  )
+}
+
 fn type_expr_atom_shape_from_node(node: Node) -> Outcome<TargetAtomTypeShape> {
   bind_outcome(
     o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_surface),
@@ -1219,15 +1238,21 @@ fn type_expr_generic_apply_shape_from_node(node: Node) -> Outcome<TargetGenericA
               bind_outcome(
                 o: type_expr_shape_symbol(parent: node, field: target_type_expr_field_close),
                 f: fn(close) {
-                  Accepted {
-                    value: TargetGenericApply {
-                      surface: surface,
-                      open: open,
-                      separator: separator,
-                      close: close
-                    },
-                    diagnostics: None
-                  }
+                  bind_outcome(
+                    o: type_expr_optional_shape_symbol(parent: node, field: target_type_expr_field_field_label_separator),
+                    f: fn(field_label_separator) {
+                      Accepted {
+                        value: TargetGenericApply {
+                          surface: surface,
+                          open: open,
+                          separator: separator,
+                          field_label_separator: field_label_separator,
+                          close: close
+                        },
+                        diagnostics: None
+                      }
+                    }
+                  )
                 }
               )
             }
@@ -2405,6 +2430,125 @@ fn serialize_type_expr_separated_bounded(
     acc: Empty
   )
 }
+
+fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetSource> {
+  match edge.label {
+    Named { name: label } =>
+      match map_get(target.binding_spellings, label) {
+        Some { value: spelling } => Accepted { value: spelling, diagnostics: None }
+        None =>
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: translate_binding_spelling_not_found_diagnostic(binding: label)
+            )
+          }
+      }
+    Positional =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
+  }
+}
+
+fn serialize_type_expr_record_fields_go(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  separator: Symbol,
+  field_label_separator: Symbol,
+  fields: List<Edge>,
+  anchor: Node,
+  acc: TargetSource
+) -> Outcome<TargetSource> {
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
+    )
+  } else if is_empty(xs: fields) {
+    Accepted { value: acc, diagnostics: None }
+  } else {
+    bind_outcome(
+      o: edge_list_head_and_tail(edges: fields, node: anchor),
+      f: fn(split) {
+        bind_outcome(
+          o: serialize_type_expr_record_field_label(target: target, edge: split.head),
+          f: fn(label_source) {
+            bind_outcome(
+              o: lex_rules_literal(target: target, token_class: field_label_separator),
+              f: fn(label_sep_source) {
+                bind_outcome(
+                  o: serialize_type_expr_emitted_bounded(
+                    remaining: remaining - 1,
+                    target: target,
+                    projection: projection,
+                    emitted: split.head.target
+                  ),
+                  f: fn(field_type_source) {
+                    let field_source = list_append(
+                      left: list_append(left: label_source, right: label_sep_source),
+                      right: field_type_source
+                    )
+                    if is_empty(xs: acc) {
+                      serialize_type_expr_record_fields_go(
+                        remaining: remaining - 1,
+                        target: target,
+                        projection: projection,
+                        separator: separator,
+                        field_label_separator: field_label_separator,
+                        fields: split.tail,
+                        anchor: anchor,
+                        acc: field_source
+                      )
+                    } else {
+                      bind_outcome(
+                        o: lex_rules_literal(target: target, token_class: separator),
+                        f: fn(sep_source) {
+                          serialize_type_expr_record_fields_go(
+                            remaining: remaining - 1,
+                            target: target,
+                            projection: projection,
+                            separator: separator,
+                            field_label_separator: field_label_separator,
+                            fields: split.tail,
+                            anchor: anchor,
+                            acc: list_append(
+                              left: list_append(left: acc, right: sep_source),
+                              right: field_source
+                            )
+                          )
+                        }
+                      )
+                    }
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  }
+}
+
+fn serialize_type_expr_record_fields_bounded(
+  remaining: Int,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  separator: Symbol,
+  field_label_separator: Symbol,
+  fields: List<Edge>,
+  anchor: Node
+) -> Outcome<TargetSource> {
+  serialize_type_expr_record_fields_go(
+    remaining: remaining,
+    target: target,
+    projection: projection,
+    separator: separator,
+    field_label_separator: field_label_separator,
+    fields: fields,
+    anchor: anchor,
+    acc: Empty
+  )
+}
+
 fn serialize_type_expr_record_bounded(
   remaining: Int,
   target: TargetModel,
@@ -2412,40 +2556,45 @@ fn serialize_type_expr_record_bounded(
   form: TargetGenericApply,
   node: Node
 ) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: target_type_expr_emitted_labeled_slot_nodes(node: node),
-    f: fn(slots) {
+  match form.field_label_separator {
+    Present { value: field_label_separator } =>
       bind_outcome(
-        o: lex_rules_literal(target: target, token_class: form.open),
-        f: fn(open_source) {
+        o: target_type_expr_emitted_labeled_slot_edges(node: node),
+        f: fn(fields) {
           bind_outcome(
-            o: serialize_type_expr_separated_bounded(
-              remaining: remaining - 1,
-              target: target,
-              projection: projection,
-              separator: form.separator,
-              items: slots,
-              anchor: node
-            ),
-            f: fn(fields_source) {
+            o: lex_rules_literal(target: target, token_class: form.open),
+            f: fn(open_source) {
               bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.close),
-                f: fn(close_source) {
-                  Accepted {
-                    value: list_append(
-                      left: list_append(left: open_source, right: fields_source),
-                      right: close_source
-                    ),
-                    diagnostics: None
-                  }
+                o: serialize_type_expr_record_fields_bounded(
+                  remaining: remaining - 1,
+                  target: target,
+                  projection: projection,
+                  separator: form.separator,
+                  field_label_separator: field_label_separator,
+                  fields: fields,
+                  anchor: node
+                ),
+                f: fn(fields_source) {
+                  bind_outcome(
+                    o: lex_rules_literal(target: target, token_class: form.close),
+                    f: fn(close_source) {
+                      Accepted {
+                        value: list_append(
+                          left: list_append(left: open_source, right: fields_source),
+                          right: close_source
+                        ),
+                        diagnostics: None
+                      }
+                    }
+                  )
                 }
               )
             }
           )
         }
       )
-    }
-  )
+    Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
 }
 fn serialize_type_expr_sum_bounded(
   remaining: Int,
@@ -2745,7 +2894,7 @@ fn translate_sg_rc_bundle_apply_disposition(
           edge_name: target_model_edge_reference_layer_tokens
         ),
         f: fn(has_tokens) {
-          if !has_catalog && !has_tokens {
+          if has_catalog == false && has_tokens == false {
             outcome_accepted(false)
           } else {
             if has_catalog && has_tokens {
@@ -2803,6 +2952,37 @@ fn translate_apply_use_site_ownership_to_projected_type(
   )
 }
 
+// Arrow boundary ownership matches serialize_type_expr_boundary_bounded discipline:
+// SG-RC applies only when the projected wire is an atom; composite boundaries pass through.
+fn translate_apply_use_site_ownership_to_projected_boundary(
+  projected: Node,
+  source_for_binding: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_type_expr_emitted_wire_decode(node: projected, projection: projection),
+    f: fn(wire) {
+      match wire.kind {
+        TargetTypeExprAtom =>
+          bind_outcome(
+            o: type_expr_atom_binding(node: source_for_binding),
+            f: fn(binding) {
+              translate_apply_use_site_ownership_to_projected_type(
+                projected: projected,
+                source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                target: target,
+                use_site: use_site
+              )
+            }
+          )
+        _ => outcome_accepted(projected)
+      }
+    }
+  )
+}
+
 fn translate_project_arrow_input_types_go(
   remaining: Int,
   anchor: Node,
@@ -2828,10 +3008,11 @@ fn translate_project_arrow_input_types_go(
           ),
           f: fn(projected) {
             bind_outcome(
-              o: translate_apply_use_site_ownership_to_projected_type(
+              o: translate_apply_use_site_ownership_to_projected_boundary(
                 projected: projected,
-                source_carrier: split.head,
+                source_for_binding: split.head,
                 target: target,
+                projection: projection,
                 use_site: OwnershipAtFunctionParameter
               ),
               f: fn(wrapped) {
@@ -2877,10 +3058,11 @@ fn translate_project_arrow_split_types(
         ),
         f: fn(projected_output) {
           bind_outcome(
-            o: translate_apply_use_site_ownership_to_projected_type(
+            o: translate_apply_use_site_ownership_to_projected_boundary(
               projected: projected_output,
-              source_carrier: original_split.output,
+              source_for_binding: original_split.output,
               target: target,
+              projection: projection,
               use_site: OwnershipAtFunctionReturn
             ),
             f: fn(wrapped_output) {
@@ -2965,6 +3147,15 @@ fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
   }
 }
 
+fn function_boundary_site_to_ownership_use_site(
+  boundary_site: FunctionBoundarySite
+) -> TargetOwnershipUseSite {
+  match boundary_site {
+    FunctionBoundaryParam => OwnershipAtFunctionParameter
+    FunctionBoundaryReturn => OwnershipAtFunctionReturn
+  }
+}
+
 // Consult the per-language signature realization catalog for the fn-boundary atom at `emitted`.
 // Returns Present(row) on a (source_carrier, boundary_site) hit; Absent when the model carries no
 // signature catalog OR no row matches (both fall back to the SG-2/binding_spellings path); Rejected
@@ -3008,8 +3199,8 @@ fn translate_target_function_signature_realization_for_boundary(
 }
 
 // Serialize a fn-boundary atom: emit the signature realization's signature_type_form when a row
-// matches (SG-1b authority); otherwise fall back to the SG-2 binding-spelling path. Non-boundary
-// decl/type-alias atoms never reach here, so they retain SG-1/binding_spellings authority.
+// matches (SG-1b authority); otherwise consult TargetUseSiteOwnershipRealization for this
+// boundary role, then serialize the emitted wire (SG-RC + SG-2; no spelling-only bypass).
 fn serialize_type_expr_boundary_atom_bounded(
   remaining: Int,
   target: TargetModel,
@@ -3033,7 +3224,29 @@ fn serialize_type_expr_boundary_atom_bounded(
             emitted: row.signature_type_form.node
           )
         Absent =>
-          type_expr_spelling_for_atom(target: target, node: emitted)
+          bind_outcome(
+            o: type_expr_atom_binding(node: emitted),
+            f: fn(binding) {
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_projected_type(
+                  projected: emitted,
+                  source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                  target: target,
+                  use_site: function_boundary_site_to_ownership_use_site(
+                    boundary_site: boundary_site
+                  )
+                ),
+                f: fn(wrapped) {
+                  serialize_type_expr_emitted_bounded(
+                    remaining: remaining - 1,
+                    target: target,
+                    projection: projection,
+                    emitted: wrapped
+                  )
+                }
+              )
+            }
+          )
       }
   }
 }
@@ -3101,12 +3314,30 @@ fn translate_coerced_shell_at_use_site(
   target: TargetModel,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
-  match translate_coerced_shell_base(coerced: coerced, target: target) {
+  translate_coerced_shell_at_use_site_from_source(
+    coerced: coerced,
+    ownership_source_carrier: coerced,
+    target: target,
+    use_site: use_site
+  )
+}
+
+fn translate_coerced_shell_at_use_site_from_source(
+  coerced: Node,
+  ownership_source_carrier: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  match translate_coerced_type_shell_from_source(
+    source_carrier: ownership_source_carrier,
+    coerced: coerced,
+    target: target
+  ) {
     Accepted { value: shell, diagnostics: d } =>
       bind_outcome(
         o: translate_apply_use_site_ownership_to_type_shell(
           shell: shell,
-          source_carrier: coerced,
+          source_carrier: ownership_source_carrier,
           target: target,
           use_site: use_site
         ),
@@ -3116,12 +3347,40 @@ fn translate_coerced_shell_at_use_site(
   }
 }
 
+fn translate_coerced_type_shell_from_source(
+  source_carrier: Node,
+  coerced: Node,
+  target: TargetModel
+) -> Outcome<Node> {
+  match source_carrier.kind {
+    TypeNode { connective: Instantiation } =>
+      bind_outcome(
+        o: type_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          project_type_expression_node(
+            node: source_carrier,
+            target: target,
+            projection: projection
+          )
+        }
+      )
+    _ => translate_coerced_shell_base(coerced: coerced, target: target)
+  }
+}
+
 fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
   translate_coerced_shell_at_use_site(
     coerced: coerced,
     target: target,
     use_site: OwnershipAtBindingProjection
   )
+}
+
+fn translate_use_site_ownership_source_carrier(source: Node, coerced: Node) -> Node {
+  match source.kind {
+    TypeNode { connective: _ } => source
+    ComputationNode { behavior: _ } => coerced
+  }
 }
 fn target_atom_realizations_catalog_from_model(
   target: TargetModel,
@@ -3275,8 +3534,13 @@ fn translate_coerced_with_atom_realization_at_use_site(
   use_site: TargetOwnershipUseSite,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match translate_coerced_shell_at_use_site(
+  let ownership_source_carrier = translate_use_site_ownership_source_carrier(
+    source: source,
+    coerced: coerced
+  )
+  match translate_coerced_shell_at_use_site_from_source(
     coerced: coerced,
+    ownership_source_carrier: ownership_source_carrier,
     target: target,
     use_site: use_site
   ) {
