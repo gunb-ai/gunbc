@@ -27,6 +27,9 @@ const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 const CI_WORKFLOW_DAG: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
+const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
+    include_str!("../../../../../scripts/v4-testclaim-corpus-eval.sh");
+const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
@@ -1325,4 +1328,29 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         )),
         "{CI_DAG_PATH}: CiCommand sum type must exist"
     );
+}
+
+#[test]
+fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
+    for needle in [
+        "src/v4_test_claim_workflow_manual_corpus_eval.rs",
+        "check_generated_corpus_eval",
+        "manual_corpus_all_pass",
+        "manual_corpus_gate",
+        "witness_manual_corpus_gate_closed",
+        "corpus_report_tally(report);",
+        "fail_deferred_conjunction",
+        "tally\\.fail={2}[^&|;=!]*(?:Nat::)?[Zz]ero\\b",
+        "&&",
+        "tally\\.deferred={2}[^&|;=!]*(?:Nat::)?[Zz]ero\\b",
+        "inline_empty_gate",
+        "if(?<!!)is_empty\\([^)]*report[^)]*entries",
+        "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
+        "manual_corpus_gate(run_manual_testclaim_corpus_eval())",
+    ] {
+        assert!(
+            TESTCLAIM_CORPUS_EVAL_SCRIPT.contains(needle),
+            "{TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH}: missing generated corpus-eval receipt probe `{needle}`"
+        );
+    }
 }
