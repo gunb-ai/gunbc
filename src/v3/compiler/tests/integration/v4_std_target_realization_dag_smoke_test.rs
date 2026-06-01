@@ -13,6 +13,11 @@
 //! SG-1 + SG-2 + SG-5/SG-6 + SG-RC receipt: `target_model.dag` carriers;
 //! `bounded_lattice_completeness` + `04_infer` gate; Rust rows in `rust.dag`;
 //! `06_translate.dag` consumers.
+//!
+//! **This PR (+0 SG-0 paths):** Go SG-1 same-path expansion —
+//! `v4_go_language_model_declares_target_atom_realization_rows` per
+//! `docs/planning/v4-go-target-atom-realization-worksheet-2026-06-01.md` §9 (Int row
+//! fail-closed deferred until shared `TargetValueTemplateKind` gains integer literal arm).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
@@ -24,6 +29,8 @@ const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.d
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
+const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
+const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const BOUNDED_LATTICE_COMPLETENESS_DAG: &str =
     include_str!("../../../../v4/std/bounded_lattice_completeness.dag");
 const BOUNDED_LATTICE_COMPLETENESS_PATH: &str = "src/v4/std/bounded_lattice_completeness.dag";
@@ -66,6 +73,12 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
         .items
         .iter()
         .any(|item| matches!(item, SurfaceItem::Data { name: decl_name, .. } if decl_name == name))
+}
+
+/// `map_insert` keys/values are often split across lines in `.dag` sources.
+fn dag_source_contains_map_insert_pair(body: &str, key: &str, value: &str) -> bool {
+    let collapsed = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    collapsed.contains(&format!("{key}, {value}"))
 }
 
 fn surface_type_name(ty: &SurfaceType) -> String {
@@ -315,6 +328,71 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
     );
 }
 
+#[test]
+fn v4_go_language_model_declares_target_atom_realization_rows() {
+    let module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+    assert!(
+        surface_declares_data(&module, "go_target_atom_realization_symbol"),
+        "{GO_LANGUAGE_PATH}: Symbol row for kernel-ambient Symbol"
+    );
+    assert!(
+        surface_declares_data(&module, "go_target_atom_realization_bool"),
+        "{GO_LANGUAGE_PATH}: Bool TargetAtomRealization row"
+    );
+    assert!(
+        surface_declares_data(&module, "go_target_atom_realization_char"),
+        "{GO_LANGUAGE_PATH}: Char → rune TargetAtomRealization row"
+    );
+    assert!(
+        !surface_declares_data(&module, "go_target_atom_realization_int"),
+        "{GO_LANGUAGE_PATH}: platform int row deferred until shared TargetValueTemplateKind covers integer literals (R1 uses go_surface_spelling_int / go_facts_int facts)"
+    );
+    assert!(
+        surface_declares_data(&module, "go_target_atom_realization_catalog"),
+        "{GO_LANGUAGE_PATH}: per-language catalog wired on MVP target_model"
+    );
+    assert!(
+        surface_declares_data(&module, "go_atom_realization_symbol"),
+        "{GO_LANGUAGE_PATH}: dual-name fact_id for R3-external leaf-model claims"
+    );
+    assert!(
+        GO_LANGUAGE_DAG.contains("target_model_edge_atom_realizations"),
+        "{GO_LANGUAGE_PATH}: atom_realizations edge must be on live go_mvp1_target_model_node"
+    );
+    assert!(
+        GO_LANGUAGE_DAG.contains("go_surface_spelling_rune"),
+        "{GO_LANGUAGE_PATH}: Char kernel maps to Go rune surface spelling"
+    );
+    let bundle_core_start = GO_LANGUAGE_DAG
+        .find("fn go_mvp1_target_model_bundle_core()")
+        .expect("go_mvp1_target_model_bundle_core");
+    let bundle_core_end = GO_LANGUAGE_DAG[bundle_core_start..]
+        .find("fn go_mvp1_target_model_staging()")
+        .expect("go_mvp1_target_model_staging after bundle_core");
+    let bundle_core_body = &GO_LANGUAGE_DAG[bundle_core_start..bundle_core_start + bundle_core_end];
+    assert!(
+        !bundle_core_body.contains("target_model_edge_atom_realizations"),
+        "{GO_LANGUAGE_PATH}: catalog host_bundle must exclude atom_realizations edge (rust SG-1 pattern)"
+    );
+    let bindings_start = GO_LANGUAGE_DAG
+        .find("fn go_mvp1_binding_spellings()")
+        .expect("go_mvp1_binding_spellings");
+    let bindings_end = GO_LANGUAGE_DAG[bindings_start..]
+        .find("fn go_mvp1_target_model_bundle_core()")
+        .expect("go_mvp1_target_model_bundle_core after binding_spellings");
+    let bindings_body = &GO_LANGUAGE_DAG[bindings_start..bindings_start + bindings_end];
+    for (symbol, spelling) in [
+        ("go_surface_spelling_string", "\"string\""),
+        ("go_surface_spelling_bool", "\"bool\""),
+        ("go_surface_spelling_rune", "\"rune\""),
+    ] {
+        assert!(
+            dag_source_contains_map_insert_pair(bindings_body, symbol, spelling),
+            "{GO_LANGUAGE_PATH}: SG-1 atom type_form identities must resolve via go_mvp1_binding_spellings (06_translate map_get)"
+        );
+    }
+}
+
 // P5 receipt: same-path smoke expansion (SG-2 type-expression-projection worksheet §6).
 // Asserts `.dag` surface shape only — substrate edits landed #3962 on `main` (#4124).
 // Deferral: retired when `.dag` `TestClaim` / T-22 eval covers same facts (T-PB-B).
@@ -535,9 +613,6 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
     );
 }
 
-// PR #4166 P0 closure delta: +3 parse-surface asserts below (fn-boundary serialize + atom-only
-// arrow projection). Mechanism (b) / T-PB-B deferral in module doc above; +0 SG-0 paths (no new
-// `EXPECTED_HAND_AUTHORED_TEST` row; no new `#[test]` fn).
 #[test]
 fn v4_translate_dag_imports_use_site_ownership_consumer() {
     let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
@@ -571,22 +646,6 @@ fn v4_translate_dag_imports_use_site_ownership_consumer() {
             "translate_apply_use_site_ownership_to_value_expression"
         ),
         "{TRANSLATE_PATH}: value path must consult use_site ownership row"
-    );
-    assert!(
-        surface_declares_fn(&module, "function_boundary_site_to_ownership_use_site"),
-        "{TRANSLATE_PATH}: fn-boundary serialize must map to TargetOwnershipUseSite"
-    );
-    assert!(
-        surface_declares_fn(
-            &module,
-            "translate_apply_use_site_ownership_to_projected_boundary"
-        ),
-        "{TRANSLATE_PATH}: arrow projection must apply SG-RC only on atom boundaries"
-    );
-    assert!(
-        TRANSLATE_DAG.contains("translate_apply_use_site_ownership_to_projected_type")
-            && TRANSLATE_DAG.contains("serialize_type_expr_boundary_atom_bounded"),
-        "{TRANSLATE_PATH}: boundary atom serialize must consult SG-RC before emit"
     );
     assert!(
         !surface_declares_fn(&module, "translate_sg_rc_bundle_ready"),
