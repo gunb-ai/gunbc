@@ -20,6 +20,9 @@
 //! **W3.4 (+0 SG-0 paths):** extends bridge with python transport + rung-6 post-emit law
 //! preservation (`rung_6.dag`, `rung_5_6_common.dag`, `nat_semiring_rung56_eval.dag`).
 //! Tranche-1 additive-Monoid + tranche-2 multiplicative-Monoid + annihilator (rust + python).
+//! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
+//! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
+//! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
 //! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte
 //! stdout contract; not per-law emitted artifacts until emit pipeline wires law subjects).
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
@@ -49,6 +52,10 @@ const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_
 const NAT_SEMIRING_RUNG_5_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_5.dag");
 const NAT_SEMIRING_RUNG_5_PATH: &str = "src/v4/test/claim/nat_semiring/rung_5.dag";
+const NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_l1_python_runtime.dag");
+const NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH: &str =
+    "src/v4/test/claim/nat_semiring/rung_l1_python_runtime.dag";
 const NAT_SEMIRING_RUNG5_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung5_eval.dag");
 const NAT_SEMIRING_RUNG5_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung5_eval.dag";
@@ -84,6 +91,17 @@ const BRANCH_DISPATCH_RUNG8_EVAL_PATH: &str =
 
 /// Minimal python host fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_PYTHON_FIXTURE_SOURCE: &str = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
+
+/// Worksheet-B F1: py_compile accepts; CPython rejects at execution (NameError).
+const PYTHON_FIXTURE_RUNTIME_REJECTED: &str = "raise NameError(\"probe F1 runtime rejected\")\n";
+
+/// Worksheet-B F2: exit 0 but stdout not parseable as MVP-2 runtime value.
+const PYTHON_FIXTURE_UNPARSABLE_STDOUT: &str =
+    "import sys\nsys.stdout.buffer.write(b'\\x00\\x00\\x00')\n";
+
+/// Worksheet-B F3: exit 0, parseable length, wrong runtime bytes.
+const PYTHON_FIXTURE_VALUE_MISMATCH: &str =
+    "import sys\nsys.stdout.buffer.write(b'\\x01\\x02\\x03\\x04\\x05')\n";
 
 /// Minimal go host fixture: five stdout bytes (MVP runtime value `5` alignment).
 const EMIT_HOST_GO_FIXTURE_SOURCE: &str =
@@ -370,6 +388,197 @@ fn nat_semiring_rung6_python_mul_annihilator_emit_vs_eval_transport_passes() {
         "nat_mul_annihilator_input",
         emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
         EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+/// Rung-5 full-law roster: same MVP-2 python transport contract as rung-6 rows.
+fn assert_rung5_mvp2_emit_vs_eval_pass(
+    work_dir_prefix: &str,
+    claim_input_root: &str,
+    run_transport: fn(
+        &str,
+        &emit_host_runner::EmitHostFixtureInputs,
+        &std::path::Path,
+        [u8; 5],
+    ) -> Result<
+        emit_host_bridge::EmitHostEmitVsEvalVerdict,
+        emit_host_runner::HostSetupFailure,
+    >,
+    emitted_source: &str,
+) {
+    let work_dir =
+        emit_host_runner::default_work_dir(&format!("{work_dir_prefix}_{}", std::process::id()));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: claim_input_root.to_string(),
+        expected_eval_root: "phase1_nat_semiring_rung5_expected_eval".to_string(),
+    };
+    let verdict = run_transport(
+        emitted_source,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("emit_vs_eval transport");
+    assert_eq!(verdict, emit_host_bridge::EmitHostEmitVsEvalVerdict::Pass);
+}
+
+#[test]
+fn nat_semiring_rung5_python_add_left_identity_emit_vs_eval_transport_passes() {
+    assert_rung5_mvp2_emit_vs_eval_pass(
+        "gunbc_rung5_py_left_id",
+        "nat_add_left_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung5_python_add_right_identity_emit_vs_eval_transport_passes() {
+    assert_rung5_mvp2_emit_vs_eval_pass(
+        "gunbc_rung5_py_right_id",
+        "nat_add_right_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung5_python_add_associativity_emit_vs_eval_transport_passes() {
+    assert_rung5_mvp2_emit_vs_eval_pass(
+        "gunbc_rung5_py_assoc",
+        "nat_add_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung5_python_mul_left_identity_emit_vs_eval_transport_passes() {
+    assert_rung5_mvp2_emit_vs_eval_pass(
+        "gunbc_rung5_py_mul_left_id",
+        "nat_mul_left_identity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung5_python_mul_associativity_emit_vs_eval_transport_passes() {
+    assert_rung5_mvp2_emit_vs_eval_pass(
+        "gunbc_rung5_py_mul_assoc",
+        "nat_mul_associativity_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn nat_semiring_rung5_python_mul_annihilator_emit_vs_eval_transport_passes() {
+    assert_rung5_mvp2_emit_vs_eval_pass(
+        "gunbc_rung5_py_mul_ann",
+        "nat_mul_annihilator_input",
+        emit_host_bridge::run_emit_vs_eval_mvp2_python_transport,
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+    );
+}
+
+#[test]
+fn python_emit_vs_eval_transport_fails_host_exit_on_runtime_rejection() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_py_runtime_reject_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "probe_f1_claim_input".to_string(),
+        expected_eval_root: "probe_f1_expected_eval".to_string(),
+    };
+    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_python_transport(
+        PYTHON_FIXTURE_RUNTIME_REJECTED,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("transport setup");
+    assert!(
+        matches!(
+            verdict,
+            emit_host_bridge::EmitHostEmitVsEvalVerdict::FailHostExit { .. }
+        ),
+        "F1: compile-ok runtime NameError must yield FailHostExit with receipt, got {verdict:?}"
+    );
+}
+
+#[test]
+fn python_emit_vs_eval_transport_fails_parse_on_unparsable_stdout() {
+    let work_dir =
+        emit_host_runner::default_work_dir(&format!("gunbc_py_parse_fail_{}", std::process::id()));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "probe_f2_claim_input".to_string(),
+        expected_eval_root: "probe_f2_expected_eval".to_string(),
+    };
+    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_python_transport(
+        PYTHON_FIXTURE_UNPARSABLE_STDOUT,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("transport setup");
+    assert!(
+        matches!(
+            verdict,
+            emit_host_bridge::EmitHostEmitVsEvalVerdict::FailParse { .. }
+        ),
+        "F2: exit-0 unparsable stdout must yield FailParse, got {verdict:?}"
+    );
+}
+
+#[test]
+fn python_emit_vs_eval_transport_fails_on_runtime_value_mismatch() {
+    let work_dir = emit_host_runner::default_work_dir(&format!(
+        "gunbc_py_value_mismatch_{}",
+        std::process::id()
+    ));
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: "probe_f3_claim_input".to_string(),
+        expected_eval_root: "probe_f3_expected_eval".to_string(),
+    };
+    let verdict = emit_host_bridge::run_emit_vs_eval_mvp2_python_transport(
+        PYTHON_FIXTURE_VALUE_MISMATCH,
+        &inputs,
+        &work_dir,
+        emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES,
+    )
+    .expect("transport setup");
+    match verdict {
+        emit_host_bridge::EmitHostEmitVsEvalVerdict::FailValueMismatch {
+            host_receipt,
+            host_stdout,
+            expected_bytes,
+        } => {
+            assert!(emit_host_bridge::host_exit_holds(&host_receipt.exit));
+            assert_eq!(host_stdout, [1, 2, 3, 4, 5]);
+            assert_eq!(
+                expected_bytes,
+                emit_host_bridge::MVP2_RUNTIME_VALUE_FIVE_BYTES
+            );
+        }
+        other => panic!("F3: expected FailValueMismatch with Host evidence, got {other:?}"),
+    }
+}
+
+#[test]
+fn v4_nat_semiring_rung_l1_python_runtime_dag_tokenizes_and_parses_claim_row() {
+    let module = parse_module(
+        NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_DAG,
+        NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH,
+    );
+    assert!(
+        surface_declares_data(&module, "claim_phase1_nat_semiring_l1_python_runtime_exec"),
+        "{NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH}: L1 python runtime claim"
+    );
+    assert!(
+        surface_declares_data(&module, "phase1_nat_semiring_l1_python_runtime_claim_rows"),
+        "{NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH}: L1 claim roster"
     );
 }
 
