@@ -172,6 +172,12 @@ data leaf_model_claim_python_cross_runtime_drift_arbitrary_precision: LeafModelC
 // value, `actual` is the fixed-width wrapped value — so the receipt references a modeled value
 // pair, never a script-local literal. Go is a corroborating fixed-width witness (rust == go);
 // the runner asserts it only when the Go toolchain is present.
+//
+// 🟡 gated — feature:leaf-model-cross-runtime-drift — dissolve-on: the modeled `TestClaim` runner
+// exercises `src/v4/test/claim/language_model/python_cross_runtime_drift.dag` directly (retiring the
+// boundary host-process bridge `scripts/v4-leaf-model-python-cross-runtime-drift-verify.sh` +
+// `v4_leaf_model_python_cross_runtime_drift_test.rs`, shrinking `EXPECTED_HAND_AUTHORED_TEST` by 1);
+// forbidden: a parallel drift-probe vocabulary outside this carrier — extend it, don't fork it.
 type LeafModelCrossRuntimeDriftProbe {
   claim_id: LeafModelClaimId
   arbitrary_precision_source: String
