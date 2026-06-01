@@ -2082,11 +2082,14 @@ fn target_type_expr_arrow_emitted(
 // ═══ SG-5 — TargetCollectionRealization (canonical home) ═══
 
 data target_model_edge_collection_realization: Symbol = target_model_edge_collection_realization
+data target_model_edge_free_monoid_collection_realization: Symbol =
+  target_model_edge_free_monoid_collection_realization
 
 // 🟢 coproduct dissolution — SG-5 collection representation kind axis (M6 product; no duplicate-payload arms).
 type TargetCollectionReprKind
   = TargetCollectionReprBTreeSet
   | TargetCollectionReprHashSet
+  | TargetCollectionReprVec
 
 // SG-5 — per-representation wire authority (kind + generic-apply shape; no fill-in String templates).
 type TargetRepresentation {
@@ -2115,6 +2118,7 @@ type TargetCollectionRealization {
 }
 
 data target_collection_set_carrier: Symbol = target_collection_set_carrier
+data target_collection_free_monoid_carrier: Symbol = target_collection_free_monoid_carrier
 data target_collection_trait_ord: Symbol = target_collection_trait_ord
 data target_collection_trait_hash: Symbol = target_collection_trait_hash
 data target_collection_trait_eq: Symbol = target_collection_trait_eq
@@ -2147,15 +2151,24 @@ fn target_collection_set_carrier_node() -> Node {
   }
 }
 
+fn target_collection_free_monoid_carrier_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: target_collection_free_monoid_carrier } },
+    children: []
+  }
+}
+
 fn target_collection_repr_kind_atom(kind: TargetCollectionReprKind) -> Symbol {
   match kind {
     TargetCollectionReprBTreeSet => target_collection_repr_kind_btree_set
     TargetCollectionReprHashSet => target_collection_repr_kind_hash_set
+    TargetCollectionReprVec => target_collection_repr_kind_vec
   }
 }
 
 data target_collection_repr_kind_btree_set: Symbol = target_collection_repr_kind_btree_set
 data target_collection_repr_kind_hash_set: Symbol = target_collection_repr_kind_hash_set
+data target_collection_repr_kind_vec: Symbol = target_collection_repr_kind_vec
 
 fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectionReprKind> {
   if id == target_collection_repr_kind_btree_set {
@@ -2164,7 +2177,11 @@ fn target_collection_repr_kind_from_atom(id: Symbol) -> Optional<TargetCollectio
     if id == target_collection_repr_kind_hash_set {
       optional_present(value: TargetCollectionReprHashSet)
     } else {
-      optional_absent()
+      if id == target_collection_repr_kind_vec {
+        optional_present(value: TargetCollectionReprVec)
+      } else {
+        optional_absent()
+      }
     }
   }
 }
@@ -2273,6 +2290,26 @@ fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
 
 fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
+}
+
+fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Instantiation } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Present { value: head } =>
+          match head.kind {
+            TypeNode { connective: Atom { identity: id } } =>
+              id == target_collection_free_monoid_carrier
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn target_collection_free_monoid_element_type_node(free_monoid_node: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: free_monoid_node), index: 1)
 }
 
 // ═══ SG-RC — TargetUseSiteOwnershipRealization (canonical home) ═══
