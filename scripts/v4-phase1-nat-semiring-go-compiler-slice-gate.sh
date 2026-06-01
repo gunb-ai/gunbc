@@ -95,7 +95,7 @@ else
   else
     verdict[R-L1-go-compiler-slice-compile]=FAIL
     # tail -20 already bounds size; omit head -c to avoid SIGPIPE under pipefail.
-    diagnostic_snippet="$(tail -20 "$build_log" 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')"
+    diagnostic_snippet="$(tail -20 "$build_log" 2>/dev/null || true)"
     note_blocking "phase1/nat_semiring/l1/go_compiler_slice_build_rejected"
   fi
 fi
@@ -105,20 +105,31 @@ if [[ "${verdict[R-L1-go-compiler-slice-compile]}" == "PASS" ]]; then
   row_pass="PASS"
 fi
 
-# Structured L1 receipt (worksheet §10 systemic fix item 3).
-{
-  printf '{'
-  printf '"schema":"scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1",'
-  printf '"slice_id":"%s",' "$slice_id"
-  printf '"fixture_id":"%s",' "$fixture_id"
-  printf '"go_module_root":"%s",' "$go_module_root"
-  printf '"verdict":"%s",' "$row_pass"
-  if [[ -n "$diagnostic_snippet" ]]; then
-    printf '"diagnostic_snippet":"%s",' "$diagnostic_snippet"
-  fi
-  printf '"predicate":"R-L1-go-compiler-slice-compile"'
-  printf '}\n'
-} >"$receipt_json"
+# Structured L1 receipt (worksheet §10 systemic fix item 3). Encode via Python so dynamic
+# fields (go_module_root, diagnostic_snippet) cannot break JSON (INVARIANTS P3).
+export V4_GO_L1_RECEIPT_SLICE_ID="$slice_id"
+export V4_GO_L1_RECEIPT_FIXTURE_ID="$fixture_id"
+export V4_GO_L1_RECEIPT_GO_MODULE_ROOT="$go_module_root"
+export V4_GO_L1_RECEIPT_VERDICT="$row_pass"
+export V4_GO_L1_RECEIPT_DIAGNOSTIC_SNIPPET="$diagnostic_snippet"
+python3 - <<'PY' >"$receipt_json"
+import json
+import os
+
+payload = {
+    "schema": "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1",
+    "slice_id": os.environ["V4_GO_L1_RECEIPT_SLICE_ID"],
+    "fixture_id": os.environ["V4_GO_L1_RECEIPT_FIXTURE_ID"],
+    "go_module_root": os.environ["V4_GO_L1_RECEIPT_GO_MODULE_ROOT"],
+    "verdict": os.environ["V4_GO_L1_RECEIPT_VERDICT"],
+    "predicate": "R-L1-go-compiler-slice-compile",
+}
+diag = os.environ.get("V4_GO_L1_RECEIPT_DIAGNOSTIC_SNIPPET", "")
+if diag:
+    payload["diagnostic_snippet"] = diag
+print(json.dumps(payload))
+PY
+python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$receipt_json" >/dev/null
 
 {
   echo "fixture=${fixture_id}"
