@@ -59,7 +59,7 @@ This is a measurement receipt, not a class closure claim. The dominant error rem
 | `E0072` | 1 | 0 | +1 | recursive type without indirection |
 | **TOTAL** | **7,724** | **7,175** | **+549** | |
 
-**Histogram reconciliation.** The top-25 lines in the raw probe summary sum to 7,723. The full rustc log has one additional `E0072` outside the displayed top-25, yielding the recorded total of 7,724.
+**Histogram reconciliation.** The 2026-06-01 top-25 lines in the raw probe summary sum to 7,723. The full rustc log has one additional `E0072` outside the displayed top-25, yielding the recorded total of 7,724. The #4122 comparison column has the same display-shape: its top-25 summary sums to 7,174, plus one code outside the displayed top-25, yielding the recorded baseline total of 7,175.
 
 ---
 
@@ -77,7 +77,29 @@ SG-1 remains closed at this probe (`E0423 = 0`). SG-7 remains closed at this pro
 
 ---
 
-## Section 4 Repro
+## Section 4 Representative Examples and Modeling Readout
+
+These examples are from the emitted tree in `/tmp/v4-rust-emit-jun1-sleek-heron-13` and the rustc log for this probe. They are included to separate true missing-model opportunities from mechanical propagation gaps.
+
+| Family | Representative emitted error | Modeling relationship | Likely collapse lever |
+| ------ | ---------------------------- | --------------------- | -------------------- |
+| SG-8 / module graph + re-exports | `src/v4_compiler_translate.rs:10` imports `CarrierKind` from `v4_compiler_target_carriers`, but rustc suggests `crate::v4_std_pipeline::CarrierKind`. | The authority moved toward `std/pipeline`; emitted imports still follow an old compiler-local home. This is not a new semantic concept; it is a module-authority/re-export projection gap. | Model/consume a single import-authority edge for promoted carriers so every consumer imports from the declared home after substrate promotion. |
+| SG-8 / missing public surface | `src/v4_std_algebra.rs:10` and many peers import `NodeRef` from `v4_std_node`, but no such item exists there; rustc points at accidental peer re-exports such as `v4_extdeps_formats_spice::NodeRef`. | This smells like a real modeling question: is `NodeRef` a `std.node` concept, a lens-local helper, or an extdeps-local reference? The current emitted graph has no single authority. | Decide the concept home. If it is general node structure, model it in `std/node`; otherwise stop broad consumers from importing it as if it were general substrate. |
+| SG-8 / generated claim surface | `EdgeLabel` is undeclared in many generated/manual claim files, e.g. `failed to resolve: use of undeclared type EdgeLabel` in generated algebra-law claims. | The type exists in the node model, but claim modules do not receive the dependency automatically. This is a dependency-edge emission gap, not a new algebra model. | Emit imports from actual type references in generated claim bodies, not only from top-level declarations or hand-listed module imports. |
+| SG-2 / generic carrier arity | `Outcome` is used without its payload parameter 740 times; `TestClaimRun` is used without its two parameters 292 times. | The generic model exists (`Outcome<T>`, `TestClaimRun<S,A>`), but aliases/cached fixtures often erase the parameters when emitted. | Preserve instantiated type arguments through aliases, cached statics, and function signatures. This is a high-leverage generic-instantiation projection. |
+| SG-2 / higher-kinded shape | `Homomorphism<C, Source, Target>` emits fields `source: C<Source>` and `target: C<Target>`, causing `E0109` because Rust type parameters are not type constructors. | This is a true realization-model gap: the substrate can describe a type constructor slot, but Rust needs a concrete encoding strategy for that higher-kinded position. | Add/consume a target realization row for type-constructor parameters, or lower this pattern through an explicit carrier family instead of raw `C<T>`. |
+| SG-2 / inference holes | The `E0282` population is dominated by `type annotations needed` around generated constructors/caches. | Usually not a missing domain model by itself; it is downstream of erased generic parameters or ambiguous `Rc::new`/cache construction. | Fixing generic argument preservation should collapse a large slice before authoring any new semantic model. |
+| E0308 / SG-1b follow-on | `expected String, found Symbol` appears 1,344 times. | This is exactly the function-signature realization problem: atom realization can construct `Symbol`, but the emitted function signature still says `String`. | Complete/consume target function-signature realization rows for atom-typed returns and parameters. |
+| E0308 / ownership-layering | Examples include `expected Rc<Diagnostics>, found Diagnostics` (300), `expected Outcome<_>, found Rc<Outcome<_>>` (183), `expected Node, found Rc<Node>` (113), and `expected TestClaim, found Rc<TestClaim>` (69). | This is the SG-RC-LAYERING model surface: the substrate needs one authoritative ownership/use-site realization, not per-emitter guesses about raw vs `Rc` vs `Box`. | Drive every parameter, return, field, and constructor site from `TargetOwnershipUseSite` / ownership-realization rows. |
+| E0308 / collection projection | `expected Vec<Rc<Edge>>, found FreeMonoid<_>` (47), plus PrimitiveFactBundle/FormalProduction/Node variants. | The substrate models `FreeMonoid<T>`; Rust consumer sites often want `Vec<Rc<T>>`. The missing fact is not "list exists" but which boundary projects monoid structure to target collection storage. | Add/consume collection-realization rows for consumer-boundary projection from `FreeMonoid<T>` to `Vec<Rc<T>>`. |
+| SG-3 stable bands | `BoundedLattice data missing meet/join` appears as intentional `compile_error!`; Go language rows report `expected type, found variant String`; `E0121` reports `_` in item signatures. | These are mixed: some are deliberate fail-closed witnesses for incomplete algebra data, while others are fallout from name/variant/type realization. They stayed flat versus #4122, so they are not the current growth driver. | Do not open a new broad SG-3 worksheet from this probe. Treat as mop-up after SG-1b/SG-2/SG-8/ownership projection fixes, except intentional `compile_error!` rows that need their own algebra-data completion receipt. |
+| Long tail | `E0391` recursive aliases such as `pub type CppMachineWidth8 = CppMachineWidth8`; one new `E0072` recursive type without indirection. | These are usually hollow/self-alias or recursive-carrier realization issues, which map directly to the modeling discipline's "no hollow alias" rule. | Replace self-alias emission with real fact-bundle/newtype/variant realization, or point the alias at a proven existing authority. |
+
+**Main modeling opportunity readout.** The biggest fresh growth is not from a brand-new domain class. It is from three repeatable projection gaps: (1) module/import authority after concept promotion, (2) generic instantiation preservation, and (3) target ownership/collection realization at use sites. Those are proper modeling opportunities because they remove emitter discretion: once the substrate carries the import authority, generic arguments, and use-site realization, many current rustc errors should collapse mechanically rather than by per-file fixes.
+
+---
+
+## Section 5 Repro
 
 ```bash
 PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
@@ -95,7 +117,7 @@ PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 ---
 
-## Section 5 Related Artifacts
+## Section 6 Related Artifacts
 
 - `docs/audit/v4-rustc-error-catalog-2026-06-01-post-jun1-cascade.m1-probe-summary.txt` - raw probe summary committed with this catalog.
 - `docs/audit/v4-rustc-error-catalog-2026-05-31-post-p5.md` and `.m1-probe-summary.txt` - #4122 baseline at 7,175 errors.
