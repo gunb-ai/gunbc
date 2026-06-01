@@ -406,6 +406,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // CPython exercise for R2a algebra ops, R2b arbitrary-precision add, R3-external Symbol
     // projection; host runners scripts/v4-leaf-model-python-r2{a,b,r3-external}-verify.sh.
     "src/v3/compiler/tests/boundary/v4_leaf_model_python_r2_r3_external_test.rs",
+    // Phase 1 leaf-model typescript R2a/R2b/R3-external (MW-D3 alpha lane): boundary tsc + Node
+    // exercise for R2a number algebra ops (TS2339 falsification), R2b bigint runtime vs number
+    // lane divergence, R3-external Symbol() factory vs `new Symbol` (TS7009); host runners
+    // scripts/v4-leaf-model-typescript-r2{a,b,r3-external}-verify.sh.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_typescript_r2_r3_external_test.rs",
     // Phase 1 leaf-model verification R1 (`docs/planning/v4-leaf-model-verification-2026-05-30.md` §7):
     // boundary rustc exercise for `src/v4/lens/leaf_model_verification.dag` fixtures until
     // T-22 modeled `run_target_verification` owns target verdicts.

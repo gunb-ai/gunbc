@@ -62,10 +62,12 @@ import v4.std.collection {
   Absent,
   List,
   Map,
+  Optional,
   Present,
   Set,
   empty_map,
-  map_insert
+  map_insert,
+  optional_absent
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -97,11 +99,14 @@ import v4.std.diagnostic {
 import v4.std.node_query { find_named_child }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
+  TargetAtomRealization,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
   TargetSumTypeShape,
-  TargetTypeExpressionProjection
+  TargetTypeExpression,
+  TargetTypeExpressionProjection,
+  ValueSymbolIdentityPassthrough,
 }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -114,6 +119,9 @@ import v4.std.target_model {
   grammar_relation_field_tokens,
   serialize_source_field_source_grammar,
   serialize_source_field_source_text,
+  symbol_kernel_type_atom,
+  symbol_kernel_type_node,
+  target_atom_alias_type_expression,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
@@ -130,7 +138,8 @@ import v4.std.target_model {
   target_type_expr_field_open,
   target_type_expr_field_separator,
   target_type_expr_field_surface,
-  target_type_expr_field_variant_separator
+  target_type_expr_field_variant_separator,
+  target_value_template_for_kind
 }
 import v4.std.node {
   Arrow,
@@ -1625,6 +1634,36 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
     inhabitant: inhabitant,
     witness: ts_bool_algebra_witness_node()
   }
+}
+
+// Phase 1 leaf-model claim subjects (algebra-inhabitance widening worksheet).
+data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
+data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
+
+// Phase 1 SG-1 Symbol atom realization (alpha lane; catalog bundle edge deferred to SG-2 tranche).
+data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
+data ts_surface_type_symbol: Symbol = ts_surface_type_symbol
+
+fn ts_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
+  target_atom_alias_type_expression(
+    spelling: spelling,
+    atom_form: TargetAtomTypeShape {
+      surface: ts_surface_type_symbol,
+      ident_token: ts_token_ident
+    }
+  )
+}
+
+// Claim subject fact id (mirror rust_atom_realization_symbol).
+data ts_atom_realization_symbol: Symbol = ts_atom_realization_symbol
+
+data ts_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: ts_mvp1_target_model(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_symbol),
+  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
+  constructor_form: optional_absent(),
+  display_name: symbol_kernel_type_atom
 }
 
 fn ts_numeric_algebra_inhabitance_step(
