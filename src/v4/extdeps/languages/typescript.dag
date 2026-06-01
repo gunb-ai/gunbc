@@ -62,10 +62,12 @@ import v4.std.collection {
   Absent,
   List,
   Map,
+  Optional,
   Present,
   Set,
   empty_map,
-  map_insert
+  map_insert,
+  optional_absent
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -97,6 +99,16 @@ import v4.std.diagnostic {
 import v4.std.node_query { find_named_child }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
+  TargetAtomRealization,
+  TargetAtomTypeShape,
+  TargetFunctionTypeShape,
+  TargetGenericApply,
+  TargetSumTypeShape,
+  TargetTypeExpression,
+  TargetTypeExpressionProjection,
+  ValueSymbolIdentityPassthrough
+}
+import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
@@ -107,10 +119,32 @@ import v4.std.target_model {
   grammar_relation_field_tokens,
   serialize_source_field_source_grammar,
   serialize_source_field_source_text,
+  char_kernel_type_node,
+  symbol_kernel_type_atom,
+  symbol_kernel_type_node,
+  target_atom_alias_type_expression,
+  target_atom_realization_catalog_node,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_source
+  target_model_edge_serialize_source,
+  target_model_edge_atom_realizations,
+  target_model_edge_type_expression_projection,
+  target_value_template_for_kind,
+  target_type_expr_field_arrow,
+  target_type_expr_field_atom,
+  target_type_expr_field_cardinality,
+  target_type_expr_field_close,
+  target_type_expr_field_conj,
+  target_type_expr_field_disj,
+  target_type_expr_field_ident_token,
+  target_type_expr_field_instantiation,
+  target_type_expr_field_open,
+  target_type_expr_field_separator,
+  target_type_expr_field_surface,
+  target_type_expr_field_variant_separator,
+  ValueBoolLiteral,
+  ValueStringLiteral
 }
 import v4.std.node {
   Arrow,
@@ -123,7 +157,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v4.std.algebra {
   approximate_field_type_node,
   boolean_algebra_type_node,
@@ -280,6 +314,19 @@ data ts_production_pr3_typed_fn_decl: Symbol = ts_production_pr3_typed_fn_decl
 
 data ts_token_lbracket: Symbol = ts_token_lbracket
 data ts_token_rbracket: Symbol = ts_token_rbracket
+
+// SG-2 TargetTypeExpressionProjection row tokens (angle-bracket generic apply + fat-arrow type).
+data ts_token_lt: Symbol = ts_token_lt
+data ts_token_gt: Symbol = ts_token_gt
+data ts_token_fat_arrow: Symbol = ts_token_fat_arrow
+
+// SG-2 TargetTypeExpressionProjection row surfaces (one per connective form).
+data ts_surface_type_atom: Symbol = ts_surface_type_atom
+data ts_surface_type_record: Symbol = ts_surface_type_record
+data ts_surface_type_sum: Symbol = ts_surface_type_sum
+data ts_surface_type_arrow: Symbol = ts_surface_type_arrow
+data ts_surface_type_cardinality: Symbol = ts_surface_type_cardinality
+data ts_surface_type_generic_apply: Symbol = ts_surface_type_generic_apply
 
 data ts_surface_fn_item: Symbol = ts_surface_fn_item
 data ts_surface_type_number: Symbol = ts_surface_type_number
@@ -1074,6 +1121,215 @@ fn ts_mvp1_target_model() -> TargetModel {
   }
 }
 
+// SG-2 — canonical per-connective TargetTypeExpressionProjection row for TypeScript.
+// Single authority: carrier lives in v4.std.target_model; this is the per-language row only
+// (no name-keyed Outcome/Witness/Refined special cases — INVARIANTS P3 / SG-2 worksheet).
+// Connective → TS surface (ECMA / TS Handbook):
+//   atom          ident / keyword primitive (number, string, boolean, ...)
+//   conj          { ... }  structural surface only   (object type — see 🟡 record gap below)
+//   disj          union A | B                        (primary sum-type surface)
+//   arrow         (T) => U  structural surface only   (fat-arrow function type — see 🟡 below)
+//   cardinality   Head<args>  generic collection     (e.g. Set<T> — postfix head + angle brackets,
+//                                                      mirrors Rust; the Cardinality source carries a
+//                                                      head carrier, so a head-less tuple does not fit)
+//   instantiation generic apply Foo<Bar, Baz>        (angle brackets — no Rust ::<>)
+// 🟡 gated — feature:target-function-type-named-param-binding — carrier:TargetFunctionTypeShape (open/close/arrow only, no param-name slot; Rust row identical) — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains param-name+per-param-type slot, then TS arrow carries named params — forbidden: redefining the shared carrier in this row, or claiming faithful `(a: T) => U`. (rationale in PR #4176 / commit a89bbcb8)
+// 🟡 gated — feature:target-record-field-label-binding — carrier:TargetGenericApply conj_form (open/separator/close, no field-label `:` token) + serializer:serialize_type_expr_record_bounded (06_translate) drops slot labels; Rust conj_form identical — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains field-label-separator token AND the shared record serializer emits each slot's Named label + `:`, then TS records serialize as `{ id: T, ... }` — forbidden: redefining the shared carrier or the load-bearing 06_translate serializer in this row, or claiming faithful labeled `{ id: T }`. L0 SG-2 probe (Instantiation `Rc<FooBar<X,Y>>`) does not exercise record field-name fidelity. (rationale in PR #4176)
+fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
+  TargetTypeExpressionProjection {
+    atom_form: TargetAtomTypeShape {
+      surface: ts_surface_type_atom,
+      ident_token: ts_token_ident
+    },
+    conj_form: TargetGenericApply {
+      surface: ts_surface_type_record,
+      open: ts_token_lbrace,
+      separator: ts_token_comma,
+      close: ts_token_rbrace
+    },
+    disj_form: TargetSumTypeShape {
+      surface: ts_surface_type_sum,
+      variant_separator: ts_token_pipe
+    },
+    arrow_form: TargetFunctionTypeShape {
+      surface: ts_surface_type_arrow,
+      open: ts_token_lparen,
+      close: ts_token_rparen,
+      arrow: ts_token_fat_arrow
+    },
+    cardinality_form: TargetGenericApply {
+      surface: ts_surface_type_cardinality,
+      open: ts_token_lt,
+      separator: ts_token_comma,
+      close: ts_token_gt
+    },
+    instantiation_form: TargetGenericApply {
+      surface: ts_surface_type_generic_apply,
+      open: ts_token_lt,
+      separator: ts_token_comma,
+      close: ts_token_gt
+    }
+  }
+}
+
+fn ts_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
+      ts_named_edge(name: target_type_expr_field_ident_token, target: ts_inhabitant_atom(id: form.ident_token))
+    ]
+  }
+}
+
+fn ts_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
+      ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
+      ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
+      ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
+    ]
+  }
+}
+
+fn ts_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
+      ts_named_edge(name: target_type_expr_field_variant_separator, target: ts_inhabitant_atom(id: form.variant_separator))
+    ]
+  }
+}
+
+fn ts_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
+      ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
+      ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close)),
+      ts_named_edge(name: target_type_expr_field_arrow, target: ts_inhabitant_atom(id: form.arrow))
+    ]
+  }
+}
+
+// TargetTypeExpressionProjection bundle node — one named edge per connective form, mirroring
+// rust_type_expression_projection_bundle_node(). Decoded by std target_type_expr_* readers.
+fn ts_type_expression_projection_bundle_node() -> Node {
+  let row = ts_type_expression_projection()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: target_type_expr_field_atom, target: ts_type_expr_atom_shape_node(form: row.atom_form)),
+      ts_named_edge(name: target_type_expr_field_conj, target: ts_type_expr_generic_apply_shape_node(form: row.conj_form)),
+      ts_named_edge(name: target_type_expr_field_disj, target: ts_type_expr_sum_shape_node(form: row.disj_form)),
+      ts_named_edge(name: target_type_expr_field_arrow, target: ts_type_expr_arrow_shape_node(form: row.arrow_form)),
+      ts_named_edge(name: target_type_expr_field_cardinality, target: ts_type_expr_generic_apply_shape_node(form: row.cardinality_form)),
+      ts_named_edge(name: target_type_expr_field_instantiation, target: ts_type_expr_generic_apply_shape_node(form: row.instantiation_form))
+    ]
+  }
+}
+
+fn ts_target_atom_realization_target_model_staging() -> TargetModel {
+  ts_sg2_type_expr_target_model()
+}
+
+data ts_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: bool_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_boolean),
+  value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
+  constructor_form: optional_absent(),
+  display_name: bool_node_symbol
+}
+
+fn ts_std_text_string_type_node() -> Node {
+  free_monoid_type_node(inhabitant: char_kernel_type_node())
+}
+
+data ts_target_atom_realization_string: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: ts_std_text_string_type_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_string),
+  value_form: target_value_template_for_kind(kind: ValueStringLiteral),
+  constructor_form: optional_absent(),
+  display_name: ts_surface_spelling_string
+}
+
+data ts_target_atom_realization_catalog: List<TargetAtomRealization> = [
+  ts_target_atom_realization_symbol,
+  ts_target_atom_realization_bool,
+  ts_target_atom_realization_string
+]
+
+// SG-2 lex: MVP-1 wave-1 rules plus the type-expression delimiter tokens this row references
+// (angle brackets for instantiation + cardinality generic collections, union pipe, fat arrow).
+// Additive — MVP-1 lex is untouched.
+fn ts_sg2_type_expr_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      xs: ts_wave1_lex_rules().rules,
+      ys: [
+        ts_lex_rule(token_class: ts_token_lt, text: "<"),
+        ts_lex_rule(token_class: ts_token_gt, text: ">"),
+        ts_lex_rule(token_class: ts_token_pipe, text: " | "),
+        ts_lex_rule(token_class: ts_token_fat_arrow, text: " => ")
+      ]
+    )
+  }
+}
+
+fn ts_sg2_type_expr_lex() -> LexRules {
+  ModeledLexRules { root: ts_sg2_type_expr_lex_rules() }
+}
+
+// SG-2 TargetModel bundle node — MVP-1 bundle plus the per-language type-expression projection
+// edge. MVP-1 bundle stays on the ProjectionAbsent shim path until its own row lands, so this
+// dedicated bundle drives the projection translate path. The MVP-1 bundle kind is the statically
+// declared Conj of ts_mvp1_target_model_node(); we snoc the projection edge onto its children
+// directly — no kind-match fallback arm, which would silently re-emit the projection-absent bundle
+// (P3 plausible substitute) rather than fail closed on a malformed host.
+fn ts_sg2_type_expr_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_snoc_item(
+      xs: ts_mvp1_target_model_node().children,
+      item: ts_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: ts_type_expression_projection_bundle_node()
+      )
+    )
+  }
+}
+
+fn ts_target_atom_realization_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_snoc_item(
+      xs: ts_sg2_type_expr_target_model_node().children,
+      item: ts_named_edge(
+        name: target_model_edge_atom_realizations,
+        target: target_atom_realization_catalog_node(
+          rows: ts_target_atom_realization_catalog,
+          host_bundle: ts_sg2_type_expr_target_model_node()
+        )
+      )
+    )
+  }
+}
+
+fn ts_sg2_type_expr_target_model() -> TargetModel {
+  TargetModel {
+    bundle: ts_sg2_type_expr_target_model_node(),
+    lex: ts_sg2_type_expr_lex(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
 fn ts_wave2a_task_target_model_bundle_witness() -> Witness<Node> {
   match ts_mvp1_translation_rules_witness() {
     Holds { value: rules } =>
@@ -1124,7 +1380,7 @@ fn ts_wave2a_task_target_model_witness() -> Witness<TargetModel> {
 }
 
 fn ts_wave1_target_model() -> Node {
-  ts_mvp1_target_model_node()
+  ts_target_atom_realization_target_model_node()
 }
 
 fn ts_lex_rule(token_class: Symbol, text: String) -> LexRule {
@@ -1431,6 +1687,35 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
     inhabitant: inhabitant,
     witness: ts_bool_algebra_witness_node()
   }
+}
+
+// Phase 1 leaf-model claim subjects (algebra-inhabitance widening worksheet).
+data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
+data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
+// 🟡 Leaf-model Layer-A fact exposure (boolean) · E-6 bounded-exception · scaffold feature:ts-r2-leaf-model-claim-corpus · dissolve-on: typescript_r2a.dag/typescript_r2b.dag claim corpus references this fact ID by Symbol equality
+data ts_bool_algebra_inhabitance_ts_facts_boolean: AlgebraInhabitanceDecl = ts_bool_algebra_inhabitance()
+
+// Phase 1 SG-1 Symbol atom realization (alpha lane). TS-ATOM-REALIZATION extends this
+// single Symbol row into the shared atom catalog instead of declaring a parallel row.
+data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
+
+fn ts_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
+  target_atom_alias_type_expression(
+    spelling: spelling,
+    atom_form: ts_type_expression_projection().atom_form
+  )
+}
+
+// Claim subject fact id (mirror rust_atom_realization_symbol).
+data ts_atom_realization_symbol: Symbol = ts_atom_realization_symbol
+
+data ts_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_symbol),
+  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
+  constructor_form: optional_absent(),
+  display_name: symbol_kernel_type_atom
 }
 
 fn ts_numeric_algebra_inhabitance_step(
@@ -2316,6 +2601,9 @@ fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabi
     witness: ts_string_algebra_witness_node(facts: facts)
   }
 }
+
+// 🟡 Leaf-model Layer-A fact exposure (Wave-2b string) · E-6 bounded-exception · scaffold feature:ts-r2-leaf-model-claim-corpus · dissolve-on: typescript_r2a.dag claim corpus references this fact ID by Symbol equality
+data ts_string_algebra_inhabitance_ts_facts_string: AlgebraInhabitanceDecl = ts_string_algebra_inhabitance(facts: ts_facts_string)
 
 fn ts_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [
