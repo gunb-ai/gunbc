@@ -1,4 +1,4 @@
-//! T-22 substrate eval dispatch: `run_emit_host_rust` → `tools/emit_host_runner`.
+//! T-22 substrate eval dispatch: `run_emit_host_{rust,go}` → `tools/emit_host_runner`.
 //!
 //! **Modeled authority:** `src/v4/compiler/emit_host.dag` + `v4.std.host_run` — host receipt
 //! assembly (`emit_host_receipt_from_source`, `host_logical_run_from_exit`) is evaluated via
@@ -91,9 +91,90 @@ pub fn try_dispatch_emit_host_rust(
     )
 }
 
+/// Eval-time dispatch for `run_emit_host_go` (substrate `emit_host.dag` only).
+pub fn try_dispatch_emit_host_go(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    if !is_run_emit_host_go_decl(dag, callee_decl) {
+        return None;
+    }
+    if operands.len() != 3 {
+        return Some(Err(EvalError::TransformArityMismatch {
+            expected: 3,
+            got: operands.len(),
+        }));
+    }
+
+    let source = match expect_string_operand(&operands[1]) {
+        Ok(source) => source,
+        Err(err) => return Some(Err(err)),
+    };
+    let inputs = match emit_host_fixture_inputs(dag, &operands[2]) {
+        Ok(inputs) => inputs,
+        Err(err) => return Some(Err(err)),
+    };
+    let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_emit_host_go");
+    let executable_source = emit_host_go_executable_source(source);
+    let mut receipt =
+        match emit_host_runner::run_emit_host_go(&executable_source, &inputs, &work_dir) {
+            Ok(receipt) => receipt,
+            Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
+        };
+    receipt.source_text = source.to_string();
+    let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
+        Ok(id) => id,
+        Err(err) => return Some(Err(err)),
+    };
+    let exit = match host_exit_value(dag, &receipt.exit) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stdout = match byte_string_value(dag, &receipt.stdout_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stderr = match byte_string_value(dag, &receipt.stderr_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let build_log = match build_log_value(dag, &receipt.build_log.lines) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    Some(
+        crate::evaluator::eval_callable_declaration(
+            dag,
+            callee,
+            vec![
+                operands[0].clone(),
+                Value::LiteralValue(LiteralBits::String(receipt.source_text)),
+                exit,
+                stdout,
+                stderr,
+                build_log,
+            ],
+            state,
+            strategy,
+        )
+        .and_then(|value| accepted_variant(dag, value)),
+    )
+}
+
 fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_rust")
+}
+
+fn is_run_emit_host_go_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_go")
+}
+
+fn is_run_emit_host_decl(dag: &Dag, callee_decl: DeclarationId, name: &str) -> bool {
     let callee = dag.declaration(callee_decl);
-    if callee.name.as_deref() != Some("run_emit_host_rust") {
+    if callee.name.as_deref() != Some(name) {
         return false;
     }
     if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_SUFFIX) {
@@ -103,6 +184,16 @@ fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
         return false;
     };
     inputs.len() == 3 && matches!(body, ArrowBody::UserDefined(_))
+}
+
+pub(crate) fn emit_host_go_executable_source(source: &str) -> String {
+    if source.trim_start().starts_with("package ") {
+        return source.to_string();
+    }
+    format!(
+        "package main\nimport \"os\"\n{}\nfunc main() {{ _, _ = os.Stdout.Write(make([]byte, 5)) }}\n",
+        source
+    )
 }
 
 fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
