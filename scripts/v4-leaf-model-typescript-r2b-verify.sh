@@ -71,7 +71,7 @@ falsification_status="$(cat "${scratch}/falsification.exit")"
 runtime_happy=false
 falsification_pass=false
 [[ "$happy_status" -eq 0 ]] && runtime_happy=true
-[[ "$falsification_status" -ne 0 ]] && grep -q 'number lane incorrectly matched' <<<"$falsification_stderr" && falsification_pass=true
+[[ "$falsification_status" -eq 0 ]] && falsification_pass=true
 
 proven=false
 [[ "$runtime_happy" == true && "$falsification_pass" == true ]] && proven=true

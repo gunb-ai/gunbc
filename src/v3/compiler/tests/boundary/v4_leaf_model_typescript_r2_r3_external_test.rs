@@ -17,8 +17,7 @@ const R2A_FALSIFICATION: &str = "function r2a_test(a: number): number { return a
 
 const R2B_RUNTIME_HAPPY: &str =
     "const ok = (2n ** 63n - 1n) + 1n === 2n ** 63n;\nif (!ok) { console.error(\"r2b bigint lane failed\"); process.exit(1); }\n";
-const R2B_RUNTIME_FALSIFICATION: &str =
-    "const ok = (2 ** 63 - 1) + 1 === 2 ** 63;\nif (ok) { console.error(\"number lane incorrectly matched\"); process.exit(1); }\n";
+const R2B_RUNTIME_FALSIFICATION: &str = "const bigintExact = (2n ** 63n + 1n) === 2n ** 63n;\nconst numberLane = (2 ** 63 + 1) === 2 ** 63;\nif (bigintExact || !numberLane) { console.error(\"expected bigint inequality and number-lane IEEE754 false positive\"); process.exit(1); }\n";
 
 const R3_HAPPY: &str = "const s: symbol = Symbol(\"x\");\n";
 const R3_FALSIFICATION: &str = "const s: symbol = new Symbol(\"x\");\n";
@@ -160,15 +159,11 @@ fn v4_leaf_model_typescript_r2b_bigint_runtime_add_succeeds() {
 }
 
 #[test]
-fn v4_leaf_model_typescript_r2b_number_lane_falsification_exits_nonzero() {
+fn v4_leaf_model_typescript_r2b_number_lane_falsification_demonstrates_ieee754_divergence() {
     let (status, stderr) = exercise_node_fixture("r2b_falsification", R2B_RUNTIME_FALSIFICATION);
-    assert_ne!(
+    assert_eq!(
         status, 0,
-        "number lane must diverge from bigint model; stderr:\n{stderr}"
-    );
-    assert!(
-        stderr.contains("number lane incorrectly matched"),
-        "expected number-lane precision probe failure; stderr:\n{stderr}"
+        "falsification must show bigint inequality while number lane false-positive-matches; stderr:\n{stderr}"
     );
 }
 

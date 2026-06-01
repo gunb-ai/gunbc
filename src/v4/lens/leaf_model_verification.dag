@@ -314,7 +314,7 @@ data typescript_r2b_claim_algebra_inhabitance_fact: Symbol = ts_bigint_algebra_i
 
 data typescript_r2b_runtime_happy_fixture_source: String = "const ok = (2n ** 63n - 1n) + 1n === 2n ** 63n;\nif (!ok) { console.error(\"r2b bigint lane failed\"); process.exit(1); }\n"
 
-data typescript_r2b_runtime_falsification_fixture_source: String = "const ok = (2 ** 63 - 1) + 1 === 2 ** 63;\nif (ok) { console.error(\"number lane incorrectly matched\"); process.exit(1); }\n"
+data typescript_r2b_runtime_falsification_fixture_source: String = "const bigintExact = (2n ** 63n + 1n) === 2n ** 63n;\nconst numberLane = (2 ** 63 + 1) === 2 ** 63;\nif (bigintExact || !numberLane) { console.error(\"expected bigint inequality and number-lane IEEE754 false positive\"); process.exit(1); }\n"
 
 fn typescript_r2b_runtime_happy_fixture() -> LeafModelTypeScriptRuntimeFixture {
   LeafModelTypeScriptRuntimeFixture { source: typescript_r2b_runtime_happy_fixture_source }

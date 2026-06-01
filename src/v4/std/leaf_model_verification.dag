@@ -88,11 +88,12 @@ type TargetPythonExerciseVerdict
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
-// Phase 1 TypeScript boundary — tsc typecheck and Node runtime are distinct authorities.
+// 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-COMPILE-VERDICT-PHASE1 (Phase 1 tsc gate; widen per target).
 type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted
   | TargetTypeScriptCompileRejected { diagnostic_code: Symbol }
 
+// 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1 (Phase 1 Node gate; widen per target).
 type TargetTypeScriptRuntimeVerdict
   = TargetTypeScriptRuntimeAccepted
   | TargetTypeScriptRuntimeRejected { diagnostic_code: Symbol }
