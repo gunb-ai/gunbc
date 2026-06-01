@@ -818,7 +818,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     let bootstrap_step = workflow_step_block(
         CI_YML,
-        "v2 \u{2192} v4 bootstrap compile (fail-closed full)",
+        "v2 -> v4 bootstrap compile (fail-closed full)",
     );
     let parity_step = workflow_step_block(
         CI_YML,
@@ -832,7 +832,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         CI_YML.find("v2 DAG emit parity receipt (required before bootstrap reuse)")
-            < CI_YML.find("v2 \u{2192} v4 bootstrap compile (fail-closed full)"),
+            < CI_YML.find("v2 -> v4 bootstrap compile (fail-closed full)"),
         "{CI_YML_PATH}: parity receipt must run before bootstrap reuse"
     );
     assert!(
