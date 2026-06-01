@@ -899,7 +899,19 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   } else {
     resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
   }
-  let resolved_anno = if item.type_annotation == none { none } else { Some { value: anno_resolved.resolved } }
+  let resolved_anno = if item.type_annotation == none { none } else {
+    let authored_anno = item.type_annotation.value
+    let has_applied_binding = find_property(props: anno_resolved.resolved.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none
+    if authored_anno.children |> count > 0 && !has_applied_binding {
+      let arg_results = authored_anno.children |> map(child => resolve_node(n: child, env: env, module_name: module_name))
+      let resolved_args = arg_results |> map(ar => ar.resolved)
+      let applied_type_args = Node { name: authored_name(env: env, node: authored_anno), span: authored_anno.span, ident_span: authored_anno.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: none, return_cardinality: authored_anno.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let applied_type_args_property = make_field_init_node(name: "__applied_type_args", value: applied_type_args, span: authored_anno.span, name_span: authored_anno.span)
+      Some { value: Node { name: anno_resolved.resolved.name, span: anno_resolved.resolved.span, ident_span: anno_resolved.resolved.ident_span, children: anno_resolved.resolved.children, connective: anno_resolved.resolved.connective, params: anno_resolved.resolved.params, inferred: anno_resolved.resolved.inferred, return_cardinality: anno_resolved.resolved.return_cardinality, uses: anno_resolved.resolved.uses, body: anno_resolved.resolved.body, transport: anno_resolved.resolved.transport, properties: concat(anno_resolved.resolved.properties, [applied_type_args_property]), type_annotation: anno_resolved.resolved.type_annotation, is_self_recursive: anno_resolved.resolved.is_self_recursive, has_non_tail_self_call: anno_resolved.resolved.has_non_tail_self_call, match_pattern: anno_resolved.resolved.match_pattern, expr_data: anno_resolved.resolved.expr_data } }
+    } else {
+      Some { value: anno_resolved.resolved }
+    }
+  }
   let anno_diags = anno_resolved.diagnostics
 
   let transport_resolved = if item.transport == none {
