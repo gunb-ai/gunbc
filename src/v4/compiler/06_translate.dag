@@ -1557,6 +1557,7 @@ fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
 
 fn target_collection_realization_from_bundle(
   bundle: Node,
+  expected_source_carrier: Node,
   target: TargetModel
 ) -> Outcome<TargetCollectionRealization> {
   bind_outcome(
