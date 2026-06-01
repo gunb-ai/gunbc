@@ -1044,8 +1044,54 @@ fn ts_pr3_identity_concrete_tokens() -> List<TsConcreteSyntaxToken> {
   ]
 }
 
+// DESIGN-1: Conj positional slots = bound-terminal atoms + nonterminal RHS children only
+// (derive_grammar_relation_row_node rejects non-Conj emitted roots).
+fn ts_pr3_identity_type_number_emitted() -> Node {
+  ts_inhabitant_atom(id: ts_token_ty_number)
+}
+
+fn ts_pr3_identity_type_annotation_emitted() -> Node {
+  ts_pr3_identity_type_number_emitted()
+}
+
+fn ts_pr3_identity_typed_param_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ts_binding_param_x) },
+      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() }
+    ]
+  }
+}
+
+fn ts_pr3_identity_typed_params_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted() }
+    ]
+  }
+}
+
+fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted() }
+    ]
+  }
+}
+
 fn ts_pr3_identity_typed_fn_emitted() -> Node {
-  ts_grammar_atom(id: ts_surface_typed_fn_decl)
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ts_binding_pr3_identity) },
+      Edge { label: Positional, target: ts_pr3_identity_typed_params_opt_emitted() },
+      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ts_binding_param_x) }
+    ]
+  }
 }
 
 fn ts_pr3_identity_formal_productions() -> List<FormalProduction> {

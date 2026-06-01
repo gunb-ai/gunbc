@@ -105,7 +105,11 @@ fn mvp1_ts_pr3_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding
     Holds {
       value: mvp1_ts_pr3_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ts_surface_typed_fn_decl) {
+  } else if node == ts_inhabitant_atom(id: ts_binding_pr3_identity) {
+    Holds {
+      value: mvp1_ts_pr3_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == ts_inhabitant_atom(id: ts_binding_param_x) {
     Holds {
       value: mvp1_ts_pr3_canonical_grounding(node: node, algebra: node)
     }
