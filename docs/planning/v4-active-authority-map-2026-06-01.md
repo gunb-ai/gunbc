@@ -111,7 +111,7 @@ Other residuals: see #4148 routing worksheets (not impl without §8)
 | 4 | Stable rustc bands routing | vivid-lynx-81 | **DRAFT** — attach bands to SG-5/SG-8/SG-RC or hold |
 | 5 | Go L0/L1 bundle (5 worksheets) | #4149 MERGED | **CLOSED** |
 | 6 | TS strict-order (5 worksheets) | #4169 MERGED | **CLOSED** |
-| 7 | Python L1/L2 (A/B/C + D frame) | #4170 | **ready-for-review** — §8 CLOSED on branch |
+| 7 | Python L1/L2 (A/B/C + D frame) | #4170 | **CLOSED** — §8 ratified; A dispatchable; B/C blocked on Runtime/TestClaim |
 
 ---
 
