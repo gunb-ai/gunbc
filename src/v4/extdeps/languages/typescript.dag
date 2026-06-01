@@ -1131,7 +1131,8 @@ fn ts_mvp1_target_model() -> TargetModel {
 //   atom          ident / keyword primitive (number, string, boolean, ...)
 //   conj          { ... }  structural surface only   (object type — see 🟡 record gap below)
 //   disj          union A | B                        (primary sum-type surface)
-//   arrow         (a: T) => U  via shared TargetFunctionTypeShape param slots + named wire
+//   arrow         (a: T) => U  via shared TargetFunctionTypeShape param slots + labeled emitted wire
+// 🟡 gated — feature:target-arrow-domain-param-list-carrier — owner:Modeling DFS Arbiter — dissolve-on-arrival: substrate declares arrow-domain parameter-list vs record/product boundary before translate emits labeled wire from source; forbidden: inferring param-list intent from bare Conj LabeledEdges shape (emitted-wire authority: target_type_expr_arrow_wire_shape only until carrier lands).
 //   cardinality   Head<args>  generic collection     (e.g. Set<T> — postfix head + angle brackets,
 //                                                      mirrors Rust; the Cardinality source carries a
 //                                                      head carrier, so a head-less tuple does not fit)

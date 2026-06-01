@@ -129,7 +129,6 @@ import v4.std.target_model {
   target_collection_set_element_type_node,
   target_collection_type_node_is_set_carrier,
   target_type_expr_arrow_emitted,
-  target_type_expr_arrow_emitted_named,
   target_type_expr_arrow_labeled_codomain,
   target_type_expr_arrow_labeled_param_slots,
   target_type_expr_arrow_wire_shape,
