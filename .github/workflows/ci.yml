@@ -25,46 +25,30 @@ env:
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR — model authority: src/v4/workflow/ci.dag
   # `ci_runner_isolation_policy` (binding receipt: v4_workflow_ci_runner_dag_smoke_test::
-  # v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml).
-  # gunbc is PUBLIC on the private self-hosted fleet, so fork-PR runs execute attacker-controlled
-  # code on srv1/srv2. The operator runner de-priv (jobs run as unprivileged `ghrunner`, no root,
-  # no passwordless sudo) lives in the fleet host config OUTSIDE this repo — a silent host-side
-  # regression would re-expose the fleet with no in-repo diff. This job adversarially probes its
-  # own runtime privilege and fails closed the moment the runner is re-privileged. It runs
-  # UNCONDITIONALLY (no draft gate, no affected mask): the fork-PR exposure exists wherever a
-  # runner executes. It deliberately does NOT check out the repo or build — it only samples the
-  # privilege context the runner hands to jobs, so no fork code runs in the guard itself.
-  runner_isolation_guard:
+  # v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml; full-workflow carrier mirror:
+  # dsl/gunbc/ci_github_actions_workflow.dag). gunbc is PUBLIC on the private self-hosted fleet, so
+  # fork-PR runs execute attacker-controlled code on srv1/srv2. The operator runner de-priv (jobs run
+  # as unprivileged `ghrunner`: non-root, not in docker/sudo/lxd/wheel/root, no passwordless sudo, no
+  # read on the App private key or docker.sock) lives in the fleet host config OUTSIDE this repo — a
+  # silent host-side regression would re-expose the fleet with no in-repo diff. This job adversarially
+  # probes its own runtime privilege and fails closed the moment the runner is re-privileged. It runs
+  # UNCONDITIONALLY (no draft gate, no affected mask): the fork-PR exposure exists wherever a runner
+  # executes. It does NOT check out the repo or build — no fork code runs in the guard itself. The
+  # operator branch-protection references the job id `infra_isolation`. Check set live-verified against
+  # the de-priv by calm-gull-119 (CI floor coordination, 2026-06-01).
+  infra_isolation:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
-    - name: Assert runner is de-privileged (fork-PR isolation floor)
+    - name: Assert runner is de-privileged (adversarial)
       run: |
-        set -euo pipefail
-        uid="$(id -u)"
-        user="$(id -un)"
-        echo "::notice::runner_isolation_guard: running as ${user} (uid=${uid}); de-privileged account is 'ghrunner'"
-        if [ "$uid" -eq 0 ]; then
-          echo "::error::runner is executing jobs as root (uid 0) — runner de-priv has REGRESSED; fork-PR code would gain srv1/srv2 root. Failing closed."
-          exit 1
-        fi
-        if command -v sudo >/dev/null 2>&1; then
-          if sudo -n true >/dev/null 2>&1; then
-            echo "::error::passwordless sudo is available to the runner account — root-equivalent; runner de-priv has REGRESSED. Failing closed."
-            exit 1
-          fi
-          echo "::notice::runner_isolation_guard: sudo present but passwordless escalation denied (expected)"
-        else
-          echo "::notice::runner_isolation_guard: sudo not installed (expected on a de-privileged runner)"
-        fi
-        probe="/etc/.gunbc-runner-isolation-probe.$$"
-        if : > "$probe" 2>/dev/null; then
-          rm -f "$probe" 2>/dev/null || true
-          echo "::error::runner account can write to /etc — privilege isolation has REGRESSED. Failing closed."
-          exit 1
-        fi
-        echo "::notice::runner_isolation_guard: /etc not writable by runner account (expected)"
-        echo "runner_isolation_guard: de-privilege floor holds (non-root, no passwordless sudo, /etc read-only)"
+        fail(){ echo "::error::INFRA ISOLATION REGRESSION: $1"; exit 1; }
+        [ "$(id -u)" -ne 0 ] || fail "running as root"
+        for g in docker sudo lxd wheel root; do id -nG | tr ' ' '\n' | grep -qx "$g" && fail "in privileged group $g"; done
+        cat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail "can read the App private key"
+        sudo -n true 2>/dev/null && fail "has passwordless sudo"
+        test -r /var/run/docker.sock && fail "can access docker.sock"
+        echo "OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, no docker.sock"
   fmt:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
@@ -215,7 +199,7 @@ jobs:
         bash scripts/check-ci-no-new-shell.sh
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [ci_floor]
+    needs: [ci_floor, infra_isolation]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
@@ -226,7 +210,11 @@ jobs:
           echo "::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)"
+        if [[ "${{ needs.infra_isolation.result }}" != "success" ]]; then
+          echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified — ci aggregator fails closed."
+          exit 1
+        fi
+        echo "ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; infra_isolation de-priv guard green; affected is shadow-only)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
         echo "::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)"
