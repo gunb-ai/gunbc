@@ -1346,7 +1346,7 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "\\)*&&",
         "&&",
         "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "\\)*\\}",
+        "\\)*\\}$",
         "inline_empty_gate",
         "if(?<!!)is_empty\\([^)]*report[^)]*entries",
         "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
@@ -1373,7 +1373,7 @@ inverted_zero_comparison = re.compile(
 )
 fail_deferred_conjunction = re.compile(
     r"(?:^|;)\(*tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*&&"
-    r"\(*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*\}"
+    r"\(*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*\}$"
 )
 
 def receipt_accepts(source):
@@ -1396,6 +1396,7 @@ assert not receipt_accepts(
 for non_returned in [
     "lettally=x;tally.fail==Zero&&tally.deferred==Zero;false}",
     "lettally=x;letok=tally.fail==Zero&&tally.deferred==Zero;false}",
+    "lettally=x;{letinner=1;tally.fail==Zero&&tally.deferred==Zero};false}",
 ]:
     assert not receipt_accepts(non_returned)
 for inverted in [
