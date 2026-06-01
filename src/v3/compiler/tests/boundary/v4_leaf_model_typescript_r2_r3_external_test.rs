@@ -67,14 +67,7 @@ fn exercise_tsc_fixture(label: &str, source: &str) -> (i32, String) {
 
     let output = Command::new("npx")
         .args([
-            "-p",
-            TSC_PKG,
-            "tsc",
-            "--strict",
-            "--noEmit",
-            "--target",
-            "ES2022",
-            "--module",
+            "-p", TSC_PKG, "tsc", "--strict", "--noEmit", "--target", "ES2022", "--module",
             "ES2022",
         ])
         .arg(&src_path)
@@ -107,11 +100,9 @@ fn exercise_node_fixture(label: &str, source: &str) -> (i32, String) {
 
 #[test]
 fn v4_leaf_model_typescript_r2a_fixture_strings_match_dag_authority() {
-    let happy =
-        extract_fixture_source(FIXTURE_DAG, "typescript_r2a_happy_fixture_source").unwrap();
+    let happy = extract_fixture_source(FIXTURE_DAG, "typescript_r2a_happy_fixture_source").unwrap();
     let falsification =
-        extract_fixture_source(FIXTURE_DAG, "typescript_r2a_falsification_fixture_source")
-            .unwrap();
+        extract_fixture_source(FIXTURE_DAG, "typescript_r2a_falsification_fixture_source").unwrap();
     assert_eq!(happy, R2A_HAPPY);
     assert_eq!(falsification, R2A_FALSIFICATION);
 }
@@ -138,8 +129,7 @@ fn v4_leaf_model_typescript_r2a_falsification_fixture_tsc_ts2339() {
 #[test]
 fn v4_leaf_model_typescript_r2b_runtime_fixture_strings_match_dag_authority() {
     let happy =
-        extract_fixture_source(FIXTURE_DAG, "typescript_r2b_runtime_happy_fixture_source")
-            .unwrap();
+        extract_fixture_source(FIXTURE_DAG, "typescript_r2b_runtime_happy_fixture_source").unwrap();
     let falsification = extract_fixture_source(
         FIXTURE_DAG,
         "typescript_r2b_runtime_falsification_fixture_source",
