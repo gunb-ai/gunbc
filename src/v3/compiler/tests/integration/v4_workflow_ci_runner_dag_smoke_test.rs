@@ -13,7 +13,8 @@
 //! Wave 1 §11.7.1 floor: `docs/planning/ci-required-surface-cut-2026-06-01.md` (`v4_workflow_ci_wave1_*`).
 //! Wave 3 §11.7.2 shadow receipt Phase 1: same doc (`v4_workflow_ci_wave3_*`; P5(b) receipt table).
 //! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174).
-//! T-38 PR2 same-path assertion expansion: P5(b) receipt is in PR #4213 body; no new v3 harness authority.
+//! T-38 PR2 same-path assertion expansion: explicit P5 deferral to T-PB-B test sub-ratchet;
+//! ROADMAP.md § "Milestone shape" row 4 ("Self-host fixed point") tracks hand-maintained file count -> 0.
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
