@@ -378,6 +378,132 @@ scripts/test-check-*.sh                               # self-test scripts (test 
 **CI Manager long-pole (gated on operator decision + Modeling DFS Arbiter):**
 - Runtime authority migration (YAML→evaluator) — coupled with P5 runtime gate decision
 
+### §11.7 CI Coverage Bankruptcy — operator-ratified aggressive cut plan (2026-06-01T01)
+
+**Core operator framing**: cut shell-driven CI now to a bare safety floor. Keep one broad floor; move everything else to modeled / shadow / nightly / dropped. Do NOT pretend affected-set is ready for exclusive gating; run it in shadow until proven.
+
+**Why now**: CI is bogging the program down. `ci_v4` is 33m46s wall (per #4091 §1.2); 14m40s is duplicated compiler work on the same 332-source closure (four-compile redundancy). 73 YAML steps with 26+ still shell-owned; multiple v3-era ratchets enforcing counts against retired surfaces. The program cannot afford to wait for full modeled-substrate migration before cutting.
+
+#### §11.7.1 BARE MINIMUM SAFETY NET — what we actually need (Class A)
+
+**This is what stays required on every PR.** Everything not on this list is either Class C (shadow/scheduled/manual) or Class D (cut/deleted).
+
+| # | Required gate | Purpose | Notes |
+|---|---|---|---|
+| 1 | `fmt --check` | Format hygiene | Cheap (~30s); near-universal in Rust projects |
+| 2 | Bootstrap minimal viability (v2→v4 compile path) | The tree compiles end-to-end via the path we ship | Currently `v4-bootstrap-viability.sh`; can stay shell short-term per Class A exception; the modeled `CiUpsertStep` replacement is Wave 2 work |
+| 3 | ONE Rust emit/probe path (NOT four) | Single sample of P3 surface ("does v4 emit Rust that rustc can chew on?") | Pick `M1 v4 full-tree rust emit probe` OR `T-22 corpus rust` — NOT both. Other 2-3 compiles → Class C (scheduled) |
+| 4 | `ci.dag` structural receipt + `CiUpsertStep` schema checks | Ensures modeled substrate stays well-formed | Already cheap; modeled-positive-Y |
+| 5 | no-new-shell / shell-retirement ratchet | Enforces `project_no_new_shell` directive | Mechanical check; ensures CI doesn't regress on shell-cut posture |
+
+That's it. **Five required gates.** Cold PR target: ~5-10 minutes (vs current ~30-75min).
+
+#### §11.7.2 The four CI classes (for categorization)
+
+| Class | Required on PR? | What happens now |
+|---|---|---|
+| **A. Safety floor** | Yes | The 5 items above; nothing else |
+| **B. Modeled positive-Y** | Yes if already modeled | Runs only if backed by `CiUpsertStep` / structured receipt |
+| **C. Shadow / diagnostic** | No | Runs on demand, scheduled, or as shadow receipt; produces evidence but does not block |
+| **D. Cut until modeled** | No | Disabled/deleted from required CI; restoration path named (or permanently deleted for retired-lane items like v3) |
+
+#### §11.7.3 Specifically cut/demote immediately
+
+| Item | Class | Reason |
+|---|---|---|
+| All 5 leaf-model verify shells (`v4-leaf-model-python-{r1,r2a,r2b,r3-external}-verify.sh` + `v4-leaf-model-rust-r3-external-verify.sh`) | C/D | "Dissolve-on-arrival" per their own headers; Python R1/R2a/R2b/R3-external substrate landed via #4117 |
+| `check-pr-sg0-net-shrink-discipline.sh` | D | v3 hand-Rust net-shrink ratchet against retired v3 lane |
+| `check-compiler-std-ratchet.sh` | D | counts `^type [A-Z]` in `src/v3/compiler/*.dag` (retired v3) |
+| `l1-ratchet.sh` | D | counts L1 type knowledge in `src/v3/*.dag` (retired v3) |
+| `r3-debt-velocity.sh` | D | reporting-only; explicitly "does not gate CI" |
+| `r1_p0_no_fabrication_sentinel.sh` | D | header itself says "v2 tree removed under T-V2-Retirement G-2" |
+| `check-r4-carve-dissolution-discipline.sh` | C | prose-grep doc-hygiene; demote from required |
+| `check-rust-toolchain-single-authority.sh` | C | header itself names dissolution: "delete this script if extdeps + workflow toolchain selection are generated" |
+| `check-test-timeout.sh` | C | reads pre-captured test log; dev-discipline check, demote from required |
+| `check-manager-brief-authority.sh` | C | prose-grep; pre-commit hook material, not CI gate |
+| `check-release-doc-authority.sh` | C | prose-grep; pre-commit hook material |
+| Four-compile redundancy in `ci_v4` | A/D | collapse to ONE Class-A run; demote the other 3 copies to scheduled |
+| **All v3 integration tests** (`ci_integration` Tier-0 I3 `cargo test -p v3-compiler --release --test determinism_test`; full `v3` job: `cargo test --lib --bins`, `clippy --features bootstrap-regen-fresh`, all v3 lib/bin tests) | **D — PERMANENT** | **Operator directive 2026-06-01**: v3 is retired; we aren't supposed to rely on these. Delete from CI permanently (not move to scheduled — DELETE). Per project spirit + #4101 bankruptcy framing. Confidence-on-v3 is not a v4 ship gate. |
+
+#### §11.7.4 The four-wave plan
+
+**Wave 1 — CI Cut / Survival Floor** (CI Manager + Compiler Spine)
+- Deliverable: `ci.yml` required path reduced to safety floor (Class A only); all removed/demoted checks recorded in honesty ledger
+- Acceptance: cold PR CI target materially shorter; required gates explicit; removed coverage named
+- Output: `docs/planning/ci-required-surface-cut-2026-06-01.md` (the bankruptcy doc) + `.github/workflows/ci.yml` (cut) + `src/v4/workflow/ci.dag` (any modeled-receipt updates)
+- **This is triage, not a modeling victory** — operator-ratified honest reduction
+
+**Wave 2 — Shell-to-CiUpsertStep migration** (CI Manager)
+- Take ~26 unmigrated YAML steps; migrate highest-value first per W2.3 worksheet pattern (#4078)
+- Each step → `CiUpsertStep<T>` with typed `UpsertInputRef` inputs, projected verify/create/resolve, derived cache digest
+- Forbidden: hand-edited GHA `if:` conditions, parallel selectors, string-keyed deps, authored cache keys, heuristic run modes
+
+**Wave 3 — Testgen / Affected-Set Shadow Integration** (Runtime/TestClaim Manager + CI Manager)
+- For every PR diff: affected-set outputs graph regions → testgen maps regions → TestClaims → CI prints selected claims (does NOT skip floor)
+- Broad safety floor STILL runs
+- Receipt-only mode; comparison with Class A determines trustworthiness over time
+
+**Wave 4 — First Active Modeled Skip** (only after Wave 3 receipts trustworthy)
+- Narrow first skip: docs-only OR leaf-model-only OR one narrowly scoped fixture
+- Skip must return structured cached/previous verdict, not just "did not run"
+- Requires: step deps modeled as `CiUpsertStep` inputs; selected TestClaims correspond to actual affected graph regions; false-negative cases tested; broad floor remains
+
+#### §11.7.5 The temporary CI cut rule (codified)
+
+```
+A shell-owned check may remain REQUIRED only if:
+  1. it protects the current P2/P3/P5 safety floor,
+  2. it has no modeled CiUpsertStep replacement yet,
+  3. it is listed in the temporary shell exception table,
+  4. it has a named dissolution path.
+
+All other shell-owned checks move to shadow/manual/scheduled or are deleted.
+No affected-set-exclusive skip is allowed until shadow receipts prove
+the selected TestClaim set against a broad safety floor.
+```
+
+#### §11.7.6 Honesty ledger requirement
+
+The bankruptcy PR (Wave 1) must name explicitly:
+- Required PR gates after cut (list)
+- Moved to shadow/manual/scheduled (list)
+- Deleted until modeled (list)
+- Restoration condition per item (must return as `CiUpsertStep` or TestClaim/testgen-derived gate)
+
+Same posture as v4 alpha release: **reduced required confidence is acceptable if the doc says required confidence is reduced** — not hidden behind "CI is green".
+
+#### §11.7.7 CI Manager REFRAMED charter (supersedes §11.2 CI row)
+
+**Charter (one sentence)**: get the bare minimum safety net working in CI using affected-set + testgen, instead of maintaining shell-owned coverage.
+
+This is a different job than "migrate every shell step to `CiUpsertStep`". The migration is a means to an end; the end is: **affected-set + testgen-driven safety net IS the CI runtime authority**, and the bare minimum (§11.7.1) is what runs on every PR with that authority providing intelligent selection.
+
+The CI Manager's work lane:
+
+| Deliverable | Order | Why |
+|---|---|---|
+| 1. **CI Coverage Bankruptcy PR (Wave 1)** | First | Cut required surface to §11.7.1 bare minimum; publish honesty ledger; permanently delete v3 integration tests per operator directive |
+| 2. **Four-compile redundancy collapse** | Parallel with Wave 1 | ~14m savings; biggest single runtime drop available without modeling work |
+| 3. **Affected-set + testgen shadow integration (Wave 3 with Runtime/TestClaim)** | Second | Shadow mode: for every PR, affected-set outputs graph regions → testgen maps to TestClaims → CI prints selected claims → does NOT skip floor. Build trust over time. |
+| 4. **Affected-set + testgen FIRST ACTIVE skip (Wave 4)** | Third | Once Wave 3 receipts are trustworthy, first narrow active skip: docs-only OR leaf-model-only. Skip returns structured cached verdict, not "did not run". |
+| 5. **Affected-set + testgen as Class A safety net** | Long horizon | The end state: the bare minimum (§11.7.1) runs PLUS affected-set/testgen selects additional class-B gates per PR diff. The "safety net" IS dynamic — broad on risky changes, narrow on docs-only. Hand-authored `if:` conditions retire. |
+| 6. **Shell-to-CiUpsertStep migration** | Continuous background | Modeled-migration of remaining ~26 steps happens INCREMENTALLY in service of Wave 3/4/5. NOT a separate front. Each step migrated when affected-set needs it as a typed dependency. |
+
+**Explicitly NOT the CI Manager's job** (anti-patterns to avoid):
+- Migrating every YAML step to `CiUpsertStep` for completeness sake — only migrate what affected-set + testgen needs
+- Maintaining shell-owned ratchets, leaf-model verifications, prose-grep checks — those are CUT per §11.7.3, not migrated
+- Pretending affected-set is ready for exclusive gating before Wave 3 receipts prove it
+
+**Exit criteria (updated)**:
+- (a) Wave 1 bankruptcy cut on main; honesty ledger published (`docs/planning/ci-required-surface-cut-2026-06-01.md`)
+- (b) Cold PR CI runtime ≤10min on §11.7.1 bare minimum (was ~30min warm, ~75min cold with rerun)
+- (c) Wave 3 shadow receipts trustworthy across N PRs (operator-defined N)
+- (d) Wave 4 first active modeled skip on main with structured cached verdict
+- (e) Four-compile redundancy = 1 compile
+- (f) v3 integration tests permanently deleted from CI (not moved to scheduled)
+
+**Long-pole (gated on P5 runtime gate)**: runtime authority migration (YAML→evaluator); same SELF_HOSTING substrate work as `adhoc-f8699326-d69`. Not on critical path for CI cut; arrives when bootstrap-evaluator corpus runtime ships.
+
 ### §11.5 PM (this session) scope under new structure
 
 PM remains routing + escalation only:
