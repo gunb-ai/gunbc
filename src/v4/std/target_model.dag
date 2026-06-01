@@ -221,6 +221,9 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
   }
 }
 
+// 🟡 coproduct dissolution — local fold state for fail-closed encoded FreeMonoid<Char>
+// projection; dissolve-on: std.algebra exports the canonical string/free-monoid projection
+// named by the `free-monoid-node-projection` receipt below.
 type SourceAtomStringProjectionFold
   = SourceAtomStringFoldInit
   | SourceAtomStringFoldHeadSeen
