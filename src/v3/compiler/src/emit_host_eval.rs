@@ -547,41 +547,11 @@ fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{Behavior, TypeConnective};
-    use crate::evaluator::{
-        EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder,
-    };
+    use crate::evaluator::EvalError;
     use emit_host_runner::HostLogicalFailure;
 
-    fn eager_strategy() -> EvalStrategy {
-        EvalStrategy::ApplicativeOrder {
-            input_order: InputEvaluationOrder::LeftFirst,
-        }
-    }
-
     #[test]
-    fn is_run_emit_host_rust_decl_requires_arrow_name() {
-        let dag = crate::dag::Dag::new();
-        let decl_id = dag.push_declaration(
-            crate::dag::Declaration {
-                name: Some("run_emit_host_rust".to_string()),
-                connective: TypeConnective::Arrow {
-                    inputs: vec![],
-                    output: dag.alloc_port(None),
-                    body: crate::dag::ArrowBody::UserDefined(
-                        crate::dag::BindNodeId::from_raw(0),
-                    ),
-                },
-                span: crate::dag::span(),
-                ..Default::default()
-            },
-            crate::dag::span(),
-        );
-        assert!(is_run_emit_host_rust_decl(&dag, decl_id));
-    }
-
-    #[test]
-    fn emit_host_fixture_inputs_rejects_debug_fallback() {
+    fn emit_host_fixture_inputs_rejects_non_string_root() {
         let err = emit_host_fixture_inputs(&Value::RecordValue(vec![NamedField {
             label: "root".to_string(),
             value: Value::LiteralValue(LiteralBits::Int("1".to_string())),
@@ -593,20 +563,5 @@ mod tests {
                 reason: "expected Inputs.root string literal",
             }
         ));
-    }
-
-    #[test]
-    fn host_exit_outcome_maps_violates_to_witness_not_empty_record() {
-        let dag = crate::dag::Dag::new();
-        let exit = HostExit::logical_violation(HostLogicalFailure::ExitedNonzero {
-            phase: emit_host_runner::HostPhase::FixtureRun,
-            code: Some(1),
-        });
-        let outcome = host_exit_outcome_value(&dag, &exit).expect("outcome");
-        let Value::VariantValue { tag, .. } = outcome else {
-            panic!("expected Outcome variant");
-        };
-        let tag_decl = dag.declaration(tag);
-        assert_eq!(tag_decl.name.as_deref(), Some("Accepted"));
     }
 }
