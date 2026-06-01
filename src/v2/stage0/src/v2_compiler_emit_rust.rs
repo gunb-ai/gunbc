@@ -422,18 +422,8 @@ pub fn render_rust_fn_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if find_property(
-        n.properties.clone(),
-        "__applied_type_args".to_string(),
-        source_indices.clone(),
-    ) != None
-    {
-        render_rust_type_with_applied_binding(n, shared_types, source_indices)
-    } else if ((generic_param_names.clone().len() as i64) > 0) {
-        render_node_type(n, RenderTarget::Rust, shared_types, source_indices)
-    } else {
-        render_rust_type_with_applied_binding(n, shared_types, source_indices)
-    }
+    let _ = generic_param_names;
+    render_rust_type_with_applied_binding(n, shared_types, source_indices)
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -5291,46 +5281,8 @@ pub fn render_rust_param_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let authored = param_node_type_expr(param.clone());
-    if find_property(
-        param.properties.clone(),
-        "__applied_type_args".to_string(),
-        source_indices.clone(),
-    ) != None
-    {
-        render_rust_type_with_applied_binding(param, shared_types, source_indices)
-    } else if find_property(
-        authored.properties.clone(),
-        "__applied_type_args".to_string(),
-        source_indices.clone(),
-    ) != None
-    {
-        render_rust_type_with_applied_binding(authored, shared_types, source_indices)
-    } else if ((generic_param_names.len() as i64) > 0) {
-        if ((authored.connective.clone() == Connective::NoConnective)
-            && ((authored.children.clone().len() as i64) > 0)
-            && !is_container_type(authored_name_at(source_indices.clone(), authored.clone())))
-        {
-            render_rust_applied_type_shared(authored, shared_types, source_indices)
-        } else {
-            render_node_type(
-                child_type_node(authored),
-                RenderTarget::Rust,
-                shared_types,
-                source_indices,
-            )
-        }
-    } else if ((authored.connective.clone() == Connective::NoConnective)
-        && ((authored.children.clone().len() as i64) > 0))
-    {
-        render_rust_type(authored, shared_types, source_indices)
-    } else {
-        render_rust_type_with_applied_binding(
-            child_type_node(authored),
-            shared_types,
-            source_indices,
-        )
-    }
+    let _ = generic_param_names;
+    render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
 }
 
 pub fn emit_tco_param(

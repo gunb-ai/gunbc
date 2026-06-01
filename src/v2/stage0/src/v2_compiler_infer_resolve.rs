@@ -1386,7 +1386,9 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 children: children,
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: Some(Rc::new(InferredNode::Resolved {
+                    node: type_resolved.clone(),
+                })),
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
                 body: None,

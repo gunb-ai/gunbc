@@ -518,7 +518,7 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
       children: children,
       connective: NoConnective,
       params: [],
-      inferred: none,
+      inferred: Some { value: Resolved { node: type_resolved } },
       return_cardinality: Required,
       uses: [],
       body: none,
