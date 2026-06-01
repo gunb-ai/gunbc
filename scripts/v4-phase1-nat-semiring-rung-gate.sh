@@ -24,6 +24,7 @@
 #   V4_PHASE1_NAT_SEMIRING_GO     — go binary (default: go)
 #   V4_PHASE1_NAT_SEMIRING_RUSTC  — rustc binary (default: rustc)
 #   V4_PHASE1_NAT_SEMIRING_GOFMT  — gofmt binary (default: gofmt)
+#   V4_GO_L1_NAT_SEMIRING_RECEIPT — Go L1 JSON receipt path (default: ${out}.go-l1-receipt.json)
 
 set -euo pipefail
 
@@ -32,6 +33,7 @@ cd "$root"
 
 fixture_module_path="src/v4/test/claim/algebra_laws/nat_semiring.dag"
 fixture_id="phase1/nat_semiring"
+go_l1_slice_id="go_l1_nat_semiring_rung2"
 
 bin="${V2_COMPILER:-target/release/gunbc}"
 if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_PHASE1_NAT_SEMIRING_OUT:-}" ]]; then
@@ -51,6 +53,7 @@ gofmt_bin="${V4_PHASE1_NAT_SEMIRING_GOFMT:-gofmt}"
 timeout_secs="${V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS:-300}"
 strict="${V4_PHASE1_NAT_SEMIRING_STRICT:-0}"
 summary="${out}.rung-gate-summary.txt"
+go_l1_receipt="${V4_GO_L1_NAT_SEMIRING_RECEIPT:-${out}.go-l1-receipt.json}"
 
 if [[ ! -f "$fixture_module_path" ]]; then
   echo "error: fixture module not found at $fixture_module_path" >&2
@@ -342,6 +345,51 @@ else
   note_blocking "upstream_blocked:R0-go-parse"
 fi
 
+go_l1_diagnostic_source="$out/logs/go_build.log"
+go_l1_blocking_receipt="none"
+case "${verdict[R2-go-compile]}" in
+  PASS) go_l1_blocking_receipt="none" ;;
+  FAIL) go_l1_blocking_receipt="phase1/nat_semiring/rung2/go_compile_failed" ;;
+  *) go_l1_blocking_receipt="upstream_blocked:R0-go-parse" ;;
+esac
+if [[ "${verdict[R0-go-parse]}" != "PASS" ]]; then
+  go_l1_diagnostic_source="$out/logs/go_parse.log"
+fi
+if [[ "$go_emit_status" -ne 0 || "${go_file_count:-0}" -lt 1 ]]; then
+  go_l1_diagnostic_source="$out/logs/go_emit.log"
+  if [[ "$go_emit_status" -ne 0 ]]; then
+    go_l1_blocking_receipt="phase1/nat_semiring/rung0/go_emit_parse_rejected"
+  else
+    go_l1_blocking_receipt="phase1/nat_semiring/rung0/go_emit_unavailable"
+  fi
+fi
+mkdir -p "$(dirname "$go_l1_receipt")"
+"$python_bin" - "$go_l1_receipt" "$go_l1_slice_id" "$out/go" "${verdict[R2-go-compile]}" "$go_l1_blocking_receipt" "$go_l1_diagnostic_source" <<'PY'
+import json
+import pathlib
+import sys
+
+receipt_path, slice_id, go_module_root, verdict, blocking_receipt, diagnostic_source = sys.argv[1:7]
+diagnostic_snippet = None
+diagnostic_path = pathlib.Path(diagnostic_source)
+if verdict != "PASS" and diagnostic_path.exists():
+    text = diagnostic_path.read_text(encoding="utf-8", errors="replace").strip()
+    if text:
+        diagnostic_snippet = "\n".join(text.splitlines()[-20:])
+
+payload = {
+    "schema": "scripts/v4-phase1-nat-semiring-rung-gate.sh::go_l1_compile_receipt_v1",
+    "slice_id": slice_id,
+    "fixture": "phase1/nat_semiring",
+    "predicate": "R2-go-compile",
+    "go_module_root": go_module_root,
+    "verdict": verdict,
+    "blocking_receipt": blocking_receipt,
+    "diagnostic_snippet": diagnostic_snippet,
+}
+pathlib.Path(receipt_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+
 # --- Rung roll-up (§2.4): row PASS iff every cell PASS; otherwise FAIL (all-SKIP → FAIL). ---
 row_aggregate() {
   local row_pass="PASS"
@@ -361,6 +409,7 @@ rung2_pass="$(row_aggregate R2-rust-compile R2-python-compile R2-go-compile)"
   echo "  rung1: ${rung1_pass}  (rust=${verdict[R1-rust-typecheck]})"
   echo "  rung2: ${rung2_pass}  (rust=${verdict[R2-rust-compile]} python=${verdict[R2-python-compile]} go=${verdict[R2-go-compile]})"
   echo "blocking_receipt: ${blocking_receipt}"
+  echo "go_l1_receipt: ${go_l1_receipt}"
   echo ""
   echo "logs: ${out}/logs/"
 } | tee "$summary"
