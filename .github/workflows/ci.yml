@@ -398,17 +398,7 @@ jobs:
         ec=$?
         echo "exitcode=${ec}" >> "$GITHUB_OUTPUT"
         exit "${ec}"
-    - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
-      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true') && (steps.v4_bootstrap_compile.outputs.exitcode == '124' || steps.v4_bootstrap_compile.outputs.exitcode == '143')
-      id: v4_bootstrap_resolve_posture
-      env:
-        V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
-      run: |
-        set -euo pipefail
-        V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1 \
-        V4_BOOTSTRAP_COMPILER_EXIT="${{ steps.v4_bootstrap_compile.outputs.exitcode }}" \
-          bash scripts/v4-bootstrap-resolve-posture-gate.sh
-    - name: v4 bootstrap gate result (compile or tracked bridge)
+    - name: v4 bootstrap gate result
       if: always() && (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.testclaim_corpus == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true') && steps.v4_bootstrap_compile.outcome != 'skipped'
       run: |
         set -euo pipefail
@@ -416,11 +406,7 @@ jobs:
           echo "v4 bootstrap: full compile receipt"
           exit 0
         fi
-        if [[ "${{ steps.v4_bootstrap_resolve_posture.outcome }}" == "success" ]]; then
-          echo "v4 bootstrap: resolve-posture bridge receipt"
-          exit 0
-        fi
-        echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
+        echo "error: v4 bootstrap compile failed" >&2
         exit 1
     # P5 Layer 2 / T-22: modeled TestClaim corpus structural check (positive-Y CiUpsertStep).
     # Modeled authority: src/v4/workflow/ci.dag `testclaim_corpus_eval_execution` +

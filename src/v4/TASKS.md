@@ -189,8 +189,10 @@ Bootstrap execution gap (gate T-15 close — 2026-05-28; live dispatch snapshot:
   T-37  v2 DAG artifact serializer fix   [DONE — #3791 on `main`]
         Serializer fix landed; dissolution trigger (b) met on probe
         (royal-carp-716 PASS; `--target dag` without SIGTERM). P5 bridge removal
-        still open: `scripts/v4-bootstrap-resolve-posture-gate.sh` +
-        `.github/workflows/ci.yml:249` until script + CI step deleted per header.
+        executed under operator authorization 2026-06-01T00: deleted
+        `scripts/v4-bootstrap-resolve-posture-gate.sh` and the paired
+        `.github/workflows/ci.yml` resolve-posture step, skipping the prior
+        14-day window as explicitly authorized.
   T-38  TestClaim execution harness      [needs T-22 runnable; T-34 done #3770; gates T-15 "claim suite passes"]
         Claims compile only today; no CI step invokes T-22 eval on the corpus.
 
@@ -269,7 +271,7 @@ Close-the-loop + late substrate:
 The compiler pipeline (T-1…T-11, T-36) is necessary but not sufficient for
 T-15 to close. Two gaps gate the close condition (T-37 landed; live dispatch: T-15 Close-status):
 
-**T-37 → serializer fix LANDED ([#3791](https://github.com/gunb-ai/gunbc/pull/3791)).** v2 `--target dag` completes without SIGTERM on `main` (probe royal-carp-716 EXIT:0; `dag_node_key` Resolved-peel + stage0 Rc). Dissolution trigger (b) met — emit no longer OOM-masks failure on probe. **P5 bridge removal still open:** `scripts/v4-bootstrap-resolve-posture-gate.sh` and `.github/workflows/ci.yml:249` remain until script + paired CI step are deleted per script header (14 consecutive main-CI days). Root cause + fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
+**T-37 → serializer fix LANDED ([#3791](https://github.com/gunb-ai/gunbc/pull/3791)).** v2 `--target dag` completes without SIGTERM on `main` (probe royal-carp-716 EXIT:0; `dag_node_key` Resolved-peel + stage0 Rc). Dissolution trigger (b) met — emit no longer OOM-masks failure on probe. **P5 bridge removal executed under operator authorization 2026-06-01T00:** `scripts/v4-bootstrap-resolve-posture-gate.sh` and the paired `.github/workflows/ci.yml` resolve-posture step are deleted; the authorization explicitly skips the prior 14-day window. Root cause + fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
 
 **T-38 → claim-suite structural bridge.** The CI gate
 `scripts/v4-testclaim-corpus-gate.sh` now compiles `src/v4` to emitted Rust and
@@ -583,10 +585,11 @@ be added meanwhile.
   only—no inferring the native C3 prelude `Set` from void lex/grammar shape
   inside `03_resolve.dag` (per CP-1b/T-8 dispatch row above and merged
   T-8 closeout PR #3436).
-- **CI emit-wall bridge (tracked):** when Ubicloud SIGTERMs v2 emit after a clean resolve,
-  `scripts/v4-bootstrap-resolve-posture-gate.sh` is the sole bridge authority (structured receipt +
-  `V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1`); trigger (b) met on main post-#3791;
-  P5 removal of script + `ci.yml:249` step still pending per script header.
+- **CI emit-wall bridge (dissolved 2026-06-01T00):** trigger (b) met on main post-#3791,
+  then operator authorization deleted `scripts/v4-bootstrap-resolve-posture-gate.sh`
+  and the paired `.github/workflows/ci.yml` resolve-posture step, skipping the
+  prior 14-day window. The surviving bootstrap gate is fail-closed on the full
+  compile receipt from `scripts/v4-bootstrap-viability.sh`.
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`
@@ -816,7 +819,7 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - TestClaim suite passes
 - Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
 
-**Close-status (2026-05-28, `main@678bb8bbd`):** predicates **1–2 CLOSABLE** on trigger (b) — [#3791](https://github.com/gunb-ai/gunbc/pull/3791) serializer fix on `main`. **P5 bridge removal still OPEN** (`scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml:249` until script + CI step deleted per header). Predicate **3 PARTIAL** (T-4 feeder: T-33 [#3787] + P1-KEYSTONE [#3752](https://github.com/gunb-ai/gunbc/pull/3752) on `main`; T-4 Wave 2 work continues); **4 PARTIAL** (T22-EVAL-CACHE-HASHES [#3794](https://github.com/gunb-ai/gunbc/pull/3794) open); **5 PARTIAL** — [#3803](https://github.com/gunb-ai/gunbc/pull/3803) structural corpus CI bridge on `main`; modeled T-22 eval + structured verdicts still open per §T-38 (:281, :2287). **Landed this batch:** [#3752](https://github.com/gunb-ai/gunbc/pull/3752) P1-KEYSTONE, [#3796](https://github.com/gunb-ai/gunbc/pull/3796) T-4.18. **Operator queue:** [#3794](https://github.com/gunb-ai/gunbc/pull/3794) T22-EVAL-CACHE-HASHES. **Lane A:** structural bridge [#3803] on `main`; runner bar open (§T-38).
+**Close-status (2026-06-01, operator-authorized P2-B deletion):** predicates **1–2 CLOSABLE** on trigger (b) — [#3791](https://github.com/gunb-ai/gunbc/pull/3791) serializer fix on `main`. **P5 bridge removal DONE under operator authorization 2026-06-01T00** (`scripts/v4-bootstrap-resolve-posture-gate.sh` + paired `.github/workflows/ci.yml` step deleted; prior 14-day window explicitly skipped). Predicate **3 PARTIAL** (T-4 feeder: T-33 [#3787] + P1-KEYSTONE [#3752](https://github.com/gunb-ai/gunbc/pull/3752) on `main`; T-4 Wave 2 work continues); **4 PARTIAL** (T22-EVAL-CACHE-HASHES [#3794](https://github.com/gunb-ai/gunbc/pull/3794) open); **5 PARTIAL** — [#3803](https://github.com/gunb-ai/gunbc/pull/3803) structural corpus CI bridge on `main`; modeled T-22 eval + structured verdicts still open per §T-38 (:281, :2287). **Landed this batch:** [#3752](https://github.com/gunb-ai/gunbc/pull/3752) P1-KEYSTONE, [#3796](https://github.com/gunb-ai/gunbc/pull/3796) T-4.18. **Operator queue:** [#3794](https://github.com/gunb-ai/gunbc/pull/3794) T22-EVAL-CACHE-HASHES. **Lane A:** structural bridge [#3803] on `main`; runner bar open (§T-38).
 
 ### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi/sql)
 
@@ -2252,11 +2255,11 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 **File**: `src/v2/compile.dag` — the `.dag` authority for v2's artifact emission;
 `Dag =>` arm dispatches `emit_dag_artifact` at `src/v2/compile.dag:179`. The
 generated Rust in `target/` is compile output, not the fix surface.
-**Why this is a T-15 gate**: `scripts/v4-bootstrap-resolve-posture-gate.sh` is a
-CI bridge that passes on SIGTERM (exit 143/124) when v2 `--target dag` OOM-kills
-before writing any output. The bridge's own dissolution condition is "v4 emit
-reaches `compiled:` without SIGTERM." T-15 cannot close while this bridge
-silently masks full-compile failure — it would pass trivially forever.
+**Why this was a T-15 gate**: `scripts/v4-bootstrap-resolve-posture-gate.sh` was a
+CI bridge that passed on SIGTERM (exit 143/124) when v2 `--target dag` OOM-killed
+before writing any output. The bridge's own dissolution condition was "v4 emit
+reaches `compiled:` without SIGTERM." T-15 could not close while this bridge
+silently masked full-compile failure — it would have passed trivially forever.
 
 **Current state** (`src/v2/compile.dag` v0.2.0): the DAG backend already uses a
 memoized collection fold (`DagCollectAcc { seen: Map<String, String>, order: List<Node> }`)
@@ -2272,7 +2275,7 @@ bridge script, update CI).
 
 **Dependencies**: `[schedulable now — work is in src/v2/compile.dag; no T-## prerequisite]`
 
-**Dissolution**: Serializer fix LANDED on `main` via #3791 — trigger (b) met on royal-carp-716 probe (`v4 emit` without SIGTERM). **P5 receipt still open:** delete `scripts/v4-bootstrap-resolve-posture-gate.sh` and the paired `ci.yml:249` step per script header after 14 consecutive main-CI days.
+**Dissolution**: Serializer fix LANDED on `main` via #3791 — trigger (b) met on royal-carp-716 probe (`v4 emit` without SIGTERM). **P5 receipt DONE under operator authorization 2026-06-01T00:** `scripts/v4-bootstrap-resolve-posture-gate.sh` and the paired `.github/workflows/ci.yml` resolve-posture step are deleted; the prior 14-day window was explicitly skipped by that authorization.
 
 **Reference**: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md` — full reproduction, scope checks, design proposal
 

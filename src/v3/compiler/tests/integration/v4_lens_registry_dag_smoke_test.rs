@@ -238,10 +238,16 @@ fn ci_pipeline_jobs(body: &SurfaceExpr) -> &[SurfaceExpr] {
 fn ci_job_record_by_id<'a>(jobs: &'a [SurfaceExpr], job_id: &str) -> &'a SurfaceExpr {
     jobs.iter()
         .find(|job| {
-            matches!(
-                variant_record_field(job, "CiJob", "id"),
-                SurfaceExpr::Var { name, .. } if name == job_id
-            )
+            let SurfaceExpr::VariantRecord { target, fields, .. } = job else {
+                return false;
+            };
+            if target != "CiJob" {
+                return false;
+            }
+            fields.iter().any(|field| {
+                field.name == "id"
+                    && matches!(&field.value, SurfaceExpr::Var { name, .. } if name == job_id)
+            })
         })
         .unwrap_or_else(|| panic!("missing CiJob `{job_id}`"))
 }
