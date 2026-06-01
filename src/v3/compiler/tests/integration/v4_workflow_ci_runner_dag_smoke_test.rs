@@ -805,6 +805,87 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
 }
 
 #[test]
+fn v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml() {
+    // RUNNER-ISOLATION SECURITY FLOOR — ci.dag `ci_runner_isolation_policy` is single-authority
+    // for the runner de-priv regression guard; this receipt asserts ci.yml projects it faithfully.
+    // gunbc is PUBLIC on the self-hosted fleet, so a silent host-side re-privilege regression
+    // would re-expose srv1/srv2 to fork-PR code with no in-repo diff. The guard must be a
+    // fail-closed, required-path, UNCONDITIONAL floor — this test pins each of those properties.
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        CI_DAG.contains("type RunnerIsolationPolicy"),
+        "{CI_DAG_PATH}: must model the runner de-priv isolation policy type"
+    );
+
+    let policy = data_body(&module, "ci_runner_isolation_policy");
+    let guard_job_name = expr_string(record_body_field(policy, "guard_job_name"));
+    let guard_step_name = expr_string(record_body_field(policy, "guard_step_name"));
+    let expected_user = expr_string(record_body_field(policy, "expected_unprivileged_user"));
+    let forbid_root_uid = expr_bool(record_body_field(policy, "forbid_root_uid"));
+    let forbid_passwordless_sudo = expr_bool(record_body_field(policy, "forbid_passwordless_sudo"));
+    let timeout_minutes = expr_int(record_body_field(policy, "timeout_minutes"));
+    let blocks_required_path = expr_bool(record_body_field(policy, "blocks_required_path"));
+
+    // A faithful floor fails closed on BOTH re-privilege shapes and is a required-path gate.
+    assert!(
+        forbid_root_uid && forbid_passwordless_sudo && blocks_required_path,
+        "{CI_DAG_PATH}: runner isolation policy must forbid root uid + passwordless sudo and block the required path"
+    );
+    assert!(
+        CI_DAG.contains("data ci_runner_isolation_policy_ok: Bool = ci_runner_isolation_policy_valid"),
+        "{CI_DAG_PATH}: must carry the policy-validity receipt"
+    );
+
+    // The job must exist and run UNCONDITIONALLY: the line immediately after the job id is
+    // `runs-on:` (no `if:` draft/affected gate), because fork-PR exposure exists wherever a
+    // runner executes at all.
+    assert!(
+        CI_YML.contains(&format!(
+            "\n  {guard_job_name}:\n    runs-on: [self-hosted, linux, arm64]"
+        )),
+        "{CI_YML_PATH}: `{guard_job_name}` must exist and run unconditionally (no `if:` gate — the security floor is not draft/affected-gated)"
+    );
+    assert!(
+        !ci_yml_has_deleted_legacy_top_level_job(CI_YML, guard_job_name)
+            || !CI_YML.contains(&format!("\n  {guard_job_name}:\n    if:")),
+        "{CI_YML_PATH}: `{guard_job_name}` must not carry a draft `if:` gate"
+    );
+
+    let step = workflow_step_block(CI_YML, guard_step_name);
+    // uid-0 regression shape: fails closed.
+    assert!(
+        forbid_root_uid
+            && step.contains("uid=\"$(id -u)\"")
+            && step.contains("if [ \"$uid\" -eq 0 ]; then")
+            && step.contains("exit 1"),
+        "{CI_YML_PATH}: `{guard_step_name}` must fail closed when the runner job runs as root (uid 0)"
+    );
+    // passwordless-sudo regression shape: fails closed.
+    assert!(
+        forbid_passwordless_sudo
+            && step.contains("sudo -n true")
+            && step.contains("command -v sudo"),
+        "{CI_YML_PATH}: `{guard_step_name}` must fail closed when passwordless sudo is available"
+    );
+    // The de-privileged account name is projected from the model (operator fleet fact).
+    assert!(
+        step.contains(expected_user),
+        "{CI_YML_PATH}: `{guard_step_name}` must name the modeled de-privileged account `{expected_user}`"
+    );
+    // Required-path floor: no continue-on-error, and the modeled timeout is projected.
+    assert!(
+        blocks_required_path && !step.contains("continue-on-error: true"),
+        "{CI_YML_PATH}: `{guard_job_name}` is a required-path floor — must not be continue-on-error"
+    );
+    assert!(
+        CI_YML.contains(&format!(
+            "\n  {guard_job_name}:\n    runs-on: [self-hosted, linux, arm64]\n    timeout-minutes: {timeout_minutes}"
+        )),
+        "{CI_YML_PATH}: `{guard_job_name}` must project the modeled timeout-minutes ({timeout_minutes})"
+    );
+}
+
+#[test]
 fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(

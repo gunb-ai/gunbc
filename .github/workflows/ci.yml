@@ -23,6 +23,48 @@ env:
 # Wave 1 §11.7.1 safety floor — fmt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
 # Required on every non-draft PR: fmt, bootstrap viability, M1 rust emit, ci.dag structural receipt, no-new-shell.
 jobs:
+  # RUNNER-ISOLATION SECURITY FLOOR — model authority: src/v4/workflow/ci.dag
+  # `ci_runner_isolation_policy` (binding receipt: v4_workflow_ci_runner_dag_smoke_test::
+  # v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml).
+  # gunbc is PUBLIC on the private self-hosted fleet, so fork-PR runs execute attacker-controlled
+  # code on srv1/srv2. The operator runner de-priv (jobs run as unprivileged `ghrunner`, no root,
+  # no passwordless sudo) lives in the fleet host config OUTSIDE this repo — a silent host-side
+  # regression would re-expose the fleet with no in-repo diff. This job adversarially probes its
+  # own runtime privilege and fails closed the moment the runner is re-privileged. It runs
+  # UNCONDITIONALLY (no draft gate, no affected mask): the fork-PR exposure exists wherever a
+  # runner executes. It deliberately does NOT check out the repo or build — it only samples the
+  # privilege context the runner hands to jobs, so no fork code runs in the guard itself.
+  runner_isolation_guard:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+    - name: Assert runner is de-privileged (fork-PR isolation floor)
+      run: |
+        set -euo pipefail
+        uid="$(id -u)"
+        user="$(id -un)"
+        echo "::notice::runner_isolation_guard: running as ${user} (uid=${uid}); de-privileged account is 'ghrunner'"
+        if [ "$uid" -eq 0 ]; then
+          echo "::error::runner is executing jobs as root (uid 0) — runner de-priv has REGRESSED; fork-PR code would gain srv1/srv2 root. Failing closed."
+          exit 1
+        fi
+        if command -v sudo >/dev/null 2>&1; then
+          if sudo -n true >/dev/null 2>&1; then
+            echo "::error::passwordless sudo is available to the runner account — root-equivalent; runner de-priv has REGRESSED. Failing closed."
+            exit 1
+          fi
+          echo "::notice::runner_isolation_guard: sudo present but passwordless escalation denied (expected)"
+        else
+          echo "::notice::runner_isolation_guard: sudo not installed (expected on a de-privileged runner)"
+        fi
+        probe="/etc/.gunbc-runner-isolation-probe.$$"
+        if : > "$probe" 2>/dev/null; then
+          rm -f "$probe" 2>/dev/null || true
+          echo "::error::runner account can write to /etc — privilege isolation has REGRESSED. Failing closed."
+          exit 1
+        fi
+        echo "::notice::runner_isolation_guard: /etc not writable by runner account (expected)"
+        echo "runner_isolation_guard: de-privilege floor holds (non-root, no passwordless sudo, /etc read-only)"
   fmt:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
@@ -166,6 +208,7 @@ jobs:
         cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
         cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet
         cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet
+        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml -- --exact --quiet
     - name: no-new-shell ratchet (required CI path)
       run: |
         bash scripts/check-ci-no-new-shell.sh --self-test
