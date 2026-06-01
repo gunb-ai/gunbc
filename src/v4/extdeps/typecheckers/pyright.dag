@@ -18,11 +18,8 @@ import v4.std.text { String }
 // TargetStaticAnalysisInvocation.tool_profile_ref uses pyright_profile_l1_id below.
 data pyright_tool_id: Symbol = pyright_tool_id
 
-// pyright `typeCheckingMode` — a closed set (M4: enum, not string proxy).
-// 🟢 coproduct dissolution — CP-PYRIGHT-TYPE-CHECKING-MODE-TERMINAL. Practice-4 PR review:
-//   these are the four irreducible `typeCheckingMode` keyword values fixed by the pyright
-//   configuration spec (off/basic/standard/strict); they are external-spec literals at the
-//   config boundary, so no richer source can be named.
+// pyright `typeCheckingMode` — closed set of external-spec keyword values (M4: enum, not
+// string proxy). 🟢 terminal — CP-PYRIGHT-TYPE-CHECKING-MODE-TERMINAL (analysis: PR #4158 review).
 type PyrightTypeCheckingMode
   = PyrightModeOff
   | PyrightModeBasic

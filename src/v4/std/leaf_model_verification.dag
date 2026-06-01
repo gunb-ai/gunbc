@@ -98,15 +98,9 @@ type TargetPythonExerciseVerdict
 // reference the tool profile / diagnostic by Symbol only (no shared cross-tool
 // diagnostic namespace). host_run stays runtime stdout/exit; no static facts there.
 
-// Whether a static-analysis finding blocks a rung or is advisory evidence only.
-// Fail-closed semantics (Arbiter): a BlockingForRung invocation whose falsification
-// path yields only an advisory finding is a MISS, not a pass.
-// 🟢 coproduct dissolution — CP-PYL1-STATIC-ANALYSIS-ROLE-TERMINAL. Practice-4 PR review:
-//   tried dissolving into (a) a per-rung identity carrier — rejected, rung identity is
-//   carried by the consuming claim/gate context, not by the disposition itself; (b) a
-//   numeric severity threshold — rejected, the gate decision is a binary disposition, not
-//   an ordering. The advisory-vs-blocking distinction is an irreducible rung-policy
-//   disposition at the verification boundary; no richer source can be named.
+// Whether a static-analysis finding blocks a rung or is advisory evidence only
+// (fail-closed: BlockingForRung + advisory-only finding on the falsification path = MISS).
+// 🟢 terminal — CP-PYL1-STATIC-ANALYSIS-ROLE-TERMINAL (dissolution analysis: PR #4158 review).
 type TargetStaticAnalysisRole
   = Advisory
   | BlockingForRung
@@ -117,17 +111,10 @@ type TargetStaticAnalysisInvocation {
   analysis_role: TargetStaticAnalysisRole
 }
 
-// StaticAnalysisAccepted: analyzer ran and proved no finding under the profile.
-// StaticAnalysisRejected: blocking finding (tool_id + per-tool diagnostic_code).
-// StaticAnalysisAdvisory: non-blocking finding recorded as evidence, never a
-//   compile/runtime verdict and never an L2 behavioral-parity claim.
-// 🟢 coproduct dissolution — CP-PYL1-STATIC-ANALYSIS-VERDICT-TERMINAL. Practice-4 PR review:
-//   mirrors the terminal TargetCompileVerdict / TargetPythonExerciseVerdict authority shape.
-//   Tried dissolving into (a) Verdict<Subj,T> — rejected, that generic carrier composes
-//   OVER this outcome (verdict.dag) rather than replacing the three target-static outcomes;
-//   (b) folding rejected/advisory into one arm discriminated by role — rejected, the
-//   accept/reject/advisory distinction is the verdict's own irreducible outcome and the
-//   richer per-tool detail is already carried by the tool_id + diagnostic_code Symbols.
+// Accepted (no finding) / Rejected (blocking) / Advisory (non-blocking evidence); the
+// richer per-tool detail is carried by tool_id + diagnostic_code. Never a compile/runtime
+// verdict and never an L2 behavioral-parity claim.
+// 🟢 terminal — CP-PYL1-STATIC-ANALYSIS-VERDICT-TERMINAL (dissolution analysis: PR #4158 review).
 type TargetStaticAnalysisVerdict
   = StaticAnalysisAccepted
   | StaticAnalysisRejected { tool_id: Symbol, diagnostic_code: Symbol }
