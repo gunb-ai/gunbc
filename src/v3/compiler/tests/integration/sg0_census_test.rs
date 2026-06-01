@@ -397,6 +397,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
+    // Python RCA release-minimum lane (#4137 section 11.8): L1 static structural pyright/mypy
+    // receipts plus L2 common-domain Python/Rust/Go behavioral parity worksheet/runner.
+    // Dissolve when T-22 modeled `run_target_verification` consumes the static profiles and
+    // cross-target receipt rows without this hand-Rust boundary ratchet.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_l1_l2_receipts_test.rs",
     // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
     // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
     // `run_target_verification` owns target verdicts; interim host runner

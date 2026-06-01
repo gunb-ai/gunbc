@@ -18,6 +18,11 @@ import v4.extdeps.typecheckers.pyright {
   pyright_profile_l1_id,
   pyright_diag_report_return_type
 }
+import v4.extdeps.typecheckers.mypy {
+  mypy_tool_id,
+  mypy_profile_l1_id,
+  mypy_diag_return_value
+}
 import v4.extdeps.languages.typescript {
   ts_atom_realization_symbol,
   ts_bigint_algebra_inhabitance_ts_facts_bigint,
@@ -606,3 +611,32 @@ fn python_l1_static_fixture_pair() -> LeafModelPythonStaticFixturePair {
 fn python_l1_static_fixture() -> LeafModelPythonStaticFixturePair {
   python_l1_static_fixture_pair()
 }
+
+fn python_l1_static_mypy_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_return_type,
+    surface_spelling_fact: python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
+      tool_profile_ref: mypy_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
+      tool_profile_ref: mypy_profile_l1_id,
+      tool_id: mypy_tool_id,
+      diagnostic_code: mypy_diag_return_value
+    }
+  }
+}
+
+fn python_l1_static_mypy_fixture() -> LeafModelPythonStaticFixturePair {
+  python_l1_static_mypy_fixture_pair()
+}
+
+// PY-L2-CROSS-TARGET-BEHAVIORAL-PARITY - common-domain behavior only. R2b
+// arbitrary-precision overflow is intentionally excluded from equality with Rust i32 / Go int;
+// Worksheet C records that as a divergence receipt, not a parity claim.
+data python_l2_parity_python_source: String = "def r2a(a: int, b: int) -> tuple[int, bool]:\n    return (a + b, a < b)\n\nclass Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\nif __name__ == \"__main__\":\n    x, lt = r2a(1, 2)\n    print(f\"r2a:{x}:{str(lt).lower()}\")\n    print(f\"r3:{Symbol('x').value}\")\n"
+data python_l2_parity_rust_source: String = "pub struct Symbol(pub String);\nfn r2a(a: i32, b: i32) -> (i32, bool) { (a + b, a < b) }\nfn main() {\n    let (x, lt) = r2a(1, 2);\n    println!(\"r2a:{}:{}\", x, lt);\n    println!(\"r3:{}\", Symbol(\"x\".to_string()).0);\n}\n"
+data python_l2_parity_go_source: String = "package main\n\nimport \"fmt\"\n\ntype Symbol string\n\nfunc r2a(a int, b int) (int, bool) { return a + b, a < b }\n\nfunc main() {\n    x, lt := r2a(1, 2)\n    fmt.Printf(\"r2a:%d:%t\\n\", x, lt)\n    fmt.Printf(\"r3:%s\\n\", Symbol(\"x\"))\n}\n"
+data python_l2_parity_expected_stdout: String = "r2a:3:true\nr3:x\n"

@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# scripts/v4-leaf-model-python-l1-mypy-static-verify.sh
+#
+# PY-L1-STATIC-STRUCTURAL - mypy companion receipt for the same return-type fixture
+# exercised by the pyright lane. This is static evidence only, distinct from CPython
+# compile/runtime and distinct from L2 cross-target behavioral parity.
+
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$root"
+
+fixture_dag="src/v4/lens/leaf_model_verification.dag"
+mypy_profile_dag="src/v4/extdeps/typecheckers/mypy.dag"
+
+if [[ ! -f "$fixture_dag" || ! -f "$mypy_profile_dag" ]]; then
+  echo "error: missing fixture/profile authority" >&2
+  exit 1
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "error: python3 not on PATH" >&2
+  exit 1
+fi
+
+eval "$(python3 - "$fixture_dag" <<'PY'
+from __future__ import annotations
+
+import re, shlex, sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text()
+
+def extract(name: str) -> str:
+    pattern = rf'^data {name}: String = "(.*)"\s*$'
+    for line in text.splitlines():
+        m = re.match(pattern, line)
+        if m:
+            return bytes(m.group(1), "utf-8").decode("unicode_escape")
+    raise SystemExit(f"missing {name}")
+
+print(f"happy_source={shlex.quote(extract('python_l1_static_happy_fixture_source'))}")
+print(f"falsification_source={shlex.quote(extract('python_l1_static_falsification_fixture_source'))}")
+PY
+)"
+
+eval "$(python3 - "$mypy_profile_dag" <<'PY'
+from __future__ import annotations
+
+import re, shlex, sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text()
+def field(name: str) -> str:
+    m = re.search(rf'{name}:\s*"([^"]*)"', text)
+    if not m:
+        raise SystemExit(f"missing mypy field {name}")
+    return m.group(1)
+code = re.search(r'code_id:\s*mypy_diag_return_value\s*,\s*code_name:\s*"([^"]*)"', text)
+if not code:
+    raise SystemExit("missing return-value diagnostic code")
+print(f"mypy_version={shlex.quote(field('mypy_version'))}")
+print(f"mypy_python_version={shlex.quote(field('python_version'))}")
+print(f"mypy_expected_code={shlex.quote(code.group(1))}")
+PY
+)"
+
+run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-$$}"
+scratch="${RUNNER_TEMP:-/tmp}/v4-leaf-model-python-l1-mypy-static-${run_suffix}"
+rm -rf "$scratch"
+mkdir -p "$scratch"
+
+printf '%s' "$happy_source" >"${scratch}/happy.py"
+printf '%s' "$falsification_source" >"${scratch}/falsification.py"
+
+compile_authority_misses=true
+runtime_authority_misses=true
+for label in happy falsification; do
+  if ! python3 -m py_compile "${scratch}/${label}.py" 2>"${scratch}/${label}.compile.err"; then
+    compile_authority_misses=false
+  fi
+done
+if ! python3 "${scratch}/falsification.py" >/dev/null 2>"${scratch}/falsification.run.err"; then
+  runtime_authority_misses=false
+fi
+
+mypy_available=false
+happy_static_clean=false
+falsification_static_rejected=false
+
+mypy_run() {
+  local target="$1" out="$2"
+  local cmd
+  if command -v mypy >/dev/null 2>&1 && mypy --version 2>/dev/null | grep -qw "$mypy_version"; then
+    cmd=(mypy --python-version "$mypy_python_version" --strict --show-error-codes "$target")
+  elif command -v python3 >/dev/null 2>&1; then
+    if [[ ! -x "${scratch}/mypy-venv/bin/mypy" ]]; then
+      python3 -m venv "${scratch}/mypy-venv" >/dev/null 2>&1 || return 2
+      "${scratch}/mypy-venv/bin/python" -m pip install --disable-pip-version-check -q "mypy==${mypy_version}" >/dev/null 2>&1 || return 2
+    fi
+    cmd=("${scratch}/mypy-venv/bin/mypy" --python-version "$mypy_python_version" --strict --show-error-codes "$target")
+  else
+    return 2
+  fi
+  "${cmd[@]}" >"$out" 2>&1 || true
+  grep -qE 'Success: no issues found|error: ' "$out" || return 2
+  return 0
+}
+
+if mypy_run "${scratch}/happy.py" "${scratch}/happy.mypy.txt" \
+  && mypy_run "${scratch}/falsification.py" "${scratch}/falsification.mypy.txt"; then
+  mypy_available=true
+fi
+
+if [[ "$mypy_available" == true ]]; then
+  grep -q 'Success: no issues found' "${scratch}/happy.mypy.txt" && happy_static_clean=true
+  grep -q "\\[${mypy_expected_code}\\]" "${scratch}/falsification.mypy.txt" && falsification_static_rejected=true
+fi
+
+distinct_authority_proven=false
+[[ "$compile_authority_misses" == true && "$runtime_authority_misses" == true ]] && distinct_authority_proven=true
+static_proven=false
+[[ "$mypy_available" == true && "$happy_static_clean" == true && "$falsification_static_rejected" == true ]] && static_proven=true
+
+export V4_MYPY_VERSION="$mypy_version"
+export V4_MYPY_PYTHON_VERSION="$mypy_python_version"
+export V4_MYPY_EXPECTED_CODE="$mypy_expected_code"
+export V4_MYPY_COMPILE_MISSES="$compile_authority_misses"
+export V4_MYPY_RUNTIME_MISSES="$runtime_authority_misses"
+export V4_MYPY_AVAILABLE="$mypy_available"
+export V4_MYPY_HAPPY_CLEAN="$happy_static_clean"
+export V4_MYPY_FALS_REJECTED="$falsification_static_rejected"
+export V4_MYPY_DISTINCT_PROVEN="$distinct_authority_proven"
+export V4_MYPY_STATIC_PROVEN="$static_proven"
+
+python3 - <<'PY'
+import json, os
+
+def b(name): return os.environ[name] == "true"
+print(json.dumps({
+    "schema": "scripts/v4-leaf-model-python-l1-mypy-static-verify.sh::static_receipt_v1",
+    "claim_id": "PythonL1StaticReturnType",
+    "tool": {
+        "id": "mypy",
+        "version": os.environ["V4_MYPY_VERSION"],
+        "python_version": os.environ["V4_MYPY_PYTHON_VERSION"],
+        "profile": "mypy_profile_l1 (single authority: src/v4/extdeps/typecheckers/mypy.dag)",
+    },
+    "authority_separation": {
+        "py_compile_accepts_both": b("V4_MYPY_COMPILE_MISSES"),
+        "runtime_exec_clean_on_falsification": b("V4_MYPY_RUNTIME_MISSES"),
+        "distinct_authority_proven": b("V4_MYPY_DISTINCT_PROVEN"),
+    },
+    "static_analysis": {
+        "available": b("V4_MYPY_AVAILABLE"),
+        "role": "BlockingForRung",
+        "happy_clean": b("V4_MYPY_HAPPY_CLEAN"),
+        "falsification_rejected": b("V4_MYPY_FALS_REJECTED"),
+        "expected_diagnostic_code": os.environ["V4_MYPY_EXPECTED_CODE"],
+        "proven": b("V4_MYPY_STATIC_PROVEN"),
+    },
+}, indent=2))
+PY
+
+if [[ "$distinct_authority_proven" != true ]]; then
+  echo "error: mypy L1 distinct-authority proof failed" >&2
+  exit 1
+fi
+if [[ "$static_proven" != true ]]; then
+  echo "error: mypy unavailable or did not match expected return-value verdict" >&2
+  exit 1
+fi
+
+echo "leaf-model python L1 mypy static-structural verification PROVEN"
