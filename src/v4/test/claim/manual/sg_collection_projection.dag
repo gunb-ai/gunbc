@@ -16,8 +16,8 @@ import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model {
-  target_carrier_node_node,
-  target_collection_free_monoid_carrier_node
+  target_carrier_free_monoid_node,
+  target_carrier_node_node
 }
 import v4.std.text { String }
 import v4.std.verification {
@@ -61,7 +61,7 @@ fn sg_collection_free_monoid_node_source_type() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_collection_free_monoid_carrier_node() },
+      Edge { label: Positional, target: target_carrier_free_monoid_node() },
       Edge { label: Positional, target: target_carrier_node_node() }
     ]
   }

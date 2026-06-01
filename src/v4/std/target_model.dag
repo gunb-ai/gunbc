@@ -2118,7 +2118,6 @@ type TargetCollectionRealization {
 }
 
 data target_collection_set_carrier: Symbol = target_collection_set_carrier
-data target_collection_free_monoid_carrier: Symbol = target_collection_free_monoid_carrier
 data target_collection_trait_ord: Symbol = target_collection_trait_ord
 data target_collection_trait_hash: Symbol = target_collection_trait_hash
 data target_collection_trait_eq: Symbol = target_collection_trait_eq
@@ -2159,13 +2158,6 @@ fn target_collection_free_monoid_no_representation_diagnostic() -> Diagnostic {
 fn target_collection_set_carrier_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: target_collection_set_carrier } },
-    children: []
-  }
-}
-
-fn target_collection_free_monoid_carrier_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: target_collection_free_monoid_carrier } },
     children: []
   }
 }
@@ -2318,7 +2310,7 @@ fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
         Present { value: head } =>
           match head.kind {
             TypeNode { connective: Atom { identity: id } } =>
-              id == target_collection_free_monoid_carrier
+              id == target_carrier_free_monoid
             _ => false
           }
         Absent => false
