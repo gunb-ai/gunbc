@@ -718,14 +718,16 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: required M1 probe must fail closed on missing compiler, v2 emit failure, and skipped cargo-check preconditions"
     );
     assert!(
-        CI_DAG.contains("data m1_rust_emit_probe_shared_dag_out_env: String = \"V4_M1_DAG_EMIT_OUT\"")
-            && CI_DAG.contains("data m1_rust_emit_probe_shared_dag_log_env: String = \"V4_M1_DAG_EMIT_LOG\"")
-            && CI_DAG.contains("data v4_bootstrap_reuse_log_env: String = \"V4_BOOTSTRAP_REUSE_LOG\""),
+        CI_DAG.contains(
+            "data m1_rust_emit_probe_shared_dag_out_env: String = \"V4_M1_DAG_EMIT_OUT\""
+        ) && CI_DAG.contains(
+            "data m1_rust_emit_probe_shared_dag_log_env: String = \"V4_M1_DAG_EMIT_LOG\""
+        ) && CI_DAG
+            .contains("data v4_bootstrap_reuse_log_env: String = \"V4_BOOTSTRAP_REUSE_LOG\""),
         "{CI_DAG_PATH}: shared M1/bootstrap closure env names must be modeled"
     );
     assert!(
-        m1_step.contains("V4_M1_DAG_EMIT_OUT:")
-            && m1_step.contains("V4_M1_DAG_EMIT_LOG:"),
+        m1_step.contains("V4_M1_DAG_EMIT_OUT:") && m1_step.contains("V4_M1_DAG_EMIT_LOG:"),
         "{CI_YML_PATH}: `{step_name}` must emit the DAG artifact from the shared rust+dag closure"
     );
     assert!(
@@ -813,7 +815,10 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
         "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
     );
-    let bootstrap_step = workflow_step_block(CI_YML, "v2 \u{2192} v4 bootstrap compile (fail-closed full)");
+    let bootstrap_step = workflow_step_block(
+        CI_YML,
+        "v2 \u{2192} v4 bootstrap compile (fail-closed full)",
+    );
     assert!(
         bootstrap_step.contains("V4_BOOTSTRAP_REUSE_LOG:"),
         "{CI_YML_PATH}: bootstrap step must validate the shared M1 DAG artifact instead of recompiling src/v4"
