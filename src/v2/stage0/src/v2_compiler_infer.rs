@@ -7201,9 +7201,14 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                     let mut __result = Vec::new();
                     for arm_node in match_arm_nodes(body.clone()).iter().cloned() {
                         __result.push({
-                let variant_arm_ctx = match scrut_variant_sig.clone() {
-    Some(sig) => arm_ctx_from_variant_provenance(arm_node.clone(), sig.clone(), scrut.clone(), ctx.clone()),
-    None => None,
+                let find_named_child_ctx = arm_ctx_from_find_named_child(arm_node.clone(), scrut.clone(), ctx.clone());
+let variant_arm_ctx = if find_named_child_ctx.clone().is_some() {
+    find_named_child_ctx.clone()
+} else {
+    match scrut_variant_sig.clone() {
+        Some(sig) => arm_ctx_from_variant_provenance(arm_node.clone(), sig.clone(), scrut.clone(), ctx.clone()),
+        None => None,
+    }
 };
 let arm_ctx = match variant_arm_ctx.clone() {
     Some(c) => c.clone(),
@@ -8921,6 +8926,123 @@ pub fn arm_ctx_from_variant_provenance(
             }
             None => None,
         },
+        _ => None,
+    }
+}
+
+pub fn arm_ctx_from_find_named_child(
+    arm_node: Rc<Node>,
+    scrut: Rc<Node>,
+    ctx: Rc<DescentContext>,
+) -> Option<Rc<DescentContext>> {
+    match (*scrut.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            if expr_call_func_at(scrut.clone(), ctx.type_env.clone().source_indices.clone())
+                != "find_named_child".to_string()
+            {
+                return None;
+            }
+            match (*arm_pattern(arm_node)).clone() {
+                MatchPattern::VariantPattern {
+                    name: vname,
+                    field_bindings: bindings,
+                    ..
+                } => {
+                    if vname != "Accepted".to_string() {
+                        return None;
+                    }
+                    let call_args =
+                        call_args_by_name(scrut.clone(), ctx.type_env.clone().source_indices.clone());
+                    match v2_rt::map_get(&call_args, "root".to_string()) {
+                        Some(root_arg) => {
+                            let root_rel =
+                                classify_call_arg_provenance(root_arg.clone(), ctx.clone());
+                            let root_type = match (*root_arg.expr_data.clone()).clone() {
+                                ExprData::ExprVar { .. } => {
+                                    let root_name = expr_var_name_at(
+                                        root_arg.clone(),
+                                        ctx.type_env.clone().source_indices.clone(),
+                                    );
+                                    match v2_rt::map_get(&ctx.param_names.clone(), root_name.clone()) {
+                                        Some(t) => t.clone(),
+                                        None => match v2_rt::map_get(
+                                            &ctx.sub_value_vars.clone(),
+                                            root_name.clone(),
+                                        ) {
+                                            Some(rel) => match (*rel.clone()).clone() {
+                                                SubValueRelation::StrictSubValue { field: f, .. } => {
+                                                    f.element_type.clone()
+                                                }
+                                                SubValueRelation::IteratedSubValue { field: f, .. } => {
+                                                    f.element_type.clone()
+                                                }
+                                                _ => "".to_string(),
+                                            },
+                                            None => "".to_string(),
+                                        },
+                                    }
+                                }
+                                _ => "".to_string(),
+                            };
+                            let child_field = inductive_fields_for(ctx.type_env.clone(), root_type)
+                                .iter()
+                                .find(|f| f.field_name == "children".to_string())
+                                .cloned();
+                            match (root_rel, child_field) {
+                                (Some(rr), Some(cf)) => {
+                                    let child_rel = compose_sub_value_relations(
+                                        rr.clone(),
+                                        Rc::new(SubValueRelation::StrictSubValue {
+                                            field: cf.clone(),
+                                            factor: Rc::new(UnitShrink),
+                                        }),
+                                    );
+                                    let extended = bindings.iter().cloned().fold(
+                                        ctx.clone(),
+                                        |c: Rc<DescentContext>, fb: Rc<Node>| {
+                                            let field_label = field_binding_name_at(
+                                                fb.clone(),
+                                                ctx.type_env.clone().source_indices.clone(),
+                                            );
+                                            let bind_name =
+                                                match (*field_binding_pattern(fb.clone())).clone() {
+                                                    MatchPattern::Bind { name: bn, .. } => bn.clone(),
+                                                    _ => "".to_string(),
+                                                };
+                                            if field_label == "value".to_string()
+                                                && bind_name != "".to_string()
+                                            {
+                                                Rc::new(DescentContext {
+                                                    fn_name: c.fn_name.clone(),
+                                                    param_names: c.param_names.clone(),
+                                                    param_order: c.param_order.clone(),
+                                                    type_env: c.type_env.clone(),
+                                                    sub_value_vars: v2_rt::rc_map_insert(
+                                                        c.sub_value_vars.clone(),
+                                                        bind_name.clone(),
+                                                        child_rel.clone(),
+                                                    ),
+                                                    size_aliases: c.size_aliases.clone(),
+                                                    scope_locals: c.scope_locals.clone(),
+                                                    func_sigs: c.func_sigs.clone(),
+                                                    per_field_vars: c.per_field_vars.clone(),
+                                                })
+                                            } else {
+                                                c.clone()
+                                            }
+                                        },
+                                    );
+                                    Some(extended)
+                                }
+                                _ => None,
+                            }
+                        }
+                        None => None,
+                    }
+                }
+                _ => None,
+            }
+        }
         _ => None,
     }
 }

@@ -3521,10 +3521,15 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       }
       let annotated_scrut = annotate_descent(body: scrut, ctx: ctx)
       let annotated_arms = match_arm_nodes(texpr: body) |> map(arm_node =>
-        let variant_arm_ctx = match scrut_variant_sig {
-          Some { value: sig } =>
-            arm_ctx_from_variant_provenance(arm_node: arm_node, sig: sig, scrut: scrut, ctx: ctx)
-          None => none
+        let find_named_child_ctx = arm_ctx_from_find_named_child(arm_node: arm_node, scrut: scrut, ctx: ctx)
+        let variant_arm_ctx = if find_named_child_ctx != none {
+          find_named_child_ctx
+        } else {
+          match scrut_variant_sig {
+            Some { value: sig } =>
+              arm_ctx_from_variant_provenance(arm_node: arm_node, sig: sig, scrut: scrut, ctx: ctx)
+            None => none
+          }
         }
         let arm_ctx = match variant_arm_ctx {
           Some { value: c } => c
@@ -4345,6 +4350,65 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
           Some { value: extended }
         None => none
       }
+    _ => none
+  }
+}
+
+fn arm_ctx_from_find_named_child(arm_node: Node, scrut: Node, ctx: DescentContext) -> DescentContext? {
+  match scrut.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      if expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices) == "find_named_child" {
+        match arm_pattern(n: arm_node) {
+          VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+            if vname == "Accepted" {
+              let call_args = call_args_by_name(call: scrut, source_indices: ctx.type_env.source_indices)
+              match map_get(call_args, "root") {
+                Some { value: root_arg } =>
+                  let root_rel = classify_call_arg_provenance(arg_expr: root_arg, ctx: ctx)
+                  let root_type = match root_arg.expr_data {
+                    ExprVar { binding_kind: _ } =>
+                      let root_name = expr_var_name_at(texpr: root_arg, source_indices: ctx.type_env.source_indices)
+                      match map_get(ctx.param_names, root_name) {
+                        Some { value: t } => t
+                        None =>
+                          match map_get(ctx.sub_value_vars, root_name) {
+                            Some { value: rel } =>
+                              match rel {
+                                StrictSubValue { field: f, factor: _ } => f.element_type
+                                IteratedSubValue { field: f } => f.element_type
+                                _ => ""
+                              }
+                            None => ""
+                          }
+                      }
+                    _ => ""
+                  }
+                  let child_field = inductive_fields_for(env: ctx.type_env, type_name: root_type)
+                    |> filter(f => f.field_name == "children")
+                    |> first
+                  match root_rel {
+                    Some { value: rr } =>
+                      match child_field {
+                        Some { value: cf } =>
+                          let child_rel = compose_sub_value_relations(arg_rel: rr, callee_rel: StrictSubValue { field: cf, factor: UnitShrink })
+                          let extended = bindings |> fold(init: ctx, f: (c, fb) =>
+                            let field_label = field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
+                            let bind_name = match field_binding_pattern(n: fb) { Bind { name: bn } => bn  _ => "" }
+                            if field_label == "value" && bind_name != "" {
+                              DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, child_rel), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_sigs: c.func_sigs, per_field_vars: c.per_field_vars }
+                            } else { c }
+                          )
+                          Some { value: extended }
+                        None => none
+                      }
+                    None => none
+                  }
+                None => none
+              }
+            } else { none }
+          _ => none
+        }
+      } else { none }
     _ => none
   }
 }
