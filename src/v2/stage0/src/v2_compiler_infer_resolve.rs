@@ -29,14 +29,14 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
-    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
+    field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
+    is_compiler_error, is_container_type, is_kernel_type, is_local_transport, kernel_span,
+    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
+    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
+    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    resource_use_name_at, resource_use_resource, string_type, transport_request_body, unit_type,
     with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
     Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node,
     StringPart,
@@ -1373,10 +1373,24 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
             Some(result) => Some(result.expr.clone()),
             None => None,
         };
+        let sig_type_expr = match find_property(
+            type_resolved.properties.clone(),
+            "__applied_type_args".to_string(),
+            env.source_indices.clone(),
+        ) {
+            Some(applied) => {
+                if ((applied.children.clone().len() as i64) > 0) {
+                    applied
+                } else {
+                    type_resolved.clone()
+                }
+            }
+            None => type_resolved.clone(),
+        };
         Rc::new(ParamResult {
             param: make_resolved_param_node(
                 param_node_name_at(param.clone(), env.source_indices.clone()),
-                type_resolved.clone(),
+                sig_type_expr,
                 default_expr,
                 v2_rt::concat(param.properties.clone(), type_resolved.properties.clone()),
                 param.span.clone(),

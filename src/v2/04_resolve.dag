@@ -6,7 +6,7 @@ import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex,
-  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
+  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value, find_property,
   generic_param_name_at,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -506,10 +506,16 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     Some { value: result } => Some { value: result.expr }
     None => none
   }
+  // Preserve applied generic shape for signature emission (matches struct-field path).
+  let sig_type_expr = match find_property(props: type_resolved.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) {
+    Some { value: applied } =>
+      if applied.children |> count > 0 { applied } else { type_resolved }
+    None => type_resolved
+  }
   ParamResult {
     param: make_resolved_param_node(
       name: param_node_name_at(n: param, source_indices: env.source_indices),
-      type_expr: type_resolved,
+      type_expr: sig_type_expr,
       default_value: default_expr,
       properties: concat(param.properties, type_resolved.properties),
       span: param.span,
