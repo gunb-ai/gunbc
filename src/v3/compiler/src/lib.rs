@@ -1504,9 +1504,29 @@ pub mod evaluator {
         })
     }
 
-    fn correction_none_variant(dag: &Dag) -> Result<Value, EvalError> {
+    fn correction_unavailable_variant(dag: &Dag) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id_in_file(dag, "Correction", "src/v4/std/diagnostic.dag", "None")?,
+            tag: variant_decl_id_in_file(
+                dag,
+                "Correction",
+                "src/v4/std/diagnostic.dag",
+                "Unavailable",
+            )?,
+            payload: Box::new(Value::RecordValue(vec![NamedField {
+                label: "reason".to_string(),
+                value: no_correction_external_contract_variant(dag)?,
+            }])),
+        })
+    }
+
+    fn no_correction_external_contract_variant(dag: &Dag) -> Result<Value, EvalError> {
+        Ok(Value::VariantValue {
+            tag: variant_decl_id_in_file(
+                dag,
+                "NoCorrectionReason",
+                "src/v4/std/diagnostic.dag",
+                "ExternalContractUnknown",
+            )?,
             payload: Box::new(Value::RecordValue(Vec::new())),
         })
     }
@@ -1556,12 +1576,12 @@ pub mod evaluator {
             },
             NamedField {
                 label: "correction".to_string(),
-                value: correction_none_variant(dag)?,
+                value: correction_unavailable_variant(dag)?,
             },
         ]))
     }
 
-    fn non_empty_diagnostics(_dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
+    fn non_empty_diagnostics(dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
         Ok(Value::RecordValue(vec![
             NamedField {
                 label: "head".to_string(),
@@ -1569,16 +1589,70 @@ pub mod evaluator {
             },
             NamedField {
                 label: "tail".to_string(),
-                value: std_list_empty_variant(_dag)?,
+                value: std_list_empty_variant(dag)?,
             },
         ]))
     }
 
     fn std_list_empty_variant(dag: &Dag) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id_in_file(dag, "List", "src/v4/std/algebra.dag", "Empty")?,
+            tag: variant_decl_id_in_file(dag, "FreeMonoid", "src/v4/std/algebra.dag", "Empty")?,
             payload: Box::new(Value::RecordValue(Vec::new())),
         })
+    }
+
+    fn std_list_cons_variant(dag: &Dag, head: Value, tail: Value) -> Result<Value, EvalError> {
+        Ok(Value::VariantValue {
+            tag: variant_decl_id_in_file(dag, "FreeMonoid", "src/v4/std/algebra.dag", "Cons")?,
+            payload: Box::new(Value::RecordValue(vec![
+                NamedField {
+                    label: "head".to_string(),
+                    value: head,
+                },
+                NamedField {
+                    label: "tail".to_string(),
+                    value: tail,
+                },
+            ])),
+        })
+    }
+
+    fn std_list_value(dag: &Dag, items: Vec<Value>) -> Result<Value, EvalError> {
+        items
+            .into_iter()
+            .rev()
+            .try_fold(std_list_empty_variant(dag)?, |tail, head| {
+                std_list_cons_variant(dag, head, tail)
+            })
+    }
+
+    fn byte_value(dag: &Dag, byte: u8) -> Result<Value, EvalError> {
+        let bits = (0..8)
+            .rev()
+            .map(|shift| Value::LiteralValue(LiteralBits::Bool((byte & (1 << shift)) != 0)))
+            .collect();
+        Ok(Value::RecordValue(vec![NamedField {
+            label: "bits".to_string(),
+            value: std_list_value(dag, bits)?,
+        }]))
+    }
+
+    fn byte_string_value(dag: &Dag, bytes: &[u8]) -> Result<Value, EvalError> {
+        let values = bytes
+            .iter()
+            .map(|byte| byte_value(dag, *byte))
+            .collect::<Result<Vec<_>, _>>()?;
+        std_list_value(dag, values)
+    }
+
+    fn string_list_value(dag: &Dag, lines: Vec<String>) -> Result<Value, EvalError> {
+        std_list_value(
+            dag,
+            lines
+                .into_iter()
+                .map(|line| Value::LiteralValue(LiteralBits::String(line)))
+                .collect(),
+        )
     }
 
     fn emit_host_setup_failure_diagnostic(
@@ -1649,9 +1723,7 @@ pub mod evaluator {
                     label: "stdout".to_string(),
                     value: Value::RecordValue(vec![NamedField {
                         label: "bytes".to_string(),
-                        value: Value::LiteralValue(LiteralBits::String(
-                            String::from_utf8_lossy(&receipt.stdout_bytes).to_string(),
-                        )),
+                        value: byte_string_value(dag, &receipt.stdout_bytes)?,
                     }]),
                 }]),
             )?,
@@ -1682,17 +1754,13 @@ pub mod evaluator {
             },
             NamedField {
                 label: "stderr_bytes".to_string(),
-                value: Value::LiteralValue(LiteralBits::String(
-                    String::from_utf8_lossy(&receipt.stderr_bytes).to_string(),
-                )),
+                value: byte_string_value(dag, &receipt.stderr_bytes)?,
             },
             NamedField {
                 label: "build_log".to_string(),
                 value: Value::RecordValue(vec![NamedField {
                     label: "lines".to_string(),
-                    value: Value::LiteralValue(LiteralBits::String(
-                        receipt.build_log.lines.join("\n"),
-                    )),
+                    value: string_list_value(dag, receipt.build_log.lines)?,
                 }]),
             },
         ]))
