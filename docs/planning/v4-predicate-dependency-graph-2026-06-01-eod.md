@@ -8,11 +8,7 @@ Forward projection of remaining work to v4-done as of Jun 1 release day end-of-d
 |---|---|---|
 | P1 | Every other scheduled task complete | YELLOW (~8-12/53 PROVEN; R3-internal added; per-lane GAP continues; no near-term GREEN candidate) |
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **GREEN.** P2-A probe (44-source closure 0 diagnostics) verified scope (a). M2 probe (#4097) confirmed bridge dead-weight. **#4139 MERGED 00:50Z (squash 12d1aa68c)** — `scripts/v4-bootstrap-resolve-posture-gate.sh` deleted from main; `.github/workflows/ci.yml` bridge step removed. P2 now fully GREEN. |
-<<<<<<< HEAD
-| P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (§8 approved 2026-06-01; see ratification log). **Residual rustc count: 7,724** per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 — substrate landings introduced new diagnostics absorbed back into existing classes). Per-class delta on review. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, deferred amendment). |
-=======
-| P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (impl gated on §8 sign-off). **Residual rustc count: 7,724** per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 — substrate landings introduced new diagnostics absorbed back into existing classes). Per-class delta on review. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, worksheet drafted for implementation routing). |
->>>>>>> origin/main
+| P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (§8 approved 2026-06-01; see ratification log). **Residual rustc count: 7,724** per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 — substrate landings introduced new diagnostics absorbed back into existing classes). Per-class delta on review. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, worksheet drafted for implementation routing). |
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | RED — hard-gated on P3 binary builds (P2 now GREEN per #4139) |
 | P5 | TestClaim suite passes | **Layer 1 + Layer 2 BOTH CLOSED** via #4115 (P5 structural-bridge replaced + deleted). Strict P5 "suite passes" still gates on runtime-execution path: **option (ii) bootstrap-evaluator corpus runtime worksheet §8 APPROVED 2026-06-01** (not impl; see ratification log) per §8.5 #3. P3 cascade continues independently. T-38-PR2 verdict-SURFACE migration LANDED #4120. |
 | P6 | Hand-authored Rust not editable authority (proven by REPRODUCTION) | RED — hard-gated on P4 + P3 PROVEN |
@@ -142,15 +138,9 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 ## §7. PM-side actionable items
 
 **Worker implementation dispatch state (aligned with §6.5 dispatch board + §8.5 resolutions):**
-<<<<<<< HEAD
 - **SG-8 impl: §8 approved 2026-06-01**; dispatch implementation under `docs/planning/v4-sg8-module-graph-carrier-reexports-worksheet-2026-05-31.md` and prove F1-F4.
 - **P5 runtime gate impl: worksheet §8 approved 2026-06-01** (operator decision #3 RESOLVED 01Z — option (ii)); dispatch implementation under `docs/planning/v4-p5-bootstrap-evaluator-corpus-runtime-worksheet-2026-06-01.md`.
-- All other P3 classes either closed today (per §3.3) OR have follow-on routing (SG-1-FOLLOWON minor, SG-COLLECTION-PROJECTION deferred)
-=======
-- **SG-8 impl: pending Modeling DFS Arbiter spawn** then §8 sign-off (operator decision #4 RESOLVED 01Z; Arbiter spawn is now the next step)
-- **P5 runtime gate impl: pending worksheet authoring** (operator decision #3 RESOLVED 01Z — option (ii) WORKSHEET authorized; Arbiter writes the worksheet, then impl spawns post-§8)
 - All other P3 classes either closed today (per §3.3) OR have follow-on routing (SG-1-FOLLOWON minor, SG-COLLECTION-PROJECTION worksheet drafted)
->>>>>>> origin/main
 
 **PM dispatches from 2026-06-01T00:28Z operator authorization:** P2-B deletion DELIVERED via #4139 MERGED 00:50Z; fresh M1 probe in flight via PR #4140 (sleek-heron-13).
 
