@@ -1399,10 +1399,12 @@ pub mod evaluator {
         ));
         let receipt = match emit_host_runner::run_emit_host_go(source, &inputs, &work_dir) {
             Ok(receipt) => receipt,
-            Err(_) => {
-                return Some(Err(EvalError::BadTransformOperands {
-                    reason: "run_emit_host_go host setup failed",
-                }));
+            Err(failure) => {
+                return Some(
+                    emit_host_setup_failure_diagnostic(dag, &failure)
+                        .and_then(|diagnostic| non_empty_diagnostics(dag, diagnostic))
+                        .and_then(|diagnostics| rejected_variant(dag, diagnostics)),
+                );
             }
         };
         Some(
@@ -1471,9 +1473,26 @@ pub mod evaluator {
         })
     }
 
+    fn rejected_variant(dag: &Dag, diagnostics: Value) -> Result<Value, EvalError> {
+        Ok(Value::VariantValue {
+            tag: variant_decl_id(dag, "Outcome", "Rejected")?,
+            payload: Box::new(Value::RecordValue(vec![NamedField {
+                label: "diagnostics".to_string(),
+                value: diagnostics,
+            }])),
+        })
+    }
+
     fn diagnostics_none_variant(dag: &Dag) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
             tag: variant_decl_id(dag, "Diagnostics", "None")?,
+            payload: Box::new(Value::RecordValue(Vec::new())),
+        })
+    }
+
+    fn correction_none_variant(dag: &Dag) -> Result<Value, EvalError> {
+        Ok(Value::VariantValue {
+            tag: variant_decl_id(dag, "Correction", "None")?,
             payload: Box::new(Value::RecordValue(Vec::new())),
         })
     }
@@ -1488,6 +1507,80 @@ pub mod evaluator {
         })
     }
 
+    fn witness_violates_variant(dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
+        Ok(Value::VariantValue {
+            tag: variant_decl_id(dag, "Witness", "Violates")?,
+            payload: Box::new(Value::RecordValue(vec![NamedField {
+                label: "diagnostic".to_string(),
+                value: diagnostic,
+            }])),
+        })
+    }
+
+    fn port_locus_value(dag: &Dag, port: &str) -> Result<Value, EvalError> {
+        Ok(Value::VariantValue {
+            tag: variant_decl_id(dag, "Locus", "PortLocus")?,
+            payload: Box::new(Value::RecordValue(vec![NamedField {
+                label: "anchor".to_string(),
+                value: Value::RecordValue(vec![NamedField {
+                    label: "at".to_string(),
+                    value: Value::LiteralValue(LiteralBits::String(port.to_string())),
+                }]),
+            }])),
+        })
+    }
+
+    fn emit_host_diagnostic(dag: &Dag, reason: &str) -> Result<Value, EvalError> {
+        Ok(Value::RecordValue(vec![
+            NamedField {
+                label: "reason".to_string(),
+                value: Value::LiteralValue(LiteralBits::String(reason.to_string())),
+            },
+            NamedField {
+                label: "at".to_string(),
+                value: port_locus_value(dag, "emit_host_transport_port")?,
+            },
+            NamedField {
+                label: "correction".to_string(),
+                value: correction_none_variant(dag)?,
+            },
+        ]))
+    }
+
+    fn non_empty_diagnostics(_dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
+        Ok(Value::RecordValue(vec![
+            NamedField {
+                label: "head".to_string(),
+                value: diagnostic,
+            },
+            NamedField {
+                label: "tail".to_string(),
+                value: std_list_empty_variant(_dag)?,
+            },
+        ]))
+    }
+
+    fn std_list_empty_variant(dag: &Dag) -> Result<Value, EvalError> {
+        Ok(Value::VariantValue {
+            tag: variant_decl_id(dag, "List", "Empty")?,
+            payload: Box::new(Value::RecordValue(Vec::new())),
+        })
+    }
+
+    fn emit_host_setup_failure_diagnostic(
+        dag: &Dag,
+        _failure: &emit_host_runner::HostSetupFailure,
+    ) -> Result<Value, EvalError> {
+        emit_host_diagnostic(dag, "emit_host_transport_not_wired")
+    }
+
+    fn emit_host_exit_failure_diagnostic(
+        dag: &Dag,
+        _failure: &emit_host_runner::HostLogicalFailure,
+    ) -> Result<Value, EvalError> {
+        emit_host_diagnostic(dag, "emit_host_exit_not_ok")
+    }
+
     /// T-22 eval host transport bridge for `run_emit_host_go`.
     ///
     /// P5 receipt: this is a bounded dispatch shim for the modeled `v4.compiler.emit_host`
@@ -1500,8 +1593,7 @@ pub mod evaluator {
         target: &Value,
         receipt: emit_host_runner::EmitHostRunReceipt,
     ) -> Result<Value, EvalError> {
-        let exit_holds = receipt.exit.exit_holds();
-        let exit_outcome = match receipt.exit.outcome {
+        let exit_outcome = match &receipt.exit.outcome {
             emit_host_runner::HostExitOutcome::Accepted(emit_host_runner::ExitWitness::Holds(
                 ok,
             )) => accepted_variant(
@@ -1514,14 +1606,24 @@ pub mod evaluator {
                     }]),
                 )?,
             )?,
-            _ => {
-                return Err(EvalError::BadTransformOperands {
-                    reason: "run_emit_host_go host exit did not hold",
-                });
-            }
+            emit_host_runner::HostExitOutcome::Accepted(
+                emit_host_runner::ExitWitness::Violates(failure),
+            ) => accepted_variant(
+                dag,
+                witness_violates_variant(dag, emit_host_exit_failure_diagnostic(dag, &failure)?)?,
+            )?,
+            emit_host_runner::HostExitOutcome::Rejected(failure) => rejected_variant(
+                dag,
+                non_empty_diagnostics(dag, emit_host_setup_failure_diagnostic(dag, &failure)?)?,
+            )?,
         };
-        let logical_run = if exit_holds {
-            accepted_variant(
+        let logical_run = match &exit_outcome {
+            Value::VariantValue { tag, .. }
+                if *tag == variant_decl_id(dag, "Outcome", "Rejected")? =>
+            {
+                exit_outcome.clone()
+            }
+            _ if receipt.exit.exit_holds() => accepted_variant(
                 dag,
                 Value::RecordValue(vec![NamedField {
                     label: "stdout".to_string(),
@@ -1532,11 +1634,11 @@ pub mod evaluator {
                         )),
                     }]),
                 }]),
-            )?
-        } else {
-            return Err(EvalError::BadTransformOperands {
-                reason: "run_emit_host_go logical run unavailable for non-holding exit",
-            });
+            )?,
+            _ => rejected_variant(
+                dag,
+                non_empty_diagnostics(dag, emit_host_diagnostic(dag, "emit_host_exit_not_ok")?)?,
+            )?,
         };
         Ok(Value::RecordValue(vec![
             NamedField {
