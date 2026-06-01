@@ -265,7 +265,7 @@ fn v4_translate_dag_imports_target_atom_realization_consumer() {
         "{TRANSLATE_PATH}: type shell must apply row.type_form.node from catalog lookup"
     );
     assert!(
-        TRANSLATE_DAG.contains("target_value_expression_node(expr:"),
+        TRANSLATE_DAG.contains("target_value_expression_node(expr: wrapped)"),
         "{TRANSLATE_PATH}: value realization must project TargetValueExpression onto emitted Node"
     );
     assert!(
