@@ -411,7 +411,7 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
     )
     normalized_all_pass = "".join(all_pass_body.split())
     inverted_zero_comparison = re.compile(
-        r"(?<![A-Za-z0-9_:])(?:!\(*|\(*false\)*={2}\(*)"
+        r"(?<![A-Za-z0-9_:])(?:!\(*|\(*false\)*={2}\(*|\(*true\)*!=\(*)"
         r"tally\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*"
     )
     if inverted_zero_comparison.search(normalized_all_pass):
@@ -420,8 +420,8 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
             "the zero Fail or zero Deferred check"
         )
     fail_deferred_conjunction = re.compile(
-        r"(?<!!\()(?<!!)tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
-        r"[^&|;=!]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
+        r"(?:^|;)\(*tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*&&"
+        r"\(*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*(?:;|\})"
     )
     if not fail_deferred_conjunction.search(normalized_all_pass):
         raise ReceiptError(

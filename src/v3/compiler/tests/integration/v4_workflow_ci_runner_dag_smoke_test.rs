@@ -1342,11 +1342,11 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "inverted_zero_comparison",
         "(?<![A-Za-z0-9_:])(?:!\\(*|\\(*false\\)*={2}\\(*)",
         "fail_deferred_conjunction",
-        "(?<!!\\()(?<!!)tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "[^&|;=]*&&",
+        "(?:^|;)\\(*tally\\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
+        "\\)*&&",
         "&&",
         "tally\\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\\b",
-        "[^&|;=]*(?:;|\\})",
+        "\\)*(?:;|\\})",
         "inline_empty_gate",
         "if(?<!!)is_empty\\([^)]*report[^)]*entries",
         "\\{false\\}else\\{manual_corpus_all_pass\\([^)]*report",
@@ -1368,12 +1368,12 @@ fn v4_workflow_ci_t38_script_receipt_rejects_inverted_zero_predicates() {
 import re
 
 inverted_zero_comparison = re.compile(
-    r"(?<![A-Za-z0-9_:])(?:!\(*|\(*false\)*={2}\(*)"
+    r"(?<![A-Za-z0-9_:])(?:!\(*|\(*false\)*={2}\(*|\(*true\)*!=\(*)"
     r"tally\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*"
 )
 fail_deferred_conjunction = re.compile(
-    r"(?<!!\()(?<!!)tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
-    r"[^&|;=!]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
+    r"(?:^|;)\(*tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*&&"
+    r"\(*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*(?:;|\})"
 )
 
 def receipt_accepts(source):
@@ -1382,31 +1382,37 @@ def receipt_accepts(source):
         and fail_deferred_conjunction.search(source)
     )
 
-assert receipt_accepts("tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}")
+assert receipt_accepts("lettally=x;tally.fail==Nat::Zero&&tally.deferred==Nat::Zero}")
+assert receipt_accepts("lettally=x;(tally.fail==Zero)&&(tally.deferred==Zero)}")
 assert not receipt_accepts(
-    "(tally.fail==Zero)==false&&tally.deferred==Zero}"
+    "lettally=x;(tally.fail==Zero)==false&&tally.deferred==Zero}"
 )
 assert not receipt_accepts(
-    "tally.fail==Zero&&(tally.deferred==Zero)==false}"
+    "lettally=x;tally.fail==Zero&&(tally.deferred==Zero)==false}"
 )
 assert not receipt_accepts(
-    "tally.fail==NotZero&&tally.deferred==NotZero}"
+    "lettally=x;tally.fail==NotZero&&tally.deferred==NotZero}"
 )
 for inverted in [
-    "!tally.fail==Zero&&tally.deferred==Zero}",
-    "!(tally.fail==Zero)&&tally.deferred==Zero}",
-    "!((tally.fail==Zero))&&tally.deferred==Zero}",
-    "false==(tally.fail==Zero)&&tally.deferred==Zero}",
-    "(false)==(tally.fail==Zero)&&tally.deferred==Zero}",
-    "false==((tally.fail==Zero))&&tally.deferred==Zero}",
-    "tally.fail==Zero&&!tally.deferred==Zero}",
-    "tally.fail==Zero&&!(tally.deferred==Zero)}",
-    "tally.fail==Zero&&!((tally.deferred==Zero))}",
-    "tally.fail==Zero&&false==(tally.deferred==Zero)}",
-    "tally.fail==Zero&&(false)==(tally.deferred==Zero)}",
-    "tally.fail==Zero&&false==((tally.deferred==Zero))}",
+    "lettally=x;!tally.fail==Zero&&tally.deferred==Zero}",
+    "lettally=x;!(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;!((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;false==(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;(false)==(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;false==((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;true!=(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;(true)!=(tally.fail==Zero)&&tally.deferred==Zero}",
+    "lettally=x;true!=((tally.fail==Zero))&&tally.deferred==Zero}",
+    "lettally=x;tally.fail==Zero&&!tally.deferred==Zero}",
+    "lettally=x;tally.fail==Zero&&!(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&!((tally.deferred==Zero))}",
+    "lettally=x;tally.fail==Zero&&false==(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&(false)==(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&false==((tally.deferred==Zero))}",
+    "lettally=x;tally.fail==Zero&&true!=(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&(true)!=(tally.deferred==Zero)}",
+    "lettally=x;tally.fail==Zero&&true!=((tally.deferred==Zero))}",
 ]:
-    assert inverted_zero_comparison.search(inverted)
     assert not receipt_accepts(inverted)
 "#,
         )
