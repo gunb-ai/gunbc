@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +1
+
+SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_leaf_model_python_l1_static_receipts_test.rs` (INVARIANTS §P5(b) Python RCA L1 static structural pyright/mypy fixture-scale receipts per `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet B / #4137 §11.8; pairs with `scripts/v4-leaf-model-python-l1-static-verify.sh` and `scripts/v4-leaf-model-python-l1-mypy-static-verify.sh`). Follow-up dispatch: retire when modeled verification exercises `src/v4/test/claim/language_model/python_l1_static.dag` without this hand-Rust bridge — gunb-ai/gunbc#4223.
