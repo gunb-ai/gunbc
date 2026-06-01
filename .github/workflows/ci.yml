@@ -37,14 +37,18 @@ jobs:
         # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
         # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
         # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
-        # path translation. Gate on the live socket; a missing socket degrades observably to a cold
-        # build (::warning), never silently and never fail-hard. dissolve-on-arrival.
-        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+        # path translation. Gate on a real server handshake (--show-stats over the UDS), NOT mere
+        # socket existence: the socket file can be present yet unconnectable by the runner user
+        # (ctrl#1399 socket perms), and a bare `[ -S ]` gate would then export RUSTC_WRAPPER and the
+        # build would die with "sccache: Permission denied". A failed handshake degrades observably to
+        # a cold build (::warning), never silently and never fail-hard. dissolve-on-arrival.
+        if [ -S /var/lib/ctrl/sccache/server.sock ] \
+          && SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock sccache --show-stats >/dev/null 2>&1; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold"
+          echo "::warning::sccache server at /var/lib/ctrl/sccache/server.sock absent or not usable by runner user; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -86,14 +90,18 @@ jobs:
         # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
         # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
         # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
-        # path translation. Gate on the live socket; a missing socket degrades observably to a cold
-        # build (::warning), never silently and never fail-hard. dissolve-on-arrival.
-        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+        # path translation. Gate on a real server handshake (--show-stats over the UDS), NOT mere
+        # socket existence: the socket file can be present yet unconnectable by the runner user
+        # (ctrl#1399 socket perms), and a bare `[ -S ]` gate would then export RUSTC_WRAPPER and the
+        # build would die with "sccache: Permission denied". A failed handshake degrades observably to
+        # a cold build (::warning), never silently and never fail-hard. dissolve-on-arrival.
+        if [ -S /var/lib/ctrl/sccache/server.sock ] \
+          && SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock sccache --show-stats >/dev/null 2>&1; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold"
+          echo "::warning::sccache server at /var/lib/ctrl/sccache/server.sock absent or not usable by runner user; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -129,14 +137,18 @@ jobs:
         # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
         # These jobs build directly on the srv1/srv2 host, so rustc/build paths are real host paths
         # the host-wide ctrl-sccache.service (ctrl#1399, 50G shared LRU) can exec/read — no container
-        # path translation. Gate on the live socket; a missing socket degrades observably to a cold
-        # build (::warning), never silently and never fail-hard. dissolve-on-arrival.
-        if [ -S /var/lib/ctrl/sccache/server.sock ]; then
+        # path translation. Gate on a real server handshake (--show-stats over the UDS), NOT mere
+        # socket existence: the socket file can be present yet unconnectable by the runner user
+        # (ctrl#1399 socket perms), and a bare `[ -S ]` gate would then export RUSTC_WRAPPER and the
+        # build would die with "sccache: Permission denied". A failed handshake degrades observably to
+        # a cold build (::warning), never silently and never fail-hard. dissolve-on-arrival.
+        if [ -S /var/lib/ctrl/sccache/server.sock ] \
+          && SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock sccache --show-stats >/dev/null 2>&1; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache/server.sock" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
-          echo "::warning::sccache server socket /var/lib/ctrl/sccache/server.sock not found; building cold"
+          echo "::warning::sccache server at /var/lib/ctrl/sccache/server.sock absent or not usable by runner user; building cold"
         fi
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
