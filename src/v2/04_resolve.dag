@@ -6,7 +6,7 @@ import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex,
-  make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
+  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   generic_param_name_at,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -502,15 +502,18 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     Some { value: result } => result.diagnostics
     None => []
   }
+  let default_expr = match default_resolved {
+    Some { value: result } => Some { value: result.expr }
+    None => none
+  }
   ParamResult {
-    param: make_param_node(
+    param: make_resolved_param_node(
       name: param_node_name_at(n: param, source_indices: env.source_indices),
       type_expr: type_resolved,
-      default_value: match default_resolved {
-        Some { value: result } => Some { value: result.expr }
-        None => none
-      },
-      span: param.span, name_span: node_name_span(n: param)
+      default_value: default_expr,
+      properties: concat(param.properties, type_resolved.properties),
+      span: param.span,
+      name_span: node_name_span(n: param)
     ),
     diagnostics: concat(type_diags, default_diags)
   }
