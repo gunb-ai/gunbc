@@ -89,8 +89,8 @@ type TargetPythonExerciseVerdict
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
 // 🟡 coproduct dissolution — feature:leaf-model-runtime-exercise-bridge —
-// dissolve-on-arrival: fold runtime exercise results into LeafModelFixture<C>.expected_verdict /
-// expected_falsification_verdict once T-22 modeled run_target_verification consumes target rows.
+// single runtime-exercise authority for Go R2b + TypeScript R2b (dissolved CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1);
+// dissolve-on-arrival: fold into LeafModelFixture<C>.expected_verdict once T-22 run_target_verification lands.
 type TargetRuntimeExerciseVerdict
   = TargetRuntimeExerciseAccepted
   | TargetRuntimeExerciseRejected { diagnostic_code: Symbol }
@@ -132,22 +132,9 @@ type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted
   | TargetTypeScriptCompileRejected { diagnostic_code: Symbol }
 
-// 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1 (Phase 1 Node gate; widen per target).
-type TargetTypeScriptRuntimeVerdict
-  = TargetTypeScriptRuntimeAccepted
-  | TargetTypeScriptRuntimeRejected { diagnostic_code: Symbol }
-
-// 🟢 coproduct dissolution — CP-LMV-TARGET-GO-RUNTIME-VERDICT-PHASE1 (Phase 1 `go run` gate; widen per target).
-type TargetGoRuntimeVerdict
-  = TargetGoRuntimeAccepted
-  | TargetGoRuntimeRejected { diagnostic_code: Symbol }
-
 data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_type_mismatch
 data target_diagnostic_e0423_expected_value_found_type: Symbol = target_diagnostic_e0423_expected_value_found_type
 data target_diagnostic_e0599_method_not_found: Symbol = target_diagnostic_e0599_method_not_found
-data target_diagnostic_go_undefined_identifier: Symbol = target_diagnostic_go_undefined_identifier
-data target_diagnostic_go_method_not_found: Symbol = target_diagnostic_go_method_not_found
-data target_diagnostic_go_too_many_conversion_args: Symbol = target_diagnostic_go_too_many_conversion_args
 data target_diagnostic_python_name_error_undefined_name: Symbol = target_diagnostic_python_name_error_undefined_name
 data target_diagnostic_python_attribute_error_method_not_found: Symbol = target_diagnostic_python_attribute_error_method_not_found
 data target_diagnostic_python_type_error_init_arity_mismatch: Symbol = target_diagnostic_python_type_error_init_arity_mismatch
@@ -166,10 +153,6 @@ data leaf_model_claim_python_r2a_int_algebra_operations: LeafModelClaimId = leaf
 data leaf_model_claim_python_r2b_int_arbitrary_precision_add: LeafModelClaimId = leaf_model_claim_python_r2b_int_arbitrary_precision_add
 data leaf_model_claim_python_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_python_r3_external_symbol_projection
 data leaf_model_claim_python_l1_static_return_type: LeafModelClaimId = leaf_model_claim_python_l1_static_return_type
-data leaf_model_claim_go_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_go_r1_int_surface_spelling
-data leaf_model_claim_go_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_go_r2a_int_algebra_operations
-data leaf_model_claim_go_r2b_int64_overflow_wrap: LeafModelClaimId = leaf_model_claim_go_r2b_int64_overflow_wrap
-data leaf_model_claim_go_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_go_r3_external_symbol_projection
 data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_model_claim_rust_r2a_i32_algebra_operations
 data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
 data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
@@ -244,44 +227,6 @@ type LeafModelPythonFixturePair {
   falsification: LeafModelPythonFalsificationCase
 }
 
-<<<<<<< HEAD
-// 🟡 gated — feature:leaf-model-r1-r3-go-bridge — bind go.dag release-minimum lane —
-// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
-// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once T-22 run_target_verification lands.
-type LeafModelGoFixture {
-  source: String
-}
-
-type LeafModelGoFalsificationCase {
-  fixture: LeafModelGoFixture
-  expected_verdict: TargetCompileVerdict
-}
-
-type LeafModelGoFixturePair {
-  claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
-  encoding_spelling_fact: Symbol
-  happy: LeafModelGoFixture
-  expected_happy_verdict: TargetCompileVerdict
-  falsification: LeafModelGoFalsificationCase
-}
-
-// 🟡 gated — feature:leaf-model-r1-r3-go-bridge — dissolve-on-arrival: R2b `go run`
-// runtime rows fold into LeafModelFixture<C> once T-22 run_target_verification lands.
-type LeafModelGoRuntimeFixture {
-  source: String
-}
-
-// 🟡 gated — feature:leaf-model-r1-r3-go-bridge — dissolve-on-arrival: R2b int64
-// overflow-wrap runtime observation under LeafModelFixture<C>. No falsification slot:
-// this row proves a target runtime behavior, not a negative compile/runtime witness.
-type LeafModelGoRuntimeFixturePair {
-  claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
-  encoding_spelling_fact: Symbol
-  happy: LeafModelGoRuntimeFixture
-  expected_happy_verdict: TargetGoRuntimeVerdict
-=======
 // 🟡 gated — feature:leaf-model-go-bridge — bind docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01 —
 // dissolve-on-arrival: fold into LeafModelFixture<C> once T-22 modeled run_target_verification consumes Go rows.
 type LeafModelGoBuildFixture {
@@ -316,7 +261,6 @@ type LeafModelGoRuntimeFixturePair {
   happy: LeafModelGoRunFixture
   expected_happy_verdict: TargetRuntimeExerciseVerdict
   falsification: LeafModelGoRuntimeFalsificationCase
->>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 }
 
 // PY-L1-STATIC-STRUCTURAL fixture carriers. Polarity AND role are STRUCTURAL, not prose:
@@ -422,9 +366,9 @@ type LeafModelTypeScriptRuntimeFixturePair {
   surface_spelling_fact: Symbol
   encoding_spelling_fact: Symbol
   happy: LeafModelTypeScriptRuntimeFixture
-  expected_happy_verdict: TargetTypeScriptRuntimeVerdict
+  expected_happy_verdict: TargetRuntimeExerciseVerdict
   falsification: LeafModelTypeScriptRuntimeFixture
-  expected_falsification_verdict: TargetTypeScriptRuntimeVerdict
+  expected_falsification_verdict: TargetRuntimeExerciseVerdict
 }
 
 type LeafModelVerificationRunReceipt {

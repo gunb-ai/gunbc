@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
 # scripts/v4-leaf-model-go-r2b-verify.sh
 #
-<<<<<<< HEAD
-# Phase 1 leaf-model R2b — int64 overflow wrap at runtime.
-# Authority: src/v4/lens/leaf_model_verification.dag + go_r2b.dag.
-=======
 # Phase 1 leaf-model R2b — typed int64 overflow truncates silently at runtime.
 # Authority: src/v4/lens/leaf_model_verification.dag + go_r2b.dag.
 #
 # Dissolve-on-arrival: delete when T-22 modeled `run_target_verification` owns
 # go run invocation and structured TestClaimRun verdicts replace this host bridge.
->>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 
 set -euo pipefail
 
@@ -47,12 +42,8 @@ def extract(name: str) -> str:
             return bytes(m.group(1), "utf-8").decode("unicode_escape")
     raise SystemExit(f"error: {path}: missing data {name}: String = ...")
 
-<<<<<<< HEAD
-print(f"source={shlex.quote(extract('go_r2b_runtime_fixture_source'))}")
-=======
 print(f"happy_source={shlex.quote(extract('go_r2b_happy_fixture_source'))}")
 print(f"falsification_source={shlex.quote(extract('go_r2b_falsification_fixture_source'))}")
->>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 PY
 )"
 
@@ -60,22 +51,6 @@ run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-$$}"
 scratch="${RUNNER_TEMP:-/tmp}/v4-leaf-model-go-r2b-${run_suffix}"
 rm -rf "$scratch"
 mkdir -p "$scratch"
-<<<<<<< HEAD
-src_path="${scratch}/main.go"
-diag_path="${scratch}/diag"
-printf '%s' "$source" >"$src_path"
-
-set +e
-(cd "$scratch" && GO111MODULE=off go run main.go) >"$diag_path" 2>&1
-runtime_status=$?
-set -e
-
-runtime_happy=false
-[[ "$runtime_status" -eq 0 ]] && runtime_happy=true
-
-export V4_GO_R2B_RUNTIME_STATUS="$runtime_status"
-export V4_GO_R2B_RUNTIME_HAPPY="$runtime_happy"
-=======
 
 exercise_go_run() {
   local label="$1"
@@ -110,32 +85,10 @@ export V4_GO_R2B_HAPPY_PASS="$happy_pass"
 export V4_GO_R2B_FALSIFICATION_PASS="$falsification_pass"
 export V4_GO_R2B_PROVEN="$proven"
 export V4_GO_R2B_FALSIFICATION_STDERR="$falsification_stderr"
->>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
 
 python3 - <<'PY'
 import json
 import os
-<<<<<<< HEAD
-
-print(json.dumps({
-    "schema": "scripts/v4-leaf-model-go-r2b-verify.sh::host_receipt_v1",
-    "claim_id": "GoR2bInt64OverflowWrap",
-    "runtime": {
-        "go_run_exit": int(os.environ["V4_GO_R2B_RUNTIME_STATUS"]),
-        "verdict": "Pass" if os.environ["V4_GO_R2B_RUNTIME_HAPPY"] == "true" else "Fail",
-    },
-    "proven": os.environ["V4_GO_R2B_RUNTIME_HAPPY"] == "true",
-}, indent=2))
-PY
-
-if [[ "$runtime_happy" != true ]]; then
-  cat "$diag_path" >&2
-  echo "error: leaf-model go R2b verification failed" >&2
-  exit 1
-fi
-
-echo "leaf-model go R2b verification PROVEN (int64 overflow wraps)"
-=======
 import re
 
 stderr = os.environ.get("V4_GO_R2B_FALSIFICATION_STDERR", "")
@@ -163,4 +116,3 @@ if [[ "$proven" != true ]]; then
 fi
 
 echo "leaf-model Go R2b verification PROVEN (typed int64 overflow wraps)"
->>>>>>> 3b5433c445 (Go leaf-model: R1/R2a/R2b/R3-external claims, lens fixtures, verify scripts)
