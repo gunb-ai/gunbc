@@ -23,9 +23,9 @@
 //! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
 //! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
-//! **Go L1 (release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate claim and
-//! `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured JSON receipt; chained
-//! from rung gate after R2-go-compile).
+//! **Go L1 (+0 paths, release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate
+//! claim parse surface + `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured
+//! JSON receipt; chained from rung gate after R2-go-compile). SG-0 + INVARIANTS §P5(b) in PR body.
 //! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte
 //! stdout contract; not per-law emitted artifacts until emit pipeline wires law subjects).
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /

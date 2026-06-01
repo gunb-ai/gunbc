@@ -944,6 +944,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
+    // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
+    // compiler-slice claim parse surface; pairs with
+    // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Dissolves: T-PB-B / T-22 T-38.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
