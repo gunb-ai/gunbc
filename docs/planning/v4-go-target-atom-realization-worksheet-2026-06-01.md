@@ -13,7 +13,9 @@
 > **No Go TargetAtomRealization implementation worker may land until:**
 > 1. This worksheet is Arbiter-approved, **and**
 > 2. Shared SG-1 carrier on main is consumed (not forked), **and**
-> 3. Go leaf-model R3-external worksheet dependency on `go_atom_realization_symbol` is satisfied in the same impl wave or ordered before R3-external runner.
+> 3. Go leaf-model R3-external dependency satisfied when **both** land in same wave (Rust dual-name pattern — one authority, two symbols):
+>    - `go_target_atom_realization_symbol` — `TargetAtomRealization` row in `go.dag`
+>    - `go_atom_realization_symbol` — leaf-model fact_id `Symbol` naming that row (R3-external claim anchor)
 
 Acceptance: dual-path falsification on Symbol row changes **both** type and value translate paths (SG-1 §10.6 pattern), exercised on **Go emit** where available; rustc probe is not Go acceptance.
 
@@ -43,6 +45,8 @@ Deepest unsound boundary:
 Systemic fix:
   Add go_target_atom_realization_{symbol,bool,char,int} rows + catalog edge on go MVP target_model
   (mirror rust_target_atom_realization_catalog wiring).
+  Add go_atom_realization_symbol fact_id per rust.dag:870-871 (leaf-model claims reference fact_id,
+  not the TargetAtomRealization data binding name — P2 single row, two named projections).
   Int row uses go_surface_spelling_int / go facts — NOT a separate parallel Int carrier name.
 Non-goals:
   - Redefining TargetAtomRealization fields (Arbiter escalation if shape insufficient).
@@ -56,6 +60,17 @@ Falsification probe:
 Metric allowed only as secondary:
   Post-#4076 go build failures on weather/nat_semiring — evidence only.
 ```
+
+---
+
+## §3.1 Naming convention (Rust pattern — not a fork)
+
+| Symbol | Role | Consumer |
+|---|---|---|
+| `go_target_atom_realization_symbol` | `TargetAtomRealization` row (`data` binding) | `target_model` catalog edge; emit reads row fields |
+| `go_atom_realization_symbol` | fact_id `Symbol` naming that row | `go_r3_external.dag` / lens fixture `surface_spelling_fact` |
+
+Python landed R3 with only `python_atom_realization_symbol` (minimal scaffold). Go follows **full Rust SG-1** (row + fact_id). Leaf-model worksheets reference **fact_id only**; SG-1 worksheet authors **row + fact_id** together.
 
 ---
 

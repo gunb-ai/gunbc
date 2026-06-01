@@ -5,7 +5,7 @@
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §11.8.2 (Go L0); MW-D3 Go parity analog of Python #4117.
 > **Pattern authority:** `src/v4/test/claim/language_model/python_{r1,r2a,r2b,r3_external}.dag` + `src/v4/lens/leaf_model_verification.dag` (landed #4117).
 > **Model authority:** `src/v4/extdeps/languages/go.dag` (T-4.17 wave-2b; `go_surface_spelling_int`, `go_integer_algebra_inhabitance`, overflow facts).
-> **Prerequisite for R3-external impl:** Go `TargetAtomRealization` rows worksheet (`docs/planning/v4-go-target-atom-realization-worksheet-2026-06-01.md`) ratified + `go_atom_realization_symbol` fact declared in `go.dag`.
+> **Prerequisite for R3-external impl:** SG-1 Go worksheet ratified + `go.dag` lands **`go_target_atom_realization_symbol`** row and **`go_atom_realization_symbol`** fact_id (Rust dual-name pattern; R3 claim anchors fact_id only).
 
 ---
 
@@ -48,7 +48,7 @@ DFS path:
   extdeps/language authority:
     - go.dag: go_surface_spelling_int, go_facts_int, go_integer_algebra_inhabitance(go_facts_int),
       go_facts_int64 + go_tag_overflow_signed_truncates on that bundle (R2b only — fixtures use int64),
-      (R3) go_atom_realization_symbol — to be added per SG-1 Go worksheet
+      (R3) go_atom_realization_symbol fact_id → go_target_atom_realization_symbol row (SG-1 Go worksheet)
   claim corpus (sibling files, per planning §4 D-LMV-4 option b):
     - src/v4/test/claim/language_model/go_r1.dag
     - src/v4/test/claim/language_model/go_r2a.dag
@@ -92,7 +92,7 @@ Metric allowed only as secondary:
 |---|---|---|---|---|
 | `leaf_model_claim_go_r1_int_surface_spelling` | `go_surface_spelling_int` | `go build` PASS (`func r1() int { return 0 }`) | return type `i32` (invalid) | `TargetCompileRejected` + `target_diagnostic_go_undefined_type` |
 | `leaf_model_claim_go_r2a_int_algebra_operations` | `go_integer_algebra_inhabitance(go_facts_int)` | `go build` PASS (add/compare on `int`) | call nonexistent method on `int` | `TargetCompileRejected` + `target_diagnostic_go_undefined_method` |
-| `leaf_model_claim_go_r3_external_symbol_projection` | `go_atom_realization_symbol` (SG-1) | `go build` PASS per realization row | ctor/signature mismatch | `TargetCompileRejected` + modeled go diagnostic |
+| `leaf_model_claim_go_r3_external_symbol_projection` | `go_atom_realization_symbol` (fact_id; row = `go_target_atom_realization_symbol`) | `go build` PASS per realization row | ctor/signature mismatch | `TargetCompileRejected` + modeled go diagnostic |
 
 ### §4.2 Runtime-bound claim (`TargetRuntimeExerciseVerdict` — R2b only)
 
