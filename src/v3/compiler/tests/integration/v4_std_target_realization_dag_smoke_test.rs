@@ -624,6 +624,10 @@ fn v4_std_target_realization_declares_use_site_ownership_carrier() {
 }
 
 #[test]
+// P5(b) same-path expansion receipt for this PR: no new SG-0 path; this assertion stays under
+// the existing `v4_std_target_realization_dag_smoke_test.rs` census row and dissolves with
+// T-PB-B / `pb_rust_tests_outside_residual_zero` when `.dag` TestClaim coverage replaces these
+// parse-surface smokes.
 fn v4_std_target_realization_named_child_lookup_fails_closed() {
     assert!(
         !TARGET_MODEL_DAG.contains("target_atom_realization_conj_child"),
