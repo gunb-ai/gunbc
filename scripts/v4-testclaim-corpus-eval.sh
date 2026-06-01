@@ -96,6 +96,7 @@ check_generated_rust_receipt() {
 from __future__ import annotations
 
 import sys
+import re
 from pathlib import Path
 
 
@@ -410,6 +411,15 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
         corpus_eval_rs,
         "generated zero Fail/Deferred tally predicate",
     )
+    normalized_all_pass = "".join(all_pass_body.split())
+    fail_deferred_conjunction = re.compile(
+        r"(?:\(*tally\.fail==Nat::Zero\)*)&&(?:\(*tally\.deferred==Nat::Zero\)*)"
+    )
+    if not fail_deferred_conjunction.search(normalized_all_pass):
+        raise ReceiptError(
+            f"{corpus_eval_rs}: manual_corpus_all_pass must directly conjoin "
+            "tally.fail == Nat::Zero && tally.deferred == Nat::Zero"
+        )
     gate_body = generated_function(source, "manual_corpus_gate", corpus_eval_rs)
     require_order(
         gate_body,
