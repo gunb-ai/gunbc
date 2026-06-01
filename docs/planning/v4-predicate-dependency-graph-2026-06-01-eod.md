@@ -8,7 +8,7 @@ Forward projection of remaining work to v4-done as of Jun 1 release day end-of-d
 |---|---|---|
 | P1 | Every other scheduled task complete | YELLOW (~8-12/53 PROVEN; R3-internal added; per-lane GAP continues; no near-term GREEN candidate) |
 | P2 | v4 compiles `src/v4/compiler/*.dag` end-to-end | **TECHNICAL-PROVEN; DELETION IN FLIGHT**. P2-A probe (44-source closure 0 diagnostics) verified scope (a). M2 probe (#4097) confirmed bridge dead-weight. **Operator authorized early deletion 2026-06-01T00:28Z** (skipping 14-day window); work-item `adhoc-4cad7e9b-558` spawned for `scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml` step removal. P2 flips fully GREEN on that PR merge. |
-| P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (impl gated on §8 sign-off). Residual rustc count stale at 7,175 (#4122 post-#4115 catalog); fresh probe needed post-cascade. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, deferred amendment). |
+| P3 | v4 emits Rust source that compiles to a binary | YELLOW (downstream-cascading). **9 of 9 routed classes closed or worksheet-on-main** today: SG-1 ✓ SG-7 ✓ SG-5 ✓ SG-6 ✓ SG-1b ✓ SG-2 ✓ SG-RC-LAYERING ✓ SG-3-cascade-retired ✓ SG-8 worksheet ✓ (impl gated on §8 sign-off). **Residual rustc count: 7,724** per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 — substrate landings introduced new diagnostics absorbed back into existing classes). Per-class delta on review. Two minor follow-ons remain: SG-1-FOLLOWON (per amend), SG-COLLECTION-PROJECTION (~170, deferred amendment). |
 | P4 | Binary on `src/v4/compiler/*.dag` produces bit-identical output | RED — hard-gated on P2 full PROVEN + P3 binary builds |
 | P5 | TestClaim suite passes | **Layer 1 + Layer 2 BOTH CLOSED** via #4115 (P5 structural-bridge replaced + deleted). Strict P5 "suite passes" still gates on runtime-execution path: upward debt `node://adhoc-f8699326-d69` (operator decision: M1 cargo-clean subset OR new bootstrap-evaluator corpus runtime per SELF_HOSTING). T-38-PR2 verdict-SURFACE migration LANDED #4120 (closes one of three closeout-leaf conditions for stern-lynx). |
 | P6 | Hand-authored Rust not editable authority (proven by REPRODUCTION) | RED — hard-gated on P4 + P3 PROVEN |
@@ -83,7 +83,7 @@ Awaiting: worker dispatch + PR + merge. Not operator-blocked.
 
 **P3 PROVEN bar reminder**: Rust source compiles to a binary (not zero rustc errors as goal; not Python+Go alpha-targets). Each closure shrinks residual; binary builds when residual hits 0 on Rust path.
 
-**Stale residual count**: 7,175 errors (#4122 catalog at 16:18Z, before SG-1b + SG-2 + SG-RC-LAYERING + SG-8 worksheet landed). **Fresh probe needed** to reflect post-cascade state — likely meaningfully lower.
+**Residual rustc count**: 7,724 per fresh post-cascade probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 baseline). Substrate landings introduced new diagnostics absorbed into existing classes (no new class signatures); per-class delta on review will inform next-wave routing.
 
 ### §3.4 P4 bit-identical fixpoint
 
@@ -105,7 +105,7 @@ Hard-gated on P4 + P3.
 
 ## §4. Critical paths forward — post-cascade
 
-**Path A: P5 strict "suite passes" (runtime gate)** — operator decision required between (i) and (ii). (i) is patient-wait-for-P3-cascade. (ii) is dedicated DFS worksheet authoring. Either flips strict P5 GREEN.
+**Path A: P5 strict "suite passes" (runtime gate)** — operator decision required between (i) and (ii). **(i) is patient-wait for P3 cascade closures to enable M1 cargo-clean emitted subset; P5 strict GREEN flips when the suite actually executes + passes against that subset, NOT on the routing decision itself.** (ii) is dedicated DFS worksheet authoring for a new bootstrap-evaluator corpus runtime; P5 strict GREEN flips when the runtime ships + suite passes. Either path's authorization unblocks dispatch; neither flips P5 GREEN by authorization alone — P5 GREEN requires `src/v4/TASKS.md` "TestClaim suite passes" bullet satisfied by actual suite execution receipt.
 
 **Path B: P2 GREEN flip** — IN FLIGHT. Operator authorized early deletion 2026-06-01T00:28Z; work-item `adhoc-4cad7e9b-558` spawned. P2 flips on that worker's PR merging.
 
@@ -155,11 +155,11 @@ Tree is at 0 active subtree work as of 00:30Z 2026-06-01. All five overnight sub
 
 ## §8. Risk / honesty
 
-- **P3 cascade was massive but residual is still significant**: 7,175 rustc errors at last probe (16:18Z), before SG-2 + SG-1b + SG-RC + SG-8 worksheet landed. Per-class wins are smaller than SG-1's 37% magnitude per #4096 §8 honesty. Realistic horizon: weeks-to-months for residual → 0.
+- **P3 cascade was massive but residual is still significant**: 7,724 rustc errors per fresh probe (sleek-heron-13 PR #4140; +549 vs #4122's 7,175 baseline — substrate landings introduced new diagnostics absorbed into existing classes, not new class signatures). Per-class wins are smaller than SG-1's 37% magnitude per #4096 §8 honesty. Realistic horizon: weeks-to-months for residual → 0.
 - **P5 single authority**: P5 is **GREEN only when the canonical `src/v4/TASKS.md` "Definition of v4-done" bullet "TestClaim suite passes" is satisfied** — which requires the runtime-execution gate to close. Today's Layer 1 + Layer 2 closures are **partial progress toward P5**, not an alternate definition of GREEN. Surfaced explicitly by T-38-PR2 worker's honest scope analysis (cool-boar-841 identified 3 readings, chose surface migration + escalated runtime gate as upward debt at `node://adhoc-f8699326-d69`; correct discipline per project_spirit "stop and escalate"). Do not treat partial layer closure as P5 GREEN.
 - **proud-pike archival mid-day** consolidated Modeling DFS lane under keen-heron de facto. §8 sign-off authority needs explicit operator routing for SG-8 impl worker dispatch.
 - **#4112 operator-landed manually** despite dashboard recommending self-merge — operator chose to handle that specific PR, others all self-merged per current policy.
-- **One major gap**: no fresh post-cascade rustc residual count. Without #4122-successor probe, we don't know the real P3 residual after today's closures.
+- **Per-class delta for the 7,724 residual is still pending review** (sleek-heron-13 PR #4140 captures total + acknowledges substrate-absorbed-into-existing-classes pattern; granular per-class breakdown surfaces on PR review and informs whether new dominant classes need §10.0 worksheets).
 
 ## §8.5 Operator sign-offs queue (consolidated)
 
