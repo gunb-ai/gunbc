@@ -175,7 +175,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 15 },
-      continue_on_error: false,
+      continue_on_error: true,
       concurrency: none
     }, {
       id: "ci_floor",
@@ -298,7 +298,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["affected"],
+      needs: [],
       env: none,
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true" },
@@ -313,7 +313,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Validate prerequisites (fail-closed under skipped/failed deps)" },
           id: none,
-          run: "set -euo pipefail\nif [[ \"${{ needs.affected.result }}\" != \"success\" ]]; then\n  echo \"::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied\"\n",
+          run: "set -euo pipefail\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -331,7 +331,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["affected", "ci_floor"],
+      needs: ["ci_floor"],
       env: none,
       outputs: none,
       if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true }}" },

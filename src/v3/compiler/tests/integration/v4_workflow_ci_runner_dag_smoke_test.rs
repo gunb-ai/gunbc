@@ -986,17 +986,27 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor]")
-            || CI_YML.contains("needs: [affected, ci_floor]\n"),
-        "{CI_YML_PATH}: branch-protection `ci` aggregator must need Wave 1 `ci_floor` only"
+        CI_YML.contains("needs: [ci_floor]")
+            || CI_YML.contains("needs: [ci_floor]\n"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must need `ci_floor` only (not `affected`)"
+    );
+    assert!(
+        !CI_YML.contains("needs: [affected, ci_floor]")
+            && !CI_YML.contains("needs.affected.result"),
+        "{CI_YML_PATH}: `affected` is shadow-only — not a §11.7.1 gate"
     );
     assert!(
         !CI_YML.contains("needs.discipline.result") && !CI_YML.contains("  discipline:"),
         "{CI_YML_PATH}: discipline job deleted per §11.7.3"
     );
+    let ci_floor_block = CI_YML
+        .split("  ci_floor:")
+        .nth(1)
+        .and_then(|rest| rest.split("\n  ci:").next())
+        .unwrap_or("");
     assert!(
-        CI_YML.contains("ci_floor:") && CI_YML.contains("needs: [affected]"),
-        "{CI_YML_PATH}: `ci_floor` must depend on `affected` only"
+        !ci_floor_block.contains("needs: [affected]"),
+        "{CI_YML_PATH}: `ci_floor` must not depend on `affected`"
     );
 }
 
@@ -1223,8 +1233,12 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "{CI_YML_PATH}: legacy parallel lanes dissolved"
     );
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor]"),
-        "{CI_YML_PATH}: `ci` aggregator must depend on `ci_floor`"
+        CI_YML.contains("needs: [ci_floor]"),
+        "{CI_YML_PATH}: `ci` aggregator must depend on `ci_floor` only"
+    );
+    assert!(
+        CI_YML.contains("continue-on-error: true") && CI_YML.contains("  affected:"),
+        "{CI_YML_PATH}: `affected` must run shadow-only (continue-on-error), not block merge"
     );
     for forbidden in [
         "check-pr-sg0-net-shrink-discipline.sh",
