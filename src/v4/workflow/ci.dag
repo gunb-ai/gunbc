@@ -76,7 +76,6 @@ import v4.std.node {
   canonical_tag_byte_limb_out_of_range
 }
 import v4.std.integer { int_add, int_negate }
-import v4.std.nat { nat_add }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.std.collection { Absent, List }
@@ -3263,7 +3262,7 @@ fn ci_wave3_shadow_empty_frontier_selects_none() -> Bool {
 
 // Roster authority cardinality: manual subset + generated subset = full roster (disjoint append).
 fn ci_wave3_shadow_roster_is_manual_plus_generated() -> Bool {
-  let parts = nat_add(a: length(xs: ci_wave3_shadow_manual_claim_roster()), b: length(xs: ci_wave3_shadow_generated_claim_roster()))
+  let parts = int_add(a: length(xs: ci_wave3_shadow_manual_claim_roster()), b: length(xs: ci_wave3_shadow_generated_claim_roster()))
   parts == length(xs: ci_wave3_shadow_claim_roster())
 }
 
