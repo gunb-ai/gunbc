@@ -1,6 +1,6 @@
 # v4 Python RCA Manager worksheets - L1/L2 release-minimum runway
 
-> **Status:** DRAFT - ready for Modeling DFS Arbiter review. No implementation worker is authorized by this file until the relevant worksheet section is approved.
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). No implementation worker is authorized until Runtime/TestClaim accepts runner-surface dispatch for worksheets B/C.
 > **Date:** 2026-06-01
 > **Dispatch anchor:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` Section 11.8, Python row.
 > **Current rung:** L0 complete via #4117 (R1 + R2a + R2b + R3-external).
@@ -244,6 +244,36 @@ Falsification probes:
 | PY-L2-CROSS-TARGET-BEHAVIORAL-PARITY | Runtime/TestClaim + language RCA managers | Yes: release-minimum target set and runtime-value parity carrier. |
 | PY-SELF-COMPILE-FRAMING | Python RCA, then Runtime/TestClaim and Compiler Spine by rung | Yes: fixed-point/artifact comparison policy must not be Python-only unless proven target-specific. |
 
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
+
+### Worksheet A (PY-L1-STATIC-STRUCTURAL)
+
+- [x] **Shared carriers:** `TargetStaticAnalysisInvocation` + `TargetStaticAnalysisVerdict` in `v4.std.leaf_model_verification` — **not** `TargetPythonExerciseVerdict` extension
+- [x] Per-tool profiles: `v4.extdeps.typecheckers.pyright` + `mypy` (advisory vs blocking on row)
+- [x] Reject: CI-only pyright/mypy grep; Python-only static verdict vocabulary
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
+
+### Worksheet B (PY-L1-L2-RUNTIME-FIXTURE-EXECUTION)
+
+- [x] **Shared runtime carrier:** `TargetRuntimeExerciseVerdict` (additive, shared) for L1/L2 fixture execution
+- [x] `TargetPythonExerciseVerdict` remains L0 leaf-model bridge only until dissolved by shared runner
+- [x] Receipt path: `host_run` + `test_claim_falsification` — reject stdout/stderr shell compare as final authority
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`; Runtime/TestClaim coordinates roster)
+
+### Worksheet C (PY-L2-CROSS-TARGET-BEHAVIORAL-PARITY)
+
+- [x] Reuse #4081 Wc L5 pattern; release-minimum set **Rust + Python + Go** per §11.8
+- [x] Shared `RuntimeValue` + `TestClaimRun` verdict vocabulary — no per-target expected-value tables
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`; depends on worksheet B runner surface)
+
+### Worksheet D (PY-SELF-COMPILE-FRAMING)
+
+- [x] Policy frame ratified: L1 static/runtime → L2 behavioral parity → L3 artifact equivalence → L4 compiler execution path
+- [x] Non-goals affirmed: no CPython binary self-host; `py_compile` ≠ self-host
+- [x] **FRAME-ONLY** — no impl dispatch from this section
+
+---
+
 ## Manager checklist
 
 - [x] L0 consumed from #4117 rather than redefined.
@@ -251,5 +281,5 @@ Falsification probes:
 - [x] Runtime execution framed as the meaningful Python verifier.
 - [x] Cross-target parity extends #4081 Wc L5 instead of creating a new stdout shell authority.
 - [x] Python self-compile framed as compiler execution parity before binary-like self-host.
-- [ ] Modeling DFS Arbiter approval.
+- [x] Modeling DFS Arbiter approval.
 - [ ] Runtime/TestClaim owner accepts runner-surface dispatch.

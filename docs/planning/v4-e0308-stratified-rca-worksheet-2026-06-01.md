@@ -97,6 +97,14 @@ Acceptance:
   New carrier `ProbeSeq<T>` or `FreeMonoid<Probe>` projects to Rust boundary storage by row change only; no hardcoded `FreeMonoid` or `Edge` branch.
 ```
 
+#### Arbiter adjudication (E0308-C / SG-COLLECTION-PROJECTION) — CLOSED 2026-06-01 (`proud-fox-405`)
+
+- [x] **Single authority:** extend `TargetCollectionRealization` in `v4.std.target_model` — add boundary/storage axis for `FreeMonoid<T>` → Rust `Vec<Rc<T>>` (e.g. `TargetCollectionReprVecRc` + `source_algebraic_carrier` on row). **Reject** parallel `TargetCollectionBoundaryProjection` carrier unless extension proof fails in worksheet.
+- [x] **Compose with SG-RC:** inner `Rc<T>` element ownership via `TargetBundleEdge` / SG-RC rows — do not fold ownership into collection emit branches.
+- [x] **Forbidden:** `Vec<Rc<T>>` emit shims; hardcoded `FreeMonoid` / `Edge` / `PrimitiveFactBundle` name branches in `06_translate`.
+- [x] **Worksheet still required:** `vivid-lynx-81` (Collection/Algebra Manager) authors full §10.0 `SG-COLLECTION-PROJECTION` worksheet before impl dispatch; this adjudication unblocks worksheet authoring only.
+- [x] **READY-FOR-WORKSHEET-AUTHOR** (not impl until worksheet §8)
+
 ### E0308-D: Diagnostic/result shape boundaries
 
 ```text
@@ -128,5 +136,5 @@ Dispatch:
 
 ## Manager Decision
 
-P0 implementation fanout should use existing approved SG-1b and SG-RC worksheets first. The only new worksheet required before implementation is **SG-COLLECTION-PROJECTION** for `FreeMonoid<T>` to Rust boundary storage. Diagnostic/result-shape work waits for a post-SG-RC/SG-2 remeasure unless a worker can prove an independent single-authority fact before then.
+P0 implementation fanout should use existing approved SG-1b and SG-RC worksheets first. **SG-COLLECTION-PROJECTION:** Arbiter adjudication CLOSED 2026-06-01 — extend `TargetCollectionRealization` (see E0308-C adjudication); `vivid-lynx-81` authors §10.0 worksheet then §8 before impl. Diagnostic/result-shape work waits for a post-SG-RC/SG-2 remeasure unless a worker can prove an independent single-authority fact before then.
 
