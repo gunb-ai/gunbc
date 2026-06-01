@@ -34,7 +34,7 @@
 
 use v3_compiler::emit_host_bridge;
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceItem, SurfaceVariant};
+use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceVariant};
 use v3_compiler::tokenize_for_test;
 
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/compiler/emit_host.dag");
@@ -50,6 +50,10 @@ const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
 const NAT_SEMIRING_RUNG_3_4_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
 const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
+const NAT_SEMIRING_RUNG_0_TO_2_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag");
+const NAT_SEMIRING_RUNG_0_TO_2_PATH: &str =
+    "src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag";
 const NAT_SEMIRING_RUNG_5_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_5.dag");
 const NAT_SEMIRING_RUNG_5_PATH: &str = "src/v4/test/claim/nat_semiring/rung_5.dag";
@@ -137,6 +141,24 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
             SurfaceItem::Data { name: decl_name, .. } if decl_name == name
         )
     })
+}
+
+fn data_body<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a SurfaceExpr {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(body),
+                ..
+            } if item_name == name => Some(body),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data body `{name}`"))
 }
 
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
@@ -764,6 +786,46 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
             "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
         ),
         "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_go_l1_rung2_receipt_anchor_tokenizes_and_parses() {
+    let module = parse_module(NAT_SEMIRING_RUNG_0_TO_2_DAG, NAT_SEMIRING_RUNG_0_TO_2_PATH);
+    for name in [
+        "go_l1_nat_semiring_rung2",
+        "go_l1_nat_semiring_rung2_slice_symbol",
+        "go_l1_nat_semiring_rung2_receipt_schema",
+        "go_l1_nat_semiring_rung2_slice_subject",
+        "claim_go_l1_nat_semiring_rung2_go_build_receipt",
+        "phase1_nat_semiring_rung_0_to_2_roster",
+        "go_l1_nat_semiring_rung2_receipt_roster",
+    ] {
+        assert!(
+            surface_declares_data(&module, name),
+            "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: missing Go L1 receipt anchor data `{name}`"
+        );
+    }
+    assert!(
+        NAT_SEMIRING_RUNG_0_TO_2_DAG
+            .contains("scripts/v4-phase1-nat-semiring-rung-gate.sh::go_l1_compile_receipt_v1"),
+        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt schema must match host transport"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG_0_TO_2_DAG.contains(
+            "slice=go_l1_nat_semiring_rung2 fixture=phase1/nat_semiring predicate=R2-go-compile receipt=go_l1_compile_receipt_v1"
+        ),
+        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 CompilesClaim label must bind slice id, fixture, predicate, and receipt"
+    );
+    let ladder_roster = data_body(&module, "phase1_nat_semiring_rung_0_to_2_roster");
+    assert!(
+        !format!("{ladder_roster:?}").contains("claim_go_l1_nat_semiring_rung2_go_build_receipt"),
+        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: ladder roster must remain the eight rung x target predicates"
+    );
+    let go_l1_roster = data_body(&module, "go_l1_nat_semiring_rung2_receipt_roster");
+    assert!(
+        format!("{go_l1_roster:?}").contains("claim_go_l1_nat_semiring_rung2_go_build_receipt"),
+        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt claim must live on its separate receipt roster"
     );
 }
 
