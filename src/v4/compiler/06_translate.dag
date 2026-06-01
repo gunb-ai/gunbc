@@ -1916,6 +1916,81 @@ fn project_type_expression_field_slots(
     acc: Empty
   )
 }
+
+fn project_type_expression_arrow_param_slots_go(
+  remaining: Int,
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  edges: List<Edge>,
+  acc: List<TargetTypeExprFieldSlot>
+) -> Outcome<List<TargetTypeExprFieldSlot>> {
+  if remaining <= 0 {
+    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  } else if is_empty(xs: edges) {
+    Accepted { value: acc, diagnostics: None }
+  } else {
+    bind_outcome(
+      o: edge_list_head_and_tail(edges: edges, node: node),
+      f: fn(split) {
+        match split.head.label {
+          Named { name: label } =>
+            bind_outcome(
+              o: project_type_expression_node_bounded(
+                remaining: node_subtree_count(n: split.head.target),
+                node: split.head.target,
+                target: target,
+                projection: projection
+              ),
+              f: fn(projected) {
+                bind_outcome(
+                  o: translate_apply_use_site_ownership_to_projected_boundary(
+                    projected: projected,
+                    source_for_binding: split.head.target,
+                    target: target,
+                    projection: projection,
+                    use_site: OwnershipAtFunctionParameter
+                  ),
+                  f: fn(wrapped) {
+                    project_type_expression_arrow_param_slots_go(
+                      remaining: remaining - 1,
+                      node: node,
+                      target: target,
+                      projection: projection,
+                      edges: split.tail,
+                      acc: list_snoc_item(
+                        xs: acc,
+                        item: TargetTypeExprFieldSlot { label: label, type_expr: wrapped }
+                      )
+                    )
+                  }
+                )
+              }
+            )
+          Positional =>
+            outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        }
+      }
+    )
+  }
+}
+
+fn project_type_expression_arrow_param_slots(
+  remaining: Int,
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<List<TargetTypeExprFieldSlot>> {
+  project_type_expression_arrow_param_slots_go(
+    remaining: remaining,
+    node: node,
+    target: target,
+    projection: projection,
+    edges: node.children,
+    acc: Empty
+  )
+}
+
 fn project_type_expression_variant_slots_go(
   remaining: Int,
   node: Node,
