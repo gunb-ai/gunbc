@@ -36,6 +36,7 @@ import v4.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
+  bind_outcome_accepted,
   diagnostics_merge,
   diagnostics_singleton,
   outcome_accepted,
@@ -2813,57 +2814,63 @@ fn serialize_type_expr_arrow_bounded(
   node: Node
 ) -> Outcome<TargetSource> {
   match target_type_expr_arrow_wire_shape(node: node) {
-    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
-      serialize_type_expr_arrow_named_bounded(
-        remaining: remaining,
-        target: target,
-        projection: projection,
-        form: form,
-        node: node
-      )
-    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
-      bind_outcome(
-        o: type_expr_arrow_split_from_types(
-          types: node_positional_child_targets(node: node),
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+      bind_outcome_accepted(
+        od: d,
+        inner: serialize_type_expr_arrow_named_bounded(
+          remaining: remaining,
+          target: target,
+          projection: projection,
+          form: form,
           node: node
-        ),
-        f: fn(split) {
-          bind_outcome(
-            o: serialize_type_expr_arrow_inputs_bounded(
-              remaining: remaining - 1,
-              target: target,
-              projection: projection,
-              form: form,
-              inputs: split.inputs,
-              anchor: node
-            ),
-            f: fn(inputs_source) {
-              bind_outcome(
-                o: lex_rules_literal(target: target, token_class: form.arrow),
-                f: fn(arrow_source) {
-                  bind_outcome(
-                    o: serialize_type_expr_boundary_bounded(
-                      remaining: remaining - 1,
-                      target: target,
-                      projection: projection,
-                      boundary_site: FunctionBoundaryReturn,
-                      emitted: split.output
-                    ),
-                    f: fn(output_source) {
-                      Accepted {
-                        value: list_append(
-                          left: list_append(left: inputs_source, right: arrow_source),
-                          right: output_source
-                        ),
-                        diagnostics: None
+        )
+      )
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: d } =>
+      bind_outcome_accepted(
+        od: d,
+        inner: bind_outcome(
+          o: type_expr_arrow_split_from_types(
+            types: node_positional_child_targets(node: node),
+            node: node
+          ),
+          f: fn(split) {
+            bind_outcome(
+              o: serialize_type_expr_arrow_inputs_bounded(
+                remaining: remaining - 1,
+                target: target,
+                projection: projection,
+                form: form,
+                inputs: split.inputs,
+                anchor: node
+              ),
+              f: fn(inputs_source) {
+                bind_outcome(
+                  o: lex_rules_literal(target: target, token_class: form.arrow),
+                  f: fn(arrow_source) {
+                    bind_outcome(
+                      o: serialize_type_expr_boundary_bounded(
+                        remaining: remaining - 1,
+                        target: target,
+                        projection: projection,
+                        boundary_site: FunctionBoundaryReturn,
+                        emitted: split.output
+                      ),
+                      f: fn(output_source) {
+                        Accepted {
+                          value: list_append(
+                            left: list_append(left: inputs_source, right: arrow_source),
+                            right: output_source
+                          ),
+                          diagnostics: None
+                        }
                       }
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
