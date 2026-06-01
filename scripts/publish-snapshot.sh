@@ -128,7 +128,6 @@ STRIP_PATHS=(
   "RELEASE_TODO.md"
   "scripts/session-dashboard"
   "scripts/_internal"
-  "tools/gen_gunbc_ci_workflow_dag"
 
   # Editor/agent metadata.
   ".cursor"
@@ -179,7 +178,6 @@ snapshot_patch_workspace_cargo() {
   fi
   awk '
     /"src\/v3\// { next }
-    /gen_gunbc_ci_workflow_dag/ { next }
     { print }
   ' "$cargo_toml" > "${cargo_toml}.snapshot" \
     && mv "${cargo_toml}.snapshot" "$cargo_toml"
