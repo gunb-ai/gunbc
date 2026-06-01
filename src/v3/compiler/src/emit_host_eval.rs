@@ -7,8 +7,10 @@
 //!
 //! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** `EXPECTED_HAND_AUTHORED_NON_TEST`
 //! row in `sg0_census_test.rs` paired with `v4_emit_host_eval_dispatch_test.rs`. Explicit
-//! deferral: ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus substrate row
-//! `src/v4/compiler/emit_host.dag` (T-22 rust eval intercept). Dissolution: substrate Callable
+//! deferral: lane T-PB-B / `pb_rust_tests_outside_residual_zero` (checkable:
+//! `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag` TestClaim name;
+//! ROADMAP.md L47 → `_internal/ROADMAP_OPS.md` when present) plus `emit_host.dag` T-22 rust
+//! intercept. Dissolution: substrate Callable
 //! dispatch owns `run_emit_host_rust` without this intercept; retires with `emit_host_bridge.rs`.
 
 use crate::dag::{ArrowBody, Dag, DeclarationId, LiteralBits, TypeConnective};
@@ -43,7 +45,7 @@ pub fn try_dispatch_emit_host_rust(
         Ok(source) => source,
         Err(err) => return Some(Err(err)),
     };
-    let inputs = match emit_host_fixture_inputs(dag, &operands[2]) {
+    let inputs = match emit_host_fixture_inputs(dag, &operands[2], state, strategy) {
         Ok(inputs) => inputs,
         Err(err) => return Some(Err(err)),
     };
@@ -137,11 +139,15 @@ fn expect_string_operand(value: &Value) -> Result<&str, EvalError> {
 fn emit_host_fixture_inputs(
     dag: &Dag,
     value: &Value,
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
 ) -> Result<emit_host_runner::EmitHostFixtureInputs, EvalError> {
     let claim_root = inputs_root_field(value)?;
-    let claim_pin = host_pin_from_inputs_root(dag, claim_root)?;
+    let claim_pin_source =
+        inputs_optional_present_node_field(value, "host_claim_pin").unwrap_or(claim_root);
+    let claim_pin = host_pin_from_inputs_root(dag, claim_pin_source, state, strategy)?;
     let expected_root = inputs_expected_eval_root_field(value)?;
-    let expected_pin = host_pin_from_inputs_root(dag, expected_root)?;
+    let expected_pin = host_pin_from_inputs_root(dag, expected_root, state, strategy)?;
     Ok(emit_host_runner::EmitHostFixtureInputs {
         claim_input_root: claim_pin,
         expected_eval_root: expected_pin,
@@ -159,6 +165,11 @@ fn inputs_expected_eval_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, E
         "expected Inputs.expected_eval_root field",
     )?;
     optional_present_payload(optional)
+}
+
+fn inputs_optional_present_node_field<'a>(inputs: &'a Value, label: &str) -> Option<&'a Value> {
+    let optional = inputs_record_field(inputs, label, "expected Inputs optional field").ok()?;
+    optional_present_payload(optional).ok()
 }
 
 fn inputs_record_field<'a>(
@@ -200,20 +211,64 @@ fn optional_present_payload<'a>(value: &'a Value) -> Result<&'a Value, EvalError
     }
 }
 
-/// Project `Inputs.root: Node` (eval carrier) to a non-empty runner pin string.
-fn host_pin_from_inputs_root(dag: &Dag, root: &Value) -> Result<String, EvalError> {
+/// Project substrate `Node` to a non-empty runner pin (Symbol carrier, Atom identity, or `content_hash`).
+fn host_pin_from_inputs_root(
+    dag: &Dag,
+    root: &Value,
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Result<String, EvalError> {
     let pin = match root {
         Value::LiteralValue(LiteralBits::String(s)) => s.clone(),
-        node => node_primary_symbol(dag, node).ok_or(EvalError::BadTransformOperands {
-            reason: "Inputs pin Node must project Atom identity for host runner",
-        })?,
+        node => match node_primary_symbol(dag, node) {
+            Some(sym) => sym,
+            None => content_hash_runner_pin(dag, node, state, strategy)?,
+        },
     };
     if pin.is_empty() {
         return Err(EvalError::BadTransformOperands {
-            reason: "Inputs.root projected to empty host pin",
+            reason: "Inputs pin Node projected to empty host runner pin",
         });
     }
     Ok(pin)
+}
+
+fn content_hash_runner_pin(
+    dag: &Dag,
+    node: &Value,
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Result<String, EvalError> {
+    let hash_value = eval_substrate_fn1(dag, "content_hash", node.clone(), state, strategy)?;
+    hash_value_to_runner_pin(dag, &hash_value)
+}
+
+fn eval_substrate_fn1(
+    dag: &Dag,
+    name: &str,
+    arg: Value,
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Result<Value, EvalError> {
+    let decl = dag
+        .declaration_by_name(name)
+        .ok_or(EvalError::BadTransformOperands {
+            reason: "substrate fn declaration not found in eval dag",
+        })?;
+    crate::evaluator::eval_callable_declaration(dag, decl.id, vec![arg], state, strategy)
+}
+
+fn hash_value_to_runner_pin(dag: &Dag, hash: &Value) -> Result<String, EvalError> {
+    if let Some(sym) = node_primary_symbol(dag, hash) {
+        return Ok(sym);
+    }
+    match hash {
+        Value::LiteralValue(LiteralBits::String(s)) => Ok(s.clone()),
+        Value::LiteralValue(LiteralBits::Int(s)) => Ok(s.clone()),
+        _ => Err(EvalError::BadTransformOperands {
+            reason: "content_hash result not projectable to host runner pin",
+        }),
+    }
 }
 
 fn node_primary_symbol(dag: &Dag, value: &Value) -> Option<String> {
@@ -660,6 +715,7 @@ fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
 mod tests {
     use super::*;
     use crate::dag::{Dag, DeclarationId};
+    use crate::evaluator::{EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder};
     use emit_host_runner::HostSetupFailure;
 
     #[test]
@@ -685,7 +741,12 @@ mod tests {
                 },
             },
         ]);
-        let pins = emit_host_fixture_inputs(&dag, &inputs).expect("substrate-shaped Inputs");
+        let mut state = EvalStateStack::with_root_frame(EvalFrame::empty());
+        let strategy = EvalStrategy::ApplicativeOrder {
+            input_order: InputEvaluationOrder::LeftFirst,
+        };
+        let pins =
+            emit_host_fixture_inputs(&dag, &inputs, &mut state, &strategy).expect("Inputs pins");
         assert_eq!(pins.claim_input_root, "claim_pin");
         assert_eq!(pins.expected_eval_root, "expected_eval_pin");
     }
