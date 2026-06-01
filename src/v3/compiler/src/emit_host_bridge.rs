@@ -227,16 +227,16 @@ pub fn run_cross_target_mvp2_python_parity_transport(
             };
         }
     };
-    let python_receipt = match run_emit_host_python_transport(python_source, inputs, python_work_dir)
-    {
-        Ok(receipt) => receipt,
-        Err(setup) => {
-            return EmitHostCrossTargetParityVerdict::FailSetup {
-                target: "python",
-                setup,
-            };
-        }
-    };
+    let python_receipt =
+        match run_emit_host_python_transport(python_source, inputs, python_work_dir) {
+            Ok(receipt) => receipt,
+            Err(setup) => {
+                return EmitHostCrossTargetParityVerdict::FailSetup {
+                    target: "python",
+                    setup,
+                };
+            }
+        };
     let go_receipt = match run_emit_host_go_transport(go_source, inputs, go_work_dir) {
         Ok(receipt) => receipt,
         Err(setup) => {
