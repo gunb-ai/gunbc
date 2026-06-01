@@ -1475,9 +1475,9 @@ fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowW
   let positional = node_positional_child_targets(node: node)
   if is_empty(xs: positional) {
     match find_named_child(root: node, name: target_type_expr_field_codomain) {
-      Present { value: _ } =>
-        outcome_accepted(TargetTypeExprArrowLabeledWire)
-      Absent =>
+      Accepted { value: _, diagnostics: d } =>
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d }
+      Rejected { diagnostics: _ } =>
         outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
     }
   } else {
@@ -2152,8 +2152,9 @@ fn target_type_expr_arrow_emitted_named(
 
 fn target_type_expr_arrow_labeled_codomain(node: Node) -> Outcome<Node> {
   match find_named_child(root: node, name: target_type_expr_field_codomain) {
-    Present { value: child } => Accepted { value: child, diagnostics: None }
-    Absent =>
+    Accepted { value: child, diagnostics: d } =>
+      Accepted { value: child, diagnostics: d }
+    Rejected { diagnostics: _ } =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
   }
 }
