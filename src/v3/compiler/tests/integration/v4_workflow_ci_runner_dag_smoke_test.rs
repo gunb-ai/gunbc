@@ -1545,6 +1545,12 @@ fn v4_workflow_ci_wave3_fixture_receipt_documents_live_ci_deferral() {
             && CI_DAG.contains("adhoc-331899f9-19a"),
         "{CI_DAG_PATH}: must model fixture receipt and live-CI deferral"
     );
+    assert!(
+        CI_DAG.contains("type CiWave3LiveShadowReceiptBlocker")
+            && CI_DAG.contains("data ci_wave3_live_shadow_receipt_phase2_blocker")
+            && CI_DAG.contains("compiler_spine_bootstrap_evaluator_harness_entry"),
+        "{CI_DAG_PATH}: Phase 2 live shadow receipt must document the concrete harness blocker while adhoc-331899f9-19a is open"
+    );
 }
 
 #[test]

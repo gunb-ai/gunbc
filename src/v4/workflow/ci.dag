@@ -3530,6 +3530,20 @@ fn ci_wave3_shadow_testclaims_selected_from_rerun(rerun: RerunNodeSet) -> List<T
 // shim that does not consult the live `Dag` (would falsely claim live PR selection).
 data ci_wave3_shadow_selection_receipt_reason: Symbol = ci_wave3_shadow_selection_receipt_reason
 
+type CiWave3LiveShadowReceiptBlocker {
+  blocked_node: Symbol
+  missing_authority: Symbol
+}
+
+data ci_wave3_live_shadow_receipt_blocked_node: Symbol = adhoc_331899f9_19a
+
+data ci_wave3_live_shadow_receipt_missing_authority: Symbol = compiler_spine_bootstrap_evaluator_harness_entry
+
+data ci_wave3_live_shadow_receipt_phase2_blocker: CiWave3LiveShadowReceiptBlocker = CiWave3LiveShadowReceiptBlocker {
+  blocked_node: ci_wave3_live_shadow_receipt_blocked_node,
+  missing_authority: ci_wave3_live_shadow_receipt_missing_authority
+}
+
 // Fixture receipts (authoring-time witnesses) — fail-closed selects the FULL Wave-3 roster.
 data ci_wave3_shadow_fail_closed_reason: Symbol = ci_wave3_shadow_fail_closed_reason
 
