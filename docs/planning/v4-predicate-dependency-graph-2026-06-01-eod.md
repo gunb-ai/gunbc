@@ -179,12 +179,12 @@ Captures everything PM is waiting on operator to confirm/decide. Updated as item
 
 After fresh M1 probe lands (#2 in §8.5), the protocol is:
 1. Probe identifies residual classes + counts
-2. **Acting Modeling DFS** (per routing decision #4 in §8.5) reviews classes for new single-authority-fact emergence
+2. **Dedicated Modeling DFS Arbiter `proud-fox-405`** (per routing decision #4 in §8.5) reviews classes for new single-authority-fact emergence
 3. If existing worksheets cover the residual → spawn impl workers per existing pattern (the 8 closures today were per this pattern)
-4. If new classes emerged → §10.0 worksheet authoring under acting Modeling DFS → impl after §8 sign-off
+4. If new classes emerged → §10.0 worksheet authoring under `proud-fox-405` → impl after §8 sign-off
 5. Repeat: each merged closure → fresh probe → re-evaluate
 
-**Manager**: keen-heron-687 is de facto current owner of all reparented Modeling DFS workers (sleek-bat / sunny-cat / etc post-proud-pike archival). Routing decision #4 will formalize.
+**Historical note**: keen-heron-687 temporarily acted as de facto owner of reparented Modeling DFS workers (sleek-bat / sunny-cat / etc.) after proud-pike archival. Routing decision #4 superseded that interim protocol with dedicated Modeling DFS Arbiter `proud-fox-405`.
 
 **Mechanical rule** (unchanged from `INVARIANTS.md` + proud-pike's role): **NO worker dispatched on SG-class work until §10.0 worksheet identifies the single-authority fact to add or consume.** This is what prevented "fix 6991 errors" spot-fix dispatches today.
 
