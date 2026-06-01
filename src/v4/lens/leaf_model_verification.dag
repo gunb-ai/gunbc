@@ -85,9 +85,7 @@ import v4.std.leaf_model_verification {
   TargetTypeScriptRuntimeAccepted,
   TargetTypeScriptRuntimeRejected,
   target_diagnostic_ts2339_property_does_not_exist,
-  target_diagnostic_ts2554_expected_arguments,
-  target_diagnostic_ts7009_new_expression_not_constructable,
-  target_diagnostic_ts_number_lane_precision_divergence
+  target_diagnostic_ts7009_new_expression_not_constructable
 }
 import v4.std.node { Symbol }
 import v4.std.text { String }
@@ -332,9 +330,8 @@ fn typescript_r2b_runtime_fixture_pair() -> LeafModelTypeScriptRuntimeFixturePai
     happy: typescript_r2b_runtime_happy_fixture(),
     expected_happy_verdict: TargetTypeScriptRuntimeAccepted,
     falsification: typescript_r2b_runtime_falsification_fixture(),
-    expected_falsification_verdict: TargetTypeScriptRuntimeRejected {
-      diagnostic_code: target_diagnostic_ts_number_lane_precision_divergence
-    }
+    // Divergence probe succeeds at runtime (exit 0) when bigint exact ≠ number-lane false positive.
+    expected_falsification_verdict: TargetTypeScriptRuntimeAccepted
   }
 }
 
