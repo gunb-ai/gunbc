@@ -1084,6 +1084,49 @@ fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) ->
   EmitResult { files: all_files, diagnostics: all_diags }
 }
 
+// Emit a single target from an already-computed front-end result.
+// The front-end (parse/resolve/normalize/reconcile/complexity/ownership) is
+// target-agnostic, so `compile_sources(s, t)` is exactly
+// `emit_resolved(compile_to_resolved(s), t)`. Factoring the target-dependent
+// tail (default_artifact_plan + emit_from_artifact_plan) into this pure
+// function lets a caller run the front-end ONCE and emit multiple targets
+// (e.g. rust + dag) from the same typed graph — collapsing the redundant
+// front-end pass shared by the M1 emit-probe and the bootstrap step.
+fn emit_resolved(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
+  match resolved.graph {
+    None =>
+      // A front-end gate failed (parse/resolve/normalize/type/ownership error)
+      // or there were no modules; pass the gate diagnostics through unchanged.
+      PipelineResult {
+        files: [],
+        diagnostics: resolved.diagnostics,
+        complexity: resolved.complexity,
+        ownership: resolved.ownership,
+        artifact_plan: empty_artifact_plan(),
+        newline_indices: resolved.newline_indices
+      }
+    Some { value: typed } => {
+      let artifact_plan = default_artifact_plan(
+        root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
+        target: target
+      )
+      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
+      let emit_files = emit_result.files
+      let emit_diags = emit_result.diagnostics
+      let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
+      PipelineResult {
+        files: final_files,
+        diagnostics: concat(resolved.diagnostics, emit_diags),
+        complexity: resolved.complexity,
+        ownership: resolved.ownership,
+        artifact_plan: artifact_plan,
+        newline_indices: resolved.newline_indices
+      }
+    }
+  }
+}
+
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
   fold(parse_results, init: [], f: (acc, pr) =>
     match pr.error {
