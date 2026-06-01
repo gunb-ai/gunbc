@@ -302,8 +302,8 @@ fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/gen_applied_sig.rs");
     assert!(
-        content.contains("use_fold<S>(fold: Rc<NodeFold<S>>)"),
-        "generic fn params must preserve applied type args with shared_types Rc; got:\n{content}"
+        content.contains("fn use_fold<S>(fold: Rc<NodeFold<S>>) -> Rc<NodeFold<S>>"),
+        "generic fn params and return must preserve applied type args with shared_types Rc; got:\n{content}"
     );
 }
 
