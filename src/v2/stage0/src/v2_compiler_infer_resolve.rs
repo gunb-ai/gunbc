@@ -751,11 +751,12 @@ pub fn resolve_node_bounded(
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     });
+                    let applied_prop_span = kernel_span("__applied_type_args".to_string());
                     let applied_type_args_property = make_field_init_node(
                         "__applied_type_args".to_string(),
                         applied_type_args,
                         n.span.clone(),
-                        n.span.clone(),
+                        applied_prop_span,
                     );
                     let slot_bindings = Rc::new(
                         decl.params

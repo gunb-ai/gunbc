@@ -305,7 +305,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
     let applied_type_args = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: none, return_cardinality: n.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    let applied_type_args_property = make_field_init_node(name: "__applied_type_args", value: applied_type_args, span: n.span, name_span: n.span)
+    let applied_prop_span = kernel_span(name: "__applied_type_args")
+    let applied_type_args_property = make_field_init_node(name: "__applied_type_args", value: applied_type_args, span: n.span, name_span: applied_prop_span)
     let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
       let idx = pair.first
       let slot_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
