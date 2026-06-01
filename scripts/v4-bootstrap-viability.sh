@@ -30,6 +30,16 @@ if [[ -n "$reuse_log" ]]; then
     echo "error: reused v4 bootstrap compile did not emit a clean compiled receipt" >&2
     exit 1
   fi
+  # Fail closed on the artifact itself, not just dir-exists + a clean log: a clean
+  # compiled receipt paired with an empty/stale $out would otherwise false-green the
+  # reuse path (INVARIANTS P2/P3). The single-closure rust+dag emit writes the DAG half
+  # as $out/dag-artifact.json (v2_compiler_compile.rs emit path); require it present and
+  # non-empty so reuse only trusts a materially-present upstream artifact.
+  dag_artifact="$out/dag-artifact.json"
+  if [[ ! -s "$dag_artifact" ]]; then
+    echo "error: reused v4 bootstrap DAG artifact missing or empty: $dag_artifact" >&2
+    exit 1
+  fi
   mkdir -p "$(dirname "$log")"
   cp "$reuse_log" "$log"
   echo "Bootstrap viability OK — reused upstream single-closure DAG emit."
