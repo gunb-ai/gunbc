@@ -110,8 +110,10 @@ m = re.search(r"type_checking_mode:\s*(PyrightMode\w+)", text)
 if not m:
     raise SystemExit("error: pyright.dag: missing pyright_profile_l1 type_checking_mode")
 variant = m.group(1)
+# Consume the typed pyright_type_checking_mode_spellings row keyed by the enum variant
+# (PyrightTypeCheckingMode value), not a string-proxy field.
 spell_m = re.search(
-    rf'variant_name:\s*"{re.escape(variant)}"\s*,\s*keyword:\s*"([^"]*)"', text
+    rf'mode:\s*{re.escape(variant)}\s*,\s*keyword:\s*"([^"]*)"', text
 )
 if not spell_m:
     raise SystemExit(f"error: pyright.dag: no pyright_type_checking_mode_spellings row for {variant}")
