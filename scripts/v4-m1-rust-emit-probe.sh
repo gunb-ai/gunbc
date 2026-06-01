@@ -30,22 +30,21 @@ if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_M1_RUST_EMIT_OUT:-}" ]]; then
 else
   out="${V4_M1_RUST_EMIT_OUT:-/tmp/v4-rust-emit}"
 fi
-# Prefer the host build governor (ctrl-build) for the emitted-tree cargo check: it sizes
+# The emitted-tree cargo check runs under the host build governor (ctrl-build): it sizes
 # CARGO_BUILD_JOBS to live MemAvailable, joins the host jobserver FIFO (race-free cross-runner
 # token sharing), and shares sccache — the memory-denominated allocation modeled in
-# dsl/std/compute_fabric.dag. The emitted tree lives on the runner filesystem; ctrl-build runs
-# locally by default, so the historical "avoid ctrl-build" bypass no longer applies. Falls back
-# to a static --jobs cap when ctrl-build is absent so the floor stays safe (set V4_M1_USE_CTRL_BUILD=0
-# to force the fallback).
+# dsl/std/compute_fabric.dag. NO FALLBACK: if ctrl-build is missing the probe fails closed so a
+# broken/unwired governor surfaces immediately rather than silently degrading to a static cap.
 if [[ -x /opt/cargo/bin/cargo ]]; then
   cargo_bin="/opt/cargo/bin/cargo"
 else
   cargo_bin="${CARGO_BIN:-cargo}"
 fi
-ctrl_build_bin=""
-if [[ "${V4_M1_USE_CTRL_BUILD:-1}" != "0" ]] && command -v ctrl-build >/dev/null 2>&1; then
-  ctrl_build_bin="$(command -v ctrl-build)"
+if ! command -v ctrl-build >/dev/null 2>&1; then
+  echo "error: ctrl-build not found — M1 emit-probe requires the host build governor (no fallback)" >&2
+  exit 1
 fi
+ctrl_build_bin="$(command -v ctrl-build)"
 compile_log="${V4_M1_RUST_EMIT_LOG:-${out}.compile.log}"
 rustc_log="${V4_M1_RUSTC_LOG:-${out}.rustc.log}"
 summary="${out}.m1-probe-summary.txt"
