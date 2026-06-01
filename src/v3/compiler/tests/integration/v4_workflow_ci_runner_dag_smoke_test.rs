@@ -991,8 +991,7 @@ fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
         "{CI_YML_PATH}: branch-protection `ci` aggregator must need Wave 1 `ci_floor` only"
     );
     assert!(
-        !CI_YML.contains("needs.discipline.result")
-            && !CI_YML.contains("  discipline:"),
+        !CI_YML.contains("needs.discipline.result") && !CI_YML.contains("  discipline:"),
         "{CI_YML_PATH}: discipline job deleted per §11.7.3"
     );
     assert!(
@@ -1215,7 +1214,10 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         CI_YML.contains("docs/planning/ci-required-surface-cut-2026-06-01.md"),
         "{CI_YML_PATH}: must reference Wave 1 honesty ledger"
     );
-    assert!(CI_YML.contains("  ci_floor:"), "{CI_YML_PATH}: must define `ci_floor` job");
+    assert!(
+        CI_YML.contains("  ci_floor:"),
+        "{CI_YML_PATH}: must define `ci_floor` job"
+    );
     assert!(
         !CI_YML.contains("  ci_integration:") && !CI_YML.contains("  ci_v4:"),
         "{CI_YML_PATH}: legacy parallel lanes dissolved"
