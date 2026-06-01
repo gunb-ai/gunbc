@@ -284,6 +284,29 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
 }
 
 #[test]
+fn generic_fn_sig_preserves_applied_type_args() {
+    let source = "\
+module gen_applied_sig
+
+type Pair<S, A> {
+  first: S
+  second: A
+}
+
+fn project_first<S, A>(p: Pair<S, A>) -> S {
+  p.first
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/gen_applied_sig.rs");
+    assert!(
+        content.contains("fn project_first<S, A>(p: Rc<Pair<S, A>>) ->"),
+        "generic fn params/returns must preserve applied type args; got:\n{content}"
+    );
+}
+
+#[test]
 fn generic_param_type_does_not_special_case_nodefold() {
     let source = "\
 module gen_param_no_fabrication
