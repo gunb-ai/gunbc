@@ -9,6 +9,7 @@
 module v4.std.leaf_model_verification
 
 import v4.std.collection { List }
+import v4.std.host_run { ValueDiff }
 import v4.std.nat { Nat }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
@@ -155,6 +156,29 @@ data leaf_model_claim_rust_r3_internal_symbol_coupling: LeafModelClaimId = leaf_
 data leaf_model_claim_ts_r2a_number_algebra_operations: LeafModelClaimId = leaf_model_claim_ts_r2a_number_algebra_operations
 data leaf_model_claim_ts_r2b_bigint_beyond_safe_integer: LeafModelClaimId = leaf_model_claim_ts_r2b_bigint_beyond_safe_integer
 data leaf_model_claim_ts_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_ts_r3_external_symbol_projection
+data leaf_model_claim_python_cross_runtime_drift_arbitrary_precision: LeafModelClaimId = leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
+
+// --- PY-L2-CROSS-RUNTIME-DRIFT: positive cross-runtime divergence receipt ---
+// Complement of the L2 cross-target PARITY lane (PR #4154,
+// `run_cross_target_mvp2_python_parity_transport`), which proves runtime-value EQUALITY on the
+// common domain (R2a add/order, R3 symbol projection). This carrier proves the COMPLEMENT
+// obligation named in the Python RCA worksheet (Worksheet C): the SAME modeled program — exact
+// integer add at the fixed-width boundary — DIVERGES across runtimes. Python realizes Int as
+// arbitrary precision (the correct sum); Rust `i64` / Go `int64` realize it as fixed-width
+// two's-complement with defined wraparound. That divergence is a MODELED fact, not a bug: the
+// receipt asserts it POSITIVELY, so the verification system demonstrably DETECTS drift instead of
+// silently treating fixed-width wraparound as parity. The expected divergence is anchored to
+// `ValueDiff<String>` (the host_run divergence carrier) — `expected` is the arbitrary-precision
+// value, `actual` is the fixed-width wrapped value — so the receipt references a modeled value
+// pair, never a script-local literal. Go is a corroborating fixed-width witness (rust == go);
+// the runner asserts it only when the Go toolchain is present.
+type LeafModelCrossRuntimeDriftProbe {
+  claim_id: LeafModelClaimId
+  arbitrary_precision_source: String
+  fixed_width_rust_source: String
+  fixed_width_go_source: String
+  expected_divergence: ValueDiff<String>
+}
 
 type LeafModelRustCrateType = Symbol
 
