@@ -1388,7 +1388,7 @@ pub mod evaluator {
             Ok(source) => source,
             Err(err) => return Some(Err(err)),
         };
-        let input_pin = emit_host_input_pin(&operands[2]);
+        let input_pin = emit_host_input_pin(dag, &operands[2]);
         let inputs = emit_host_runner::EmitHostFixtureInputs {
             claim_input_root: input_pin.clone(),
             expected_eval_root: input_pin,
@@ -1422,14 +1422,43 @@ pub mod evaluator {
         }
     }
 
-    fn emit_host_input_pin(value: &Value) -> String {
+    fn emit_host_input_pin(dag: &Dag, value: &Value) -> String {
         match value {
             Value::RecordValue(fields) => fields
                 .iter()
                 .find(|field| field.label == "root")
-                .map(|field| format!("{:?}", field.value))
-                .unwrap_or_else(|| format!("{value:?}")),
-            _ => format!("{value:?}"),
+                .map(|field| value_pin(dag, &field.value))
+                .unwrap_or_else(|| value_pin(dag, value)),
+            _ => value_pin(dag, value),
+        }
+    }
+
+    fn value_pin(dag: &Dag, value: &Value) -> String {
+        match value {
+            Value::LiteralValue(LiteralBits::Int(i)) => format!("int:{i}"),
+            Value::LiteralValue(LiteralBits::Bool(b)) => format!("bool:{b}"),
+            Value::LiteralValue(LiteralBits::String(s)) => format!("string:{}:{s}", s.len()),
+            Value::RecordValue(fields) => {
+                let mut out = format!("record:{}", fields.len());
+                for field in fields {
+                    out.push('|');
+                    out.push_str(&field.label);
+                    out.push('=');
+                    out.push_str(&value_pin(dag, &field.value));
+                }
+                out
+            }
+            Value::VariantValue { tag, payload } => {
+                let decl = dag.declaration(*tag);
+                format!(
+                    "variant:{}:{}:{}",
+                    decl.span.file,
+                    decl.name.as_deref().unwrap_or("<anonymous>"),
+                    value_pin(dag, payload)
+                )
+            }
+            Value::NodeRef(node) => format!("node:{}", node.raw()),
+            Value::CardinalityValue(bound) => format!("cardinality:{bound:?}"),
         }
     }
 
@@ -1657,16 +1686,63 @@ pub mod evaluator {
 
     fn emit_host_setup_failure_diagnostic(
         dag: &Dag,
-        _failure: &emit_host_runner::HostSetupFailure,
+        failure: &emit_host_runner::HostSetupFailure,
     ) -> Result<Value, EvalError> {
-        emit_host_diagnostic(dag, "emit_host_transport_not_wired")
+        emit_host_diagnostic(dag, emit_host_setup_failure_reason(failure))
     }
 
     fn emit_host_exit_failure_diagnostic(
         dag: &Dag,
-        _failure: &emit_host_runner::HostLogicalFailure,
+        failure: &emit_host_runner::HostLogicalFailure,
     ) -> Result<Value, EvalError> {
-        emit_host_diagnostic(dag, "emit_host_exit_not_ok")
+        emit_host_diagnostic(dag, emit_host_exit_failure_reason(failure))
+    }
+
+    fn emit_host_setup_failure_reason(
+        failure: &emit_host_runner::HostSetupFailure,
+    ) -> &'static str {
+        match failure {
+            emit_host_runner::HostSetupFailure::SpawnFailed { .. } => {
+                "emit_host_transport_spawn_failed"
+            }
+            emit_host_runner::HostSetupFailure::StdoutPipeMissing { .. } => {
+                "emit_host_transport_stdout_pipe_missing"
+            }
+            emit_host_runner::HostSetupFailure::StderrPipeMissing { .. } => {
+                "emit_host_transport_stderr_pipe_missing"
+            }
+            emit_host_runner::HostSetupFailure::TryWaitFailed { .. } => {
+                "emit_host_transport_try_wait_failed"
+            }
+            emit_host_runner::HostSetupFailure::StreamReadFailed { .. } => {
+                "emit_host_transport_stream_read_failed"
+            }
+            emit_host_runner::HostSetupFailure::WorkDirCreateFailed { .. } => {
+                "emit_host_transport_work_dir_create_failed"
+            }
+            emit_host_runner::HostSetupFailure::ManifestWriteFailed { .. } => {
+                "emit_host_transport_manifest_write_failed"
+            }
+            emit_host_runner::HostSetupFailure::SourceWriteFailed { .. } => {
+                "emit_host_transport_source_write_failed"
+            }
+            emit_host_runner::HostSetupFailure::EmptyClaimInputRoot => {
+                "emit_host_transport_empty_claim_input_root"
+            }
+            emit_host_runner::HostSetupFailure::EmptyExpectedEvalRoot => {
+                "emit_host_transport_empty_expected_eval_root"
+            }
+        }
+    }
+
+    fn emit_host_exit_failure_reason(
+        failure: &emit_host_runner::HostLogicalFailure,
+    ) -> &'static str {
+        match failure {
+            emit_host_runner::HostLogicalFailure::TimedOut { .. } => "emit_host_exit_timed_out",
+            emit_host_runner::HostLogicalFailure::NoExitStatus { .. } => "emit_host_exit_no_status",
+            emit_host_runner::HostLogicalFailure::ExitedNonzero { .. } => "emit_host_exit_nonzero",
+        }
     }
 
     /// T-22 eval host transport bridge for `run_emit_host_go`.
