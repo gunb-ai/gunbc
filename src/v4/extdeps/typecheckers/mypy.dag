@@ -15,8 +15,8 @@ import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.text { String }
 
-// Stable tool identity referenced by TargetStaticAnalysisInvocation.tool_profile_ref
-// and StaticAnalysisRejected/Advisory.tool_id.
+// Stable tool identity referenced by StaticAnalysisRejected/Advisory.tool_id.
+// TargetStaticAnalysisInvocation.tool_profile_ref uses mypy_profile_l1_id below.
 data mypy_tool_id: Symbol = mypy_tool_id
 
 // `strict` models mypy's `--strict` CLI flag verbatim — a single boolean toggle that

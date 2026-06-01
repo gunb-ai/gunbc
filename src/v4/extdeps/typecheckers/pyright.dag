@@ -14,8 +14,8 @@ import v4.std.collection { List }
 import v4.std.node { Symbol }
 import v4.std.text { String }
 
-// Stable tool identity referenced by TargetStaticAnalysisInvocation.tool_profile_ref
-// and StaticAnalysisRejected/Advisory.tool_id.
+// Stable tool identity referenced by StaticAnalysisRejected/Advisory.tool_id.
+// TargetStaticAnalysisInvocation.tool_profile_ref uses pyright_profile_l1_id below.
 data pyright_tool_id: Symbol = pyright_tool_id
 
 // pyright `typeCheckingMode` — a closed set (M4: enum, not string proxy).
