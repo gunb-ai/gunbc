@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): b7ad5d44b641db79bb51708d0e80c1909f55d6fa84cffdd4c695778e1308c0f8
+// Source-SHA256(.github/workflows/ci.yml): 8189650b1160b7d219bce8ad9499a4f3862ce77a422f3c292587251e97f6379f
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -237,7 +237,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "Cache Cargo (ci floor)" },
           id: none,
           uses: { owner: "actions", repo: "cache", ref: "v4" },
-          with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-ci-${{ runner.os }}-${{ runner.arch }}-\n" },
+          with: { "path": "${{ runner.temp }}/cargo/registry/index/\n${{ runner.temp }}/cargo/registry/cache/\n${{ runner.temp }}/cargo/git/db/\ntarget/\n", "key": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ runner.arch }}-\n" },
           env: none,
           if_condition: none,
           continue_on_error: false,
