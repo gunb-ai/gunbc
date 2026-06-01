@@ -130,67 +130,93 @@ pub fn render_rust_type(
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
-        _ => {
-            if (((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) > 0))
-                && !is_container_type(authored_name_at(source_indices.clone(), n.clone())))
-            {
-                render_rust_applied_type(n.clone(), shared_types, source_indices.clone())
-            } else {
-                if node_is_set_collection(n.clone(), source_indices.clone()) {
-                    match n.children.clone().first().cloned() {
-                        Some(elem_child) => {
-                            let elem_node = child_type_node(elem_child.clone());
-                            let elem_is_type_var = if (elem_node.inferred.clone() != None) {
-                                is_type_variable(elem_node.inferred.clone().clone().unwrap())
-                            } else {
-                                false
-                            };
-                            if elem_is_type_var {
-                                emit_rust_compile_error_expr(
-                                    "Set element type unresolved".to_string(),
-                                )
-                            } else {
-                                if !rust_btree_set_element_ord_eligible(
-                                    elem_node.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    {
-                                        let elem_name = authored_name_at(
-                                            source_indices.clone(),
-                                            elem_node.clone(),
-                                        );
-                                        emit_rust_compile_error_expr(v2_rt::concat(
-                                            v2_rt::concat(
-                                                "Set element type ".to_string(),
-                                                elem_name,
-                                            ),
-                                            " is not Ord-eligible for BTreeSet".to_string(),
-                                        ))
-                                    }
-                                } else {
-                                    render_node_type(
-                                        n.clone(),
-                                        RenderTarget::Rust,
-                                        shared_types,
-                                        source_indices.clone(),
-                                    )
-                                }
-                            }
-                        }
-                        None => {
-                            emit_rust_compile_error_expr("Set missing element type".to_string())
-                        }
-                    }
+        _ => match find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => {
+                if ((applied.children.clone().len() as i64) > 0) {
+                    render_rust_applied_type(
+                        applied.clone(),
+                        Rc::new(vec![]),
+                        shared_types,
+                        source_indices.clone(),
+                    )
                 } else {
-                    render_node_type(
+                    render_rust_type_without_applied_binding(
                         n.clone(),
-                        RenderTarget::Rust,
                         shared_types,
                         source_indices.clone(),
                     )
                 }
             }
+            None => {
+                render_rust_type_without_applied_binding(n.clone(), shared_types, source_indices)
+            }
+        },
+    }
+}
+
+pub fn render_rust_type_without_applied_binding(
+    n: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if (((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) > 0))
+        && !is_container_type(authored_name_at(source_indices.clone(), n.clone())))
+    {
+        render_rust_applied_type(
+            n.clone(),
+            Rc::new(vec![]),
+            shared_types,
+            source_indices.clone(),
+        )
+    } else {
+        if node_is_set_collection(n.clone(), source_indices.clone()) {
+            match n.children.clone().first().cloned() {
+                Some(elem_child) => {
+                    let elem_node = child_type_node(elem_child.clone());
+                    let elem_is_type_var = if (elem_node.inferred.clone() != None) {
+                        is_type_variable(elem_node.inferred.clone().clone().unwrap())
+                    } else {
+                        false
+                    };
+                    if elem_is_type_var {
+                        emit_rust_compile_error_expr("Set element type unresolved".to_string())
+                    } else {
+                        if !rust_btree_set_element_ord_eligible(
+                            elem_node.clone(),
+                            source_indices.clone(),
+                        ) {
+                            {
+                                let elem_name =
+                                    authored_name_at(source_indices.clone(), elem_node.clone());
+                                emit_rust_compile_error_expr(v2_rt::concat(
+                                    v2_rt::concat("Set element type ".to_string(), elem_name),
+                                    " is not Ord-eligible for BTreeSet".to_string(),
+                                ))
+                            }
+                        } else {
+                            render_node_type(
+                                n.clone(),
+                                RenderTarget::Rust,
+                                shared_types,
+                                source_indices.clone(),
+                            )
+                        }
+                    }
+                }
+                None => emit_rust_compile_error_expr("Set missing element type".to_string()),
+            }
+        } else {
+            render_node_type(
+                n.clone(),
+                RenderTarget::Rust,
+                shared_types,
+                source_indices.clone(),
+            )
         }
     }
 }
@@ -206,11 +232,13 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
+<<<<<<< HEAD
         _ => {
             if ((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) == 0))
@@ -223,11 +251,15 @@ pub fn render_rust_applied_type_arg(
                 render_rust_type(n.clone(), shared_types, source_indices)
             }
         }
+=======
+        _ => render_rust_decl_type(n.clone(), generic_param_names, shared_types, source_indices),
+>>>>>>> origin/main
     }
 }
 
 pub fn render_rust_applied_type(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -236,7 +268,7 @@ pub fn render_rust_applied_type(
             RenderTarget::Rust,
             authored_name_at(source_indices.clone(), n.clone()),
         );
-        if ((n.children.clone().len() as i64) == 0) {
+        let applied = if ((n.children.clone().len() as i64) == 0) {
             base
         } else {
             {
@@ -245,6 +277,7 @@ pub fn render_rust_applied_type(
                     for arg in n.children.clone().iter().cloned() {
                         __result.push(render_rust_applied_type_arg(
                             arg.clone(),
+                            generic_param_names.clone(),
                             shared_types.clone(),
                             source_indices.clone(),
                         ));
@@ -257,6 +290,37 @@ pub fn render_rust_applied_type(
                     ">".to_string(),
                 )
             }
+        };
+        if (v2_rt::set_contains(
+            &shared_types,
+            authored_name_at(source_indices.clone(), n.clone()),
+        ) && !rust_type_is_rc_wrapped(applied.clone()))
+        {
+            wrap_shared_type(RenderTarget::Rust, applied)
+        } else {
+            applied
+        }
+    }
+}
+
+pub fn render_rust_applied_type_shared(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let rendered = render_rust_applied_type(
+            n.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        );
+        let type_name = authored_name_at(source_indices.clone(), n.clone());
+        if v2_rt::set_contains(&shared_types, type_name) {
+            v2_rt::concat(v2_rt::concat("Rc<".to_string(), rendered), ">".to_string())
+        } else {
+            rendered
         }
     }
 }
@@ -268,50 +332,152 @@ pub fn render_rust_decl_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = authored_name_at(source_indices.clone(), n.clone());
-        if (((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) == 0))
-            && {
-                let mut __found = false;
-                for g in generic_param_names.clone().iter().cloned() {
-                    if (g.clone().as_str() == name.clone().as_str()) {
-                        __found = true;
-                        break;
+        match find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => {
+                if ((applied.children.clone().len() as i64) > 0) {
+                    render_rust_applied_type_shared(
+                        applied.clone(),
+                        generic_param_names.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                    )
+                } else {
+                    {
+                        let name = authored_name_at(source_indices.clone(), n.clone());
+                        if (((n.connective.clone() == Connective::NoConnective)
+                            && ((n.children.clone().len() as i64) == 0))
+                            && {
+                                let mut __found = false;
+                                for g in generic_param_names.clone().iter().cloned() {
+                                    if (g.clone().as_str() == name.clone().as_str()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            })
+                        {
+                            name.clone()
+                        } else {
+                            if ((n.connective.clone() == Connective::NoConnective)
+                                && ((n.children.clone().len() as i64) > 0))
+                            {
+                                {
+                                    let base =
+                                        coerce_primitive_type(RenderTarget::Rust, name.clone());
+                                    let args = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for arg in n.children.clone().iter().cloned() {
+                                            __result.push(render_rust_decl_type(
+                                                arg.clone(),
+                                                generic_param_names.clone(),
+                                                shared_types.clone(),
+                                                source_indices.clone(),
+                                            ));
+                                        }
+                                        __result
+                                    })
+                                    .join(&", ".to_string());
+                                    let applied_ty = v2_rt::concat(
+                                        v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
+                                        ">".to_string(),
+                                    );
+                                    if v2_rt::set_contains(&shared_types, name.clone()) {
+                                        v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), applied_ty),
+                                            ">".to_string(),
+                                        )
+                                    } else {
+                                        applied_ty
+                                    }
+                                }
+                            } else {
+                                render_rust_type_with_applied_binding(
+                                    n.clone(),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                )
+                            }
+                        }
                     }
                 }
-                __found
-            })
-        {
-            name.clone()
-        } else {
-            if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) > 0))
-            {
-                {
-                    let base = coerce_primitive_type(RenderTarget::Rust, name.clone());
-                    let args = Rc::new({
-                        let mut __result = Vec::new();
-                        for arg in n.children.clone().iter().cloned() {
-                            __result.push(render_rust_decl_type(
-                                arg.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
-                                source_indices.clone(),
-                            ));
+            }
+            None => {
+                let name = authored_name_at(source_indices.clone(), n.clone());
+                if (((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) == 0))
+                    && {
+                        let mut __found = false;
+                        for g in generic_param_names.clone().iter().cloned() {
+                            if (g.clone().as_str() == name.clone().as_str()) {
+                                __found = true;
+                                break;
+                            }
                         }
-                        __result
+                        __found
                     })
-                    .join(&", ".to_string());
-                    v2_rt::concat(
-                        v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
-                        ">".to_string(),
-                    )
+                {
+                    name.clone()
+                } else {
+                    if ((n.connective.clone() == Connective::NoConnective)
+                        && ((n.children.clone().len() as i64) > 0))
+                    {
+                        {
+                            let base = coerce_primitive_type(RenderTarget::Rust, name.clone());
+                            let args = Rc::new({
+                                let mut __result = Vec::new();
+                                for arg in n.children.clone().iter().cloned() {
+                                    __result.push(render_rust_decl_type(
+                                        arg.clone(),
+                                        generic_param_names.clone(),
+                                        shared_types.clone(),
+                                        source_indices.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&", ".to_string());
+                            let applied_ty = v2_rt::concat(
+                                v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
+                                ">".to_string(),
+                            );
+                            if v2_rt::set_contains(&shared_types, name.clone()) {
+                                v2_rt::concat(
+                                    v2_rt::concat("Rc<".to_string(), applied_ty),
+                                    ">".to_string(),
+                                )
+                            } else {
+                                applied_ty
+                            }
+                        }
+                    } else {
+                        render_rust_type_with_applied_binding(
+                            n.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                        )
+                    }
                 }
-            } else {
-                render_rust_type(n.clone(), shared_types.clone(), source_indices.clone())
             }
         }
     })
+}
+
+pub fn render_rust_fn_sig_type(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((generic_param_names.len() as i64) > 0) {
+        render_rust_decl_type(n, generic_param_names, shared_types, source_indices)
+    } else {
+        render_rust_type_with_applied_binding(n, shared_types, source_indices)
+    }
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -449,23 +615,39 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
         && (n.connective.clone() == Connective::NoConnective))
 }
 
-pub fn rust_diff_id_ord_carrier_shape_eligible(
-    name: String,
-    children: Rc<Vec<Rc<Node>>>,
+pub fn rust_nominal_ord_resolved_shape(n: Rc<Node>) -> Rc<Node> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(Resolved { node: rt, .. }) => rt.clone(),
+        _ => n.clone(),
+    }
+}
+
+pub fn rust_nominal_ord_record_shape_eligible(
+    n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if ((name.as_str() != "DiffId".to_string().as_str()) || ((children.clone().len() as i64) != 1))
-    {
-        false
-    } else {
-        match children.clone().first().cloned() {
-            Some(child) => rust_nominal_identity_carrier_shape_eligible(
+    ((n.connective.clone() == Conj) && ((n.children.clone().len() as i64) == 1))
+        && match n.children.clone().first().cloned() {
+            Some(child) => rust_nominal_ord_type_eligible(
                 child_type_node(child.clone()),
-                source_indices,
+                source_indices.clone(),
             ),
             None => false,
         }
-    }
+}
+
+pub fn rust_nominal_ord_coproduct_shape_eligible(n: Rc<Node>) -> bool {
+    ((n.connective.clone() == Disj) && ((n.children.clone().len() as i64) > 0))
+        && n.children
+            .clone()
+            .iter()
+            .cloned()
+            .all(|v| ((v.children.clone().len() as i64) == 0))
+}
+
+pub fn rust_nominal_ord_reference_shape_eligible(n: Rc<Node>) -> bool {
+    (((n.connective.clone() == NoConnective) && ((n.children.clone().len() as i64) == 0))
+        && ((n.params.clone().len() as i64) == 0))
 }
 
 pub fn rust_nominal_ord_derives_for_shape(
@@ -473,7 +655,27 @@ pub fn rust_nominal_ord_derives_for_shape(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if rust_diff_id_ord_carrier_shape_eligible(name, children, source_indices) {
+    let shape = Rc::new(Node {
+        name,
+        span: make_span(0, 0),
+        ident_span: None,
+        children,
+        connective: Conj,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(NoExprData),
+        ident: None,
+    });
+    if rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()) {
         rust_ord_derives_text()
     } else {
         "".to_string()
@@ -484,12 +686,11 @@ pub fn rust_nominal_ord_type_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
-        || rust_diff_id_ord_carrier_shape_eligible(
-            authored_name_at(source_indices.clone(), elem_node.clone()),
-            elem_node.children.clone(),
-            source_indices.clone(),
-        ))
+    let shape = rust_nominal_ord_resolved_shape(elem_node.clone());
+    (((rust_nominal_identity_carrier_shape_eligible(shape.clone(), source_indices.clone())
+        || rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()))
+        || rust_nominal_ord_coproduct_shape_eligible(shape.clone()))
+        || rust_nominal_ord_reference_shape_eligible(shape.clone()))
 }
 
 pub fn rust_serde_tag_attr() -> String {
@@ -3476,6 +3677,7 @@ pub fn render_rust_type_with_applied_binding(
     ) {
         Some(applied) => {
             if ((applied.children.clone().len() as i64) > 0) {
+<<<<<<< HEAD
                 let rendered = render_rust_applied_type(
                     applied.clone(),
                     shared_types.clone(),
@@ -3495,6 +3697,14 @@ pub fn render_rust_type_with_applied_binding(
                 } else {
                     rendered
                 }
+=======
+                render_rust_applied_type_shared(
+                    applied.clone(),
+                    Rc::new(vec![]),
+                    shared_types,
+                    source_indices.clone(),
+                )
+>>>>>>> origin/main
             } else {
                 render_rust_type(n.clone(), shared_types, source_indices.clone())
             }
@@ -3824,8 +4034,9 @@ pub fn emit_rust_field_definition(
     }
 }
 
-pub fn enum_derives(children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
     {
+        let _ = name;
         let complex = Rc::new({
             let mut __result = Vec::new();
             for v in children.iter().cloned() {
@@ -3836,7 +4047,7 @@ pub fn enum_derives(children: Rc<Vec<Rc<Node>>>) -> String {
             __result
         });
         match ((complex.len() as i64) == 0) {
-            true => rust_enum_derives_copy_text(),
+            true => rust_ord_derives_copy_text(),
             false => rust_enum_derives_text(),
         }
     }
@@ -3854,7 +4065,7 @@ pub fn emit_enum_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let derives = enum_derives(children.clone());
+        let derives = enum_derives(name.clone(), children.clone());
         let variant_lines = Rc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
@@ -4714,13 +4925,26 @@ pub fn emit_fn_def(
             return v2_rt::concat(v2_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
         }
         let type_params_str = emit_type_params(type_params.clone(), si.clone());
+        let generic_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in type_params.clone().iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), si.clone()));
+            }
+            __result
+        });
         let params_str = emit_params(
             value_params.clone(),
+            generic_param_names.clone(),
             shared_types.clone(),
             si.clone(),
             emit_info.read_only_params.clone(),
         );
-        let ret_str = emit_inferred(inferred, shared_types.clone(), si.clone());
+        let ret_str = emit_inferred(
+            inferred,
+            generic_param_names.clone(),
+            shared_types.clone(),
+            si.clone(),
+        );
         let body_scope = build_params_scope(scope.clone(), value_params.clone());
         let depth = 0;
         let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone(), si.clone());
@@ -4729,8 +4953,12 @@ pub fn emit_fn_def(
                 && (use_tco.clone() == false));
         if use_tco.clone() {
             {
-                let tco_params_str =
-                    emit_tco_params(value_params.clone(), shared_types.clone(), si.clone());
+                let tco_params_str = emit_tco_params(
+                    value_params.clone(),
+                    generic_param_names.clone(),
+                    shared_types.clone(),
+                    si.clone(),
+                );
                 let body_str = emit_typed_tco_body(
                     body.clone(),
                     name.clone(),
@@ -5173,6 +5401,7 @@ pub fn emit_func_body(
 
 pub fn emit_tco_params(
     params: Rc<Vec<Rc<Node>>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -5182,6 +5411,7 @@ pub fn emit_tco_params(
             for p in params.iter().cloned() {
                 __result.push(emit_tco_param(
                     p.clone(),
+                    generic_param_names.clone(),
                     shared_types.clone(),
                     source_indices.clone(),
                 ));
@@ -5192,14 +5422,43 @@ pub fn emit_tco_params(
     }
 }
 
+pub fn render_rust_param_sig_type(
+    param: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let type_node = resolved_type(param.clone());
+    if ((generic_param_names.len() as i64) > 0) {
+        render_rust_decl_type(type_node, generic_param_names, shared_types, source_indices)
+    } else {
+        render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
+    }
+}
+
 pub fn emit_tco_param(
     param: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let n = param_node_type_expr(param.clone());
-        let ty = emit_rust_param_type(n, shared_types, source_indices.clone());
+        let authored = param_node_type_expr(param.clone());
+        let ty = if ((authored.params.clone().len() as i64) > 0) {
+            emit_rust_param_type(
+                authored,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        } else {
+            render_rust_param_sig_type(
+                param.clone(),
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        };
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -5230,6 +5489,7 @@ pub fn emit_func_params(
             for p in params.iter().cloned() {
                 __result.push(emit_param(
                     p.clone(),
+                    Rc::new(vec![]),
                     shared_types.clone(),
                     source_indices.clone(),
                     read_only_params.clone(),
@@ -5288,6 +5548,7 @@ pub fn emit_func_inferred(
 
 pub fn emit_params(
     params: Rc<Vec<Rc<Node>>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
@@ -5298,6 +5559,7 @@ pub fn emit_params(
             for p in params.iter().cloned() {
                 __result.push(emit_param(
                     p.clone(),
+                    generic_param_names.clone(),
                     shared_types.clone(),
                     source_indices.clone(),
                     read_only_params.clone(),
@@ -5311,6 +5573,7 @@ pub fn emit_params(
 
 pub fn emit_rust_param_type(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -5319,8 +5582,13 @@ pub fn emit_rust_param_type(
             let param_types = Rc::new({
                 let mut __result = Vec::new();
                 for p in n.params.clone().iter().cloned() {
+<<<<<<< HEAD
                     __result.push(render_rust_type_with_applied_binding(
+=======
+                    __result.push(render_rust_fn_sig_type(
+>>>>>>> origin/main
                         param_node_type_expr(p.clone()),
+                        generic_param_names.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
                     ));
@@ -5329,6 +5597,7 @@ pub fn emit_rust_param_type(
             });
             let param_str = param_types.join(&", ".to_string());
             let ret_str = match n.inferred.clone().as_deref().cloned() {
+<<<<<<< HEAD
                 Some(InferredNode::Resolved { node: rt, .. }) => {
                     render_rust_type_with_applied_binding(
                         rt.clone(),
@@ -5336,6 +5605,14 @@ pub fn emit_rust_param_type(
                         source_indices.clone(),
                     )
                 }
+=======
+                Some(InferredNode::Resolved { node: rt, .. }) => render_rust_fn_sig_type(
+                    rt.clone(),
+                    generic_param_names.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                ),
+>>>>>>> origin/main
                 _ => "()".to_string(),
             };
             v2_rt::concat(
@@ -5350,6 +5627,7 @@ pub fn emit_rust_param_type(
             )
         }
     } else {
+<<<<<<< HEAD
         {
             let rendered = render_rust_type_with_applied_binding(
                 n.clone(),
@@ -5358,18 +5636,41 @@ pub fn emit_rust_param_type(
             );
             rendered
         }
+=======
+        render_rust_fn_sig_type(
+            n.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        )
+>>>>>>> origin/main
     }
 }
 
 pub fn emit_param(
     param: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
 ) -> String {
     {
-        let n = param_node_type_expr(param.clone());
-        let ty = emit_rust_param_type(n, shared_types, source_indices.clone());
+        let authored = param_node_type_expr(param.clone());
+        let ty = if ((authored.params.clone().len() as i64) > 0) {
+            emit_rust_param_type(
+                authored,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        } else {
+            render_rust_param_sig_type(
+                param.clone(),
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        };
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         v2_rt::concat(
             v2_rt::concat(
@@ -5383,12 +5684,17 @@ pub fn emit_param(
 
 pub fn emit_inferred(
     inferred: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         rust_items().return_arrow.clone(),
+<<<<<<< HEAD
         render_rust_type_with_applied_binding(inferred, shared_types, source_indices),
+=======
+        render_rust_fn_sig_type(inferred, generic_param_names, shared_types, source_indices),
+>>>>>>> origin/main
     )
 }
 
@@ -8759,6 +9065,7 @@ pub fn emit_typed_call(
             let mut __result = Vec::new();
             for pair in Rc::new(
                 filled_args
+                    .clone()
                     .iter()
                     .cloned()
                     .enumerate()
@@ -8853,13 +9160,33 @@ pub fn emit_typed_call(
         let all_args = v2_rt::concat(arg_strs, extra_args);
         let args_str = all_args.clone().join(&", ".to_string());
         let runtime_name = rust_runtime_bridge_name(func.clone());
-        let func_name = if is_rt.clone() {
+        let si = scope.type_env.clone().source_indices.clone();
+        let callee_self_capture = if is_rt.clone() {
+            false
+        } else {
+            {
+                let mut __found = false;
+                for a in filled_args.clone().iter().cloned() {
+                    if expr_references_var(arg_value(a.clone()), func.clone(), si.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        };
+        let func_ident = if is_rt.clone() {
             v2_rt::concat(
                 "v2_rt::".to_string(),
                 emit_ident(runtime_name, RenderTarget::Rust),
             )
         } else {
             emit_ident(func.clone(), RenderTarget::Rust)
+        };
+        let func_name = if callee_self_capture {
+            v2_rt::concat(func_ident, ".clone()".to_string())
+        } else {
+            func_ident
         };
         let call_str = if ((is_rt.clone()
             && (func.clone().as_str() == "concat".to_string().as_str()))
@@ -14175,6 +14502,7 @@ pub fn emit_operation_method(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
+                        Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
                     ),
@@ -16205,6 +16533,7 @@ pub fn emit_capability_method(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
+                        Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
                     ),
@@ -16297,8 +16626,22 @@ pub fn emit_data_def(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+<<<<<<< HEAD
         let raw_ty_str = render_rust_type_with_applied_binding(
             type_node.clone(),
+=======
+        let annotation_type_node = type_node.clone();
+        let render_type_node = if ((annotation_type_node.children.clone().len() as i64) > 0) {
+            annotation_type_node.clone()
+        } else {
+            match value.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+                _ => annotation_type_node.clone(),
+            }
+        };
+        let raw_ty_str = render_rust_type_with_applied_binding(
+            render_type_node,
+>>>>>>> origin/main
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
@@ -16477,11 +16820,42 @@ pub fn emit_data_def_body(
         if (type_name.as_str() == "BoundedLattice".to_string().as_str()) {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                    let meet_str = match field_value_by_name(
+                    let lattice_value = field_value_by_name(
+                        value.clone(),
+                        "lattice".to_string(),
+                        scope.type_env.clone().source_indices.clone(),
+                    );
+                    let meet_value = match field_value_by_name(
                         value.clone(),
                         "meet".to_string(),
                         scope.type_env.clone().source_indices.clone(),
                     ) {
+                        Some(n) => Some(n.clone()),
+                        None => match lattice_value.clone() {
+                            Some(lattice) => field_value_by_name(
+                                lattice.clone(),
+                                "meet".to_string(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            None => None,
+                        },
+                    };
+                    let join_value = match field_value_by_name(
+                        value.clone(),
+                        "join".to_string(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        Some(n) => Some(n.clone()),
+                        None => match lattice_value.clone() {
+                            Some(lattice) => field_value_by_name(
+                                lattice.clone(),
+                                "join".to_string(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            None => None,
+                        },
+                    };
+                    let meet_str = match meet_value {
                         Some(n) => emit_typed_expr(
                             n.clone(),
                             registry.clone(),
@@ -16493,11 +16867,7 @@ pub fn emit_data_def_body(
                         ),
                         None => "compile_error!(\"BoundedLattice data missing meet\")".to_string(),
                     };
-                    let join_str = match field_value_by_name(
-                        value.clone(),
-                        "join".to_string(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) {
+                    let join_str = match join_value {
                         Some(n) => emit_typed_expr(
                             n.clone(),
                             registry.clone(),
@@ -16755,6 +17125,7 @@ pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> String {
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
+                        Rc::new(vec![]),
                         v2_rt::rc_empty_set::<String>(),
                         projection.source_indices.clone(),
                     ),

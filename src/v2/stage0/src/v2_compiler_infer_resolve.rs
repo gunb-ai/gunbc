@@ -33,12 +33,13 @@ pub use crate::v2_std_core::{
     is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
     local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
     make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resource_use_node, make_text_part_node,
-    make_transport_node, map_children, no_span, node_name_span, param_node_default_value,
-    param_node_name_at, param_node_type_expr, resource_use_name_at, resource_use_resource,
-    string_type, transport_request_body, unit_type, with_optional_cardinality,
-    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node, StringPart,
+    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
+    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
+    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
+    resource_use_resource, string_type, transport_request_body, unit_type,
+    with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
+    Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node,
+    StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -730,6 +731,36 @@ pub fn resolve_node_bounded(
                         }
                         __result
                     });
+<<<<<<< HEAD
+=======
+                    let applied_type_args = Rc::new(Node {
+                        name: type_name.clone(),
+                        span: n.span.clone(),
+                        ident_span: n.ident_span.clone(),
+                        children: resolved_args.clone(),
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: None,
+                        return_cardinality: n.return_cardinality.clone(),
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    });
+                    let applied_prop_span = kernel_span("__applied_type_args".to_string());
+                    let applied_type_args_property = make_field_init_node(
+                        "__applied_type_args".to_string(),
+                        applied_type_args,
+                        n.span.clone(),
+                        applied_prop_span,
+                    );
+>>>>>>> origin/main
                     let slot_bindings = Rc::new(
                         decl.params
                             .clone()
@@ -1406,14 +1437,24 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
             Some(result) => result.diagnostics.clone(),
             None => Rc::new(vec![]),
         };
+        let default_expr = match default_resolved.clone() {
+            Some(result) => Some(result.expr.clone()),
+            None => None,
+        };
         Rc::new(ParamResult {
-            param: make_param_node(
+            param: make_resolved_param_node(
                 param_node_name_at(param.clone(), env.source_indices.clone()),
+<<<<<<< HEAD
                 rendered_type,
                 match default_resolved.clone() {
                     Some(result) => Some(result.expr.clone()),
                     None => None,
                 },
+=======
+                type_resolved.clone(),
+                default_expr,
+                v2_rt::concat(param.properties.clone(), type_resolved.properties.clone()),
+>>>>>>> origin/main
                 param.span.clone(),
                 node_name_span(param.clone()),
             ),

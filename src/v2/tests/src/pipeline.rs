@@ -284,6 +284,57 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
 }
 
 #[test]
+fn generic_fn_sig_preserves_applied_type_args() {
+    // Signature receipt: generic applied param types must render with type args
+    // and shared_types Rc wrap (same pattern as explicit_same_name_generic_args).
+    let source = "\
+module gen_applied_sig
+
+type NodeFold<S> {
+  seed: S
+}
+
+fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
+  fold
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/gen_applied_sig.rs");
+    assert!(
+        content.contains("fn use_fold<S>(fold: Rc<NodeFold<S>>) -> Rc<NodeFold<S>>"),
+        "generic fn params and return must preserve applied type args with shared_types Rc; got:\n{content}"
+    );
+}
+
+#[test]
+fn nested_applied_generic_type_args_preserved_in_fn_sig() {
+    let source = "\
+module nested_applied_sig
+
+type Boxed<S> {
+  value: S
+}
+
+type Wrapper<S> {
+  inner: Boxed<S>
+}
+
+fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
+  w
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/nested_applied_sig.rs");
+    assert!(
+        content
+            .contains("fn use_wrap<S>(w: Rc<Wrapper<Rc<Boxed<S>>>>) -> Rc<Wrapper<Rc<Boxed<S>>>>"),
+        "nested applied generic args (Wrapper<Boxed<S>>) must render through decl-type path; got:\n{content}"
+    );
+}
+
+#[test]
 fn generic_param_type_does_not_special_case_nodefold() {
     let source = "\
 module gen_param_no_fabrication

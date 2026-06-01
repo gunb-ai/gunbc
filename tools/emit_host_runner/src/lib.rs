@@ -504,7 +504,14 @@ pub fn run_emit_host_go(
     })
 }
 
-/// Run `source` as a Python script in `work_dir` via `python3`, capture stdout/stderr.
+/// Host python interpreter — override via `GUNBC_PYTHON` or `V4_PHASE1_NAT_SEMIRING_PYTHON`.
+pub fn python3_binary() -> String {
+    std::env::var("GUNBC_PYTHON")
+        .or_else(|_| std::env::var("V4_PHASE1_NAT_SEMIRING_PYTHON"))
+        .unwrap_or_else(|_| "python3".to_string())
+}
+
+/// Run `source` as a Python script in `work_dir`, capture stdout/stderr.
 pub fn run_emit_host_python(
     source: &str,
     inputs: &EmitHostFixtureInputs,
@@ -520,7 +527,7 @@ pub fn run_emit_host_python(
         source: e.to_string(),
     })?;
 
-    let mut run_cmd = Command::new("python3");
+    let mut run_cmd = Command::new(python3_binary());
     run_cmd.arg(&script_path);
     let run = run_command_bounded(run_cmd, HOST_RUN_TIMEOUT, HostPhase::FixtureRun)?;
     let build_log = bounded_output_to_log(&run, "run");
