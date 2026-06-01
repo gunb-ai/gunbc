@@ -1117,6 +1117,10 @@ fn ts_pr3_identity_formal_productions() -> List<FormalProduction> {
       rhs: []
     ),
     grammar_formal_production(
+      lhs: ts_production_pr3_typed_params_opt,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_typed_params)]
+    ),
+    grammar_formal_production(
       lhs: ts_production_pr3_typed_params,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_pr3_typed_param)]
     ),
