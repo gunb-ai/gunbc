@@ -33,7 +33,8 @@ cd "$root"
 
 fixture_dag="src/v4/lens/leaf_model_verification.dag"
 pyright_profile_dag="src/v4/extdeps/typecheckers/pyright.dag"
-pyright_expected_rule="reportReturnType"
+# pyright_expected_rule is NOT hardcoded — it is resolved (below) from the modeled
+# pyright_diagnostic_rules row for the fixture's expected diagnostic_code (single authority).
 
 if [[ ! -f "$fixture_dag" ]]; then
   echo "error: missing fixture authority at $fixture_dag" >&2
@@ -71,6 +72,13 @@ happy = extract("python_l1_static_happy_fixture_source")
 falsification = extract("python_l1_static_falsification_fixture_source")
 print(f"happy_source={shlex.quote(happy)}")
 print(f"falsification_source={shlex.quote(falsification)}")
+
+# The fixture's modeled expected diagnostic_code (the falsification case's blocking
+# rejection). Read it from the lens — the script must not re-author this fact.
+m = re.search(r"diagnostic_code:\s*(pyright_\w+)", text)
+if not m:
+    raise SystemExit(f"error: {path}: missing falsification diagnostic_code symbol")
+print(f"expected_diag_code={shlex.quote(m.group(1))}")
 PY
 )"
 
@@ -78,7 +86,7 @@ PY
 # (pyright.dag), NOT hardcoded. The runner pins exactly that version and feeds the modeled
 # pythonVersion / typeCheckingMode to pyright via a generated pyrightconfig.json, so the F1
 # receipt proves the SAME profile that pyright_profile_l1_id references.
-eval "$(python3 - "$pyright_profile_dag" <<'PY'
+eval "$(python3 - "$pyright_profile_dag" "$expected_diag_code" <<'PY'
 from __future__ import annotations
 
 import re
@@ -87,6 +95,7 @@ import sys
 from pathlib import Path
 
 text = Path(sys.argv[1]).read_text()
+expected_code = sys.argv[2]
 
 def field(name: str) -> str:
     m = re.search(rf'{name}:\s*"([^"]*)"', text)
@@ -104,9 +113,18 @@ m = re.search(r"type_checking_mode:\s*(PyrightMode\w+)", text)
 if not m or m.group(1) not in mode_map:
     raise SystemExit("error: pyright.dag: missing/unknown pyright_profile_l1 type_checking_mode")
 
+# Resolve the expected rule STRING from the modeled pyright_diagnostic_rules row whose
+# code_id matches the fixture's diagnostic_code — single authority, never a script literal.
+rule_m = re.search(
+    rf'code_id:\s*{re.escape(expected_code)}\s*,\s*rule_name:\s*"([^"]*)"', text
+)
+if not rule_m:
+    raise SystemExit(f"error: pyright.dag: no pyright_diagnostic_rules row for code_id {expected_code}")
+
 print(f"pyright_version={shlex.quote(field('pyright_version'))}")
 print(f"pyright_python_version={shlex.quote(field('python_version'))}")
 print(f"pyright_mode={shlex.quote(mode_map[m.group(1)])}")
+print(f"pyright_expected_rule={shlex.quote(rule_m.group(1))}")
 PY
 )"
 
