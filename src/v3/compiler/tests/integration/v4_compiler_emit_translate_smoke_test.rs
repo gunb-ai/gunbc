@@ -1082,9 +1082,8 @@ fn v4_mvp1_typescript_grammar_inverse_claims_name_l0_productions() {
         "{MVP1_TYPESCRIPT_CLAIM_PATH}: G1 must import the MVP-1 add-fn production authority"
     );
     assert!(
-        data_body_source_equals(
+        data_body_var_name_equals(
             &add_module,
-            MVP1_TYPESCRIPT_CLAIM_DAG,
             "mvp1_ts_g1_grammar_inverse_production",
             "ts_production_mvp1_fn_add"
         ),
@@ -1124,9 +1123,8 @@ fn v4_mvp1_typescript_grammar_inverse_claims_name_l0_productions() {
         ),
     ] {
         assert!(
-            data_body_source_equals(
+            data_body_var_name_equals(
                 &task_module,
-                MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_DAG,
                 anchor,
                 expected
             ),
@@ -1292,13 +1290,21 @@ fn data_body_source_contains(
     data_body_source(module, source, name).is_some_and(|body| body.contains(needle))
 }
 
-fn data_body_source_equals(
+fn data_body_var_name_equals(
     module: &v3_compiler::parse_surface::SurfaceModule,
-    source: &str,
     name: &str,
     expected: &str,
 ) -> bool {
-    data_body_source(module, source, name).is_some_and(|body| body.trim() == expected)
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(SurfaceExpr::Var { name: var_name, .. }),
+                ..
+            } if item_name == name && var_name == expected
+        )
+    })
 }
 
 fn data_list_element_surface_text(source: &str, element: &SurfaceExpr) -> String {
