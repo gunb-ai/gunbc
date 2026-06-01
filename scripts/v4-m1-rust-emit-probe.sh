@@ -47,14 +47,36 @@ if [[ -x /opt/cargo/bin/cargo ]]; then
 else
   cargo_bin="${CARGO_BIN:-cargo}"
 fi
+# Treat the inherited coupling as usable only if the jobserver token source actually resolves — a
+# bare `*jobserver-auth*` substring match would accept a STALE/MALFORMED auth (deleted FIFO, empty
+# value, closed fds) and run raw cargo UNCOUPLED, defeating fail-closed (INVARIANTS P3). Mirrors
+# ctrl-build, which drops MAKEFLAGS when the FIFO isn't readable+writable.
+m1_inherited_jobserver_usable() {
+  local mf="${MAKEFLAGS:-}" auth
+  [[ "$mf" == *--jobserver-auth=* ]] || return 1
+  auth="${mf##*--jobserver-auth=}"   # strip up to the last --jobserver-auth=
+  auth="${auth%%[[:space:]]*}"       # take the token (up to next whitespace)
+  case "$auth" in
+    fifo:?*)
+      local fifo="${auth#fifo:}"
+      [[ -p "$fifo" && -r "$fifo" && -w "$fifo" ]] || return 1 ;;
+    [0-9]*,[0-9]*)
+      local r="${auth%%,*}" w="${auth##*,}"
+      [[ -r "/proc/self/fd/$r" && -w "/proc/self/fd/$w" ]] || return 1 ;;
+    *)
+      return 1 ;;   # empty / malformed / unrecognized auth → not usable
+  esac
+  return 0
+}
 ctrl_build_bin=""
-if [[ "${MAKEFLAGS:-}" == *jobserver-auth* ]]; then
-  : # already coupled via inherited MAKEFLAGS (GHA runner unit) — run raw cargo
+if m1_inherited_jobserver_usable; then
+  : # validated inherited jobserver coupling (live FIFO/fds) — run raw cargo
 elif command -v ctrl-build >/dev/null 2>&1; then
   ctrl_build_bin="$(command -v ctrl-build)"
 else
-  echo "error: M1 emit-probe requires a host jobserver coupling — neither an inherited" >&2
-  echo "       MAKEFLAGS=--jobserver-auth (GHA runner unit) nor ctrl-build is present (no fallback)." >&2
+  echo "error: M1 emit-probe requires a host jobserver coupling that is actually usable —" >&2
+  echo "       inherited MAKEFLAGS=--jobserver-auth is absent/stale/malformed and ctrl-build" >&2
+  echo "       is not present (no fallback)." >&2
   exit 1
 fi
 compile_log="${V4_M1_RUST_EMIT_LOG:-${out}.compile.log}"
