@@ -135,7 +135,12 @@ pub fn render_rust_type(
                 && ((n.children.clone().len() as i64) > 0))
                 && !is_container_type(authored_name_at(source_indices.clone(), n.clone())))
             {
-                render_rust_applied_type(n.clone(), shared_types, source_indices.clone())
+                render_rust_applied_type(
+                    n.clone(),
+                    Rc::new(vec![]),
+                    shared_types,
+                    source_indices.clone(),
+                )
             } else {
                 if node_is_set_collection(n.clone(), source_indices.clone()) {
                     match n.children.clone().first().cloned() {

@@ -151,7 +151,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
     _ => if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
-      render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
+      render_rust_applied_type(n: n, generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
     } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Some { value: elem_child } =>
@@ -181,30 +181,26 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
   string_length(s: type_name) >= 3 && substring(s: type_name, start: 0, end: 3) == "Rc<"
 }
 
-fn render_rust_applied_type_arg(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
-    _ => if n.connective == NoConnective && n.children |> count == 0 {
-      authored_name_at(source_indices: source_indices, node: n)
-    } else {
-      render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
-    }
+    _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
-fn render_rust_applied_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let base = coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: n))
   if n.children |> count == 0 {
     base
   } else {
-    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
     concat(base, "<", args, ">")
   }
 }
 
 // Single authority: shared_types decides Rc<> on applied generic instantiations.
-fn render_rust_applied_type_shared(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let rendered = render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
+fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   let type_name = authored_name_at(source_indices: source_indices, node: n)
   if set_contains(shared_types, type_name) { concat("Rc<", rendered, ">") } else { rendered }
 }
@@ -220,7 +216,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
   match applied_overlay {
     Some { value: applied } =>
-      render_rust_applied_type_shared(n: applied, shared_types: shared_types, source_indices: source_indices)
+      render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
     None =>
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
@@ -1683,7 +1679,7 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Some { value: applied } =>
       if applied.children |> count > 0 {
-        render_rust_applied_type_shared(n: applied, shared_types: shared_types, source_indices: source_indices)
+        render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
       } else {
         render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
       }
