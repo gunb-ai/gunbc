@@ -261,8 +261,8 @@ jobs:
         cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet
     - name: no-new-shell ratchet (required CI path)
       run: |
-        bash scripts/check-ci-no-new-shell.sh --self-test
-        bash scripts/check-ci-no-new-shell.sh
+        bash .github/ci-floor/check-ci-no-new-shell.sh --self-test
+        bash .github/ci-floor/check-ci-no-new-shell.sh
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
     needs: [affected, ci_floor, infra_isolation]

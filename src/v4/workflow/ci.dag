@@ -638,7 +638,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   step: CiLiveWorkflowStepSignal {
     binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
     step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
-    script_path: "scripts/v4-m1-rust-emit-probe.sh"
+    script_path: ".github/ci-floor/v4-m1-rust-emit-probe.sh"
     non_blocking: false
     timeout_minutes: 20
     strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" }
@@ -738,7 +738,7 @@ data ci_job_leaf_model_go_verify_execution_row: CiJob = ci_job_leaf_model_go_ver
 data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
   binding_smoke_step_name: ""
   step_name: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)"
-  script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
+  script_path: "_dissolved/v4-phase1-nat-semiring-rung-gate.sh"
   non_blocking: true
   timeout_minutes: 20
   strict_env_binding: StrictEnvBinding { var: "V4_PHASE1_NAT_SEMIRING_STRICT", value: "1" }
@@ -748,7 +748,7 @@ data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: CiLiveWorkflowStepSi
 data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
   binding_smoke_step_name: ""
   step_name: "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)"
-  script_path: "scripts/v4-testclaim-corpus-eval.sh"
+  script_path: "_dissolved/v4-testclaim-corpus-eval.sh"
   non_blocking: false
   timeout_minutes: 15
   strict_env_binding: NoStrictEnvBinding
@@ -950,7 +950,7 @@ data ci_upsert_v2_compile_src_v4: CiUpsertStepSymbol = ci_upsert_v2_compile_src_
 // for affected-set invalidation (mirrors v4_t15 / testclaim_corpus_eval upstream pattern).
 data ci_upsert_m1_rust_emit_probe_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/**"),
-  ci_upsert_file_set_input(segment: "scripts/v4-m1*"),
+  ci_upsert_file_set_input(segment: ".github/ci-floor/v4-m1*"),
   ci_upsert_file_set_input(segment: "Cargo.toml"),
   ci_upsert_file_set_input(segment: "Cargo.lock"),
   ci_upsert_upstream_job_input(job: v2_compile_src_v4)
@@ -980,7 +980,6 @@ data ci_upsert_leaf_model_go_verify_execution_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/std/leaf_model_verification.dag"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/language_model/go_*.dag"),
   ci_upsert_file_set_input(segment: "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"),
-  ci_upsert_file_set_input(segment: "scripts/v4-leaf-model-go-*-verify.sh")
 ]
 
 fn ci_upsert_leaf_model_go_verify_execution_mk() -> CiUpsertStepSymbol {
@@ -999,7 +998,6 @@ data ci_upsert_leaf_model_go_verify_execution: CiUpsertStepSymbol = ci_upsert_le
 // via UpstreamUpsert and re-emits its own rung targets, rather than re-running the front-end
 // over the 332-source src/v4 closure. `src/v4/**` stays for affected-set invalidation.
 data ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs: List<UpsertInputRef> = [
-  ci_upsert_file_set_input(segment: "scripts/v4-phase1-nat-semiring*"),
   ci_upsert_file_set_input(segment: "src/v4/**"),
   ci_upsert_upstream_job_input(job: v2_compile_src_v4)
 ]
@@ -1086,8 +1084,7 @@ fn ci_testclaim_corpus_eval_command() -> CiCommand {
 data ci_upsert_testclaim_corpus_eval_file_set_inputs: List<UpsertInputRef> = [
   ci_upsert_file_set_input(segment: "src/v4/test/claim/manual/**"),
   ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"),
-  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag"),
-  ci_upsert_file_set_input(segment: "scripts/v4-testclaim-corpus-eval.sh")
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/manual_corpus_eval.dag")
 ]
 
 // #4091 §1.2 — M1 rust emit is upstream compile authority (forbidden: host-owned `gunbc compile --target rust` in corpus eval transport).
@@ -2799,18 +2796,14 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     ci_repo_path_has_prefix(path: path, prefix: "dsl/")
   } else if segment == "src/v4/**" {
     ci_changed_path_affects_v4(changed: path)
-  } else if segment == "scripts/**" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/")
+  } else if segment == ".github/ci-floor/**" {
+    ci_repo_path_has_prefix(path: path, prefix: ".github/ci-floor/")
   } else if segment == "Cargo.toml" {
     path == "Cargo.toml"
   } else if segment == "Cargo.lock" {
     path == "Cargo.lock"
-  } else if segment == "scripts/v4-m1*" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-m1")
-  } else if segment == "scripts/v4-leaf-model-go-*-verify.sh" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-leaf-model-go-")
-  } else if segment == "scripts/v4-phase1-nat-semiring*" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-phase1-nat-semiring")
+  } else if segment == ".github/ci-floor/v4-m1*" {
+    ci_repo_path_has_prefix(path: path, prefix: ".github/ci-floor/v4-m1")
   } else if segment == "src/v4/extdeps/languages/go.dag" {
     path == "src/v4/extdeps/languages/go.dag"
   } else if segment == "src/v4/lens/leaf_model_verification.dag" {
@@ -2825,10 +2818,13 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/manual/")
   } else if segment == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag" {
     path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
+<<<<<<< HEAD
   } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval.dag" {
     path == "src/v4/test/claim/workflow/manual_corpus_eval.dag"
   } else if segment == "scripts/v4-testclaim-*" {
     ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-testclaim-")
+=======
+>>>>>>> 58bf21933f (WIP: CI hygiene: delete scripts/ + unused non-substrate code (operator 2026-0)
   } else {
     false
   }
@@ -2880,10 +2876,6 @@ fn ci_upsert_input_ref_touches_git_diff(
         segment: "src/v4/test/claim/manual/**",
         paths: git_diff.changed_paths
       )
-        || ci_glob_segment_matches_any_changed_path(
-          segment: "scripts/v4-testclaim-*",
-          paths: git_diff.changed_paths
-        )
     LensOutputRef { lens: _, ports: _ } =>
       ci_glob_segment_matches_any_changed_path(segment: "src/v4/**", paths: git_diff.changed_paths)
         || ci_glob_segment_matches_any_changed_path(segment: "dsl/std/**", paths: git_diff.changed_paths)
@@ -3894,12 +3886,8 @@ fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/test/v2_run_preflight/")
     || changed == "src/v4/test/coercion_fold_int_rust_fixture.dag"
     || ci_repo_path_has_prefix(path: changed, prefix: "fixtures/v4-mvp1/")
-    || changed == "scripts/v4-mvp1-e2e-gate.sh"
-    || changed == "scripts/v4-m1-rust-emit-probe.sh"
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-mvp1")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-m1")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-phase1-nat-semiring")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-testclaim-")
+    || changed == ".github/ci-floor/v4-m1-rust-emit-probe.sh"
+    || ci_repo_path_has_prefix(path: changed, prefix: ".github/ci-floor/")
     || ci_repo_path_has_prefix(path: changed, prefix: "dsl/std/")
     || changed == "Cargo.toml"
     || changed == "Cargo.lock"
@@ -3916,8 +3904,7 @@ fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
     || changed == "src/v4/workflow/ci.dag"
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/workflow/ci/")
     || ci_repo_path_has_prefix(path: changed, prefix: "tools/ci_affected_components")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/check-workflow-path-regex-inventory")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/workflow-path-regex-forbidden-substrings")
+    || ci_repo_path_has_prefix(path: changed, prefix: ".github/ci-floor/")
 }
 
 // RELEASE_TODO §5 Phase 1a–1b — release workflow + hand-synced install scripts.
@@ -3925,7 +3912,7 @@ fn ci_changed_path_affects_release_distribution(changed: RepoPath) -> Bool {
   changed == "src/v4/workflow/release.dag"
     || changed == ".github/workflows/release.yml"
     || changed == "install.sh"
-    || changed == "scripts/release-target-triples.sh"
+    || changed == "install/release-target-triples.sh"
     || changed == "src/v4/install/install.dag"
 }
 

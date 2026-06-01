@@ -45,11 +45,8 @@ const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 const CI_WORKFLOW_DAG: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
-const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
-    include_str!("../../../../../scripts/v4-testclaim-corpus-eval.sh");
-const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
-    include_str!("../../../../../scripts/v4-m1-rust-emit-probe.sh");
+    include_str!("../../../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
@@ -114,7 +111,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         release_distribution: false,
     },
     CiAffectedFixture {
-        path: "scripts/v4-m1-rust-emit-probe.sh",
+        path: ".github/ci-floor/v4-m1-rust-emit-probe.sh",
         v2: false,
         v3: false,
         v4: true,
@@ -186,7 +183,7 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         release_distribution: true,
     },
     CiAffectedFixture {
-        path: "scripts/release-target-triples.sh",
+        path: "install/release-target-triples.sh",
         v2: false,
         v3: false,
         v4: false,
@@ -322,7 +319,7 @@ fn assert_ci_dag_rust_mirror_release_distribution_only_parity() {
     ]));
     assert!(!ci_release_distribution_only_from_changed_paths([
         "install.sh",
-        "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
     ]));
     assert!(!ci_release_distribution_only_from_changed_paths([
         "install.sh",
@@ -330,7 +327,7 @@ fn assert_ci_dag_rust_mirror_release_distribution_only_parity() {
     ]));
     let mixed = ci_component_affected_from_changed_paths([
         "install.sh",
-        "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh",
     ]);
     assert!(mixed.release_distribution);
     assert!(mixed.v4);
@@ -853,12 +850,12 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         M1_RUST_EMIT_PROBE_SCRIPT.contains("jobserver-auth")
             && M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
             && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
-        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to the host jobserver (MAKEFLAGS or ctrl-build)"
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to the host jobserver (MAKEFLAGS or ctrl-build)"
     );
     // No fallback: the probe must fail closed when NEITHER coupling source is present (operator policy).
     assert!(
         M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
-        "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
     );
     let bootstrap_step =
         workflow_step_block(CI_YML, "v2 -> v4 bootstrap compile (fail-closed full)");
@@ -997,7 +994,7 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
         "{CI_DAG_PATH}: ci_pipeline_well_formed must reject dangling gate run-policy jobs"
     );
     assert!(
-        CI_YML.contains("bash scripts/v4-bootstrap-viability.sh"),
+        CI_YML.contains("bash .github/ci-floor/v4-bootstrap-viability.sh"),
         "{CI_YML_PATH}: Wave 1 floor runs bootstrap viability directly (no advisory two-step gate)"
     );
     assert!(
