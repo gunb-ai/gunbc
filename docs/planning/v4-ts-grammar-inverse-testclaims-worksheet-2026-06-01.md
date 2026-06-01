@@ -1,6 +1,6 @@
 # v4 TS Grammar-Inverse TestClaims Worksheet (#3850 line, alpha lane)
 
-> **Status:** DRAFT — `ready-for-review` (TypeScript RCA Manager `fierce-fox-719`; 2026-06-01).  
+> **Status:** **WORKSHEET APPROVED — READY-FOR-WORKER-DISPATCH** — Modeling DFS Arbiter §8 sign-off 2026-06-01 (`proud-fox-405`). Orthogonal to leaf-model L0 track.  
 > **Lane:** ALPHA/PREVIEW — NOT v4-done / release-minimum gate.  
 > **Authority:** `docs/planning/v4-predicate-dependency-graph-2026-06-01-eod.md` §8.7 (#3850); T-11 MVP-1 receipts on main.  
 > **Existing substrate:** `mvp1_typescript_add_translate.dag`, `mvp1_typescript_record_task_translate.dag`, `typescript_wave2a*.dag`.
@@ -84,13 +84,13 @@ TypeScript L1 (compiler-subset emit typechecks) requires modeling:
 
 ---
 
-## §8 Manager approval checklist — OPEN
+## §8 Modeling DFS Arbiter approval checklist — CLOSED 2026-06-01
 
-- [ ] L0 scope = G1 + G2 productions only
-- [ ] Packaging explicitly deferred to L1
-- [ ] Reuse manual TestClaim patterns from mvp1_typescript_*.dag
-- [ ] Alpha/preview — NOT v4-done gate
-- [ ] Worker dispatch — **forbidden** until Arbiter sign-off
+- [x] L0 scope = G1 + G2 productions only
+- [x] Packaging explicitly deferred to L1
+- [x] Reuse manual TestClaim patterns from `mvp1_typescript_*.dag`
+- [x] Alpha/preview — NOT v4-done gate
+- [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
 
 ## Related artifacts
 
