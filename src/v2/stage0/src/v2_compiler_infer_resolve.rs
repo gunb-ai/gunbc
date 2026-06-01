@@ -2721,14 +2721,32 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
             }
             __result
         });
+        let authored_ret = match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+            _ => unit_type(),
+        };
         let ret_result =
             resolve_optional_node(item.inferred.clone(), env.clone(), module_name.clone());
         let ret_resolved = ret_result.resolved.clone();
         let ret_diags = ret_result.diagnostics.clone();
+        let sig_ret = match find_property(
+            ret_resolved.properties.clone(),
+            "__applied_type_args".to_string(),
+            env.source_indices.clone(),
+        ) {
+            Some(applied) => {
+                if ((applied.children.clone().len() as i64) > 0) {
+                    applied
+                } else {
+                    authored_ret.clone()
+                }
+            }
+            None => authored_ret.clone(),
+        };
         let resolved_ret = if (item.inferred.clone() == None) {
             None
         } else {
-            Some(Rc::new(InferredNode::Resolved { node: ret_resolved }))
+            Some(Rc::new(InferredNode::Resolved { node: sig_ret }))
         };
         let use_results = Rc::new({
             let mut __result = Vec::new();
