@@ -1400,20 +1400,17 @@ pub mod evaluator {
             std::process::id()
         ));
         let executable_source = emit_host_go_executable_source(source);
-        let mut receipt = match emit_host_runner::run_emit_host_go(
-            &executable_source,
-            &inputs,
-            &work_dir,
-        ) {
-            Ok(receipt) => receipt,
-            Err(failure) => {
-                return Some(
-                    emit_host_setup_failure_diagnostic(dag, &failure)
-                        .and_then(|diagnostic| non_empty_diagnostics(dag, diagnostic))
-                        .and_then(|diagnostics| rejected_variant(dag, diagnostics)),
-                );
-            }
-        };
+        let mut receipt =
+            match emit_host_runner::run_emit_host_go(&executable_source, &inputs, &work_dir) {
+                Ok(receipt) => receipt,
+                Err(failure) => {
+                    return Some(
+                        emit_host_setup_failure_diagnostic(dag, &failure)
+                            .and_then(|diagnostic| non_empty_diagnostics(dag, diagnostic))
+                            .and_then(|diagnostics| rejected_variant(dag, diagnostics)),
+                    );
+                }
+            };
         receipt.source_text = source.to_string();
         Some(
             emit_host_receipt_value(dag, &operands[0], receipt)
@@ -2127,11 +2124,11 @@ pub mod evaluator {
 
         use super::NamedField;
         use super::{
-            descent_proof_path_key, eval_loop_with_descent_execution_proof, eval_node, eval_port,
-            eval_value, evaluate_body, emit_host_go_executable_source, DescentExecutionProof,
-            DescentResidual, EvalError, EvalFrame, EvalFrameError, EvalStateStack, EvalStrategy,
-            InputEvaluationOrder, NonStrictEvidence, StrictEvidence, Value,
-            BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
+            descent_proof_path_key, emit_host_go_executable_source,
+            eval_loop_with_descent_execution_proof, eval_node, eval_port, eval_value,
+            evaluate_body, DescentExecutionProof, DescentResidual, EvalError, EvalFrame,
+            EvalFrameError, EvalStateStack, EvalStrategy, InputEvaluationOrder, NonStrictEvidence,
+            StrictEvidence, Value, BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
         };
         use crate::compile_to_dag;
         use crate::dag::{
