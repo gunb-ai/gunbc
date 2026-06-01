@@ -19,7 +19,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.leaf_model_verification {
-  LeafModelVerificationRunReceipt,
+  LeafModelRuntimeVerificationRunReceipt,
   leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
   TargetRuntimeExerciseAccepted,
   TargetRuntimeExerciseRejected,
@@ -74,7 +74,7 @@ fn go_r2b_pending_verification_diagnostic() -> Diagnostic {
   }
 }
 
-data go_r2b_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
+data go_r2b_verification_run_receipt_default: LeafModelRuntimeVerificationRunReceipt = LeafModelRuntimeVerificationRunReceipt {
   claim_id: leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
   happy_verdict: verdict_fail(
     actual: outcome_rejected(d: go_r2b_pending_verification_diagnostic())

@@ -433,6 +433,14 @@ type LeafModelVerificationRunReceipt {
   falsification_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
 }
 
+// 🟡 gated — feature:leaf-model-runtime-exercise-bridge — bind go_r2b + T-22 runtime receipts —
+// dissolve-on-arrival: generalize or fold when run_target_verification consumes runtime verdict slots.
+type LeafModelRuntimeVerificationRunReceipt {
+  claim_id: LeafModelClaimId
+  happy_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
+  falsification_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
+}
+
 fn leaf_model_verification_claim_passes(
   receipt: LeafModelVerificationRunReceipt
 ) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
