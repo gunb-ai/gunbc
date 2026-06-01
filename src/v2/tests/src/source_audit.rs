@@ -1028,16 +1028,17 @@ fn parse_item_keyword_arm_count() {
 
 #[test]
 fn l1_type_knowledge_ratchet() {
-    // Sole authority: dsl/gunbc/tools/ratchet.dag (`run_l1_ratchet`). No parallel grep ledger.
+    // Sole authority: dsl/gunbc/tools/ratchet.dag (`run_l1_ratchet`). Invoked via Cargo so
+    // `cargo test -p v2-compiler-tests` stays hermetic (no prebuilt target/release/gunbc).
     let ws = crate::helpers::workspace_root();
-    let gunbc = ws.join("target/release/gunbc");
-    assert!(
-        gunbc.is_file(),
-        "L1 ratchet requires {gunbc:?}; build with `cargo build -p v2-compiler --release` \
-         (patterns live only in dsl/gunbc/tools/ratchet.dag)"
-    );
-    let output = std::process::Command::new(&gunbc)
+    let output = std::process::Command::new("cargo")
         .args([
+            "run",
+            "-p",
+            "v2-compiler",
+            "--release",
+            "--quiet",
+            "--",
             "run",
             "--source-root",
             "dsl",
@@ -1046,7 +1047,7 @@ fn l1_type_knowledge_ratchet() {
         ])
         .current_dir(&ws)
         .output()
-        .expect("failed to run gunbc L1 ratchet entrypoint");
+        .expect("failed to run gunbc L1 ratchet entrypoint via cargo");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     eprintln!("{stdout}");
