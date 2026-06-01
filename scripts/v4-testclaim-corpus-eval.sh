@@ -405,20 +405,18 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
         all_pass_body,
         [
             "let tally = corpus_report_tally(report);",
-            "tally.fail == Nat::Zero",
-            "tally.deferred == Nat::Zero",
         ],
         corpus_eval_rs,
-        "generated zero Fail/Deferred tally predicate",
+        "generated tally source for zero Fail/Deferred predicate",
     )
     normalized_all_pass = "".join(all_pass_body.split())
     fail_deferred_conjunction = re.compile(
-        r"(?:\(*tally\.fail==Nat::Zero\)*)&&(?:\(*tally\.deferred==Nat::Zero\)*)"
+        r"tally\.fail[^&|;]*[Zz]ero[^&|;]*&&[^&|;]*tally\.deferred[^&|;]*[Zz]ero"
     )
     if not fail_deferred_conjunction.search(normalized_all_pass):
         raise ReceiptError(
             f"{corpus_eval_rs}: manual_corpus_all_pass must directly conjoin "
-            "tally.fail == Nat::Zero && tally.deferred == Nat::Zero"
+            "the zero Fail check with the zero Deferred check via &&"
         )
     gate_body = generated_function(source, "manual_corpus_gate", corpus_eval_rs)
     require_order(

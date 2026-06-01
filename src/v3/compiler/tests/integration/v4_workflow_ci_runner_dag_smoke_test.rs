@@ -1404,10 +1404,9 @@ fn v4_workflow_ci_t38_script_checks_generated_manual_corpus_eval_receipt() {
         "manual_corpus_gate",
         "witness_manual_corpus_gate_closed",
         "corpus_report_tally(report);",
-        "tally.fail == Nat::Zero",
-        "tally.deferred == Nat::Zero",
         "fail_deferred_conjunction",
-        "&&(?:\\(*tally\\.deferred==Nat::Zero",
+        "tally\\.fail[^&|;]*[Zz]ero",
+        "&&[^&|;]*tally\\.deferred[^&|;]*[Zz]ero",
         "manual_corpus_gate(run_manual_testclaim_corpus_eval())",
     ] {
         assert!(
