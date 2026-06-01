@@ -18,7 +18,9 @@
 # Env:
 #   V2_COMPILER                — v2-compiler binary (default: target/release/gunbc)
 #   V4_PHASE1_NAT_SEMIRING_OUT — emit output dir (default: /tmp/v4-phase1-nat-semiring)
-#   V4_PHASE1_NAT_SEMIRING_STRICT — if 1, exit non-zero on any rung failure
+#   V4_PHASE1_NAT_SEMIRING_STRICT — if 1, exit non-zero on any rung failure (implies L1 strict)
+#   V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT — if 1, L1 runtime gate fail-closed even when
+#     parent STRICT=0 (merged into child export; parent exit honors either knob)
 #   V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS — timeout per toolchain check (CI: 300)
 #   V4_PHASE1_NAT_SEMIRING_PYTHON — python3 binary (default: python3)
 #   V4_PHASE1_NAT_SEMIRING_GO     — go binary (default: go)
@@ -50,6 +52,10 @@ rustc_bin="${V4_PHASE1_NAT_SEMIRING_RUSTC:-rustc}"
 gofmt_bin="${V4_PHASE1_NAT_SEMIRING_GOFMT:-gofmt}"
 timeout_secs="${V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS:-300}"
 strict="${V4_PHASE1_NAT_SEMIRING_STRICT:-0}"
+l1_runtime_strict="${V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT:-0}"
+if [[ "$strict" == "1" ]]; then
+  l1_runtime_strict="1"
+fi
 summary="${out}.rung-gate-summary.txt"
 
 if [[ ! -f "$fixture_module_path" ]]; then
@@ -355,11 +361,38 @@ rung0_pass="$(row_aggregate R0-dag-parse R0-rust-parse R0-python-parse R0-go-par
 rung1_pass="$(row_aggregate R1-rust-typecheck)"
 rung2_pass="$(row_aggregate R2-rust-compile R2-python-compile R2-go-compile)"
 
+l1_python_runtime_pass="SKIP"
+# L1 runtime exec requires R2-python-compile PASS (py_compile receipt); R0 alone is insufficient.
+if [[ "${verdict[R2-python-compile]}" == "PASS" ]]; then
+  export V4_PHASE1_NAT_SEMIRING_OUT="$out"
+  export V4_PHASE1_NAT_SEMIRING_PYTHON="$python_bin"
+  export V4_PHASE1_NAT_SEMIRING_TIMEOUT_SECS="$timeout_secs"
+  export V4_PHASE1_NAT_SEMIRING_PYTHON_RUNTIME_STRICT="$l1_runtime_strict"
+  set +e
+  bash "${root}/scripts/v4-phase1-nat-semiring-python-runtime-gate.sh"
+  l1_status=$?
+  set -e
+  if [[ -f "${out}.python-runtime-gate-summary.txt" ]]; then
+    l1_line="$(grep -E '^  l1_python_runtime:' "${out}.python-runtime-gate-summary.txt" || true)"
+    if [[ "$l1_line" =~ l1_python_runtime:\ PASS ]]; then
+      l1_python_runtime_pass="PASS"
+    elif [[ "$l1_line" =~ l1_python_runtime:\ FAIL ]]; then
+      l1_python_runtime_pass="FAIL"
+      note_blocking "phase1/nat_semiring/l1/python_runtime_exec_rejected"
+    fi
+  fi
+  if [[ "$l1_runtime_strict" == "1" && "$l1_status" -ne 0 ]]; then
+    l1_python_runtime_pass="FAIL"
+    note_blocking "phase1/nat_semiring/l1/python_runtime_exec_rejected"
+  fi
+fi
+
 {
   echo "fixture=${fixture_id}"
   echo "  rung0: ${rung0_pass}  (dag=${verdict[R0-dag-parse]} rust=${verdict[R0-rust-parse]} python=${verdict[R0-python-parse]} go=${verdict[R0-go-parse]})"
   echo "  rung1: ${rung1_pass}  (rust=${verdict[R1-rust-typecheck]})"
   echo "  rung2: ${rung2_pass}  (rust=${verdict[R2-rust-compile]} python=${verdict[R2-python-compile]} go=${verdict[R2-go-compile]})"
+  echo "  l1_python_runtime: ${l1_python_runtime_pass}  (python exec after py_compile; see ${out}.python-runtime-gate-summary.txt)"
   echo "blocking_receipt: ${blocking_receipt}"
   echo ""
   echo "logs: ${out}/logs/"
@@ -372,9 +405,11 @@ if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
 fi
 
 if [[ "$strict" == "1" ]]; then
-  if [[ "$rung0_pass" != "PASS" || "$rung1_pass" != "PASS" || "$rung2_pass" != "PASS" ]]; then
+  if [[ "$rung0_pass" != "PASS" || "$rung1_pass" != "PASS" || "$rung2_pass" != "PASS" || "$l1_python_runtime_pass" == "FAIL" ]]; then
     exit 1
   fi
+elif [[ "$l1_runtime_strict" == "1" && "$l1_python_runtime_pass" == "FAIL" ]]; then
+  exit 1
 fi
 
 exit 0
