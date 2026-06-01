@@ -4419,6 +4419,37 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
           } else { acc }
         None => acc
       }
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
+      match map_get(func_sigs, callee) {
+        Some { value: sig } =>
+          if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
+            && (map_keys(sig.variant_provenance) |> count > 0) {
+            let call_args = call_args_by_name(call: body, source_indices: type_env.source_indices)
+            fold(map_keys(sig.variant_provenance), init: acc, f: (variant_acc, variant_name) =>
+              match map_get(sig.variant_provenance, variant_name) {
+                Some { value: field_map } =>
+                  let composed_field_map = fold(map_keys(field_map), init: empty_map(), f: (fm_acc, field_name) =>
+                    match map_get(field_map, field_name) {
+                      Some { value: param_map } =>
+                        let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+                        if map_keys(composed) |> count > 0 { map_insert(fm_acc, field_name, composed) }
+                        else { fm_acc }
+                      None => fm_acc
+                    }
+                  )
+                  if map_keys(composed_field_map) |> count > 0 {
+                    match map_get(variant_acc, variant_name) {
+                      Some { value: existing } => map_insert(variant_acc, variant_name, merge_field_prov_maps(a: existing, b: composed_field_map))
+                      None => map_insert(variant_acc, variant_name, composed_field_map)
+                    }
+                  } else { variant_acc }
+                None => variant_acc
+              }
+            )
+          } else { acc }
+        None => acc
+      }
     ExprMatch =>
       match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>
         collect_variant_constructors(body: arm_body(n: arm), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: a)
@@ -4507,18 +4538,6 @@ fn union_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValueRela
   )
 }
 
-fn child_accessor_variant_provenance(param_name: String, relation: SubValueRelation) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
-  map_insert(
-    empty_map(),
-    "Accepted",
-    map_insert(
-      empty_map(),
-      "value",
-      map_insert(empty_map(), param_name, relation)
-    )
-  )
-}
-
 fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv, type_env: TypeEnv, locals: Map<String, TypeBinding>) -> ResolvedFuncEnv {
   let updated_sigs = fold(typed_items, init: func_env.signatures, f: (acc, item) =>
     if item.params |> count > 0 {
@@ -4535,15 +4554,12 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
                 Some { value: ind_field } =>
                   let relation = StrictSubValue { field: ind_field, factor: UnitShrink }
                   let provenance = [map_insert(empty_map(), pname, relation)]
-                  let variant_provenance = if is_child_accessor_in_model(name: fn_name) {
-                    child_accessor_variant_provenance(param_name: pname, relation: relation)
-                  } else { empty_map() }
                   match map_get(acc, fn_name) {
                     Some { value: sig } =>
                       map_insert(acc, fn_name, ResolvedFuncSig {
                         name: sig.name, params: sig.params, inferred: sig.inferred,
                         is_async: sig.is_async, output_provenance: provenance,
-                        variant_provenance: if map_keys(variant_provenance) |> count > 0 { variant_provenance } else { sig.variant_provenance }
+                        variant_provenance: sig.variant_provenance
                       })
                     None => acc
                   }
