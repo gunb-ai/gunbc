@@ -1,6 +1,10 @@
 // src/v4/test/claim/language_model/typescript_r3_external.dag
 // Scope: Phase 1 R3-external — Symbol atom realization vs tsc (ECMA Symbol() factory, not `new Symbol`).
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-typescript-r3-external-verify.sh.
+// TS RCA L0 worksheet receipt: alpha/preview lane per #4137 §11.8, post-#4192/#4200
+// planning-doc policy. The claim references ts_atom_realization_symbol, so the R3-external
+// falsification tests the shared TargetAtomRealization row instead of a TypeScript-only
+// constructor branch or string-keyed emitter patch.
 
 module v4.test.claim.language_model.typescript_r3_external
 

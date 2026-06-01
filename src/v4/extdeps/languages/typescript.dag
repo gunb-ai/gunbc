@@ -1414,7 +1414,11 @@ fn ts_mvp1_target_model() -> TargetModel {
   }
 }
 
-// SG-2 — canonical per-connective TargetTypeExpressionProjection row for TypeScript.
+// SG-2 / TS TargetTy worksheet receipt — canonical per-connective
+// TargetTypeExpressionProjection row for TypeScript. The full worksheet lives outside
+// gunbc after the #4192/#4200 planning-doc move; this in-tree receipt pins the
+// single-authority fact: carrier in v4.std.target_model, per-language row here, and
+// no TypeScript name-keyed Outcome/Witness/Refined special cases in translation.
 // Single authority: carrier lives in v4.std.target_model; this is the per-language row only
 // (no name-keyed Outcome/Witness/Refined special cases — INVARIANTS P3 / SG-2 worksheet).
 // Connective → TS surface (ECMA / TS Handbook):
@@ -2243,14 +2247,17 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
-// Phase 1 leaf-model claim subjects (algebra-inhabitance widening worksheet).
+// Phase 1 leaf-model claim subjects (TS RCA L0 algebra-inhabitance worksheet).
+// Single-authority fact IDs for R2a/R2b claims live here; claim files compare by Symbol
+// equality and do not duplicate AlgebraInhabitanceDecl shapes.
 data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
 data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
 // 🟡 Leaf-model Layer-A fact exposure (boolean) · E-6 bounded-exception · scaffold feature:ts-r2-leaf-model-claim-corpus · dissolve-on: typescript_r2a.dag/typescript_r2b.dag claim corpus references this fact ID by Symbol equality
 data ts_bool_algebra_inhabitance_ts_facts_boolean: AlgebraInhabitanceDecl = ts_bool_algebra_inhabitance()
 
-// Phase 1 SG-1 Symbol atom realization (alpha lane). TS-ATOM-REALIZATION extends this
-// single Symbol row into the shared atom catalog instead of declaring a parallel row.
+// Phase 1 SG-1 Symbol atom realization (TS RCA L0 TargetAtomRealization worksheet).
+// TS-ATOM-REALIZATION extends this single Symbol row into the shared atom catalog
+// instead of declaring a parallel row or adding TypeScript string-keyed emitter branches.
 data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
 
 fn ts_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {

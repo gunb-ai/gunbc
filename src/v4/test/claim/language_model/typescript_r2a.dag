@@ -1,6 +1,10 @@
 // src/v4/test/claim/language_model/typescript_r2a.dag
 // Scope: Phase 1 R2a — typescript.dag number algebra inhabitance vs tsc.
 // Status: modeled claim + fixture pair; host runner scripts/v4-leaf-model-typescript-r2a-verify.sh.
+// TS RCA L0 worksheet receipt: alpha/preview lane per #4137 §11.8, post-#4192/#4200
+// planning-doc policy. Mirrors Python #4117 by naming the TypeScript fact row here,
+// keeping fixture bytes in v4.lens.leaf_model_verification, and leaving the tsc bridge
+// temporary under T-PB-B until modeled run_target_verification executes this claim.
 
 module v4.test.claim.language_model.typescript_r2a
 

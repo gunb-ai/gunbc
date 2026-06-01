@@ -1,6 +1,10 @@
 // src/v4/test/claim/language_model/typescript_r2b.dag
 // Scope: Phase 1 R2b — typescript.dag bigint beyond safe integer vs Node runtime.
 // Status: modeled claim + fixture row; host runner scripts/v4-leaf-model-typescript-r2b-verify.sh.
+// TS RCA L0 worksheet receipt: alpha/preview lane per #4137 §11.8, post-#4192/#4200
+// planning-doc policy. The single-authority subject is the bigint algebra inhabitance
+// row in typescript.dag; Node execution only proves the modeled runtime falsification
+// until T-PB-B dissolves the host bridge into modeled run_target_verification.
 
 module v4.test.claim.language_model.typescript_r2b
 
