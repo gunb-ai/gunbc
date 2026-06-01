@@ -326,57 +326,45 @@ type BooleanAlgebra<T> {
 }
 
 // =========================================================================
-// Optional first-present monoid (T? = optional carrier)
+// Lattice lifting — design specification (executable authority deferred)
 // =========================================================================
 //
-// Prefer the left value when present; otherwise take the right.
-// Associative with identity none — the "first-present" monoid over T?.
-fn optional_prefer_first_present<T>(left: T?, right: T?) -> T? {
-  match left {
-    Some { value: _ } => left
-    None => right
-  }
-}
-
-fn optional_first_present_monoid<T>() -> Monoid<T?> {
-  Monoid {
-    op: optional_prefer_first_present
-    identity: none
-  }
-}
-
-// =========================================================================
-// Lattice lifting — generic combinators
-// =========================================================================
+// These patterns describe how lattice operations lift through containers.
+// Generic dissolution target: retire monomorphic copies in std/termination.dag
+// (optional_evidence_meet, map_evidence_merge_at) once the deferred surface
+// below promotes to executable authority.
 //
-// Lift lattice meet through optional: None is identity (top for meet).
-fn optional_meet<T>(meet: fn(T, T) -> T, a: T?, b: T?) -> T? {
-  match a {
-    None => b
-    Some { value: va } =>
-      match b {
-        None => a
-        Some { value: vb } => Some { value: meet(a: va, b: vb) }
-      }
-  }
-}
-
-// Pointwise merge at key: absent key is identity.
-fn map_merge_at<K, V>(merge: fn(V, V) -> V, base: Map<K, V>, key: K, new_val: V) -> Map<K, V> {
-  match map_get(base, key) {
-    Some { value: existing } => map_insert(base, key, merge(a: existing, b: new_val))
-    None => map_insert(base, key, new_val)
-  }
-}
+// 🟡 gated — feature:v2-optional-cardoptional-rust-emit — bind emit-stage debt:
+// v2 05_emit_rust.dag lacks Optional/T? return-cardinality Rust rendering (and
+// Map<K,V> → HashMap<K,V> for generic map_merge_at). dissolve-on-arrival: land
+// the deferred executable surface below without 05_emit_rust.dag edits in a
+// dsl/std lane; regen_stage0 must compile; then rewire std/termination.dag and
+// v2/complexity.dag consumers. forbidden: executable Optional<T?> generic
+// combinators or Monoid<T?> witness before emit fix lands at higher bar.
 //
-// Remaining design-only patterns (future lanes):
+// Deferred executable surface (shape validated; blocked on emit):
+//   optional_prefer_first_present<T>(left: T?, right: T?) -> T?
+//   optional_first_present_monoid<T>() -> Monoid<T?>
+//   optional_meet<T>(meet: fn(T, T) -> T, a: T?, b: T?) -> T?
+//   map_merge_at<K, V>(merge: fn(V, V) -> V, base: Map<K, V>, key: K, new_val: V) -> Map<K, V>
+//
+// Generic patterns (shape; callers instantiate concretely today):
+//   optional_meet(meet, a, b):  None is identity (top).
+//   map_merge_at(merge, m, k, v): pointwise per key, absent = identity.
 //   min_by(project, a, b):  compare via projection, keep lesser.
 //   max_by(project, a, b):  compare via projection, keep greater.
+//
+// Concrete monomorphized instances remain next to their lattice declarations until
+// the gate clears:
+//   std/termination.dag: optional_evidence_meet, map_evidence_merge_at
+//   std/induction.dag:   meet_sub_value, join_sub_value
 //
 // Type parameters on generic fn signatures emit faithfully to Rust with no
 // synthesized trait bounds — if a concrete instance needs one, the `.dag`
 // authority must declare it (bound-declaration syntax is out-of-scope here;
 // a future lane). Known adjacent gaps, each a separate dissolution lane:
+//   - Optional/T? params on generic fn signatures: render_rust_decl_type generic-param
+//     leaf path must preserve CardOptional (currently returns bare T).
 //   - Higher-order value params still emit as `impl Fn(...) + Clone` at the
 //     callable-bound layer (see 05_emit_rust.dag line ~1401).
 //   - The type/value-param split in the emitter keys on the post-resolve
@@ -392,9 +380,6 @@ fn map_merge_at<K, V>(merge: fn(V, V) -> V, base: Map<K, V>, key: K, new_val: V)
 //     target below closes it cleanly. Dissolution target: partition
 //     Node's `params` slot into `type_params` / `value_params`, or
 //     introduce a `ParamKind` discriminator.
-//
-// Domain-specific lattice meet/join (not yet generic-lifted):
-//   std/induction.dag: meet_sub_value, join_sub_value
 
 // =========================================================================
 // Sequence/collection structures

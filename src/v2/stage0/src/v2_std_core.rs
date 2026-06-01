@@ -50,9 +50,7 @@ pub struct Token {
     pub shape: TokenShape,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TokenShape {
     ShKeyword,
@@ -99,9 +97,7 @@ pub enum TokenShape {
     ShUnknown,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Connective {
     Conj,
@@ -110,18 +106,14 @@ pub enum Connective {
     Arrow,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Cardinality {
     Required,
     CardOptional,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum FieldAccessStyle {
     StoredField,
@@ -131,9 +123,7 @@ pub enum FieldAccessStyle {
     TupleSecond,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum FieldValueShape {
     PlainValue,
@@ -202,9 +192,7 @@ impl VarBindingKind {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallSemantics {
     PlainCallSemantics,
@@ -228,9 +216,7 @@ pub enum MethodSemantics {
     },
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExprErrorKind {
     ParseRecoveryError,
@@ -303,9 +289,7 @@ pub enum MatchPattern {
     Wildcard,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UnaryOpKind {
     Not,
@@ -319,9 +303,7 @@ pub enum StringPart {
     Interpolation { expr: Rc<Node> },
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OperationModifier {
     Idempotent,
@@ -1100,34 +1082,30 @@ pub fn make_resolved_param_node(
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    {
-        let children = match default_value {
-            Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-            None => Rc::new(vec![type_expr.clone()]),
-        };
-        Rc::new(Node {
-            name: name.clone(),
-            span: span,
-            ident_span: default_ident_span(name.clone(), name_span),
-            children: children,
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved {
-                node: type_expr.clone(),
-            })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: properties,
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        })
-    }
+    let children = match default_value {
+        Some(dv) => Rc::new(vec![type_expr.clone(), dv]),
+        None => Rc::new(vec![type_expr.clone()]),
+    };
+    Rc::new(Node {
+        name: name.clone(),
+        span: span,
+        ident_span: default_ident_span(name.clone(), name_span),
+        children: children,
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved { node: type_expr })),
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: properties,
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
+    })
 }
 
 pub fn param_node_name_at(
@@ -1477,9 +1455,7 @@ pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRo
     v2_rt::lookup(&expr_child_roles(), variant_name)
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NodeFieldRole {
     ChildrenListField,

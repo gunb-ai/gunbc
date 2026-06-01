@@ -480,6 +480,8 @@ fn termination_lattice_functions_preserve_std_body_spans() {
         "join_evidence",
         "promote_to_strict",
         "proportional_divisor_to_int",
+        "optional_evidence_meet",
+        "map_evidence_merge_at",
     ] {
         assert!(
             matches!(arrow_body(&dag, name), ArrowBody::Unparsed(_)),
@@ -501,6 +503,8 @@ fn termination_lattice_rust_mirror_dissolved() {
         "pub fn merge_evidence",
         "pub fn join_evidence",
         "pub fn promote_to_strict",
+        "pub fn optional_evidence_meet",
+        "pub fn map_evidence_merge_at",
     ] {
         assert!(
             !dag_rs.contains(forbidden),

@@ -68,9 +68,7 @@ pub fn rust_callable() -> Rc<CallableRepr> {
     CACHED.with(|c: &Rc<CallableRepr>| c.clone())
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OwnershipKind {
     Owned,
@@ -105,9 +103,7 @@ pub fn mut_ref_prefix() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SmartPointerKind {
     BoxPtr,

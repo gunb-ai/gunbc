@@ -110,6 +110,17 @@ jobs:
         rustflags: ''
     - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+    # INTERIM transport repair (operator 2026-06-01, "stop the bleeding"). Authority for the
+    # right-way fix: src/v4/workflow/ci.dag cache-projection note + dsl/std/cache_interface.dag.
+    # The old key mixed in hashFiles('src/v3/compiler/src/**', …), which changes on nearly every
+    # commit — so the primary slot was NEVER reused: each run minted a brand-new ~200 MiB cache,
+    # flooding the repo's 10 GB budget and LRU-evicting the warm caches (including the v2
+    # `gunbc-bin` build) before the next run could restore them. Cargo's own fingerprinting
+    # already invalidates stale crates on top of a restored target/, so the v3-src component
+    # bought churn, not correctness. De-churned to Cargo.lock + toolchain → one cache per
+    # dependency set, restored via the broad restore-key, eviction pressure cut ~100×.
+    # Does NOT speed up the M1 emit-probe / bootstrap steps — those need content-addressed
+    # sccache via the modeled cache_interface projection (see ci.dag note). dissolve-on-arrival.
     - name: Cache Cargo (ci floor)
       uses: actions/cache@v4
       with:
@@ -118,9 +129,8 @@ jobs:
           ${{ runner.temp }}/cargo/registry/cache/
           ${{ runner.temp }}/cargo/git/db/
           target/
-        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
         restore-keys: |
-          cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
           cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: Cache gunbc binary (v4 floor)
       id: v4-v2-bin

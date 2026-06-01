@@ -1160,8 +1160,8 @@ pub enum ArrowBody {
 // The `.dag` declarations are the carrier authority. Gate
 // `tier3_termination_mirror_dissolved` retired the public Rust mirror of the
 // `DescentEvidence` lattice operations (`evidence_rank`, `merge_evidence`,
-// `join_evidence`, `promote_to_strict`). Generic lattice lifters
-// (`optional_meet`, `map_merge_at`) live in `dsl/std/algebra.dag`. The std declarations still preserve their
+// `join_evidence`, `promote_to_strict`, `optional_evidence_meet`, and
+// `map_evidence_merge_at`). The std declarations still preserve their
 // `ArrowBody::Unparsed` spans in bootstrap; consumers must not add a second
 // host-side executable copy while evaluator-backed std body execution lands.
 
