@@ -1028,24 +1028,56 @@ fn parse_item_keyword_arm_count() {
 
 #[test]
 fn l1_type_knowledge_ratchet() {
-    // Delegate to scripts/l1-ratchet.sh (single authority) instead of
-    // reimplementing the pattern matching in Rust.
+    // Authority: dsl/gunbc/tools/ratchet.dag (replaces deleted scripts/l1-ratchet.sh).
+    // Prefer `gunbc run --source-root dsl --function run_l1_ratchet` when the binary exists;
+    // otherwise run the same grep corpus inline so v2 tests stay hermetic in partial builds.
     let ws = crate::helpers::workspace_root();
-    let script = ws.join("scripts/l1-ratchet.sh");
-    let output = std::process::Command::new("bash")
-        .arg(&script)
-        .arg("--check")
-        .current_dir(&ws)
-        .output()
-        .expect("failed to run l1-ratchet.sh");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    eprintln!("{}", stdout);
-    assert!(
-        output.status.success(),
-        "l1-ratchet.sh --check failed:\n{}\n{}",
-        stdout,
-        stderr
+    let gunbc = ws.join("target/release/gunbc");
+    if gunbc.is_file() {
+        let output = std::process::Command::new(&gunbc)
+            .args([
+                "run",
+                "--source-root",
+                "dsl",
+                "--function",
+                "run_l1_ratchet",
+            ])
+            .current_dir(&ws)
+            .output()
+            .expect("failed to run gunbc L1 ratchet entrypoint");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("{stdout}");
+        assert!(
+            output.status.success(),
+            "gunbc run run_l1_ratchet failed:\n{stdout}\n{stderr}"
+        );
+        return;
+    }
+
+    let v3 = ws.join("src/v3");
+    let constructor_pattern = r"\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\b";
+    let typename_pattern = r#"\.name == "(Optional|Map|List|Set|Dynamic|Error|Int|String|Bool|Float|Unit|Bytes|Json|Secret|Tuple|Callable|None|Some)""#;
+    let mut violations = 0usize;
+    for entry in walkdir::WalkDir::new(&v3)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "dag"))
+    {
+        let content = std::fs::read_to_string(entry.path())
+            .unwrap_or_else(|e| panic!("read {}: {e}", entry.path().display()));
+        violations += regex::Regex::new(constructor_pattern)
+            .expect("constructor pattern")
+            .find_iter(&content)
+            .count();
+        violations += regex::Regex::new(typename_pattern)
+            .expect("typename pattern")
+            .find_iter(&content)
+            .count();
+    }
+    assert_eq!(
+        violations, 0,
+        "L1 type knowledge ratchet: {violations} violation(s) under src/v3 (authority: dsl/gunbc/tools/ratchet.dag)"
     );
 }
 

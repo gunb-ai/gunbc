@@ -268,4 +268,4 @@ ci:
 	RUSTFLAGS="-D warnings" cargo clippy --workspace --exclude gunbc-codegen -- -D warnings
 	RUSTFLAGS="-D warnings" cargo clippy -p gunbc-codegen --lib -- -D warnings
 	RUSTFLAGS="-D warnings" cargo test --workspace --exclude gunbc-codegen
-	scripts/check-stage0-freshness.sh
+	@$(MAKE) bootstrap-check

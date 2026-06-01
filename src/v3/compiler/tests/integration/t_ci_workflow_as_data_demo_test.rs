@@ -1321,7 +1321,7 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
             (
                 "l1-ratchet",
                 "ShellCommand",
-                "scripts/l1-ratchet.sh --check".to_string()
+                "gunbc run --source-root dsl --function run_l1_ratchet".to_string()
             ),
             ("lint", "LintCommand", String::new()),
             ("tests", "TestCommand", String::new()),
