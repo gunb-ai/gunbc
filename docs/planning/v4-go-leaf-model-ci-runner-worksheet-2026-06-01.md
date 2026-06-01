@@ -56,7 +56,7 @@ Metric allowed only as secondary:
 |---|---|---|---|
 | `verify_go_dag_r1` | `go build` | `leaf_model_claim_go_r1_int_surface_spelling` | `v4-leaf-model-go-r1-verify.sh` |
 | `verify_go_dag_r2a` | `go build` | `leaf_model_claim_go_r2a_int_algebra_operations` | `v4-leaf-model-go-r2a-verify.sh` |
-| `verify_go_dag_r2b` | `go run` or `go test` | `leaf_model_claim_go_r2b_int_silent_overflow_truncates` | `v4-leaf-model-go-r2b-verify.sh` |
+| `verify_go_dag_r2b` | `go run` or `go test` | `leaf_model_claim_go_r2b_int64_silent_overflow_truncates` | `v4-leaf-model-go-r2b-verify.sh` |
 | `verify_go_dag_r3_external` | `go build` | `leaf_model_claim_go_r3_external_symbol_projection` | `v4-leaf-model-go-r3-external-verify.sh` |
 
 **FileSet trigger:** `src/v4/extdeps/languages/go.dag`, `src/v4/test/claim/language_model/go_*.dag`, `src/v4/lens/leaf_model_verification.dag` (go_* sections).
