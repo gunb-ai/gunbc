@@ -8,6 +8,7 @@ module v4.std.target_model
 import v4.std.algebra {
   Cons,
   Empty,
+  FreeMonoid,
   fold_list,
   free_monoid_field_head,
   free_monoid_field_tail,
@@ -2134,6 +2135,8 @@ data target_collection_set_no_representation: Symbol = target_collection_set_no_
 data target_collection_set_no_representation_port: Symbol = target_collection_set_no_representation_port
 data target_collection_free_monoid_no_representation: Symbol = target_collection_free_monoid_no_representation
 data target_collection_free_monoid_no_representation_port: Symbol = target_collection_free_monoid_no_representation_port
+data target_collection_realization_lookup_miss: Symbol = target_collection_realization_lookup_miss
+data target_collection_realization_lookup_ambiguous: Symbol = target_collection_realization_lookup_ambiguous
 
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -2148,6 +2151,67 @@ fn target_collection_free_monoid_no_representation_diagnostic() -> Diagnostic {
     reason: target_collection_free_monoid_no_representation,
     at: port_locus(port: target_collection_free_monoid_no_representation_port),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_collection_realization_lookup_miss_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_collection_realization_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_collection_realization_lookup_ambiguous_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: target_collection_realization_lookup_ambiguous,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟢 coproduct dissolution — SG-5 collection realization lookup state (missing / unique / ambiguous).
+type TargetCollectionRealizationLookup
+  = TargetCollectionRealizationMissing
+  | TargetCollectionRealizationUnique { row: TargetCollectionRealization }
+  | TargetCollectionRealizationAmbiguous
+
+fn target_collection_realization_lookup_step(
+  acc: TargetCollectionRealizationLookup,
+  row: TargetCollectionRealization,
+  source_carrier: Node
+) -> TargetCollectionRealizationLookup {
+  if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
+    match acc {
+      TargetCollectionRealizationMissing => TargetCollectionRealizationUnique { row: row }
+      TargetCollectionRealizationUnique { row: _ } => TargetCollectionRealizationAmbiguous
+      TargetCollectionRealizationAmbiguous => TargetCollectionRealizationAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+fn target_collection_realization_lookup_in_catalog(
+  catalog: FreeMonoid<TargetCollectionRealization>,
+  source_carrier: Node
+) -> Outcome<TargetCollectionRealization> {
+  match fold_list(
+    xs: catalog,
+    empty: TargetCollectionRealizationMissing,
+    cons: fn(acc, row) {
+      target_collection_realization_lookup_step(
+        acc: acc,
+        row: row,
+        source_carrier: source_carrier
+      )
+    }
+  ) {
+    TargetCollectionRealizationMissing =>
+      outcome_rejected(target_collection_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
+    TargetCollectionRealizationUnique { row: row } => outcome_accepted(row)
+    TargetCollectionRealizationAmbiguous =>
+      outcome_rejected(target_collection_realization_lookup_ambiguous_diagnostic(source_carrier: source_carrier))
   }
 }
 
