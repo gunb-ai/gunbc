@@ -1433,16 +1433,30 @@ pub mod evaluator {
         }
     }
 
-    fn variant_decl_id(
+    fn variant_decl_id_in_file(
         dag: &Dag,
         type_name: &str,
+        file_suffix: &str,
         variant_name: &str,
     ) -> Result<DeclarationId, EvalError> {
         let decl = dag
-            .declaration_by_name(type_name)
+            .declarations()
+            .iter()
+            .find(|decl| {
+                decl.name.as_deref() == Some(type_name) && decl.span.file.ends_with(file_suffix)
+            })
             .ok_or(EvalError::BadTransformOperands {
                 reason: "variant carrier type not found",
             })?;
+        variant_decl_id_from_decl(dag, decl.id, variant_name)
+    }
+
+    fn variant_decl_id_from_decl(
+        dag: &Dag,
+        type_decl: DeclarationId,
+        variant_name: &str,
+    ) -> Result<DeclarationId, EvalError> {
+        let decl = dag.declaration(type_decl);
         let TypeConnective::Disj { variants } = &decl.connective else {
             return Err(EvalError::BadTransformOperands {
                 reason: "variant carrier is not a sum type",
@@ -1459,7 +1473,7 @@ pub mod evaluator {
 
     fn accepted_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id(dag, "Outcome", "Accepted")?,
+            tag: variant_decl_id_in_file(dag, "Outcome", "src/v4/std/diagnostic.dag", "Accepted")?,
             payload: Box::new(Value::RecordValue(vec![
                 NamedField {
                     label: "value".to_string(),
@@ -1475,7 +1489,7 @@ pub mod evaluator {
 
     fn rejected_variant(dag: &Dag, diagnostics: Value) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id(dag, "Outcome", "Rejected")?,
+            tag: variant_decl_id_in_file(dag, "Outcome", "src/v4/std/diagnostic.dag", "Rejected")?,
             payload: Box::new(Value::RecordValue(vec![NamedField {
                 label: "diagnostics".to_string(),
                 value: diagnostics,
@@ -1485,21 +1499,21 @@ pub mod evaluator {
 
     fn diagnostics_none_variant(dag: &Dag) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id(dag, "Diagnostics", "None")?,
+            tag: variant_decl_id_in_file(dag, "Diagnostics", "src/v4/std/diagnostic.dag", "None")?,
             payload: Box::new(Value::RecordValue(Vec::new())),
         })
     }
 
     fn correction_none_variant(dag: &Dag) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id(dag, "Correction", "None")?,
+            tag: variant_decl_id_in_file(dag, "Correction", "src/v4/std/diagnostic.dag", "None")?,
             payload: Box::new(Value::RecordValue(Vec::new())),
         })
     }
 
     fn witness_holds_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id(dag, "Witness", "Holds")?,
+            tag: variant_decl_id_in_file(dag, "Witness", "src/v4/std/witness.dag", "Holds")?,
             payload: Box::new(Value::RecordValue(vec![NamedField {
                 label: "value".to_string(),
                 value,
@@ -1509,7 +1523,7 @@ pub mod evaluator {
 
     fn witness_violates_variant(dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id(dag, "Witness", "Violates")?,
+            tag: variant_decl_id_in_file(dag, "Witness", "src/v4/std/witness.dag", "Violates")?,
             payload: Box::new(Value::RecordValue(vec![NamedField {
                 label: "diagnostic".to_string(),
                 value: diagnostic,
@@ -1519,7 +1533,7 @@ pub mod evaluator {
 
     fn port_locus_value(dag: &Dag, port: &str) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id(dag, "Locus", "PortLocus")?,
+            tag: variant_decl_id_in_file(dag, "Locus", "src/v4/std/diagnostic.dag", "PortLocus")?,
             payload: Box::new(Value::RecordValue(vec![NamedField {
                 label: "anchor".to_string(),
                 value: Value::RecordValue(vec![NamedField {
@@ -1562,7 +1576,7 @@ pub mod evaluator {
 
     fn std_list_empty_variant(dag: &Dag) -> Result<Value, EvalError> {
         Ok(Value::VariantValue {
-            tag: variant_decl_id(dag, "List", "Empty")?,
+            tag: variant_decl_id_in_file(dag, "List", "src/v4/std/algebra.dag", "Empty")?,
             payload: Box::new(Value::RecordValue(Vec::new())),
         })
     }
@@ -1619,7 +1633,13 @@ pub mod evaluator {
         };
         let logical_run = match &exit_outcome {
             Value::VariantValue { tag, .. }
-                if *tag == variant_decl_id(dag, "Outcome", "Rejected")? =>
+                if *tag
+                    == variant_decl_id_in_file(
+                        dag,
+                        "Outcome",
+                        "src/v4/std/diagnostic.dag",
+                        "Rejected",
+                    )? =>
             {
                 exit_outcome.clone()
             }
