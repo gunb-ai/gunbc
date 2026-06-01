@@ -173,11 +173,14 @@ pyright_run() {
   # Pin EXACTLY the modeled pyright_version. A pyright already on PATH is used only if its
   # version matches the modeled profile; otherwise pin via npx. This prevents the receipt
   # from passing under a different tool profile than pyright_profile_l1 declares.
+  # `--project "$scratch"` structurally binds pyright to the generated pyrightconfig.json
+  # carrying the modeled pythonVersion + typeCheckingMode — so the run provably consumes
+  # pyright_profile_l1, not pyright's ambient/default config discovery.
   if command -v pyright >/dev/null 2>&1 \
      && pyright --version 2>/dev/null | grep -qw "$pyright_version"; then
-    cmd=(pyright --outputjson "$target")
+    cmd=(pyright --project "$scratch" --outputjson "$target")
   elif command -v npx >/dev/null 2>&1; then
-    cmd=(npx --yes "pyright@${pyright_version}" --outputjson "$target")
+    cmd=(npx --yes "pyright@${pyright_version}" --project "$scratch" --outputjson "$target")
   else
     return 2  # modeled tool/version unavailable
   fi
