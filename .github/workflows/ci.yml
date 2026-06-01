@@ -38,12 +38,13 @@ jobs:
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
-        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. Gate on WRITE access
-        # to the INHERITED socket (`[ -w ]`) — connect(2) to a UNIX socket needs write permission; the
-        # runner's isolated socket is ghrunner-writable so this passes and sccache engages, and
-        # degrades observably to a cold build (::warning) — never silently / never fail-hard — when no
-        # usable socket is inherited. dissolve-on-arrival.
-        if [ -S "$SCCACHE_SERVER_UDS" ] && [ -w "$SCCACHE_SERVER_UDS" ]; then
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
+        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
+        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
@@ -90,12 +91,13 @@ jobs:
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
-        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. Gate on WRITE access
-        # to the INHERITED socket (`[ -w ]`) — connect(2) to a UNIX socket needs write permission; the
-        # runner's isolated socket is ghrunner-writable so this passes and sccache engages, and
-        # degrades observably to a cold build (::warning) — never silently / never fail-hard — when no
-        # usable socket is inherited. dissolve-on-arrival.
-        if [ -S "$SCCACHE_SERVER_UDS" ] && [ -w "$SCCACHE_SERVER_UDS" ]; then
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
+        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
+        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
@@ -136,12 +138,13 @@ jobs:
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
-        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. Gate on WRITE access
-        # to the INHERITED socket (`[ -w ]`) — connect(2) to a UNIX socket needs write permission; the
-        # runner's isolated socket is ghrunner-writable so this passes and sccache engages, and
-        # degrades observably to a cold build (::warning) — never silently / never fail-hard — when no
-        # usable socket is inherited. dissolve-on-arrival.
-        if [ -S "$SCCACHE_SERVER_UDS" ] && [ -w "$SCCACHE_SERVER_UDS" ]; then
+        # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
+        # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
+        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
+        # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
+        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         else
