@@ -244,11 +244,11 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
 }
 
-// Fn signatures: canonical outer renderer + generic-arg leaf preservation when
-// the enclosing item has type params (resolved param/return types from emit_fn_def).
+// Fn signatures in generic items: same carrier path as emit_struct_field_from_child
+// (render_node_type on resolved_type carriers). Non-generic fns keep applied-binding.
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   if generic_param_names |> count > 0 {
-    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
   } else {
     render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
   }
@@ -2169,9 +2169,11 @@ fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared
 }
 
 fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let authored = param_node_type_expr(n: param)
-  let n = if generic_param_names |> count > 0 { authored } else { child_type_node(ch: authored) }
-  let ty = emit_rust_param_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  let ty = if generic_param_names |> count > 0 {
+    render_node_type(n: resolved_type(n: param), target: Rust, shared_types: shared_types, source_indices: source_indices)
+  } else {
+    emit_rust_param_type(n: param_node_type_expr(n: param), generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
+  }
   concat("mut ", emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust), rust_items().param_type_sep, ty)
 }
 
@@ -2229,11 +2231,11 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
 }
 
 fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
-  let authored = param_node_type_expr(n: param)
-  // Generic fn signatures: keep authored application shape (NodeFold<S>); resolved
-  // carriers can drop type-param children. Non-generic params use inferred carriers.
-  let n = if generic_param_names |> count > 0 { authored } else { child_type_node(ch: authored) }
-  let ty = emit_rust_param_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  let ty = if generic_param_names |> count > 0 {
+    render_node_type(n: resolved_type(n: param), target: Rust, shared_types: shared_types, source_indices: source_indices)
+  } else {
+    emit_rust_param_type(n: param_node_type_expr(n: param), generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
+  }
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, ty)
 }
