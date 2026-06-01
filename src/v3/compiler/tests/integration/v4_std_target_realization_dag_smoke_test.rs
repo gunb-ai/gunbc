@@ -364,6 +364,11 @@ fn v4_rust_language_model_declares_target_atom_realization_rows() {
         "{RUST_LANGUAGE_PATH}: MVP1 bundle_core must carry SG-2 projection for SG-1b boundary serialize"
     );
     assert!(
+        bundle_core_body.contains("target_model_edge_reference_layer_tokens")
+            && bundle_core_body.contains("target_model_edge_use_site_ownership_realizations"),
+        "{RUST_LANGUAGE_PATH}: MVP1 staging bundle_core must carry SG-RC authority (same shape as rust_sg2_type_expr_target_model_bundle_core)"
+    );
+    assert!(
         RUST_LANGUAGE_DAG.contains("left: rust_mvp1_target_model_bundle_core().children"),
         "{RUST_LANGUAGE_PATH}: live MVP1 bundle must compose bundle_core children (projection present on rust_mvp1_target_model)"
     );
