@@ -20,6 +20,7 @@ import v4.lens.registry {
   UnusedParameters,
   lens_registry_ids_resolve
 }
+import v4.lens.testgen { Generator, TestgenConcept }
 import v4.lens.affected_set {
   RerunNodeSet,
   RerunNodeSetFailClosed,
@@ -86,6 +87,7 @@ import v4.std.diagnostic {
   Extent,
   Locus,
   NoCorrectionReason,
+  Diagnostics,
   Outcome,
   Accepted,
   Rejected,
@@ -122,6 +124,11 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.workflow.wave3_shadow_roster {
+  ci_wave3_shadow_claim_roster,
+  ci_wave3_shadow_generated_claim_roster,
+  ci_wave3_shadow_manual_claim_roster
+}
 
 
 // RULING-1: 🟢 pretty-much-done — Tier-0 CI build profile (bankruptcy I2–I4; docs/design-ci-bankruptcy-rebuild.md §2).
@@ -232,7 +239,7 @@ fn ci_upsert_lens_output_ref_input(lens: LensIdV0) -> UpsertInputRef {
 fn ci_upsert_lens_inputs_from_required_lenses(lenses: List<LensIdV0>) -> List<UpsertInputRef> {
   fold_list(
     xs: lenses,
-    empty: Empty,
+    empty: ci_empty_upsert_input_refs(),
     cons: fn(acc, lens) {
       list_snoc_item(xs: acc, item: ci_upsert_lens_output_ref_input(lens: lens))
     }
@@ -339,10 +346,68 @@ data ci_always_run_carveouts: List<CiCarveout> = [
   }
 ]
 
+// Wave 3 §11.7.4 — extend existing receipt (arbiter §8 2026-06-01); no parallel shadow receipt type.
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind Wave 4 active-skip — dissolve-on-arrival: `CiActiveFloorSkipEvidence` is populated from cached TestClaimRun verdict partition; forbidden: bare `Active` tag without skip evidence (illegal floor-skip state).
+type CiActiveFloorSkipEvidence {
+  cached_verdict_digest: Hash
+}
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md §8 + #4137 §11.7.2 — dissolve-on-arrival: `Active { skip_evidence }` drives executable skip from receipt (Wave 4); forbidden: persisting independent `floor_skip` beside `mode` or constructing `Active` without evidence.
+type CiSelectionMode
+  = Shadow
+  | Active { skip_evidence: CiActiveFloorSkipEvidence }
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — consumer:ci_selection_receipt_shadow_from_git_diff — bind node://adhoc-331899f9-19a live emit — dissolve-on-arrival: `LivePrGitDiff` only on live population entry with populated claim/testgen rows; forbidden: caller-supplied provenance on step-only shadow (empty claim/testgen partition).
+type CiSelectionReceiptProvenance
+  = FixtureReceipt
+  | LivePrGitDiff
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind arbiter §3.2 — dissolve-on-arrival: claim-row `reason` projects per-claim ∩ rerun-frontier facts (not global frontier emptiness alone); forbidden: unbounded `Symbol` on `CiTestClaimSelection.reason`.
+type CiClaimSelectionReason
+  = FailClosedSuperset
+  | AffectedFrontierEmpty
+  | AffectedIntersectionNonempty
+  | AffectedIntersectionEmpty
+  | TestgenSlotMapped
+  | ShadowObserveOnly
+  | FloorStepCarveout
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind T-21 IRT-4 `test_claim_claim_hash_digest` — dissolve-on-arrival: `claim_projection_hash` is whole-TestClaim authority; forbidden: input-only `Node` projection for receipt hashing.
+type CiTestClaimSelection {
+  anchor: ClaimAnchorKey
+  label: String
+  coproduct_variant: TestClaimCoproductVariant
+  claim_projection_hash: Hash
+  selected: Bool
+  reason: CiClaimSelectionReason
+}
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind neat-hawk testgen roster population — dissolve-on-arrival: `testgen_slots` populated from eval harness via `Generator<TestgenConcept>` (not flattened Symbol labels); forbidden: empty `testgen_slots` standing in for live testgen selection.
+type TestgenSlotSelection {
+  generator: Generator<TestgenConcept>
+  emits_claim_anchor: ClaimAnchorKey
+  selected: Bool
+  reason: CiClaimSelectionReason
+}
+
+// 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — amend W1.5 `CiSelectionReceipt` — dissolve-on-arrival: receipt partition drives GHA scheduling + TestClaimRun verdict surface (Wave 4); forbidden: parallel shadow receipt genus.
 type CiSelectionReceipt {
   pr: ChangeSet
   affected: AffectedSet
+  mode: CiSelectionMode
+  provenance: CiSelectionReceiptProvenance
   decisions: List<CiStepSelection>
+  testclaim_decisions: List<CiTestClaimSelection>
+  testgen_slots: List<TestgenSlotSelection>
+  component_affected_comparison: CiComponentAffected
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:wave3-shadow-selection-receipt — consumer:ci_floor_held / fixture witnesses — bind docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md §8 — dissolve-on-arrival: `CiSelectionMode` drives floor policy at GHA projection sites (delete Bool projection when Active scheduling lands); forbidden: persisting independent `floor_skip` or untagged mode→Bool helpers beside `mode`.
+fn ci_floor_held(receipt: CiSelectionReceipt) -> Bool {
+  match receipt.mode {
+    Shadow => true
+    Active { skip_evidence: _ } => false
+  }
 }
 
 type CiStepSelection {
@@ -398,13 +463,31 @@ type LensCiLiveWorkflowSignal {
   semantic_target: String
 }
 
+// 🟡 gated — live-workflow projection interim (docs/modeling-discipline.md Practice 2/10) — feature:project-github-actions-landed — consumer:CiLiveWorkflowStepSignal strict env projection — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads typed step env from `ci_pipeline`/command policy rows and this bridge carrier is deleted; forbidden: encoding absent env bindings as empty strings.
+type StrictEnvBinding
+  = NoStrictEnvBinding
+  | StrictEnvBinding { var: String, value: String }
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
-type M1CiLiveWorkflowSignal {
+type CiLiveWorkflowStepSignal {
   binding_smoke_step_name: String
   step_name: String
   script_path: String
+  // GitHub Actions step transport policy. `false` means the script step itself
+  // must execute successfully; it does not imply rustc residuals fail the gate.
   non_blocking: Bool
   timeout_minutes: Int
+  strict_env_binding: StrictEnvBinding
+}
+
+type M1RustEmitProbePolicy {
+  emit_preconditions_block_required_path: Bool
+  rustc_residuals_block_required_path: Bool
+}
+
+type M1CiLiveWorkflowSignal {
+  step: CiLiveWorkflowStepSignal
+  rust_emit_probe_policy: M1RustEmitProbePolicy
 }
 
 
@@ -464,11 +547,18 @@ data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
 }
 
 data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
-  binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
-  step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
-  script_path: "scripts/v4-m1-rust-emit-probe.sh"
-  non_blocking: false
-  timeout_minutes: 20
+  step: CiLiveWorkflowStepSignal {
+    binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
+    step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
+    script_path: "scripts/v4-m1-rust-emit-probe.sh"
+    non_blocking: false
+    timeout_minutes: 20
+    strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" }
+  }
+  rust_emit_probe_policy: M1RustEmitProbePolicy {
+    emit_preconditions_block_required_path: true
+    rustc_residuals_block_required_path: false
+  }
 }
 
 data ci_v3_determinism_profile: CiBuildProfile = Release
@@ -542,21 +632,23 @@ data ci_job_v4_t15_self_host_fixed_point_execution_row: CiJob = ci_job_v4_t15_se
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci phase1_nat_semiring_rung_gate_ci_live_workflow_signal — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`Phase1NatSemiringRungGateCommand` directly and this step-name carrier is deleted; forbidden: adding rung gate step facts outside `ci_pipeline` + this binding.
 // 🟡 gated — feature:phase1-nat-semiring-rust-rung-interim-nonblocking — bind #3955 §6 (rust rung emit not rustc-clean on main) — dissolve-on-arrival: flip non_blocking to false when rung1 rust_typecheck passes under V4_PHASE1_NAT_SEMIRING_STRICT=1; until then non_blocking: true (continue-on-error at workflow) while STRICT=1 still logs fail-closed rung receipts; forbidden: silent YAML-only continue-on-error without modeled parity.
 // 🟡 tracked-bridge — feature:phase1-nat-semiring-rung-gate-binding-smoke — owner:keen-crab-361 (Ladder/Fixture Manager) — bind node://adhoc-2b191c1e-6b3 ("phase1/nat_semiring rung gate binding-smoke test (mirror M1's v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml)") — consumer:src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs new test function asserting ci.dag step_name/script_path/non_blocking/timeout_minutes parity with .github/workflows/ci.yml step block — dissolve-on-arrival: binding_smoke_step_name carries the new test's step name (e.g. "phase1/nat_semiring rung gate model/YAML binding smoke") AND ci.yml runs the new test as a cargo-test step paired with the gate; forbidden: re-emptying binding_smoke_step_name after the test lands. Until the bound work item closes, ci.dag↔ci.yml single-authority for THIS signal is enforced by the four-field parity (step_name / script_path / non_blocking / timeout_minutes) under review checkpoint at PR-time — not by a CI binding test.
-data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
+data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
   binding_smoke_step_name: ""
   step_name: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)"
   script_path: "scripts/v4-phase1-nat-semiring-rung-gate.sh"
   non_blocking: true
   timeout_minutes: 20
+  strict_env_binding: StrictEnvBinding { var: "V4_PHASE1_NAT_SEMIRING_STRICT", value: "1" }
 }
 
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — consumer:v4.workflow.ci testclaim_corpus_eval_ci_live_workflow_signal — structural-slice CLOSED: shell bridge deleted + positive-Y CiUpsertStep sole structural authority; forward: T-38-PR2 amends when runtime per-row TestClaimRun verdict CI lands — dissolve-on-arrival: emitted/projected GitHub Actions reads `ci_pipeline`/`TestClaimCorpusEvalCommand` directly and this carrier is deleted; forbidden: adding corpus eval step facts outside `ci_pipeline` + this binding.
-data testclaim_corpus_eval_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
+data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
   binding_smoke_step_name: ""
   step_name: "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)"
   script_path: "scripts/v4-testclaim-corpus-eval.sh"
   non_blocking: false
   timeout_minutes: 15
+  strict_env_binding: NoStrictEnvBinding
 }
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
@@ -811,7 +903,7 @@ data ci_upsert_testclaim_corpus_eval_upstream_inputs: List<UpsertInputRef> = [
 ]
 
 fn ci_upsert_testclaim_corpus_eval_claim_ref_inputs() -> List<UpsertInputRef> {
-  fold(ci_testclaim_corpus_eval_claim_ids, init: Empty, f: fn(acc, claim_id) {
+  fold(ci_testclaim_corpus_eval_claim_ids, init: ci_empty_upsert_input_refs(), f: fn(acc, claim_id) {
     list_snoc_item(xs: acc, item: ci_upsert_test_claim_ref_input(claim_id: claim_id))
   })
 }
@@ -1487,6 +1579,31 @@ fn ci_named_edge(name: Symbol, target: Node) -> Edge {
 }
 
 
+fn ci_no_diagnostics() -> Diagnostics {
+  None
+}
+
+
+fn ci_empty_edges() -> List<Edge> {
+  []
+}
+
+
+fn ci_empty_upsert_input_refs() -> List<UpsertInputRef> {
+  []
+}
+
+
+fn ci_empty_step_ids() -> List<CiStepId> {
+  []
+}
+
+
+fn ci_empty_step_selections() -> List<CiStepSelection> {
+  []
+}
+
+
 fn ci_symbol_digest(sym: Symbol) -> Hash {
   content_hash(n: ci_atom(sym: sym))
 }
@@ -1497,7 +1614,7 @@ fn ci_symbol_list_projection_node(xs: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: xs,
-      empty: Empty,
+      empty: ci_empty_edges(),
       cons: fn(acc, sym) {
         list_snoc_item(
           xs: acc,
@@ -1533,7 +1650,7 @@ fn ci_compile_stage_projection_outcome(stage: CompileStage) -> Outcome<Node> {
     Accepted { value: produces_hash_node, diagnostics: _ } =>
       Accepted {
         value: ci_compile_stage_projection_node(stage: stage, produces_hash_node: produces_hash_node),
-        diagnostics: None
+        diagnostics: ci_no_diagnostics()
       }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
@@ -1582,7 +1699,7 @@ fn ci_fixpt_stage_projection_outcome(fixpt: FixptStage1Stage2) -> Outcome<Node> 
                   right_hash_node: right_hash_node,
                   pinned_hash_node: pinned_hash_node
                 ),
-                diagnostics: None
+                diagnostics: ci_no_diagnostics()
               }
             Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
           }
@@ -1612,7 +1729,7 @@ fn ci_bootstrap_plan_accepted_projection_outcome(plan: BootstrapPlan) -> Outcome
                         ci_named_edge(name: ci_projection_bootstrap_plan_fixpt_edge, target: fixpt_node)
                       ]
                     },
-                    diagnostics: None
+                    diagnostics: ci_no_diagnostics()
                   }
                 Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
               }
@@ -1733,7 +1850,7 @@ fn ci_string_projection_node(s: String) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: s,
-      empty: Empty,
+      empty: ci_empty_edges(),
       cons: fn(acc, ch) {
         list_snoc_item(
           xs: acc,
@@ -1830,7 +1947,7 @@ fn ci_lens_list_projection_node(lenses: List<LensIdV0>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: lenses,
-      empty: Empty,
+      empty: ci_empty_edges(),
       cons: fn(acc, lens) {
         list_snoc_item(
           xs: acc,
@@ -1859,7 +1976,7 @@ fn ci_job_list_projection_node(jobs: List<CiJob>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: jobs,
-      empty: Empty,
+      empty: ci_empty_edges(),
       cons: fn(acc, job) {
         list_snoc_item(
           xs: acc,
@@ -1891,7 +2008,7 @@ fn ci_gate_list_projection_node(gates: List<CiGate>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: gates,
-      empty: Empty,
+      empty: ci_empty_edges(),
       cons: fn(acc, gate) {
         list_snoc_item(
           xs: acc,
@@ -1975,7 +2092,7 @@ fn ci_bootstrap_plan_cache_hash() -> Outcome<Hash> {
     Accepted { value: plan, diagnostics: _ } =>
       match ci_bootstrap_plan_accepted_projection_outcome(plan: plan) {
         Accepted { value: node, diagnostics: _ } =>
-          Accepted { value: content_hash(n: node), diagnostics: None }
+          Accepted { value: content_hash(n: node), diagnostics: ci_no_diagnostics() }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
@@ -2008,7 +2125,7 @@ fn ci_glob_pattern_projection_node(pattern: GlobPattern) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: pattern.segments,
-      empty: Empty,
+      empty: ci_empty_edges(),
       cons: fn(acc, segment) {
         list_snoc_item(
           xs: acc,
@@ -2205,7 +2322,7 @@ fn ci_upsert_input_ref_list_projection_node(refs: List<UpsertInputRef>) -> Node 
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: refs,
-      empty: Empty,
+      empty: ci_empty_edges(),
       cons: fn(acc, input_ref) {
         list_snoc_item(
           xs: acc,
@@ -2248,7 +2365,7 @@ fn ci_upsert_step_symbol_cache_digest(step: CiUpsertStepSymbol) -> Hash {
 
 
 fn ci_upsert_steps_slice_step_ids(rows: List<CiUpsertStepRow>) -> List<CiStepId> {
-  fold(rows, init: Empty, f: fn(acc, row) {
+  fold(rows, init: ci_empty_step_ids(), f: fn(acc, row) {
     list_snoc_item(xs: acc, item: row.step_id)
   })
 }
@@ -2306,7 +2423,7 @@ fn ci_gate_shadow_step_id(ci_gate: CiGate) -> CiStepId {
 fn ci_job_step_ids_shadow(jobs: List<CiJob>) -> List<CiStepId> {
   fold_list(
     xs: jobs,
-    empty: Empty,
+    empty: ci_empty_step_ids(),
     cons: fn(acc, ci_job) {
       list_snoc_item(xs: acc, item: ci_job_shadow_step_id(ci_job: ci_job))
     }
@@ -2565,7 +2682,7 @@ fn ci_selection_receipt_shadow_rows(
   let superset = ci_affected_set_is_fail_closed(affected: affected)
   fold_list(
     xs: ci_pipeline_step_ids_shadow(p: pipeline),
-    empty: Empty,
+    empty: ci_empty_step_selections(),
     cons: fn(acc, step_id) {
       list_snoc_item(
         xs: acc,
@@ -2583,7 +2700,106 @@ fn ci_selection_receipt_shadow_rows(
 }
 
 
-// Shadow selection receipt — `git_diff` is host transport for ChangeSet paths until T-21 wires RepoPath edits.
+fn ci_selection_receipt_mk(
+  pr: ChangeSet,
+  affected: AffectedSet,
+  mode: CiSelectionMode,
+  provenance: CiSelectionReceiptProvenance,
+  decisions: List<CiStepSelection>,
+  testclaim_decisions: List<CiTestClaimSelection>,
+  testgen_slots: List<TestgenSlotSelection>,
+  component_affected_comparison: CiComponentAffected
+) -> CiSelectionReceipt {
+  CiSelectionReceipt {
+    pr: pr,
+    affected: affected,
+    mode: mode,
+    provenance: provenance,
+    decisions: decisions,
+    testclaim_decisions: testclaim_decisions,
+    testgen_slots: testgen_slots,
+    component_affected_comparison: component_affected_comparison
+  }
+}
+
+
+// ── Wave 3 §11.7.4 — CiSelectionReceipt claim projection (consumes #4178 runtime selection API) ──
+fn ci_wave3_shadow_testclaim_selection_reason(
+  claim: TestClaim,
+  affected: AffectedSet,
+  selected: Bool
+) -> CiClaimSelectionReason {
+  if ci_affected_set_is_fail_closed(affected: affected) {
+    FailClosedSuperset
+  } else {
+    match affected_set_rerun_nodes(affected_set_value: affected) {
+      RerunNodeSetFailClosed { evidence: _ } => FailClosedSuperset
+      RerunNodeSetProduced { nodes: nodes } =>
+        if length(xs: nodes) == 0 {
+          if selected {
+            FailClosedSuperset
+          } else {
+            AffectedFrontierEmpty
+          }
+        } else if selected {
+          if test_claim_ci_selection_fail_closed(c: claim) {
+            FailClosedSuperset
+          } else {
+            AffectedIntersectionNonempty
+          }
+        } else if test_claim_in_rerun_frontier(claim: claim, frontier: nodes) {
+          ShadowObserveOnly
+        } else {
+          AffectedIntersectionEmpty
+        }
+    }
+  }
+}
+
+
+fn ci_wave3_shadow_testclaim_selection_row(
+  claim: TestClaim,
+  affected: AffectedSet,
+  selected_claims: List<TestClaim>
+) -> CiTestClaimSelection {
+  let selected = count_equal(xs: selected_claims, item: claim, eq: fn(left, right) { left == right }) != 0
+  CiTestClaimSelection {
+    anchor: test_claim_anchor(c: claim),
+    label: test_claim_label(c: claim),
+    coproduct_variant: test_claim_coproduct_variant(c: claim),
+    claim_projection_hash: test_claim_claim_hash_digest(c: claim),
+    selected: selected,
+    reason: ci_wave3_shadow_testclaim_selection_reason(
+      claim: claim,
+      affected: affected,
+      selected: selected
+    )
+  }
+}
+
+
+fn ci_wave3_shadow_testclaim_selection_rows(affected: AffectedSet) -> List<CiTestClaimSelection> {
+  let selected = ci_wave3_shadow_testclaims_selected(affected: affected)
+  fold(
+    ci_wave3_shadow_claim_roster(),
+    init: Empty,
+    f: fn(acc, claim) {
+      list_snoc_item(
+        xs: acc,
+        item: ci_wave3_shadow_testclaim_selection_row(
+          claim: claim,
+          affected: affected,
+          selected_claims: selected
+        )
+      )
+    }
+  )
+}
+
+
+// W1.5 step-only shadow — `git_diff` is host transport for ChangeSet paths until T-21 wires RepoPath edits.
+// Phase 1: provenance is always `FixtureReceipt` (empty claim/testgen rows). `LivePrGitDiff` is forbidden here;
+// live PR receipts use `ci_selection_receipt_shadow_from_git_diff` (adhoc-331899f9-19a) with populated partitions.
 fn ci_selection_receipt_shadow(
   pr: ChangeSet,
   affected: AffectedSet,
@@ -2592,9 +2808,11 @@ fn ci_selection_receipt_shadow(
   carveouts: List<CiCarveout>,
   registry: List<CiUpsertStepRow>
 ) -> CiSelectionReceipt {
-  CiSelectionReceipt {
+  ci_selection_receipt_mk(
     pr: pr,
     affected: affected,
+    mode: Shadow,
+    provenance: FixtureReceipt,
     decisions: ci_selection_receipt_shadow_rows(
       pr: pr,
       affected: affected,
@@ -2602,8 +2820,11 @@ fn ci_selection_receipt_shadow(
       pipeline: pipeline,
       carveouts: carveouts,
       registry: registry
-    )
-  }
+    ),
+    testclaim_decisions: Empty,
+    testgen_slots: Empty,
+    component_affected_comparison: ci_component_affected_fail_closed()
+  )
 }
 
 
@@ -2622,7 +2843,7 @@ fn ci_step_selection_shadow_row(step_id: CiStepId) -> CiStepSelection {
 fn ci_step_selection_shadow_rows(step_ids: List<CiStepId>) -> List<CiStepSelection> {
   fold_list(
     xs: step_ids,
-    empty: Empty,
+    empty: ci_empty_step_selections(),
     cons: fn(acc, sid) {
       list_snoc_item(xs: acc, item: ci_step_selection_shadow_row(step_id: sid))
     }
@@ -2636,11 +2857,16 @@ fn ci_selection_receipt_shadow_heartbeat(
   affected: AffectedSet,
   pipe: CiPipeline
 ) -> CiSelectionReceipt {
-  CiSelectionReceipt {
+  ci_selection_receipt_mk(
     pr: pr,
     affected: affected,
-    decisions: ci_step_selection_shadow_rows(step_ids: ci_pipeline_step_ids_shadow(p: pipe))
-  }
+    mode: Shadow,
+    provenance: FixtureReceipt,
+    decisions: ci_step_selection_shadow_rows(step_ids: ci_pipeline_step_ids_shadow(p: pipe)),
+    testclaim_decisions: Empty,
+    testgen_slots: Empty,
+    component_affected_comparison: ci_component_affected_fail_closed()
+  )
 }
 
 
@@ -2671,7 +2897,7 @@ fn ci_step_selection_step_id(row: CiStepSelection) -> CiStepId {
 fn ci_step_selections_step_ids(decisions: List<CiStepSelection>) -> List<CiStepId> {
   fold_list(
     xs: decisions,
-    empty: Empty,
+    empty: ci_empty_step_ids(),
     cons: fn(acc, row) {
       list_snoc_item(xs: acc, item: ci_step_selection_step_id(row: row))
     }
@@ -2945,6 +3171,52 @@ data ci_selection_receipt_shadow_fixture_well_formed_ok: Bool = match ci_pipelin
 }
 
 // C4 generatability — fixture receipt is well-formed and encodes carveout + affected Run evidence.
+// ── Wave 3 §11.7.4 — fixture shadow receipt (modeled selection; NOT live PR / NOT component-flag frontier) ──
+data ci_wave3_shadow_fixture_empty_pr: ChangeSet = ChangeSet { changes: [] }
+
+data ci_wave3_shadow_fixture_fail_closed_receipt: CiSelectionReceipt = ci_selection_receipt_mk(
+  pr: ci_wave3_shadow_fixture_empty_pr,
+  affected: ci_wave3_shadow_fail_closed_affected,
+  mode: Shadow,
+  provenance: FixtureReceipt,
+  decisions: Empty,
+  testclaim_decisions: ci_wave3_shadow_testclaim_selection_rows(
+    affected: ci_wave3_shadow_fail_closed_affected
+  ),
+  testgen_slots: Empty,
+  component_affected_comparison: ci_component_affected_fail_closed()
+)
+
+fn ci_wave3_shadow_fixture_fail_closed_superset_holds() -> Bool {
+  let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)
+  length(xs: selected) == length(xs: ci_wave3_shadow_claim_roster())
+}
+
+fn ci_wave3_shadow_fixture_floor_held_holds() -> Bool {
+  ci_floor_held(receipt: ci_wave3_shadow_fixture_fail_closed_receipt)
+}
+
+// 🟡 gated — predicate-dissolution interim (Practice 10) — feature:wave3-shadow-selection-receipt — consumer:ci_wave3_shadow_fixture_provenance_is_fixture_holds — bind node://adhoc-331899f9-19a live emit — dissolve-on-arrival: fixture witnesses carry `FixtureReceipt` at construction site (delete provenance match helper when live path exists); forbidden: `LivePrGitDiff` on synthetic/heartbeat constructors before real PR git_diff routing.
+fn ci_wave3_shadow_fixture_provenance_is_fixture_holds() -> Bool {
+  match ci_wave3_shadow_fixture_fail_closed_receipt.provenance {
+    FixtureReceipt => true
+    LivePrGitDiff => false
+  }
+}
+
+fn ci_wave3_shadow_fixture_manual_subset_selected_holds() -> Bool {
+  let manual = ci_wave3_shadow_manual_claim_roster()
+  let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)
+  for_all(
+    xs: manual,
+    predicate: fn(claim) {
+      count_equal(xs: selected, item: claim, eq: fn(left, right) { left == right }) != 0
+    }
+  )
+}
+
+data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_closed_superset_holds() && ci_wave3_shadow_fixture_floor_held_holds() && ci_wave3_shadow_fixture_provenance_is_fixture_holds() && ci_wave3_shadow_fixture_manual_subset_selected_holds()
+
 data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 
 // Shadow heartbeat data — NOT evidence that affected-set dependency selection works.
@@ -3077,9 +3349,9 @@ fn workflow_pipeline_pass_gate(
       match run.verdict {
         Pass => Pass
         Fail { actual: _, falsification: _ } =>
-          Fail { actual: Accepted { value: run, diagnostics: None }, falsification: Absent }
+          Fail { actual: Accepted { value: run, diagnostics: ci_no_diagnostics() }, falsification: Absent }
         Deferred { actual: _, diagnostic: d } =>
-          Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
+          Deferred { actual: Accepted { value: run, diagnostics: ci_no_diagnostics() }, diagnostic: d }
       }
     ],
     at: at
@@ -3100,7 +3372,7 @@ fn workflow_pipeline_plan_bound_pass_receipt(
               run: run,
               plan_hash: plan_hash
             },
-            diagnostics: None
+            diagnostics: ci_no_diagnostics()
           }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
@@ -3145,7 +3417,7 @@ fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
           if ci_all_gate_run_policies_resolve(gates: p.gates, jobs: p.jobs) {
             if ci_acyclic(jobs: p.jobs) {
               if ci_all_commands_authority_ok(jobs: p.jobs) {
-                Accepted { value: p, diagnostics: None }
+                Accepted { value: p, diagnostics: ci_no_diagnostics() }
               } else {
                 Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation)) }
               }
@@ -3196,6 +3468,74 @@ fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -
     rerun: affected_set_rerun_nodes(affected_set_value: affected)
   )
 }
+
+
+// ── Wave 3 TestClaim shadow selection (roster authority + frontier filter) ──────────────────────
+// Shadow / NON-GATING API. Narrows the single Wave-3 roster authority
+// (`ci_wave3_shadow_claim_roster` = manual corpus + accepted generated LBE claims, defined in
+// v4.test.claim.workflow.wave3_shadow_roster) by the affected-set rerun frontier via the EXISTING
+// `ci_select_*` lens. No host Rust lens reimplementation; no corpus execution — per-row
+// `TestClaimRun` RUNTIME verdicts are the T-38 / P5 bootstrap-evaluator corpus runtime lane
+// (docs/planning/v4-p5-bootstrap-evaluator-corpus-runtime-worksheet-2026-06-01.md), NOT this slice.
+fn ci_wave3_shadow_testclaims_selected(affected: AffectedSet) -> List<TestClaim> {
+  ci_select_from_affected_set(
+    roster: ci_wave3_shadow_claim_roster(),
+    affected: affected
+  )
+}
+
+
+fn ci_wave3_shadow_testclaims_selected_from_rerun(rerun: RerunNodeSet) -> List<TestClaim> {
+  ci_select_from_rerun_nodes(
+    roster: ci_wave3_shadow_claim_roster(),
+    rerun: rerun
+  )
+}
+
+
+// eval/print ENTRY scoping — NAMED-ONLY future CI-facing entrypoint.
+// 🟡 transport-blocked — feature:wave3-shadow-selection-receipt — consumer: future CI selection
+// receipt — the live entrypoint `ci_selection_receipt_shadow_from_git_diff(git_diff)` would route
+// GitDiffNameOnly → Diff → `affected_set_from_diff(read_model, post_edit_dag, dag, diff)`
+// (v4.lens.affected_set) → `ci_wave3_shadow_testclaims_selected`. It is NOT implemented here because
+// `affected_set_from_diff` requires the live whole-program `Dag` + `post_edit_dag` at CI time, which
+// no harness yet provides — blocked on Compiler Spine harness debt node://adhoc-331899f9-19a.
+// The honest model boundary that IS landed is `ci_wave3_shadow_testclaims_selected(affected)` above
+// (AffectedSet-in) plus the fixture receipts below. Forbidden: fabricating a git-diff→AffectedSet
+// shim that does not consult the live `Dag` (would falsely claim live PR selection).
+data ci_wave3_shadow_selection_receipt_reason: Symbol = ci_wave3_shadow_selection_receipt_reason
+
+// Fixture receipts (authoring-time witnesses) — fail-closed selects the FULL Wave-3 roster.
+data ci_wave3_shadow_fail_closed_reason: Symbol = ci_wave3_shadow_fail_closed_reason
+
+data ci_wave3_shadow_fail_closed_affected: AffectedSet = AffectedSetFailClosed {
+  changes: ChangeSet { changes: [] },
+  evidence: AffectedSetReason { reason: ci_wave3_shadow_fail_closed_reason }
+}
+
+// Fail-closed (no node frontier) returns the whole roster — roster authority preserved as superset.
+// NB: `==` kept on one line — the v2 M1-emit parser ends the expression at a pre-`==` line break.
+fn ci_wave3_shadow_fail_closed_selects_full_roster() -> Bool {
+  let selected = ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected)
+  length(xs: selected) == length(xs: ci_wave3_shadow_claim_roster())
+}
+
+// Empty produced frontier touches no roster claim's evaluation nodes — none of the Wave-3 rows are
+// DiagnosticClaim (the only fail-closed-forced arm), so the selection narrows to the empty set.
+fn ci_wave3_shadow_empty_frontier_selects_none() -> Bool {
+  let selected = ci_wave3_shadow_testclaims_selected_from_rerun(rerun: RerunNodeSetProduced { nodes: [] })
+  length(xs: selected) == 0
+}
+
+// Roster authority cardinality: manual subset + generated subset = full roster (disjoint append).
+fn ci_wave3_shadow_roster_is_manual_plus_generated() -> Bool {
+  let parts = int_add(a: length(xs: ci_wave3_shadow_manual_claim_roster()), b: length(xs: ci_wave3_shadow_generated_claim_roster()))
+  parts == length(xs: ci_wave3_shadow_claim_roster())
+}
+
+data witness_ci_wave3_shadow_selection_holds: Bool = ci_wave3_shadow_fail_closed_selects_full_roster()
+  && ci_wave3_shadow_empty_frontier_selects_none()
+  && ci_wave3_shadow_roster_is_manual_plus_generated()
 
 
 fn ci_repo_path_has_prefix(path: RepoPath, prefix: RepoPath) -> Bool {

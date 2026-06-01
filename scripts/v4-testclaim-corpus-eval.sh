@@ -409,10 +409,25 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
         corpus_eval_rs,
         "generated tally source for zero Fail/Deferred predicate",
     )
+    explicit_return = re.compile(r"\breturn\b")
+    if explicit_return.search(all_pass_body):
+        raise ReceiptError(
+            f"{corpus_eval_rs}: manual_corpus_all_pass must return "
+            "the zero Fail and zero Deferred check as its final expression"
+        )
     normalized_all_pass = "".join(all_pass_body.split())
+    inverted_zero_comparison = re.compile(
+        r"(?<![A-Za-z0-9_:])(?:!\(*|\(*false\)*={2}\(*|\(*true\)*!=\(*)"
+        r"tally\.(?:fail|deferred)={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*"
+    )
+    if inverted_zero_comparison.search(normalized_all_pass):
+        raise ReceiptError(
+            f"{corpus_eval_rs}: manual_corpus_all_pass must not negate "
+            "the zero Fail or zero Deferred check"
+        )
     fail_deferred_conjunction = re.compile(
-        r"tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*&&"
-        r"[^&|;]*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b[^&|;=]*(?:;|\})"
+        r"(?:^|;)\(*tally\.fail={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*&&"
+        r"\(*tally\.deferred={2}[^&|;=!A-Za-z0-9_:]*(?:Nat::)?[Zz]ero\b\)*\}$"
     )
     if not fail_deferred_conjunction.search(normalized_all_pass):
         raise ReceiptError(
