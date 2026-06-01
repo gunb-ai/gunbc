@@ -262,7 +262,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           id: none,
           run: "bash scripts/v4-m1-rust-emit-probe.sh",
           shell: Bash,
-          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_CARGO_CHECK_JOBS": "4", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
+          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_CARGO_CHECK_JOBS": "4", "V4_M1_CARGO_CHECK_JOBS_CEILING": "64", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
           working_directory: none,
           if_condition: none,
           continue_on_error: false,

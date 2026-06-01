@@ -31,6 +31,8 @@ const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const TESTCLAIM_CORPUS_EVAL_SCRIPT: &str =
     include_str!("../../../../../scripts/v4-testclaim-corpus-eval.sh");
 const TESTCLAIM_CORPUS_EVAL_SCRIPT_PATH: &str = "scripts/v4-testclaim-corpus-eval.sh";
+const M1_RUST_EMIT_PROBE_SCRIPT: &str =
+    include_str!("../../../../../scripts/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
     "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const BANKRUPTCY_TIER0_BINDING_TEST_FILTER: &str =
@@ -798,11 +800,9 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
             && CI_DAG.contains("dsl/std/compute_fabric.dag"),
         "{CI_DAG_PATH}: M1 parallelism note must cite the compute_fabric dissolve-on-arrival authority"
     );
-    let probe_script = std::fs::read_to_string("../../scripts/v4-m1-rust-emit-probe.sh")
-        .or_else(|_| std::fs::read_to_string("scripts/v4-m1-rust-emit-probe.sh"))
-        .expect("probe script must be readable");
     assert!(
-        probe_script.contains("ctrl-build") && probe_script.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
         "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must route through the ctrl-build host governor"
     );
 }
