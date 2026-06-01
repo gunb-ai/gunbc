@@ -76,6 +76,7 @@ import v4.std.node {
   canonical_tag_byte_limb_out_of_range
 }
 import v4.std.integer { int_add, int_negate }
+import v4.std.nat { nat_add }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.std.collection { Absent, List }
@@ -122,6 +123,11 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.workflow.wave3_shadow_roster {
+  ci_wave3_shadow_claim_roster,
+  ci_wave3_shadow_generated_claim_roster,
+  ci_wave3_shadow_manual_claim_roster
+}
 
 
 // RULING-1: 🟢 pretty-much-done — Tier-0 CI build profile (bankruptcy I2–I4; docs/design-ci-bankruptcy-rebuild.md §2).
@@ -3196,6 +3202,79 @@ fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -
     rerun: affected_set_rerun_nodes(affected_set_value: affected)
   )
 }
+
+
+// ── Wave 3 TestClaim shadow selection (roster authority + frontier filter) ──────────────────────
+// Shadow / NON-GATING API. Narrows the single Wave-3 roster authority
+// (`ci_wave3_shadow_claim_roster` = manual corpus + accepted generated LBE claims, defined in
+// v4.test.claim.workflow.wave3_shadow_roster) by the affected-set rerun frontier via the EXISTING
+// `ci_select_*` lens. No host Rust lens reimplementation; no corpus execution — per-row
+// `TestClaimRun` RUNTIME verdicts are the T-38 / P5 bootstrap-evaluator corpus runtime lane
+// (docs/planning/v4-p5-bootstrap-evaluator-corpus-runtime-worksheet-2026-06-01.md), NOT this slice.
+fn ci_wave3_shadow_testclaims_selected(affected: AffectedSet) -> List<TestClaim> {
+  ci_select_from_affected_set(
+    roster: ci_wave3_shadow_claim_roster(),
+    affected: affected
+  )
+}
+
+
+fn ci_wave3_shadow_testclaims_selected_from_rerun(rerun: RerunNodeSet) -> List<TestClaim> {
+  ci_select_from_rerun_nodes(
+    roster: ci_wave3_shadow_claim_roster(),
+    rerun: rerun
+  )
+}
+
+
+// eval/print ENTRY scoping — NAMED-ONLY future CI-facing entrypoint.
+// 🟡 transport-blocked — feature:wave3-shadow-selection-receipt — consumer: future CI selection
+// receipt — the live entrypoint `ci_selection_receipt_shadow_from_git_diff(git_diff)` would route
+// GitDiffNameOnly → Diff → `affected_set_from_diff(read_model, post_edit_dag, dag, diff)`
+// (v4.lens.affected_set) → `ci_wave3_shadow_testclaims_selected`. It is NOT implemented here because
+// `affected_set_from_diff` requires the live whole-program `Dag` + `post_edit_dag` at CI time, which
+// no harness yet provides — blocked on Compiler Spine harness debt node://adhoc-331899f9-19a.
+// The honest model boundary that IS landed is `ci_wave3_shadow_testclaims_selected(affected)` above
+// (AffectedSet-in) plus the fixture receipts below. Forbidden: fabricating a git-diff→AffectedSet
+// shim that does not consult the live `Dag` (would falsely claim live PR selection).
+data ci_wave3_shadow_selection_receipt_reason: Symbol = ci_wave3_shadow_selection_receipt_reason
+
+// Fixture receipts (authoring-time witnesses) — fail-closed selects the FULL Wave-3 roster.
+data ci_wave3_shadow_fail_closed_reason: Symbol = ci_wave3_shadow_fail_closed_reason
+
+data ci_wave3_shadow_fail_closed_affected: AffectedSet = AffectedSetFailClosed {
+  changes: ChangeSet { changes: [] },
+  evidence: AffectedSetReason { reason: ci_wave3_shadow_fail_closed_reason }
+}
+
+// Fail-closed (no node frontier) returns the whole roster — roster authority preserved as superset.
+fn ci_wave3_shadow_fail_closed_selects_full_roster() -> Bool {
+  length(xs: ci_wave3_shadow_testclaims_selected(affected: ci_wave3_shadow_fail_closed_affected))
+    == length(xs: ci_wave3_shadow_claim_roster())
+}
+
+// Empty produced frontier touches no roster claim's evaluation nodes — none of the Wave-3 rows are
+// DiagnosticClaim (the only fail-closed-forced arm), so the selection narrows to the empty set.
+fn ci_wave3_shadow_empty_frontier_selects_none() -> Bool {
+  length(
+    xs: ci_wave3_shadow_testclaims_selected_from_rerun(
+      rerun: RerunNodeSetProduced { nodes: [] }
+    )
+  ) == 0
+}
+
+// Roster authority cardinality: manual subset + generated subset = full roster (disjoint append).
+fn ci_wave3_shadow_roster_is_manual_plus_generated() -> Bool {
+  nat_add(
+    a: length(xs: ci_wave3_shadow_manual_claim_roster()),
+    b: length(xs: ci_wave3_shadow_generated_claim_roster())
+  ) == length(xs: ci_wave3_shadow_claim_roster())
+}
+
+data witness_ci_wave3_shadow_selection_holds: Bool =
+  ci_wave3_shadow_fail_closed_selects_full_roster()
+    && ci_wave3_shadow_empty_frontier_selects_none()
+    && ci_wave3_shadow_roster_is_manual_plus_generated()
 
 
 fn ci_repo_path_has_prefix(path: RepoPath, prefix: RepoPath) -> Bool {
