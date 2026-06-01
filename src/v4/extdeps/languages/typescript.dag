@@ -1114,22 +1114,10 @@ fn ts_mvp1_target_model() -> TargetModel {
 //   atom          ident / keyword primitive (number, string, boolean, ...)
 //   conj          object type { ... }                (record)
 //   disj          union A | B                        (primary sum-type surface)
-//   arrow         (T) => U  structural surface        (fat-arrow function type — see 🟡 below)
+//   arrow         (T) => U  structural surface only   (fat-arrow function type — see 🟡 below)
 //   cardinality   tuple [T, U]
 //   instantiation generic apply Foo<Bar, Baz>        (angle brackets — no Rust ::<>)
-//
-// 🟡 gated — shared-carrier faithfulness gap — feature:target-function-type-named-param-binding —
-// consumer:target_type_expr_arrow_emitted (v4.std.target_model) — carrier:TargetFunctionTypeShape
-// (open/close/arrow only; NO parameter-name slot) — owner:Modeling DFS Arbiter (carrier widening) —
-// scope:NOT this per-language row (carrier is shared + ratified; Rust's landed row has the identical
-// structural arrow `(X) -> Y`). The shared serializer wraps `inputs ++ [output]`, so a TS arrow
-// serializes structurally as `(T) => U`. TypeScript requires a parameter NAME in function-type
-// expressions — `(string) => void` parses as a param NAMED `string` of implicit `any`, not a
-// `string`-typed parameter. dissolve-on-arrival: TargetFunctionTypeShape gains a param-binding
-// shape (name token + per-param type slot) authored once via the Arbiter; this row then carries
-// named params. forbidden: redefining the shared carrier inside this single-language row, or
-// emitting a faithful-looking-but-wrong `(a: T) => U` claim. The L0 SG-2 falsification probe
-// (generic Instantiation `Rc<FooBar<X, Y>>`) does NOT exercise arrow param-name semantics.
+// 🟡 gated — feature:target-function-type-named-param-binding — carrier:TargetFunctionTypeShape (open/close/arrow only, no param-name slot; Rust row identical) — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains param-name+per-param-type slot, then TS arrow carries named params — forbidden: redefining the shared carrier in this row, or claiming faithful `(a: T) => U`. (rationale in PR #4176 / commit a89bbcb8)
 fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {
@@ -1251,22 +1239,21 @@ fn ts_sg2_type_expr_lex() -> LexRules {
 }
 
 // SG-2 TargetModel bundle node — MVP-1 bundle plus the per-language type-expression projection
-// edge. Mirrors rust_sg2_type_expr_target_model_node(); MVP-1 bundle stays on the ProjectionAbsent
-// shim path until its own row lands, so this dedicated bundle drives the projection translate path.
+// edge. MVP-1 bundle stays on the ProjectionAbsent shim path until its own row lands, so this
+// dedicated bundle drives the projection translate path. The MVP-1 bundle kind is the statically
+// declared Conj of ts_mvp1_target_model_node(); we snoc the projection edge onto its children
+// directly — no kind-match fallback arm, which would silently re-emit the projection-absent bundle
+// (P3 plausible substitute) rather than fail closed on a malformed host.
 fn ts_sg2_type_expr_target_model_node() -> Node {
-  match ts_mvp1_target_model_node().kind {
-    TypeNode { connective: Conj } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: list_snoc_item(
-          xs: ts_mvp1_target_model_node().children,
-          item: ts_named_edge(
-            name: target_model_edge_type_expression_projection,
-            target: ts_type_expression_projection_bundle_node()
-          )
-        )
-      }
-    _ => ts_mvp1_target_model_node()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_snoc_item(
+      xs: ts_mvp1_target_model_node().children,
+      item: ts_named_edge(
+        name: target_model_edge_type_expression_projection,
+        target: ts_type_expression_projection_bundle_node()
+      )
+    )
   }
 }
 
