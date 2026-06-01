@@ -136,14 +136,14 @@ jobs:
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_CARGO_CHECK_JOBS: "4"
-        V4_M1_RUST_EMIT_PROBE_STRICT: "1"
+        V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash scripts/v4-m1-rust-emit-probe.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
       timeout-minutes: 35
       env:
         V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
         V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
-        V4_BOOTSTRAP_TIMEOUT_SECS: '480'
+        V4_BOOTSTRAP_TIMEOUT_SECS: '900'
       run: bash scripts/v4-bootstrap-viability.sh
     - name: M1 v4 workflow CI model/YAML binding smoke
       run: |

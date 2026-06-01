@@ -151,7 +151,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
     _ => if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
-      render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
+      render_rust_applied_type(n: n, generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
     } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Some { value: elem_child } =>
@@ -181,37 +181,64 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
   string_length(s: type_name) >= 3 && substring(s: type_name, start: 0, end: 3) == "Rc<"
 }
 
-fn render_rust_applied_type_arg(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
-    _ => if n.connective == NoConnective && n.children |> count == 0 {
-      authored_name_at(source_indices: source_indices, node: n)
-    } else {
-      render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
-    }
+    _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
-fn render_rust_applied_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let base = coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: n))
   if n.children |> count == 0 {
     base
   } else {
-    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
     concat(base, "<", args, ">")
   }
 }
 
+// Single authority: shared_types decides Rc<> on applied generic instantiations.
+fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  let type_name = authored_name_at(source_indices: source_indices, node: n)
+  if set_contains(shared_types, type_name) { concat("Rc<", rendered, ">") } else { rendered }
+}
+
+// Generic type-param leaves compose with the canonical renderer (else arm);
+// direct self-recursion on type-arg children keeps regen_stage0 stacker guard.
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let name = authored_name_at(source_indices: source_indices, node: n)
-  if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
-    name
-  } else if n.connective == NoConnective && n.children |> count > 0 {
-    let base = coerce_primitive_type(target: Rust, dag_name: name)
-    let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
-    concat(base, "<", args, ">")
+  let applied_prop = find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices)
+  let applied_overlay = match applied_prop {
+    Some { value: applied } =>
+      if applied.children |> count > 0 { Some { value: applied } } else { none }
+    None => none
+  }
+  match applied_overlay {
+    Some { value: applied } =>
+      render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+    None =>
+      let name = authored_name_at(source_indices: source_indices, node: n)
+      if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
+        name
+      } else if n.connective == NoConnective && n.children |> count > 0 {
+        let base = coerce_primitive_type(target: Rust, dag_name: name)
+        let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+        let applied_ty = concat(base, "<", args, ">")
+        if set_contains(shared_types, name) { concat("Rc<", applied_ty, ">") } else { applied_ty }
+      } else {
+        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
+      }
+  }
+}
+
+// Compose generic-arg preservation with canonical rendering — do not replace the
+// applied-binding path when the enclosing item has type params.
+fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if generic_param_names |> count > 0 {
+    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   } else {
-    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+    render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
@@ -1652,7 +1679,7 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Some { value: applied } =>
       if applied.children |> count > 0 {
-        render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
+        render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices)
       } else {
         render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
       }
@@ -2002,14 +2029,15 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
   let type_params_str = emit_type_params(params: type_params, source_indices: si)
-  let params_str = emit_params(params: value_params, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params)
-  let ret_str = emit_inferred(inferred: inferred, shared_types: shared_types, source_indices: si)
+  let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params)
+  let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_indices: si) && use_tco == false
   if use_tco {
-    let tco_params_str = emit_tco_params(params: value_params, shared_types: shared_types, source_indices: si)
+    let tco_params_str = emit_tco_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: value_params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
@@ -2123,19 +2151,23 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
 // Tail-Call Optimization (TCO) -- Rust rendering
 // =========================================================================
 
-fn emit_tco_params(params: List<Node>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let strs = params |> map(p => emit_tco_param(param: p, shared_types: shared_types, source_indices: source_indices))
+fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let strs = params |> map(p => emit_tco_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices))
   strs |> join(separator: ", ")
 }
 
-fn emit_tco_param(param: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let n = param_node_type_expr(n: param)
-  let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_indices: source_indices)
+fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let authored = param_node_type_expr(n: param)
+  let ty = if authored.params |> count > 0 {
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  } else {
+    render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  }
   concat("mut ", emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params))
+  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, source_indices: source_indices))
   )
@@ -2154,8 +2186,8 @@ fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices:
 // Parameter emission
 // =========================================================================
 
-fn emit_params(params: List<Node>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
-  let strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params))
+fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
+  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params))
   strs |> join(separator: ", ")
 }
 
@@ -2173,30 +2205,44 @@ fn emit_params(params: List<Node>, shared_types: Set<String>, source_indices: Ma
 //   here and "compensate" only in the emitter: that splits clone authority
 //   between the type signature and ownership analysis and breaks fixed-point.
 //   See docs/postmortems/pr-650-emitter-callable-clone-bound.md.
-fn emit_rust_param_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+// Parameter signature renderer: generic items use decl-type preservation;
+// non-generic items use field applied-binding facts flow (param.properties).
+fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let type_node = resolved_type(n: param)
+  if generic_param_names |> count > 0 {
+    render_rust_decl_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  } else {
+    render_rust_field_type_with_applied_binding(field: param, shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
+fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   if n.params |> count > 0 {
-    let param_types = n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))
+    let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
-      Some { value: Resolved { node: rt } } => render_rust_type(n: rt, shared_types: shared_types, source_indices: source_indices)
+      Some { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
       _ => "()"
     }
     concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
   } else {
-    let rendered = render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
-    rendered
+    render_rust_fn_sig_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
-fn emit_param(param: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
-  let n = param_node_type_expr(n: param)
-  let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_indices: source_indices)
+fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
+  let authored = param_node_type_expr(n: param)
+  let ty = if authored.params |> count > 0 {
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  } else {
+    render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  }
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, ty)
 }
 
-fn emit_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  concat(rust_items().return_arrow, render_rust_type(n: inferred, shared_types: shared_types, source_indices: source_indices))
+fn emit_inferred(inferred: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  concat(rust_items().return_arrow, render_rust_fn_sig_type(n: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices))
 }
 
 fn needs_reference_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -3445,8 +3491,15 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
   let runtime_name = rust_runtime_bridge_name(function_name: func)
-  let func_name = if is_rt { concat("v2_rt::", emit_ident(name: runtime_name, target: Rust)) }
+  let si = scope.type_env.source_indices
+  // Callable param invoked while also passed as an argument (e.g. nat_cata succ
+  // recursion) borrows the impl Fn binding; clone at the call site per + Clone.
+  let callee_self_capture = if is_rt { false } else {
+    filled_args |> any(a => expr_references_var(node: arg_value(n: a), var_name: func, source_indices: si))
+  }
+  let func_ident = if is_rt { concat("v2_rt::", emit_ident(name: runtime_name, target: Rust)) }
     else { emit_ident(name: func, target: Rust) }
+  let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
     emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
   } else {
@@ -5025,7 +5078,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: env.source_indices))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -5823,7 +5876,7 @@ fn emit_resource_def(item: Node, shared_types: Set<String>, env: TypeEnv) -> Str
 
 fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: env.source_indices))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -5992,7 +6045,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
 
 fn rust_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: empty_set(), source_indices: projection.source_indices)))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices)))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
