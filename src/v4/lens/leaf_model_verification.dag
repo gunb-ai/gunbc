@@ -388,10 +388,7 @@ fn go_r2b_runtime_fixture_pair() -> LeafModelGoRuntimeFixturePair {
     surface_spelling_fact: go_r2b_claim_algebra_inhabitance_fact,
     encoding_spelling_fact: go_r2b_claim_algebra_inhabitance_fact,
     happy: go_r2b_runtime_fixture(),
-    expected_happy_verdict: TargetGoRuntimeAccepted,
-    // Runtime observation succeeds when Go's non-constant int64 addition wraps to min int64.
-    falsification: go_r2b_runtime_fixture(),
-    expected_falsification_verdict: TargetGoRuntimeAccepted
+    expected_happy_verdict: TargetGoRuntimeAccepted
   }
 }
 

@@ -257,15 +257,14 @@ type LeafModelGoRuntimeFixture {
 }
 
 // 🟡 gated — feature:leaf-model-r1-r3-go-bridge — dissolve-on-arrival: R2b int64
-// overflow-wrap probe under LeafModelFixture<C>.
+// overflow-wrap runtime observation under LeafModelFixture<C>. No falsification slot:
+// this row proves a target runtime behavior, not a negative compile/runtime witness.
 type LeafModelGoRuntimeFixturePair {
   claim_id: LeafModelClaimId
   surface_spelling_fact: Symbol
   encoding_spelling_fact: Symbol
   happy: LeafModelGoRuntimeFixture
   expected_happy_verdict: TargetGoRuntimeVerdict
-  falsification: LeafModelGoRuntimeFixture
-  expected_falsification_verdict: TargetGoRuntimeVerdict
 }
 
 // PY-L1-STATIC-STRUCTURAL fixture carriers. Polarity AND role are STRUCTURAL, not prose:

@@ -45,8 +45,6 @@ data claim_go_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
       && go_r2b_fixture().encoding_spelling_fact == go_integer_algebra_inhabitance_go_facts_int64
       && go_r2b_fixture().happy.source == go_r2b_runtime_fixture_source
       && go_r2b_fixture().expected_happy_verdict == TargetGoRuntimeAccepted
-      && go_r2b_fixture().falsification.source == go_r2b_runtime_fixture_source
-      && go_r2b_fixture().expected_falsification_verdict == TargetGoRuntimeAccepted
   ),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
