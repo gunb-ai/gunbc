@@ -184,15 +184,21 @@ type LeafModelPythonFixturePair {
   falsification: LeafModelPythonFalsificationCase
 }
 
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — bind PR #4157 Phase 1 MW-D3 alpha lane —
+// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
+// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands
+// (docs/planning/v4-leaf-model-verification-2026-05-30.md §9; T-22 run_target_verification).
 type LeafModelTypeScriptFixture {
   source: String
 }
 
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: nested under LeafModelFixture<C>.falsification_artifact
 type LeafModelTypeScriptFalsificationCase {
   fixture: LeafModelTypeScriptFixture
   expected_verdict: TargetTypeScriptCompileVerdict
 }
 
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2a/R3-external rows become LeafModelFixture<LeafModelClaim<...>>
 type LeafModelTypeScriptFixturePair {
   claim_id: LeafModelClaimId
   surface_spelling_fact: Symbol
@@ -202,10 +208,12 @@ type LeafModelTypeScriptFixturePair {
   falsification: LeafModelTypeScriptFalsificationCase
 }
 
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2b Node runtime rows fold into LeafModelFixture<C>
 type LeafModelTypeScriptRuntimeFixture {
   source: String
 }
 
+// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2b bigint-vs-number divergence probe under LeafModelFixture<C>
 type LeafModelTypeScriptRuntimeFixturePair {
   claim_id: LeafModelClaimId
   surface_spelling_fact: Symbol
