@@ -2745,7 +2745,7 @@ fn translate_sg_rc_bundle_apply_disposition(
           edge_name: target_model_edge_reference_layer_tokens
         ),
         f: fn(has_tokens) {
-          if !has_catalog && !has_tokens {
+          if has_catalog == false && has_tokens == false {
             outcome_accepted(false)
           } else {
             if has_catalog && has_tokens {
@@ -3165,12 +3165,26 @@ fn translate_coerced_shell_at_use_site(
   target: TargetModel,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
+  translate_coerced_shell_at_use_site_from_source(
+    coerced: coerced,
+    ownership_source_carrier: coerced,
+    target: target,
+    use_site: use_site
+  )
+}
+
+fn translate_coerced_shell_at_use_site_from_source(
+  coerced: Node,
+  ownership_source_carrier: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
   match translate_coerced_shell_base(coerced: coerced, target: target) {
     Accepted { value: shell, diagnostics: d } =>
       bind_outcome(
         o: translate_apply_use_site_ownership_to_type_shell(
           shell: shell,
-          source_carrier: coerced,
+          source_carrier: ownership_source_carrier,
           target: target,
           use_site: use_site
         ),
@@ -3186,6 +3200,13 @@ fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> 
     target: target,
     use_site: OwnershipAtBindingProjection
   )
+}
+
+fn translate_use_site_ownership_source_carrier(source: Node, coerced: Node) -> Node {
+  match source.kind {
+    TypeNode { connective: _ } => source
+    ComputationNode { behavior: _ } => coerced
+  }
 }
 fn target_atom_realizations_catalog_from_model(
   target: TargetModel,
@@ -3339,8 +3360,13 @@ fn translate_coerced_with_atom_realization_at_use_site(
   use_site: TargetOwnershipUseSite,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match translate_coerced_shell_at_use_site(
+  let ownership_source_carrier = translate_use_site_ownership_source_carrier(
+    source: source,
+    coerced: coerced
+  )
+  match translate_coerced_shell_at_use_site_from_source(
     coerced: coerced,
+    ownership_source_carrier: ownership_source_carrier,
     target: target,
     use_site: use_site
   ) {
