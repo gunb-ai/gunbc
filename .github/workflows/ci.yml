@@ -20,8 +20,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-# Wave 1 §11.7.1 safety floor — fmt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
-# Required on every non-draft PR: fmt, bootstrap viability, M1 rust emit, ci.dag structural receipt, no-new-shell.
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
+# Required on every non-draft PR: fmt, affected-set component receipt, bootstrap viability, M1 rust emit, ci.dag structural receipt, no-new-shell.
 jobs:
   # RUNNER-ISOLATION SECURITY FLOOR — model authority: src/v4/workflow/ci.dag
   # `ci_runner_isolation_policy`. This job + its carrier Job record are coverage-bound byte-for-byte
@@ -93,10 +93,10 @@ jobs:
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
-  # Affected-set host transport — Wave 3 shadow only (Class C). continue-on-error: not a §11.7.1 gate.
+  # Affected-set component host transport — live fail-closed receipt.
+  # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
     if: github.event.pull_request.draft != true
-    continue-on-error: true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     outputs:
@@ -260,13 +260,17 @@ jobs:
         bash scripts/check-ci-no-new-shell.sh
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [ci_floor, infra_isolation]
+    needs: [affected, ci_floor, infra_isolation]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
     - name: Validate prerequisites (fail-closed under skipped/failed deps)
       run: |
         set -euo pipefail
+        if [[ "${{ needs.affected.result }}" != "success" ]]; then
+          echo "::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed."
+          exit 1
+        fi
         if [[ "${{ needs.ci_floor.result }}" != "success" ]]; then
           echo "::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed."
           exit 1
@@ -275,7 +279,7 @@ jobs:
           echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified — ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; infra_isolation de-priv guard green; affected is shadow-only)"
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + five Class-A gates in ci_floor; infra_isolation de-priv guard green)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)"
