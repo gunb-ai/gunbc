@@ -45,6 +45,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
 use crate::common::find_list_empty_constructor_tag;
+use sha2::{Digest, Sha256};
 use v3_compiler::dag::{
     AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, Lookup, NodeId, TypeConnective,
     ValueNode,
@@ -76,6 +77,7 @@ const GUNBC_CI_LINKED_COMPILE_FILE: &str = "dsl/gunbc/ci_with_github_actions_wor
 const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
+const GITHUB_ACTIONS_CI_YML_SOURCE: &str = include_str!("../../../../../.github/workflows/ci.yml");
 const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
 const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
 
@@ -808,6 +810,23 @@ fn gunbc_ci_github_actions_workflow_authority_compiles() {
         Err(e) => panic!("compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {e:?}"),
     };
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+}
+
+#[test]
+fn gunbc_ci_github_actions_workflow_pins_ci_yml_source_checksum() {
+    let actual = Sha256::digest(GITHUB_ACTIONS_CI_YML_SOURCE.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let expected_prefix = "// Source-SHA256(.github/workflows/ci.yml): ";
+    let expected = GUNBC_CI_GITHUB_WORKFLOW_SOURCE
+        .lines()
+        .find_map(|line| line.strip_prefix(expected_prefix))
+        .expect("ci_github_actions_workflow.dag must pin the source ci.yml checksum");
+    assert_eq!(
+        actual, expected,
+        "update {GUNBC_CI_GITHUB_WORKFLOW_FILE}'s Source-SHA256 when .github/workflows/ci.yml changes"
+    );
 }
 
 /// **R3 gate #59** — recursive-flex / YamlStatic emit-back lemma: `project_github_actions`'s
