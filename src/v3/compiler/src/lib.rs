@@ -2121,6 +2121,7 @@ pub mod evaluator {
     #[cfg(test)]
     mod tests {
         use std::collections::HashMap;
+        use std::sync::Mutex;
 
         use super::NamedField;
         use super::{
@@ -2131,13 +2132,13 @@ pub mod evaluator {
             StrictEvidence, Value, BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
         };
         use crate::compile_to_dag;
-        use crate::dag::Declaration;
         use crate::dag::{
             literal_bits_int, ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster,
             ComparisonOp, Dag, DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound,
             MemberDescent, NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path,
             PayloadBinding, PortId, TransformTarget, TypeConnective,
         };
+        use crate::dag::{Declaration, Field};
         use crate::diagnostics::SourceSpan;
 
         fn span() -> SourceSpan {
@@ -2278,9 +2279,148 @@ pub mod evaluator {
             id
         }
 
+        fn push_empty_record_decl(dag: &mut Dag, name: Option<&str>, file: &str) -> DeclarationId {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: name.map(str::to_string),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: SourceSpan::new(file, 0, 1),
+            });
+            id
+        }
+
+        fn push_sum_decl(
+            dag: &mut Dag,
+            type_name: &str,
+            file: &str,
+            variants: &[&str],
+        ) -> DeclarationId {
+            let variant_fields = variants
+                .iter()
+                .map(|variant| Field {
+                    label: (*variant).to_string(),
+                    ty: push_empty_record_decl(dag, Some(variant), file),
+                })
+                .collect();
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some(type_name.to_string()),
+                connective: TypeConnective::Disj {
+                    variants: variant_fields,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: SourceSpan::new(file, 0, 1),
+            });
+            id
+        }
+
+        fn seed_emit_host_projection_carriers(dag: &mut Dag) {
+            push_sum_decl(
+                dag,
+                "Outcome",
+                "src/v4/std/diagnostic.dag",
+                &["Accepted", "Rejected"],
+            );
+            push_sum_decl(dag, "Diagnostics", "src/v4/std/diagnostic.dag", &["None"]);
+            push_sum_decl(
+                dag,
+                "Correction",
+                "src/v4/std/diagnostic.dag",
+                &["Unavailable"],
+            );
+            push_sum_decl(
+                dag,
+                "NoCorrectionReason",
+                "src/v4/std/diagnostic.dag",
+                &["ExternalContractUnknown"],
+            );
+            push_sum_decl(dag, "Locus", "src/v4/std/diagnostic.dag", &["PortLocus"]);
+            push_sum_decl(
+                dag,
+                "Witness",
+                "src/v4/std/witness.dag",
+                &["Holds", "Violates"],
+            );
+            push_sum_decl(
+                dag,
+                "FreeMonoid",
+                "src/v4/std/algebra.dag",
+                &["Empty", "Cons"],
+            );
+        }
+
+        static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+        struct PathGuard {
+            previous: Option<std::ffi::OsString>,
+            dir: std::path::PathBuf,
+        }
+
+        impl Drop for PathGuard {
+            fn drop(&mut self) {
+                match &self.previous {
+                    Some(previous) => std::env::set_var("PATH", previous),
+                    None => std::env::remove_var("PATH"),
+                }
+                let _ = std::fs::remove_dir_all(&self.dir);
+            }
+        }
+
+        #[cfg(unix)]
+        fn install_fake_go() -> (std::sync::MutexGuard<'static, ()>, PathGuard) {
+            let lock = TEST_ENV_LOCK.lock().expect("test env lock");
+            let dir = std::env::temp_dir().join(format!(
+                "gunbc_fake_go_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system time")
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).expect("fake go dir");
+            let go = dir.join("go");
+            std::fs::write(&go, "#!/bin/sh\nprintf '\\000\\000\\000\\000\\000'\n")
+                .expect("fake go script");
+            let mut permissions = std::fs::metadata(&go)
+                .expect("fake go metadata")
+                .permissions();
+            std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+            std::fs::set_permissions(&go, permissions).expect("fake go permissions");
+            let previous = std::env::var_os("PATH");
+            let mut paths = vec![dir.clone()];
+            if let Some(previous) = &previous {
+                paths.extend(std::env::split_paths(previous));
+            }
+            let path = std::env::join_paths(paths).expect("fake go PATH");
+            std::env::set_var("PATH", path);
+            (lock, PathGuard { previous, dir })
+        }
+
         #[test]
+        #[cfg(unix)]
         fn transform_callable_dispatches_run_emit_host_go_through_evaluator() {
+            let (_lock, _path_guard) = install_fake_go();
             let mut dag = Dag::new();
+            seed_emit_host_projection_carriers(&mut dag);
             let callee_decl = alloc_emit_host_go_decl(&mut dag);
             let target = dag.push_value(LiteralBits::String("Go".to_string()), span());
             let source_fragment = "func emittedFragment() int { return 1 }";
