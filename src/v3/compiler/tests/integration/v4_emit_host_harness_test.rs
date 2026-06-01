@@ -571,6 +571,7 @@ fn v4_nat_semiring_go_l1_rung2_receipt_anchor_tokenizes_and_parses() {
         "go_l1_nat_semiring_rung2_slice_subject",
         "claim_go_l1_nat_semiring_rung2_go_build_receipt",
         "phase1_nat_semiring_rung_0_to_2_roster",
+        "go_l1_nat_semiring_rung2_receipt_roster",
     ] {
         assert!(
             surface_declares_data(&module, name),
@@ -587,6 +588,16 @@ fn v4_nat_semiring_go_l1_rung2_receipt_anchor_tokenizes_and_parses() {
             "slice=go_l1_nat_semiring_rung2 fixture=phase1/nat_semiring predicate=R2-go-compile receipt=go_l1_compile_receipt_v1"
         ),
         "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 CompilesClaim label must bind slice id, fixture, predicate, and receipt"
+    );
+    let ladder_roster = data_body(&module, "phase1_nat_semiring_rung_0_to_2_roster");
+    assert!(
+        !format!("{ladder_roster:?}").contains("claim_go_l1_nat_semiring_rung2_go_build_receipt"),
+        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: ladder roster must remain the eight rung x target predicates"
+    );
+    let go_l1_roster = data_body(&module, "go_l1_nat_semiring_rung2_receipt_roster");
+    assert!(
+        format!("{go_l1_roster:?}").contains("claim_go_l1_nat_semiring_rung2_go_build_receipt"),
+        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt claim must live on its separate receipt roster"
     );
 }
 
