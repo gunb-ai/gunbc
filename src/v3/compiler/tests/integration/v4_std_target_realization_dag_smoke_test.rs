@@ -97,6 +97,11 @@ fn dag_source_contains_map_insert_pair(body: &str, key: &str, value: &str) -> bo
     collapsed.contains(&format!("{key}, {value}"))
 }
 
+fn dag_source_contains_collapsed(body: &str, needle: &str) -> bool {
+    let collapsed = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    collapsed.contains(&needle.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
 fn surface_type_name(ty: &SurfaceType) -> String {
     match ty {
         SurfaceType::Named { name, .. } => name.clone(),
@@ -508,6 +513,41 @@ fn v4_translate_dag_imports_type_expression_projection_consumer() {
 }
 
 #[test]
+fn v4_translate_record_type_serialization_emits_field_labels() {
+    assert!(
+        dag_source_contains_collapsed(
+            TRANSLATE_DAG,
+            "o: target_type_expr_emitted_labeled_slot_edges(node: node)"
+        ),
+        "{TRANSLATE_PATH}: record serialization must retain labeled slot edges"
+    );
+    assert!(
+        dag_source_contains_collapsed(
+            TRANSLATE_DAG,
+            "o: serialize_type_expr_record_field_label(target: target, edge: split.head)"
+        ),
+        "{TRANSLATE_PATH}: record serialization must resolve each field label through binding spellings"
+    );
+    assert!(
+        dag_source_contains_collapsed(
+            TRANSLATE_DAG,
+            "o: lex_rules_literal(target: target, token_class: field_label_separator)"
+        ),
+        "{TRANSLATE_PATH}: record serialization must emit the target field-label separator"
+    );
+    assert!(
+        dag_source_contains_collapsed(
+            TRANSLATE_DAG,
+            "let field_source = list_append(
+              left: list_append(left: label_source, right: label_sep_source),
+              right: field_type_source
+            )"
+        ),
+        "{TRANSLATE_PATH}: record field emission must be label + ':' + serialized type, not bare type"
+    );
+}
+
+#[test]
 fn v4_rust_language_model_declares_type_expression_projection_row() {
     let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
     assert!(
@@ -538,6 +578,14 @@ fn v4_typescript_language_model_binds_record_field_label_separator_in_shared_row
     assert!(
         surface_declares_fn(&module, "ts_type_expression_projection"),
         "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript SG-2 row must be authored"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "collection"],
+            "Present"
+        ) && import_includes_name(&module, &["v4", "std", "collection"], "Absent"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: projection bundle match arms must import Optional constructors explicitly"
     );
     assert!(
         TYPESCRIPT_LANGUAGE_DAG
