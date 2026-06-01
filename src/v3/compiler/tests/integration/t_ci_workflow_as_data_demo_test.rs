@@ -45,6 +45,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
 use crate::common::find_list_empty_constructor_tag;
+use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
 use sha2::{Digest, Sha256};
 use v3_compiler::dag::{
     AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, Lookup, NodeId, TypeConnective,
@@ -624,6 +625,549 @@ fn structural_list(value: &FieldValue) -> &[FieldValue] {
     items
 }
 
+fn yaml_key(key: &str) -> YamlValue {
+    YamlValue::String(key.to_string())
+}
+
+fn yaml_string(value: &str) -> YamlValue {
+    YamlValue::String(value.to_string())
+}
+
+fn insert_yaml(map: &mut YamlMapping, key: &str, value: YamlValue) {
+    map.insert(yaml_key(key), value);
+}
+
+fn insert_yaml_if_some(map: &mut YamlMapping, key: &str, value: Option<YamlValue>) {
+    if let Some(value) = value {
+        insert_yaml(map, key, value);
+    }
+}
+
+fn literal_int_yaml(value: &FieldValue) -> YamlValue {
+    let FieldValue::Literal(LiteralBits::Int(value)) = value else {
+        panic!("expected int literal field, got {value:?}");
+    };
+    serde_yaml::to_value(
+        value
+            .parse::<i64>()
+            .unwrap_or_else(|err| panic!("invalid int literal `{value}`: {err}")),
+    )
+    .expect("integer serializes")
+}
+
+fn literal_yaml(value: &FieldValue) -> YamlValue {
+    match value {
+        FieldValue::Literal(LiteralBits::String(value)) => yaml_string(value),
+        FieldValue::Literal(LiteralBits::Bool(value)) => YamlValue::Bool(*value),
+        FieldValue::Literal(LiteralBits::Int(_)) => literal_int_yaml(value),
+        other => panic!("expected scalar literal field, got {other:?}"),
+    }
+}
+
+fn optional_payload<'a>(
+    dag: &v3_compiler::dag::Dag,
+    value: &'a FieldValue,
+) -> Option<&'a FieldValue> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("expected optional variant field, got {value:?}");
+    };
+    let constructor_name = dag
+        .declaration(*constructor)
+        .name
+        .as_deref()
+        .unwrap_or("<anonymous>");
+    match (constructor_name, payload.as_slice()) {
+        ("None", []) => None,
+        ("Some", [FieldValue::Record(fields)]) => Some(structural_field(fields, "value")),
+        ("Some", [single]) => Some(single),
+        _ if payload.is_empty() => None,
+        _ if payload.len() == 1 => Some(&payload[0]),
+        _ => panic!("unexpected optional payload `{constructor_name}`: {payload:?}"),
+    }
+}
+
+fn optional_yaml(
+    dag: &v3_compiler::dag::Dag,
+    value: &FieldValue,
+    project: impl FnOnce(&FieldValue) -> YamlValue,
+) -> Option<YamlValue> {
+    optional_payload(dag, value).map(project)
+}
+
+fn list_yaml(items: &[FieldValue], project: impl Fn(&FieldValue) -> YamlValue) -> YamlValue {
+    YamlValue::Sequence(items.iter().map(project).collect())
+}
+
+fn string_list_yaml(items: &[FieldValue]) -> YamlValue {
+    list_yaml(items, |item| yaml_string(literal_string(item)))
+}
+
+fn map_string_yaml(map: &v3_compiler::dag::FieldMap) -> YamlValue {
+    let mut out = YamlMapping::new();
+    for (key, value) in map.entries() {
+        out.insert(yaml_key(key), literal_yaml(value));
+    }
+    YamlValue::Mapping(out)
+}
+
+fn action_with_scalar_yaml(map: &v3_compiler::dag::FieldMap) -> YamlValue {
+    let mut out = YamlMapping::new();
+    for (key, value) in map.entries() {
+        let value = match value {
+            FieldValue::Literal(LiteralBits::String(value)) if value == "true" => {
+                YamlValue::Bool(true)
+            }
+            FieldValue::Literal(LiteralBits::String(value)) if value == "false" => {
+                YamlValue::Bool(false)
+            }
+            FieldValue::Literal(LiteralBits::String(value)) => value
+                .parse::<i64>()
+                .map(|number| serde_yaml::to_value(number).expect("integer serializes"))
+                .unwrap_or_else(|_| yaml_string(value)),
+            other => literal_yaml(other),
+        };
+        out.insert(yaml_key(key), value);
+    }
+    YamlValue::Mapping(out)
+}
+
+fn direct_or_optional_map<'a>(
+    dag: &v3_compiler::dag::Dag,
+    value: &'a FieldValue,
+) -> Option<&'a v3_compiler::dag::FieldMap> {
+    match value {
+        FieldValue::Map(map) if map.entries().is_empty() => None,
+        FieldValue::Map(map) => Some(map),
+        _ => optional_payload(dag, value).and_then(|payload| match payload {
+            FieldValue::Map(map) if map.entries().is_empty() => None,
+            FieldValue::Map(map) => Some(map),
+            other => panic!("expected map payload, got {other:?}"),
+        }),
+    }
+}
+
+fn carrier_action_ref_yaml(fields: &[(String, FieldValue)]) -> YamlValue {
+    let owner = literal_string(structural_field(fields, "owner"));
+    let repo = literal_string(structural_field(fields, "repo"));
+    let reference = literal_string(structural_field(fields, "ref"));
+    yaml_string(&format!("{owner}/{repo}@{reference}"))
+}
+
+fn carrier_optional_value_yaml(
+    dag: &v3_compiler::dag::Dag,
+    value: &FieldValue,
+) -> Option<YamlValue> {
+    optional_yaml(dag, value, literal_yaml)
+}
+
+fn carrier_runner_yaml(dag: &v3_compiler::dag::Dag, value: &FieldValue) -> YamlValue {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("expected runner variant, got {value:?}");
+    };
+    if *constructor == disj_variant_constructor_id(dag, "RunnerSpec", "SelfHosted") {
+        return string_list_yaml(structural_list(&payload[0]));
+    }
+    if *constructor == disj_variant_constructor_id(dag, "RunnerSpec", "HostedRunner") {
+        let label = &payload[0];
+        if let FieldValue::Variant { constructor, .. } = label {
+            if *constructor == disj_variant_constructor_id(dag, "RunnerLabel", "UbuntuLatest") {
+                return yaml_string("ubuntu-latest");
+            }
+        }
+    }
+    if *constructor == disj_variant_constructor_id(dag, "RunnerSpec", "RunsOnExpression") {
+        return yaml_string(literal_string(&payload[0]));
+    }
+    panic!("unsupported RunnerSpec payload {value:?}");
+}
+
+fn carrier_cancel_in_progress_yaml(dag: &v3_compiler::dag::Dag, value: &FieldValue) -> YamlValue {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("expected cancel-in-progress variant, got {value:?}");
+    };
+    if *constructor
+        == disj_variant_constructor_id(dag, "CancelInProgressSpec", "CancelInProgressBool")
+    {
+        return literal_yaml(&payload[0]);
+    }
+    if *constructor
+        == disj_variant_constructor_id(dag, "CancelInProgressSpec", "CancelInProgressExpression")
+    {
+        return yaml_string(literal_string(&payload[0]));
+    }
+    if *constructor
+        == disj_variant_constructor_id(
+            dag,
+            "CancelInProgressWhenQueueMax",
+            "QueueMaxCancelInProgressFalse",
+        )
+    {
+        return YamlValue::Bool(false);
+    }
+    if *constructor
+        == disj_variant_constructor_id(
+            dag,
+            "CancelInProgressWhenQueueMax",
+            "QueueMaxCancelInProgressExpression",
+        )
+    {
+        return yaml_string(literal_string(&payload[0]));
+    }
+    panic!("unsupported cancel-in-progress payload {value:?}");
+}
+
+fn carrier_concurrency_yaml(dag: &v3_compiler::dag::Dag, value: &FieldValue) -> YamlValue {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("expected concurrency variant, got {value:?}");
+    };
+    if *constructor == disj_variant_constructor_id(dag, "ConcurrencySpec", "ConcurrencyScalar") {
+        return yaml_string(literal_string(&payload[0]));
+    }
+    let mut map = YamlMapping::new();
+    insert_yaml(&mut map, "group", literal_yaml(&payload[0]));
+    insert_yaml_if_some(
+        &mut map,
+        "cancel-in-progress",
+        optional_yaml(dag, &payload[1], |payload| {
+            carrier_cancel_in_progress_yaml(dag, payload)
+        }),
+    );
+    if *constructor
+        == disj_variant_constructor_id(dag, "ConcurrencySpec", "ConcurrencyMappingQueueMax")
+    {
+        insert_yaml(&mut map, "queue", yaml_string("max"));
+    } else {
+        insert_yaml_if_some(
+            &mut map,
+            "queue",
+            optional_yaml(dag, &payload[2], |_| yaml_string("single")),
+        );
+    }
+    YamlValue::Mapping(map)
+}
+
+fn carrier_step_yaml(dag: &v3_compiler::dag::Dag, value: &FieldValue) -> YamlValue {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("expected step variant, got {value:?}");
+    };
+    let mut map = YamlMapping::new();
+    insert_yaml_if_some(
+        &mut map,
+        "name",
+        carrier_optional_value_yaml(dag, &payload[0]),
+    );
+    insert_yaml_if_some(
+        &mut map,
+        "id",
+        carrier_optional_value_yaml(dag, &payload[1]),
+    );
+    if *constructor == disj_variant_constructor_id(dag, "Step", "UsesStep") {
+        insert_yaml(
+            &mut map,
+            "uses",
+            carrier_action_ref_yaml(structural_record(&payload[2])),
+        );
+        if let Some(with) = direct_or_optional_map(dag, &payload[3]) {
+            insert_yaml(&mut map, "with", action_with_scalar_yaml(with));
+        }
+        insert_yaml_if_some(
+            &mut map,
+            "env",
+            optional_yaml(dag, &payload[4], |payload| match payload {
+                FieldValue::Map(map) => map_string_yaml(map),
+                other => panic!("expected env map, got {other:?}"),
+            }),
+        );
+        insert_yaml_if_some(
+            &mut map,
+            "if",
+            carrier_optional_value_yaml(dag, &payload[5]),
+        );
+        if literal_bool(&payload[6]) {
+            insert_yaml(&mut map, "continue-on-error", YamlValue::Bool(true));
+        }
+        insert_yaml_if_some(
+            &mut map,
+            "timeout-minutes",
+            optional_yaml(dag, &payload[7], literal_int_yaml),
+        );
+    } else if *constructor == disj_variant_constructor_id(dag, "Step", "RunStep") {
+        insert_yaml(&mut map, "run", literal_yaml(&payload[2]));
+        insert_yaml_if_some(
+            &mut map,
+            "working-directory",
+            carrier_optional_value_yaml(dag, &payload[5]),
+        );
+        insert_yaml_if_some(
+            &mut map,
+            "env",
+            optional_yaml(dag, &payload[4], |payload| match payload {
+                FieldValue::Map(map) => map_string_yaml(map),
+                other => panic!("expected env map, got {other:?}"),
+            }),
+        );
+        insert_yaml_if_some(
+            &mut map,
+            "if",
+            carrier_optional_value_yaml(dag, &payload[6]),
+        );
+        if literal_bool(&payload[7]) {
+            insert_yaml(&mut map, "continue-on-error", YamlValue::Bool(true));
+        }
+        insert_yaml_if_some(
+            &mut map,
+            "timeout-minutes",
+            optional_yaml(dag, &payload[8], literal_int_yaml),
+        );
+    } else {
+        panic!("unsupported Step payload {value:?}");
+    }
+    YamlValue::Mapping(map)
+}
+
+fn carrier_job_yaml(dag: &v3_compiler::dag::Dag, fields: &[(String, FieldValue)]) -> YamlValue {
+    let mut map = YamlMapping::new();
+    insert_yaml_if_some(
+        &mut map,
+        "name",
+        carrier_optional_value_yaml(dag, structural_field(fields, "name")),
+    );
+    insert_yaml(
+        &mut map,
+        "runs-on",
+        carrier_runner_yaml(dag, structural_field(fields, "runner")),
+    );
+    let needs = structural_list(structural_field(fields, "needs"));
+    if !needs.is_empty() {
+        insert_yaml(&mut map, "needs", string_list_yaml(needs));
+    }
+    insert_yaml_if_some(
+        &mut map,
+        "env",
+        optional_yaml(
+            dag,
+            structural_field(fields, "env"),
+            |payload| match payload {
+                FieldValue::Map(map) => map_string_yaml(map),
+                other => panic!("expected job env map, got {other:?}"),
+            },
+        ),
+    );
+    insert_yaml_if_some(
+        &mut map,
+        "outputs",
+        optional_yaml(
+            dag,
+            structural_field(fields, "outputs"),
+            |payload| match payload {
+                FieldValue::Map(map) => map_string_yaml(map),
+                other => panic!("expected outputs map, got {other:?}"),
+            },
+        ),
+    );
+    insert_yaml_if_some(
+        &mut map,
+        "if",
+        carrier_optional_value_yaml(dag, structural_field(fields, "if_condition")),
+    );
+    insert_yaml_if_some(
+        &mut map,
+        "timeout-minutes",
+        optional_yaml(
+            dag,
+            structural_field(fields, "timeout_minutes"),
+            literal_int_yaml,
+        ),
+    );
+    if literal_bool(structural_field(fields, "continue_on_error")) {
+        insert_yaml(&mut map, "continue-on-error", YamlValue::Bool(true));
+    }
+    insert_yaml_if_some(
+        &mut map,
+        "concurrency",
+        optional_yaml(dag, structural_field(fields, "concurrency"), |payload| {
+            carrier_concurrency_yaml(dag, payload)
+        }),
+    );
+    insert_yaml(
+        &mut map,
+        "steps",
+        list_yaml(structural_list(structural_field(fields, "steps")), |step| {
+            carrier_step_yaml(dag, step)
+        }),
+    );
+    YamlValue::Mapping(map)
+}
+
+fn carrier_trigger_yaml(dag: &v3_compiler::dag::Dag, triggers: &[FieldValue]) -> YamlValue {
+    let mut map = YamlMapping::new();
+    for trigger in triggers {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = trigger
+        else {
+            panic!("expected workflow trigger variant, got {trigger:?}");
+        };
+        if *constructor == disj_variant_constructor_id(dag, "WorkflowTrigger", "Push") {
+            let mut push = YamlMapping::new();
+            insert_yaml(
+                &mut push,
+                "branches",
+                string_list_yaml(structural_list(&payload[0])),
+            );
+            let paths = structural_list(&payload[1]);
+            if !paths.is_empty() {
+                insert_yaml(&mut push, "paths", string_list_yaml(paths));
+            }
+            insert_yaml(&mut map, "push", YamlValue::Mapping(push));
+        } else if *constructor == disj_variant_constructor_id(dag, "WorkflowTrigger", "PullRequest")
+        {
+            let mut pull_request = YamlMapping::new();
+            insert_yaml(
+                &mut pull_request,
+                "branches",
+                string_list_yaml(structural_list(&payload[0])),
+            );
+            let types = structural_list(&payload[1])
+                .iter()
+                .map(|activity| {
+                    let FieldValue::Variant { constructor, .. } = activity else {
+                        panic!("expected pull_request activity variant, got {activity:?}");
+                    };
+                    if *constructor
+                        == disj_variant_constructor_id(dag, "PullRequestActivity", "Opened")
+                    {
+                        yaml_string("opened")
+                    } else if *constructor
+                        == disj_variant_constructor_id(dag, "PullRequestActivity", "Synchronize")
+                    {
+                        yaml_string("synchronize")
+                    } else if *constructor
+                        == disj_variant_constructor_id(dag, "PullRequestActivity", "Reopened")
+                    {
+                        yaml_string("reopened")
+                    } else if *constructor
+                        == disj_variant_constructor_id(dag, "PullRequestActivity", "ReadyForReview")
+                    {
+                        yaml_string("ready_for_review")
+                    } else if *constructor
+                        == disj_variant_constructor_id(dag, "PullRequestActivity", "Closed")
+                    {
+                        yaml_string("closed")
+                    } else {
+                        panic!("unsupported pull_request activity {activity:?}");
+                    }
+                })
+                .collect();
+            insert_yaml(&mut pull_request, "types", YamlValue::Sequence(types));
+            insert_yaml(&mut map, "pull_request", YamlValue::Mapping(pull_request));
+        } else {
+            panic!("unsupported workflow trigger {trigger:?}");
+        }
+    }
+    YamlValue::Mapping(map)
+}
+
+fn carrier_permissions_yaml(
+    dag: &v3_compiler::dag::Dag,
+    fields: &[(String, FieldValue)],
+) -> YamlValue {
+    let mut map = YamlMapping::new();
+    for (field, yaml_field) in [
+        ("contents", "contents"),
+        ("pull_requests", "pull-requests"),
+        ("issues", "issues"),
+        ("actions", "actions"),
+    ] {
+        let value = structural_field(fields, field);
+        let FieldValue::Variant { constructor, .. } = value else {
+            panic!("expected permission variant, got {value:?}");
+        };
+        if *constructor == disj_variant_constructor_id(dag, "PermissionLevel", "PermRead") {
+            insert_yaml(&mut map, yaml_field, yaml_string("read"));
+        } else if *constructor == disj_variant_constructor_id(dag, "PermissionLevel", "PermWrite") {
+            insert_yaml(&mut map, yaml_field, yaml_string("write"));
+        } else if *constructor == disj_variant_constructor_id(dag, "PermissionLevel", "PermNone") {
+            // Omitted in YAML: GitHub's unspecified permissions are modeled as PermNone here.
+        } else {
+            panic!("unsupported PermissionLevel {value:?}");
+        }
+    }
+    YamlValue::Mapping(map)
+}
+
+fn carrier_workflow_yaml(
+    dag: &v3_compiler::dag::Dag,
+    fields: &[(String, FieldValue)],
+) -> YamlValue {
+    let mut map = YamlMapping::new();
+    insert_yaml(
+        &mut map,
+        "name",
+        literal_yaml(structural_field(fields, "name")),
+    );
+    insert_yaml(
+        &mut map,
+        "on",
+        carrier_trigger_yaml(dag, structural_list(structural_field(fields, "on"))),
+    );
+    insert_yaml_if_some(
+        &mut map,
+        "permissions",
+        optional_yaml(dag, structural_field(fields, "permissions"), |payload| {
+            carrier_permissions_yaml(dag, structural_record(payload))
+        }),
+    );
+    insert_yaml_if_some(
+        &mut map,
+        "concurrency",
+        optional_yaml(dag, structural_field(fields, "concurrency"), |payload| {
+            carrier_concurrency_yaml(dag, payload)
+        }),
+    );
+    insert_yaml_if_some(
+        &mut map,
+        "env",
+        optional_yaml(
+            dag,
+            structural_field(fields, "env"),
+            |payload| match payload {
+                FieldValue::Map(map) => map_string_yaml(map),
+                other => panic!("expected workflow env map, got {other:?}"),
+            },
+        ),
+    );
+    let mut jobs = YamlMapping::new();
+    for job in structural_list(structural_field(fields, "jobs")) {
+        let fields = structural_record(job);
+        let id = literal_string(structural_field(fields, "id"));
+        jobs.insert(yaml_key(id), carrier_job_yaml(dag, fields));
+    }
+    insert_yaml(&mut map, "jobs", YamlValue::Mapping(jobs));
+    YamlValue::Mapping(map)
+}
+
 fn workflow_topology<'a>(
     dag: &'a v3_compiler::dag::Dag,
     fields: &'a [(String, FieldValue)],
@@ -826,6 +1370,30 @@ fn gunbc_ci_github_actions_workflow_pins_ci_yml_source_checksum() {
     assert_eq!(
         actual, expected,
         "update {GUNBC_CI_GITHUB_WORKFLOW_FILE}'s Source-SHA256 when .github/workflows/ci.yml changes"
+    );
+}
+
+#[test]
+fn gunbc_ci_github_actions_workflow_matches_ci_yml_structure() {
+    let dag = compile_to_dag(
+        GUNBC_CI_GITHUB_WORKFLOW_SOURCE,
+        GUNBC_CI_GITHUB_WORKFLOW_FILE,
+    )
+    .unwrap_or_else(|err| panic!("compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {err:?}"));
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{GUNBC_CI_GITHUB_WORKFLOW_FILE}: {:?}",
+        dag.diagnostics()
+    );
+    let modeled = carrier_workflow_yaml(
+        &dag,
+        structural_value_body(&dag, "gunbc_ci_github_actions_workflow"),
+    );
+    let parsed: YamlValue = serde_yaml::from_str(GITHUB_ACTIONS_CI_YML_SOURCE)
+        .expect(".github/workflows/ci.yml parses");
+    assert_eq!(
+        modeled, parsed,
+        "{GUNBC_CI_GITHUB_WORKFLOW_FILE} must structurally match .github/workflows/ci.yml"
     );
 }
 

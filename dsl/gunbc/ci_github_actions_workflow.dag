@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 9f1f0401e6f7e6f57ea5ce6e28f4f7bb66840437f8929ba2fe2a15bd4e864694
+// Source-SHA256(.github/workflows/ci.yml): b7ad5d44b641db79bb51708d0e80c1909f55d6fa84cffdd4c695778e1308c0f8
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -272,7 +272,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: Some { value: 20 }
         }, RunStep {
-          name: Some { value: "v2 → v4 bootstrap compile (fail-closed full)" },
+          name: Some { value: "v2 -> v4 bootstrap compile (fail-closed full)" },
           id: none,
           run: "bash scripts/v4-bootstrap-viability.sh",
           shell: Bash,
@@ -325,9 +325,9 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "ci receipt (§11.7.1 floor)" },
+          name: Some { value: "ci receipt (section 11.7.1 floor)" },
           id: none,
-          run: "echo \"::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell). See docs/planning/ci-required-surface-cut-2026-06-01.md\"\n",
+          run: "echo \"::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,

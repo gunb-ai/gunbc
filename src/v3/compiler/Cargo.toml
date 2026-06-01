@@ -49,6 +49,7 @@ criterion = "0.5"
 ci_affected_components = { path = "../../../tools/ci_affected_components" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 sha2 = { workspace = true }
 # T-V2 G-1 manifest ratchet: structured Cargo.toml walk (`toml` value parse).
 toml = { workspace = true }
