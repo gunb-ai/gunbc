@@ -1639,6 +1639,8 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
 // Phase 1 leaf-model claim subjects (algebra-inhabitance widening worksheet).
 data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
 data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
+// 🟡 Leaf-model Layer-A fact exposure (boolean) · E-6 bounded-exception · scaffold feature:ts-r2-leaf-model-claim-corpus · dissolve-on: typescript_r2a.dag/typescript_r2b.dag claim corpus references this fact ID by Symbol equality
+data ts_bool_algebra_inhabitance_ts_facts_boolean: AlgebraInhabitanceDecl = ts_bool_algebra_inhabitance()
 
 // Phase 1 SG-1 Symbol atom realization (alpha lane; catalog bundle edge deferred to SG-2 tranche).
 data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
@@ -2549,6 +2551,9 @@ fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabi
     witness: ts_string_algebra_witness_node(facts: facts)
   }
 }
+
+// 🟡 Leaf-model Layer-A fact exposure (Wave-2b string) · E-6 bounded-exception · scaffold feature:ts-r2-leaf-model-claim-corpus · dissolve-on: typescript_r2a.dag claim corpus references this fact ID by Symbol equality
+data ts_string_algebra_inhabitance_ts_facts_string: AlgebraInhabitanceDecl = ts_string_algebra_inhabitance(facts: ts_facts_string)
 
 fn ts_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [

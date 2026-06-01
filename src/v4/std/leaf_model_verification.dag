@@ -88,6 +88,38 @@ type TargetPythonExerciseVerdict
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
+// --- PY-L1-STATIC-STRUCTURAL: shared cross-target static-analysis carriers ---
+// Arbiter ruling (Modeling DFS, proud-fox-405, msg_41813c03): static structural
+// analysis by a third-party type checker is a SHARED cross-target authority — one
+// carrier pair reused by pyright/mypy now and tsc --noEmit later — DISTINCT from
+// BOTH CPython compile (TargetPythonCompileRejected) and runtime exec
+// (TargetPythonExecRejected). Three authorities, never collapsed. Per-tool profiles
+// and diagnostic-code Symbols live in extdeps/typecheckers/*; these carriers
+// reference the tool profile / diagnostic by Symbol only (no shared cross-tool
+// diagnostic namespace). host_run stays runtime stdout/exit; no static facts there.
+
+// Whether a static-analysis finding blocks a rung or is advisory evidence only
+// (fail-closed: BlockingForRung + advisory-only finding on the falsification path = MISS).
+// 🟢 terminal — CP-PYL1-STATIC-ANALYSIS-ROLE-TERMINAL (dissolution analysis: PR #4158 review).
+type TargetStaticAnalysisRole
+  = Advisory
+  | BlockingForRung
+
+type TargetStaticAnalysisInvocation {
+  tool_profile_ref: Symbol
+  input_artifact: TargetArtifact
+  analysis_role: TargetStaticAnalysisRole
+}
+
+// Accepted (no finding) / Rejected (blocking) / Advisory (non-blocking evidence); the
+// richer per-tool detail is carried by tool_id + diagnostic_code. Never a compile/runtime
+// verdict and never an L2 behavioral-parity claim.
+// 🟢 terminal — CP-PYL1-STATIC-ANALYSIS-VERDICT-TERMINAL (dissolution analysis: PR #4158 review).
+type TargetStaticAnalysisVerdict
+  = StaticAnalysisAccepted
+  | StaticAnalysisRejected { tool_id: Symbol, diagnostic_code: Symbol }
+  | StaticAnalysisAdvisory { tool_id: Symbol, diagnostic_code: Symbol }
+
 // 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-COMPILE-VERDICT-PHASE1 (Phase 1 tsc gate; widen per target).
 type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted
@@ -114,6 +146,7 @@ data leaf_model_claim_python_r1_int_surface_spelling: LeafModelClaimId = leaf_mo
 data leaf_model_claim_python_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_python_r2a_int_algebra_operations
 data leaf_model_claim_python_r2b_int_arbitrary_precision_add: LeafModelClaimId = leaf_model_claim_python_r2b_int_arbitrary_precision_add
 data leaf_model_claim_python_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_python_r3_external_symbol_projection
+data leaf_model_claim_python_l1_static_return_type: LeafModelClaimId = leaf_model_claim_python_l1_static_return_type
 data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_model_claim_rust_r2a_i32_algebra_operations
 data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
 data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
@@ -182,6 +215,74 @@ type LeafModelPythonFixturePair {
   happy: LeafModelPythonFixture
   expected_happy_verdict: TargetPythonExerciseVerdict
   falsification: LeafModelPythonFalsificationCase
+}
+
+// PY-L1-STATIC-STRUCTURAL fixture carriers. Polarity AND role are STRUCTURAL, not prose:
+//  - the two cases are distinct types so illegal fixture states are unrepresentable —
+//    a happy case can only mean StaticAnalysisAccepted, a falsification case can only mean
+//    a blocking StaticAnalysisRejected. Neither carries a free TargetStaticAnalysisVerdict.
+//  - neither case stores a free TargetStaticAnalysisInvocation: storing one would let a
+//    blocking fixture be built with analysis_role: Advisory. Instead each case carries only
+//    the artifact + the per-tool PROFILE reference (tool_profile_ref → an extdeps profile
+//    row, e.g. pyright_profile_l1_id — distinct from the verdict's tool_id), and the
+//    invocation is CONSTRUCTED with analysis_role: BlockingForRung by the accessor fns
+//    below. So the BlockingForRung role and the profile/tool distinction are guaranteed by
+//    construction, not accepted as free fields.
+type LeafModelPythonStaticHappyCase {
+  artifact: TargetArtifact
+  tool_profile_ref: Symbol
+}
+
+// A falsification case carries the artifact, the profile reference, and the blocking-rejection
+// detail (tool + diagnostic). Its verdict is StaticAnalysisRejected { tool_id, diagnostic_code }
+// and its invocation role is BlockingForRung, both by construction (accessor fns below).
+type LeafModelPythonStaticFalsificationCase {
+  artifact: TargetArtifact
+  tool_profile_ref: Symbol
+  tool_id: Symbol
+  diagnostic_code: Symbol
+}
+
+type LeafModelPythonStaticFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  happy: LeafModelPythonStaticHappyCase
+  falsification: LeafModelPythonStaticFalsificationCase
+}
+
+// Single-authority construction of each case's BlockingForRung invocation — the role is
+// baked in here, never stored as a free field on the case.
+fn leaf_model_python_static_happy_invocation(
+  c: LeafModelPythonStaticHappyCase
+) -> TargetStaticAnalysisInvocation {
+  TargetStaticAnalysisInvocation {
+    tool_profile_ref: c.tool_profile_ref,
+    input_artifact: c.artifact,
+    analysis_role: BlockingForRung
+  }
+}
+
+fn leaf_model_python_static_falsification_invocation(
+  c: LeafModelPythonStaticFalsificationCase
+) -> TargetStaticAnalysisInvocation {
+  TargetStaticAnalysisInvocation {
+    tool_profile_ref: c.tool_profile_ref,
+    input_artifact: c.artifact,
+    analysis_role: BlockingForRung
+  }
+}
+
+// Single-authority reconstruction of each case's expected verdict from its typed shape.
+fn leaf_model_python_static_happy_verdict(
+  c: LeafModelPythonStaticHappyCase
+) -> TargetStaticAnalysisVerdict {
+  StaticAnalysisAccepted
+}
+
+fn leaf_model_python_static_falsification_verdict(
+  c: LeafModelPythonStaticFalsificationCase
+) -> TargetStaticAnalysisVerdict {
+  StaticAnalysisRejected { tool_id: c.tool_id, diagnostic_code: c.diagnostic_code }
 }
 
 // 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — bind PR #4157 Phase 1 MW-D3 alpha lane —
