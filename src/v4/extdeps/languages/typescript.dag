@@ -97,6 +97,13 @@ import v4.std.diagnostic {
 import v4.std.node_query { find_named_child }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
+  TargetAtomTypeShape,
+  TargetFunctionTypeShape,
+  TargetGenericApply,
+  TargetSumTypeShape,
+  TargetTypeExpressionProjection
+}
+import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
@@ -110,7 +117,20 @@ import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_source
+  target_model_edge_serialize_source,
+  target_model_edge_type_expression_projection,
+  target_type_expr_field_arrow,
+  target_type_expr_field_atom,
+  target_type_expr_field_cardinality,
+  target_type_expr_field_close,
+  target_type_expr_field_conj,
+  target_type_expr_field_disj,
+  target_type_expr_field_ident_token,
+  target_type_expr_field_instantiation,
+  target_type_expr_field_open,
+  target_type_expr_field_separator,
+  target_type_expr_field_surface,
+  target_type_expr_field_variant_separator
 }
 import v4.std.node {
   Arrow,
@@ -280,6 +300,19 @@ data ts_production_pr3_typed_fn_decl: Symbol = ts_production_pr3_typed_fn_decl
 
 data ts_token_lbracket: Symbol = ts_token_lbracket
 data ts_token_rbracket: Symbol = ts_token_rbracket
+
+// SG-2 TargetTypeExpressionProjection row tokens (angle-bracket generic apply + fat-arrow type).
+data ts_token_lt: Symbol = ts_token_lt
+data ts_token_gt: Symbol = ts_token_gt
+data ts_token_fat_arrow: Symbol = ts_token_fat_arrow
+
+// SG-2 TargetTypeExpressionProjection row surfaces (one per connective form).
+data ts_surface_type_atom: Symbol = ts_surface_type_atom
+data ts_surface_type_record: Symbol = ts_surface_type_record
+data ts_surface_type_sum: Symbol = ts_surface_type_sum
+data ts_surface_type_arrow: Symbol = ts_surface_type_arrow
+data ts_surface_type_cardinality: Symbol = ts_surface_type_cardinality
+data ts_surface_type_generic_apply: Symbol = ts_surface_type_generic_apply
 
 data ts_surface_fn_item: Symbol = ts_surface_fn_item
 data ts_surface_type_number: Symbol = ts_surface_type_number
