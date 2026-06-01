@@ -329,10 +329,6 @@ data ts_surface_type_arrow: Symbol = ts_surface_type_arrow
 data ts_surface_type_cardinality: Symbol = ts_surface_type_cardinality
 data ts_surface_type_generic_apply: Symbol = ts_surface_type_generic_apply
 
-// TS-ATOM-REALIZATION row spellings. Symbol uses the ECMA primitive `symbol`;
-// Bool/String reuse the TypeScript primitive fact spellings below.
-data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
-
 data ts_surface_fn_item: Symbol = ts_surface_fn_item
 data ts_surface_type_number: Symbol = ts_surface_type_number
 data ts_surface_bin_add: Symbol = ts_surface_bin_add
@@ -1238,24 +1234,8 @@ fn ts_type_expression_projection_bundle_node() -> Node {
   }
 }
 
-fn ts_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
-  target_atom_alias_type_expression(
-    spelling: spelling,
-    atom_form: ts_type_expression_projection().atom_form
-  )
-}
-
 fn ts_target_atom_realization_target_model_staging() -> TargetModel {
   ts_sg2_type_expr_target_model()
-}
-
-data ts_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
-  source_carrier: symbol_kernel_type_node(),
-  target_model: ts_target_atom_realization_target_model_staging(),
-  type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_symbol),
-  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
-  constructor_form: optional_absent(),
-  display_name: symbol_kernel_type_atom
 }
 
 data ts_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
@@ -1710,17 +1690,14 @@ fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
 data ts_number_algebra_inhabitance_ts_facts_number: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
 data ts_bigint_algebra_inhabitance_ts_facts_bigint: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
 
-// Phase 1 SG-1 Symbol atom realization (alpha lane; catalog bundle edge deferred to SG-2 tranche).
+// Phase 1 SG-1 Symbol atom realization (alpha lane). TS-ATOM-REALIZATION extends this
+// single Symbol row into the shared atom catalog instead of declaring a parallel row.
 data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
-data ts_surface_type_symbol: Symbol = ts_surface_type_symbol
 
 fn ts_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
   target_atom_alias_type_expression(
     spelling: spelling,
-    atom_form: TargetAtomTypeShape {
-      surface: ts_surface_type_symbol,
-      ident_token: ts_token_ident
-    }
+    atom_form: ts_type_expression_projection().atom_form
   )
 }
 
@@ -1729,7 +1706,7 @@ data ts_atom_realization_symbol: Symbol = ts_atom_realization_symbol
 
 data ts_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
   source_carrier: symbol_kernel_type_node(),
-  target_model: ts_mvp1_target_model(),
+  target_model: ts_target_atom_realization_target_model_staging(),
   type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_symbol),
   value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
   constructor_form: optional_absent(),
