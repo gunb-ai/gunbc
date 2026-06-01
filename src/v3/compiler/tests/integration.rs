@@ -1172,6 +1172,12 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_cache_identity_dag() {
+        // P5 receipt (Dispatch-Discipline (b) deferral): P2 dup-authority —
+        // `std.cache_identity` substrate landing; parser-acceptance for new `.dag` authority.
+        // SG-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
+        // `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
+        // this adds one `#[test]` fn only, same pattern as
+        // `handwritten_parser_accepts_cache_interface_dag` below.
         parse_file(
             include_str!("../../../../dsl/std/cache_identity.dag"),
             "dsl/std/cache_identity.dag",
@@ -1180,6 +1186,12 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_compute_fabric_dag() {
+        // P5 receipt (Dispatch-Discipline (b) deferral): Worksheet A parser gate —
+        // `docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md` §2 Parser gates.
+        // SG-0: no new hand-Rust path; `src/v3/compiler/tests/integration.rs` is already in
+        // `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` — path count unchanged (N→N);
+        // this adds one `#[test]` fn only, same pattern as
+        // `handwritten_parser_accepts_cache_interface_dag` below.
         parse_file(
             include_str!("../../../../dsl/std/compute_fabric.dag"),
             "dsl/std/compute_fabric.dag",
