@@ -23,8 +23,9 @@
 //! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
 //! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
-//! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte
-//! stdout contract; not per-law emitted artifacts until emit pipeline wires law subjects).
+//! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target plus L2 Rust/Python/Go stdout
+//! parity across the six-law roster via `emit_host_bridge` (five-byte stdout contract; not
+//! per-law emitted artifacts until emit pipeline wires law subjects).
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
 //! **TASKS.md** T-22 T-38.
 //!
@@ -974,27 +975,46 @@ fn emit_host_runner_go_row_runs_and_parses_stdout() {
 
 #[test]
 fn cross_target_mvp2_stdout_parity_rust_python_go() {
-    let inputs = emit_host_runner::EmitHostFixtureInputs {
-        claim_input_root: "cross_target_claim_input".to_string(),
-        expected_eval_root: "cross_target_expected_eval".to_string(),
-    };
+    if std::process::Command::new("go")
+        .arg("version")
+        .output()
+        .is_err()
+    {
+        eprintln!("skipping cross-target parity transport: go binary is not available on PATH");
+        return;
+    }
+
     let pid = std::process::id();
-    let rust_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_rust_{pid}"));
-    let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_py_{pid}"));
-    let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_go_{pid}"));
-    let verdict = emit_host_bridge::run_cross_target_mvp2_python_parity_transport(
-        EMIT_HOST_FIXTURE_SOURCE,
-        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
-        EMIT_HOST_GO_FIXTURE_SOURCE,
-        &inputs,
-        &rust_dir,
-        &py_dir,
-        &go_dir,
-    );
-    assert_eq!(
-        verdict,
-        emit_host_bridge::EmitHostCrossTargetParityVerdict::Pass
-    );
+    for law in [
+        "add_left_identity",
+        "add_right_identity",
+        "add_associativity",
+        "mul_left_identity",
+        "mul_annihilator",
+        "mul_associativity",
+    ] {
+        let inputs = emit_host_runner::EmitHostFixtureInputs {
+            claim_input_root: format!("cross_target_{law}_claim_input"),
+            expected_eval_root: format!("cross_target_{law}_expected_eval"),
+        };
+        let rust_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_rust_{pid}"));
+        let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_py_{pid}"));
+        let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_go_{pid}"));
+        let verdict = emit_host_bridge::run_cross_target_mvp2_python_parity_transport(
+            EMIT_HOST_FIXTURE_SOURCE,
+            EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+            EMIT_HOST_GO_FIXTURE_SOURCE,
+            &inputs,
+            &rust_dir,
+            &py_dir,
+            &go_dir,
+        );
+        assert_eq!(
+            verdict,
+            emit_host_bridge::EmitHostCrossTargetParityVerdict::Pass,
+            "L2 cross-target stdout parity failed for law={law}"
+        );
+    }
 }
 
 #[test]
@@ -1004,6 +1024,8 @@ fn v4_nat_semiring_rung_5_dag_tokenizes_and_parses_full_law_roster_three_targets
         "run_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval",
         "run_phase1_nat_semiring_rung5_python_mul_associativity_emit_equals_eval",
         "run_phase1_nat_semiring_rung5_go_mul_annihilator_emit_equals_eval",
+        "claim_phase1_nat_semiring_rung5_l2_add_left_identity_python_rust_go_stdout_parity",
+        "claim_phase1_nat_semiring_rung5_l2_mul_associativity_python_rust_go_stdout_parity",
     ] {
         assert!(
             surface_declares_data(&module, name),
@@ -1016,6 +1038,13 @@ fn v4_nat_semiring_rung_5_dag_tokenizes_and_parses_full_law_roster_three_targets
             "phase1_nat_semiring_rung5_full_law_roster_runtime_value_rows"
         ),
         "{NAT_SEMIRING_RUNG_5_PATH}: 6 laws × 3 targets roster"
+    );
+    assert!(
+        surface_declares_data(
+            &module,
+            "phase1_nat_semiring_rung5_l2_cross_target_python_parity_claim_rows"
+        ),
+        "{NAT_SEMIRING_RUNG_5_PATH}: 6-law L2 python/rust/go parity claim roster"
     );
     let common = parse_module(RUNG_5_6_COMMON_DAG, RUNG_5_6_COMMON_PATH);
     assert!(
