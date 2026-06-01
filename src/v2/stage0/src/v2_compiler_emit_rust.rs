@@ -459,7 +459,16 @@ pub fn render_rust_fn_sig_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((generic_param_names.len() as i64) > 0) {
-        render_rust_decl_type(n, generic_param_names, shared_types, source_indices)
+        if (find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) != None)
+        {
+            render_rust_type_with_applied_binding(n, shared_types, source_indices)
+        } else {
+            render_rust_decl_type(n, generic_param_names, shared_types, source_indices)
+        }
     } else {
         render_rust_type_with_applied_binding(n, shared_types, source_indices)
     }

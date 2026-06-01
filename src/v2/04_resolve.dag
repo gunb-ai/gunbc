@@ -6,7 +6,7 @@ import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex,
-  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value, find_property,
+  make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   generic_param_name_at,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -305,7 +305,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
     let applied_type_args = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: none, return_cardinality: n.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    let applied_type_args_property = make_field_init_node(name: "__applied_type_args", value: applied_type_args, span: n.span, name_span: n.span)
+    let applied_prop_span = kernel_span(name: "__applied_type_args")
+    let applied_type_args_property = make_field_init_node(name: "__applied_type_args", value: applied_type_args, span: n.span, name_span: applied_prop_span)
     let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
       let idx = pair.first
       let slot_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
@@ -506,8 +507,6 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     Some { value: result } => Some { value: result.expr }
     None => none
   }
-  // Structural resolved type stays in type_expr/inferred for build_params_scope and
-  // field access; __applied_type_args on merged properties is the emit-only overlay.
   ParamResult {
     param: make_resolved_param_node(
       name: param_node_name_at(n: param, source_indices: env.source_indices),
