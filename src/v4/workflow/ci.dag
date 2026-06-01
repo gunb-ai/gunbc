@@ -238,7 +238,7 @@ fn ci_upsert_lens_output_ref_input(lens: LensIdV0) -> UpsertInputRef {
 fn ci_upsert_lens_inputs_from_required_lenses(lenses: List<LensIdV0>) -> List<UpsertInputRef> {
   fold_list(
     xs: lenses,
-    empty: [],
+    empty: ci_empty_upsert_input_refs(),
     cons: fn(acc, lens) {
       list_snoc_item(xs: acc, item: ci_upsert_lens_output_ref_input(lens: lens))
     }
@@ -1555,7 +1555,7 @@ fn ci_symbol_list_projection_node(xs: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: xs,
-      empty: [],
+      empty: ci_empty_edges(),
       cons: fn(acc, sym) {
         list_snoc_item(
           xs: acc,
@@ -1791,7 +1791,7 @@ fn ci_string_projection_node(s: String) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: s,
-      empty: [],
+      empty: ci_empty_edges(),
       cons: fn(acc, ch) {
         list_snoc_item(
           xs: acc,
@@ -1888,7 +1888,7 @@ fn ci_lens_list_projection_node(lenses: List<LensIdV0>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: lenses,
-      empty: [],
+      empty: ci_empty_edges(),
       cons: fn(acc, lens) {
         list_snoc_item(
           xs: acc,
@@ -1917,7 +1917,7 @@ fn ci_job_list_projection_node(jobs: List<CiJob>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: jobs,
-      empty: [],
+      empty: ci_empty_edges(),
       cons: fn(acc, job) {
         list_snoc_item(
           xs: acc,
@@ -1949,7 +1949,7 @@ fn ci_gate_list_projection_node(gates: List<CiGate>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: gates,
-      empty: [],
+      empty: ci_empty_edges(),
       cons: fn(acc, gate) {
         list_snoc_item(
           xs: acc,
@@ -2066,7 +2066,7 @@ fn ci_glob_pattern_projection_node(pattern: GlobPattern) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: pattern.segments,
-      empty: [],
+      empty: ci_empty_edges(),
       cons: fn(acc, segment) {
         list_snoc_item(
           xs: acc,
@@ -2263,7 +2263,7 @@ fn ci_upsert_input_ref_list_projection_node(refs: List<UpsertInputRef>) -> Node 
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: refs,
-      empty: [],
+      empty: ci_empty_edges(),
       cons: fn(acc, input_ref) {
         list_snoc_item(
           xs: acc,
@@ -2364,7 +2364,7 @@ fn ci_gate_shadow_step_id(ci_gate: CiGate) -> CiStepId {
 fn ci_job_step_ids_shadow(jobs: List<CiJob>) -> List<CiStepId> {
   fold_list(
     xs: jobs,
-    empty: [],
+    empty: ci_empty_step_ids(),
     cons: fn(acc, ci_job) {
       list_snoc_item(xs: acc, item: ci_job_shadow_step_id(ci_job: ci_job))
     }
@@ -2623,7 +2623,7 @@ fn ci_selection_receipt_shadow_rows(
   let superset = ci_affected_set_is_fail_closed(affected: affected)
   fold_list(
     xs: ci_pipeline_step_ids_shadow(p: pipeline),
-    empty: [],
+    empty: ci_empty_step_selections(),
     cons: fn(acc, step_id) {
       list_snoc_item(
         xs: acc,
@@ -2680,7 +2680,7 @@ fn ci_step_selection_shadow_row(step_id: CiStepId) -> CiStepSelection {
 fn ci_step_selection_shadow_rows(step_ids: List<CiStepId>) -> List<CiStepSelection> {
   fold_list(
     xs: step_ids,
-    empty: [],
+    empty: ci_empty_step_selections(),
     cons: fn(acc, sid) {
       list_snoc_item(xs: acc, item: ci_step_selection_shadow_row(step_id: sid))
     }
@@ -2729,7 +2729,7 @@ fn ci_step_selection_step_id(row: CiStepSelection) -> CiStepId {
 fn ci_step_selections_step_ids(decisions: List<CiStepSelection>) -> List<CiStepId> {
   fold_list(
     xs: decisions,
-    empty: [],
+    empty: ci_empty_step_ids(),
     cons: fn(acc, row) {
       list_snoc_item(xs: acc, item: ci_step_selection_step_id(row: row))
     }
