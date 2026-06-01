@@ -1564,9 +1564,37 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
          as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
+        CI_DAG.contains("manual_corpus_node_runtime_value_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed"),
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface"
+    );
+    assert!(
         CI_DAG.contains("fn_name == ci_testclaim_corpus_selection_fn"),
         "{CI_DAG_PATH}: ci_command_authority_ok must enforce selection_fn == ci_testclaim_corpus_selection_fn (not unconditional true)"
     );
+    for needle in [
+        "data ci_testclaim_corpus_run_roster: Symbol = manual_corpus_node_runtime_value_rows",
+        "data ci_testclaim_corpus_eval_report: Symbol = run_manual_testclaim_corpus_eval",
+        "data ci_testclaim_corpus_verdict_tally: Symbol = corpus_report_tally",
+        "data ci_testclaim_corpus_gate_witness: Symbol = witness_manual_corpus_gate_closed",
+        "fn ci_testclaim_corpus_eval_command() -> CiCommand",
+        "run_roster: ci_testclaim_corpus_run_roster",
+        "eval_report: ci_testclaim_corpus_eval_report",
+        "verdict_tally: ci_testclaim_corpus_verdict_tally",
+        "gate_witness: ci_testclaim_corpus_gate_witness",
+        "roster == ci_testclaim_corpus_run_roster",
+        "report == ci_testclaim_corpus_eval_report",
+        "tally == ci_testclaim_corpus_verdict_tally",
+        "witness == ci_testclaim_corpus_gate_witness",
+        "ci_projection_command_run_roster_edge",
+        "ci_projection_command_eval_report_edge",
+        "ci_projection_command_verdict_tally_edge",
+        "ci_projection_command_gate_witness_edge",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: TestClaimCorpusEvalCommand must carry modeled corpus verdict authority `{needle}`"
+        );
+    }
     assert!(
         CI_DAG.contains("data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set"),
         "{CI_DAG_PATH}: ci_testclaim_corpus_selection_fn must be declared as ci_select_from_affected_set (IRT-1 P2 single authority)"
@@ -1580,14 +1608,12 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "{CI_DAG_PATH}: ci_pipeline must include testclaim_corpus_eval_signal gate"
     );
     assert!(
-        CI_DAG.contains("command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }"),
-        "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must bind selection_fn to the canonical authority"
+        CI_DAG.contains("command: ci_testclaim_corpus_eval_command()"),
+        "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must bind the canonical corpus-eval command"
     );
     assert!(
         CI_DAG.contains("payload_type: ci_command_projection_node(")
-            && CI_DAG.contains(
-                "c: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }"
-            ),
+            && CI_DAG.contains("c: ci_testclaim_corpus_eval_command()"),
         "{CI_DAG_PATH}: testclaim corpus CiUpsertStep payload_type must use command projection (content_hash authority, not static tag)"
     );
     assert!(
