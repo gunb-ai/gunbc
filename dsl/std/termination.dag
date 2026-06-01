@@ -142,30 +142,6 @@ fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
 }
 
 // =========================================================================
-// Lifted lattice operations (concrete instances of algebra.dag patterns)
-// =========================================================================
-
-// optional_meet for DescentEvidence: None is identity (top).
-fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
-  match a {
-    None => b
-    Some { value: va } =>
-      match b {
-        None => a
-        Some { value: vb } => Some { value: descent_evidence_lattice_meet(a: va, b: vb) }
-      }
-  }
-}
-
-// map_merge_at for DescentEvidence: pointwise meet keyed by String.
-fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
-  match map_get(base, key) {
-    Some { value: existing } => map_insert(base, key, descent_evidence_lattice_meet(a: existing, b: new_val))
-    None => map_insert(base, key, new_val)
-  }
-}
-
-// =========================================================================
 // Ranking dimensions: what can be measured for descent
 // =========================================================================
 

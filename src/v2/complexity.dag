@@ -28,9 +28,9 @@ import std.termination {
   DescentSource, ChildAccessor, ListShrink, ArithmeticSubtractDescent, ArithmeticDivideDescent, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
   descent_evidence_lattice_meet, evidence_rank,
-  optional_evidence_meet, map_evidence_merge_at,
   OneStep
 }
+import std.algebra { optional_meet, map_merge_at }
 import std.computation {
   CallPattern,
   ChildAccessorCall, CollectionShrinkCall, ArithmeticSubtractCall,
@@ -2490,7 +2490,7 @@ fn try_branching_dimension_for_param(body: Node, func_name: String, param_name: 
 }
 
 fn merge_optional_evidence(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
-  optional_evidence_meet(a: a, b: b)
+  optional_meet(meet: descent_evidence_lattice_meet, a: a, b: b)
 }
 
 // Collect the WORST evidence across all self-calls for a given param/dimension.
@@ -3393,7 +3393,7 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
 }
 
 fn merge_edge_evidence(acc_map: Map<String, DescentEvidence>, pe: ParserProgressEdge) -> Map<String, DescentEvidence> {
-  map_evidence_merge_at(base: acc_map, key: pe.callee, new_val: pe.progress)
+  map_merge_at(merge: descent_evidence_lattice_meet, base: acc_map, key: pe.callee, new_val: pe.progress)
 }
 
 fn count_known_in_edge_map(m: Map<String, DescentEvidence>) -> Int {
