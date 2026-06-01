@@ -88,6 +88,38 @@ type TargetPythonExerciseVerdict
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
+// --- PY-L1-STATIC-STRUCTURAL: shared cross-target static-analysis carriers ---
+// Arbiter ruling (Modeling DFS, proud-fox-405, msg_41813c03): static structural
+// analysis by a third-party type checker is a SHARED cross-target authority — one
+// carrier pair reused by pyright/mypy now and tsc --noEmit later — DISTINCT from
+// BOTH CPython compile (TargetPythonCompileRejected) and runtime exec
+// (TargetPythonExecRejected). Three authorities, never collapsed. Per-tool profiles
+// and diagnostic-code Symbols live in extdeps/typecheckers/*; these carriers
+// reference the tool profile / diagnostic by Symbol only (no shared cross-tool
+// diagnostic namespace). host_run stays runtime stdout/exit; no static facts there.
+
+// Whether a static-analysis finding blocks a rung or is advisory evidence only.
+// Fail-closed semantics (Arbiter): a BlockingForRung invocation whose falsification
+// path yields only an advisory finding is a MISS, not a pass.
+type TargetStaticAnalysisRole
+  = Advisory
+  | BlockingForRung
+
+type TargetStaticAnalysisInvocation {
+  tool_profile_ref: Symbol
+  input_artifact: TargetArtifact
+  analysis_role: TargetStaticAnalysisRole
+}
+
+// StaticAnalysisAccepted: analyzer ran and proved no finding under the profile.
+// StaticAnalysisRejected: blocking finding (tool_id + per-tool diagnostic_code).
+// StaticAnalysisAdvisory: non-blocking finding recorded as evidence, never a
+//   compile/runtime verdict and never an L2 behavioral-parity claim.
+type TargetStaticAnalysisVerdict
+  = StaticAnalysisAccepted
+  | StaticAnalysisRejected { tool_id: Symbol, diagnostic_code: Symbol }
+  | StaticAnalysisAdvisory { tool_id: Symbol, diagnostic_code: Symbol }
+
 data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_type_mismatch
 data target_diagnostic_e0423_expected_value_found_type: Symbol = target_diagnostic_e0423_expected_value_found_type
 data target_diagnostic_e0599_method_not_found: Symbol = target_diagnostic_e0599_method_not_found
@@ -102,6 +134,7 @@ data leaf_model_claim_python_r1_int_surface_spelling: LeafModelClaimId = leaf_mo
 data leaf_model_claim_python_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_python_r2a_int_algebra_operations
 data leaf_model_claim_python_r2b_int_arbitrary_precision_add: LeafModelClaimId = leaf_model_claim_python_r2b_int_arbitrary_precision_add
 data leaf_model_claim_python_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_python_r3_external_symbol_projection
+data leaf_model_claim_python_l1_static_return_type: LeafModelClaimId = leaf_model_claim_python_l1_static_return_type
 data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_model_claim_rust_r2a_i32_algebra_operations
 data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
 data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
@@ -167,6 +200,22 @@ type LeafModelPythonFixturePair {
   happy: LeafModelPythonFixture
   expected_happy_verdict: TargetPythonExerciseVerdict
   falsification: LeafModelPythonFalsificationCase
+}
+
+// PY-L1-STATIC-STRUCTURAL fixture carrier. A static "case" is one artifact + its
+// invocation (tool profile + role) + the expected static-analysis verdict. The
+// fixture source lives in invocation.input_artifact.source_text. A pair bundles a
+// happy case (StaticAnalysisAccepted) and a falsification case (StaticAnalysisRejected).
+type LeafModelPythonStaticCase {
+  invocation: TargetStaticAnalysisInvocation
+  expected_verdict: TargetStaticAnalysisVerdict
+}
+
+type LeafModelPythonStaticFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  happy: LeafModelPythonStaticCase
+  falsification: LeafModelPythonStaticCase
 }
 
 type LeafModelVerificationRunReceipt {
