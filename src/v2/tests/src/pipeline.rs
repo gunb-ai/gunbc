@@ -5243,7 +5243,10 @@ fn probe_param(run: ProbeClaimRun<Node, RuntimeValue>) -> Int {
 }
 
 fn probe_return() -> ProbeClaimRun<Node, RuntimeValue> {
-  cached_probe_run
+  ProbeClaimRun {
+    subject: Node { label: "return" }
+    actual: RuntimeValue { text: "rv" }
+  }
 }
 "#;
     let result = compile_dag(source);
@@ -5255,17 +5258,17 @@ fn probe_return() -> ProbeClaimRun<Node, RuntimeValue> {
         content
     );
     assert!(
-        content.contains("pub fn probe_param(run: Rc<ProbeClaimRun<Node, RuntimeValue>>) -> i64"),
+        content.contains("pub fn probe_param(run: ProbeClaimRun<Node, RuntimeValue>) -> i64"),
         "generic function parameter should preserve applied type args, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub fn probe_return() -> Rc<ProbeClaimRun<Node, RuntimeValue>>"),
+        content.contains("pub fn probe_return() -> ProbeClaimRun<Node, RuntimeValue>"),
         "generic function return should preserve applied type args, got:\n{}",
         content
     );
     assert!(
-        !content.contains("Rc<ProbeClaimRun>"),
+        !content.contains("ProbeClaimRun>"),
         "generic carrier must not be emitted bare, got:\n{}",
         content
     );

@@ -1652,7 +1652,14 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Some { value: applied } =>
       if applied.children |> count > 0 {
-        render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
+        let rendered = render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
+        let applied_name = authored_name_at(source_indices: source_indices, node: applied)
+        let resolved_is_wrapped = match n.inferred {
+          Some { value: Resolved { node: resolved } } => rust_type_is_rc_wrapped(type_name: render_rust_type(n: resolved, shared_types: shared_types, source_indices: source_indices))
+          _ => false
+        }
+        if (set_contains(shared_types, applied_name) || resolved_is_wrapped) && !rust_type_is_rc_wrapped(type_name: rendered) { wrap_shared_type(target: Rust, inner: rendered) }
+        else { rendered }
       } else {
         render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
       }
@@ -1662,7 +1669,11 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
           match find_property(props: resolved.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
             Some { value: applied } =>
               if applied.children |> count > 0 {
-                render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
+                let rendered = render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
+                let applied_name = authored_name_at(source_indices: source_indices, node: applied)
+                let resolved_is_wrapped = rust_type_is_rc_wrapped(type_name: render_rust_type(n: resolved, shared_types: shared_types, source_indices: source_indices))
+                if (set_contains(shared_types, applied_name) || resolved_is_wrapped) && !rust_type_is_rc_wrapped(type_name: rendered) { wrap_shared_type(target: Rust, inner: rendered) }
+                else { rendered }
               } else {
                 render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
               }
