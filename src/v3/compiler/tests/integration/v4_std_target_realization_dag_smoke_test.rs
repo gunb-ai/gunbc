@@ -567,6 +567,13 @@ fn v4_rust_language_model_declares_type_expression_projection_row() {
         "{RUST_LANGUAGE_PATH}: SG-2 bundle edge name must wire on rust TargetModel"
     );
     assert!(
+        dag_source_contains_collapsed(
+            RUST_LANGUAGE_DAG,
+            "rust_lex_rule(token_class: rust_token_colon, text: \": \")"
+        ),
+        "{RUST_LANGUAGE_PATH}: SG-2 target model lex rules must realize the record field-label separator"
+    );
+    assert!(
         RUST_LANGUAGE_DAG.contains("fn rust_sg2_rc_foobar_xy_emitted()"),
         "{RUST_LANGUAGE_PATH}: golden Rc<FooBar<X,Y>> emitted node for falsification probe"
     );
