@@ -56,6 +56,18 @@ fn scratch_dir(label: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("v4_leaf_model_typescript_r2_r3_{label}_{suffix}"))
 }
 
+fn tsc_combined_diagnostics(output: &std::process::Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stdout.is_empty() {
+        stderr.into_owned()
+    } else if stderr.is_empty() {
+        stdout.into_owned()
+    } else {
+        format!("{stdout}{stderr}")
+    }
+}
+
 fn exercise_tsc_fixture(label: &str, source: &str) -> (i32, String) {
     let tmp_dir = scratch_dir(label);
     let _ = std::fs::remove_dir_all(&tmp_dir);
@@ -73,10 +85,10 @@ fn exercise_tsc_fixture(label: &str, source: &str) -> (i32, String) {
         .arg(&src_path)
         .output()
         .expect("invoke npx tsc");
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let diagnostics = tsc_combined_diagnostics(&output);
     let status = output.status.code().unwrap_or(1);
     let _ = std::fs::remove_dir_all(&tmp_dir);
-    (status, stderr)
+    (status, diagnostics)
 }
 
 fn exercise_node_fixture(label: &str, source: &str) -> (i32, String) {
@@ -109,20 +121,20 @@ fn v4_leaf_model_typescript_r2a_fixture_strings_match_dag_authority() {
 
 #[test]
 fn v4_leaf_model_typescript_r2a_happy_fixture_tsc_accepts() {
-    let (status, stderr) = exercise_tsc_fixture("r2a_happy", R2A_HAPPY);
+    let (status, diagnostics) = exercise_tsc_fixture("r2a_happy", R2A_HAPPY);
     assert_eq!(
         status, 0,
-        "tsc should accept R2a happy fixture; stderr:\n{stderr}"
+        "tsc should accept R2a happy fixture; diagnostics:\n{diagnostics}"
     );
 }
 
 #[test]
 fn v4_leaf_model_typescript_r2a_falsification_fixture_tsc_ts2339() {
-    let (status, stderr) = exercise_tsc_fixture("r2a_falsification", R2A_FALSIFICATION);
+    let (status, diagnostics) = exercise_tsc_fixture("r2a_falsification", R2A_FALSIFICATION);
     assert_ne!(status, 0, "falsification must not typecheck");
     assert!(
-        stderr.contains("TS2339") && stderr.contains("log2_exact"),
-        "expected TS2339 on log2_exact; stderr:\n{stderr}"
+        diagnostics.contains("TS2339") && diagnostics.contains("log2_exact"),
+        "expected TS2339 on log2_exact; diagnostics:\n{diagnostics}"
     );
 }
 
@@ -172,19 +184,19 @@ fn v4_leaf_model_typescript_r3_external_fixture_strings_match_dag_authority() {
 
 #[test]
 fn v4_leaf_model_typescript_r3_external_happy_fixture_tsc_accepts() {
-    let (status, stderr) = exercise_tsc_fixture("r3_happy", R3_HAPPY);
+    let (status, diagnostics) = exercise_tsc_fixture("r3_happy", R3_HAPPY);
     assert_eq!(
         status, 0,
-        "tsc should accept R3 happy Symbol() factory fixture; stderr:\n{stderr}"
+        "tsc should accept R3 happy Symbol() factory fixture; diagnostics:\n{diagnostics}"
     );
 }
 
 #[test]
 fn v4_leaf_model_typescript_r3_external_falsification_fixture_tsc_not_constructable() {
-    let (status, stderr) = exercise_tsc_fixture("r3_falsification", R3_FALSIFICATION);
+    let (status, diagnostics) = exercise_tsc_fixture("r3_falsification", R3_FALSIFICATION);
     assert_ne!(status, 0, "falsification must not typecheck");
     assert!(
-        stderr.contains("TS7009") || stderr.contains("construct"),
-        "expected TS7009 / not-constructable on `new Symbol`; stderr:\n{stderr}"
+        diagnostics.contains("TS7009") || diagnostics.contains("construct"),
+        "expected TS7009 / not-constructable on `new Symbol`; diagnostics:\n{diagnostics}"
     );
 }

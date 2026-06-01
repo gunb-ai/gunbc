@@ -57,25 +57,25 @@ exercise_tsc_fixture() {
   local label="$1"
   local source="$2"
   local src_path="${scratch}/${label}.ts"
-  local stderr_path="${scratch}/${label}.stderr"
+  local diag_path="${scratch}/${label}.diag"
   printf '%s' "$source" >"$src_path"
   set +e
-  npx -p "$TSC_PKG" tsc --strict --noEmit --target ES2022 --module ES2022 "$src_path" 2>"$stderr_path"
+  npx -p "$TSC_PKG" tsc --strict --noEmit --target ES2022 --module ES2022 "$src_path" >"$diag_path" 2>&1
   local status=$?
   set -e
   echo "$status" >"${scratch}/${label}.exit"
-  cat "$stderr_path"
+  cat "$diag_path"
 }
 
-happy_stderr="$(exercise_tsc_fixture happy "$happy_source")"
+happy_diag="$(exercise_tsc_fixture happy "$happy_source")"
 happy_status="$(cat "${scratch}/happy.exit")"
-falsification_stderr="$(exercise_tsc_fixture falsification "$falsification_source")"
+falsification_diag="$(exercise_tsc_fixture falsification "$falsification_source")"
 falsification_status="$(cat "${scratch}/falsification.exit")"
 
 happy_pass=false
 falsification_pass=false
 [[ "$happy_status" -eq 0 ]] && happy_pass=true
-[[ "$falsification_status" -ne 0 ]] && grep -qE 'TS2339.*log2_exact' <<<"$falsification_stderr" && falsification_pass=true
+[[ "$falsification_status" -ne 0 ]] && grep -qE 'TS2339.*log2_exact' <<<"$falsification_diag" && falsification_pass=true
 
 proven=false
 [[ "$happy_pass" == true && "$falsification_pass" == true ]] && proven=true
@@ -85,7 +85,7 @@ export V4_TS_R2A_FALSIFICATION_STATUS="$falsification_status"
 export V4_TS_R2A_HAPPY_PASS="$happy_pass"
 export V4_TS_R2A_FALSIFICATION_PASS="$falsification_pass"
 export V4_TS_R2A_PROVEN="$proven"
-export V4_TS_R2A_FALSIFICATION_STDERR="$falsification_stderr"
+export V4_TS_R2A_FALSIFICATION_DIAG="$falsification_diag"
 
 python3 - <<'PY'
 import json
