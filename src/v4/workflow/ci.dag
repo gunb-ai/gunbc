@@ -4044,8 +4044,10 @@ fn ci_runner_pool_fleet_capacities_valid() -> Bool {
 // sources: (1) on GHA, the actions-runner@.service systemd unit exports MAKEFLAGS=--jobserver-auth,
 // so raw cargo joins the pool directly (ctrl-build is NOT installed on GHA runners); (2) in session
 // containers, ctrl-build sets MAKEFLAGS from CTRL_JOBSERVER_FIFO and adds the MemAvailable picker +
-// sccache. NO FALLBACK: if NEITHER coupling is present the probe fails closed (operator policy: a
-// missing jobserver coupling must surface immediately, never a silent uncoupled run).
+// sccache. NO FALLBACK: the inherited MAKEFLAGS path is taken only when the jobserver source is
+// VALIDATED usable (live FIFO/fds, not a substring match); if NEITHER coupling is usable the probe
+// fails closed (operator policy: a missing/stale jobserver coupling must surface immediately, never
+// a silent uncoupled run).
 //   `m1_probe_cargo_check_jobs_ceiling` — per-invocation `--jobs` ceiling on the raw/GHA path; the
 //     jobserver pares actual concurrency below it. (On the ctrl-build path the MemAvailable picker
 //     governs instead.)
