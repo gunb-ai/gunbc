@@ -2247,8 +2247,14 @@ type TargetReferenceLayerTokens {
   box_new_ctor: Symbol
 }
 
+// 🟢 coproduct dissolution — SG-RC row-authored source-key projection.
+type TargetUseSiteOwnershipSourceProjection
+  = UseSiteOwnershipExactCarrier
+  | UseSiteOwnershipInstantiationHeadCarrier
+
 type TargetUseSiteOwnershipRealization {
   source_carrier: Node
+  source_projection: TargetUseSiteOwnershipSourceProjection
   use_site: TargetOwnershipUseSite
   reference_layer: TargetReferenceLayer
   display_name: Symbol
@@ -2264,8 +2270,11 @@ data target_reference_layer_rc: Symbol = target_reference_layer_rc
 data target_reference_layer_box: Symbol = target_reference_layer_box
 
 data target_use_site_ownership_field_source_carrier: Symbol = target_use_site_ownership_field_source_carrier
+data target_use_site_ownership_field_source_projection: Symbol = target_use_site_ownership_field_source_projection
 data target_use_site_ownership_field_use_site: Symbol = target_use_site_ownership_field_use_site
 data target_use_site_ownership_field_reference_layer: Symbol = target_use_site_ownership_field_reference_layer
+data target_use_site_ownership_source_projection_exact_carrier: Symbol = target_use_site_ownership_source_projection_exact_carrier
+data target_use_site_ownership_source_projection_instantiation_head_carrier: Symbol = target_use_site_ownership_source_projection_instantiation_head_carrier
 
 data target_value_expr_kind_reference_rc_new: Symbol = target_value_expr_kind_reference_rc_new
 data target_value_expr_kind_reference_box_new: Symbol = target_value_expr_kind_reference_box_new
@@ -2350,6 +2359,30 @@ fn target_ownership_use_site_from_atom(id: Symbol) -> Optional<TargetOwnershipUs
           optional_absent()
         }
       }
+    }
+  }
+}
+
+fn target_use_site_ownership_source_projection_atom(
+  projection: TargetUseSiteOwnershipSourceProjection
+) -> Symbol {
+  match projection {
+    UseSiteOwnershipExactCarrier => target_use_site_ownership_source_projection_exact_carrier
+    UseSiteOwnershipInstantiationHeadCarrier =>
+      target_use_site_ownership_source_projection_instantiation_head_carrier
+  }
+}
+
+fn target_use_site_ownership_source_projection_from_atom(
+  id: Symbol
+) -> Optional<TargetUseSiteOwnershipSourceProjection> {
+  if id == target_use_site_ownership_source_projection_exact_carrier {
+    optional_present(value: UseSiteOwnershipExactCarrier)
+  } else {
+    if id == target_use_site_ownership_source_projection_instantiation_head_carrier {
+      optional_present(value: UseSiteOwnershipInstantiationHeadCarrier)
+    } else {
+      optional_absent()
     }
   }
 }
