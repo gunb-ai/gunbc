@@ -95,6 +95,12 @@ type SourceAtomValue
   = SourceAtomSymbol { identity: Symbol }
   | SourceAtomBool { value: Bool }
   | SourceAtomChar { codepoint: Char }
+  // 🟡 gated — feature:source-atom-string-canonical-carrier — owner:Modeling DFS / std.algebra lane —
+  // bind TS-ATOM-REALIZATION String bridge — dissolve-on: std.algebra exposes a canonical
+  // `String = FreeMonoid<Char>` value/projection carrier that target realization can name
+  // directly; replace this encoded `Node` payload with that carrier and delete the paired
+  // encoded-node projection below. forbidden: treating raw `Node` as the permanent string value
+  // carrier or adding another string/FreeMonoid raw-node bridge outside this receipt.
   | SourceAtomString { value: Node }
 
 type TargetValueExpressionKind
