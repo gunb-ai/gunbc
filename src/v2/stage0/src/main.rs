@@ -41,8 +41,7 @@ enum Commands {
         source_dir: Option<String>,
         #[arg(long)]
         output_dir: String,
-        /// Target language: rust, python, go, dag. Use rust+dag to compile once and emit both
-        /// targets into output_dir/rust and output_dir/dag.
+        /// Target language: rust, python, go, dag
         #[arg(long, default_value = "rust")]
         target: String,
     },
@@ -173,63 +172,6 @@ fn resolve_transitively_with_seen(
     result
 }
 
-fn render_target_from_name(target: &str) -> Option<v2_compiler_artifact::RenderTarget> {
-    match target {
-        "rust" => Some(v2_compiler_artifact::RenderTarget::Rust),
-        "python" => Some(v2_compiler_artifact::RenderTarget::Python),
-        "go" => Some(v2_compiler_artifact::RenderTarget::Go),
-        "dag" => Some(v2_compiler_artifact::RenderTarget::Dag),
-        _ => None,
-    }
-}
-
-fn parse_render_targets(target: &str) -> Vec<(String, v2_compiler_artifact::RenderTarget)> {
-    let mut targets = Vec::new();
-    for part in target.split('+') {
-        let trimmed = part.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        match render_target_from_name(trimmed) {
-            Some(render_target) => targets.push((trimmed.to_string(), render_target)),
-            None => {
-                eprintln!(
-                    "unknown target: {}. supported: rust, python, go, dag, rust+dag",
-                    target
-                );
-                std::process::exit(1);
-            }
-        }
-    }
-    if targets.is_empty() {
-        eprintln!("error: --target must name at least one target");
-        std::process::exit(1);
-    }
-    targets
-}
-
-fn write_output_files(output_dir: &str, result: &PipelineResult) {
-    std::fs::create_dir_all(format!("{}/src", output_dir))
-        .unwrap_or_else(|e| panic!("failed to create output dir: {}", e));
-    for file in result.files.iter() {
-        let out_path = format!("{}/{}", output_dir, file.path);
-        if let Some(parent) = std::path::Path::new(&out_path).parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-        std::fs::write(&out_path, &*file.content)
-            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
-    }
-}
-
-fn hard_errors(result: &PipelineResult) -> bool {
-    result.diagnostics.iter().any(|d| {
-        !matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        )
-    })
-}
-
 fn main() {
     let cli = Cli::parse();
     let _result = match cli.command {
@@ -239,7 +181,19 @@ fn main() {
             output_dir,
             target,
         } => {
-            let render_targets = parse_render_targets(&target);
+            let render_target = match target.as_str() {
+                "rust" => v2_compiler_artifact::RenderTarget::Rust,
+                "python" => v2_compiler_artifact::RenderTarget::Python,
+                "go" => v2_compiler_artifact::RenderTarget::Go,
+                "dag" => v2_compiler_artifact::RenderTarget::Dag,
+                other => {
+                    eprintln!(
+                        "unknown target: {}. supported: rust, python, go, dag",
+                        other
+                    );
+                    std::process::exit(1);
+                }
+            };
 
             let sources = if !source_roots.is_empty() {
                 // FF-9: Import-driven resolution from source roots
@@ -317,61 +271,37 @@ fn main() {
                 std::process::exit(1);
             };
 
-            if render_targets.len() == 1 {
-                let result = v2_compiler_compile::compile_sources(
-                    Rc::new(sources),
-                    render_targets[0].1.clone(),
-                );
-                write_output_files(&output_dir, &result);
-                eprintln!(
-                    "compiled: {} files emitted, {} diagnostics",
-                    result.files.len(),
-                    result.diagnostics.len()
-                );
-                render_diagnostics(&result);
-                if hard_errors(&result) {
-                    std::process::exit(1);
+            let result = v2_compiler_compile::compile_sources(Rc::new(sources), render_target);
+
+            std::fs::create_dir_all(format!("{}/src", output_dir))
+                .unwrap_or_else(|e| panic!("failed to create output dir: {}", e));
+            for file in result.files.iter() {
+                let out_path = format!("{}/{}", output_dir, file.path);
+                if let Some(parent) = std::path::Path::new(&out_path).parent() {
+                    std::fs::create_dir_all(parent).ok();
                 }
-                if result.files.is_empty() {
-                    eprintln!("error: no files emitted");
-                    std::process::exit(1);
-                }
-            } else {
-                let resolved = v2_compiler_compile::compile_to_resolved(Rc::new(sources));
-                let mut any_hard_errors = false;
-                let mut any_empty = false;
-                let mut total_files = 0usize;
-                let mut total_diagnostics = 0usize;
-                for (name, render_target) in render_targets {
-                    let result = v2_compiler_compile::emit_resolved_for_target(
-                        resolved.clone(),
-                        render_target,
-                    );
-                    let target_output_dir = format!("{}/{}", output_dir, name);
-                    write_output_files(&target_output_dir, &result);
-                    eprintln!(
-                        "compiled[{}]: {} files emitted, {} diagnostics",
-                        name,
-                        result.files.len(),
-                        result.diagnostics.len()
-                    );
-                    render_diagnostics(&result);
-                    any_hard_errors |= hard_errors(&result);
-                    any_empty |= result.files.is_empty();
-                    total_files += result.files.len();
-                    total_diagnostics += result.diagnostics.len();
-                }
-                eprintln!(
-                    "compiled: {} files emitted, {} diagnostics",
-                    total_files, total_diagnostics
-                );
-                if any_hard_errors {
-                    std::process::exit(1);
-                }
-                if any_empty {
-                    eprintln!("error: no files emitted for at least one target");
-                    std::process::exit(1);
-                }
+                std::fs::write(&out_path, &*file.content)
+                    .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+            }
+            eprintln!(
+                "compiled: {} files emitted, {} diagnostics",
+                result.files.len(),
+                result.diagnostics.len()
+            );
+            render_diagnostics(&result);
+            // Complexity violations are non-blocking (analyzer limitations).
+            let hard_errors = result.diagnostics.iter().any(|d| {
+                !matches!(
+                    *d.diagnostic.clone(),
+                    CompilerDiagnostic::ComplexityUnknown { .. }
+                )
+            });
+            if hard_errors {
+                std::process::exit(1);
+            }
+            if result.files.is_empty() {
+                eprintln!("error: no files emitted");
+                std::process::exit(1);
             }
         }
 
