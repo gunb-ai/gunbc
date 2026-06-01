@@ -119,8 +119,7 @@ import v4.std.target_model {
   grammar_relation_field_tokens,
   serialize_source_field_source_grammar,
   serialize_source_field_source_text,
-  string_kernel_type_atom,
-  string_kernel_type_node,
+  char_kernel_type_node,
   symbol_kernel_type_atom,
   symbol_kernel_type_node,
   target_atom_alias_type_expression,
@@ -1247,13 +1246,17 @@ data ts_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealizat
   display_name: bool_node_symbol
 }
 
+fn ts_std_text_string_type_node() -> Node {
+  free_monoid_type_node(inhabitant: char_kernel_type_node())
+}
+
 data ts_target_atom_realization_string: TargetAtomRealization = TargetAtomRealization {
-  source_carrier: string_kernel_type_node(),
+  source_carrier: ts_std_text_string_type_node(),
   target_model: ts_target_atom_realization_target_model_staging(),
   type_form: ts_target_atom_type_form(spelling: ts_surface_spelling_string),
   value_form: target_value_template_for_kind(kind: ValueSymbolToOwnedString),
   constructor_form: optional_absent(),
-  display_name: string_kernel_type_atom
+  display_name: ts_surface_spelling_string
 }
 
 data ts_target_atom_realization_catalog: List<TargetAtomRealization> = [
