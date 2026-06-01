@@ -271,7 +271,11 @@ pub fn render_rust_decl_type(
     ) {
         Some(applied) => {
             if ((applied.children.clone().len() as i64) > 0) {
-                render_rust_applied_type(applied.clone(), shared_types.clone(), source_indices.clone())
+                render_rust_applied_type(
+                    applied.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                )
             } else {
                 render_rust_decl_type_body(
                     n.clone(),
@@ -361,7 +365,11 @@ pub fn render_rust_fn_sig_type(
             source_indices.clone(),
         )
     } else {
-        render_rust_type_with_applied_binding(n.clone(), shared_types.clone(), source_indices.clone())
+        render_rust_type_with_applied_binding(
+            n.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        )
     }
 }
 
@@ -5218,12 +5226,7 @@ pub fn emit_tco_param(
 ) -> String {
     {
         let n = param_node_type_expr(param.clone());
-        let ty = emit_rust_param_type(
-            n,
-            generic_param_names,
-            shared_types,
-            source_indices.clone(),
-        );
+        let ty = emit_rust_param_type(n, generic_param_names, shared_types, source_indices.clone());
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -5397,12 +5400,7 @@ pub fn emit_param(
 ) -> String {
     {
         let n = param_node_type_expr(param.clone());
-        let ty = emit_rust_param_type(
-            n,
-            generic_param_names,
-            shared_types,
-            source_indices.clone(),
-        );
+        let ty = emit_rust_param_type(n, generic_param_names, shared_types, source_indices.clone());
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         v2_rt::concat(
             v2_rt::concat(
@@ -5422,12 +5420,7 @@ pub fn emit_inferred(
 ) -> String {
     v2_rt::concat(
         rust_items().return_arrow.clone(),
-        render_rust_fn_sig_type(
-            inferred,
-            generic_param_names,
-            shared_types,
-            source_indices,
-        ),
+        render_rust_fn_sig_type(inferred, generic_param_names, shared_types, source_indices),
     )
 }
 
