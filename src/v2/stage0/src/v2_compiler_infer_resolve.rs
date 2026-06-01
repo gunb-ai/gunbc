@@ -2828,30 +2828,28 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                         authored_anno.span.clone(),
                     );
                     Some(Rc::new(Node {
-                        name: anno_resolved.resolved.clone().name.clone(),
-                        span: anno_resolved.resolved.clone().span.clone(),
-                        ident_span: anno_resolved.resolved.clone().ident_span.clone(),
-                        children: anno_resolved.resolved.clone().children.clone(),
-                        connective: anno_resolved.resolved.clone().connective.clone(),
-                        params: anno_resolved.resolved.clone().params.clone(),
-                        inferred: anno_resolved.resolved.clone().inferred.clone(),
-                        return_cardinality: anno_resolved.resolved.clone().return_cardinality.clone(),
-                        uses: anno_resolved.resolved.clone().uses.clone(),
-                        body: anno_resolved.resolved.clone().body.clone(),
-                        transport: anno_resolved.resolved.clone().transport.clone(),
+                        name: authored_anno.name.clone(),
+                        span: authored_anno.span.clone(),
+                        ident_span: authored_anno.ident_span.clone(),
+                        children: authored_anno.children.clone(),
+                        connective: authored_anno.connective.clone(),
+                        params: authored_anno.params.clone(),
+                        inferred: Some(Rc::new(Resolved {
+                            node: anno_resolved.resolved.clone(),
+                        })),
+                        return_cardinality: authored_anno.return_cardinality.clone(),
+                        uses: authored_anno.uses.clone(),
+                        body: authored_anno.body.clone(),
+                        transport: authored_anno.transport.clone(),
                         properties: v2_rt::concat(
                             anno_resolved.resolved.clone().properties.clone(),
                             Rc::new(vec![applied_type_args_property]),
                         ),
-                        type_annotation: anno_resolved.resolved.clone().type_annotation.clone(),
-                        is_self_recursive: anno_resolved.resolved.clone().is_self_recursive,
-                        has_non_tail_self_call: anno_resolved
-                            .resolved
-                            .clone()
-                            .has_non_tail_self_call
-                            .clone(),
-                        match_pattern: anno_resolved.resolved.clone().match_pattern.clone(),
-                        expr_data: anno_resolved.resolved.clone().expr_data.clone(),
+                        type_annotation: authored_anno.type_annotation.clone(),
+                        is_self_recursive: authored_anno.is_self_recursive,
+                        has_non_tail_self_call: authored_anno.has_non_tail_self_call.clone(),
+                        match_pattern: authored_anno.match_pattern.clone(),
+                        expr_data: authored_anno.expr_data.clone(),
                         ident: None,
                     }))
                 } else {
