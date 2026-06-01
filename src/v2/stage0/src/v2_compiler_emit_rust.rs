@@ -135,7 +135,12 @@ pub fn render_rust_type(
                 && ((n.children.clone().len() as i64) > 0))
                 && !is_container_type(authored_name_at(source_indices.clone(), n.clone())))
             {
-                render_rust_applied_type(n.clone(), shared_types, source_indices.clone())
+                render_rust_applied_type(
+                    n.clone(),
+                    Rc::new(vec![]),
+                    shared_types,
+                    source_indices.clone(),
+                )
             } else {
                 if node_is_set_collection(n.clone(), source_indices.clone()) {
                     match n.children.clone().first().cloned() {
@@ -206,25 +211,19 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
-        _ => {
-            if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) == 0))
-            {
-                authored_name_at(source_indices, n.clone())
-            } else {
-                render_rust_type(n.clone(), shared_types, source_indices)
-            }
-        }
+        _ => render_rust_decl_type(n.clone(), generic_param_names, shared_types, source_indices),
     }
 }
 
 pub fn render_rust_applied_type(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -242,6 +241,7 @@ pub fn render_rust_applied_type(
                     for arg in n.children.clone().iter().cloned() {
                         __result.push(render_rust_applied_type_arg(
                             arg.clone(),
+                            generic_param_names.clone(),
                             shared_types.clone(),
                             source_indices.clone(),
                         ));
@@ -258,6 +258,28 @@ pub fn render_rust_applied_type(
     }
 }
 
+pub fn render_rust_applied_type_shared(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let rendered = render_rust_applied_type(
+            n.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        );
+        let type_name = authored_name_at(source_indices.clone(), n.clone());
+        if v2_rt::set_contains(&shared_types, type_name) {
+            v2_rt::concat(v2_rt::concat("Rc<".to_string(), rendered), ">".to_string())
+        } else {
+            rendered
+        }
+    }
+}
+
 pub fn render_rust_decl_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -265,50 +287,152 @@ pub fn render_rust_decl_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = authored_name_at(source_indices.clone(), n.clone());
-        if (((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) == 0))
-            && {
-                let mut __found = false;
-                for g in generic_param_names.clone().iter().cloned() {
-                    if (g.clone().as_str() == name.clone().as_str()) {
-                        __found = true;
-                        break;
+        match find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => {
+                if ((applied.children.clone().len() as i64) > 0) {
+                    render_rust_applied_type_shared(
+                        applied.clone(),
+                        generic_param_names.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                    )
+                } else {
+                    {
+                        let name = authored_name_at(source_indices.clone(), n.clone());
+                        if (((n.connective.clone() == Connective::NoConnective)
+                            && ((n.children.clone().len() as i64) == 0))
+                            && {
+                                let mut __found = false;
+                                for g in generic_param_names.clone().iter().cloned() {
+                                    if (g.clone().as_str() == name.clone().as_str()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            })
+                        {
+                            name.clone()
+                        } else {
+                            if ((n.connective.clone() == Connective::NoConnective)
+                                && ((n.children.clone().len() as i64) > 0))
+                            {
+                                {
+                                    let base =
+                                        coerce_primitive_type(RenderTarget::Rust, name.clone());
+                                    let args = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for arg in n.children.clone().iter().cloned() {
+                                            __result.push(render_rust_decl_type(
+                                                arg.clone(),
+                                                generic_param_names.clone(),
+                                                shared_types.clone(),
+                                                source_indices.clone(),
+                                            ));
+                                        }
+                                        __result
+                                    })
+                                    .join(&", ".to_string());
+                                    let applied_ty = v2_rt::concat(
+                                        v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
+                                        ">".to_string(),
+                                    );
+                                    if v2_rt::set_contains(&shared_types, name.clone()) {
+                                        v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), applied_ty),
+                                            ">".to_string(),
+                                        )
+                                    } else {
+                                        applied_ty
+                                    }
+                                }
+                            } else {
+                                render_rust_type_with_applied_binding(
+                                    n.clone(),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                )
+                            }
+                        }
                     }
                 }
-                __found
-            })
-        {
-            name.clone()
-        } else {
-            if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) > 0))
-            {
-                {
-                    let base = coerce_primitive_type(RenderTarget::Rust, name.clone());
-                    let args = Rc::new({
-                        let mut __result = Vec::new();
-                        for arg in n.children.clone().iter().cloned() {
-                            __result.push(render_rust_decl_type(
-                                arg.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
-                                source_indices.clone(),
-                            ));
+            }
+            None => {
+                let name = authored_name_at(source_indices.clone(), n.clone());
+                if (((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) == 0))
+                    && {
+                        let mut __found = false;
+                        for g in generic_param_names.clone().iter().cloned() {
+                            if (g.clone().as_str() == name.clone().as_str()) {
+                                __found = true;
+                                break;
+                            }
                         }
-                        __result
+                        __found
                     })
-                    .join(&", ".to_string());
-                    v2_rt::concat(
-                        v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
-                        ">".to_string(),
-                    )
+                {
+                    name.clone()
+                } else {
+                    if ((n.connective.clone() == Connective::NoConnective)
+                        && ((n.children.clone().len() as i64) > 0))
+                    {
+                        {
+                            let base = coerce_primitive_type(RenderTarget::Rust, name.clone());
+                            let args = Rc::new({
+                                let mut __result = Vec::new();
+                                for arg in n.children.clone().iter().cloned() {
+                                    __result.push(render_rust_decl_type(
+                                        arg.clone(),
+                                        generic_param_names.clone(),
+                                        shared_types.clone(),
+                                        source_indices.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&", ".to_string());
+                            let applied_ty = v2_rt::concat(
+                                v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
+                                ">".to_string(),
+                            );
+                            if v2_rt::set_contains(&shared_types, name.clone()) {
+                                v2_rt::concat(
+                                    v2_rt::concat("Rc<".to_string(), applied_ty),
+                                    ">".to_string(),
+                                )
+                            } else {
+                                applied_ty
+                            }
+                        }
+                    } else {
+                        render_rust_type_with_applied_binding(
+                            n.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                        )
+                    }
                 }
-            } else {
-                render_rust_type(n.clone(), shared_types.clone(), source_indices.clone())
             }
         }
     })
+}
+
+pub fn render_rust_fn_sig_type(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((generic_param_names.len() as i64) > 0) {
+        render_rust_decl_type(n, generic_param_names, shared_types, source_indices)
+    } else {
+        render_rust_type_with_applied_binding(n, shared_types, source_indices)
+    }
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -3473,7 +3597,12 @@ pub fn render_rust_type_with_applied_binding(
     ) {
         Some(applied) => {
             if ((applied.children.clone().len() as i64) > 0) {
-                render_rust_applied_type(applied.clone(), shared_types, source_indices.clone())
+                render_rust_applied_type_shared(
+                    applied.clone(),
+                    Rc::new(vec![]),
+                    shared_types,
+                    source_indices.clone(),
+                )
             } else {
                 render_rust_type(n.clone(), shared_types, source_indices.clone())
             }
@@ -4659,13 +4788,26 @@ pub fn emit_fn_def(
             return v2_rt::concat(v2_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
         }
         let type_params_str = emit_type_params(type_params.clone(), si.clone());
+        let generic_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in type_params.clone().iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), si.clone()));
+            }
+            __result
+        });
         let params_str = emit_params(
             value_params.clone(),
+            generic_param_names.clone(),
             shared_types.clone(),
             si.clone(),
             emit_info.read_only_params.clone(),
         );
-        let ret_str = emit_inferred(inferred, shared_types.clone(), si.clone());
+        let ret_str = emit_inferred(
+            inferred,
+            generic_param_names.clone(),
+            shared_types.clone(),
+            si.clone(),
+        );
         let body_scope = build_params_scope(scope.clone(), value_params.clone());
         let depth = 0;
         let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone(), si.clone());
@@ -4674,8 +4816,12 @@ pub fn emit_fn_def(
                 && (use_tco.clone() == false));
         if use_tco.clone() {
             {
-                let tco_params_str =
-                    emit_tco_params(value_params.clone(), shared_types.clone(), si.clone());
+                let tco_params_str = emit_tco_params(
+                    value_params.clone(),
+                    generic_param_names.clone(),
+                    shared_types.clone(),
+                    si.clone(),
+                );
                 let body_str = emit_typed_tco_body(
                     body.clone(),
                     name.clone(),
@@ -5118,6 +5264,7 @@ pub fn emit_func_body(
 
 pub fn emit_tco_params(
     params: Rc<Vec<Rc<Node>>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -5127,6 +5274,7 @@ pub fn emit_tco_params(
             for p in params.iter().cloned() {
                 __result.push(emit_tco_param(
                     p.clone(),
+                    generic_param_names.clone(),
                     shared_types.clone(),
                     source_indices.clone(),
                 ));
@@ -5137,14 +5285,43 @@ pub fn emit_tco_params(
     }
 }
 
+pub fn render_rust_param_sig_type(
+    param: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let type_node = resolved_type(param.clone());
+    if ((generic_param_names.len() as i64) > 0) {
+        render_rust_decl_type(type_node, generic_param_names, shared_types, source_indices)
+    } else {
+        render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
+    }
+}
+
 pub fn emit_tco_param(
     param: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let n = param_node_type_expr(param.clone());
-        let ty = emit_rust_param_type(n, shared_types, source_indices.clone());
+        let authored = param_node_type_expr(param.clone());
+        let ty = if ((authored.params.clone().len() as i64) > 0) {
+            emit_rust_param_type(
+                authored,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        } else {
+            render_rust_param_sig_type(
+                param.clone(),
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        };
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -5175,6 +5352,7 @@ pub fn emit_func_params(
             for p in params.iter().cloned() {
                 __result.push(emit_param(
                     p.clone(),
+                    Rc::new(vec![]),
                     shared_types.clone(),
                     source_indices.clone(),
                     read_only_params.clone(),
@@ -5233,6 +5411,7 @@ pub fn emit_func_inferred(
 
 pub fn emit_params(
     params: Rc<Vec<Rc<Node>>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
@@ -5243,6 +5422,7 @@ pub fn emit_params(
             for p in params.iter().cloned() {
                 __result.push(emit_param(
                     p.clone(),
+                    generic_param_names.clone(),
                     shared_types.clone(),
                     source_indices.clone(),
                     read_only_params.clone(),
@@ -5256,6 +5436,7 @@ pub fn emit_params(
 
 pub fn emit_rust_param_type(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -5264,8 +5445,9 @@ pub fn emit_rust_param_type(
             let param_types = Rc::new({
                 let mut __result = Vec::new();
                 for p in n.params.clone().iter().cloned() {
-                    __result.push(render_rust_type(
+                    __result.push(render_rust_fn_sig_type(
                         param_node_type_expr(p.clone()),
+                        generic_param_names.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
                     ));
@@ -5274,9 +5456,12 @@ pub fn emit_rust_param_type(
             });
             let param_str = param_types.join(&", ".to_string());
             let ret_str = match n.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    render_rust_type(rt.clone(), shared_types.clone(), source_indices.clone())
-                }
+                Some(InferredNode::Resolved { node: rt, .. }) => render_rust_fn_sig_type(
+                    rt.clone(),
+                    generic_param_names.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                ),
                 _ => "()".to_string(),
             };
             v2_rt::concat(
@@ -5291,23 +5476,39 @@ pub fn emit_rust_param_type(
             )
         }
     } else {
-        {
-            let rendered =
-                render_rust_type(n.clone(), shared_types.clone(), source_indices.clone());
-            rendered
-        }
+        render_rust_fn_sig_type(
+            n.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        )
     }
 }
 
 pub fn emit_param(
     param: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
 ) -> String {
     {
-        let n = param_node_type_expr(param.clone());
-        let ty = emit_rust_param_type(n, shared_types, source_indices.clone());
+        let authored = param_node_type_expr(param.clone());
+        let ty = if ((authored.params.clone().len() as i64) > 0) {
+            emit_rust_param_type(
+                authored,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        } else {
+            render_rust_param_sig_type(
+                param.clone(),
+                generic_param_names.clone(),
+                shared_types,
+                source_indices.clone(),
+            )
+        };
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         v2_rt::concat(
             v2_rt::concat(
@@ -5321,12 +5522,13 @@ pub fn emit_param(
 
 pub fn emit_inferred(
     inferred: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         rust_items().return_arrow.clone(),
-        render_rust_type(inferred, shared_types, source_indices),
+        render_rust_fn_sig_type(inferred, generic_param_names, shared_types, source_indices),
     )
 }
 
@@ -8697,6 +8899,7 @@ pub fn emit_typed_call(
             let mut __result = Vec::new();
             for pair in Rc::new(
                 filled_args
+                    .clone()
                     .iter()
                     .cloned()
                     .enumerate()
@@ -8791,13 +8994,33 @@ pub fn emit_typed_call(
         let all_args = v2_rt::concat(arg_strs, extra_args);
         let args_str = all_args.clone().join(&", ".to_string());
         let runtime_name = rust_runtime_bridge_name(func.clone());
-        let func_name = if is_rt.clone() {
+        let si = scope.type_env.clone().source_indices.clone();
+        let callee_self_capture = if is_rt.clone() {
+            false
+        } else {
+            {
+                let mut __found = false;
+                for a in filled_args.clone().iter().cloned() {
+                    if expr_references_var(arg_value(a.clone()), func.clone(), si.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        };
+        let func_ident = if is_rt.clone() {
             v2_rt::concat(
                 "v2_rt::".to_string(),
                 emit_ident(runtime_name, RenderTarget::Rust),
             )
         } else {
             emit_ident(func.clone(), RenderTarget::Rust)
+        };
+        let func_name = if callee_self_capture {
+            v2_rt::concat(func_ident, ".clone()".to_string())
+        } else {
+            func_ident
         };
         let call_str = if ((is_rt.clone()
             && (func.clone().as_str() == "concat".to_string().as_str()))
@@ -14113,6 +14336,7 @@ pub fn emit_operation_method(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
+                        Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
                     ),
@@ -16143,6 +16367,7 @@ pub fn emit_capability_method(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
+                        Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
                     ),
@@ -16693,6 +16918,7 @@ pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> String {
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
+                        Rc::new(vec![]),
                         v2_rt::rc_empty_set::<String>(),
                         projection.source_indices.clone(),
                     ),
