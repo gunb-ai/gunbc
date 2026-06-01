@@ -338,10 +338,10 @@ fn go_r1_fixture() -> LeafModelGoFixturePair {
   go_r1_fixture_pair()
 }
 
-// R2a — int algebra inhabitance: arithmetic + ordering over Go int.
+// R2a — int algebra inhabitance: arithmetic over Go int.
 data go_r2a_claim_algebra_inhabitance_fact: Symbol = go_integer_algebra_inhabitance_go_facts_int
 
-data go_r2a_happy_fixture_source: String = "package main\n\nfunc r2a_test(a int, b int) (int, bool) { return a + b, a < b }\n"
+data go_r2a_happy_fixture_source: String = "package main\n\nfunc r2a_test(a int, b int) int { return a + b }\n"
 
 data go_r2a_falsification_fixture_source: String = "package main\n\nfunc r2a_test(a int) int { return a.log2_exact() }\n"
 

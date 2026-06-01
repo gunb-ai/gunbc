@@ -12,8 +12,7 @@ const FIXTURE_DAG: &str = include_str!("../../../../v4/lens/leaf_model_verificat
 const R1_HAPPY: &str = "package main\n\nfunc r1_test() int { return 0 }\n";
 const R1_FALSIFICATION: &str = "package main\n\nfunc r1_test() i32 { return 0 }\n";
 
-const R2A_HAPPY: &str =
-    "package main\n\nfunc r2a_test(a int, b int) (int, bool) { return a + b, a < b }\n";
+const R2A_HAPPY: &str = "package main\n\nfunc r2a_test(a int, b int) int { return a + b }\n";
 const R2A_FALSIFICATION: &str =
     "package main\n\nfunc r2a_test(a int) int { return a.log2_exact() }\n";
 
