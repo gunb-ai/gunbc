@@ -154,13 +154,9 @@ jobs:
         V4_M1_CARGO_CHECK_JOBS_CEILING: "64"
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash scripts/v4-m1-rust-emit-probe.sh
-<<<<<<< HEAD
-    - name: v2 -> v4 bootstrap compile (fail-closed full)
-=======
     - name: v2 DAG emit parity receipt (required before bootstrap reuse)
       run: cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
-    - name: v2 → v4 bootstrap compile (fail-closed full)
->>>>>>> 1608d0e27e (WIP: Four-compile redundancy collapse (#4091 §1.2): single 332-source closure)
+    - name: v2 -> v4 bootstrap compile (fail-closed full)
       timeout-minutes: 35
       env:
         V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
