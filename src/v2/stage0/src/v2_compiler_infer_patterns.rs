@@ -111,33 +111,27 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
-    loop {
+pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
+    {
         let is_error = if (n.inferred.clone() != None) {
             is_compiler_error(n.inferred.clone().clone().unwrap())
         } else {
             false
         };
         if is_error {
-            break Rc::new(PatternSubject::PatternLookupBlocked);
-        } else {
-            if (((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) > 0))
-                && (n.inferred.clone() != None))
-            {
-                match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => {
-                        let __tco_0 = target.clone();
-                        n = __tco_0;
-                        continue;
-                    }
-                    _ => {
-                        break Rc::new(PatternSubject::PatternResolved { node: n.clone() });
-                    }
+            Rc::new(PatternSubject::PatternLookupBlocked)
+        } else if (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0))
+            && (n.inferred.clone() != None))
+        {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    pattern_subject_from_node(target.clone())
                 }
-            } else {
-                break Rc::new(PatternSubject::PatternResolved { node: n.clone() });
+                _ => Rc::new(PatternSubject::PatternResolved { node: n.clone() }),
             }
+        } else {
+            Rc::new(PatternSubject::PatternResolved { node: n.clone() })
         }
     }
 }
