@@ -1,7 +1,7 @@
 //! **Layer:** integration
 //!
 //! **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST` same-path
-//! expansion):** explicit deferral to **`ROADMAP.md`** § **Nine lanes** row
+//! expansion):** explicit deferral to **`ROADMAP.md`** § **Public Operational Lanes** row
 //! **T-PB-B** / `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test
 //! floor), same
 //! structural class as co-listed `t_gate_58_apply_lens_self_application_test.rs`: parse-surface
@@ -24,7 +24,7 @@
 //! **This PR (+0 SG-0 paths):** TS L0 TargetAtomRealization same-path expansion —
 //! `v4_typescript_language_model_declares_target_atom_realization_rows` per
 //! `docs/planning/v4-ts-target-atom-realization-worksheet-2026-06-01.md` §8; ROADMAP row
-//! `ROADMAP.md` § **Nine lanes** / T-PB-B
+//! `ROADMAP.md` § **Public Operational Lanes** / T-PB-B
 //! (`pb_rust_tests_outside_residual_zero`). Dissolves when `.dag` `TestClaim` /
 //! generated harness execution covers TS Symbol/Bool/String TargetAtomRealization catalog
 //! facts directly without this host Rust parse-surface smoke.
@@ -582,7 +582,7 @@ fn v4_translate_dag_imports_collection_realization_consumer() {
 }
 
 // P5 receipt: same-path hand-Rust smoke expansion in an existing SG-0-listed file,
-// explicitly deferred to `ROADMAP.md` § Nine lanes / T-PB-B
+// explicitly deferred to `ROADMAP.md` § Public Operational Lanes / T-PB-B
 // (`pb_rust_tests_outside_residual_zero`). Dissolves when the `.dag` manual-claim runner
 // executes `src/v4/test/claim/manual/sg_collection_projection.dag` directly.
 #[test]
