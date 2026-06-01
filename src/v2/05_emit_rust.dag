@@ -227,12 +227,12 @@ fn render_rust_decl_type_body(n: Node, generic_param_names: List<String>, shared
   }
 }
 
-// Function signatures inside generic items: preserve type-param applications
-// (e.g. TestClaimRun<S, A>) via render_rust_decl_type; non-generic fns keep
-// the applied-binding path for resolve-stamped __applied_type_args.
+// Function signatures inside generic items: use the same resolved-type path as
+// generic struct fields (emit_struct_field_from_child) so applied type args
+// survive inference. Non-generic fns keep the __applied_type_args binding path.
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   if generic_param_names |> count > 0 {
-    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
   } else {
     render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
   }
@@ -2212,7 +2212,8 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
 }
 
 fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
-  let n = param_node_type_expr(n: param)
+  let authored = param_node_type_expr(n: param)
+  let n = if generic_param_names |> count > 0 { resolved_type(n: authored) } else { authored }
   let ty = emit_rust_param_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, ty)

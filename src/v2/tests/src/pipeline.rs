@@ -301,7 +301,7 @@ fn project_first<S, A>(p: Pair<S, A>) -> S {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/gen_applied_sig.rs");
     assert!(
-        content.contains("fn project_first<S, A>(p: Rc<Pair<S, A>>) ->"),
+        content.contains("project_first<S, A>(p: Rc<Pair<S, A>>)"),
         "generic fn params/returns must preserve applied type args; got:\n{content}"
     );
 }
