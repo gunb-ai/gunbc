@@ -411,7 +411,8 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
     )
     normalized_all_pass = "".join(all_pass_body.split())
     fail_deferred_conjunction = re.compile(
-        r"tally\.fail={2}[^&|;=!]*[Zz]ero[^&|;]*&&[^&|;]*tally\.deferred={2}[^&|;=!]*[Zz]ero"
+        r"tally\.fail={2}[^&|;=!]*(?:Nat::)?[Zz]ero\b[^&|;]*&&"
+        r"[^&|;]*tally\.deferred={2}[^&|;=!]*(?:Nat::)?[Zz]ero\b"
     )
     if not fail_deferred_conjunction.search(normalized_all_pass):
         raise ReceiptError(
@@ -421,9 +422,8 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
     gate_body = generated_function(source, "manual_corpus_gate", corpus_eval_rs)
     normalized_gate = "".join(gate_body.split())
     inline_empty_gate = re.compile(
-        r"(?<!!)is_empty\([^)]*report[^)]*entries[^)]*\)"
-        r".*false"
-        r".*manual_corpus_all_pass\([^)]*report[^)]*\)"
+        r"if(?<!!)is_empty\([^)]*report[^)]*entries[^)]*\)"
+        r"\{false\}else\{manual_corpus_all_pass\([^)]*report[^)]*\)"
     )
     if not inline_empty_gate.search(normalized_gate):
         raise ReceiptError(
