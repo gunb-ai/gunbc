@@ -101,7 +101,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        fetch-depth: 1
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
@@ -163,9 +163,9 @@ jobs:
     - name: M1 v4 workflow CI model/YAML binding smoke
       run: |
         set -euo pipefail
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet
-        cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet
+        cargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet
+        cargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet
+        cargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet
     - name: no-new-shell ratchet (required CI path)
       run: |
         bash scripts/check-ci-no-new-shell.sh --self-test

@@ -695,7 +695,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
     assert!(
         binding_smoke_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
+            "cargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test {M1_BINDING_TEST_FILTER} -- --exact --quiet"
         )),
         "{CI_YML_PATH}: `{binding_smoke_step_name}` must execute the M1 model/YAML binding receipt (gunbc#846 zero-test-filter bypass)"
     );
@@ -1252,7 +1252,7 @@ fn v4_workflow_ci_bankruptcy_tier0_binding_step_matches_generated_workflow() {
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
         binding_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
+            "cargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
         )),
         "{CI_YML_PATH}: binding step must run bankruptcy D3 prefix filter on the Wave 1 floor"
     );
@@ -1263,13 +1263,13 @@ fn v4_workflow_ci_bankruptcy_tier0_d3_ratchet_invoked_from_ci_yml_binding_step()
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
         binding_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
+            "cargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test {M1_BINDING_TEST_FILTER} -- --exact --quiet"
         )),
         "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run M1 binding with one TESTNAME per cargo invocation"
     );
     assert!(
         binding_step.contains(&format!(
-            "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
+            "cargo test -p v3-compiler --test v4_workflow_ci_runner_dag_smoke_test {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
         )),
         "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run bankruptcy D3 ratchet tests (prefix filter, one claim per test)"
     );
