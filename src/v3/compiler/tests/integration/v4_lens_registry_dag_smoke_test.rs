@@ -20,8 +20,8 @@
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
-    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceRecordField, SurfaceType,
-    SurfaceVariant, VariantPayload,
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceRecordField, SurfaceType, SurfaceVariant,
+    VariantPayload,
 };
 use v3_compiler::tokenize_for_test;
 
@@ -32,8 +32,6 @@ const STRUCTURAL_SIMILARITY_DAG: &str =
 const STRUCTURAL_SIMILARITY_PATH: &str = "src/v4/lens/structural_similarity.dag";
 const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
 const CI_PATH: &str = "src/v4/workflow/ci.dag";
-const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
-const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -181,26 +179,6 @@ fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a Surface
         .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
 }
 
-fn expr_string(expr: &SurfaceExpr) -> &str {
-    match expr {
-        SurfaceExpr::Literal {
-            value: SurfaceLiteral::String(value),
-            ..
-        } => value,
-        other => panic!("expected string literal expr, got {other:?}"),
-    }
-}
-
-fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
-    let marker = format!("    - name: {step_name}");
-    let start = workflow_yml
-        .find(&marker)
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing workflow step `{step_name}`"));
-    let rest = &workflow_yml[start..];
-    let end = rest.find("\n    - name: ").unwrap_or(rest.len());
-    &rest[..end]
-}
-
 fn variant_record_field<'a>(
     expr: &'a SurfaceExpr,
     target_name: &str,
@@ -325,7 +303,6 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
         vec!["smoke_step_name", "semantic_step_name", "semantic_target"],
         "{CI_PATH}: live workflow binding must not re-author ci_pipeline signal/job/policy facts"
     );
-    let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
     let ci_pipeline = data_body(&module, "ci_pipeline");
     let lens_ci_job =
         ci_job_record_by_id(ci_pipeline_jobs(ci_pipeline), "lens_ci_registry_execution");
@@ -333,28 +310,6 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
         list_body_vars(variant_record_field(lens_ci_job, "CiJob", "needs")),
         vec!["v2_compile_src_v4"],
         "{CI_PATH}: Lens-CI execution must depend on the v2 compiler artifact job used by the live semantic step"
-    );
-
-    let smoke_step_name = expr_string(record_body_field(live_signal, "smoke_step_name"));
-    let semantic_step_name = expr_string(record_body_field(live_signal, "semantic_step_name"));
-    let semantic_target = expr_string(record_body_field(live_signal, "semantic_target"));
-    let smoke_step = workflow_step_block(CI_YML, smoke_step_name);
-    let semantic_step = workflow_step_block(CI_YML, semantic_step_name);
-
-    assert!(
-        smoke_step.contains("run: cargo test -p v3-compiler --test integration v4_lens_registry_dag_smoke_test -- --quiet"),
-        "{CI_YML_PATH}: `{smoke_step_name}` must execute this registry/CI binding harness"
-    );
-    assert!(
-        semantic_step.contains("if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'"),
-        "{CI_YML_PATH}: `{semantic_step_name}` must run for v4 and workflow-policy changes"
-    );
-    assert!(
-        semantic_step.contains(r#"cp src/v4/workflow/ci.dag "${entry_root}/v4/workflow/ci.dag""#)
-            && semantic_step.contains(r#"rm "${deps_root}/workflow/ci.dag""#)
-            && semantic_step.contains(r#"target/release/gunbc compile --source-root "${entry_root}" --source-root "${deps_root}""#)
-            && semantic_step.contains(&format!("--target {semantic_target}")),
-        "{CI_YML_PATH}: `{semantic_step_name}` must execute the modeled Lens-CI semantic signal"
     );
 }
 

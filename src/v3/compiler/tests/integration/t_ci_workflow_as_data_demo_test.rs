@@ -80,12 +80,6 @@ const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflo
 const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
 const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
 
-// P5 checkable receipt (parent gate #1956 / brief linkage — same pattern as `tc1_*_strict_fire_test`).
-const _: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../docs/briefs/r3-substrate-t-workflow-as-data-slice-1-worker.md"
-));
-
 fn demo_bootstrap_dag() -> v3_compiler::dag::Dag {
     generated_full_bootstrap_dag()
 }

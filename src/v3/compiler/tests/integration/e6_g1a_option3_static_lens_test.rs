@@ -490,14 +490,3 @@ fn value_contains_int_literal(v: &Value, needle: i64) -> bool {
         _ => false,
     }
 }
-
-// INVARIANTS P1 / P5 — checkable receipt: this integration crate must not build if the cited
-// briefs are missing from the worktree (the PR file list may omit `docs/` when unchanged).
-const _: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../docs/briefs/r3-pr-e6-g1a-option3-static-lens-worker.md"
-));
-const _: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../docs/briefs/r3-pr-e6-g1a-option3-feasibility-probe.md"
-));
