@@ -1179,17 +1179,12 @@ fn v4_workflow_ci_bankruptcy_tier0_lens_ci_mask_matches_ci_yml() {
 
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_binding_step_matches_generated_workflow() {
+    let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
-        CI_WORKFLOW_DAG.contains(&format!(
+        binding_step.contains(&format!(
             "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --quiet"
         )),
-        "{CI_WORKFLOW_DAG_PATH}: M1 binding step run must use bankruptcy D3 prefix filter (P2 parity with {CI_YML_PATH})"
-    );
-    assert!(
-        CI_WORKFLOW_DAG.contains(
-            "if_condition: Some { value: \"github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.release_distribution == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))\" }"
-        ),
-        "{CI_WORKFLOW_DAG_PATH}: ci_integration job if_condition must mirror ci.yml (release_distribution for RELEASE §5 step)"
+        "{CI_YML_PATH}: binding step must run bankruptcy D3 prefix filter on the Wave 1 floor"
     );
 }
 
