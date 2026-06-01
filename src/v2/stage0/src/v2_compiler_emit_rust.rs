@@ -5366,9 +5366,34 @@ pub fn render_rust_param_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let type_node = resolved_type(param.clone());
+    let authored_type = param_node_type_expr(param.clone());
     if ((generic_param_names.len() as i64) > 0) {
-        render_rust_decl_type(type_node, generic_param_names, shared_types, source_indices)
+        if (find_property(
+            param.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) != None)
+        {
+            render_rust_type_with_applied_binding(param, shared_types, source_indices.clone())
+        } else if (find_property(
+            authored_type.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) != None)
+        {
+            render_rust_type_with_applied_binding(
+                authored_type,
+                shared_types,
+                source_indices.clone(),
+            )
+        } else {
+            render_rust_fn_sig_type(
+                resolved_type(param.clone()),
+                generic_param_names,
+                shared_types,
+                source_indices,
+            )
+        }
     } else {
         render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
     }
@@ -5569,9 +5594,10 @@ pub fn emit_param(
 ) -> String {
     {
         let authored = param_node_type_expr(param.clone());
-        let ty = if ((authored.params.clone().len() as i64) > 0) {
+        let is_callable_param = ((authored.params.clone().len() as i64) > 0);
+        let ty = if is_callable_param {
             emit_rust_param_type(
-                authored,
+                authored.clone(),
                 generic_param_names.clone(),
                 shared_types,
                 source_indices.clone(),
@@ -5585,12 +5611,25 @@ pub fn emit_param(
             )
         };
         let pname = param_node_name_at(param.clone(), source_indices.clone());
+        let is_borrowable = (v2_rt::set_contains(read_only_params.clone(), pname.clone())
+            && (is_callable_param == false)
+            && needs_reference_node(authored.clone(), source_indices.clone()));
+        let final_ty = if is_borrowable {
+            apply_type_template1(
+                sharing_for_target(RenderTarget::Rust)
+                    .borrow_param_template
+                    .clone(),
+                ty,
+            )
+        } else {
+            ty
+        };
         v2_rt::concat(
             v2_rt::concat(
                 emit_ident(pname, RenderTarget::Rust),
                 rust_items().param_type_sep.clone(),
             ),
-            ty,
+            final_ty,
         )
     }
 }
