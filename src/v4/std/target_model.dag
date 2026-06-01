@@ -831,91 +831,81 @@ fn target_atom_realization_from_row_node(
   row_node: Node,
   host_target_model: TargetModel
 ) -> Outcome<TargetAtomRealization> {
-  let source_carrier = target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_atom_realization_field_source_carrier
-  )
-  let row_bundle = target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_atom_realization_field_target_model_bundle
-  )
-  if target_atom_realization_bundle_matches_host(row_bundle: row_bundle, host: host_target_model) {
-    match target_type_expression_from_node(
-      n: target_atom_realization_conj_child(
-        row_node: row_node,
-        edge_name: target_atom_realization_field_type_form
-      ),
-      source_carrier: source_carrier
-    ) {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: type_form, diagnostics: _ } =>
-        match target_value_template_from_node(
-          n: target_atom_realization_conj_child(
-            row_node: row_node,
-            edge_name: target_atom_realization_field_value_form
-          ),
-          source_carrier: source_carrier
-        ) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: value_form, diagnostics: _ } =>
-            match target_constructor_template_from_node(
-              n: target_atom_realization_conj_child(
-                row_node: row_node,
-                edge_name: target_atom_realization_field_constructor_form
-              ),
-              source_carrier: source_carrier
-            ) {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: constructor_form, diagnostics: _ } =>
-                match target_atom_realization_display_name_from_row(
-                  row_node: row_node,
-                  source_carrier: source_carrier
-                ) {
-                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  Accepted { value: display_name, diagnostics: _ } =>
-                    outcome_accepted(
-                      TargetAtomRealization {
-                        source_carrier: source_carrier,
-                        target_model: host_target_model,
-                        type_form: type_form,
-                        value_form: value_form,
-                        constructor_form: constructor_form,
-                        display_name: display_name
+  bind_outcome(
+    o: find_named_child(root: row_node, name: target_atom_realization_field_source_carrier),
+    f: fn(source_carrier) {
+      bind_outcome(
+        o: find_named_child(root: row_node, name: target_atom_realization_field_target_model_bundle),
+        f: fn(row_bundle) {
+          if target_atom_realization_bundle_matches_host(row_bundle: row_bundle, host: host_target_model) {
+            bind_outcome(
+              o: find_named_child(root: row_node, name: target_atom_realization_field_type_form),
+              f: fn(type_form_node) {
+                bind_outcome(
+                  o: target_type_expression_from_node(
+                    n: type_form_node,
+                    source_carrier: source_carrier
+                  ),
+                  f: fn(type_form) {
+                    bind_outcome(
+                      o: find_named_child(root: row_node, name: target_atom_realization_field_value_form),
+                      f: fn(value_form_node) {
+                        bind_outcome(
+                          o: target_value_template_from_node(
+                            n: value_form_node,
+                            source_carrier: source_carrier
+                          ),
+                          f: fn(value_form) {
+                            bind_outcome(
+                              o: find_named_child(root: row_node, name: target_atom_realization_field_constructor_form),
+                              f: fn(constructor_form_node) {
+                                bind_outcome(
+                                  o: target_constructor_template_from_node(
+                                    n: constructor_form_node,
+                                    source_carrier: source_carrier
+                                  ),
+                                  f: fn(constructor_form) {
+                                    bind_outcome(
+                                      o: target_atom_realization_display_name_from_row(
+                                        row_node: row_node,
+                                        source_carrier: source_carrier
+                                      ),
+                                      f: fn(display_name) {
+                                        outcome_accepted(
+                                          TargetAtomRealization {
+                                            source_carrier: source_carrier,
+                                            target_model: host_target_model,
+                                            type_form: type_form,
+                                            value_form: value_form,
+                                            constructor_form: constructor_form,
+                                            display_name: display_name
+                                          }
+                                        )
+                                      }
+                                    )
+                                  }
+                                )
+                              }
+                            )
+                          }
+                        )
                       }
                     )
-                }
-            }
-        }
-    }
-  } else {
-    outcome_rejected(
-      target_atom_realization_target_model_bundle_mismatch_diagnostic(
-        source_carrier: source_carrier
-      )
-    )
-  }
-}
-
-fn target_atom_realization_conj_child(row_node: Node, edge_name: Symbol) -> Node {
-  match row_node.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        row_node.children,
-        init: row_node,
-        f: fn(acc, e) {
-          match e.label {
-            Named { name: n } =>
-              if n == edge_name {
-                e.target
-              } else {
-                acc
+                  }
+                )
               }
-            Positional => acc
+            )
+          } else {
+            outcome_rejected(
+              target_atom_realization_target_model_bundle_mismatch_diagnostic(
+                source_carrier: source_carrier
+              )
+            )
           }
         }
       )
-    _ => row_node
-  }
+    }
+  )
 }
 
 fn target_type_expression_from_node(
@@ -983,17 +973,19 @@ fn target_atom_realization_display_name_from_row(
   row_node: Node,
   source_carrier: Node
 ) -> Outcome<Symbol> {
-  match target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_atom_realization_field_display_name
-  ).kind {
-    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
-    _ =>
-      outcome_rejected(
-        target_atom_realization_display_name_decode_invalid_diagnostic(
-          source_carrier: source_carrier
-        )
-      )
+  match find_named_child(root: row_node, name: target_atom_realization_field_display_name) {
+    Accepted { value: child, diagnostics: d } =>
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          Accepted { value: id, diagnostics: d }
+        _ =>
+          outcome_rejected(
+            target_atom_realization_display_name_decode_invalid_diagnostic(
+              source_carrier: source_carrier
+            )
+          )
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -1243,50 +1235,58 @@ fn target_function_signature_realization_from_row_node(
   row_node: Node,
   host_target_model: TargetModel
 ) -> Outcome<TargetFunctionSignatureRealization> {
-  let source_carrier = target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_function_signature_realization_field_source_carrier
-  )
-  let row_bundle = target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_function_signature_realization_field_target_model_bundle
-  )
-  if target_atom_realization_bundle_matches_host(row_bundle: row_bundle, host: host_target_model) {
-    match target_function_boundary_site_from_node(
-      n: target_atom_realization_conj_child(
-        row_node: row_node,
-        edge_name: target_function_signature_realization_field_boundary_site
-      ),
-      source_carrier: source_carrier
-    ) {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: boundary_site, diagnostics: _ } =>
-        match target_type_expression_from_node(
-          n: target_atom_realization_conj_child(
-            row_node: row_node,
-            edge_name: target_function_signature_realization_field_signature_type_form
-          ),
-          source_carrier: source_carrier
-        ) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: signature_type_form, diagnostics: _ } =>
-            outcome_accepted(
-              TargetFunctionSignatureRealization {
-                source_carrier: source_carrier,
-                target_model: host_target_model,
-                boundary_site: boundary_site,
-                signature_type_form: signature_type_form
+  bind_outcome(
+    o: find_named_child(root: row_node, name: target_function_signature_realization_field_source_carrier),
+    f: fn(source_carrier) {
+      bind_outcome(
+        o: find_named_child(root: row_node, name: target_function_signature_realization_field_target_model_bundle),
+        f: fn(row_bundle) {
+          if target_atom_realization_bundle_matches_host(row_bundle: row_bundle, host: host_target_model) {
+            bind_outcome(
+              o: find_named_child(root: row_node, name: target_function_signature_realization_field_boundary_site),
+              f: fn(boundary_site_node) {
+                bind_outcome(
+                  o: target_function_boundary_site_from_node(
+                    n: boundary_site_node,
+                    source_carrier: source_carrier
+                  ),
+                  f: fn(boundary_site) {
+                    bind_outcome(
+                      o: find_named_child(root: row_node, name: target_function_signature_realization_field_signature_type_form),
+                      f: fn(signature_type_form_node) {
+                        bind_outcome(
+                          o: target_type_expression_from_node(
+                            n: signature_type_form_node,
+                            source_carrier: source_carrier
+                          ),
+                          f: fn(signature_type_form) {
+                            outcome_accepted(
+                              TargetFunctionSignatureRealization {
+                                source_carrier: source_carrier,
+                                target_model: host_target_model,
+                                boundary_site: boundary_site,
+                                signature_type_form: signature_type_form
+                              }
+                            )
+                          }
+                        )
+                      }
+                    )
+                  }
+                )
               }
             )
+          } else {
+            outcome_rejected(
+              target_function_signature_realization_target_model_bundle_mismatch_diagnostic(
+                source_carrier: source_carrier
+              )
+            )
+          }
         }
-    }
-  } else {
-    outcome_rejected(
-      target_function_signature_realization_target_model_bundle_mismatch_diagnostic(
-        source_carrier: source_carrier
       )
-    )
-  }
+    }
+  )
 }
 
 // 🟢 coproduct dissolution — internal fold state for the SG-1b signature-realization catalog scan
@@ -2536,71 +2536,75 @@ fn target_use_site_ownership_row_from_node(
   display_name: Symbol,
   source_carrier: Node
 ) -> Outcome<TargetUseSiteOwnershipRealization> {
-  let carrier_node = target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_use_site_ownership_field_source_carrier
-  )
-  let source_projection_node = target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_use_site_ownership_field_source_projection
-  )
-  let use_site_node = target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_use_site_ownership_field_use_site
-  )
-  let layer_node = target_atom_realization_conj_child(
-    row_node: row_node,
-    edge_name: target_use_site_ownership_field_reference_layer
-  )
   bind_outcome(
-    o: target_model_node_atom_identity(node: source_projection_node, source_carrier: source_carrier),
-    f: fn(source_projection_id) {
-      match target_use_site_ownership_source_projection_from_atom(id: source_projection_id) {
-        Absent =>
-          outcome_rejected(
-            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
-              source_carrier: source_carrier
-            )
-          )
-        Present { value: source_projection } =>
+    o: find_named_child(root: row_node, name: target_use_site_ownership_field_source_carrier),
+    f: fn(carrier_node) {
+      bind_outcome(
+        o: find_named_child(root: row_node, name: target_use_site_ownership_field_source_projection),
+        f: fn(source_projection_node) {
           bind_outcome(
-            o: target_model_node_atom_identity(node: use_site_node, source_carrier: source_carrier),
-            f: fn(use_site_id) {
-              match target_ownership_use_site_from_atom(id: use_site_id) {
+            o: target_model_node_atom_identity(node: source_projection_node, source_carrier: source_carrier),
+            f: fn(source_projection_id) {
+              match target_use_site_ownership_source_projection_from_atom(id: source_projection_id) {
                 Absent =>
                   outcome_rejected(
                     target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
                       source_carrier: source_carrier
                     )
                   )
-                Present { value: use_site } =>
+                Present { value: source_projection } =>
                   bind_outcome(
-                    o: target_model_node_atom_identity(node: layer_node, source_carrier: source_carrier),
-                    f: fn(layer_id) {
-                      match target_reference_layer_from_atom(id: layer_id) {
-                        Absent =>
-                          outcome_rejected(
-                            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
-                              source_carrier: source_carrier
-                            )
-                          )
-                        Present { value: reference_layer } =>
-                          outcome_accepted(
-                            TargetUseSiteOwnershipRealization {
-                              source_carrier: carrier_node,
-                              source_projection: source_projection,
-                              use_site: use_site,
-                              reference_layer: reference_layer,
-                              display_name: display_name
-                            }
-                          )
-                      }
+                    o: find_named_child(root: row_node, name: target_use_site_ownership_field_use_site),
+                    f: fn(use_site_node) {
+                      bind_outcome(
+                        o: target_model_node_atom_identity(node: use_site_node, source_carrier: source_carrier),
+                        f: fn(use_site_id) {
+                          match target_ownership_use_site_from_atom(id: use_site_id) {
+                            Absent =>
+                              outcome_rejected(
+                                target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+                                  source_carrier: source_carrier
+                                )
+                              )
+                            Present { value: use_site } =>
+                              bind_outcome(
+                                o: find_named_child(root: row_node, name: target_use_site_ownership_field_reference_layer),
+                                f: fn(layer_node) {
+                                  bind_outcome(
+                                    o: target_model_node_atom_identity(node: layer_node, source_carrier: source_carrier),
+                                    f: fn(layer_id) {
+                                      match target_reference_layer_from_atom(id: layer_id) {
+                                        Absent =>
+                                          outcome_rejected(
+                                            target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
+                                              source_carrier: source_carrier
+                                            )
+                                          )
+                                        Present { value: reference_layer } =>
+                                          outcome_accepted(
+                                            TargetUseSiteOwnershipRealization {
+                                              source_carrier: carrier_node,
+                                              source_projection: source_projection,
+                                              use_site: use_site,
+                                              reference_layer: reference_layer,
+                                              display_name: display_name
+                                            }
+                                          )
+                                      }
+                                    }
+                                  )
+                                }
+                              )
+                          }
+                        }
+                      )
                     }
                   )
               }
             }
           )
-      }
+        }
+      )
     }
   )
 }
