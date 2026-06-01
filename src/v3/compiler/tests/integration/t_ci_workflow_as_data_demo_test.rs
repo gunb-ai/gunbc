@@ -769,6 +769,17 @@ fn carrier_optional_value_yaml(
     optional_yaml(dag, value, literal_yaml)
 }
 
+fn assert_elided_default_bash_shell(dag: &v3_compiler::dag::Dag, value: &FieldValue) {
+    let FieldValue::Variant { constructor, .. } = value else {
+        panic!("expected shell variant, got {value:?}");
+    };
+    assert_eq!(
+        *constructor,
+        disj_variant_constructor_id(dag, "ShellType", "Bash"),
+        "RunStep.shell is elided from YAML only for the default Linux bash shell"
+    );
+}
+
 fn carrier_runner_yaml(dag: &v3_compiler::dag::Dag, value: &FieldValue) -> YamlValue {
     let FieldValue::Variant {
         constructor,
@@ -918,6 +929,7 @@ fn carrier_step_yaml(dag: &v3_compiler::dag::Dag, value: &FieldValue) -> YamlVal
         );
     } else if *constructor == disj_variant_constructor_id(dag, "Step", "RunStep") {
         insert_yaml(&mut map, "run", literal_yaml(&payload[2]));
+        assert_elided_default_bash_shell(dag, &payload[3]);
         insert_yaml_if_some(
             &mut map,
             "working-directory",
