@@ -1563,49 +1563,53 @@ fn target_collection_realization_from_bundle(
   bind_outcome(
     o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_source_carrier),
     f: fn(source_carrier) {
-      bind_outcome(
-        o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_primary),
-        f: fn(primary_node) {
-          bind_outcome(
-            o: target_collection_choice_from_node(node: primary_node),
-            f: fn(primary) {
-              bind_outcome(
-                o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_alternatives),
-                f: fn(alternatives_node) {
-                  bind_outcome(
-                    o: target_collection_fold_list_from_node(
-                      remaining: node_subtree_count(n: alternatives_node),
-                      node: alternatives_node,
-                      decode_item: target_collection_choice_from_node
-                    ),
-                    f: fn(alternatives) {
-                      bind_outcome(
-                        o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_fallback),
-                        f: fn(fallback_node) {
-                          bind_outcome(
-                            o: target_collection_fallback_from_node(node: fallback_node),
-                            f: fn(fallback_diagnostic) {
-                              Accepted {
-                                value: TargetCollectionRealization {
-                                  source_carrier: source_carrier,
-                                  primary: primary,
-                                  alternatives: alternatives,
-                                  fallback_diagnostic: fallback_diagnostic
-                                },
-                                diagnostics: None
+      if source_carrier == expected_source_carrier {
+        bind_outcome(
+          o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_primary),
+          f: fn(primary_node) {
+            bind_outcome(
+              o: target_collection_choice_from_node(node: primary_node),
+              f: fn(primary) {
+                bind_outcome(
+                  o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_alternatives),
+                  f: fn(alternatives_node) {
+                    bind_outcome(
+                      o: target_collection_fold_list_from_node(
+                        remaining: node_subtree_count(n: alternatives_node),
+                        node: alternatives_node,
+                        decode_item: target_collection_choice_from_node
+                      ),
+                      f: fn(alternatives) {
+                        bind_outcome(
+                          o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_fallback),
+                          f: fn(fallback_node) {
+                            bind_outcome(
+                              o: target_collection_fallback_from_node(node: fallback_node),
+                              f: fn(fallback_diagnostic) {
+                                Accepted {
+                                  value: TargetCollectionRealization {
+                                    source_carrier: source_carrier,
+                                    primary: primary,
+                                    alternatives: alternatives,
+                                    fallback_diagnostic: fallback_diagnostic
+                                  },
+                                  diagnostics: None
+                                }
                               }
-                            }
-                          )
-                        }
-                      )
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
+                            )
+                          }
+                        )
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      } else {
+        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: source_carrier))
+      }
     }
   )
 }
@@ -1613,7 +1617,8 @@ fn target_collection_realization_from_bundle(
 fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetCollectionRealization> {
   collection_realization_from_target_edge(
     target: target,
-    edge_name: target_model_edge_collection_realization
+    edge_name: target_model_edge_collection_realization,
+    expected_source_carrier: target_collection_set_carrier_node()
   )
 }
 
@@ -1622,17 +1627,25 @@ fn free_monoid_collection_realization_from_target(
 ) -> Outcome<TargetCollectionRealization> {
   collection_realization_from_target_edge(
     target: target,
-    edge_name: target_model_edge_free_monoid_collection_realization
+    edge_name: target_model_edge_free_monoid_collection_realization,
+    expected_source_carrier: target_carrier_free_monoid_node()
   )
 }
 
 fn collection_realization_from_target_edge(
   target: TargetModel,
-  edge_name: Symbol
+  edge_name: Symbol,
+  expected_source_carrier: Node
 ) -> Outcome<TargetCollectionRealization> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: edge_name),
-    f: fn(bundle) { target_collection_realization_from_bundle(bundle: bundle, target: target) }
+    f: fn(bundle) {
+      target_collection_realization_from_bundle(
+        bundle: bundle,
+        expected_source_carrier: expected_source_carrier,
+        target: target
+      )
+    }
   )
 }
 
