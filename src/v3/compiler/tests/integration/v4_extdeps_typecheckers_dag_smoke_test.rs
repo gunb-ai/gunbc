@@ -26,7 +26,7 @@ const MYPY_DAG: &str = include_str!("../../../../v4/extdeps/typecheckers/mypy.da
 
 // Full std chain for the shared static-analysis carriers' home module
 // (`v4.std.leaf_model_verification`), which is otherwise not compile-tested in CI.
-const WITNESS_DAG: &str = include_str!("../../../../v4/std/witness.dag");
+// (WITNESS_DAG is declared above with the extdeps prefix chain and reused here.)
 const MACHINE_DAG: &str = include_str!("../../../../v4/std/machine.dag");
 const LEXING_DAG: &str = include_str!("../../../../v4/std/lexing.dag");
 const NODE_QUERY_DAG: &str = include_str!("../../../../v4/std/node_query.dag");

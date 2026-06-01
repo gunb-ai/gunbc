@@ -14,10 +14,12 @@
 # This is exactly why static analysis is modeled as TargetStaticAnalysisVerdict, a
 # carrier distinct from TargetPythonCompileRejected and TargetPythonExecRejected.
 #
-# Tool policy: pyright is pinned via npx. If pyright cannot be obtained (offline
-# runner), the static step degrades to a recorded "deferred" advisory and the gate
-# still proves the compile+runtime authorities miss the defect (F2: tool-unavailable
-# is recorded honestly, never reported as a behavioral/runtime failure).
+# Tool policy: pyright is pinned via npx. The fixtures are modeled BlockingForRung
+# (src/v4/std/leaf_model_verification.dag), so this gate is FAIL-CLOSED: the static
+# authority must positively prove it caught the falsification. If pyright cannot be
+# obtained (offline runner) the run still records an honest receipt that distinguishes
+# tool-unavailable from a behavioral failure (F2), but it EXITS NON-ZERO — a blocking
+# static check that was not proven is a MISS, never a deferred pass.
 
 set -euo pipefail
 
@@ -183,11 +185,19 @@ if [[ "$distinct_authority_proven" != true ]]; then
   exit 1
 fi
 
+# FAIL-CLOSED for the modeled BlockingForRung role (src/v4/std/leaf_model_verification.dag
+# TargetStaticAnalysisRole / python_l1_static_fixture_pair, both cases BlockingForRung):
+# the static authority must POSITIVELY prove it caught the falsification. Anything short of
+# that — pyright unavailable (deferred) OR pyright ran but did not match — is a MISS and
+# exits non-zero. A deferred/advisory pass would let an unproven blocking check succeed,
+# which contradicts the model. (To run this fixture as non-blocking, the modeled role must
+# be Advisory, not BlockingForRung — the role drives the gate, not a script-local escape.)
 if [[ "$static_proven" == true ]]; then
   echo "leaf-model python L1 static-structural verification PROVEN (pyright ${pyright_version}: happy clean, falsification ${pyright_expected_rule})"
 elif [[ "$static_available" == true ]]; then
   echo "error: pyright ran but did not match expected verdicts (happy_clean=${happy_static_clean}, falsification_rule=${falsification_static_rule})" >&2
   exit 1
 else
-  echo "leaf-model python L1 static-structural verification DEFERRED: pyright unavailable; compile+runtime distinct-authority proof PASSED" >&2
+  echo "error: pyright unavailable — BlockingForRung static authority UNPROVEN (fail-closed). The compile+runtime distinct-authority proof passed, but a blocking static check cannot be deferred to a pass." >&2
+  exit 1
 fi
