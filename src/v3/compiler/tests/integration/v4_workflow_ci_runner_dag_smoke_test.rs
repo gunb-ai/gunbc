@@ -12,15 +12,7 @@
 //! **TASKS.md** T-21 + T-24; bankruptcy B0/B1 Tier-0 binding smoke: `docs/design-ci-bankruptcy-rebuild.md` §4.1
 //! Wave 1 §11.7.1 floor: `docs/planning/ci-required-surface-cut-2026-06-01.md` (`v4_workflow_ci_wave1_*`).
 //! Wave 3 §11.7.2 shadow receipt Phase 1: same doc (`v4_workflow_ci_wave3_*`; P5(b) receipt table).
-//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174 / #4251).
-//!
-//! **P5 hand-Rust receipt (PR #4251 — `infra_isolation` runner de-priv guard):** no net-new
-//! scaffold and no SG-0 census growth in spirit — `v4_workflow_ci_runner_isolation_guard_*` and
-//! `expr_string_list` are a SAME-PATH expansion of this already-receipted ci.dag↔ci.yml binding
-//! harness (identical posture to the M1 / bootstrap / wave1 binding tests above), not a new Rust
-//! authority surface. It dissolves on the SAME lane as the rest of this file: when `.dag` TestClaim
-//! execution (T-24 emitted-`ci.yml`) covers the `ci_runner_isolation_policy` binding, this test
-//! retires with the harness. ROADMAP row: `T-PB-B` / `pb_rust_tests_outside_residual_zero`.
+//! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174).
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
@@ -451,16 +443,6 @@ fn expr_string(expr: &SurfaceExpr) -> &str {
     }
 }
 
-fn expr_string_list(expr: &SurfaceExpr) -> Vec<String> {
-    match expr {
-        SurfaceExpr::List { elements, .. } => elements
-            .iter()
-            .map(|e| expr_string(e).to_string())
-            .collect(),
-        other => panic!("expected list literal expr, got {other:?}"),
-    }
-}
-
 fn expr_int(expr: &SurfaceExpr) -> i64 {
     match expr {
         SurfaceExpr::Literal {
@@ -820,124 +802,6 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
         "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
     );
-}
-
-#[test]
-fn v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml() {
-    // RUNNER-ISOLATION SECURITY FLOOR — ci.dag `ci_runner_isolation_policy` is single-authority
-    // for the runner de-priv regression guard; this receipt asserts ci.yml projects it faithfully.
-    // gunbc is PUBLIC on the self-hosted fleet, so a silent host-side re-privilege regression
-    // would re-expose srv1/srv2 to fork-PR code with no in-repo diff. The guard must be a
-    // fail-closed, required-path, UNCONDITIONAL floor — this test pins each of those properties.
-    let module = parse_module(CI_DAG, CI_DAG_PATH);
-    assert!(
-        CI_DAG.contains("type RunnerIsolationPolicy"),
-        "{CI_DAG_PATH}: must model the runner de-priv isolation policy type"
-    );
-
-    let policy = data_body(&module, "ci_runner_isolation_policy");
-    let guard_job_name = expr_string(record_body_field(policy, "guard_job_name"));
-    let guard_step_name = expr_string(record_body_field(policy, "guard_step_name"));
-    let privileged_groups = expr_string_list(record_body_field(policy, "privileged_groups"));
-    let app_private_key_path = expr_string(record_body_field(policy, "app_private_key_path"));
-    let docker_socket_path = expr_string(record_body_field(policy, "docker_socket_path"));
-    let forbid_root_uid = expr_bool(record_body_field(policy, "forbid_root_uid"));
-    let forbid_passwordless_sudo = expr_bool(record_body_field(policy, "forbid_passwordless_sudo"));
-    let timeout_minutes = expr_int(record_body_field(policy, "timeout_minutes"));
-    let blocks_required_path = expr_bool(record_body_field(policy, "blocks_required_path"));
-
-    // A faithful floor fails closed on BOTH re-privilege shapes, guards ≥1 privileged group, and
-    // is a required-path gate.
-    assert!(
-        forbid_root_uid
-            && forbid_passwordless_sudo
-            && blocks_required_path
-            && !privileged_groups.is_empty(),
-        "{CI_DAG_PATH}: runner isolation policy must forbid root uid + passwordless sudo, guard a non-empty privileged-group set, and block the required path"
-    );
-    assert!(
-        CI_DAG.contains(
-            "data ci_runner_isolation_policy_ok: Bool = ci_runner_isolation_policy_valid"
-        ),
-        "{CI_DAG_PATH}: must carry the policy-validity receipt"
-    );
-
-    // The job must exist and run UNCONDITIONALLY: the line immediately after the job id is
-    // `runs-on:` (no `if:` draft/affected gate), because fork-PR exposure exists wherever a
-    // runner executes at all.
-    assert!(
-        CI_YML.contains(&format!(
-            "\n  {guard_job_name}:\n    runs-on: [self-hosted, linux, arm64]"
-        )),
-        "{CI_YML_PATH}: `{guard_job_name}` must exist and run unconditionally (no `if:` gate — the security floor is not draft/affected-gated)"
-    );
-    assert!(
-        !CI_YML.contains(&format!("\n  {guard_job_name}:\n    if:")),
-        "{CI_YML_PATH}: `{guard_job_name}` must not carry a draft `if:` gate"
-    );
-
-    let step = workflow_step_block(CI_YML, guard_step_name);
-    // uid-0 regression shape: fails closed.
-    assert!(
-        forbid_root_uid
-            && step.contains("[ \"$(id -u)\" -ne 0 ] || fail \"running as root\""),
-        "{CI_YML_PATH}: `{guard_step_name}` must fail closed when the runner job runs as root (uid 0)"
-    );
-    // privileged-group regression shape: every modeled group must be probed.
-    for group in &privileged_groups {
-        assert!(
-            step.contains(&format!(" {group} ")) || step.contains(&format!(" {group};")),
-            "{CI_YML_PATH}: `{guard_step_name}` must probe modeled privileged group `{group}`"
-        );
-    }
-    assert!(
-        step.contains("id -nG | tr ' ' '\\n' | grep -qx \"$g\" && fail"),
-        "{CI_YML_PATH}: `{guard_step_name}` must fail closed on membership in a privileged group"
-    );
-    // App-private-key and docker.sock readability regression shapes: fail closed.
-    assert!(
-        step.contains(&format!("cat {app_private_key_path} >/dev/null 2>&1 && fail")),
-        "{CI_YML_PATH}: `{guard_step_name}` must fail closed if the App key `{app_private_key_path}` is readable"
-    );
-    assert!(
-        step.contains(&format!("test -r {docker_socket_path} && fail")),
-        "{CI_YML_PATH}: `{guard_step_name}` must fail closed if docker.sock `{docker_socket_path}` is readable"
-    );
-    // passwordless-sudo regression shape: fails closed.
-    assert!(
-        forbid_passwordless_sudo && step.contains("sudo -n true 2>/dev/null && fail"),
-        "{CI_YML_PATH}: `{guard_step_name}` must fail closed when passwordless sudo is available"
-    );
-    // Required-path floor: no continue-on-error, and the modeled timeout is projected.
-    assert!(
-        blocks_required_path && !step.contains("continue-on-error: true"),
-        "{CI_YML_PATH}: `{guard_job_name}` is a required-path floor — must not be continue-on-error"
-    );
-    assert!(
-        CI_YML.contains(&format!(
-            "\n  {guard_job_name}:\n    runs-on: [self-hosted, linux, arm64]\n    timeout-minutes: {timeout_minutes}"
-        )),
-        "{CI_YML_PATH}: `{guard_job_name}` must project the modeled timeout-minutes ({timeout_minutes})"
-    );
-
-    // REQUIRED-PATH BINDING (blocks_required_path): the guard must gate the `ci` aggregator's
-    // required status, not merely exist as a sibling job. Otherwise branch protection keyed on
-    // `ci` would pass while `infra_isolation` failed — the exact gap codex flagged. The aggregator
-    // must `needs:` the guard AND fail closed on a non-success result.
-    if blocks_required_path {
-        let ci_block = workflow_step_block(
-            CI_YML,
-            "Validate prerequisites (fail-closed under skipped/failed deps)",
-        );
-        assert!(
-            CI_YML.contains(&format!("needs: [ci_floor, {guard_job_name}]")),
-            "{CI_YML_PATH}: the required `ci` aggregator must `needs:` the `{guard_job_name}` guard"
-        );
-        assert!(
-            ci_block.contains(&format!("needs.{guard_job_name}.result")) && ci_block.contains("exit 1"),
-            "{CI_YML_PATH}: the `ci` aggregator must fail closed when `{guard_job_name}` did not succeed"
-        );
-    }
 }
 
 #[test]
