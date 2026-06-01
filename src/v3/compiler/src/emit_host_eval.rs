@@ -1,25 +1,31 @@
-//! T-22 substrate eval dispatch: `v4.compiler.emit_host` host transport rows → `emit_host_runner`.
+//! T-22 substrate eval dispatch: `run_emit_host_rust` → `tools/emit_host_runner`.
 //!
-//! Modeled authority remains `src/v4/compiler/emit_host.dag` + `v4.std.host_run`; this module is the
-//! eval hook that executes real host-process transport when the evaluator calls `run_emit_host_*`
-//! (dissolves `emit_host_transport_not_wired` for wired rows without fabricating receipts in `.dag`).
+//! **Modeled authority:** `src/v4/compiler/emit_host.dag` + `v4.std.host_run` — host receipt
+//! assembly (`emit_host_receipt_from_source`, `host_logical_run_from_exit`) is evaluated via
+//! [`evaluator::eval_callable_declaration`], not re-encoded here. This module only maps runner
+//! facts → substrate operand carriers and invokes the eval hook.
+//!
+//! **P5 receipt:** `EXPECTED_HAND_AUTHORED_NON_TEST` row in `sg0_census_test.rs`; lane
+//! `T-PB-B` / `pb_rust_tests_outside_residual_zero`; dissolution: delete when substrate eval
+//! owns host dispatch without this intercept (`emit_host_bridge.rs` retires with harness).
 
 use crate::dag::{Dag, DeclarationId, LiteralBits, TypeConnective};
-use crate::evaluator::{EvalError, NamedField, Value};
+use crate::evaluator::{
+    EvalError, EvalStateStack, EvalStrategy, NamedField, Value,
+};
 use emit_host_runner::{
     ExitWitness, HostExit, HostExitOutcome, HostLogicalFailure, HostSetupFailure,
 };
 
-/// Eval-time dispatch for `run_emit_host_rust` in `emit_host.dag`.
+/// Eval-time dispatch for `run_emit_host_rust` (substrate `emit_host.dag` only).
 pub fn try_dispatch_emit_host_rust(
     dag: &Dag,
     callee_decl: DeclarationId,
     operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
 ) -> Option<Result<Value, EvalError>> {
-    let callee = dag.declaration(callee_decl);
-    if callee.name.as_deref() != Some("run_emit_host_rust")
-        || !callee.span.file.ends_with("v4/compiler/emit_host.dag")
-    {
+    if !is_run_emit_host_rust_decl(dag, callee_decl) {
         return None;
     }
     if operands.len() != 3 {
@@ -33,10 +39,9 @@ pub fn try_dispatch_emit_host_rust(
         Ok(source) => source,
         Err(err) => return Some(Err(err)),
     };
-    let input_pin = emit_host_input_pin(&operands[2]);
-    let inputs = emit_host_runner::EmitHostFixtureInputs {
-        claim_input_root: input_pin.clone(),
-        expected_eval_root: input_pin,
+    let inputs = match emit_host_fixture_inputs(&operands[2]) {
+        Ok(inputs) => inputs,
+        Err(err) => return Some(Err(err)),
     };
     let work_dir = emit_host_runner::default_work_dir(&format!(
         "gunbc_eval_emit_host_rust_{}",
@@ -44,14 +49,71 @@ pub fn try_dispatch_emit_host_rust(
     ));
     let receipt = match emit_host_runner::run_emit_host_rust(source, &inputs, &work_dir) {
         Ok(receipt) => receipt,
-        Err(_setup) => {
-            return Some(run_emit_host_setup_rejected(dag));
-        }
+        Err(_setup) => return Some(run_emit_host_setup_rejected(dag)),
+    };
+    let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
+        Ok(id) => id,
+        Err(err) => return Some(Err(err)),
+    };
+    let exit = match host_exit_value(dag, &receipt.exit) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stdout = match byte_string_value(dag, &receipt.stdout_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stderr = match byte_string_value(dag, &receipt.stderr_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let build_log = match build_log_value(dag, &receipt.build_log.lines) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
     };
     Some(
-        emit_host_receipt_value(dag, &operands[0], receipt)
-            .and_then(|value| accepted_variant(dag, value)),
+        eval_callable_declaration(
+            dag,
+            callee,
+            vec![
+                operands[0].clone(),
+                Value::LiteralValue(LiteralBits::String(receipt.source_text)),
+                exit,
+                stdout,
+                stderr,
+                build_log,
+            ],
+            state,
+            strategy,
+        )
+        .and_then(|value| accepted_variant(dag, value)),
     )
+}
+
+fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    let callee = dag.declaration(callee_decl);
+    callee.name.as_deref() == Some("run_emit_host_rust")
+        && matches!(callee.connective, TypeConnective::Arrow { .. })
+}
+
+fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
+    dag.declarations()
+        .iter()
+        .find(|decl| decl.name.as_deref() == Some(name))
+        .map(|decl| decl.id)
+        .ok_or(EvalError::BadTransformOperands {
+            reason: "substrate fn declaration not found in eval dag",
+        })
+}
+
+fn eval_callable_declaration(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: Vec<Value>,
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Result<Value, EvalError> {
+    crate::evaluator::eval_callable_declaration(dag, callee_decl, operands, state, strategy)
 }
 
 fn run_emit_host_setup_rejected(dag: &Dag) -> Result<Value, EvalError> {
@@ -70,15 +132,35 @@ fn expect_string_operand(value: &Value) -> Result<&str, EvalError> {
     }
 }
 
-fn emit_host_input_pin(value: &Value) -> String {
-    match value {
+fn emit_host_fixture_inputs(
+    value: &Value,
+) -> Result<emit_host_runner::EmitHostFixtureInputs, EvalError> {
+    let root = match value {
         Value::RecordValue(fields) => fields
             .iter()
             .find(|field| field.label == "root")
-            .map(|field| format!("{:?}", field.value))
-            .unwrap_or_else(|| format!("{value:?}")),
-        _ => format!("{value:?}"),
-    }
+            .map(|field| &field.value)
+            .ok_or(EvalError::BadTransformOperands {
+                reason: "expected Inputs.root field",
+            })?,
+        _ => {
+            return Err(EvalError::BadTransformOperands {
+                reason: "expected Inputs record",
+            });
+        }
+    };
+    let pin = match root {
+        Value::LiteralValue(LiteralBits::String(s)) => s.clone(),
+        _ => {
+            return Err(EvalError::BadTransformOperands {
+                reason: "expected Inputs.root string literal",
+            });
+        }
+    };
+    Ok(emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: pin.clone(),
+        expected_eval_root: pin,
+    })
 }
 
 fn variant_decl_id(
@@ -163,11 +245,6 @@ fn find_list_variant_tag(
             template,
             arguments,
         } if *template == list_decl.id && arguments.len() == 1 => arguments[0].value,
-        TypeConnective::Instantiation { .. } => {
-            return Err(EvalError::BadTransformOperands {
-                reason: "expected List<elem> instantiation",
-            });
-        }
         _ => {
             return Err(EvalError::BadTransformOperands {
                 reason: "expected List<elem> instantiation",
@@ -265,14 +342,11 @@ fn string_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
 
 fn byte_value(dag: &Dag, byte: u8) -> Result<Value, EvalError> {
     let bits: Vec<Value> = (0..8)
-        .map(|shift| {
-            Value::LiteralValue(LiteralBits::Bool((byte >> (7 - shift)) & 1 != 0))
-        })
+        .map(|shift| Value::LiteralValue(LiteralBits::Bool((byte >> (7 - shift)) & 1 != 0)))
         .collect();
-    let bits_list = list_from_values(dag, bool_list_ty(dag)?, bits)?;
     Ok(Value::RecordValue(vec![NamedField {
         label: "bits".to_string(),
-        value: bits_list,
+        value: list_from_values(dag, bool_list_ty(dag)?, bits)?,
     }]))
 }
 
@@ -292,6 +366,23 @@ fn string_list_value(dag: &Dag, lines: &[String]) -> Result<Value, EvalError> {
         .map(|line| Value::LiteralValue(LiteralBits::String(line)))
         .collect();
     list_from_values(dag, string_list_ty(dag)?, elems)
+}
+
+fn build_log_value(dag: &Dag, lines: &[String]) -> Result<Value, EvalError> {
+    Ok(Value::RecordValue(vec![NamedField {
+        label: "lines".to_string(),
+        value: string_list_value(dag, lines)?,
+    }]))
+}
+
+fn diagnostic_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
+    let diagnostic_ty = dag
+        .declaration_by_name("Diagnostic")
+        .ok_or(EvalError::BadTransformOperands {
+            reason: "Diagnostic type not found",
+        })?
+        .id;
+    list_instantiation_for_element(dag, diagnostic_ty)
 }
 
 fn diagnostics_none_variant(dag: &Dag) -> Result<Value, EvalError> {
@@ -325,16 +416,6 @@ fn rejected_outcome_variant(dag: &Dag, diagnostics: Value) -> Result<Value, Eval
             value: diagnostics,
         }])),
     })
-}
-
-fn diagnostic_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
-    let diagnostic_ty = dag
-        .declaration_by_name("Diagnostic")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "Diagnostic type not found",
-        })?
-        .id;
-    list_instantiation_for_element(dag, diagnostic_ty)
 }
 
 fn non_empty_diagnostics_singleton(dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
@@ -456,75 +537,76 @@ fn host_exit_outcome_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalErro
     }
 }
 
-/// Mirrors `host_logical_run_from_exit` in `v4.std.host_run`.
-fn host_logical_run_outcome_value(
-    dag: &Dag,
-    exit: &HostExit,
-    stdout_bytes: &[u8],
-) -> Result<Value, EvalError> {
-    match &exit.outcome {
-        HostExitOutcome::Accepted(ExitWitness::Holds(_)) => {
-            let stdout = Value::RecordValue(vec![NamedField {
-                label: "bytes".to_string(),
-                value: byte_string_value(dag, stdout_bytes)?,
-            }]);
-            accepted_variant(
-                dag,
-                Value::RecordValue(vec![NamedField {
-                    label: "stdout".to_string(),
-                    value: stdout,
-                }]),
-            )
-        }
-        HostExitOutcome::Accepted(ExitWitness::Violates(failure)) => rejected_outcome_variant(
-            dag,
-            non_empty_diagnostics_singleton(dag, host_logical_failure_diagnostic(dag, failure)?)?,
-        ),
-        HostExitOutcome::Rejected(setup) => rejected_outcome_variant(
-            dag,
-            non_empty_diagnostics_singleton(dag, host_setup_failure_diagnostic(dag, setup)?)?,
-        ),
-    }
+fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
+    Ok(Value::RecordValue(vec![NamedField {
+        label: "outcome".to_string(),
+        value: host_exit_outcome_value(dag, exit)?,
+    }]))
 }
 
-fn emit_host_receipt_value(
-    dag: &Dag,
-    target: &Value,
-    receipt: emit_host_runner::EmitHostRunReceipt,
-) -> Result<Value, EvalError> {
-    let exit = host_exit_outcome_value(dag, &receipt.exit)?;
-    let logical_run =
-        host_logical_run_outcome_value(dag, &receipt.exit, &receipt.stdout_bytes)?;
-    Ok(Value::RecordValue(vec![
-        NamedField {
-            label: "target".to_string(),
-            value: target.clone(),
-        },
-        NamedField {
-            label: "source_text".to_string(),
-            value: Value::LiteralValue(LiteralBits::String(receipt.source_text)),
-        },
-        NamedField {
-            label: "exit".to_string(),
-            value: Value::RecordValue(vec![NamedField {
-                label: "outcome".to_string(),
-                value: exit,
-            }]),
-        },
-        NamedField {
-            label: "logical_run".to_string(),
-            value: logical_run,
-        },
-        NamedField {
-            label: "stderr_bytes".to_string(),
-            value: byte_string_value(dag, &receipt.stderr_bytes)?,
-        },
-        NamedField {
-            label: "build_log".to_string(),
-            value: Value::RecordValue(vec![NamedField {
-                label: "lines".to_string(),
-                value: string_list_value(dag, &receipt.build_log.lines)?,
-            }]),
-        },
-    ]))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dag::{Behavior, TypeConnective};
+    use crate::evaluator::{
+        EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder,
+    };
+    use emit_host_runner::HostLogicalFailure;
+
+    fn eager_strategy() -> EvalStrategy {
+        EvalStrategy::ApplicativeOrder {
+            input_order: InputEvaluationOrder::LeftFirst,
+        }
+    }
+
+    #[test]
+    fn is_run_emit_host_rust_decl_requires_arrow_name() {
+        let dag = crate::dag::Dag::new();
+        let decl_id = dag.push_declaration(
+            crate::dag::Declaration {
+                name: Some("run_emit_host_rust".to_string()),
+                connective: TypeConnective::Arrow {
+                    inputs: vec![],
+                    output: dag.alloc_port(None),
+                    body: crate::dag::ArrowBody::UserDefined(
+                        crate::dag::BindNodeId::from_raw(0),
+                    ),
+                },
+                span: crate::dag::span(),
+                ..Default::default()
+            },
+            crate::dag::span(),
+        );
+        assert!(is_run_emit_host_rust_decl(&dag, decl_id));
+    }
+
+    #[test]
+    fn emit_host_fixture_inputs_rejects_debug_fallback() {
+        let err = emit_host_fixture_inputs(&Value::RecordValue(vec![NamedField {
+            label: "root".to_string(),
+            value: Value::LiteralValue(LiteralBits::Int("1".to_string())),
+        }]))
+        .expect_err("non-string root");
+        assert!(matches!(
+            err,
+            EvalError::BadTransformOperands {
+                reason: "expected Inputs.root string literal",
+            }
+        ));
+    }
+
+    #[test]
+    fn host_exit_outcome_maps_violates_to_witness_not_empty_record() {
+        let dag = crate::dag::Dag::new();
+        let exit = HostExit::logical_violation(HostLogicalFailure::ExitedNonzero {
+            phase: emit_host_runner::HostPhase::FixtureRun,
+            code: Some(1),
+        });
+        let outcome = host_exit_outcome_value(&dag, &exit).expect("outcome");
+        let Value::VariantValue { tag, .. } = outcome else {
+            panic!("expected Outcome variant");
+        };
+        let tag_decl = dag.declaration(tag);
+        assert_eq!(tag_decl.name.as_deref(), Some("Accepted"));
+    }
 }
