@@ -9,7 +9,9 @@ import v4.compiler.translate {
   target_serialize_source_from_model
 }
 import v4.extdeps.languages.typescript {
+  ts_sg2_arrow_labeled_xy_emitted,
   ts_sg2_arrow_malformed_source_type_node,
+  ts_sg2_arrow_mixed_wire_emitted,
   ts_sg2_arrow_source_type_node,
   ts_sg2_arrow_xy_emitted,
   ts_sg2_binary_fn_source_type_node,
@@ -27,7 +29,14 @@ import v4.extdeps.languages.typescript {
   ts_token_pipe,
   ts_type_expression_projection
 }
-import v4.std.target_model { target_type_expr_emitted_wire_decode }
+import v4.std.target_model {
+  target_type_expr_arrow_labeled_codomain,
+  target_type_expr_arrow_labeled_param_slots,
+  target_type_expr_arrow_wire_shape,
+  target_type_expr_emitted_wire_decode,
+  TargetTypeExprArrowLabeledWire,
+  TargetTypeExprArrowPositionalWire
+}
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
@@ -48,6 +57,7 @@ data ts_sg2_fail_sym: Symbol = ts_sg2_fail_sym
 data ts_sg2_fail_text: String = ""
 data ts_sg2_expected_instantiation_text: String = "FooBar<X, Y>"
 data ts_sg2_expected_arrow_text: String = "(X) => Y"
+data ts_sg2_expected_arrow_labeled_text: String = "(X: X) => Y"
 data ts_sg2_expected_conj_text: String = " { X, Y }"
 data ts_sg2_expected_disj_text: String = "X | Y"
 
@@ -172,6 +182,55 @@ fn ts_sg2_arrow_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: ts_sg2_arrow_xy_emitted()) == ts_sg2_expected_arrow_text
 }
 
+fn ts_sg2_arrow_labeled_serialize_matches_expected() -> Bool {
+  ts_sg2_serialized_text(emitted: ts_sg2_arrow_labeled_xy_emitted()) ==
+    ts_sg2_expected_arrow_labeled_text
+}
+
+fn ts_sg2_arrow_positional_wire_shape() -> Bool {
+  match target_type_expr_arrow_wire_shape(node: ts_sg2_arrow_xy_emitted()) {
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } => true
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ts_sg2_arrow_labeled_wire_shape() -> Bool {
+  match target_type_expr_arrow_wire_shape(node: ts_sg2_arrow_labeled_xy_emitted()) {
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: _ } => true
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ts_sg2_arrow_mixed_wire_rejects() -> Bool {
+  match target_type_expr_arrow_wire_shape(node: ts_sg2_arrow_mixed_wire_emitted()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn ts_sg2_arrow_mixed_wire_decode_rejects() -> Bool {
+  match target_type_expr_emitted_wire_decode(
+    node: ts_sg2_arrow_mixed_wire_emitted(),
+    projection: ts_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn ts_sg2_arrow_mixed_wire_labeled_accessors_reject() -> Bool {
+  match target_type_expr_arrow_labeled_codomain(node: ts_sg2_arrow_mixed_wire_emitted()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } =>
+      match target_type_expr_arrow_labeled_param_slots(node: ts_sg2_arrow_mixed_wire_emitted()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
 fn ts_sg2_conj_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: ts_sg2_conj_xy_emitted()) == ts_sg2_expected_conj_text
 }
@@ -241,6 +300,54 @@ data claim_ts_sg2_arrow_serialize: TestClaim = CompilesClaim {
   label: "manual/sg2-ts: serialized arrow is (X) => Y",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_serialize_matches_expected()),
+  expected_value: ts_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_ts_sg2_arrow_labeled_serialize: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: serialized labeled arrow is (X: X) => Y",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_labeled_serialize_matches_expected()),
+  expected_value: ts_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_ts_sg2_arrow_positional_wire_shape: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: positional golden arrow wire classifies as PositionalWire",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_positional_wire_shape()),
+  expected_value: ts_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_ts_sg2_arrow_labeled_wire_shape: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: labeled golden arrow wire classifies as LabeledWire",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_labeled_wire_shape()),
+  expected_value: ts_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_ts_sg2_arrow_mixed_wire_shape_rejects: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: mixed positional+labeled arrow wire-shape rejects fail-closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_rejects()),
+  expected_value: ts_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_ts_sg2_arrow_mixed_wire_decode_rejects: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: mixed positional+labeled arrow wire decode rejects fail-closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_decode_rejects()),
+  expected_value: ts_sg2_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_ts_sg2_arrow_mixed_wire_labeled_accessors_reject: TestClaim = CompilesClaim {
+  label: "manual/sg2-ts: mixed positional+labeled arrow labeled accessors reject fail-closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_labeled_accessors_reject()),
   expected_value: ts_sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

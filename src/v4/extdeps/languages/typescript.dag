@@ -67,7 +67,8 @@ import v4.std.collection {
   Set,
   empty_map,
   map_insert,
-  optional_absent
+  optional_absent,
+  optional_present
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -109,9 +110,11 @@ import v4.std.target_model {
   ValueSymbolIdentityPassthrough,
   target_type_expr_atom_emitted,
   target_type_expr_arrow_emitted,
+  target_type_expr_arrow_emitted_named,
   target_type_expr_instantiation_emitted,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
+  TargetTypeExprArrowParamSlot,
   TargetTypeExprFieldSlot,
   TargetTypeExprVariantSlot
 }
@@ -142,11 +145,16 @@ import v4.std.target_model {
   target_type_expr_field_atom,
   target_type_expr_field_cardinality,
   target_type_expr_field_close,
+  target_type_expr_field_codomain,
   target_type_expr_field_conj,
   target_type_expr_field_disj,
   target_type_expr_field_ident_token,
   target_type_expr_field_instantiation,
+  target_type_expr_field_field_label_separator,
   target_type_expr_field_open,
+  target_type_expr_field_param_ident_token,
+  target_type_expr_field_param_list_separator,
+  target_type_expr_field_param_type_separator,
   target_type_expr_field_separator,
   target_type_expr_field_surface,
   target_type_expr_field_variant_separator,
@@ -1413,12 +1421,14 @@ fn ts_mvp1_target_model() -> TargetModel {
 //   atom          ident / keyword primitive (number, string, boolean, ...)
 //   conj          { ... }  structural surface only   (object type — see 🟡 record gap below)
 //   disj          union A | B                        (primary sum-type surface)
-//   arrow         (T) => U  structural surface only   (fat-arrow function type — see 🟡 below)
+//   arrow         (T) => U positional wire from source projection today; arrow_form param slots +
+//                 TargetTypeExprArrowWireShape labeled serialize/decode staged on carrier — live
+//                 (a: T) => U emission awaits target-arrow-domain-param-list-carrier (see 🟡 below)
+// 🟡 gated — feature:target-arrow-domain-param-list-carrier — owner:Modeling DFS Arbiter — dissolve-on-arrival: substrate declares arrow-domain parameter-list vs record/product boundary and translate_project_type_expression_arrow calls target_type_expr_arrow_emitted_named (not target_type_expr_arrow_emitted) from source; until then forbidden: TS row claim or comment asserting live labeled-arrow emission from ordinary projected arrows.
 //   cardinality   Head<args>  generic collection     (e.g. Set<T> — postfix head + angle brackets,
 //                                                      mirrors Rust; the Cardinality source carries a
 //                                                      head carrier, so a head-less tuple does not fit)
 //   instantiation generic apply Foo<Bar, Baz>        (angle brackets — no Rust ::<>)
-// 🟡 gated — feature:target-function-type-named-param-binding — carrier:TargetFunctionTypeShape (open/close/arrow only, no param-name slot; Rust row identical) — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains param-name+per-param-type slot, then TS arrow carries named params — forbidden: redefining the shared carrier in this row, or claiming faithful `(a: T) => U`. (rationale in PR #4176 / commit a89bbcb8)
 // 🟡 gated — feature:target-record-field-label-binding — carrier:TargetGenericApply conj_form (open/separator/close, no field-label `:` token) + serializer:serialize_type_expr_record_bounded (06_translate) drops slot labels; Rust conj_form identical — owner:Modeling DFS Arbiter — dissolve-on-arrival: carrier gains field-label-separator token AND the shared record serializer emits each slot's Named label + `:`, then TS records serialize as `{ id: T, ... }` — forbidden: redefining the shared carrier or the load-bearing 06_translate serializer in this row, or claiming faithful labeled `{ id: T }`. L0 SG-2 probe (Instantiation `Rc<FooBar<X,Y>>`) does not exercise record field-name fidelity. (rationale in PR #4176)
 fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
@@ -1430,6 +1440,7 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: ts_surface_type_record,
       open: ts_token_lbrace,
       separator: ts_token_comma,
+      field_label_separator: optional_present(value: ts_token_colon),
       close: ts_token_rbrace
     },
     disj_form: TargetSumTypeShape {
@@ -1440,18 +1451,23 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       surface: ts_surface_type_arrow,
       open: ts_token_lparen,
       close: ts_token_rparen,
-      arrow: ts_token_fat_arrow
+      arrow: ts_token_fat_arrow,
+      param_ident_token: ts_token_ident,
+      param_type_separator: ts_token_colon,
+      param_list_separator: ts_token_comma
     },
     cardinality_form: TargetGenericApply {
       surface: ts_surface_type_cardinality,
       open: ts_token_lt,
       separator: ts_token_comma,
+      field_label_separator: optional_absent(),
       close: ts_token_gt
     },
     instantiation_form: TargetGenericApply {
       surface: ts_surface_type_generic_apply,
       open: ts_token_lt,
       separator: ts_token_comma,
+      field_label_separator: optional_absent(),
       close: ts_token_gt
     }
   }
@@ -1470,12 +1486,25 @@ fn ts_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
 fn ts_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
-      ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
-      ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
-      ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
-    ]
+    children: match form.field_label_separator {
+        Present { value: s } =>
+          list_snoc_item(
+            xs: [
+              ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
+              ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
+              ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
+              ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
+            ],
+            item: ts_named_edge(name: target_type_expr_field_field_label_separator, target: ts_inhabitant_atom(id: s))
+          )
+        Absent =>
+          [
+            ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
+            ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
+            ts_named_edge(name: target_type_expr_field_separator, target: ts_inhabitant_atom(id: form.separator)),
+            ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close))
+          ]
+      }
   }
 }
 
@@ -1496,7 +1525,19 @@ fn ts_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
       ts_named_edge(name: target_type_expr_field_surface, target: ts_inhabitant_atom(id: form.surface)),
       ts_named_edge(name: target_type_expr_field_open, target: ts_inhabitant_atom(id: form.open)),
       ts_named_edge(name: target_type_expr_field_close, target: ts_inhabitant_atom(id: form.close)),
-      ts_named_edge(name: target_type_expr_field_arrow, target: ts_inhabitant_atom(id: form.arrow))
+      ts_named_edge(name: target_type_expr_field_arrow, target: ts_inhabitant_atom(id: form.arrow)),
+      ts_named_edge(
+        name: target_type_expr_field_param_ident_token,
+        target: ts_inhabitant_atom(id: form.param_ident_token)
+      ),
+      ts_named_edge(
+        name: target_type_expr_field_param_type_separator,
+        target: ts_inhabitant_atom(id: form.param_type_separator)
+      ),
+      ts_named_edge(
+        name: target_type_expr_field_param_list_separator,
+        target: ts_inhabitant_atom(id: form.param_list_separator)
+      )
     ]
   }
 }
@@ -1715,6 +1756,42 @@ fn ts_sg2_arrow_xy_emitted() -> Node {
       identity: ts_binding_sg2_y
     )
   )
+}
+
+fn ts_sg2_arrow_labeled_xy_emitted() -> Node {
+  target_type_expr_arrow_emitted_named(
+    form: ts_type_expression_projection().arrow_form,
+    params: [
+      TargetTypeExprArrowParamSlot {
+        label: ts_binding_sg2_x,
+        type_expr: target_type_expr_atom_emitted(
+          form: ts_type_expression_projection().atom_form,
+          identity: ts_binding_sg2_x
+        )
+      }
+    ],
+    output: target_type_expr_atom_emitted(
+      form: ts_type_expression_projection().atom_form,
+      identity: ts_binding_sg2_y
+    )
+  )
+}
+
+fn ts_sg2_arrow_mixed_wire_emitted() -> Node {
+  let golden = ts_sg2_arrow_xy_emitted()
+  Node {
+    kind: golden.kind,
+    children: list_snoc_item(
+      xs: golden.children,
+      item: ts_named_edge(
+        name: target_type_expr_field_codomain,
+        target: target_type_expr_atom_emitted(
+          form: ts_type_expression_projection().atom_form,
+          identity: ts_binding_sg2_y
+        )
+      )
+    )
+  }
 }
 
 fn ts_sg2_arrow_source_type_node() -> Node {
