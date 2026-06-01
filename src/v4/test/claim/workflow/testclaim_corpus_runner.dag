@@ -1,19 +1,25 @@
 // src/v4/test/claim/workflow/testclaim_corpus_runner.dag
 // Scope: T-38 modeled corpus-level TestClaim runner over manual roster.
-// Status: wedge — fold manual_corpus_node_runtime_value_rows into CorpusEvalReport.
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; CI host transport is scripts/v4-testclaim-corpus-eval.sh under positive-Y `ci_upsert_testclaim_corpus_eval_*`. T-38-PR2 (verdict SURFACE): manual_corpus_eval.dag declares the authoring-time corpus tally witness; the CI receipt now surfaces the per-row roster + tally (retired blocked_m1_subset). Forward (residual gate): per-row RUNTIME execution of `run_manual_testclaim_corpus_eval` (cargo-clean M1 emitted subset OR bootstrap-evaluator corpus path) — load-bearing, escalated as upward debt; amend when that lands.
+// Status: runtime slice — execute rostered subjects through bootstrap-pinned v4 evaluator.
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 + docs/planning/v4-p5-bootstrap-evaluator-corpus-runtime-worksheet-2026-06-01.md §4 — structural-slice CLOSED: shell bridge deleted; CI host transport is scripts/v4-testclaim-corpus-eval.sh under positive-Y `ci_upsert_testclaim_corpus_eval_*`. Runtime-slice: run_manual_testclaim_corpus_eval rebuilds each rostered subject with bootstrap_projection_inputs.runtime_model/v4_evaluator_runtime_id and invokes run_test_claim; remaining gate is projected GitHub Actions reading `ci_pipeline`/`TestClaimCorpusEvalCommand` directly.
 
 module v4.test.claim.workflow.testclaim_corpus_runner
 
 
 import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
   TestClaimRun,
+  eval_context_v4_evaluator_wave1,
+  eval_test_claim_subject,
+  run_test_claim,
   test_claim_run_claim,
   test_claim_run_verdict
 }
+import v4.extdeps.runtimes.v4_evaluator { v4_evaluator_runtime_id }
 import v4.std.collection { List }
 import v4.std.nat { Nat }
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verdict {
   VerdictTally,
@@ -25,6 +31,7 @@ import v4.std.verification { test_claim_label }
 import v4.test.claim.manual.manual_corpus_roster {
   manual_corpus_node_runtime_value_rows
 }
+import v4.workflow.bootstrap { bootstrap_projection_inputs }
 
 
 type CorpusEvalEntry {
@@ -83,9 +90,62 @@ fn corpus_entries_from_node_runtime_value_runs(
 }
 
 
+type BootstrapEvaluatorCorpusRuntimeEval {
+  context: EvalContext
+  evaluator_pin: Symbol
+}
+
+
+fn bootstrap_evaluator_corpus_runtime_eval() -> BootstrapEvaluatorCorpusRuntimeEval {
+  BootstrapEvaluatorCorpusRuntimeEval {
+    context: eval_context_v4_evaluator_wave1()
+    evaluator_pin: bootstrap_projection_inputs.runtime_model.runtime_identity
+  }
+}
+
+
+fn runtime_subject_from_roster_run(
+  runtime: BootstrapEvaluatorCorpusRuntimeEval,
+  run: TestClaimRun<Node, RuntimeValue>
+) -> TestClaimEvalSubject<Node> {
+  let cached = run.cache.key.eval_subject
+  eval_test_claim_subject(
+    claim: test_claim_run_claim(run: run),
+    context: runtime.context,
+    tree: cached.tree,
+    evaluator_pin: runtime.evaluator_pin
+  )
+}
+
+
+fn corpus_entry_execute_via_bootstrap_evaluator(
+  runtime: BootstrapEvaluatorCorpusRuntimeEval,
+  run: TestClaimRun<Node, RuntimeValue>
+) -> CorpusEvalEntry {
+  corpus_entry_from_node_runtime_value_run(
+    run: run_test_claim(subject: runtime_subject_from_roster_run(runtime: runtime, run: run))
+  )
+}
+
+
+fn corpus_entries_execute_via_bootstrap_evaluator(
+  runtime: BootstrapEvaluatorCorpusRuntimeEval,
+  runs: List<TestClaimRun<Node, RuntimeValue>>
+) -> List<CorpusEvalEntry> {
+  map(runs, fn(run) { corpus_entry_execute_via_bootstrap_evaluator(runtime: runtime, run: run) })
+}
+
+
+fn bootstrap_evaluator_corpus_runtime_pin_is_v4(runtime: BootstrapEvaluatorCorpusRuntimeEval) -> Bool {
+  runtime.evaluator_pin == v4_evaluator_runtime_id
+}
+
+
 fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
+  let runtime = bootstrap_evaluator_corpus_runtime_eval()
   CorpusEvalReport {
-    entries: corpus_entries_from_node_runtime_value_runs(
+    entries: corpus_entries_execute_via_bootstrap_evaluator(
+      runtime: runtime,
       runs: manual_corpus_node_runtime_value_rows
     )
   }
