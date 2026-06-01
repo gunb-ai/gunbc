@@ -622,8 +622,22 @@ fn v4_nat_semiring_rung_l1_go_compiler_slice_dag_tokenizes_and_parses_claim_row(
         "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: canonical slice id symbol"
     );
     assert!(
+        surface_declares_data(&module, "go_l1_nat_semiring_rung2_l1_host_gate"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 host gate path"
+    );
+    assert!(
+        surface_declares_data(&module, "go_l1_nat_semiring_rung2_l1_receipt_schema"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 JSON receipt schema"
+    );
+    assert!(
         surface_declares_data(&module, "phase1_l1_go_compiler_slice_subject_slice_binding"),
         "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: slice id bound on receipt subject"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG.contains(
+            "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"
+        ),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: receipt schema must match host transport"
     );
     assert!(
         surface_declares_data(&module, "phase1_nat_semiring_l1_go_compiler_slice_subject"),
@@ -832,46 +846,6 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
             "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
         ),
         "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
-    );
-}
-
-#[test]
-fn v4_nat_semiring_go_l1_rung2_receipt_anchor_tokenizes_and_parses() {
-    let module = parse_module(NAT_SEMIRING_RUNG_0_TO_2_DAG, NAT_SEMIRING_RUNG_0_TO_2_PATH);
-    for name in [
-        "go_l1_nat_semiring_rung2",
-        "go_l1_nat_semiring_rung2_slice_symbol",
-        "go_l1_nat_semiring_rung2_receipt_schema",
-        "go_l1_nat_semiring_rung2_slice_subject",
-        "claim_go_l1_nat_semiring_rung2_go_build_receipt",
-        "phase1_nat_semiring_rung_0_to_2_roster",
-        "go_l1_nat_semiring_rung2_receipt_roster",
-    ] {
-        assert!(
-            surface_declares_data(&module, name),
-            "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: missing Go L1 receipt anchor data `{name}`"
-        );
-    }
-    assert!(
-        NAT_SEMIRING_RUNG_0_TO_2_DAG
-            .contains("v4.test.claim.nat_semiring.go_l1_compile_receipt_v1"),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt schema must use stable logical receipt id (host shell deleted)"
-    );
-    assert!(
-        NAT_SEMIRING_RUNG_0_TO_2_DAG.contains(
-            "slice=go_l1_nat_semiring_rung2 fixture=phase1/nat_semiring predicate=R2-go-compile receipt=go_l1_compile_receipt_v1"
-        ),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 CompilesClaim label must bind slice id, fixture, predicate, and receipt"
-    );
-    let ladder_roster = data_body(&module, "phase1_nat_semiring_rung_0_to_2_roster");
-    assert!(
-        !format!("{ladder_roster:?}").contains("claim_go_l1_nat_semiring_rung2_go_build_receipt"),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: ladder roster must remain the eight rung x target predicates"
-    );
-    let go_l1_roster = data_body(&module, "go_l1_nat_semiring_rung2_receipt_roster");
-    assert!(
-        format!("{go_l1_roster:?}").contains("claim_go_l1_nat_semiring_rung2_go_build_receipt"),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt claim must live on its separate receipt roster"
     );
 }
 

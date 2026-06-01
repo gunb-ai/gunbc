@@ -108,6 +108,7 @@ fi
 # Structured L1 receipt (worksheet §10 systemic fix item 3).
 {
   printf '{'
+  printf '"schema":"scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1",'
   printf '"slice_id":"%s",' "$slice_id"
   printf '"fixture_id":"%s",' "$fixture_id"
   printf '"go_module_root":"%s",' "$go_module_root"
