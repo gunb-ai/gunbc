@@ -171,19 +171,37 @@ type Inputs {
   root: Node
   // Host row: `claim_input_root` in `root`; rhs eval pin carried for `run_emit_host` (emit_host.dag).
   expected_eval_root: Optional<Node>
+  // W3 runner pin carriers (Atom identity Symbols); eval still uses `root` / `expected_eval_root` Nodes.
+  host_claim_pin: Optional<Node>
+  host_expected_pin: Optional<Node>
 }
 
 fn inputs_root_only(root: Node) -> Inputs {
   Inputs {
     root: root,
-    expected_eval_root: optional_absent()
+    expected_eval_root: optional_absent(),
+    host_claim_pin: optional_absent(),
+    host_expected_pin: optional_absent()
   }
 }
 
-fn inputs_for_emit_host(claim_input_root: Node, expected_eval_root: Node) -> Inputs {
+fn symbol_atom_node(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  }
+}
+
+fn inputs_for_emit_host(
+  claim_input_root: Node,
+  expected_eval_root: Node,
+  claim_pin: Symbol
+) -> Inputs {
   Inputs {
     root: claim_input_root,
-    expected_eval_root: optional_present(value: expected_eval_root)
+    expected_eval_root: optional_present(value: expected_eval_root),
+    host_claim_pin: optional_present(value: symbol_atom_node(sym: claim_pin)),
+    host_expected_pin: optional_absent()
   }
 }
 
