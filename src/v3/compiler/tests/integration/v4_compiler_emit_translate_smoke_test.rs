@@ -1123,11 +1123,7 @@ fn v4_mvp1_typescript_grammar_inverse_claims_name_l0_productions() {
         ),
     ] {
         assert!(
-            data_body_var_name_equals(
-                &task_module,
-                anchor,
-                expected
-            ),
+            data_body_var_name_equals(&task_module, anchor, expected),
             "{MVP1_TYPESCRIPT_RECORD_TASK_CLAIM_PATH}: G2 anchor {anchor} must bind {expected}"
         );
     }
