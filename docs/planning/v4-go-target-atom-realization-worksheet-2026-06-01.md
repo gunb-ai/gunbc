@@ -44,6 +44,7 @@ Systemic fix:
   Add go_target_atom_realization_{symbol,bool,char,int} rows + catalog edge on go MVP target_model
   (mirror rust_target_atom_realization_catalog wiring).
   Int row uses go_surface_spelling_int / go facts — NOT a separate parallel Int carrier name.
+  Phase 1 (#4168) lands symbol/bool/char only — see §9 Int deferral (shared carrier lacks integer value template).
 Non-goals:
   - Redefining TargetAtomRealization fields (Arbiter escalation if shape insufficient).
   - loop_bound_edge / Symbol-tagged Loop dissolution (T-12).
@@ -79,6 +80,16 @@ Metric allowed only as secondary:
 - [x] Int row authority is `go_facts_int`, not rust `i32` spelling
 - [x] TR handoff: `keen-heron-687` owns rows after §8; Go RCA does not land emit patches
 - [x] **READY-FOR-WORKER-DISPATCH** (`proud-fox-405`)
+
+---
+
+## §9 Implementation scope — phase 1 (#4168)
+
+**Shipped:** `go_target_atom_realization_{symbol,bool,char}` + `target_model_edge_atom_realizations` on live `go_mvp1_target_model_node`; staging `host_bundle` excludes catalog edge (rust SG-1 pattern); `go_mvp1_binding_spellings` maps `go_surface_spelling_{string,bool,rune}` → `"string"` / `"bool"` / `"rune"` for `06_translate` `map_get`.
+
+**Deferred (fail-closed):** `go_target_atom_realization_int` — `TargetValueTemplateKind` at `src/v4/std/target_model.dag:106-110` has Symbol/Bool/Char arms only; no integer literal template exists. Using `ValueSymbolIdentityPassthrough` for platform `int` would author false target-model facts (INVARIANTS P1/P3). Gate: `feature:go-target-atom-realization-int` in `go.dag`; dissolve-on: shared carrier adds integer `TargetValueTemplateKind` + value path. Until then platform Int R1 authority stays `go_facts_int` / `go_surface_spelling_int` (§4).
+
+**P5 / hand-Rust:** Go row smoke is same-path expansion in `v4_std_target_realization_dag_smoke_test.rs` (+0 `EXPECTED_HAND_AUTHORED_TEST` paths; INVARIANTS_OPS + census row pre-exist on `main`).
 
 ---
 

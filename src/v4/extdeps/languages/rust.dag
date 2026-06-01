@@ -117,9 +117,12 @@ import v4.std.target_model {
   target_model_edge_use_site_ownership_realizations,
   target_model_edge_reference_layer_tokens,
   TargetUseSiteOwnershipRealization,
+  TargetUseSiteOwnershipSourceProjection,
   TargetOwnershipUseSite,
   TargetReferenceLayer,
   TargetReferenceLayerTokens,
+  UseSiteOwnershipExactCarrier,
+  UseSiteOwnershipInstantiationHeadCarrier,
   OwnershipAtFunctionReturn,
   OwnershipAtFunctionParameter,
   OwnershipAtStructField,
@@ -3325,114 +3328,133 @@ fn rust_sg_rc_use_site_ownership_catalog() -> List<TargetUseSiteOwnershipRealiza
   [
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_diagnostics_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_diagnostics_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_diagnostics_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionParameter,
       reference_layer: ReferenceLayerOwned,
       display_name: rust_sg_rc_diagnostics_param
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_node_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_node_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_node_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionParameter,
       reference_layer: ReferenceLayerOwned,
       display_name: rust_sg_rc_node_param
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_node_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtStructField,
       reference_layer: ReferenceLayerBox,
       display_name: rust_sg_rc_node_return_box
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_test_claim_node(),
+      source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_test_claim_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_free_monoid_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_free_monoid_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_outcome_node(),
+      source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_outcome_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_model_core_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_model_core_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_algebra_inhabitance_decl_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_algebra_inhabitance_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_probe_heap_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtFunctionReturn,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_probe_heap_return
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_diagnostics_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_diagnostics_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_node_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_node_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_test_claim_node(),
+      source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_test_claim_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_free_monoid_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_free_monoid_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_outcome_node(),
+      source_projection: UseSiteOwnershipInstantiationHeadCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_outcome_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_model_core_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_model_core_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_algebra_inhabitance_decl_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_algebra_inhabitance_binding
     },
     TargetUseSiteOwnershipRealization {
       source_carrier: target_carrier_probe_heap_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: rust_sg_rc_probe_heap_binding
