@@ -415,6 +415,10 @@ if [[ "${verdict[R2-go-compile]}" == "PASS" ]]; then
     l1_go_compiler_slice_pass="FAIL"
     note_blocking "phase1/nat_semiring/l1/go_compiler_slice_build_rejected"
   fi
+elif [[ "$l1_go_compiler_slice_strict" == "1" ]]; then
+  # L1-only strict must fail-closed when R2-go-compile is not PASS (§2.4 upstream_blocked).
+  l1_go_compiler_slice_pass="FAIL"
+  note_blocking "upstream_blocked:R2-go-compile"
 fi
 
 {
@@ -441,7 +445,7 @@ if [[ "$strict" == "1" ]]; then
   fi
 elif [[ "$l1_runtime_strict" == "1" && "$l1_python_runtime_pass" == "FAIL" ]]; then
   exit 1
-elif [[ "$l1_go_compiler_slice_strict" == "1" && "$l1_go_compiler_slice_pass" == "FAIL" ]]; then
+elif [[ "$l1_go_compiler_slice_strict" == "1" && "$l1_go_compiler_slice_pass" != "PASS" ]]; then
   exit 1
 fi
 
