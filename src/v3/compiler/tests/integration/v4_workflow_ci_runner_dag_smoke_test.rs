@@ -790,24 +790,21 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: M1 parallelism note must cite the compute_fabric dissolve-on-arrival authority"
     );
     // The probe must run jobserver-coupled: inherited MAKEFLAGS (GHA runner unit) or ctrl-build
-    // (session containers), and it still understands the ctrl-build governor for the latter.
+    // (session containers). The inherited path must VALIDATE a usable jobserver source
+    // (`m1_inherited_jobserver_usable` → live FIFO `-p "$fifo"` / open fds), not a bare substring —
+    // a stale/malformed --jobserver-auth must fall through, not run raw uncoupled (P3 fail-closed).
     assert!(
         M1_RUST_EMIT_PROBE_SCRIPT.contains("jobserver-auth")
             && M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
-            && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
-        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to the host jobserver (MAKEFLAGS or ctrl-build)"
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("m1_inherited_jobserver_usable")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("-p \"$fifo\""),
+        "scripts/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to a VALIDATED host jobserver (live FIFO/fds or ctrl-build), not a substring"
     );
     // No fallback: the probe must fail closed when NEITHER coupling source is present (operator policy).
     assert!(
         M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
         "scripts/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
-    );
-    // The inherited MAKEFLAGS path must VALIDATE a usable jobserver source (live FIFO/fds), not a
-    // bare substring — a stale/malformed --jobserver-auth must fall through, not run raw uncoupled (P3).
-    assert!(
-        M1_RUST_EMIT_PROBE_SCRIPT.contains("m1_inherited_jobserver_usable")
-            && M1_RUST_EMIT_PROBE_SCRIPT.contains("-p \"$fifo\""),
-        "scripts/v4-m1-rust-emit-probe.sh: inherited MAKEFLAGS coupling must validate a live jobserver source, not match a substring"
     );
 }
 
