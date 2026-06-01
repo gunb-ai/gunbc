@@ -509,6 +509,27 @@ fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
     &rest[..end]
 }
 
+<<<<<<< HEAD
+=======
+/// Slice one job record from the generated `ci_github_actions_workflow.dag` artifact.
+fn generated_workflow_job_block<'a>(workflow_dag: &'a str, job_id: &str) -> &'a str {
+    let marker = format!("id: \"{job_id}\"");
+    let start = workflow_dag
+        .find(&marker)
+        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing job `{job_id}`"));
+    let rest = &workflow_dag[start..];
+    let end = rest.find("\n    }, {\n      id:").unwrap_or(rest.len());
+    &rest[..end]
+}
+
+/// Job-level `continue_on_error` is the last such field in a generated workflow job block.
+fn generated_workflow_job_continue_on_error_is_true(job_block: &str) -> bool {
+    job_block
+        .rfind("continue_on_error: ")
+        .is_some_and(|idx| job_block[idx..].starts_with("continue_on_error: true"))
+}
+
+>>>>>>> 3799dc335c (chore: cargo fmt (generated_workflow_job_block))
 fn surface_declares_test_claim_data(
     module: &v3_compiler::parse_surface::SurfaceModule,
     name: &str,
