@@ -453,9 +453,10 @@ fn expr_string(expr: &SurfaceExpr) -> &str {
 
 fn expr_string_list(expr: &SurfaceExpr) -> Vec<String> {
     match expr {
-        SurfaceExpr::List { elements, .. } => {
-            elements.iter().map(|e| expr_string(e).to_string()).collect()
-        }
+        SurfaceExpr::List { elements, .. } => elements
+            .iter()
+            .map(|e| expr_string(e).to_string())
+            .collect(),
         other => panic!("expected list literal expr, got {other:?}"),
     }
 }
@@ -855,7 +856,9 @@ fn v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: runner isolation policy must forbid root uid + passwordless sudo, guard a non-empty privileged-group set, and block the required path"
     );
     assert!(
-        CI_DAG.contains("data ci_runner_isolation_policy_ok: Bool = ci_runner_isolation_policy_valid"),
+        CI_DAG.contains(
+            "data ci_runner_isolation_policy_ok: Bool = ci_runner_isolation_policy_valid"
+        ),
         "{CI_DAG_PATH}: must carry the policy-validity receipt"
     );
 
@@ -922,7 +925,10 @@ fn v4_workflow_ci_runner_isolation_guard_modeled_and_bound_to_ci_yml() {
     // `ci` would pass while `infra_isolation` failed — the exact gap codex flagged. The aggregator
     // must `needs:` the guard AND fail closed on a non-success result.
     if blocks_required_path {
-        let ci_block = workflow_step_block(CI_YML, "Validate prerequisites (fail-closed under skipped/failed deps)");
+        let ci_block = workflow_step_block(
+            CI_YML,
+            "Validate prerequisites (fail-closed under skipped/failed deps)",
+        );
         assert!(
             CI_YML.contains(&format!("needs: [ci_floor, {guard_job_name}]")),
             "{CI_YML_PATH}: the required `ci` aggregator must `needs:` the `{guard_job_name}` guard"
