@@ -906,7 +906,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
     // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
     // MVP-2 bridge proofs (law×target); `emit_host_bridge.rs` python row (+0 NON_TEST — #4047).
-    // SG-0 + INVARIANTS §P5(b) receipt. Dissolves: ROADMAP T-PB-B / TASKS T-22 T-38.
+    // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
+    // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
+    // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
+    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Dissolves: T-PB-B / T-22 T-38.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
