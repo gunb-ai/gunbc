@@ -164,6 +164,16 @@ import v4.std.effects {
   sample_state,
   sample_upsert_composable
 }
+// F.2-P1: generator identity + provenance cross-ref. GeneratorId / GeneratorProvenance
+// are authored in v4.std.artifact (artifact identity is its single authority); testgen
+// only consumes them — no artifact law is duplicated here. profile_metadata stays a
+// testgen-local concept (GeneratorProfile below) and must not leak into artifact.dag.
+import v4.std.artifact {
+  Artifact,
+  GeneratorId,
+  GeneratorProvenance,
+  TestClaimArtifact
+}
 
 
 // 🟢 coproduct dissolution — LB-P4-3212.
@@ -234,11 +244,64 @@ type TestgenConcept
 
 
 // RULING-1: 🟡 needs-more-work — scheduling generator slot until LBE = L6 form×language coproduct shape ruled.
+// F.2-P1: every generator carries its provenance (generator identity + emitted artifact,
+// bundled in v4.std.artifact.GeneratorProvenance) and its profile metadata. Bundling
+// generator_id inside `provenance` (rather than a third flat field) keeps future provenance
+// growth a single-type edit — CLAUDE.md Cost-of-Change — and mirrors NodeArtifactProvenance.
 type Generator<C> {
   kind: TestClaimCoproductVariant
   classification: TestClassification
   anchor: ClaimAnchorKey
   slot: C
+  provenance: GeneratorProvenance
+  profile_metadata: GeneratorProfile
+}
+
+
+// F.2-P1: testgen-local generation-profile metadata. v0 carries a single profile
+// reference Symbol (precedent: leaf_model_verification build_profile / tool_profile_ref);
+// the record shape lets profile facts grow without touching Generator construction sites.
+type GeneratorProfile { profile_ref: Symbol }
+
+
+// F.2-P1: default generation profile applied to all scheduled generators until the
+// testgen CLI (wise-wolf-799 lane) selects a profile per invocation.
+data testgen_default_profile_ref: Symbol = testgen_default_profile_ref
+
+
+// F.2-P1: source file the testgen generators are authored in — the artifact file_path
+// for provenance until per-claim emit paths are modeled.
+data testgen_lens_file_path: String = "src/v4/lens/testgen.dag"
+
+
+fn default_generator_profile() -> GeneratorProfile {
+  GeneratorProfile { profile_ref: testgen_default_profile_ref }
+}
+
+
+// F.2-P1: stable per-generator identities (GeneratorId = Symbol @ v4.std.artifact).
+data testgen_gen_id_lbe_conj: Symbol = testgen_gen_id_lbe_conj
+data testgen_gen_id_lbe_disj: Symbol = testgen_gen_id_lbe_disj
+data testgen_gen_id_lbe_transform: Symbol = testgen_gen_id_lbe_transform
+data testgen_gen_id_algebra_law: Symbol = testgen_gen_id_algebra_law
+data testgen_gen_id_coproduct_compiles: Symbol = testgen_gen_id_coproduct_compiles
+data testgen_gen_id_coproduct_diagnostic: Symbol = testgen_gen_id_coproduct_diagnostic
+data testgen_gen_id_coproduct_equals: Symbol = testgen_gen_id_coproduct_equals
+data testgen_gen_id_coproduct_roundtrip: Symbol = testgen_gen_id_coproduct_roundtrip
+data testgen_gen_id_bootstrap_manual_anchor: Symbol = testgen_gen_id_bootstrap_manual_anchor
+
+
+// F.2-P1: build a generator's provenance from its identity. The emitted artifact is a
+// TestClaimArtifact keyed by the same GeneratorId; no artifact law is re-declared here.
+fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
+  GeneratorProvenance {
+    generator_id: id,
+    artifact: Artifact {
+      kind: TestClaimArtifact,
+      id: id,
+      file_path: testgen_lens_file_path,
+    },
+  }
 }
 
 
@@ -1245,6 +1308,8 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_conj_dag_surface(),
         mock: lbe_io_mock_conj_dag_surface(),
       },
+      provenance: generator_provenance(id: testgen_gen_id_lbe_conj),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimCompilesClaimVariant,
@@ -1254,6 +1319,8 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_disj_dag_surface(),
         mock: lbe_io_mock_disj_dag_surface(),
       },
+      provenance: generator_provenance(id: testgen_gen_id_lbe_disj),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimCompilesClaimVariant,
@@ -1263,6 +1330,8 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
         subject: lbe_subject_transform_dag_surface(),
         mock: lbe_io_mock_transform_dag_surface(),
       },
+      provenance: generator_provenance(id: testgen_gen_id_lbe_transform),
+      profile_metadata: default_generator_profile(),
     },
   ]
 }
@@ -1475,6 +1544,8 @@ fn testgen_algebra_law_generator_from_nat_obligation(
           slot: AlgebraLaw {
             subject: algebra_law_subject_from_nat_obligation(o: obligation),
           },
+          provenance: generator_provenance(id: testgen_gen_id_algebra_law),
+          profile_metadata: default_generator_profile(),
         },
         diagnostics: None,
       }
@@ -1741,6 +1812,8 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
+      provenance: generator_provenance(id: testgen_gen_id_coproduct_compiles),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimDiagnosticClaimVariant,
@@ -1749,6 +1822,8 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
+      provenance: generator_provenance(id: testgen_gen_id_coproduct_diagnostic),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimDiagnosticClaimVariant,
@@ -1757,6 +1832,8 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_equals()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
+      provenance: generator_provenance(id: testgen_gen_id_coproduct_equals),
+      profile_metadata: default_generator_profile(),
     },
     Generator {
       kind: TestClaimDiagnosticClaimVariant,
@@ -1765,6 +1842,8 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
         anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
       ),
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant },
+      provenance: generator_provenance(id: testgen_gen_id_coproduct_roundtrip),
+      profile_metadata: default_generator_profile(),
     },
   ]
 }
@@ -1961,7 +2040,9 @@ fn bootstrap_claim_generator_for_manual_anchor(
               kind: test_claim_coproduct_variant(c: claim),
               classification: test_claim_classification(c: claim),
               anchor: test_claim_anchor(c: claim),
-              slot: slot
+              slot: slot,
+              provenance: generator_provenance(id: testgen_gen_id_bootstrap_manual_anchor),
+              profile_metadata: default_generator_profile(),
             },
             diagnostics: diagnostics_merge(outer: d0, inner: d1)
           }
