@@ -134,7 +134,7 @@ import v2.compiler.infer_patterns {
 }
 import v2.compiler.infer_lookup {
   KnownMethodResolution,
-  resolve_known_method_node, resolve_scrutinee_type_node, warm_scrutinee_cache_for_bindings,
+  resolve_known_method_node, resolve_scrutinee_type_node,
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,

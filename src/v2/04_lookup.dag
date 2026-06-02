@@ -34,9 +34,9 @@ import v2.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
   find_child_in_env, has_child_in_env,
+  node_identity_key,
   lookup_cache_get_scrutinee, lookup_cache_put_scrutinee,
-  lookup_cache_get_enriched_kernel,
-  lookup_cache_put_enriched_kernel, enriched_kernel_cache_key
+  lookup_cache_get_enriched_kernel, lookup_cache_put_enriched_kernel
 }
 import v2.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -133,6 +133,15 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, 
   }
 }
 
+// Cache key: algebra profile name + stable identity of normalized receiver base.
+fn enriched_kernel_cache_key(name: String, base: Node) -> String? {
+  let normed = normalize_access_type_node(n: base)
+  match node_identity_key(node: normed) {
+    None => none
+    Some { value: base_key } => Some { value: concat(name, "|", base_key) }
+  }
+}
+
 // =========================================================================
 // Scrutinee type resolution
 // =========================================================================
@@ -145,24 +154,24 @@ type ScrutineeResolveResult {
 fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> ScrutineeResolveResult {
   let normed = normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count == 0 {
-    let canonical = authored_name(env: env, node: normed)
-    if canonical != "" {
-      match lookup_cache_get_scrutinee(env: env, canonical: canonical) {
-        Some { value: cached } =>
-          let node = if normed.return_cardinality == CardOptional {
-            with_optional_cardinality(n: cached)
-          } else { cached }
-          ScrutineeResolveResult { node: node, env: env }
-        None =>
-          let resolved = resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
-          let env = lookup_cache_put_scrutinee(env: env, canonical: canonical, resolved: resolved)
-          ScrutineeResolveResult { node: resolved, env: env }
-      }
-    } else {
-      ScrutineeResolveResult {
-        node: resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map()),
-        env: env
-      }
+    match node_identity_key(node: normed) {
+      None =>
+        ScrutineeResolveResult {
+          node: resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map()),
+          env: env
+        }
+      Some { value: key } =>
+        match lookup_cache_get_scrutinee(env: env, key: key) {
+          Some { value: cached } =>
+            let node = if normed.return_cardinality == CardOptional {
+              with_optional_cardinality(n: cached)
+            } else { cached }
+            ScrutineeResolveResult { node: node, env: env }
+          None =>
+            let resolved = resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
+            let env = lookup_cache_put_scrutinee(env: env, key: key, resolved: resolved)
+            ScrutineeResolveResult { node: resolved, env: env }
+        }
     }
   } else {
     ScrutineeResolveResult {
@@ -170,13 +179,6 @@ fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> ScrutineeResolveResult 
       env: env
     }
   }
-}
-
-fn warm_scrutinee_cache_for_bindings(env: TypeEnv) -> TypeEnv {
-  fold(env.bindings |> map_values, init: env, f: (acc, binding) =>
-    let resolved = resolve_scrutinee_type_node_seen(env: acc, n: binding.resolved, seen: empty_map())
-    lookup_cache_put_scrutinee(env: acc, canonical: binding.name, resolved: resolved)
-  )
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
@@ -222,7 +224,8 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
 
 fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
-  let resolved = resolve_scrutinee_type_node(env: env, n: normed).node
+  let scrut_result = resolve_scrutinee_type_node(env: env, n: normed)
+  let resolved = scrut_result.node
   let map_type = normalize_access_type_node(n: resolved)
   if node_is_keyed_collection(n: map_type, source_indices: env.source_indices) && map_type.children |> count >= 2 {
     match map_type.children |> skip(1) |> first {
@@ -236,7 +239,8 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 
 fn map_key_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
-  let resolved = resolve_scrutinee_type_node(env: env, n: normed).node
+  let scrut_result = resolve_scrutinee_type_node(env: env, n: normed)
+  let resolved = scrut_result.node
   let map_type = normalize_access_type_node(n: resolved)
   if node_is_keyed_collection(n: map_type, source_indices: env.source_indices) && map_type.children |> count >= 1 {
     match map_type.children |> first {
@@ -250,7 +254,8 @@ fn map_key_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 
 fn set_element_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
-  let resolved = resolve_scrutinee_type_node(env: env, n: normed).node
+  let scrut_result = resolve_scrutinee_type_node(env: env, n: normed)
+  let resolved = scrut_result.node
   let set_type = normalize_access_type_node(n: resolved)
   if node_is_set_collection(n: set_type, source_indices: env.source_indices) && set_type.children |> count >= 1 {
     match set_type.children |> first {
@@ -263,7 +268,8 @@ fn set_element_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 }
 
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
-  let resolved = resolve_scrutinee_type_node(env: env, n: base_type).node
+  let scrut_result = resolve_scrutinee_type_node(env: env, n: base_type)
+  let resolved = scrut_result.node
   let normed = normalize_access_type_node(n: resolved)
   let normed_opt = normed.return_cardinality == CardOptional
   if field == "value" && normed_opt {
@@ -345,13 +351,18 @@ fn lookup_field_in_product(env: TypeEnv, product: Node, method_name: String) -> 
 }
 
 fn enrich_kernel_type_cached(env: TypeEnv, name: String, base: Node) -> EnrichedKernelResult {
-  let key = enriched_kernel_cache_key(name: name, base: base)
-  match lookup_cache_get_enriched_kernel(env: env, key: key) {
-    Some { value: cached } => EnrichedKernelResult { ty: cached, env: env }
+  match enriched_kernel_cache_key(name: name, base: base) {
     None =>
       let built = enrich_kernel_type(name: name, base: base, source_indices: env.source_indices)
-      let updated = lookup_cache_put_enriched_kernel(env: env, key: key, enriched: built.ty)
-      EnrichedKernelResult { ty: built.ty, env: updated }
+      EnrichedKernelResult { ty: built.ty, env: env }
+    Some { value: key } =>
+      match lookup_cache_get_enriched_kernel(env: env, key: key) {
+        Some { value: cached } => EnrichedKernelResult { ty: cached, env: env }
+        None =>
+          let built = enrich_kernel_type(name: name, base: base, source_indices: env.source_indices)
+          let updated = lookup_cache_put_enriched_kernel(env: env, key: key, enriched: built.ty)
+          EnrichedKernelResult { ty: built.ty, env: updated }
+      }
   }
 }
 
