@@ -42,7 +42,11 @@ fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
     Accepted { value: receipt, diagnostics: _ } =>
       match testgen_scheduled_generators_outcome() {
         Accepted { value: roster, diagnostics: _ } =>
-          length(xs: receipt.generators) == length(xs: roster)
+          let profile_roster = testgen_scheduled_generators_matching_profile(
+            gens: roster,
+            profile_ref: receipt.profile_ref
+          )
+          length(xs: receipt.generators) == length(xs: profile_roster)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -60,7 +64,7 @@ fn lens_testgen_shadow_ci_rhs() -> Node {
 
 
 data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim {
-  label: "lens_testgen/shadow_ci_receipt: TestgenRunReceipt carries full scheduled roster",
+  label: "lens_testgen/shadow_ci_receipt: TestgenRunReceipt carries profile-selected scheduled generators",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: lens_testgen_shadow_ci_marker_node(marker: lens_testgen_shadow_ci_ok),
   rhs: lens_testgen_shadow_ci_rhs(),

@@ -1030,8 +1030,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     //
     // **P5 receipt (INVARIANTS.md §P5 mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
     // checkable same-path expansion — this row is unchanged (SG-0 delta 0); F.2-P1/F.2-P2 tests
-    // added inside the existing harness only. Explicit deferral: **ROADMAP.md** `### Nine lanes`
-    // row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:43`, `ROADMAP.md:63`);
+    // added inside the existing harness only. Explicit deferral: **ROADMAP.md** **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:43` Public Operational Lanes,
+    // `ROADMAP.md:63` Nine lanes);
     // dissolves when T-22 evaluates `lens_testgen/generator_provenance.dag` and
     // `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses without this Rust string ratchet.
     "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",

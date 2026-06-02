@@ -2018,7 +2018,7 @@ fn testgen_scheduled_generators_roster_holds() -> Bool {
 }
 
 
-// F.2.6 — full scheduled-generator roster for T-38 / shadow CI (profile authority).
+// F.2.6 — profile-selected scheduled generators for T-38 / shadow CI (profile authority).
 type TestgenRunReceipt {
   profile_ref: Symbol
   generators: List<Generator<TestgenConcept>>

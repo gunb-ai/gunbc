@@ -20,8 +20,8 @@
 //! `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST` is unchanged — no new hand-Rust path;
 //! `sg0_v3_test_hand_authored_subratchet` enforces disk-vs-list parity on that invariant.
 //! F.2-P1/F.2-P2 same-path tests expand inside this harness only. Explicit deferral:
-//! **ROADMAP.md** `### Nine lanes` **T-PB-B** / `pb_rust_tests_outside_residual_zero`
-//! (`ROADMAP.md:43`, `ROADMAP.md:63`); dissolve when T-22 runs
+//! **ROADMAP.md** **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+//! (`ROADMAP.md:43` Public Operational Lanes, `ROADMAP.md:63` Nine lanes); dissolve when T-22 runs
 //! `lens_testgen/generator_provenance.dag` + `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim`
 //! end-to-end. PR #4265 added T-38B `lens_effect/effect_depends_on` pins the same way.
 
