@@ -22,7 +22,7 @@ import v4.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid }
-import v4.std.collection { Map, empty_map, map_insert }
+import v4.std.collection { Absent, Map, Present, empty_map, map_get, map_insert }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -151,17 +151,22 @@ fn admit_export_symbol(
     AdmissionRejected { diagnostics: d } =>
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
-      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: admit_export_symbol origins
+      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+      // dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate at v4.std.collection);
+      // site: admit_export_symbol origins
       match map_get(os, sym) {
-        Some { value: _ } =>
-          AdmissionRejected {
-            diagnostics: resolve_diagnostics(reason: resolve_ambiguous_export)
-          }
-        None =>
-          AdmissionAccepted {
-            bindings: map_insert(m: b, key: sym, value: sym),
-            origins: map_insert(m: os, key: sym, value: origin)
-          }
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: _ } =>
+            AdmissionRejected {
+              diagnostics: resolve_diagnostics(reason: resolve_ambiguous_export)
+            }
+          Absent =>
+            AdmissionAccepted {
+              bindings: map_insert(m: b, key: sym, value: sym),
+              origins: map_insert(m: os, key: sym, value: origin)
+            }
+        }
+        Rejected { diagnostics: d } => AdmissionRejected { diagnostics: d }
       }
   }
 }
