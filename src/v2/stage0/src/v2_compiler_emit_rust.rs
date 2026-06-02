@@ -3034,7 +3034,11 @@ pub fn type_name_is_rust_importable_in_module(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match typed_module_by_name(module_name.clone(), typed_modules.clone(), source_indices.clone()) {
+    match typed_module_by_name(
+        module_name.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+    ) {
         None => false,
         Some(tm) => {
             let mut __item: Option<Rc<Node>> = None;
