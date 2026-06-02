@@ -20,21 +20,21 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
+# Wave 1 §11.7.1 safety floor -- fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
 # Required on every non-draft PR: fmt, affected-set component receipt, bootstrap viability, M1 rust emit, ci.dag structural receipt, no-new-shell.
 jobs:
-  # RUNNER-ISOLATION SECURITY FLOOR — model authority: src/v4/workflow/ci.dag
+  # RUNNER-ISOLATION SECURITY FLOOR -- model authority: src/v4/workflow/ci.dag
   # `ci_runner_isolation_policy`. This job + its carrier Job record are coverage-bound byte-for-byte
   # by the full-workflow carrier dsl/gunbc/ci_github_actions_workflow.dag (tests
   # gunbc_ci_github_actions_workflow_matches_ci_yml_structure + _pins_ci_yml_source_checksum).
   # gunbc is PUBLIC on the private self-hosted fleet, so
   # fork-PR runs execute attacker-controlled code on srv1/srv2. The operator runner de-priv (jobs run
   # as unprivileged `ghrunner`: non-root, not in docker/sudo/lxd/wheel/root, no passwordless sudo, no
-  # read on the App private key or docker.sock) lives in the fleet host config OUTSIDE this repo — a
+  # read on the App private key or docker.sock) lives in the fleet host config OUTSIDE this repo -- a
   # silent host-side regression would re-expose the fleet with no in-repo diff. This job adversarially
   # probes its own runtime privilege and fails closed the moment the runner is re-privileged. It runs
   # UNCONDITIONALLY (no draft gate, no affected mask): the fork-PR exposure exists wherever a runner
-  # executes. It does NOT check out the repo or build — no fork code runs in the guard itself. The
+  # executes. It does NOT check out the repo or build -- no fork code runs in the guard itself. The
   # operator branch-protection references the job id `infra_isolation`. Check set live-verified against
   # the de-priv by calm-gull-119 (CI floor coordination, 2026-06-01).
   infra_isolation:
@@ -61,16 +61,16 @@ jobs:
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
-        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
         # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
         # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
-        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:
         # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
         # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
-        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        # dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
@@ -93,7 +93,7 @@ jobs:
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
-  # Affected-set component host transport — live fail-closed receipt.
+  # Affected-set component host transport -- live fail-closed receipt.
   # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
     if: github.event.pull_request.draft != true
@@ -114,16 +114,16 @@ jobs:
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
-        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
         # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
         # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
-        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:
         # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
         # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
-        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        # dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
@@ -149,7 +149,7 @@ jobs:
     - name: Detect affected components
       id: detect
       run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
-  # §11.7.1 Class A safety floor — single job, one v2 build, two compiles (M1 rust + bootstrap dag).
+  # §11.7.1 Class A safety floor -- single job, one v2 build, two compiles (M1 rust + bootstrap dag).
   ci_floor:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
@@ -161,16 +161,16 @@ jobs:
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
         # INTERIM sccache transport (operator 2026-06-01 override; "disregard the memo for now").
         # Right-way fix is the modeled cache_interface projection consumer (dsl/std/cache_interface.dag
-        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) — NOT this hand-wire.
+        # sccache_local_facts; src/v4/workflow/ci.dag cache-projection note) -- NOT this hand-wire.
         # The runner provides an ISOLATED, ghrunner-owned sccache via systemd env (SCCACHE_DIR +
         # SCCACHE_SERVER_UDS, ctrl#1419). Do NOT hardcode SCCACHE_SERVER_UDS here: a job/step-level
         # env beats the runner default, so pinning the old shared socket forces EACCES and keeps
         # sccache inert. Inherit the runner's socket; only flip RUSTC_WRAPPER on. The server starts
         # LAZILY (sccache creates the socket on the first rustc call), so the socket does NOT exist yet
-        # at this pre-cargo step — gate on the socket's PARENT DIR being writable, not the socket file:
+        # at this pre-cargo step -- gate on the socket's PARENT DIR being writable, not the socket file:
         # the runner provisions that dir ghrunner:ghrunner 0755 (ctrl#1419), so the gate passes pre-start
         # and sccache then binds its socket there on first rustc. Fails SAFE: a missing or non-writable
-        # dir → cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
+        # dir -> cold build (::warning), never silently / never fail-hard. dissolve-on-arrival.
         if [ -n "$SCCACHE_SERVER_UDS" ] && [ -w "$(dirname "$SCCACHE_SERVER_UDS")" ]; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
@@ -194,13 +194,13 @@ jobs:
     # INTERIM transport repair (operator 2026-06-01, "stop the bleeding"). Authority for the
     # right-way fix: src/v4/workflow/ci.dag cache-projection note + dsl/std/cache_interface.dag.
     # The old key mixed in hashFiles('src/v3/compiler/src/**', …), which changes on nearly every
-    # commit — so the primary slot was NEVER reused: each run minted a brand-new ~200 MiB cache,
+    # commit -- so the primary slot was NEVER reused: each run minted a brand-new ~200 MiB cache,
     # flooding the repo's 10 GB budget and LRU-evicting the warm caches (including the v2
     # `gunbc-bin` build) before the next run could restore them. Cargo's own fingerprinting
     # already invalidates stale crates on top of a restored target/, so the v3-src component
-    # bought churn, not correctness. De-churned to Cargo.lock + toolchain → one cache per
+    # bought churn, not correctness. De-churned to Cargo.lock + toolchain -> one cache per
     # dependency set, restored via the broad restore-key, eviction pressure cut ~100×.
-    # Does NOT speed up the M1 emit-probe / bootstrap steps — those need content-addressed
+    # Does NOT speed up the M1 emit-probe / bootstrap steps -- those need content-addressed
     # sccache via the modeled cache_interface projection (see ci.dag note). dissolve-on-arrival.
     - name: Cache Cargo (ci floor)
       uses: actions/cache@v4
@@ -222,7 +222,7 @@ jobs:
         # Broad restore-key fallback (independent of sccache): when the exact key misses (Cargo.lock /
         # toolchain / stage0 churn), restore the most-recent prior gunbc binary instead of nothing. The
         # build step below is gated on exact `cache-hit == 'true'`, so a partial restore still triggers a
-        # rebuild — but on top of the warm `target/` restored by the Cargo cache, that rebuild is
+        # rebuild -- but on top of the warm `target/` restored by the Cargo cache, that rebuild is
         # incremental (~3-6 min saved) rather than cold. Safe: a stale binary is overwritten by the rebuild.
         restore-keys: |
           gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
@@ -235,7 +235,7 @@ jobs:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         # Per-invocation --jobs ceiling, projected from v4.workflow.ci m1_probe_cargo_check_jobs_ceiling.
         # Parallelism is jobserver-coupled (inherited MAKEFLAGS on GHA runners / ctrl-build in session
-        # containers): the host token pool pares actual concurrency below this ceiling — fill when idle,
+        # containers): the host token pool pares actual concurrency below this ceiling -- fill when idle,
         # pare under load. No static fallback: the probe fails closed if neither coupling is present.
         # See src/v4/workflow/ci.dag note.
         V4_M1_CARGO_CHECK_JOBS_CEILING: "64"
@@ -276,7 +276,7 @@ jobs:
           exit 1
         fi
         if [[ "${{ needs.infra_isolation.result }}" != "success" ]]; then
-          echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified — ci aggregator fails closed."
+          echo "::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed."
           exit 1
         fi
         echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + five Class-A gates in ci_floor; infra_isolation de-priv guard green)"
