@@ -109,6 +109,19 @@ mkdir -p "$scratch"
 printf '%s' "$happy_source" >"${scratch}/happy.py"
 printf '%s' "$falsification_source" >"${scratch}/falsification.py"
 
+# Modeled profile → scratch mypy.ini (single authority). `--config-file` prevents cwd/HOME
+# discovery of repo or user mypy.ini / pyproject.toml / setup.cfg.
+mypy_strict_ini=False
+mypy_show_error_codes_ini=False
+[[ "$mypy_strict" == true ]] && mypy_strict_ini=True
+[[ "$mypy_show_error_codes" == true ]] && mypy_show_error_codes_ini=True
+cat >"${scratch}/mypy.ini" <<INI
+[mypy]
+python_version = ${mypy_python_version}
+strict = ${mypy_strict_ini}
+show_error_codes = ${mypy_show_error_codes_ini}
+INI
+
 compile_authority_misses=true
 runtime_authority_misses=true
 for label in happy falsification; do
@@ -124,19 +137,17 @@ mypy_available=false
 happy_static_clean=false
 falsification_static_rejected=false
 
-mypy_profile_args=()
-[[ "$mypy_strict" == true ]] && mypy_profile_args+=(--strict)
-[[ "$mypy_show_error_codes" == true ]] && mypy_profile_args+=(--show-error-codes)
-
-# Hermetic tool policy (TESTING.md): consume a pre-provisioned `mypy` on PATH whose
-# `--version` matches mypy_profile_l1.mypy_version. No pip/venv/bootstrap/network fetch.
+# Hermetic tool policy (TESTING.md): pre-provisioned pinned `mypy` on PATH + scratch config/cache
+# only (no pip/network; no ambient config discovery).
 mypy_run() {
   local target="$1" out="$2"
   if ! command -v mypy >/dev/null 2>&1 \
      || ! mypy --version 2>/dev/null | grep -qw "$mypy_version"; then
     return 2
   fi
-  mypy --python-version "$mypy_python_version" "${mypy_profile_args[@]}" "$target" >"$out" 2>&1 || true
+  mypy --config-file "${scratch}/mypy.ini" \
+    --cache-dir "${scratch}/.mypy_cache" \
+    "$target" >"$out" 2>&1 || true
   grep -qE 'Success: no issues found|error: ' "$out" || return 2
   return 0
 }
@@ -182,7 +193,8 @@ print(json.dumps({
         "python_version": os.environ["V4_MYPY_PYTHON_VERSION"],
         "strict": b("V4_MYPY_STRICT"),
         "show_error_codes": b("V4_MYPY_SHOW_ERROR_CODES"),
-        "profile": "mypy_profile_l1 (single authority: src/v4/extdeps/typecheckers/mypy.dag)",
+        "profile": "mypy_profile_l1 (single authority: mypy.dag → scratch/mypy.ini)",
+        "config_file": "scratch/mypy.ini (generated from mypy_profile_l1)",
     },
     "authority_separation": {
         "py_compile_accepts_both": b("V4_MYPY_COMPILE_MISSES"),
