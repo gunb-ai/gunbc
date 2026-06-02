@@ -48,6 +48,7 @@ def main() -> None:
         (
             "type LensOwnershipSubject",
             "claim_id: Symbol",
+            "data claim_lens_ownership_resource_dependency_id: Symbol = claim_lens_ownership_resource_dependency",
             "structural_witness: Bool",
             "ownership_resource_dependency_claim_passes",
             "fn ownership_claim_input(ok: Bool) -> Node",
@@ -56,7 +57,7 @@ def main() -> None:
             "data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node>",
             "eval_test_claim_subject(",
             "data lens_ownership_subject_roster: List<LensOwnershipSubject>",
-            "claim_id: claim_lens_ownership_resource_dependency",
+            "claim_id: claim_lens_ownership_resource_dependency_id",
             "data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>>",
             "lens_ownership_subject_roster",
             "subject.eval_subject",
@@ -108,9 +109,9 @@ def main() -> None:
             "LensOwnershipSubject",
             "ci_lens_ownership_family_eval_claim_ids_from_roster",
             "ci_lens_ownership_family_eval_claim_ids",
+            "ci_lens_ownership_subject_roster_decl_name",
             "subject.claim_id",
             "roster: lens_ownership_subject_roster",
-            "claim_lens_ownership_resource_dependency",
             "witness_lens_ownership_family_gate_closed",
         ),
     )

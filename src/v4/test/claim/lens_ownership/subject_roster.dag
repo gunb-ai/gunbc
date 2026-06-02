@@ -29,6 +29,7 @@ import v4.test.claim.lens_ownership.resource_dependency {
 
 
 data lens_ownership_resource_dependency_pin: Symbol = lens_ownership_resource_dependency_pin
+data claim_lens_ownership_resource_dependency_id: Symbol = claim_lens_ownership_resource_dependency
 data lens_ownership_claim_pass_symbol: Symbol = lens_ownership_claim_pass_symbol
 data lens_ownership_claim_fail_symbol: Symbol = lens_ownership_claim_fail_symbol
 
@@ -85,7 +86,7 @@ data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = ev
 
 data lens_ownership_subject_roster: List<LensOwnershipSubject> = [
   LensOwnershipSubject {
-    claim_id: claim_lens_ownership_resource_dependency,
+    claim_id: claim_lens_ownership_resource_dependency_id,
     claim: claim_lens_ownership_resource_dependency,
     structural_witness: ownership_resource_dependency_claim_passes,
     eval_subject: subject_lens_ownership_resource_dependency
