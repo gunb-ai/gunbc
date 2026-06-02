@@ -374,7 +374,7 @@ type RustLanguageModel {
   grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
-  core: ModelCore
+  core: Outcome<ModelCore>
 }
 
 // T-11 rust-first grammar relation row: fixed terminals and bound terminals share
@@ -2678,29 +2678,20 @@ fn rust_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegi
   )
 }
 
-fn rust_checked_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
-  match rust_per_language_fact_bundle_registry() {
-    Accepted { value: registry, diagnostics: _ } => registry
-    Rejected { diagnostics: d } =>
-      PerLanguageFactBundleRegistry {
-        by_key: Map {
-          lookup: fn(_) {
-            Violates { diagnostic: d.head }
-          }
-        }
-      }
-  }
-}
-
-fn rust_primitive_bundle_from_registry_subject(subject_carrier: Node) -> PrimitiveFactBundle {
+fn rust_primitive_bundle_from_registry_subject(
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node
+) -> PrimitiveFactBundle {
   primitive_fact_bundle_for_registry_subject(
-    registry: rust_checked_per_language_fact_bundle_registry(),
+    registry: registry,
     subject_carrier: subject_carrier,
     target_identity: rust_language_model_surface_id
   )
 }
 
-fn rust_primitive_bundles_from_integer_catalog_registry() -> List<PrimitiveFactBundle> {
+fn rust_primitive_bundles_from_integer_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
   fold_list(
     xs: rust_integer_facts_catalog,
     empty: Empty,
@@ -2708,6 +2699,7 @@ fn rust_primitive_bundles_from_integer_catalog_registry() -> List<PrimitiveFactB
       list_snoc_item(
         xs: acc,
         item: rust_primitive_bundle_from_registry_subject(
+          registry: registry,
           subject_carrier: rust_integer_facts_node(facts: facts)
         )
       )
@@ -2715,7 +2707,9 @@ fn rust_primitive_bundles_from_integer_catalog_registry() -> List<PrimitiveFactB
   )
 }
 
-fn rust_primitive_bundles_from_float_catalog_registry() -> List<PrimitiveFactBundle> {
+fn rust_primitive_bundles_from_float_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
   fold_list(
     xs: rust_float_facts_catalog,
     empty: Empty,
@@ -2723,6 +2717,7 @@ fn rust_primitive_bundles_from_float_catalog_registry() -> List<PrimitiveFactBun
       list_snoc_item(
         xs: acc,
         item: rust_primitive_bundle_from_registry_subject(
+          registry: registry,
           subject_carrier: rust_float_facts_node(facts: facts)
         )
       )
@@ -2730,7 +2725,9 @@ fn rust_primitive_bundles_from_float_catalog_registry() -> List<PrimitiveFactBun
   )
 }
 
-fn rust_primitive_bundles_from_noninteger_catalog_registry() -> List<PrimitiveFactBundle> {
+fn rust_primitive_bundles_from_noninteger_catalog_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
   fold_list(
     xs: rust_noninteger_facts_catalog,
     empty: Empty,
@@ -2738,6 +2735,7 @@ fn rust_primitive_bundles_from_noninteger_catalog_registry() -> List<PrimitiveFa
       list_snoc_item(
         xs: acc,
         item: rust_primitive_bundle_from_registry_subject(
+          registry: registry,
           subject_carrier: rust_noninteger_facts_node(facts: facts)
         )
       )
@@ -2745,23 +2743,32 @@ fn rust_primitive_bundles_from_noninteger_catalog_registry() -> List<PrimitiveFa
   )
 }
 
-fn rust_wave1_primitive_fact_bundles_from_registry() -> List<PrimitiveFactBundle> {
+fn rust_wave1_primitive_fact_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
-      left: rust_primitive_bundles_from_integer_catalog_registry(),
-      right: rust_primitive_bundles_from_float_catalog_registry()
+      left: rust_primitive_bundles_from_integer_catalog_registry(registry: registry),
+      right: rust_primitive_bundles_from_float_catalog_registry(registry: registry)
     ),
-    right: rust_primitive_bundles_from_noninteger_catalog_registry()
+    right: rust_primitive_bundles_from_noninteger_catalog_registry(registry: registry)
   )
 }
 
-fn rust_model_core_wave1() -> ModelCore {
-  ModelCore {
-    primitives: rust_wave1_primitive_fact_bundles_from_registry(),
-    inhabitance: rust_model_core_inhabitance_decls(),
-    laws: rust_model_core_law_obligations(),
-    effects: rust_effect_semantics_wave2(),
-    partiality: rust_partiality_semantics_wave2()
+fn rust_model_core_wave1() -> Outcome<ModelCore> {
+  match rust_per_language_fact_bundle_registry() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: registry, diagnostics: diagnostics } =>
+      Accepted {
+        value: ModelCore {
+          primitives: rust_wave1_primitive_fact_bundles_from_registry(registry: registry),
+          inhabitance: rust_model_core_inhabitance_decls(),
+          laws: rust_model_core_law_obligations(),
+          effects: rust_effect_semantics_wave2(),
+          partiality: rust_partiality_semantics_wave2()
+        },
+        diagnostics: diagnostics
+      }
   }
 }
 

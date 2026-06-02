@@ -371,7 +371,6 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
         "rust_noninteger_per_language_fact_bundle_entries",
         "rust_per_language_fact_bundle_entries",
         "rust_per_language_fact_bundle_registry",
-        "rust_checked_per_language_fact_bundle_registry",
         "rust_wave1_primitive_fact_bundles_from_registry",
     ] {
         assert!(
@@ -390,22 +389,37 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
         "{RUST_LANGUAGE_PATH}: Rust G.1.1 registry entry axis must be the closed model_core coproduct, not Symbol"
     );
     assert!(
-        fn_external_body_contains(
-            &module,
-            RUST_LANGUAGE_DAG,
-            "rust_model_core_wave1",
-            "rust_wave1_primitive_fact_bundles_from_registry()"
-        ),
-        "{RUST_LANGUAGE_PATH}: Rust ModelCore.primitives must consume the G.1.1 registry projection"
+        surface_fn_return_type(&module, "rust_model_core_wave1").as_deref()
+            == Some("Outcome<ModelCore>"),
+        "{RUST_LANGUAGE_PATH}: Rust ModelCore construction must preserve registry rejection as Outcome<ModelCore>"
     );
     assert!(
         fn_external_body_contains(
             &module,
             RUST_LANGUAGE_DAG,
-            "rust_primitive_bundle_from_registry_subject",
-            "rust_checked_per_language_fact_bundle_registry()"
+            "rust_model_core_wave1",
+            "rust_per_language_fact_bundle_registry()"
+        ) && fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_model_core_wave1",
+            "rust_wave1_primitive_fact_bundles_from_registry(registry: registry)"
         ),
-        "{RUST_LANGUAGE_PATH}: Rust ModelCore registry projection must consume the fail-closed Outcome registry"
+        "{RUST_LANGUAGE_PATH}: Rust ModelCore.primitives must consume the G.1.1 Outcome registry projection"
+    );
+    assert!(
+        !surface_declares_fn(&module, "rust_checked_per_language_fact_bundle_registry")
+            && !RUST_LANGUAGE_DAG.contains("diagnostic-returning map"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 must not collapse rejected registry construction into a plain value registry"
+    );
+    assert!(
+        fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_model_core_wave1",
+            "Rejected { diagnostics: d } => Rejected { diagnostics: d }"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 rejected registry construction must fail closed at ModelCore construction"
     );
     assert!(
         !RUST_LANGUAGE_DAG.contains("rust_per_language_fact_bundle_registry_value"),
