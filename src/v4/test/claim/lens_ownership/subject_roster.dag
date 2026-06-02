@@ -30,7 +30,6 @@ import v4.test.claim.lens_ownership.resource_dependency {
 
 data lens_ownership_resource_dependency_pin: Symbol = lens_ownership_resource_dependency_pin
 data claim_lens_ownership_resource_dependency_id: Symbol = claim_lens_ownership_resource_dependency
-data lens_ownership_unknown_claim_id: Symbol = lens_ownership_unknown_claim_id
 data lens_ownership_claim_pass_symbol: Symbol = lens_ownership_claim_pass_symbol
 data lens_ownership_claim_fail_symbol: Symbol = lens_ownership_claim_fail_symbol
 
@@ -60,36 +59,32 @@ fn ownership_claim_input(ok: Bool) -> Node {
 }
 
 
-type LensOwnershipSubject {
-  claim: TestClaim
-}
+type LensOwnershipSubject
+  = ResourceDependencySubject
 
 
 fn lens_ownership_resource_dependency_subject() -> LensOwnershipSubject {
-  LensOwnershipSubject { claim: claim_lens_ownership_resource_dependency }
+  ResourceDependencySubject
 }
 
 
 fn lens_ownership_subject_claim_id(subject: LensOwnershipSubject) -> Symbol {
-  match subject.claim {
-    claim_lens_ownership_resource_dependency => claim_lens_ownership_resource_dependency_id
-    _ => lens_ownership_unknown_claim_id
+  match subject {
+    ResourceDependencySubject => claim_lens_ownership_resource_dependency_id
   }
 }
 
 
 fn lens_ownership_subject_structural_witness(subject: LensOwnershipSubject) -> Bool {
-  match subject.claim {
-    claim_lens_ownership_resource_dependency => ownership_resource_dependency_claim_passes
-    _ => false
+  match subject {
+    ResourceDependencySubject => ownership_resource_dependency_claim_passes
   }
 }
 
 
 fn lens_ownership_subject_eval_subject(subject: LensOwnershipSubject) -> TestClaimEvalSubject<Node> {
-  match subject.claim {
-    claim_lens_ownership_resource_dependency => subject_lens_ownership_resource_dependency
-    _ => subject_lens_ownership_unknown_claim
+  match subject {
+    ResourceDependencySubject => subject_lens_ownership_resource_dependency
   }
 }
 
@@ -103,25 +98,8 @@ data claim_lens_ownership_resource_dependency: TestClaim = EqualsClaim {
 }
 
 
-data claim_lens_ownership_unknown_claim: TestClaim = EqualsClaim {
-  label: "lens_ownership unknown roster claim (fail-closed)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ownership_claim_fail_node(),
-  rhs: ownership_claim_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-
 data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = eval_test_claim_subject(
   claim: claim_lens_ownership_resource_dependency,
-  context: eval_context_v4_evaluator_wave1(),
-  tree: ownership_claim_tree(),
-  evaluator_pin: lens_ownership_resource_dependency_pin
-)
-
-
-data subject_lens_ownership_unknown_claim: TestClaimEvalSubject<Node> = eval_test_claim_subject(
-  claim: claim_lens_ownership_unknown_claim,
   context: eval_context_v4_evaluator_wave1(),
   tree: ownership_claim_tree(),
   evaluator_pin: lens_ownership_resource_dependency_pin
