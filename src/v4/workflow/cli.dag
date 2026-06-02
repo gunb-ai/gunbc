@@ -1,0 +1,72 @@
+// src/v4/workflow/cli.dag
+// Scope: gunbc CLI route contract rows (Branch H §H.5 CLI surface).
+// Status: Wave-2 row-shaped route contracts for the Runtime/TestClaim CLI surface
+//   (`gunbc testgen`, `gunbc test`). Deliberately NOT a closed command coproduct so
+//   Source-authority (Branch H) can compose its own `gunbc compile --target dag` row
+//   without duplicate authority — coordinated with Source-authority Mgr (silent-koi-227).
+// Authority split (§H.5): testgen/test are Runtime/TestClaim CLI rows; compile --target
+//   dag is the source-authority row; JSON/IR output is boundary/debug, never source.
+
+module v4.workflow.cli
+
+
+import v4.std.node { Symbol }
+import v4.std.artifact { GeneratorId }
+
+
+// Semantic class of a gunbc CLI route, per §H.5 RR-H acceptance ("CLI routes named by
+// source vs debug semantics"). A neutral shared classifier: rows in each domain tag
+// their own semantics, so Source-authority can add `SourceAuthorityRoute`-classed rows
+// (compile --target dag) alongside these Runtime/TestClaim rows without contention.
+// 🟢 coproduct dissolution
+type GunbcCliRouteSemantics
+  = SourceAuthorityRoute
+  | RuntimeTestClaimRoute
+  | BoundaryDebugRoute
+
+
+// `gunbc testgen` — synthesize generated TestClaim artifacts. A Runtime/TestClaim route:
+// it emits `GeneratedSource` / `TestClaimArtifact` whose provenance names the producing
+// generator (`GeneratorId`). It never produces canonical source — generated `.dag` text
+// is not source-fidelity proof (Source-authority guardrail).
+type GunbcTestgenRoute {
+  route_name: Symbol
+  semantics: GunbcCliRouteSemantics
+  generator: GeneratorId
+}
+
+
+// `gunbc test` — execute the TestClaim corpus at runtime (T-38 harness). A runtime verdict
+// surface keyed by a corpus selection function, not an authoring-time / source-authority
+// route. Mirrors the `selection_fn` authority on `ci.dag` `TestClaimCorpusEvalCommand`.
+type GunbcTestRoute {
+  route_name: Symbol
+  semantics: GunbcCliRouteSemantics
+  selection_fn: Symbol
+}
+
+
+// Canonical row names — single authority for the two Runtime/TestClaim CLI route names
+// (self-identifying Symbol idiom, cf. `dag_language_model_surface_id`).
+data gunbc_testgen_route_name: Symbol = gunbc_testgen_route_name
+data gunbc_test_route_name: Symbol = gunbc_test_route_name
+
+
+// Canonical constructors pin each row's name and semantics so a consumer cannot
+// misclassify a Runtime/TestClaim route as source-authority (enforces §H.5 naming).
+fn gunbc_testgen_route(generator: GeneratorId) -> GunbcTestgenRoute {
+  GunbcTestgenRoute {
+    route_name: gunbc_testgen_route_name,
+    semantics: RuntimeTestClaimRoute,
+    generator: generator
+  }
+}
+
+
+fn gunbc_test_route(selection_fn: Symbol) -> GunbcTestRoute {
+  GunbcTestRoute {
+    route_name: gunbc_test_route_name,
+    semantics: RuntimeTestClaimRoute,
+    selection_fn: selection_fn
+  }
+}
