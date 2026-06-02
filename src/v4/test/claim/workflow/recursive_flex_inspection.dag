@@ -37,6 +37,7 @@ import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.algebra { contains }
 import v4.test.claim.workflow.inprocess_equivalence { inprocess_equivalence_holds }
+import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
 import v4.workflow.ci { ci_testclaim_corpus_eval_claim_ids }
 import v4.workflow.bootstrap { bootstrap_plan_accepted_hash_pins_projectable_witness }
 
