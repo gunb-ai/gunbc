@@ -55,18 +55,20 @@ def main() -> None:
             "fn ownership_claim_input(ok: Bool) -> Node",
             "lhs: ownership_claim_input(ok: ownership_resource_dependency_claim_passes)",
             "rhs: ownership_claim_pass_node()",
+            "fn lens_ownership_subject_eval_subject(subject: LensOwnershipSubject) -> TestClaimEvalSubject<Node>",
+            "fn lens_ownership_subject_structural_witness(subject: LensOwnershipSubject) -> Bool",
             "data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node>",
             "eval_test_claim_subject(",
             "data lens_ownership_subject_roster: List<LensOwnershipSubject>",
             "claim_id: claim_lens_ownership_resource_dependency_id",
             "data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>>",
             "lens_ownership_subject_roster",
-            "subject.eval_subject",
+            "lens_ownership_subject_eval_subject(subject: subject)",
         ),
     )
 
     roster_body = subject_roster.split("data lens_ownership_node_subject_rows:")[1].split("\n\n", 1)[0]
-    if "lens_ownership_subject_roster" not in roster_body or "subject.eval_subject" not in roster_body:
+    if "lens_ownership_subject_roster" not in roster_body or "lens_ownership_subject_eval_subject(subject: subject)" not in roster_body:
         raise SystemExit("lens_ownership_node_subject_rows must project from LensOwnershipSubject rows")
 
     _require_substrings(
@@ -77,11 +79,11 @@ def main() -> None:
             "run_test_claim",
             "LensOwnershipSubject",
             "fn run_lens_ownership_subjects",
-            "map(subjects, fn(subject) { run_test_claim(subject: subject.eval_subject) })",
+            "map(subjects, fn(subject) { run_test_claim(subject: lens_ownership_subject_eval_subject(subject: subject)) })",
             "runs: run_lens_ownership_subjects(subjects: lens_ownership_subject_roster)",
             "fn lens_ownership_family_report_tally",
             "fn lens_ownership_structural_witnesses_hold",
-            "acc && subject.structural_witness",
+            "acc && lens_ownership_subject_structural_witness(subject: subject)",
             "lens_ownership_structural_witnesses_hold() && lens_ownership_family_all_pass(report: report)",
             "witness_lens_ownership_family_gate_closed",
         ),
