@@ -1176,7 +1176,9 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         "{CI_DAG_PATH}: §11.7.5 carries exactly two Class-A shell exceptions (bootstrap + M1)"
     );
     for needle in [
-        "job: v2_bootstrap_smoke_execution",
+        // bootstrap-viability.sh is the v2→v4 full compile over src/v4 — its live step + retiring
+        // authority are `v2_compile_src_v4`, not the lighter `v2_bootstrap_smoke_execution`.
+        "job: v2_compile_src_v4",
         ".github/ci-floor/v4-bootstrap-viability.sh",
         "protects_floor: BootstrapMinimalViability",
         "job: m1_rust_emit_probe_execution",
@@ -1193,7 +1195,7 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     // declared elsewhere in this module — NOT a parallel `Symbol` alias that could drift or name
     // a non-existent upsert. Assert both the table reference and the authority declaration exist.
     for upsert in [
-        "ci_upsert_v2_bootstrap_smoke_execution",
+        "ci_upsert_v2_compile_src_v4",
         "ci_upsert_m1_rust_emit_probe_execution",
     ] {
         assert!(
