@@ -1,5 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 vs `origin/main` on `EXPECTED_HAND_AUTHORED_TEST` for `v4_t15_self_host_fixed_point_harness_test.rs` (INVARIANTS §P5(b) T-15 execution + bootstrap fixpt stage1==stage2 harness; `claim_t15_self_host_fixed_point.dag` EqualsClaim scaffold). Follow-up dispatch: B1 merkle digests + T-22 eval replace host receipts per `src/v4/TASKS.md` §T-15 / §T-38; tracked gunbc#3897.
-
-Note: `v4_extdeps_formatters_black_dag_smoke_test.rs` (+ file/mod/INVARIANTS) is restored from `origin/main` (T-4.16 already on main); it appears in the merge-base three-dot diff but is **0 net** vs current `main` — branch catch-up after cursor RC, not a second hand-path add.

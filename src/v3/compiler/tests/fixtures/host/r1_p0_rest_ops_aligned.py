@@ -12,7 +12,7 @@ import sys
 
 
 def main() -> int:
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[6]
     path = root / "dsl" / "extdeps" / "github" / "pulls.dag"
     text = path.read_text(encoding="utf-8")
     needle = "operation CreateComment"

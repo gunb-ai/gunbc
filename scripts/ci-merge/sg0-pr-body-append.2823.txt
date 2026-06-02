@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) dispatch via docs/briefs/r3-substrate-gate-62-file-attachment-carrier-worker.md (gate #62 `substrate_gap_file_ingestion_closed`); INVARIANTS.md §SG-0 hand-authored integration test receipt lands same PR as the `EXPECTED_HAND_AUTHORED_TEST` census line (P5 paired dispatch).

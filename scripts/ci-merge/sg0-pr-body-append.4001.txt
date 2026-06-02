@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_lens_identical_variant_payload_dag_smoke_test.rs` (INVARIANTS §P5(b) parse-level ratchet for `src/v4/lens/identical_variant_payload.dag` — L1.4 IdenticalVariantPayload sub-signature; shared `coverage_defect_carrier_clone`). Follow-up dispatch to retire host smoke when `v4.lens.structural_similarity` lands and enforcement runs without this parse ratchet per ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero`; tracked gunbc#4001.

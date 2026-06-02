@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/v4-bootstrap-viability.sh
+# .github/ci-floor/v4-bootstrap-viability.sh
 #
 # Fail-closed v4 bootstrap gate: v2-compiler full compile over src/v4.
 # Success requires exit 0 and the compiler's `compiled: N files emitted, 0 diagnostics` line.

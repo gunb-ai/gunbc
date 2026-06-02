@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) dispatch deferral for the T-PB-B test subset net add: this PR adds one temporary hand-authored Rust ratchet (`src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs`) plus matching INVARIANTS §P5(b) and SG-0 census receipts. Dispatch remains tracked in gunbc#3331 until the same T-19/T-20 closeout checks are `.dag` TestClaims or generated harness coverage.
