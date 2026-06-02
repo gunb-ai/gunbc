@@ -1,4 +1,4 @@
-//! T-22 substrate eval dispatch: `run_emit_host_rust` → `tools/emit_host_runner`.
+//! T-22 substrate eval dispatch: `run_emit_host_{rust,go}` → `tools/emit_host_runner`.
 //!
 //! **Modeled authority:** `src/v4/compiler/emit_host.dag` + `v4.std.host_run` — host receipt
 //! assembly (`emit_host_receipt_from_source`, `host_logical_run_from_exit`) is evaluated via
@@ -9,13 +9,14 @@
 //! row in `sg0_census_test.rs` paired with `v4_emit_host_eval_dispatch_test.rs`. Explicit
 //! deferral: lane T-PB-B / `pb_rust_tests_outside_residual_zero` (checkable:
 //! `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag` TestClaim name and `ROADMAP.md`
-//! T-PB-B row) plus `emit_host.dag` T-22 rust
-//! intercept. Dissolution: substrate Callable
-//! dispatch owns `run_emit_host_rust` without this intercept; retires with `emit_host_bridge.rs`.
+//! T-PB-B row) plus `emit_host.dag` T-22 rust/go
+//! intercepts. Dissolution: substrate Callable
+//! dispatch owns `run_emit_host_{rust,go}` without this intercept; retires with
+//! `emit_host_bridge.rs`.
 
 use crate::dag::{ArrowBody, Dag, DeclarationId, LiteralBits, TypeConnective};
 
-/// Canonical substrate authority for `run_emit_host_rust` (see `src/v4/compiler/emit_host.dag`).
+/// Canonical substrate authority for `run_emit_host_{rust,go}` (see `src/v4/compiler/emit_host.dag`).
 const EMIT_HOST_DAG_AUTHORITY_SUFFIX: &str = "emit_host.dag";
 
 use crate::evaluator::{EvalError, EvalStateStack, EvalStrategy, NamedField, Value};
@@ -93,9 +94,87 @@ pub fn try_dispatch_emit_host_rust(
     )
 }
 
+/// Eval-time dispatch for `run_emit_host_go` (substrate `emit_host.dag` only).
+pub fn try_dispatch_emit_host_go(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    if !is_run_emit_host_go_decl(dag, callee_decl) {
+        return None;
+    }
+    if operands.len() != 3 {
+        return Some(Err(EvalError::TransformArityMismatch {
+            expected: 3,
+            got: operands.len(),
+        }));
+    }
+
+    let source = match expect_string_operand(&operands[1]) {
+        Ok(source) => source,
+        Err(err) => return Some(Err(err)),
+    };
+    let inputs = match emit_host_fixture_inputs(dag, &operands[2], state, strategy) {
+        Ok(inputs) => inputs,
+        Err(err) => return Some(Err(err)),
+    };
+    let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_emit_host_go");
+    let receipt = match emit_host_runner::run_emit_host_go(source, &inputs, &work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
+    };
+    let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
+        Ok(id) => id,
+        Err(err) => return Some(Err(err)),
+    };
+    let exit = match host_exit_value(dag, &receipt.exit) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stdout = match byte_string_value(dag, &receipt.stdout_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stderr = match byte_string_value(dag, &receipt.stderr_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let build_log = match build_log_value(dag, &receipt.build_log.lines) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    Some(
+        crate::evaluator::eval_callable_declaration(
+            dag,
+            callee,
+            vec![
+                operands[0].clone(),
+                Value::LiteralValue(LiteralBits::String(receipt.source_text)),
+                exit,
+                stdout,
+                stderr,
+                build_log,
+            ],
+            state,
+            strategy,
+        )
+        .and_then(|value| accepted_variant(dag, value)),
+    )
+}
+
 fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_rust")
+}
+
+fn is_run_emit_host_go_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_go")
+}
+
+fn is_run_emit_host_decl(dag: &Dag, callee_decl: DeclarationId, name: &str) -> bool {
     let callee = dag.declaration(callee_decl);
-    if callee.name.as_deref() != Some("run_emit_host_rust") {
+    if callee.name.as_deref() != Some(name) {
         return false;
     }
     if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_SUFFIX) {
@@ -760,9 +839,79 @@ fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::Dag;
-    use crate::evaluator::{EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder};
+    use crate::dag::{AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, TypeConnective};
+    use crate::diagnostics::SourceSpan;
+    use crate::evaluator::{EvalFrame, InputEvaluationOrder};
     use emit_host_runner::HostSetupFailure;
+
+    fn span(file: &str) -> SourceSpan {
+        SourceSpan::new(file, 0, 1)
+    }
+
+    fn atom_decl(dag: &mut Dag, name: &str, file: &str) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam(name.to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn run_emit_host_decl(dag: &mut Dag, name: &str, file: &str) -> DeclarationId {
+        let target = atom_decl(dag, "TargetModel", file);
+        let source = atom_decl(dag, "TargetSource", file);
+        let inputs = atom_decl(dag, "Inputs", file);
+        let output = atom_decl(dag, "OutcomeEmitHostRunReceipt", file);
+        let body_value = dag.push_value(LiteralBits::Bool(false), span(file));
+        let bind = dag.push_bind(
+            "transport_not_wired_body",
+            body_value,
+            Vec::new(),
+            span(file),
+        );
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Arrow {
+                inputs: vec![target, source, inputs],
+                output,
+                body: ArrowBody::UserDefined(
+                    BindNodeId::from_bind_node(dag, bind).expect("bind body"),
+                ),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span(file),
+        });
+        id
+    }
+
+    fn empty_state() -> EvalStateStack<Value> {
+        EvalStateStack::with_root_frame(EvalFrame::empty())
+    }
+
+    fn eager_strategy() -> EvalStrategy {
+        EvalStrategy::ApplicativeOrder {
+            input_order: InputEvaluationOrder::LeftFirst,
+        }
+    }
 
     fn optional_variant(dag: &Dag, name: &str, payload: Value) -> Value {
         let tag = dag
@@ -886,6 +1035,44 @@ mod tests {
         assert_eq!(
             host_setup_failure_reason(&HostSetupFailure::EmptyClaimInputRoot),
             "emit_host_setup_empty_claim_input_root"
+        );
+    }
+
+    #[test]
+    fn go_eval_dispatch_claims_only_emit_host_authority_decl() {
+        let mut dag = Dag::new();
+        let go_decl = run_emit_host_decl(
+            &mut dag,
+            "run_emit_host_go",
+            "src/v4/compiler/emit_host.dag",
+        );
+        let lookalike_decl =
+            run_emit_host_decl(&mut dag, "run_emit_host_go", "src/v4/compiler/other.dag");
+        let rust_decl = run_emit_host_decl(
+            &mut dag,
+            "run_emit_host_rust",
+            "src/v4/compiler/emit_host.dag",
+        );
+        let mut state = empty_state();
+        let strategy = eager_strategy();
+
+        let claimed =
+            try_dispatch_emit_host_go(&dag, go_decl, &[], &mut state, &strategy).expect("claimed");
+        assert_eq!(
+            claimed,
+            Err(EvalError::TransformArityMismatch {
+                expected: 3,
+                got: 0
+            }),
+            "the Go hook must claim the substrate run_emit_host_go declaration before user-body eval"
+        );
+        assert!(
+            try_dispatch_emit_host_go(&dag, lookalike_decl, &[], &mut state, &strategy).is_none(),
+            "same-name declarations outside emit_host.dag must not be intercepted"
+        );
+        assert!(
+            try_dispatch_emit_host_go(&dag, rust_decl, &[], &mut state, &strategy).is_none(),
+            "run_emit_host_rust must stay on the Rust dispatch hook"
         );
     }
 }

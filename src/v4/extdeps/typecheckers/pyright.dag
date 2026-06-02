@@ -29,8 +29,8 @@ type PyrightTypeCheckingMode
 // Modeled projection: the pyright config-file `typeCheckingMode` keyword spelling for each
 // PyrightTypeCheckingMode variant. Keyed by the closed enum variant itself (not a String
 // proxy), so the enum and its spelling are one authority. Single authority for the emitted
-// keyword that host invocations write into pyrightconfig.json — consumed by
-// scripts/v4-leaf-model-python-l1-static-verify.sh (no parallel mode map in CI text).
+// keyword that host invocations write into pyrightconfig.json (single authority; no parallel
+// mode map). The shell runner that formerly consumed this was retired per operator directive #4252.
 type PyrightTypeCheckingModeSpelling {
   mode: PyrightTypeCheckingMode
   keyword: String
