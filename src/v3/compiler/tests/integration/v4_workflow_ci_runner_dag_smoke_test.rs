@@ -17,6 +17,12 @@
 //! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174 / #4214).
 //! T-38 PR2 same-path assertion expansion: explicit P5 deferral to T-PB-B test sub-ratchet;
 //! ROADMAP.md § "Milestone shape" row 4 ("Self-host fixed point") tracks hand-maintained file count -> 0.
+//! T-38B same-path assertion expansion: explicit P5 deferral to ROADMAP.md § "Nine lanes"
+//! row **T-PB-B** / `pb_rust_tests_outside_residual_zero`; this adds no new hand-Rust
+//! test path and stays within the existing SG-0 census entry for this v4 CI smoke harness.
+//! Dissolve-on: generated `.dag` TestClaim execution covers
+//! `manual_testclaim_subject_roster_family_receipt` and the CI verdict-surface projection
+//! without this hand-Rust parse/string ratchet.
 //!
 //! **INVARIANTS P5 — checkable receipt for this PR:** feature `affected-component-live-receipt`;
 //! consumers `v4_workflow_ci_wave1_*` and `v4_workflow_ci_wave3_node_selection_still_shadow_*`.
@@ -45,6 +51,11 @@ const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 const CI_WORKFLOW_DAG: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
+const SHARED_CLOSURE_WORKSHEET: &str = include_str!(
+    "../../../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md"
+);
+const SHARED_CLOSURE_WORKSHEET_PATH: &str =
+    "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
     include_str!("../../../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
@@ -59,6 +70,12 @@ const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag"
 const WAVE3_ROSTER_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/wave3_shadow_roster.dag");
 const WAVE3_ROSTER_PATH: &str = "src/v4/test/claim/workflow/wave3_shadow_roster.dag";
+const TESTCLAIM_CORPUS_RUNNER_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/testclaim_corpus_runner.dag");
+const TESTCLAIM_CORPUS_RUNNER_PATH: &str = "src/v4/test/claim/workflow/testclaim_corpus_runner.dag";
+const MANUAL_CORPUS_ROSTER_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/manual_corpus_roster.dag");
+const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_roster.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 
@@ -741,8 +758,8 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: M1 cargo jobs must not use reverse-engineered fleet fanout derivation"
     );
     assert!(
-        CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
-        "{CI_DAG_PATH}: M1 cargo parallelism ceiling must be an explicit operator constant in Wave-0"
+        !CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling"),
+        "{CI_DAG_PATH}: M1 gate is emit-receipt only — no cargo-check parallelism constant"
     );
     assert!(
         CI_DAG.contains("RerunNodeSetFailClosed { evidence: _ } => roster"),
@@ -796,7 +813,9 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         CI_DAG.contains("feature:project-github-actions-landed")
             && CI_DAG.contains("consumer:v4.workflow.ci m1_ci_live_workflow_signal")
-            && CI_DAG.contains("bind src/v4/TASKS.md T-24"),
+            && CI_DAG.contains(
+                "bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/runner_pool_m1_probe.dag"
+            ),
         "{CI_DAG_PATH}: M1 live-workflow bridge must carry checkable P5 dissolution tags"
     );
     assert!(
@@ -856,7 +875,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         emit_preconditions_block_required_path,
-        "{CI_DAG_PATH}: required M1 probe must fail closed on missing compiler, v2 emit failure, and skipped cargo-check preconditions"
+        "{CI_DAG_PATH}: required M1 probe must fail closed on missing compiler, v2 emit failure, and missing/zero-diagnostic compile receipt"
     );
     assert!(
         CI_DAG.contains(
@@ -918,44 +937,21 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
             && CI_DAG.contains("jobserver_token_cap: 36"),
         "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
     );
-    // Governor ceiling is the ONLY M1 parallelism constant — no static fallback. Actual jobs are
-    // jobserver-coupled (inherited MAKEFLAGS on GHA / ctrl-build in session containers) and pared
-    // below this ceiling by the host token pool.
     assert!(
-        CI_DAG.contains("data m1_probe_cargo_check_jobs_ceiling: Int = 64"),
-        "{CI_DAG_PATH}: M1 governor ceiling must be an explicit operator constant"
-    );
-    let m1_ceiling = ci_affected_components::runner_pool::m1_probe_cargo_check_jobs_ceiling();
-    assert_eq!(
-        m1_ceiling, 64,
-        "Rust transport mirror of m1_probe_cargo_check_jobs_ceiling must match ci.dag operator constant"
+        !m1_step.contains("V4_M1_CARGO_CHECK_JOBS_CEILING")
+            && !m1_step.contains("V4_M1_CARGO_CHECK_JOBS:")
+            && !m1_step.contains("V4_M1_RUSTC"),
+        "{CI_YML_PATH}: M1 step must not project non-gating cargo-check telemetry env"
     );
     assert!(
-        m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS_CEILING: \"{m1_ceiling}\"")),
-        "{CI_YML_PATH}: M1 step must project modeled governor ceiling (CTRL_BUILD_DYNAMIC_JOBS_MAX)"
+        M1_RUST_EMIT_PROBE_SCRIPT.contains("^compiled: [0-9]+ files emitted, [0-9]+ diagnostics$")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("0 diagnostics")
+            && M1_RUST_EMIT_PROBE_SCRIPT.contains("at least one emitted file"),
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh: gate must fail closed on compile receipt (0 diagnostics, N≥1)"
     );
     assert!(
-        !m1_step.contains("V4_M1_CARGO_CHECK_JOBS:"),
-        "{CI_YML_PATH}: M1 step must NOT project a static cargo-check fallback (fail-closed, no fallback)"
-    );
-    // The probe must route the emitted-tree check through the host compute governor, not a hand cap.
-    assert!(
-        CI_DAG.contains("feature:elastic-compute-fabric")
-            && CI_DAG.contains("dsl/std/compute_fabric.dag"),
-        "{CI_DAG_PATH}: M1 parallelism note must cite the compute_fabric dissolve-on-arrival authority"
-    );
-    // The probe must run jobserver-coupled: inherited MAKEFLAGS (GHA runner unit) or ctrl-build
-    // (session containers), and it still understands the ctrl-build governor for the latter.
-    assert!(
-        M1_RUST_EMIT_PROBE_SCRIPT.contains("jobserver-auth")
-            && M1_RUST_EMIT_PROBE_SCRIPT.contains("ctrl-build")
-            && M1_RUST_EMIT_PROBE_SCRIPT.contains("CTRL_BUILD_DYNAMIC_JOBS_MAX"),
-        ".github/ci-floor/v4-m1-rust-emit-probe.sh: emitted-tree check must couple to the host jobserver (MAKEFLAGS or ctrl-build)"
-    );
-    // No fallback: the probe must fail closed when NEITHER coupling source is present (operator policy).
-    assert!(
-        M1_RUST_EMIT_PROBE_SCRIPT.contains("requires a host jobserver coupling"),
-        ".github/ci-floor/v4-m1-rust-emit-probe.sh: probe must fail closed when no jobserver coupling is present"
+        !M1_RUST_EMIT_PROBE_SCRIPT.contains("cargo check"),
+        ".github/ci-floor/v4-m1-rust-emit-probe.sh: M1 gate is v2 emit + receipt only — no cargo check"
     );
     let bootstrap_step =
         workflow_step_block(CI_YML, "v2 -> v4 bootstrap compile (fail-closed full)");
@@ -977,6 +973,32 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         bootstrap_step.contains("V4_BOOTSTRAP_REUSE_LOG:"),
         "{CI_YML_PATH}: bootstrap step must validate the shared M1 DAG artifact instead of recompiling src/v4"
+    );
+}
+
+#[test]
+fn v4_ci_shared_closure_worksheet_is_ratified_against_live_authorities() {
+    assert!(
+        SHARED_CLOSURE_WORKSHEET.contains("**Status:** RATIFIED")
+            && SHARED_CLOSURE_WORKSHEET.contains("node://adhoc-197c65c6-8cd"),
+        "{SHARED_CLOSURE_WORKSHEET_PATH}: worksheet must be ratified by the active arbiter node"
+    );
+    assert!(
+        SHARED_CLOSURE_WORKSHEET.contains("ROADMAP.md` row T-PB-B")
+            && SHARED_CLOSURE_WORKSHEET.contains("pb_rust_tests_outside_residual_zero")
+            && SHARED_CLOSURE_WORKSHEET.contains("src/v4/test/claim/workflow/{ci_component_affected,affected_set_ci_runner,runner_pool_m1_probe}.dag"),
+        "{SHARED_CLOSURE_WORKSHEET_PATH}: P5 receipt must bind to checkable in-tree authorities"
+    );
+    assert!(
+        !SHARED_CLOSURE_WORKSHEET.contains("src/v4/TASKS.md"),
+        "{SHARED_CLOSURE_WORKSHEET_PATH}: ratification must not cite missing src/v4/TASKS.md"
+    );
+    assert!(
+        SHARED_CLOSURE_WORKSHEET.contains("## §4 Lane H Lens Dispositions")
+            && SHARED_CLOSURE_WORKSHEET.contains("TestgenSlotSelection")
+            && SHARED_CLOSURE_WORKSHEET.contains("Generator<TestgenConcept>")
+            && SHARED_CLOSURE_WORKSHEET.contains("target-arrow-domain-param-list-carrier"),
+        "{SHARED_CLOSURE_WORKSHEET_PATH}: Lane H/testgen §8 dispositions must be explicit"
     );
 }
 
@@ -1762,6 +1784,32 @@ fn v4_workflow_ci_wave3_fixture_receipt_documents_live_ci_deferral() {
 #[test]
 fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
+    let corpus_runner_module =
+        parse_module(TESTCLAIM_CORPUS_RUNNER_DAG, TESTCLAIM_CORPUS_RUNNER_PATH);
+    let manual_roster_module = parse_module(MANUAL_CORPUS_ROSTER_DAG, MANUAL_CORPUS_ROSTER_PATH);
+    assert!(
+        import_includes_name(
+            &corpus_runner_module,
+            &["v4", "test", "claim", "manual", "manual_corpus_roster"],
+            "manual_corpus_node_subject_rows"
+        ),
+        "{TESTCLAIM_CORPUS_RUNNER_PATH}: runner must import the manual subject-roster authority"
+    );
+    assert!(
+        surface_declares_fn(&corpus_runner_module, "run_node_runtime_value_subjects")
+            && surface_declares_fn(
+                &corpus_runner_module,
+                "manual_testclaim_subject_roster_family_receipt"
+            ),
+        "{TESTCLAIM_CORPUS_RUNNER_PATH}: runner must declare the subject-to-run helper and family receipt"
+    );
+    assert!(
+        matches!(
+            data_body(&manual_roster_module, "manual_corpus_node_subject_rows"),
+            SurfaceExpr::List { .. }
+        ),
+        "{MANUAL_CORPUS_ROSTER_PATH}: manual_corpus_node_subject_rows must remain a concrete subject roster"
+    );
     assert!(
         CI_DAG.contains("| TestClaimCorpusEvalCommand"),
         "{CI_DAG_PATH}: T-38 dissolution step must declare TestClaimCorpusEvalCommand arm in CiCommand"
@@ -1776,8 +1824,9 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
          as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
-        CI_DAG.contains("manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed"),
-        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface"
+        CI_DAG.contains("manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed")
+            && CI_DAG.contains("manual_testclaim_subject_roster_family_receipt"),
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface and family receipt"
     );
     assert!(
         CI_DAG.contains("fn_name == ci_testclaim_corpus_selection_fn"),
@@ -1800,6 +1849,7 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval",
         "ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally",
         "ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed",
+        "ci_testclaim_corpus_decl_manual_testclaim_subject_roster_family_receipt_name: Symbol = manual_testclaim_subject_roster_family_receipt",
         "fn ci_testclaim_corpus_eval_command() -> CiCommand",
         "verdict_surface: ci_testclaim_corpus_verdict_surface_authority()",
         "surface == ci_testclaim_corpus_verdict_surface_authority()",
@@ -1808,12 +1858,14 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "ci_projection_corpus_surface_eval_report_edge",
         "ci_projection_corpus_surface_verdict_tally_edge",
         "ci_projection_corpus_surface_gate_witness_edge",
+        "ci_projection_corpus_surface_family_receipt_edge",
         "ci_projection_declaration_module_edge",
         "ci_projection_declaration_name_edge",
         "ci_declaration_authority_projection_node",
         "ci_atom(sym: a.module_path)",
         "ci_atom(sym: a.declaration_name)",
         "feature:t38-testclaim-corpus-roster-claim-ref-frontier",
+        "claim_lens_effect_depends_on_runtime_verdict",
         "generated roster/item-registry reflection derives these TestClaimRef inputs directly from",
         "Forbidden: adding/removing manual corpus rows without the matching claim id here.",
         "ci_upsert_file_set_input(segment: \"src/v4/test/claim/workflow/manual_corpus_eval.dag\")",
@@ -1822,6 +1874,30 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         assert!(
             CI_DAG.contains(needle),
             "{CI_DAG_PATH}: TestClaimCorpusEvalCommand must carry modeled corpus verdict authority `{needle}`"
+        );
+    }
+    for needle in [
+        "type TestClaimSubjectRosterUnsupportedRow",
+        "type TestClaimSubjectRosterFamilyReceipt",
+        "subjects: List<TestClaimEvalSubject<Node>>",
+        "runs: List<TestClaimRun<Node, RuntimeValue>>",
+        "unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow>",
+        "data testclaim_subject_roster_unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow>",
+        "testclaim_subject_roster_family_ci_pipeline",
+        "testclaim_subject_roster_family_non_runtime_value",
+        "testclaim_subject_roster_unsupported_until_runner_projection_lands",
+        "fn run_node_runtime_value_subjects(",
+        "map(subjects, fn(subject) { run_test_claim(subject: subject) })",
+        "fn manual_testclaim_subject_roster_family_receipt() -> TestClaimSubjectRosterFamilyReceipt",
+        "subject_family: testclaim_subject_roster_family_node_runtime_value",
+        "run_family: testclaim_subject_roster_run_test_claim",
+        "subjects: manual_corpus_node_subject_rows",
+        "report: CorpusEvalReport",
+        "data witness_manual_testclaim_subject_roster_family_receipt: Bool",
+    ] {
+        assert!(
+            TESTCLAIM_CORPUS_RUNNER_DAG.contains(needle),
+            "{TESTCLAIM_CORPUS_RUNNER_PATH}: T-38B subject-roster family contract must carry `{needle}`"
         );
     }
     assert!(

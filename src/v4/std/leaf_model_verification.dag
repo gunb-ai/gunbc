@@ -9,6 +9,7 @@
 module v4.std.leaf_model_verification
 
 import v4.std.collection { List }
+import v4.std.host_run { ValueDiff }
 import v4.std.nat { Nat }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
@@ -153,6 +154,8 @@ data leaf_model_claim_python_r2a_int_algebra_operations: LeafModelClaimId = leaf
 data leaf_model_claim_python_r2b_int_arbitrary_precision_add: LeafModelClaimId = leaf_model_claim_python_r2b_int_arbitrary_precision_add
 data leaf_model_claim_python_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_python_r3_external_symbol_projection
 data leaf_model_claim_python_l1_static_return_type: LeafModelClaimId = leaf_model_claim_python_l1_static_return_type
+data leaf_model_claim_python_l1_static_undefined_variable: LeafModelClaimId = leaf_model_claim_python_l1_static_undefined_variable
+data leaf_model_claim_python_l1_static_missing_import: LeafModelClaimId = leaf_model_claim_python_l1_static_missing_import
 data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_model_claim_rust_r2a_i32_algebra_operations
 data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
 data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
@@ -165,6 +168,47 @@ data leaf_model_claim_go_r1_int_surface_spelling: LeafModelClaimId = leaf_model_
 data leaf_model_claim_go_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_go_r2a_int_algebra_operations
 data leaf_model_claim_go_r2b_int64_silent_overflow_truncates: LeafModelClaimId = leaf_model_claim_go_r2b_int64_silent_overflow_truncates
 data leaf_model_claim_go_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_go_r3_external_symbol_projection
+data leaf_model_claim_python_cross_runtime_drift_arbitrary_precision: LeafModelClaimId = leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
+
+// --- PY-L2-CROSS-RUNTIME-DRIFT: positive cross-runtime divergence receipt ---
+// Complement of the L2 cross-target PARITY lane (PR #4154,
+// `run_cross_target_mvp2_python_parity_transport`), which proves runtime-value EQUALITY on the
+// common domain (R2a add/order, R3 symbol projection). This carrier proves the COMPLEMENT
+// obligation named in the Python RCA worksheet (Worksheet C): the SAME modeled program — exact
+// integer add at the fixed-width boundary — DIVERGES across runtimes. Python realizes Int as
+// arbitrary precision (the correct sum); Rust `i64` / Go `int64` realize it as fixed-width
+// two's-complement with defined wraparound. That divergence is a MODELED fact, not a bug: the
+// receipt asserts it POSITIVELY, so the verification system demonstrably DETECTS drift instead of
+// silently treating fixed-width wraparound as parity. The expected divergence is anchored to
+// `ValueDiff<String>` (the host_run divergence carrier) — `expected` is the arbitrary-precision
+// value, `actual` is the fixed-width wrapped value — so the receipt references a modeled value
+// pair, never a script-local literal. Go is a corroborating fixed-width witness (rust == go);
+// the runner asserts it only when the Go toolchain is present.
+//
+// FACTS FLOW FORWARD (INVARIANTS P1/P2): the drift is not asserted as a bare value pair — the
+// MODELED CAUSE travels with it. The three `*_fact` fields anchor the divergence to the extdeps
+// language representation facts that JUSTIFY it: Python int is `python_repr_int_arbitrary_precision`
+// (so the sum is exact) while Rust and Go integers are `rust_repr_integer_twos_complement` /
+// `go_repr_twos_complement_integer` (so the same add wraps at the fixed-width boundary). The
+// `TestClaim` asserts these anchors, so the receipt carries the reason for the drift, not just its
+// observed values — that is what makes this carrier reusable authority rather than a literal pair.
+//
+// 🟡 gated — feature:leaf-model-cross-runtime-drift — dissolve-on: the modeled `TestClaim` runner
+// exercises `src/v4/test/claim/language_model/python_cross_runtime_drift.dag` directly (retiring the
+// boundary host-process bridge `scripts/v4-leaf-model-python-cross-runtime-drift-verify.sh` +
+// `v4_leaf_model_python_cross_runtime_drift_test.rs`, shrinking `EXPECTED_HAND_AUTHORED_TEST` by 1);
+// forbidden: a parallel drift-probe vocabulary outside this carrier — extend it, don't fork it.
+type LeafModelCrossRuntimeDriftProbe {
+  claim_id: LeafModelClaimId
+  // Modeled cause of the divergence (extdeps representation facts) — Facts Flow Forward.
+  arbitrary_precision_fact: Symbol
+  fixed_width_rust_fact: Symbol
+  fixed_width_go_fact: Symbol
+  arbitrary_precision_source: String
+  fixed_width_rust_source: String
+  fixed_width_go_source: String
+  expected_divergence: ValueDiff<String>
+}
 
 type LeafModelRustCrateType = Symbol
 

@@ -251,6 +251,8 @@ pub type Milliseconds = i64;
 
 pub type Seconds = i64;
 
+pub type LogicalTime = String;
+
 pub type IntentId = String;
 
 pub type IssueId = String;

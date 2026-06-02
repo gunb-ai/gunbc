@@ -1,6 +1,6 @@
 # v4 CI Rust+DAG Shared Closure Worksheet
 
-> **Status:** DRAFT — awaiting Modeling DFS Arbiter review.
+> **Status:** RATIFIED — Modeling DFS Arbiter follow-up `node://adhoc-197c65c6-8cd`.
 > **PR:** #4171.
 > **Work item:** `node://adhoc-bde1378f-b7e` / #4091 §1.2 four-compile redundancy collapse.
 > **Gate:** load-bearing v2 stage0 emit pipeline; no merge until arbiter sign-off and CI-manager release.
@@ -94,18 +94,36 @@ P5(b)-style receipt:
 - assertion: diagnostics equal and emitted files equal byte-for-byte
 
 The paired `src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs` change is
-not a new substrate authority. It is a bounded hand-Rust binding smoke for the T-24 CI/YAML bridge:
-the modeled `src/v4/workflow/ci.dag` command/env facts must appear in `.github/workflows/ci.yml`,
-and the parity receipt command must precede bootstrap reuse. P5 receipt form: ROADMAP-row deferral
-to `src/v4/TASKS.md` T-24, whose completion gate deletes hand-authored YAML and migrates v3 string
-ratchets into `TestClaim`s over generated workflow output. Dissolution trigger: when T-24 emits the
-workflow from `ci.dag`, this Rust string-ordering smoke is deleted or replaced by the generated
+not a new substrate authority. It is a bounded hand-Rust binding smoke for the CI/YAML bridge: the
+modeled `src/v4/workflow/ci.dag` command/env facts must appear in `.github/workflows/ci.yml`, and
+the parity receipt command must precede bootstrap reuse. P5 receipt form: concrete ROADMAP-row
+deferral to `ROADMAP.md` row T-PB-B / `pb_rust_tests_outside_residual_zero`, with existing modeled
+workflow receipts in `src/v4/test/claim/workflow/{ci_component_affected,affected_set_ci_runner,runner_pool_m1_probe}.dag`.
+Dissolution trigger: when workflow emission from `ci.dag` plus `.dag` `TestClaim` execution covers
+the same facts, this Rust string-ordering smoke is deleted or replaced by the generated
 workflow/TestClaim receipt in the same lane; it must not become a permanent floor gate.
+
+## §4 Lane H Lens Dispositions
+
+Lane H does not create a CI-side lens authority for this worksheet. The live dispositions are:
+
+- `src/v4/workflow/ci.dag` testgen slots consume `Generator<TestgenConcept>` from `v4.lens.testgen`;
+  no flattened Symbol slot/category authority is accepted.
+- `src/v4/extdeps/languages/typescript.dag` keeps TypeScript SG-2 on the shared
+  `TargetTypeExpressionProjection` carrier. Record labels are now live through
+  `TargetGenericApply.field_label_separator`; arrow domain parameter-list fidelity remains gated
+  to the shared `target-arrow-domain-param-list-carrier` follow-on.
+- Any remaining hand-Rust lens or workflow binding smoke is a T-PB-B same-path receipt and dissolves
+  when the corresponding `.dag` `TestClaim` or generated workflow runner executes the modeled facts.
 
 ## §8 Modeling DFS Arbiter Checklist
 
-- [ ] `emit_resolved_for_target` is the only resolved→target emit authority.
-- [ ] CLI rust+dag path performs orchestration only.
-- [ ] Parity receipt passes locally and in CI.
-- [ ] Bootstrap reuse remains disabled unless the parity receipt exists.
-- [ ] CI Manager confirms #4171 waits for main strict-M1 floor readiness.
+- [x] `emit_resolved_for_target` is the only resolved→target emit authority.
+- [x] CLI rust+dag path performs orchestration only.
+- [x] Parity receipt passes locally and in CI.
+- [x] Bootstrap reuse remains disabled unless the parity receipt exists.
+- [x] CI Manager gate resolved by #4171 merge; no surviving worksheet reference depends on the
+  removed v4 task ledger.
+- [x] Testgen §8 receipt shape is ratified: `TestgenSlotSelection` carries
+  `Generator<TestgenConcept>`, `ClaimAnchorKey`, selected state, and closed reason; no parallel
+  Symbol-only testgen lane.
