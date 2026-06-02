@@ -120,9 +120,7 @@ data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim
 }
 
 
-data witness_lens_testgen_schedules_dag_input_surface_green: Bool =
-  scheduled_language_behavior_generators_cover_dag_inputs()
+data witness_lens_testgen_schedules_dag_input_surface_green: Bool = scheduled_language_behavior_generators_cover_dag_inputs()
 
 
-data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool =
-  bootstrap_generator_has_conj_dag_input_surface()
+data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool = bootstrap_generator_has_conj_dag_input_surface()
