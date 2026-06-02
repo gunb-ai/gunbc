@@ -8,9 +8,14 @@
 ## Executive summary
 
 Branch C blocked on a **split authority** for concrete syntax tokens: ten per-language
-`*ConcreteSyntaxToken` coproducts in `src/v4/extdeps/languages/` vs Symbol-tagged `kind` edges
-consumed by `06_translate`. C.4 (`05_emit`) already matches the ratified thin-orchestrator shape.
+`*ConcreteSyntaxToken` coproducts in `src/v4/extdeps/languages/`, a parallel **std grammar**
+constructor surface (`grammar_concrete_*_token_node`), and Symbol-tagged `kind` edges consumed
+by `06_translate`. C.4 (`05_emit`) already matches the ratified thin-orchestrator shape.
 C.1–C.3 are one substrate PR; C.5 is the compiler consumer PR (or same PR if reviewable size).
+
+> **Post-#4297 (main):** C.1–C.5 landed in #4297 except the **grammar.dag C.3 slice** below —
+> `dag.dag` + per-language serializers now delegate to `concrete_syntax_token_to_node`; grammar
+> helpers at `grammar.dag:410` / `:429` still hand-build the wire shape.
 
 ## C.1 — Shared carrier (not yet declared)
 
@@ -53,21 +58,54 @@ type KotlinConcreteSyntaxToken
 **Action:** After C.1, replace per-target coproducts with `type X = ConcreteSyntaxToken` aliases
 or row functions taking `ConcreteSyntaxToken` — **no second sum** with distinct variant names.
 
-## C.3 — Constructor alignment (`dag.dag`)
+## C.3 — Constructor alignment (`dag.dag` + `grammar.dag`)
 
-**Finding:** `emit_fixed_token` / `emit_bound_token` already build Conj nodes with
-`concrete_syntax_token_field_*` edges but are untyped Node producers:
+### C.3a — `extdeps/languages/dag.dag` (release-minimum emit helpers)
 
-```416:433:src/v4/extdeps/languages/dag.dag
-fn emit_fixed_token(token_class: Symbol) -> Node {
-  ...
+**Finding (preflight):** `emit_fixed_token` / `emit_bound_token` built Conj nodes with
+`concrete_syntax_token_field_*` edges as untyped Node producers.
+
+**Action:** Retarget to `FixedToken` / `BoundToken` + `concrete_syntax_token_to_node`.
+
+**Status on main (#4297):** Done — helpers delegate through the typed carrier and shared serializer.
+
+### C.3b — `std/grammar.dag` (grammar-row token constructors) — **still open on main**
+
+**Finding:** `grammar_concrete_fixed_token_node` and `grammar_concrete_bound_token_node` hand-build
+the same `concrete_syntax_token_field_*` + `concrete_syntax_token_kind_*` Conj shape — a **second
+substrate constructor authority** beside `dag.dag`, violating P2 single serializer and P5
+dissolution of parallel wire authors:
+
+```410:426:src/v4/std/grammar.dag
+fn grammar_concrete_fixed_token_node(token_class: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      grammar_named_edge(
+        name: concrete_syntax_token_field_kind,
+        target: grammar_atom(identity: concrete_syntax_token_kind_fixed)
+      ),
+      grammar_named_edge(
+        name: concrete_syntax_token_field_class,
+        target: grammar_atom(identity: token_class)
+      )
+    ]
+  }
 }
-fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
-  ...
 ```
 
-**Action:** Retarget constructors to emit `FixedToken` / `BoundToken` shapes once C.1 exists;
-update grammar relation row builders in release-minimum languages first (rust, python, go, ts).
+(`grammar_concrete_bound_token_node` at `:429` mirrors the bound arm with `binding`.)
+
+Call sites: grammar relation row builders at `:457` / `:462`.
+
+**Action:** Import `FixedToken`, `BoundToken`, `concrete_syntax_token_to_node` from
+`v4.std.target_model`; replace inline Conj construction with delegation (same pattern as
+post-C.3 `emit_fixed_token` / `emit_bound_token` in `dag.dag`). Gate in the same C.3 PR or an
+immediate follow-on substrate PR before declaring C.3 closed.
+
+**Why not only `dag.dag`:** Grammar relations are std vocabulary; leaving `grammar.dag` on the
+legacy wire shape reintroduces Symbol-kind edges that `06_translate` must keep decoding in parallel
+with the typed carrier.
 
 ## C.4 — `05_emit` thin orchestrator ✅
 
@@ -107,7 +145,8 @@ carrier (may require decode helper from `Node` → `ConcreteSyntaxToken` at bund
 
 - [ ] C.1 types compile under M1 v4 emit gate
 - [ ] C.2 migration ordered: rust → python → go → typescript (MW-D3 minimum), then remainder
-- [ ] C.3 `dag.dag` constructors updated in same PR as C.1 or immediately after
+- [ ] C.3a `dag.dag` `emit_fixed_token` / `emit_bound_token` → typed carrier + `concrete_syntax_token_to_node` (✅ on main #4297)
+- [ ] C.3b `grammar.dag` `grammar_concrete_fixed_token_node` / `grammar_concrete_bound_token_node` → same delegation (open)
 - [ ] C.5 no remaining `concrete_syntax_token_kind_*` equality in `06_translate.dag`
 - [ ] SG-0: no new hand-authored emit templates in `src/v3/compiler/src/emit*` (v4 authority)
 
