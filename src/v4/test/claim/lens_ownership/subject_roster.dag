@@ -1,6 +1,6 @@
 // src/v4/test/claim/lens_ownership/subject_roster.dag
-// Scope: T-38B lens_ownership family roster — names the ownership subject family and wires a TestClaimEvalSubject row for corpus execution.
-// Status: family receipt — one resource-dependency subject, routed through run_test_claim by workflow/lens_ownership_family_eval.dag.
+// Scope: T-38B lens_ownership family roster — one resource-dependency TestClaimEvalSubject row for corpus execution.
+// Status: family receipt — claim + subject + claim-id frontier are co-located; workflow/lens_ownership_family_eval.dag routes rows through run_test_claim.
 
 module v4.test.claim.lens_ownership.subject_roster
 
@@ -11,7 +11,6 @@ import v4.compiler.eval {
   eval_test_claim_subject
 }
 import v4.std.collection { List }
-import v4.std.logic { Bool }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
@@ -59,23 +58,6 @@ fn ownership_claim_input(ok: Bool) -> Node {
 }
 
 
-type LensOwnershipSubject {
-  claim_id: Symbol
-  structural_witness: Bool
-  eval_subject: TestClaimEvalSubject<Node>
-}
-
-
-fn lens_ownership_subject_structural_witness(subject: LensOwnershipSubject) -> Bool {
-  subject.structural_witness
-}
-
-
-fn lens_ownership_subject_eval_subject(subject: LensOwnershipSubject) -> TestClaimEvalSubject<Node> {
-  subject.eval_subject
-}
-
-
 data claim_lens_ownership_resource_dependency: TestClaim = EqualsClaim {
   label: "lens_ownership resource dependency witness passes through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -93,16 +75,14 @@ data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = ev
 )
 
 
-data lens_ownership_subject_roster: List<LensOwnershipSubject> = [
-  LensOwnershipSubject {
-    claim_id: claim_lens_ownership_resource_dependency_id,
-    structural_witness: ownership_resource_dependency_claim_passes,
-    eval_subject: subject_lens_ownership_resource_dependency
-  }
+data lens_ownership_subject_rows: List<TestClaimEvalSubject<Node>> = [
+  subject_lens_ownership_resource_dependency
 ]
 
 
-data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>> = map(
-  lens_ownership_subject_roster,
-  fn(subject) { lens_ownership_subject_eval_subject(subject: subject) }
-)
+data lens_ownership_family_claim_ids: List<Symbol> = [
+  claim_lens_ownership_resource_dependency_id
+]
+
+
+data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>> = lens_ownership_subject_rows
