@@ -116,8 +116,15 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("testgen_scheduled_language_behavior_generators")
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("bootstrap_claim_generator_for_manual_anchor")
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim")
-            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim"),
-        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring"
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
+                "data witness_lens_testgen_schedules_dag_input_surface_green: Bool"
+            )
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
+                "data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool"
+            )
+            && !LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("compile-only until T-19"),
+        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring or green witnesses"
     );
 }
 

@@ -1,7 +1,7 @@
 // src/v4/test/claim/lens_testgen/dag_input_surface.dag
 // Scope: T-19 lens_testgen activation — generated testgen surface accepts .dag language inputs.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
-// Status: scaffold — compile-only until T-19/T-22 generated claim execution.
+// Status: activated — structural EqualsClaim + witness receipts prove scheduled/bootstrap .dag LBE input surface.
 
 module v4.test.claim.lens_testgen.dag_input_surface
 
@@ -118,3 +118,11 @@ data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim
   rhs: lens_testgen_dag_generator_surface_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+
+data witness_lens_testgen_schedules_dag_input_surface_green: Bool =
+  scheduled_language_behavior_generators_cover_dag_inputs()
+
+
+data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool =
+  bootstrap_generator_has_conj_dag_input_surface()
