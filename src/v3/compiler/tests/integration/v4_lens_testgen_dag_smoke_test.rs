@@ -277,7 +277,7 @@ fn v4_lens_testgen_shadow_ci_receipt_claim_parses_and_pins_witness() {
     assert!(
         LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
             "import v4.lens.testgen {"
-        ) && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_scheduled_generators_outcome")
+        ) && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_run_receipt_carries_profile_roster")
             && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_run_receipt_outcome")
             && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
                 "data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim"
