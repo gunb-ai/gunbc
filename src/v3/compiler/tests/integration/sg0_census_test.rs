@@ -969,6 +969,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
+    // **PR #4222 Python L1 fixture coverage (+0 paths):** same-path assertion-list expansion
+    // for `rung_l1_python_runtime.dag` coverage + six per-law runtime claim rows.
     // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
     // compiler-slice claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
