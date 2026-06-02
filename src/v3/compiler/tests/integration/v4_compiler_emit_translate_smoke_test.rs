@@ -612,11 +612,13 @@ fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
         "python_g1_2_insert_fact_bundle_entry",
         "python_g1_2_insert_entries",
         "python_g1_2_fact_bundle_registry",
+        "python_g1_2_snoc_primitive_bundle",
         "python_g1_2_integer_primitive_bundles_from_registry",
         "python_g1_2_float_primitive_bundles_from_registry",
         "python_g1_2_complex_primitive_bundles_from_registry",
         "python_g1_2_bool_primitive_bundles_from_registry",
         "python_g1_2_singleton_primitive_bundles_from_registry",
+        "python_g1_2_append_primitive_bundle_outcomes",
         "python_g1_2_primitive_bundles_from_registry",
         "python_g1_2_primitive_fact_bundles",
     ] {
@@ -632,6 +634,12 @@ fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
                 .contains("fn python_language_model_wave1() -> Outcome<PythonLanguageModel>")
             && PYTHON_LANGUAGE_DAG.contains("match python_g1_2_primitive_fact_bundles()"),
         "{PYTHON_LANGUAGE_PATH}: Python ModelCore primitive facts must propagate G.1.2 registry diagnostics"
+    );
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains(
+            "fn python_g1_2_primitive_bundles_from_registry(\n  registry: PerLanguageFactBundleRegistry\n) -> Outcome<List<PrimitiveFactBundle>>"
+        ) && PYTHON_LANGUAGE_DAG.contains("match primitive_fact_bundle_for_subject("),
+        "{PYTHON_LANGUAGE_PATH}: Python registry projection must propagate primitive bundle lookup diagnostics"
     );
     assert!(
         PYTHON_LANGUAGE_DAG.contains("match python_model_core_wave1()")

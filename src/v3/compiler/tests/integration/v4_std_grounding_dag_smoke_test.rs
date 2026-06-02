@@ -216,7 +216,9 @@ fn v4_std_grounding_registry_keyed_map_authority() {
 fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subject() {
     assert!(
         GROUNDING_DAG.contains("fn primitive_fact_bundle_for_subject(")
-            && GROUNDING_DAG.contains("fn per_language_fact_bundle_spec_facts_for_subject("),
+            && GROUNDING_DAG.contains(") -> Outcome<PrimitiveFactBundle>")
+            && GROUNDING_DAG.contains("fn per_language_fact_bundle_spec_facts_for_subject(")
+            && GROUNDING_DAG.contains(") -> Outcome<Map<Symbol, Node>>"),
         "registry-to-model_core projection must build one PrimitiveFactBundle per subject x target"
     );
     assert!(
@@ -250,5 +252,9 @@ fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subje
     assert!(
         GROUNDING_DAG.contains("Rejected { diagnostics: ds } => Rejected { diagnostics: ds }"),
         "map_get lookup failures propagate without collapsing to Absent (P3)"
+    );
+    assert!(
+        !GROUNDING_DAG.contains("Rejected { diagnostics: _ } => spec_facts"),
+        "registry projection must not erase lookup failures into partial PrimitiveFactBundle rows"
     );
 }

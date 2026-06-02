@@ -122,7 +122,7 @@ fn per_language_fact_bundle_insert_subject_axis(
   subject_carrier: Node,
   target: TargetModel,
   fact_axis: ModelCorePrimitiveFactAxis
-) -> Map<Symbol, Node> {
+) -> Outcome<Map<Symbol, Node>> {
   match map_get(
     m: registry.by_key,
     key: per_language_fact_bundle_subject_axis_key(
@@ -133,15 +133,38 @@ fn per_language_fact_bundle_insert_subject_axis(
   ) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: fact_value } =>
-        map_insert(
-          m: spec_facts,
-          key: model_core_primitive_fact_axis_symbol(axis: fact_axis),
-          value: fact_value
+        outcome_accepted(
+          value: map_insert(
+            m: spec_facts,
+            key: model_core_primitive_fact_axis_symbol(axis: fact_axis),
+            value: fact_value
+          )
         )
       Absent =>
-        spec_facts
+        outcome_accepted(value: spec_facts)
     }
-    Rejected { diagnostics: _ } => spec_facts
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+
+fn per_language_fact_bundle_spec_facts_after_axis(
+  acc: Outcome<Map<Symbol, Node>>,
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node,
+  target: TargetModel,
+  fact_axis: ModelCorePrimitiveFactAxis
+) -> Outcome<Map<Symbol, Node>> {
+  match acc {
+    Accepted { value: spec_facts, diagnostics: _ } =>
+      per_language_fact_bundle_insert_subject_axis(
+        registry: registry,
+        spec_facts: spec_facts,
+        subject_carrier: subject_carrier,
+        target: target,
+        fact_axis: fact_axis
+      )
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 
@@ -150,40 +173,45 @@ fn per_language_fact_bundle_spec_facts_for_subject(
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
   target: TargetModel
-) -> Map<Symbol, Node> {
-  per_language_fact_bundle_insert_subject_axis(
+) -> Outcome<Map<Symbol, Node>> {
+  let width = per_language_fact_bundle_insert_subject_axis(
     registry: registry,
-    spec_facts: per_language_fact_bundle_insert_subject_axis(
-      registry: registry,
-      spec_facts: per_language_fact_bundle_insert_subject_axis(
-        registry: registry,
-        spec_facts: per_language_fact_bundle_insert_subject_axis(
-          registry: registry,
-          spec_facts: per_language_fact_bundle_insert_subject_axis(
-            registry: registry,
-            spec_facts: per_language_fact_bundle_insert_subject_axis(
-              registry: registry,
-              spec_facts: empty_map(),
-              subject_carrier: subject_carrier,
-              target: target,
-              fact_axis: ModelCoreFactAxisWidth {}
-            ),
-            subject_carrier: subject_carrier,
-            target: target,
-            fact_axis: ModelCoreFactAxisSignedness {}
-          ),
-          subject_carrier: subject_carrier,
-          target: target,
-          fact_axis: ModelCoreFactAxisRange {}
-        ),
-        subject_carrier: subject_carrier,
-        target: target,
-        fact_axis: ModelCoreFactAxisEncoding {}
-      ),
-      subject_carrier: subject_carrier,
-      target: target,
-      fact_axis: ModelCoreFactAxisSurfaceSpelling {}
-    ),
+    spec_facts: empty_map(),
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisWidth {}
+  )
+  let signedness = per_language_fact_bundle_spec_facts_after_axis(
+    acc: width,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisSignedness {}
+  )
+  let range = per_language_fact_bundle_spec_facts_after_axis(
+    acc: signedness,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisRange {}
+  )
+  let encoding = per_language_fact_bundle_spec_facts_after_axis(
+    acc: range,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisEncoding {}
+  )
+  let surface = per_language_fact_bundle_spec_facts_after_axis(
+    acc: encoding,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisSurfaceSpelling {}
+  )
+  per_language_fact_bundle_spec_facts_after_axis(
+    acc: surface,
+    registry: registry,
     subject_carrier: subject_carrier,
     target: target,
     fact_axis: ModelCoreFactAxisOverflowDisposition {}
@@ -196,14 +224,21 @@ fn primitive_fact_bundle_for_subject(
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
   target: TargetModel
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: subject_carrier,
-    spec_facts: per_language_fact_bundle_spec_facts_for_subject(
-      registry: registry,
-      subject_carrier: subject_carrier,
-      target: target
-    )
+) -> Outcome<PrimitiveFactBundle> {
+  match per_language_fact_bundle_spec_facts_for_subject(
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target
+  ) {
+    Accepted { value: spec_facts, diagnostics: d } =>
+      Accepted {
+        value: PrimitiveFactBundle {
+          substrate_carrier: subject_carrier,
+          spec_facts: spec_facts
+        },
+        diagnostics: d
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 
