@@ -277,7 +277,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Build v2 compiler (v4 floor)" },
           id: none,
-          run: "cargo build -p v2-compiler --release",
+          run: "RUSTC_WRAPPER= cargo build -p v2-compiler --release",
           shell: Bash,
           env: none,
           working_directory: none,

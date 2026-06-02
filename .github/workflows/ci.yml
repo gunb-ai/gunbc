@@ -229,7 +229,7 @@ jobs:
           gunbc-bin-${{ runner.os }}-${{ runner.arch }}-
     - name: Build v2 compiler (v4 floor)
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
-      run: cargo build -p v2-compiler --release
+      run: RUSTC_WRAPPER= cargo build -p v2-compiler --release
     - name: M1 v4 full-tree rust emit probe (v2 emit)
       timeout-minutes: 20
       env:
