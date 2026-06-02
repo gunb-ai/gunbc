@@ -39,10 +39,11 @@ fn main() -> ExitCode {
             eprintln!("  {path}");
         }
     } else if let ci_affected_components::git_diff_transport::GitChangedPathsRead::FailClosed {
-        ref range,
+        ref detail,
+        ..
     } = git_read
     {
-        eprintln!("Wave 3 shadow receipt: git diff {range} failed — fail-closed component flags");
+        eprintln!("Wave 3 shadow receipt: {detail} — fail-closed component flags");
     }
 
     let receipt = build_queued_shadow_receipt(event_name.as_str(), git_read);
