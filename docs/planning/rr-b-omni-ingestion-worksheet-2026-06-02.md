@@ -10,7 +10,7 @@
 | 2. Branch | Branch B-min now; B-full is explicitly deferred. |
 | 3. Authority | `ConcreteSyntaxSchema` in `src/v4/std/grammar.dag` is the staged single concrete-syntax authority carrier, including an explicit terminal-coverage obligation that Bmin.2 must close with a validator. |
 | 4. Projections | `LexPattern`, `GrammarExpr`, `ParseGrammar`, and `GrammarSchemaProbeBinding` are operational projections/bridges until CP-1b convergence. |
-| 5. Floor claim | `src/v4/test/claim/round_trip/dag_ingestion_floor_min.dag` re-derives `.dag` wave-1 lex, grammar, and C5 trivia readiness from `dag.dag`. |
+| 5. Floor claim | `claim_dag_ingestion_floor_min` in `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag` re-derives `.dag` wave-1 lex, grammar, and C5 trivia readiness from `dag.dag`. |
 | 6. B-min rows | Bmin.1 single declared grammar parse path; Bmin.2 structural morphism from authority to parser projection; Bmin.3 `WellFormedFormalGrammar` validating constructor; Bmin.4 round-trip claim; Bmin.5 canonical source emission. |
 | 7. Dependency boundary | Bmin.1-3 may proceed before H.7.2. Bmin.4-5 wait for H.7.1 source authority: canonical `.dag` source AST, deterministic serializer, and normalized source AST parse/print law. |
 | 8. B.2 findings | Fold operator #7 omni-ingestion findings into RR-B before B-full dispatch; missing Go parse claim is coordination debt, not B-min implementation scope. |
