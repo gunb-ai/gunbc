@@ -993,15 +993,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
     // T-23: lens application surface (`src/v4/lens/application.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
-    // T-38B: lens_ownership + lens_parallelism subject roster + run_test_claim + family
-    // receipt (eval_mvp2 wedge) — extends the lens_idempotency T-38B posture to the two
-    // remaining single-worked-claim `ClassifiedDependencyView<_>` dependency-lens families.
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-    // `pb_rust_tests_outside_residual_zero` (ROADMAP.md:57); M1(2.7) tokenize/parse ratchet
-    // until cross-module v4 `compile_to_dag` import merge lands; dissolves when substrate
-    // eval executes the roster without this hand-Rust parse smoke.
-    "src/v3/compiler/tests/integration/v4_lens_dependency_family_t38b_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
     // T-38B: lens_idempotency subject roster + run_test_claim + family receipt (eval_mvp2 wedge).
