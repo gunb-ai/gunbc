@@ -2447,7 +2447,6 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
     }
     for needle in [
         "type CiSelectionReceiptStoreRow",
-        "key: Hash",
         "receipt: CiSelectionReceipt",
         "type CiSelectionReceiptLookup",
         "= CiSelectionReceiptFound { receipt: CiSelectionReceipt }",
@@ -2456,7 +2455,6 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         "ci_selection_receipt_storage_key(receipt: ci_selection_receipt_shadow_fixture_receipt)",
         "data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow>",
         "ci_selection_receipt_persist(",
-        "key: ci_selection_receipt_storage_key(receipt: receipt)",
         "ci_change_set_digest(changes: receipt.pr)",
         "ci_affected_set_digest(affected: receipt.affected)",
         "ci_component_affected_digest(component: receipt.component_affected_comparison)",
@@ -2505,6 +2503,11 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         !CI_DAG.contains("fallback: ci_wave3_shadow_fixture_fail_closed_receipt")
             && !CI_DAG.contains("data ci_selection_receipt_shadow_fixture_storage_key: Symbol"),
         "{CI_DAG_PATH}: F.11c lookup misses must not expose fallback receipts or caller-authored Symbol keys"
+    );
+    assert!(
+        !CI_DAG.contains("type CiSelectionReceiptStoreRow {\n  key: Hash")
+            && !CI_DAG.contains("key: ci_selection_receipt_storage_key(receipt: receipt)"),
+        "{CI_DAG_PATH}: F.11c store rows must not carry a driftable key beside the receipt"
     );
     assert!(
         !CI_DAG.contains("if row.key == missing_key"),

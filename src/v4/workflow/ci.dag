@@ -567,7 +567,6 @@ type CiSelectionReceipt {
 
 // 🟡 bounded persistence — feature:f11c-ci-selection-receipt-persistence — bind node://adhoc-87c3a213-099 — dissolve-on-arrival: persisted CI selection receipts are stored by the runtime TestClaimRun/cache receipt substrate, and lookup keys are derived from canonical full receipt projection hashes; interim key below is still derived from modeled receipt partition hashes, never caller-authored names. Forbidden: treating transient fixture construction as persisted receipt evidence or accepting caller-chosen symbols as lookup authority.
 type CiSelectionReceiptStoreRow {
-  key: Hash
   receipt: CiSelectionReceipt
 }
 
@@ -4296,7 +4295,6 @@ fn ci_selection_receipt_persist(
   list_snoc_item(
     xs: store,
     item: CiSelectionReceiptStoreRow {
-      key: ci_selection_receipt_storage_key(receipt: receipt),
       receipt: receipt
     }
   )
