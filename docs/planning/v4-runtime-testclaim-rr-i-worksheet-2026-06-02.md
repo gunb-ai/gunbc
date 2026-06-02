@@ -71,7 +71,7 @@ Metric allowed only as secondary:
 | Row | Deliverable | Readiness | Owner lane |
 | --- | ----------- | --------- | ---------- |
 | **I.1** | Dependency-lens closure posture — single `ClassifiedDependencyView<C>` authority for parallelism/effect/ownership/idempotency; honest classifier tables; no parallel roster fields | **GREEN (design ratified)** — four families on main post-#4264/#4292 | This worksheet |
-| **I.1.1** | UnknownCoupling (and peers) ratification/collapse into a typed unresolved coproduct | **EXECUTED** — `UnknownCoupling` collapsed to `UnresolvedCoupling { diagnostic }`, sourced through `tree.facts.lookup(dependency.source)` | Class 2 child `adhoc-8b1709c7-7c0` |
+| **I.1.1** | UnknownCoupling (and peers) ratification/collapse into a typed unresolved coproduct | **PARTIAL (parallelism landed)** — `UnknownCoupling` → `UnresolvedCoupling { diagnostic }`; `ReadsParallelismFacts` classifies via `tree.facts.lookup(dependency.source)` and projects from the returned `Witness<InferredFacts>` (lookup `Violates` or admitted-facts descent). `feature:T-13-parallelism-relation-unresolved` remains open until substrate carries a decodable parallelism coupling fact | Class 2 child `adhoc-8b1709c7-7c0` |
 | **I.3** | Corpus-runner contract for the two unsupported subject families (promote-vs-keep-unsupported) + §5.0.2 CI-needs predicate | **GREEN (design-only)** — types/authority doc; no runtime | This worksheet |
 
 ### 1.1 Layering vs adjacent worksheets
@@ -80,7 +80,7 @@ Metric allowed only as secondary:
 | ----------- | ----- | ------------ |
 | RR-A (Branch A runtime engine) | Ratified #4296 | **Consume** A.2 survey + manual 5-row wedge; do not re-litigate `run_test_claim` ownership |
 | T-13 family ratchet (#4264, #4292) | MERGED | Prerequisite — the four families are the closure subject, not re-authored here |
-| #3468 signature-derived effect-kind set | Open (BLOCKING follow-up) | Dissolves **only** the `effect` kind-set and `ownership` access-carrier scaffolds; the `parallelism` trigger is executed by I.1.1, while `idempotency` / `ownership-mode` `*-unresolved` predicates dissolve on their own per-coproduct triggers (§2 table). |
+| #3468 signature-derived effect-kind set | Open (BLOCKING follow-up) | Dissolves **only** the `effect` kind-set and `ownership` access-carrier scaffolds; `parallelism` typed-unresolved collapse landed in I.1.1 but the per-coproduct `feature:T-13-parallelism-relation-unresolved` trigger is **not** closed until a substrate coupling carrier on `InferredFacts` exists (§2 table). `idempotency` / `ownership-mode` dissolve on their own triggers. |
 | I.1.1 collapse lane | Class 2 child | RR-I states the contract; collapse PR cites §4 R1–R4 |
 
 ---
@@ -100,7 +100,7 @@ grep -n 'type DependencyKindClassifier\|type ClassifiedDependencyView' src/v4/st
 
 | Lens | Classification coproduct | Classifier honesty | Single-authority evidence |
 | ---- | ------------------------ | ------------------ | ------------------------- |
-| `parallelism` | `ParallelismRelation = DataDependent \| EffectCoupled \| BarrierCoupled \| UnresolvedCoupling { diagnostic }` | 9 of 15 `DependencyKind`s map to `ReadsParallelismFacts`; unresolved coupling is typed and sourced through `tree.facts.lookup(dependency.source)` — **honest** (does not fabricate coupling it cannot derive) | `ParallelismFact.dependencies: List<ClassifiedDependencyView<ParallelismRelation>>` — no copied endpoints |
+| `parallelism` | `ParallelismRelation = DataDependent \| EffectCoupled \| BarrierCoupled \| UnresolvedCoupling { diagnostic }` | 9 of 15 `DependencyKind`s map to `ReadsParallelismFacts`; lookup `Violates` carries the witness diagnostic; lookup `Holds` projects from admitted `InferredFacts` (descent witness, else coupling-carrier-absent at `facts.grounding.node`) — **honest** (no `DependencyKind` heuristic promotion) | `ParallelismFact.dependencies: List<ClassifiedDependencyView<ParallelismRelation>>` — no copied endpoints |
 | `effect` | `EffectClassification {}` — single signature-deferred slot | Effect kind routed via `tree.facts.lookup(dependency.source)`; `DependencyKind` is NOT the effect authority (B3 / P2 / Practice 5) | Parametric `ClassifiedDependencyView<EffectClassification>`; closing the kind set is #3468 |
 | `ownership` | `OwnershipMode = OwnedContainment \| SharedRead \| RequiresAccessWitness \| BorrowedDependency \| UnknownOwnership` | Access/alias-mode evidence routed via `RequiresAccessWitness`; closed access carrier is a #3468 follow-up | `ClassifiedDependencyView<OwnershipMode>` — no parallel substrate |
 | `idempotency` | `IdempotencyVerdict = AlgebraicIdempotenceProven { law: Witness<InferredFacts> } \| RequiresAlgebraWitness` (the law `Witness` itself carries `Holds`/`Violates { diagnostic }`) | Algebra-law witness IS the verdict payload; edge identity authority is `ClassifiedDependencyView.dependency` | No nested per-row `EffectDependencyFact` |
@@ -112,7 +112,7 @@ grep -n 'type DependencyKindClassifier\|type ClassifiedDependencyView' src/v4/st
 
    | Lens | Gate mark (live) | Concrete dissolution trigger | #3468? |
    | ---- | ---------------- | ---------------------------- | ------ |
-   | `parallelism` | `feature:T-13-parallelism-relation-unresolved` | substrate projects `ParallelismRelation` resolved/unresolved directly from a parallelism fact carrier (`parallelism.dag`) | No |
+   | `parallelism` | `feature:T-13-parallelism-relation-unresolved` | substrate projects `ParallelismRelation` resolved/unresolved directly from a parallelism coupling carrier on `InferredFacts` (I.1.1 landed typed unresolved + lookup/admitted-facts routing only) | No |
    | `idempotency` | `feature:T-13-idempotency-verdict-unresolved` | substrate projects `IdempotencyVerdict` resolved/unresolved from coproduct (`idempotency.dag:82`) | No |
    | `ownership` (mode) | `feature:T-13-ownership-mode-unresolved` | substrate projects `OwnershipMode` resolved/unresolved from coproduct (`ownership.dag:77`) | No |
    | `ownership` (access carrier) | (status note `ownership.dag:3`) | deriving the closed access carrier behind `RequiresAccessWitness` | Yes (#3468 follow-up) |

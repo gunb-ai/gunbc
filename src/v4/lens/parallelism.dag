@@ -1,11 +1,11 @@
 // src/v4/lens/parallelism.dag
 // Scope: parallelism lens — independence visible in dependency-graph structure (THESIS:208).
-// Status: T-13 family ratchet + I.1.1 UnknownCoupling collapse — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; unresolved coupling is a typed coproduct arm sourced from `tree.facts.lookup(dependency.source)`, with no copied endpoints and no parallel substrate (Practice 11 sub-rule: parallel-payload vs typed-reference).
+// Status: T-13 family ratchet + I.1.1 UnknownCoupling collapse — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; `ReadsParallelismFacts` rows classify through `tree.facts.lookup(dependency.source)` and project from the returned `Witness<InferredFacts>` (Violates diagnostic or admitted-facts descent witness), not a generic fallback. Resolved coupling for those rows still requires a substrate parallelism coupling carrier on `InferredFacts` (dissolves `feature:T-13-parallelism-relation-unresolved`). No copied endpoints, no parallel substrate (Practice 11).
 
 
 module v4.lens.parallelism
 
-import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent }
 import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
@@ -20,13 +20,15 @@ import v4.std.diagnostic {
   Diagnostic,
   Textual,
   Unavailable,
-  WholeFile
+  WholeFile,
+  node_locus
 }
 import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
 data parallelism_reason_unresolved_projection: Symbol = parallelism_reason_unresolved_projection
+data parallelism_reason_coupling_carrier_absent: Symbol = parallelism_reason_coupling_carrier_absent
 data parallelism_projection_virtual_file: Symbol = parallelism_projection_virtual_file
 
 // 🟢 lens-specific classification; endpoints live on the inner DependencyView.
@@ -77,14 +79,38 @@ fn parallelism_facts_for_source(tree: InferredTree, view: DependencyView) -> Wit
   tree.facts.lookup(view.source)
 }
 
-fn unresolved_parallelism_relation(
+fn parallelism_coupling_absent_diagnostic(facts: InferredFacts) -> Diagnostic {
+  Diagnostic {
+    reason: parallelism_reason_coupling_carrier_absent,
+    at: node_locus(node: facts.grounding.node),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+// 🟡 staged — dissolve-on: `InferredFacts` carries a decodable parallelism coupling carrier.
+fn parallelism_relation_from_admitted_facts(facts: InferredFacts) -> ParallelismRelation {
+  match inferred_facts_descent(facts: facts) {
+    Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
+    Holds { value: _ } => UnresolvedCoupling { diagnostic: parallelism_coupling_absent_diagnostic(facts: facts) }
+  }
+}
+
+fn parallelism_relation_from_source_facts_witness(
+  source_facts: Witness<InferredFacts>
+) -> ParallelismRelation {
+  match source_facts {
+    Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
+    Holds { value: facts } => parallelism_relation_from_admitted_facts(facts: facts)
+  }
+}
+
+fn parallelism_relation_for_reads_parallelism_facts(
   tree: InferredTree,
   view: DependencyView
 ) -> ParallelismRelation {
-  match parallelism_facts_for_source(tree: tree, view: view) {
-    Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
-    Holds { value: _ } => UnresolvedCoupling { diagnostic: parallelism_witness_diagnostic() }
-  }
+  parallelism_relation_from_source_facts_witness(
+    source_facts: parallelism_facts_for_source(tree: tree, view: view)
+  )
 }
 
 fn parallelism_relation_for_policy(
@@ -94,7 +120,7 @@ fn parallelism_relation_for_policy(
 ) -> ParallelismRelation {
   match policy {
     KnownParallelismRelation { relation: r } => r
-    ReadsParallelismFacts => unresolved_parallelism_relation(tree: tree, view: view)
+    ReadsParallelismFacts => parallelism_relation_for_reads_parallelism_facts(tree: tree, view: view)
   }
 }
 
