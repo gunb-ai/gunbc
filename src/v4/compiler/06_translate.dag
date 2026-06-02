@@ -218,6 +218,7 @@ import v4.std.collection {
   Present,
   empty_map,
   list_at_optional,
+  map_get,
   optional_absent,
   optional_present
 }
