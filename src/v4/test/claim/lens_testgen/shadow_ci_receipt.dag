@@ -1,0 +1,63 @@
+// src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag
+// Scope: F.2-P2 / F.2.6 — T-38 witness pins for scheduled-generator roster + TestgenRunReceipt.
+
+module v4.test.claim.lens_testgen.shadow_ci_receipt
+
+
+import v4.lens.testgen {
+  testgen_default_profile_ref,
+  testgen_run_receipt,
+  testgen_scheduled_generators
+}
+import v4.std.algebra { length }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClassification,
+  TestClaim,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+
+data lens_testgen_shadow_ci_ok: Symbol = lens_testgen_shadow_ci_ok
+data lens_testgen_shadow_ci_failed: Symbol = lens_testgen_shadow_ci_failed
+
+
+fn lens_testgen_shadow_ci_marker_node(marker: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: marker } },
+    children: []
+  }
+}
+
+
+fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
+  length(xs: testgen_scheduled_generators()) > 0
+    && length(xs: testgen_run_receipt(profile_ref: testgen_default_profile_ref).generators)
+      == length(xs: testgen_scheduled_generators())
+}
+
+
+fn lens_testgen_shadow_ci_rhs() -> Node {
+  if lens_testgen_shadow_ci_run_receipt_holds() {
+    lens_testgen_shadow_ci_marker_node(marker: lens_testgen_shadow_ci_ok)
+  } else {
+    lens_testgen_shadow_ci_marker_node(marker: lens_testgen_shadow_ci_failed)
+  }
+}
+
+
+data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim {
+  label: "lens_testgen/shadow_ci_receipt: TestgenRunReceipt carries full scheduled roster",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lens_testgen_shadow_ci_marker_node(marker: lens_testgen_shadow_ci_ok),
+  rhs: lens_testgen_shadow_ci_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()

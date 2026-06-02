@@ -3688,12 +3688,14 @@ fn ci_wave3_shadow_testgen_selection_reason(
   profile_ref: Symbol,
   selected: Bool
 ) -> CiClaimSelectionReason {
-  if !generator_matches_profile(g: g, profile_ref: profile_ref) {
-    ShadowObserveOnly
-  } else if ci_affected_set_is_fail_closed(affected: affected) {
-    ShadowObserveOnly
-  } else if selected {
-    TestgenSlotMapped
+  if generator_matches_profile(g: g, profile_ref: profile_ref) {
+    if ci_affected_set_is_fail_closed(affected: affected) {
+      ShadowObserveOnly
+    } else if selected {
+      TestgenSlotMapped
+    } else {
+      ShadowObserveOnly
+    }
   } else {
     ShadowObserveOnly
   }
@@ -4172,12 +4174,19 @@ data ci_wave3_shadow_selected_testgen_receipt: SelectedTestgenReceipt = ci_testg
   profile_ref: testgen_default_profile_ref
 )
 
+fn ci_wave3_shadow_testgen_slot_not_selected(slot: TestgenSlotSelection) -> Bool {
+  if slot.selected {
+    false
+  } else {
+    true
+  }
+}
+
+
 fn ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() -> Bool {
   for_all(
     xs: ci_wave3_shadow_fixture_fail_closed_receipt.testgen_slots,
-    predicate: fn(slot) {
-      !slot.selected
-    }
+    predicate: ci_wave3_shadow_testgen_slot_not_selected
   )
 }
 
@@ -4214,7 +4223,9 @@ fn ci_wave3_shadow_fixture_manual_subset_selected_holds() -> Bool {
   )
 }
 
-data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_closed_superset_holds() && ci_wave3_shadow_fixture_floor_held_holds() && ci_wave3_shadow_fixture_provenance_is_fixture_holds() && ci_wave3_shadow_fixture_manual_subset_selected_holds()
+data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_closed_superset_holds() && ci_wave3_shadow_fixture_floor_held_holds() && ci_wave3_shadow_fixture_provenance_is_fixture_holds() && ci_wave3_shadow_fixture_manual_subset_selected_holds() && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
+
+data witness_ci_wave3_shadow_testgen_receipts_ok: Bool = length(xs: ci_wave3_shadow_testgen_run_receipt.generators) > 0 && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
 
 data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 

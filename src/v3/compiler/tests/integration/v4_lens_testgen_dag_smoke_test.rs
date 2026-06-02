@@ -48,6 +48,10 @@ const LENS_TESTGEN_GENERATOR_PROVENANCE_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_testgen/generator_provenance.dag");
 const LENS_TESTGEN_GENERATOR_PROVENANCE_PATH: &str =
     "src/v4/test/claim/lens_testgen/generator_provenance.dag";
+const LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_testgen/shadow_ci_receipt.dag");
+const LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH: &str =
+    "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag";
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -186,6 +190,13 @@ fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
             && TESTGEN_DAG.contains("fn generator_carries_provenance"),
         "testgen must expose the provenance-integrity witness fns (close-criterion witness)"
     );
+    assert!(
+        TESTGEN_DAG.contains("fn testgen_scheduled_generators()")
+            && TESTGEN_DAG.contains("type TestgenRunReceipt")
+            && TESTGEN_DAG.contains("fn testgen_run_receipt(")
+            && TESTGEN_DAG.contains("fn generator_matches_profile("),
+        "testgen must expose F.2-P2 scheduled roster + TestgenRunReceipt authority"
+    );
     // Identity must be DERIVED from the row's canonical ClaimAnchorKey (single authority,
     // unique per row) — not a coarse static category symbol shared across distinct anchors.
     assert!(
@@ -234,6 +245,38 @@ fn v4_lens_testgen_generator_provenance_claim_parses_and_pins_witness() {
             "data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()"
         ),
         "{LENS_TESTGEN_GENERATOR_PROVENANCE_PATH}: must pin the testgen provenance witness via EqualsClaim + green Bool routed through the lens helper"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_shadow_ci_receipt_claim_parses_and_pins_witness() {
+    let module = parse_module(
+        LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG,
+        LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH,
+    );
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "lens_testgen",
+            "shadow_ci_receipt"
+        ]],
+        "shadow CI receipt claim module should stay under recursive T-22 discovery"
+    );
+    assert!(
+        LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
+            "import v4.lens.testgen {"
+        ) && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_scheduled_generators")
+            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains("testgen_run_receipt")
+            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
+                "data claim_lens_testgen_shadow_ci_run_receipt: TestClaim = EqualsClaim"
+            )
+            && LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG.contains(
+                "data witness_lens_testgen_shadow_ci_run_receipt_green: Bool = lens_testgen_shadow_ci_run_receipt_holds()"
+            ),
+        "{LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH}: must pin F.2-P2 TestgenRunReceipt witness via EqualsClaim + green Bool"
     );
 }
 
