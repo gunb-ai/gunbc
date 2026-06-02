@@ -1134,8 +1134,14 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
 /// ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`. Dissolution:
 /// generated `.dag` `TestClaim` execution covers the §11.7.5 shell-exception table + no-new-shell
 /// ratchet (and A15 Shape-B emitted `ci.yml`), retiring this hand-Rust parse/string harness.
+///
+/// **Required-CI wiring:** the `v4_workflow_ci_wave1_` name prefix places this under the required
+/// `ci_floor` "M1 v4 workflow CI model/YAML binding smoke" step's `::v4_workflow_ci_wave1_` filter
+/// (`.github/workflows/ci.yml`), so the no-new-shell ratchet — §11.7.1 item #5, a safety-floor
+/// gate — is enforced on every PR, not just locally. The §11.7.5 table it asserts is Wave 2 work,
+/// but the ratchet it enforces is Wave 1 floor, which is why it joins the `wave1_` floor-binding group.
 #[test]
-fn v4_workflow_ci_class_a_shell_exception_table_first_slice() {
+fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
 
     // Type substrate: the exception-row record + the §11.7.1 safety-floor enum it cites.
