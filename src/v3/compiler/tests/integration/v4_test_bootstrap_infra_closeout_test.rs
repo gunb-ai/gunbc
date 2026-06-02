@@ -10,6 +10,13 @@
 //! file remains inside the SG-0 T-PB-B test subset and dissolves when these
 //! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated
 //! harness coverage.
+//!
+//! **PR #4295 P5 receipt (+0 SG-0 paths):** same-path expansion in this file for
+//! `check_t19_testgen_activation` — structural migration of the activation gate
+//! formerly enforced by `scripts/check_t19_testgen_activation.py` (deleted on main
+//! in #4252, operator 2026-06-01 CI hygiene; not re-deleted in this PR). No new
+//! `EXPECTED_HAND_AUTHORED_TEST` census row; dissolves under the T-PB-B row above
+//! when T-22 generated harness or `.dag` TestClaim rows own these substrate checks.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -66,6 +73,18 @@ const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
     "src/v4/test/claim/generated/idempotent_operation_conformance.dag";
 const EFFECTS_DAG: &str = include_str!("../../../../v4/std/effects.dag");
 const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
+const DAG_INPUT_SURFACE_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_testgen/dag_input_surface.dag");
+const DAG_INPUT_SURFACE_PATH: &str = "src/v4/test/claim/lens_testgen/dag_input_surface.dag";
+const LBE_MANIFEST_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/lbe_anchor_manifest.dag");
+const LBE_MANIFEST_PATH: &str = "src/v4/test/claim/generated/lbe_anchor_manifest.dag";
+const REFINEMENT_MANIFEST_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/refinement_preservation_anchor_manifest.dag");
+const REFINEMENT_MANIFEST_PATH: &str =
+    "src/v4/test/claim/generated/refinement_preservation_anchor_manifest.dag";
+const VERIFICATION_DAG: &str = include_str!("../../../../v4/std/verification.dag");
+const VERIFICATION_PATH: &str = "src/v4/std/verification.dag";
 
 #[test]
 fn language_behavior_equivalence_generated_claims_parse() {
@@ -478,6 +497,197 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         !EVAL_DAG.contains("eval_node_unrealized")
             && !EVAL_DAG.contains("nd.head.reason == eval_node_unrealized"),
         "eval_node_unrealized fail-closed scaffold must dissolve once eval_node projects RuntimeValue into Node"
+    );
+}
+
+/// T-19 testgen activation ratchet (INVARIANTS §P5 same-path expansion; +0 SG-0).
+/// Replaces `scripts/check_t19_testgen_activation.py` after #4252 removed `scripts/`.
+/// Substrate parse + structural substring receipts only.
+#[test]
+fn check_t19_testgen_activation() {
+    parse_module(DAG_INPUT_SURFACE_DAG, DAG_INPUT_SURFACE_PATH);
+    parse_module(LBE_MANIFEST_DAG, LBE_MANIFEST_PATH);
+    parse_module(REFINEMENT_MANIFEST_DAG, REFINEMENT_MANIFEST_PATH);
+    parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+    parse_module(TESTGEN_WISHLIST_DAG, TESTGEN_WISHLIST_PATH);
+    parse_module(ALGEBRA_LAW_GENERATED_DAG, ALGEBRA_LAW_GENERATED_PATH);
+    parse_module(
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG,
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH,
+    );
+    parse_module(REFINEMENT_GENERATED_DAG, REFINEMENT_GENERATED_PATH);
+    parse_module(
+        IDEMPOTENT_OPERATION_GENERATED_DAG,
+        IDEMPOTENT_OPERATION_GENERATED_PATH,
+    );
+
+    require_substrings(
+        "lens_testgen/dag_input_surface",
+        DAG_INPUT_SURFACE_DAG,
+        &[
+            "witness_lens_testgen_schedules_dag_input_surface_green",
+            "witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green",
+            "scheduled_language_behavior_generators_cover_dag_inputs()",
+            "for_all(",
+            "language_behavior_generator_uses_disj_dag_input",
+            "language_behavior_generator_uses_transform_dag_input",
+            "bootstrap_generator_has_conj_dag_input_surface()",
+            "dag_language_model_surface_id",
+            "testgen_scheduled_language_behavior_generators",
+            "bootstrap_claim_generator_for_manual_anchor",
+        ],
+    );
+    forbid_substrings(
+        "lens_testgen/dag_input_surface",
+        DAG_INPUT_SURFACE_DAG,
+        &["compile-only until T-19"],
+    );
+
+    require_substrings(
+        "lbe_anchor_manifest.dag",
+        LBE_MANIFEST_DAG,
+        &[
+            "ManualLbeConjDagSurface",
+            "ManualLbeDisjDagSurface",
+            "ManualLbeTransformDagSurface",
+        ],
+    );
+    require_substrings(
+        "refinement_preservation_anchor_manifest.dag",
+        REFINEMENT_MANIFEST_DAG,
+        &["ManualRefinementNonEmptyListBase"],
+    );
+
+    parse_module(VERIFICATION_DAG, VERIFICATION_PATH);
+
+    require_substrings(
+        VERIFICATION_PATH,
+        VERIFICATION_DAG,
+        &[
+            "ManualLbeConjDagSurface",
+            "ManualLbeDisjDagSurface",
+            "ManualLbeTransformDagSurface",
+            "type TestClaimCoproductVariant",
+            "feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+            "follow-up: delete this mirror when T-19 projects arm keys from TestClaim",
+            "GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
+            "ManualRefinementNonEmptyListBase",
+        ],
+    );
+
+    require_substrings(
+        "testgen.dag",
+        TESTGEN_DAG,
+        &[
+            "| LanguageBehaviorEquivalence {",
+            "type LanguageBehaviorEquivalenceSubject",
+            "type FrozenLanguageBehaviorSnapshot",
+            "type LanguageBehaviorIoMock",
+            "fn testgen_emit_language_behavior_equivalence_claim",
+            "fn testgen_emit_algebra_law_claim",
+            "if lhs == rhs",
+            "t19_algebra_law_tautological_sides",
+            "fn testgen_emit_idempotent_operation_claim",
+            "fn testgen_scheduled_language_behavior_generators",
+            "fn testgen_scheduled_idempotent_operation_subjects",
+            "dag_language_model_surface_id",
+            "ManualLbeConjDagSurface",
+            "ManualRefinementNonEmptyListBase",
+            "fn testgen_emit_coproduct_exhaustiveness_claim",
+            "fn testgen_scheduled_coproduct_exhaustiveness_generators",
+            "| RefinementPreservation { subject: RefinementPreservationSubject }",
+            "fn testgen_emit_refinement_preservation_claim",
+            "refined_base(r: subject.refined)",
+        ],
+    );
+
+    let concept_body = between(TESTGEN_DAG, "type TestgenConcept", "type Generator");
+    assert!(
+        concept_body.contains("LanguageBehaviorEquivalence"),
+        "LanguageBehaviorEquivalence must be a TestgenConcept variant"
+    );
+    assert!(
+        concept_body.contains("RefinementPreservation"),
+        "RefinementPreservation must be a TestgenConcept variant"
+    );
+    assert!(
+        !concept_body.contains("IdempotentOperationSubject"),
+        "IdempotentOperationSubject must stay outside the closed seven-way TestgenConcept coproduct"
+    );
+
+    let pending = between(
+        TESTGEN_WISHLIST_DAG,
+        "fn testgen_pending_non_tautological_generator_wishlist",
+        "fn testgen_dispatched_non_tautological_generators",
+    );
+    assert_eq!(
+        pending.matches("TestgenWishlistRow {").count(),
+        3,
+        "generator wishlist must carry exactly three pending non-dispatched rows"
+    );
+    for shipped in ["slot: AlgebraLaw", "slot: DiagnosticExhaustiveness"] {
+        assert!(
+            !pending.contains(shipped),
+            "{shipped} has generated rows and must stay out of pending wishlist rows"
+        );
+    }
+
+    let dispatched = between(
+        TESTGEN_WISHLIST_DAG,
+        "fn testgen_dispatched_non_tautological_generators",
+        "fn pending_non_tautological_generator_count_is_three",
+    );
+    assert_eq!(
+        dispatched.matches("TestgenWishlistRow {").count(),
+        4,
+        "generator wishlist must carry exactly four dispatched rows"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_language_behavior_equivalence_generator()")
+            && dispatched.contains("generator: dispatched_algebra_law_generator()")
+            && dispatched.contains("generator: dispatched_diagnostic_exhaustiveness_generator()")
+            && dispatched.contains("generator: dispatched_refinement_preservation_generator()"),
+        "dispatched wishlist rows must include LBE, AlgebraLaw, DiagnosticExhaustiveness, and RefinementPreservation"
+    );
+
+    require_substrings(
+        "language_behavior_equivalence.dag",
+        LBE_GENERATED_DAG,
+        &[
+            "run_test_claim_assert",
+            "run_test_claim(",
+            "witness_lbe_conj_snapshot_pass",
+            "witness_lbe_disj_snapshot_pass",
+            "witness_lbe_transform_snapshot_pass",
+            "witness_testgen_schedules_three_lbe_generators",
+            "lbe_io_mock_conj_dag_surface",
+        ],
+    );
+
+    require_substrings(
+        "coproduct_exhaustiveness.dag",
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG,
+        &[
+            "length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4",
+            "witness_coproduct_exhaustiveness_generator_count",
+        ],
+    );
+
+    require_substrings(
+        "refinement_preservation.dag",
+        REFINEMENT_GENERATED_DAG,
+        &[
+            "witness_refinement_preserves_nonempty_list_base",
+            "refined_base(r: subject.refined) == subject.original",
+        ],
+    );
+
+    assert!(
+        ALGEBRA_LAW_GENERATED_DAG
+            .matches("data generated_nat_")
+            .count()
+            >= 3,
+        "algebra-law generator must produce at least three sample TestClaim rows"
     );
 }
 
@@ -935,6 +1145,30 @@ fn record_field_expr<'a>(fields: &'a [SurfaceRecordField], name: &str) -> &'a Su
         .iter()
         .find_map(|field| (field.name == name).then_some(&field.value))
         .unwrap_or_else(|| panic!("missing record field {name}"))
+}
+
+fn require_substrings(label: &str, text: &str, needles: &[&str]) {
+    let missing: Vec<_> = needles
+        .iter()
+        .copied()
+        .filter(|n| !text.contains(n))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "{label}: missing required substrings: {missing:?}"
+    );
+}
+
+fn forbid_substrings(label: &str, text: &str, needles: &[&str]) {
+    let present: Vec<_> = needles
+        .iter()
+        .copied()
+        .filter(|n| text.contains(n))
+        .collect();
+    assert!(
+        present.is_empty(),
+        "{label}: forbidden substrings present: {present:?}"
+    );
 }
 
 fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
