@@ -1979,22 +1979,22 @@ fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>>
 
 fn testgen_scheduled_generators_outcome() -> Outcome<List<Generator<TestgenConcept>>> {
   let base = testgen_scheduled_generators_static_base()
-  match testgen_scheduled_refinement_preservation_generators() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: refinement_gens, diagnostics: d_rp } =>
-      match testgen_scheduled_algebra_law_generators() {
-        Rejected { diagnostics: d } =>
-          Rejected { diagnostics: rejected_with_pending(pending: d_rp, rejected: d) }
-        Accepted { value: algebra_gens, diagnostics: d_al } =>
-          Accepted {
+  bind_outcome(
+    o: testgen_scheduled_refinement_preservation_generators(),
+    f: fn(refinement_gens) {
+      bind_outcome(
+        o: testgen_scheduled_algebra_law_generators(),
+        f: fn(algebra_gens) {
+          outcome_accepted(
             value: list_append(
               left: base,
               right: list_append(left: refinement_gens, right: algebra_gens)
-            ),
-            diagnostics: diagnostics_merge(outer: d_rp, inner: d_al)
-          }
-      }
-  }
+            )
+          )
+        }
+      )
+    }
+  )
 }
 
 
