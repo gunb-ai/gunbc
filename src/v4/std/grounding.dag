@@ -48,11 +48,18 @@ type PerLanguageFactBundleEntry {
 }
 
 
-// P2: keyed registry rejects duplicate PerLanguageFactBundleKey rows, while entries preserve
-// complete subject × target bundles for model_core projection.
+// P2: `entries` is the sole fact-value authority. `by_key` is a key-only duplicate index
+// and cannot carry an independently divergent fact payload.
 type PerLanguageFactBundleRegistry {
-  by_key: Map<PerLanguageFactBundleKey, Node>
+  by_key: Map<PerLanguageFactBundleKey, PerLanguageFactBundleKey>
   entries: List<PerLanguageFactBundleEntry>
+}
+
+
+type PerLanguageFactBundleSpecFactsFoldState {
+  subject_carrier: Node
+  target: TargetModel
+  spec_facts: Map<Symbol, Node>
 }
 
 
@@ -87,7 +94,7 @@ fn insert_per_language_fact_bundle_entry(
     None =>
       outcome_accepted(
         value: PerLanguageFactBundleRegistry {
-          by_key: map_insert(m: registry.by_key, key: key, value: fact_value),
+          by_key: map_insert(m: registry.by_key, key: key, value: key),
           entries: list_snoc_item(
             xs: registry.entries,
             item: PerLanguageFactBundleEntry { key: key, fact_value: fact_value }
@@ -112,25 +119,54 @@ fn per_language_fact_bundle_spec_facts_for_subject(
   subject_carrier: Node,
   target: TargetModel
 ) -> Map<Symbol, Node> {
+  per_language_fact_bundle_spec_facts_fold_state(
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target
+  ).spec_facts
+}
+
+
+fn per_language_fact_bundle_spec_facts_fold_state(
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node,
+  target: TargetModel
+) -> PerLanguageFactBundleSpecFactsFoldState {
   fold_list(
     xs: registry.entries,
-    empty: empty_map(),
+    empty: PerLanguageFactBundleSpecFactsFoldState {
+      subject_carrier: subject_carrier,
+      target: target,
+      spec_facts: empty_map()
+    },
     cons: fn(acc, entry) {
-      if per_language_fact_bundle_entry_matches_subject(
-        entry: entry,
-        subject_carrier: subject_carrier,
-        target: target
-      ) {
-        map_insert(
-          m: acc,
-          key: model_core_primitive_fact_axis_symbol(axis: entry.key.fact_axis),
-          value: entry.fact_value
-        )
-      } else {
-        acc
-      }
+      per_language_fact_bundle_spec_facts_fold_step(acc: acc, entry: entry)
     }
   )
+}
+
+
+fn per_language_fact_bundle_spec_facts_fold_step(
+  acc: PerLanguageFactBundleSpecFactsFoldState,
+  entry: PerLanguageFactBundleEntry
+) -> PerLanguageFactBundleSpecFactsFoldState {
+  if per_language_fact_bundle_entry_matches_subject(
+    entry: entry,
+    subject_carrier: acc.subject_carrier,
+    target: acc.target
+  ) {
+    PerLanguageFactBundleSpecFactsFoldState {
+      subject_carrier: acc.subject_carrier,
+      target: acc.target,
+      spec_facts: map_insert(
+        m: acc.spec_facts,
+        key: model_core_primitive_fact_axis_symbol(axis: entry.key.fact_axis),
+        value: entry.fact_value
+      )
+    }
+  } else {
+    acc
+  }
 }
 
 
