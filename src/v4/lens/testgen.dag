@@ -1926,21 +1926,13 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
 }
 
 
-// F.2-P1: the GeneratedArtifact wraps a refined Artifact; reach the admitted base to
-// check the identity link. The refined type already makes non-generated kinds
-// unrepresentable, so the witness only asserts identity consistency (generator_id keys
-// the artifact) — the kind guarantee is carried structurally, not re-checked here.
-fn generated_artifact_keyed_by(a: GeneratedArtifact, id: GeneratorId) -> Bool {
-  let base = refined_base(r: a.refined)
-  base.id == id
-}
-
-
-// F.2-P1 provenance integrity: a generator's identity must key its emitted artifact
-// (generator_id == base artifact id, a generated kind), and it must carry profile
-// metadata. This is the structural property the close-criterion witness folds.
+// F.2-P1 provenance integrity: a generator's identity must be the one DERIVED from its
+// own canonical anchor (single-authority — no row carries a foreign/colliding id), and it
+// must carry profile metadata. Checking against the anchor projection is the meaningful
+// property; the emitted artifact's kind/id are carried structurally by the refined
+// GeneratedArtifact + the total constructor, so they are not re-inspected here.
 fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
-  generated_artifact_keyed_by(a: g.provenance.artifact, id: g.provenance.generator_id)
+  g.provenance.generator_id == generator_id_for_claim_anchor(anchor: g.anchor)
     && g.profile_metadata.profile_ref == testgen_default_profile_ref
 }
 
