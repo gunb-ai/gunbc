@@ -569,6 +569,120 @@ fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
 }
 
 #[test]
+fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
+    let module = parse_module(PYTHON_LANGUAGE_DAG, PYTHON_LANGUAGE_PATH);
+    for name in [
+        "PerLanguageFactBundleEntry",
+        "PerLanguageFactBundleKey",
+        "PerLanguageFactBundleRegistry",
+        "empty_per_language_fact_bundle_registry",
+        "insert_per_language_fact_bundle_entry",
+        "primitive_fact_bundle_for_subject",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "grounding"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must consume `{name}` from v4.std.grounding"
+        );
+    }
+    for name in [
+        "ModelCorePrimitiveFactAxis",
+        "ModelCoreFactAxisEncoding",
+        "ModelCoreFactAxisSurfaceSpelling",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "model_core"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must consume typed model_core axis `{name}`"
+        );
+    }
+    for name in ["Outcome", "Accepted", "Rejected", "outcome_accepted"] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "diagnostic"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle registry must consume diagnostic `{name}`"
+        );
+    }
+    for name in [
+        "python_g1_2_fact_bundle_key",
+        "python_g1_2_fact_bundle_entry",
+        "python_g1_2_integer_fact_bundle_entries",
+        "python_g1_2_float_fact_bundle_entries",
+        "python_g1_2_complex_fact_bundle_entries",
+        "python_g1_2_bool_fact_bundle_entries",
+        "python_g1_2_singleton_fact_bundle_entries",
+        "python_g1_2_fact_bundle_entries",
+        "python_g1_2_insert_fact_bundle_entry",
+        "python_g1_2_insert_entries",
+        "python_g1_2_fact_bundle_registry",
+        "python_g1_2_snoc_primitive_bundle",
+        "python_g1_2_integer_primitive_bundles_from_registry",
+        "python_g1_2_float_primitive_bundles_from_registry",
+        "python_g1_2_complex_primitive_bundles_from_registry",
+        "python_g1_2_bool_primitive_bundles_from_registry",
+        "python_g1_2_singleton_primitive_bundles_from_registry",
+        "python_g1_2_append_primitive_bundle_outcomes",
+        "python_g1_2_primitive_bundles_from_registry",
+        "python_g1_2_primitive_fact_bundles",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must declare `{name}`"
+        );
+    }
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains("core: ModelCore")
+            && PYTHON_LANGUAGE_DAG.contains("fn python_model_core_wave1() -> Outcome<ModelCore>")
+            && PYTHON_LANGUAGE_DAG
+                .contains("fn python_language_model_wave1() -> Outcome<PythonLanguageModel>")
+            && PYTHON_LANGUAGE_DAG.contains("match python_g1_2_primitive_fact_bundles()"),
+        "{PYTHON_LANGUAGE_PATH}: Python ModelCore primitive facts must propagate G.1.2 registry diagnostics"
+    );
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains(
+            "fn python_g1_2_primitive_bundles_from_registry(\n  registry: PerLanguageFactBundleRegistry\n) -> Outcome<List<PrimitiveFactBundle>>"
+        ) && PYTHON_LANGUAGE_DAG.contains("match primitive_fact_bundle_for_subject("),
+        "{PYTHON_LANGUAGE_PATH}: Python registry projection must propagate primitive bundle lookup diagnostics"
+    );
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains("match python_model_core_wave1()")
+            && PYTHON_LANGUAGE_DAG.contains("Rejected { diagnostics: d } =>\n      Rejected { diagnostics: d }"),
+        "{PYTHON_LANGUAGE_PATH}: Python LanguageModel construction must reject when ModelCore construction rejects"
+    );
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains("primitives: primitives")
+            && !PYTHON_LANGUAGE_DAG.contains("Rejected { diagnostics: _ } =>\n      []"),
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 registry rejection must not be coerced to an empty primitive list"
+    );
+    for name in [
+        "python_integer_spec_facts",
+        "python_float_spec_facts",
+        "python_complex_spec_facts",
+        "python_bool_spec_facts",
+        "python_singleton_spec_facts",
+        "python_primitive_bundle_from_integer_facts",
+        "python_primitive_bundle_from_float_facts",
+        "python_primitive_bundle_from_complex_facts",
+        "python_primitive_bundle_from_bool_facts",
+        "python_primitive_bundle_from_singleton_facts",
+        "python_wave1_primitive_fact_bundles",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must not retain legacy direct PrimitiveFactBundle builder `{name}`"
+        );
+    }
+    assert_eq!(
+        surface_fn_count(&module, "python_g1_2_concrete_syntax_token"),
+        0,
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must not revive target-local concrete syntax token helpers"
+    );
+    assert_eq!(
+        surface_declares_type(&module, "PythonConcreteSyntaxToken"),
+        false,
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must consume shared ConcreteSyntaxToken authority"
+    );
+}
+
+#[test]
 fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
     let module = parse_module(KOTLIN_LANGUAGE_DAG, KOTLIN_LANGUAGE_PATH);
     assert!(
