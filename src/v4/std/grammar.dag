@@ -127,16 +127,14 @@ type ConcreteSyntaxSchema {
 
 
 fn concrete_syntax_schema(
-  lex: LexRules,
-  grammar: WellFormedFormalGrammar,
   terminal_coverage: Witness<GrammarTerminalLexCoverage>
 ) -> Witness<ConcreteSyntaxSchema> {
   match terminal_coverage {
-    Holds { value: _ } =>
+    Holds { value: coverage } =>
       Holds {
         value: ConcreteSyntaxSchema {
-          lex: lex,
-          grammar: grammar,
+          lex: coverage.lex,
+          grammar: coverage.grammar,
           terminal_coverage: terminal_coverage
         }
       }
