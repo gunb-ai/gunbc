@@ -15,30 +15,27 @@ use crate::std_computation::CallPattern::{
     ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
 };
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
-pub use crate::std_computation::ShrinkFactor;
-use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_computation::{lower_call_pattern, size_bound_param, type_iteration_dimension};
-pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget};
+pub use crate::std_computation::{
+    lower_call_pattern, size_bound_param, type_iteration_dimension, CallPattern,
+    IterationDimension, LoweringTarget,
+};
 pub use crate::std_graph::{
     build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order, forward_adjacency,
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
-    seed_adjacency_map,
+    seed_adjacency_map, CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc, SccCycleAcc,
 };
-pub use crate::std_graph::{CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc, SccCycleAcc};
 use crate::std_induction::AtomicCost::PolyCost;
 use crate::std_induction::CostBound::{AtomicBound, ConstantBound, ErrorBound, ForeverBound};
 use crate::std_induction::PolynomialExponent::*;
+use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
     catamorphism_bound, derive_bound, sub_value_to_call_pattern, sub_value_to_evidence,
-    sub_value_to_lowering_target,
+    sub_value_to_lowering_target, AtomicCost, CostBound, PolynomialExponent, ShrinkFactor,
+    SubValueRelation,
 };
-pub use crate::std_induction::{AtomicCost, CostBound, PolynomialExponent, SubValueRelation};
-use crate::std_syntax::BinOp::{Div, Sub};
-use crate::std_syntax::LiteralValue::{LitInt, LitNull};
-pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::DescentSource::{
     ArithmeticDivideDescent, ArithmeticSubtractDescent, ChildAccessor, FoldIteration, ListShrink,
@@ -50,8 +47,6 @@ use crate::std_termination::RankingDimension::{
 };
 pub use crate::std_termination::{
     descent_evidence_lattice_meet, evidence_rank, map_evidence_merge_at, optional_evidence_meet,
-};
-pub use crate::std_termination::{
     DescentEvidence, DescentSource, PositiveDescentAmount, ProofEdge, RankingDimension,
     TerminationProof,
 };
@@ -65,14 +60,16 @@ use crate::v2_compiler_parse::ParserResultWitness::{
 };
 pub use crate::v2_compiler_parse::{
     parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness,
+    ParserCallIdentity, ParserResultWitness,
 };
-pub use crate::v2_compiler_parse::{ParserCallIdentity, ParserResultWitness};
 use crate::v2_rt;
+use crate::v2_std_core::BinOp::{Div, Sub};
 use crate::v2_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda,
     ExprLet, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprUnaryOp,
     ExprVar,
 };
+use crate::v2_std_core::LiteralValue::{LitInt, LitNull};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -85,9 +82,8 @@ pub use crate::v2_std_core::{
     is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing,
     lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, param_node_name_at, param_node_type_expr,
-    return_value,
+    return_value, BinOp, ExprData, LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node,
 };
-pub use crate::v2_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;

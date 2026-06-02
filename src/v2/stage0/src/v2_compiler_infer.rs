@@ -5,65 +5,52 @@ use self::SizeExpr::*;
 pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
-pub use crate::std_computation::ShrinkFactor;
-use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
+use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, MixedTop, NonIncreasingValue, PreservedValue,
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
     compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,
-    sub_value_to_evidence,
+    sub_value_to_evidence, InductiveField, RecursionShape, ShrinkFactor, SubValueRelation,
 };
-pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
-pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
+    PositiveDescentAmount,
 };
-pub use crate::std_types::container_param_name;
-pub use crate::std_types::SourceSpan;
-pub use crate::v2_compiler_infer_access::AccessCheckResultNode;
-pub use crate::v2_compiler_infer_access::{check_index_access_node, check_slice_access_node};
+pub use crate::std_types::{container_param_name, SourceSpan};
+pub use crate::v2_compiler_infer_access::{
+    check_index_access_node, check_slice_access_node, AccessCheckResultNode,
+};
 pub use crate::v2_compiler_infer_cycle::detect_type_cycles_kahn;
 use crate::v2_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v2_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
-    derive_variant_to_enum, empty_emit_graph_info, lookup_emit_type_summary,
-};
-pub use crate::v2_compiler_infer_emit_info::{
-    EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary,
+    derive_variant_to_enum, empty_emit_graph_info, lookup_emit_type_summary, EmitGraphInfo,
+    EmitInfoBuildState, TypeRepr, TypeSummary,
 };
 pub use crate::v2_compiler_infer_env::{
-    empty_lookup_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
     is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
-    merge_inductive_fields, merge_lookup_caches, put_inductive_field, put_inductive_field_cross,
-    warm_lookup_cache,
+    merge_inductive_fields, put_inductive_field, put_inductive_field_cross, TypeBinding, TypeEnv,
 };
-pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
 pub use crate::v2_compiler_infer_items::{
-    inferred_to_outputs, item_kind, variant_locals_from_items,
+    inferred_to_outputs, item_kind, variant_locals_from_items, ItemInfo, ItemKind, ResolvedGraph,
+    TypedGraph, TypedModule,
 };
-pub use crate::v2_compiler_infer_items::{
-    ItemInfo, ItemKind, ResolvedGraph, TypedGraph, TypedModule,
-};
-pub use crate::v2_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v2_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
     resolve_known_method_node, resolve_scrutinee_type_node, set_element_type_in_env,
+    KnownMethodResolution,
 };
 pub use crate::v2_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -72,20 +59,19 @@ use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_patterns::{
     check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
     lookup_variant_in_type, pattern_binding_type, pattern_subject_from_inferred,
-    pattern_subject_from_node,
+    pattern_subject_from_node, NodeLookupResult, PatternSubject,
 };
-pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
-pub use crate::v2_compiler_infer_resolve::{resolve_item_types, resolve_node};
-pub use crate::v2_compiler_infer_resolve::{ItemResult, NodeResolveResult};
+pub use crate::v2_compiler_infer_resolve::{
+    resolve_item_types, resolve_node, ItemResult, NodeResolveResult,
+};
 pub use crate::v2_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_called_func_names,
     collect_typed_service_calls, expand_transitive_services, extract_typed_service_name,
-    is_typed_service_call_receiver, service_op_entry,
+    is_typed_service_call_receiver, service_op_entry, OpEntry, ServiceMethodResult, UniqueAccum,
 };
-pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
-pub use crate::v2_compiler_infer_sigs::resolve_func_sigs;
-pub use crate::v2_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
-pub use crate::v2_compiler_infer_types::KernelTypeBuild;
+pub use crate::v2_compiler_infer_sigs::{
+    resolve_func_sigs, ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig,
+};
 pub use crate::v2_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
     extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
@@ -94,11 +80,13 @@ pub use crate::v2_compiler_infer_types::{
     node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    template_return_has_variables, template_return_is_receiver_self,
+    template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
-use crate::v2_compiler_infer_env::LookupCache;
+use crate::v2_std_core::BinOp::{
+    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
+};
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, TypeMismatch, VariantCollision};
@@ -114,6 +102,7 @@ use crate::v2_std_core::FieldAccessStyle::{
 };
 use crate::v2_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -142,13 +131,11 @@ pub use crate::v2_std_core::{
     module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
     resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
-};
-pub use crate::v2_std_core::{
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality, BinOp,
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
     ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart,
-    UnaryOpKind, VarBindingKind,
+    InferredNode, InternTable, LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -329,19 +316,6 @@ pub struct InferScopeComponents {
     pub func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
     pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-}
-
-pub fn scope_with_type_env(scope: Rc<InferScope>, env: Rc<TypeEnv>) -> Rc<InferScope> {
-    Rc::new(InferScope {
-        type_env: env,
-        func_env: scope.func_env.clone(),
-        locals: scope.locals.clone(),
-        match_bound_names: scope.match_bound_names.clone(),
-        module_name: scope.module_name.clone(),
-        service_registry: scope.service_registry.clone(),
-        item_registry: scope.item_registry.clone(),
-        lambda_param_provenance: scope.lambda_param_provenance.clone(),
-    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1505,11 +1479,10 @@ pub fn resolve_pattern_subject(
         PatternSubject::PatternResolved {
             node: scrutinee_type,
             ..
-        } => {
-            let scrut_result =
-                resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone());
-            pattern_subject_from_node(scrut_result.node.clone())
-        }
+        } => pattern_subject_from_node(resolve_scrutinee_type_node(
+            scope.type_env.clone(),
+            scrutinee_type.clone(),
+        )),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
         } => Rc::new(PatternSubject::PatternDynamic {
@@ -1565,7 +1538,7 @@ pub fn annotate_pattern_parent_enums(
                     resolved_scrut.clone(),
                     variant_name.clone(),
                     scope.module_name.clone(),
-                    scope.type_env.clone(),
+                    scope.type_env.clone().source_indices.clone(),
                     (bindings.clone().len() as i64),
                 );
                 let variant_subject = lookup_result_subject(variant_lookup);
@@ -1580,7 +1553,7 @@ pub fn annotate_pattern_parent_enums(
                                     scope.type_env.clone().source_indices.clone(),
                                 ),
                                 scope.module_name.clone(),
-                                scope.type_env.clone(),
+                                scope.type_env.clone().source_indices.clone(),
                             );
                             let field_subject = lookup_result_subject(field_lookup.clone());
                             make_field_binding_node(
@@ -1848,7 +1821,7 @@ pub fn extend_scope_with_pattern_node(
                 resolved_scrut,
                 vname.clone(),
                 scope.module_name.clone(),
-                scope.type_env.clone(),
+                scope.type_env.clone().source_indices.clone(),
                 (bindings.clone().len() as i64),
             );
             let variant_subject = lookup_result_subject(variant_lookup.clone());
@@ -1867,7 +1840,7 @@ pub fn extend_scope_with_pattern_node(
                         variant_subject.clone(),
                         field_name.clone(),
                         scope.module_name.clone(),
-                        scope.type_env.clone(),
+                        scope.type_env.clone().source_indices.clone(),
                     );
                     let field_subject = lookup_result_subject(field_lookup.clone());
                     let field_type = pattern_binding_type(field_subject.clone());
@@ -2379,10 +2352,8 @@ pub fn infer_expr(
                 let base_typed = base_result.typed.clone();
                 let base_diags = base_result.diagnostics.clone();
                 let base_rt = resolved_type(base_typed.clone());
-                let scrut_result =
+                let resolved_base =
                     resolve_scrutinee_type_node(scope.type_env.clone(), base_rt.clone());
-                let scope = scope_with_type_env(scope.clone(), scrut_result.env.clone());
-                let resolved_base = scrut_result.node.clone();
                 let resolved_base_is_error = if (resolved_base.inferred.clone() != None) {
                     is_compiler_error(resolved_base.inferred.clone().clone().unwrap())
                 } else {
@@ -2401,7 +2372,7 @@ pub fn infer_expr(
                     match lookup_field_type_node(
                         resolved_base.clone(),
                         field_name.clone(),
-                        scope.type_env.clone(),
+                        scope.type_env.clone().source_indices.clone(),
                     ) {
                         Some(field_type) => {
                             let field_summary = field_summary_for_type(
@@ -2742,9 +2713,8 @@ pub fn infer_expr(
                         } else {
                             call_fold_acc_type.clone()
                         };
-                        let method_result = resolve_known_method_node(
+                        let method_resolution = resolve_known_method_node(
                             method_receiver.clone(),
-                            scope.type_env.clone(),
                             first_arg_type.clone(),
                             func_name.clone(),
                             if (call_fold_info.clone() != None) {
@@ -2753,9 +2723,8 @@ pub fn infer_expr(
                                 None
                             },
                             scope.service_registry.clone(),
+                            scope.type_env.clone().source_indices.clone(),
                         );
-                        let method_resolution = method_result.resolution.clone();
-                        let scope = scope_with_type_env(scope.clone(), method_result.env.clone());
                         let is_known_method = (method_resolution.result_type.clone() != None);
                         if (is_known_method && ((typed_args.clone().len() as i64) > 0)) {
                             {
@@ -3289,9 +3258,8 @@ match bare_s {
                     } else {
                         fold_acc_type.clone()
                     };
-                let method_result = resolve_known_method_node(
+                let method_resolution = resolve_known_method_node(
                     recv_typed.clone(),
-                    scope.type_env.clone(),
                     recv_rt.clone(),
                     method_name.clone(),
                     if (fold_info.clone() != None) {
@@ -3300,9 +3268,8 @@ match bare_s {
                         None
                     },
                     scope.service_registry.clone(),
+                    scope.type_env.clone().source_indices.clone(),
                 );
-                let method_resolution = method_result.resolution.clone();
-                let scope = scope_with_type_env(scope.clone(), method_result.env.clone());
                 let pipe_fb = match method_resolution.result_type.clone() {
                     Some(rt) => Rc::new(MethodPipeFallback {
                         result_ty: rt.clone(),
@@ -10467,7 +10434,6 @@ pub fn build_type_env(
             inductive_fields: node_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: empty_lookup_cache(),
         });
         let imports_std_types = {
             let mut __found = false;
@@ -10573,12 +10539,6 @@ pub fn build_type_env(
                 merge_inductive_fields(acc, env.inductive_fields.clone())
             },
         );
-        let import_lookup_cache = parent_envs.clone().iter().cloned().fold(
-            empty_lookup_cache(),
-            |acc: Rc<LookupCache>, env: Rc<TypeEnv>| {
-                merge_lookup_caches(acc, env.lookup_cache.clone())
-            },
-        );
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
             recursive_types: import_recursive,
@@ -10586,7 +10546,6 @@ pub fn build_type_env(
             inductive_fields: import_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: import_lookup_cache.clone(),
         });
         let import_diags = Rc::new({
             let mut __result = Vec::new();
@@ -10845,7 +10804,6 @@ pub fn build_type_env(
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: empty_lookup_cache(),
         });
         let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
         let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone()))
@@ -10913,7 +10871,6 @@ pub fn build_type_env(
             inductive_fields: merged_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: empty_lookup_cache(),
         });
         let resolved = resolve_env_bindings(
             unresolved_env,
@@ -10923,28 +10880,14 @@ pub fn build_type_env(
         );
         let resolved_env_out = resolved.env.clone();
         let resolved_diags = resolved.diagnostics.clone();
-        let final_env_base = Rc::new(TypeEnv {
+        let final_env = Rc::new(TypeEnv {
             bindings: resolved_env_out.bindings.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
             inductive_fields: resolved_env_out.inductive_fields.clone(),
             source_indices: resolved_env_out.source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: import_lookup_cache.clone(),
         });
-        let binding_nodes = Rc::new(v2_rt::map_keys(&resolved_env_out.bindings.clone()))
-            .iter()
-            .cloned()
-            .fold(Rc::new(vec![]), |acc: _, ident: i64| {
-                match v2_rt::map_get(&resolved_env_out.bindings.clone(), ident.clone()) {
-                    Some(b) => v2_rt::concat(acc.clone(), Rc::new(vec![b.resolved.clone()])),
-                    None => acc.clone(),
-                }
-            });
-        let final_env = warm_lookup_cache(
-            final_env_base,
-            v2_rt::concat(module_items(module.module.clone()), binding_nodes),
-        );
         Rc::new(BuildTypeEnvResult {
             env: final_env,
             diagnostics: v2_rt::concat(import_diags, resolved_diags),
@@ -11088,7 +11031,6 @@ pub fn build_type_env_unresolved(
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: empty_lookup_cache(),
         });
         let imports_std_types = {
             let mut __found = false;
@@ -11194,12 +11136,6 @@ pub fn build_type_env_unresolved(
                 merge_inductive_fields(acc, env.inductive_fields.clone())
             },
         );
-        let import_lookup_cache = parent_envs.clone().iter().cloned().fold(
-            empty_lookup_cache(),
-            |acc: Rc<LookupCache>, env: Rc<TypeEnv>| {
-                merge_lookup_caches(acc, env.lookup_cache.clone())
-            },
-        );
         let import_env = Rc::new(TypeEnv {
             bindings: import_bindings,
             recursive_types: import_recursive,
@@ -11207,7 +11143,6 @@ pub fn build_type_env_unresolved(
             inductive_fields: import_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: import_lookup_cache,
         });
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
@@ -11340,7 +11275,6 @@ pub fn build_type_env_unresolved(
             inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: empty_lookup_cache(),
         });
         let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
         let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone()))
@@ -11408,7 +11342,6 @@ pub fn build_type_env_unresolved(
             inductive_fields: merged_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
-            lookup_cache: empty_lookup_cache(),
         });
         Rc::new(BuildTypeEnvResult {
             env: unresolved_env,
@@ -12120,7 +12053,6 @@ pub fn topo_resolve_types(
                         inductive_fields: env.inductive_fields.clone(),
                         source_indices: env.source_indices.clone(),
                         intern_table: env.intern_table.clone(),
-                        lookup_cache: env.lookup_cache.clone(),
                     }),
                     diagnostics: v2_rt::concat(
                         diagnostics.clone(),
@@ -12187,7 +12119,6 @@ pub fn topo_resolve_types(
                 inductive_fields: env.inductive_fields.clone(),
                 source_indices: env.source_indices.clone(),
                 intern_table: env.intern_table.clone(),
-                lookup_cache: env.lookup_cache.clone(),
             });
             let __tco_2 = v2_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);

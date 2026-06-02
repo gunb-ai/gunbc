@@ -9,9 +9,9 @@ use crate::v2_std_core::CompilerDiagnostic::{
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 pub use crate::v2_std_core::{
     authored_name_at, import_is_all, import_node, import_specific_names_at, make_error_node,
-    module_imports, module_items, module_node, no_span,
+    module_imports, module_items, module_node, no_span, CompilerDiagnostic, Connective, ErrorNode,
+    NewlineIndex, Node,
 };
-pub use crate::v2_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
