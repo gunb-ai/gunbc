@@ -2437,6 +2437,7 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
     for name in [
         "ci_selection_receipt_persist",
         "ci_selection_receipt_lookup",
+        "ci_selection_receipt_storage_key",
         "ci_selection_receipt_shadow_fixture_persistence_lookup_holds",
     ] {
         assert!(
@@ -2446,26 +2447,36 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
     }
     for needle in [
         "type CiSelectionReceiptStoreRow",
-        "key: Symbol",
+        "key: Hash",
         "receipt: CiSelectionReceipt",
         "type CiSelectionReceiptLookup",
-        "found: Bool",
-        "data ci_selection_receipt_shadow_fixture_storage_key: Symbol",
+        "= CiSelectionReceiptFound { receipt: CiSelectionReceipt }",
+        "| CiSelectionReceiptMissing { key: Hash }",
+        "data ci_selection_receipt_shadow_fixture_storage_key: Hash",
+        "ci_selection_receipt_storage_key(receipt: ci_selection_receipt_shadow_fixture_receipt)",
         "data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow>",
         "ci_selection_receipt_persist(",
+        "key: ci_selection_receipt_storage_key(receipt: receipt)",
         "receipt: ci_selection_receipt_shadow_fixture_receipt",
         "data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup",
         "ci_selection_receipt_lookup(",
-        "fallback: ci_wave3_shadow_fixture_fail_closed_receipt",
-        "row.key == key",
-        "CiSelectionReceiptLookup { found: true, receipt: row.receipt }",
+        "empty: CiSelectionReceiptMissing { key: key }",
+        "if row.key == missing_key",
+        "CiSelectionReceiptFound { receipt: row.receipt }",
+        "CiSelectionReceiptMissing { key: _ } => false",
         "data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool",
         "feature:f11c-ci-selection-receipt-persistence",
-        "forbidden: treating transient fixture construction as persisted receipt evidence",
+        "caller-chosen symbols as lookup authority",
+        "Forbidden: treating transient fixture construction as persisted receipt evidence",
     ] {
         assert!(
             CI_DAG.contains(needle),
             "{CI_DAG_PATH}: F.11c receipt persistence + lookup must carry `{needle}`"
         );
     }
+    assert!(
+        !CI_DAG.contains("fallback: ci_wave3_shadow_fixture_fail_closed_receipt")
+            && !CI_DAG.contains("data ci_selection_receipt_shadow_fixture_storage_key: Symbol"),
+        "{CI_DAG_PATH}: F.11c lookup misses must not expose fallback receipts or caller-authored Symbol keys"
+    );
 }
