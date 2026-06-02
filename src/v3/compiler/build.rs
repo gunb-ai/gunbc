@@ -342,8 +342,8 @@ fn emit_r1_gates_fixture(manifest_path: &Path, v3_dir: &Path) {
 
     println!("cargo:rerun-if-changed={}", template_path.display());
     for p0_script in [
-        manifest_path.join("../../../scripts/r1_p0_no_fabrication_sentinel.sh"),
-        manifest_path.join("../../../scripts/r1_p0_rest_ops_aligned.py"),
+        manifest_path.join("tests/fixtures/host/r1_p0_no_fabrication_sentinel.sh"),
+        manifest_path.join("tests/fixtures/host/r1_p0_rest_ops_aligned.py"),
     ] {
         println!("cargo:rerun-if-changed={}", p0_script.display());
     }

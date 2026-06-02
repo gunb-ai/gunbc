@@ -1,13 +1,15 @@
 // src/v4/test/claim/workflow/testclaim_corpus_runner.dag
 // Scope: T-38 modeled corpus-level TestClaim runner over manual roster.
-// Status: wedge — fold manual_corpus_node_runtime_value_rows into CorpusEvalReport.
-// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; CI host transport is scripts/v4-testclaim-corpus-eval.sh under positive-Y `ci_upsert_testclaim_corpus_eval_*`. T-38-PR2 (verdict SURFACE): manual_corpus_eval.dag declares the authoring-time corpus tally witness; the CI receipt now surfaces the per-row roster + tally (retired blocked_m1_subset). Forward (residual gate): per-row RUNTIME execution of `run_manual_testclaim_corpus_eval` (cargo-clean M1 emitted subset OR bootstrap-evaluator corpus path) — load-bearing, escalated as upward debt; amend when that lands.
+// Status: wedge — evaluate manual_corpus_node_subject_rows into CorpusEvalReport.
+// 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; CI host transport is scripts/v4-testclaim-corpus-eval.sh under positive-Y `ci_upsert_testclaim_corpus_eval_*`. T-38-PR2: the runner maps each manual subject row through `run_test_claim`, then manual_corpus_eval.dag gates the resulting CorpusEvalReport tally (retired blocked_m1_subset).
 
 module v4.test.claim.workflow.testclaim_corpus_runner
 
 
 import v4.compiler.eval {
+  TestClaimEvalSubject,
   TestClaimRun,
+  run_test_claim,
   test_claim_run_claim,
   test_claim_run_verdict
 }
@@ -23,7 +25,7 @@ import v4.std.verdict {
 }
 import v4.std.verification { test_claim_label }
 import v4.test.claim.manual.manual_corpus_roster {
-  manual_corpus_node_runtime_value_rows
+  manual_corpus_node_subject_rows
 }
 
 
@@ -83,10 +85,17 @@ fn corpus_entries_from_node_runtime_value_runs(
 }
 
 
+fn run_node_runtime_value_subjects(
+  subjects: List<TestClaimEvalSubject<Node>>
+) -> List<TestClaimRun<Node, RuntimeValue>> {
+  map(subjects, fn(subject) { run_test_claim(subject: subject) })
+}
+
+
 fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
   CorpusEvalReport {
     entries: corpus_entries_from_node_runtime_value_runs(
-      runs: manual_corpus_node_runtime_value_rows
+      runs: run_node_runtime_value_subjects(subjects: manual_corpus_node_subject_rows)
     )
   }
 }

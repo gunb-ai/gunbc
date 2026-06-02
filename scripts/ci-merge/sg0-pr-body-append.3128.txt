@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) deferral dispatch under docs/briefs/r3-v-t-lens-application-surface-execution-split-worker.md Slice A substrate receipts (§1.8 gate #89 section_ref_substrate_landed); net SG-0 integration harness add dissolves when the same bootstrap structural asserts are carried by `.dag` `TestClaim`/runner receipts per T-Tests-As-Data posture (parity with adjacent timing/file-attachment substrate carrier tests).

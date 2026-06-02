@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) dispatch for P5(b) net +1 on `EXPECTED_HAND_AUTHORED_TEST` (`v4_extdeps_coordination_dag_smoke_test.rs`); concrete dispatch evidence: `docs/briefs/r4-program-dispatch-plan.md` T-4.8 coordination row. Primary checkable lane cite is ROADMAP.md Nine lanes row T-PB-B / `pb_rust_tests_outside_residual_zero` with same-PR INVARIANTS.md § SG-0 hand-authored integration test receipts table row for that path. T-4.8 context: `src/v4/TASKS.md` § T-4.8 / `src/v4/extdeps/coordination.dag`; retire when the coordination facts and WIRECONTRACT-OBLIGATION-TABLE-T4.8 obligations are exercised by `.dag` TestClaim rows or a generated harness without this host Rust parse ratchet.
