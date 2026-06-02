@@ -966,6 +966,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
+    // T-38B: lens_idempotency subject roster + run_test_claim + family receipt (eval_mvp2 wedge).
+    "src/v3/compiler/tests/integration/v4_lens_idempotency_claim_dag_smoke_test.rs",
     // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
     // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_identical_variant_payload_dag_smoke_test.rs",
