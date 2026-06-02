@@ -57,9 +57,10 @@ pub struct AffectedSetCiReceipt {
     pub skipped_components: Vec<String>,
     /// True when `release_distribution` is the only triggered bucket (RELEASE §5 fast-path).
     pub release_distribution_only: bool,
-    /// Would the `ci_floor` v2→v4 bootstrap path (the dominant ~9m + M1 ~13m cost) be required?
-    /// Rule: `v2 || v4` is selected. Today `ci_floor` runs unconditionally, so this is the
-    /// *prediction* the operator measures before gating it.
+    /// Would the `ci_floor` v2→v4 bootstrap path (v2 build + bootstrap viability + M1 emit probe)
+    /// be required? Mirrors `ci_v4_bootstrap_gate_result_skip_guard_if` and
+    /// `M1RustEmitProbeCommand` job masks in `src/v4/workflow/ci.dag` (needs-closure pulls
+    /// `v2_compile_src_v4` for testclaim/workflow_policy/release_distribution, not only v4).
     pub bootstrap_required: bool,
     /// Number of TestClaims the node-frontier selection would run. v1: 0 (claim selection not wired
     /// into this ops path yet — it stays shadow in `CiSelectionReceipt`). TODO: populate from the
@@ -107,10 +108,18 @@ pub fn component_partition(flags: CiComponentAffected) -> (Vec<String>, Vec<Stri
     (selected, skipped)
 }
 
-/// The `ci_floor` v2→v4 bootstrap path (v2 build + v2 DAG-emit parity + v2→v4 bootstrap compile +
-/// M1 rust-emit probe) is required iff the v2 or v4 bucket is selected.
+/// Whether the Wave-1 `ci_floor` bootstrap path would run under affected-set gating.
+///
+/// Authority: `ci_v4_bootstrap_gate_result_skip_guard_if` and `M1RustEmitProbeCommand` masks in
+/// `src/v4/workflow/ci.dag` — v4 bootstrap + M1 fire when any of
+/// `{v4, testclaim_corpus, workflow_policy, release_distribution}` is selected; `v2` bucket
+/// additionally requires the v2 gunbc build. v3-only is out of scope for this floor slice.
 pub fn bootstrap_required(flags: CiComponentAffected) -> bool {
-    flags.v2 || flags.v4
+    flags.v2
+        || flags.v4
+        || flags.testclaim_corpus
+        || flags.workflow_policy
+        || flags.release_distribution
 }
 
 /// Structurally derived skip savings for the kill-criterion aggregate.
@@ -197,11 +206,21 @@ mod tests {
     }
 
     #[test]
-    fn claim_only_diff_skips_bootstrap() {
-        // A pure TestClaim corpus edit triggers testclaim_corpus but not v2/v4 → bootstrap skips.
+    fn claim_only_diff_requires_bootstrap_via_modeled_needs_closure() {
+        // TestClaim corpus jobs need v2_compile_src_v4 + M1 (ci.dag needs-closure), even when v2/v4
+        // bucket bits alone would be false.
         let flags = flags_for(["src/v4/test/claim/workflow/affected_set_ci_runner.dag"]);
         assert!(flags.testclaim_corpus);
-        assert!(!bootstrap_required(flags));
+        assert!(!flags.v2);
+        assert!(!flags.v4);
+        assert!(bootstrap_required(flags));
+    }
+
+    #[test]
+    fn workflow_policy_only_diff_requires_bootstrap() {
+        let flags = flags_for([".github/workflows/ci.yml"]);
+        assert!(flags.workflow_policy);
+        assert!(bootstrap_required(flags));
     }
 
     #[test]
@@ -259,10 +278,10 @@ mod tests {
 
     #[test]
     fn saved_minutes_positive_only_on_skip_eligible_path_with_observed_timing() {
-        let flags = flags_for(["src/v4/test/claim/workflow/affected_set_ci_runner.dag"]);
+        let flags = flags_for(["docs/README.md"]);
         assert!(!bootstrap_required(flags));
         let receipt = affected_set_ci_receipt(
-            vec!["src/v4/test/claim/workflow/affected_set_ci_runner.dag".to_string()],
+            vec!["docs/README.md".to_string()],
             flags,
             false,
             0,

@@ -34,9 +34,10 @@ is therefore currently unmeasurable — it would be a guess. This receipt makes 
 
 - `selected_components` / `skipped_components` — partition of the six bankruptcy buckets
   (v2, v3, v4, testclaim_corpus, workflow_policy, release_distribution).
-- `bootstrap_required` — `v2 || v4` selected ⇒ the `ci_floor` v2→v4 bootstrap path (the dominant
-  ~9m bootstrap + ~13m M1 emit-probe cost) would be needed. This is the prediction the skip
-  decision turns on.
+- `bootstrap_required` — mirrors `ci_v4_bootstrap_gate_result_skip_guard_if` +
+  `M1RustEmitProbeCommand` masks in `src/v4/workflow/ci.dag`: true when any of
+  `{v2, v4, testclaim_corpus, workflow_policy, release_distribution}` is selected (needs-closure
+  pulls `v2_compile_src_v4` for corpus/workflow paths, not only raw v4 bucket bits).
 - `saved_minutes` is **structurally derived** from the modeled skip decision, not runtime variance
   alone: `0` when `fail_closed`, when `bootstrap_required` (no ci_floor bootstrap skip opportunity),
   when the baseline is unset, or when `actual_run_minutes` is unobserved (`<= 0`). Only on
