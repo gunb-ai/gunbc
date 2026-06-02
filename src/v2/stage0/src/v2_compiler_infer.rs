@@ -38,7 +38,7 @@ pub use crate::v2_compiler_infer_env::{
     empty_lookup_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
     is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
     merge_inductive_fields, merge_lookup_caches, put_inductive_field, put_inductive_field_cross,
-    warm_lookup_cache, TypeBinding, TypeEnv,
+    warm_lookup_cache, LookupCache, TypeBinding, TypeEnv,
 };
 use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
