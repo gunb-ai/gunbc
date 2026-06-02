@@ -201,6 +201,34 @@ fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: 
   }
 }
 
+fn is_parametric_type_alias_decl(item: Node) -> Bool {
+  (item.params |> count) > 0 && item.connective == NoConnective && item.body == none && item.transport == none && item.inferred != none
+}
+
+// Parametric alias RHS (`type List<T> = FreeMonoid<T>`) must keep the authored
+// applied-type shell for emit; full resolve expands the base into its structural
+// definition and erases nominal base/type-arg/module facts (P2/P3).
+fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
+  if n.connective == NoConnective && n.children |> count > 0 {
+    let arg_results = n.children |> map(child => resolve_nominal_alias_rhs(n: child, env: env, module_name: module_name))
+    let resolved_args = map(arg_results, ar => ar.resolved)
+    let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
+    let validation = resolve_node(n: n, env: env, module_name: module_name)
+    NodeResolveResult {
+      resolved: Node {
+        name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: resolved_args,
+        connective: n.connective, params: n.params, inferred: n.inferred,
+        return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
+        properties: n.properties, type_annotation: n.type_annotation,
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+      },
+      diagnostics: concat(arg_diags, validation.diagnostics)
+    }
+  } else {
+    resolve_node(n: n, env: env, module_name: module_name)
+  }
+}
+
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) -> NodeResolveResult {
   if depth > 100 {
     return NodeResolveResult {
@@ -878,15 +906,21 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       recursive_type_set: e.recursive_type_set,
       inductive_fields: e.inductive_fields,
       source_indices: e.source_indices,
-      intern_table: e.intern_table,
-      lookup_cache: e.lookup_cache
+      intern_table: e.intern_table
     }
   )
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
   let param_diags = flat_map(param_results, pr => pr.diagnostics)
 
-  let ret_result = resolve_optional_node(n: item.inferred, env: env, module_name: module_name)
+  let ret_result = if is_parametric_type_alias_decl(item: item) {
+    match item.inferred {
+      Some { value: Resolved { node: authored_rhs } } => resolve_nominal_alias_rhs(n: authored_rhs, env: env, module_name: module_name)
+      _ => resolve_optional_node(n: item.inferred, env: env, module_name: module_name)
+    }
+  } else {
+    resolve_optional_node(n: item.inferred, env: env, module_name: module_name)
+  }
   let ret_resolved = ret_result.resolved
   let ret_diags = ret_result.diagnostics
   let resolved_ret = if item.inferred == none { none } else { Some { value: Resolved { node: ret_resolved } } }

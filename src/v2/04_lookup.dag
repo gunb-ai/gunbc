@@ -318,6 +318,7 @@ type StructuralMethodLookup {
 type EnrichedKernelResult {
   ty: Node
   env: TypeEnv
+  diagnostics: List<ErrorNode>
 }
 
 type StructuralMethodLookupResult {
@@ -353,14 +354,14 @@ fn enrich_kernel_type_cached(env: TypeEnv, name: String, base: Node) -> Enriched
   match enriched_kernel_cache_key(name: name, base: base) {
     None =>
       let built = enrich_kernel_type(name: name, base: base, source_indices: env.source_indices)
-      EnrichedKernelResult { ty: built.ty, env: env }
+      EnrichedKernelResult { ty: built.ty, env: env, diagnostics: built.diagnostics }
     Some { value: key } =>
       match lookup_cache_get_enriched_kernel(env: env, key: key) {
-        Some { value: cached } => EnrichedKernelResult { ty: cached, env: env }
+        Some { value: cached } => EnrichedKernelResult { ty: cached, env: env, diagnostics: [] }
         None =>
           let built = enrich_kernel_type(name: name, base: base, source_indices: env.source_indices)
           let updated = lookup_cache_put_enriched_kernel(env: env, key: key, enriched: built.ty)
-          EnrichedKernelResult { ty: built.ty, env: updated }
+          EnrichedKernelResult { ty: built.ty, env: updated, diagnostics: built.diagnostics }
       }
   }
 }
@@ -390,11 +391,11 @@ fn lookup_structural_method(env: TypeEnv, receiver_type: Node, method_name: Stri
               Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Some { value: t } } }
             None => base_result
           }
-          StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: resolution, kernel_diagnostics: [] }, env: env }
-        None => StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: none, kernel_diagnostics: [] }, env: env }
+          StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: resolution, kernel_diagnostics: enriched.diagnostics }, env: env }
+        None => StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }, env: env }
       }
     } else {
-      StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: none, kernel_diagnostics: [] }, env: env }
+      StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }, env: env }
     }
   }
 }
