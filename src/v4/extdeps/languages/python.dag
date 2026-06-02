@@ -55,6 +55,14 @@ import v4.std.lexing {
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
+import v4.std.grounding {
+  PerLanguageFactBundleEntry,
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry,
+  empty_per_language_fact_bundle_registry,
+  hollow_alias_governance_bar,
+  insert_per_language_fact_bundle_entry
+}
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -65,6 +73,7 @@ import v4.std.model_core {
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_unbound_diagnostic
 }
+import v4.std.diagnostic { Outcome, outcome_accepted }
 import v4.std.witness { Holds, Violates }
 import v4.std.node {
   Arrow,
@@ -684,6 +693,233 @@ fn python_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
       right: python_primitive_bundles_from_bool_catalog()
     ),
     right: python_primitive_bundles_from_singleton_catalog()
+  )
+}
+
+fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: Symbol) -> PerLanguageFactBundleKey {
+  PerLanguageFactBundleKey {
+    subject_carrier: subject_carrier,
+    target: python_mvp1_target_model(),
+    fact_axis: fact_axis
+  }
+}
+
+fn python_g1_2_fact_bundle_entry(
+  subject_carrier: Node,
+  fact_axis: Symbol,
+  fact_value: Node
+) -> PerLanguageFactBundleEntry {
+  PerLanguageFactBundleEntry {
+    key: python_g1_2_fact_bundle_key(
+      subject_carrier: subject_carrier,
+      fact_axis: fact_axis
+    ),
+    fact_value: fact_value
+  }
+}
+
+fn python_g1_2_integer_fact_bundle_entries(
+  facts: PythonIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let carrier = python_integer_facts_node(facts: facts)
+  [
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_value: python_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_encoding,
+      fact_value: python_inhabitant_atom(id: facts.encoding)
+    )
+  ]
+}
+
+fn python_g1_2_float_fact_bundle_entries(
+  facts: PythonFloatPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let carrier = python_float_facts_node(facts: facts)
+  [
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_value: python_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_encoding,
+      fact_value: python_inhabitant_atom(id: facts.machine_representation)
+    )
+  ]
+}
+
+fn python_g1_2_complex_fact_bundle_entries(
+  facts: PythonComplexPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let carrier = python_complex_facts_node(facts: facts)
+  [
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_value: python_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_encoding,
+      fact_value: python_inhabitant_atom(id: facts.component_machine_representation)
+    )
+  ]
+}
+
+fn python_g1_2_bool_fact_bundle_entries(
+  facts: PythonBoolPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let carrier = python_bool_facts_node(facts: facts)
+  [
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_value: python_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_encoding,
+      fact_value: python_inhabitant_atom(id: facts.encoding)
+    )
+  ]
+}
+
+fn python_g1_2_singleton_fact_bundle_entries(
+  facts: PythonSingletonPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let carrier = python_singleton_facts_node(facts: facts)
+  [
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_value: python_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    python_g1_2_fact_bundle_entry(
+      subject_carrier: carrier,
+      fact_axis: primitive_fact_axis_encoding,
+      fact_value: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant)
+    )
+  ]
+}
+
+fn python_g1_2_integer_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: python_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: python_g1_2_integer_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_g1_2_float_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: python_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: python_g1_2_float_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_g1_2_complex_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: python_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: python_g1_2_complex_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_g1_2_bool_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: python_bool_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: python_g1_2_bool_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_g1_2_singleton_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: python_singleton_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: python_g1_2_singleton_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_g1_2_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: python_g1_2_integer_catalog_entries(),
+          right: python_g1_2_float_catalog_entries()
+        ),
+        right: python_g1_2_complex_catalog_entries()
+      ),
+      right: python_g1_2_bool_catalog_entries()
+    ),
+    right: python_g1_2_singleton_catalog_entries()
+  )
+}
+
+fn python_g1_2_insert_fact_bundle_entry(
+  registry: PerLanguageFactBundleRegistry,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  insert_per_language_fact_bundle_entry(
+    registry: registry,
+    key: entry.key,
+    fact_value: entry.fact_value
+  )
+}
+
+fn python_g1_2_insert_entries(
+  registry: Outcome<PerLanguageFactBundleRegistry>,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  match registry {
+    Accepted { value: r, diagnostics: _ } =>
+      python_g1_2_insert_fact_bundle_entry(registry: r, entry: entry)
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+fn python_g1_2_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  let _bar = hollow_alias_governance_bar()
+  fold_list(
+    xs: python_g1_2_fact_bundle_entries(),
+    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    cons: fn(acc, entry) {
+      python_g1_2_insert_entries(registry: acc, entry: entry)
+    }
   )
 }
 
