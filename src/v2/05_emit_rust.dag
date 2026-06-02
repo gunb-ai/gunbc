@@ -1619,6 +1619,30 @@ fn graph_type_import_module_filename(name: String, import_module: String, mod_na
   }
 }
 
+fn variant_defining_module_filename_for_import(variant_name: String, import_module: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, fallback: String) -> String {
+  match find_variant_parent_in_module(
+    variant_name: variant_name,
+    module_name: import_module,
+    typed_modules: typed_modules,
+    source_indices: source_indices
+  ) {
+    Some { value: _parent } => module_to_filename(name: import_module)
+    None =>
+      match explicit_import_source_module_for_name(name: variant_name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+        Some { value: hop } if hop != import_module =>
+          variant_defining_module_filename_for_import(
+            variant_name: variant_name,
+            import_module: hop,
+            typed_modules: typed_modules,
+            export_sets: export_sets,
+            source_indices: source_indices,
+            fallback: fallback
+          )
+        _ => fallback
+      }
+  }
+}
+
 fn variant_parent_defining_module_filename(parent_enum: String, variant_name: String, import_module: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, registry: Map<String, ItemInfo>, fallback: String) -> String {
   match find_variant_parent_in_module(
     variant_name: variant_name,
@@ -1630,16 +1654,24 @@ fn variant_parent_defining_module_filename(parent_enum: String, variant_name: St
       if local_parent == parent_enum {
         module_to_filename(name: import_module)
       } else {
-        match reexport_source_module_name(name: variant_name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
-          Some { value: src_mod } => module_to_filename(name: src_mod)
-          None => item_defining_module_filename(name: parent_enum, registry: registry, fallback: fallback)
-        }
+        variant_defining_module_filename_for_import(
+          variant_name: variant_name,
+          import_module: import_module,
+          typed_modules: typed_modules,
+          export_sets: export_sets,
+          source_indices: source_indices,
+          fallback: item_defining_module_filename(name: parent_enum, registry: registry, fallback: fallback)
+        )
       }
     None =>
-      match reexport_source_module_name(name: variant_name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
-        Some { value: src_mod } => module_to_filename(name: src_mod)
-        None => item_defining_module_filename(name: parent_enum, registry: registry, fallback: fallback)
-      }
+      variant_defining_module_filename_for_import(
+        variant_name: variant_name,
+        import_module: import_module,
+        typed_modules: typed_modules,
+        export_sets: export_sets,
+        source_indices: source_indices,
+        fallback: item_defining_module_filename(name: parent_enum, registry: registry, fallback: fallback)
+      )
   }
 }
 

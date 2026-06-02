@@ -3489,6 +3489,90 @@ pub fn graph_type_import_module_filename(
     }
 }
 
+pub fn explicit_import_source_module_for_name(
+    name: String,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match typed_module_by_name(
+        import_module.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+    ) {
+        None => None,
+        Some(tm) => {
+            match module_imports(tm.module.clone())
+                .iter()
+                .cloned()
+                .filter(|imp| {
+                    !import_is_all(imp.clone())
+                        && import_specific_names_at(imp.clone(), source_indices.clone())
+                            .iter()
+                            .any(|n| n.as_str() == name.as_str())
+                })
+                .map(|imp| authored_name_at(source_indices.clone(), imp))
+                .next()
+            {
+                Some(src) => Some(src),
+                None => module_imports(tm.module.clone())
+                    .iter()
+                    .cloned()
+                    .filter(|imp| import_is_all(imp.clone()))
+                    .filter(|imp| {
+                        let src_mod = authored_name_at(source_indices.clone(), imp.clone());
+                        match v2_rt::map_get(&export_sets, src_mod.clone()) {
+                            Some(exported) => {
+                                v2_rt::map_get(&exported, name.clone()) == Some(true)
+                            }
+                            None => false,
+                        }
+                    })
+                    .map(|imp| authored_name_at(source_indices.clone(), imp))
+                    .next(),
+            }
+        }
+    }
+}
+
+pub fn variant_defining_module_filename_for_import(
+    variant_name: String,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fallback: String,
+) -> String {
+    match find_variant_parent_in_module(
+        variant_name.clone(),
+        import_module.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+    ) {
+        Some(_parent) => module_to_filename(import_module.clone()),
+        None => match explicit_import_source_module_for_name(
+            variant_name.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+        ) {
+            Some(hop) if hop.as_str() != import_module.as_str() => {
+                variant_defining_module_filename_for_import(
+                    variant_name,
+                    hop,
+                    typed_modules,
+                    export_sets,
+                    source_indices,
+                    fallback,
+                )
+            }
+            _ => fallback,
+        },
+    }
+}
+
 pub fn variant_parent_defining_module_filename(
     parent_enum: String,
     variant_name: String,
@@ -3509,30 +3593,24 @@ pub fn variant_parent_defining_module_filename(
             if (local_parent.as_str() == parent_enum.as_str()) {
                 module_to_filename(import_module.clone())
             } else {
-                match reexport_source_module_name(
+                variant_defining_module_filename_for_import(
                     variant_name,
                     import_module.clone(),
                     typed_modules.clone(),
-                    export_sets,
+                    export_sets.clone(),
                     source_indices.clone(),
-                ) {
-                    Some(src_mod) => module_to_filename(src_mod.clone()),
-                    None => item_defining_module_filename(parent_enum.clone(), registry, fallback),
-                }
+                    item_defining_module_filename(parent_enum.clone(), registry, fallback),
+                )
             }
         }
-        None => {
-            match reexport_source_module_name(
-                variant_name,
-                import_module.clone(),
-                typed_modules.clone(),
-                export_sets,
-                source_indices.clone(),
-            ) {
-                Some(src_mod) => module_to_filename(src_mod.clone()),
-                None => item_defining_module_filename(parent_enum.clone(), registry, fallback),
-            }
-        }
+        None => variant_defining_module_filename_for_import(
+            variant_name,
+            import_module.clone(),
+            typed_modules.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            item_defining_module_filename(parent_enum.clone(), registry, fallback),
+        ),
     }
 }
 
@@ -3549,7 +3627,7 @@ pub fn reexport_variant_parent_in_import_module(
         variant_name.clone(),
         import_module,
         typed_modules.clone(),
-        export_sets,
+        export_sets.clone(),
         source_indices.clone(),
     ) {
         None => None,
@@ -3560,16 +3638,26 @@ pub fn reexport_variant_parent_in_import_module(
             source_indices.clone(),
         ) {
             Some(parent) => Some(parent.clone()),
-            None => find_variant_parent(
-                type_summaries.clone(),
+            None => match explicit_import_source_module_for_name(
                 variant_name.clone(),
-                enum_names_in_module(
-                    src_mod.clone(),
-                    typed_modules.clone(),
-                    source_indices.clone(),
-                    type_summaries.clone(),
-                ),
-            ),
+                src_mod.clone(),
+                typed_modules.clone(),
+                export_sets.clone(),
+                source_indices.clone(),
+            ) {
+                Some(hop) if hop.as_str() != src_mod.as_str() => {
+                    reexport_variant_parent_in_import_module(
+                        variant_name,
+                        hop,
+                        registry,
+                        type_summaries,
+                        typed_modules,
+                        export_sets,
+                        source_indices,
+                    )
+                }
+                _ => None,
+            },
         },
     }
 }
@@ -4150,6 +4238,8 @@ pub fn emit_specific_import_block(
                                     export_sets.clone(),
                                     source_indices.clone(),
                                 ) {
+                                    false
+                                } else if is_kernel_type(n.clone()) {
                                     false
                                 } else {
                                     true
