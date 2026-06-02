@@ -340,10 +340,10 @@ fn inputs_root_field(inputs: &Value) -> Result<&Value, EvalError> {
 }
 
 #[cfg(test)]
-fn inputs_expected_eval_root_field(
+fn inputs_expected_eval_root_field<'a>(
     dag: &Dag,
-    inputs: &Value,
-) -> Result<&Value, EvalError> {
+    inputs: &'a Value,
+) -> Result<&'a Value, EvalError> {
     let optional = inputs_record_field(
         inputs,
         "expected_eval_root",
