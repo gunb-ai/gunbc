@@ -37,6 +37,17 @@
 //! byte-for-byte carrier structural-match, not a hand-Rust binding test; ROADMAP row **T-PB-B** /
 //! `pb_rust_tests_outside_residual_zero`). Dissolve-on: same A15 Shape-B/T-24 lane as above.
 //!
+//! **INVARIANTS P5 — checkable receipt for THIS PR (Wave 3 §11.7.2 Phase-2 host emit wired):**
+//! feature `wave3-host-emit-class-c-wired`; consumers
+//! `v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml`,
+//! `v4_workflow_ci_wave3_node_selection_still_shadow_*`. SAME-PATH edit: flips the prior
+//! `*_live_emit_deferred_*` assertion to assert the host shadow-emit step IS now wired (Class C,
+//! `continue-on-error: true`) — superseding the "live emit deferred" posture — while the modeled
+//! live entry `ci_selection_receipt_shadow_from_git_diff` stays deferred to `node://adhoc-331899f9-19a`
+//! (node-frontier claim/testgen selection remains shadow). No new hand-Rust test path or authority
+//! surface (SG-0 delta 0 — path already in `EXPECTED_HAND_AUTHORED_TEST`). ROADMAP row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero`. Dissolve-on: same A15 Shape-B/T-24 lane as above.
+//!
 //! **INVARIANTS P5 — checkable receipt for PR #4323 (F.11b source-authority receipt consumption):**
 //! feature `f11b-source-authority-ci-receipt`; consumer
 //! `v4_workflow_ci_source_authority_receipt_consumes_h72_claims`. SAME-PATH SG-0 expansion:
@@ -45,6 +56,15 @@
 //! Dissolve-on: generated `.dag` TestClaim execution covers
 //! `claim_source_authority_contract_compiles` and `claim_bmin_canonical_dag_source_parse_print_law`
 //! through `SourceAuthorityReceiptEvalCommand` without this hand-Rust parse/string ratchet.
+//!
+//! **INVARIANTS P5 — checkable receipt for F.11a (`Upsert<T>` Node projection substrate):**
+//! feature `f11a-ci-upsert-node-projection`; consumer
+//! `v4_workflow_ci_upsert_node_projection_substrate`. SAME-PATH SG-0 expansion in this harness;
+//! defers to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:59-63; Public Operational Lanes summary
+//! ROADMAP.md:43). Consumer test asserts those strings are present in-tree (checkable receipt).
+//! Dissolve-on: `.dag` TestClaim execution proves `content_hash(ci_upsert_step_projection_node)`
+//! sensitivity and `v4.std.patterns.Upsert<T>` field alignment without this hand-Rust ratchet.
 //!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
@@ -95,6 +115,8 @@ const INPROCESS_EQUIVALENCE_DAG: &str =
 const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_equivalence.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
+const ROADMAP: &str = include_str!("../../../../../ROADMAP.md");
+const ROADMAP_PATH: &str = "ROADMAP.md";
 
 const CI_CHANGED_PATH_AFFECTS_FNS: &[&str] = &[
     "ci_changed_path_affects_v2",
@@ -1985,14 +2007,27 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
 }
 
 #[test]
-fn v4_workflow_ci_wave3_live_emit_deferred_in_ci_yml() {
+fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
+    // Phase 2: the host shadow emit step IS now wired into ci.yml (component_affected_comparison
+    // is live-populated), as a non-blocking Class C step. The modeled live entry
+    // `ci_selection_receipt_shadow_from_git_diff` stays deferred until the bootstrap eval
+    // (`node://adhoc-331899f9-19a`) — the receipt's claim/testgen partitions remain queued.
     assert!(
-        !CI_YML.contains("emit-ci-wave3-shadow-receipt"),
-        "{CI_YML_PATH}: Phase 2 — live shadow emit waits on bootstrap eval entry (adhoc-331899f9-19a)"
+        CI_YML.contains("emit-ci-wave3-shadow-receipt"),
+        "{CI_YML_PATH}: Phase 2 — host shadow emit step must be wired into ci.yml"
+    );
+    let emit_block = CI_YML
+        .split("- name: Emit Wave 3 shadow selection receipt")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    - name:").next())
+        .unwrap_or("");
+    assert!(
+        emit_block.contains("continue-on-error: true"),
+        "{CI_YML_PATH}: Wave 3 host shadow emit must be Class C (continue-on-error: true)"
     );
     assert!(
         !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff"),
-        "{CI_YML_PATH}: modeled live entry not wired until eval harness lands"
+        "{CI_YML_PATH}: modeled live entry (ci_selection_receipt_shadow_from_git_diff) not wired until eval harness lands (adhoc-331899f9-19a)"
     );
 }
 
@@ -2012,10 +2047,15 @@ fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live
         !ci_floor_block.contains("needs: [affected]"),
         "{CI_YML_PATH}: `ci_floor` must not need `affected`"
     );
+    // Phase 2: the host emit step is wired (component receipt live), but the node-frontier
+    // modeled live entry stays deferred — claim/testgen selection remains shadow until eval.
     assert!(
-        !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff")
-            && !CI_YML.contains("emit-ci-wave3-shadow-receipt"),
-        "{CI_YML_PATH}: Wave 3 node-frontier receipt emit remains deferred"
+        !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff"),
+        "{CI_YML_PATH}: Wave 3 node-frontier modeled live entry (ci_selection_receipt_shadow_from_git_diff) remains deferred until adhoc-331899f9-19a"
+    );
+    assert!(
+        CI_YML.contains("emit-ci-wave3-shadow-receipt"),
+        "{CI_YML_PATH}: Phase 2 host emit (Class C) is wired; component_affected_comparison live, node-frontier claim/testgen still queued"
     );
 }
 
@@ -2346,4 +2386,39 @@ fn v4_workflow_ci_source_authority_receipt_consumes_h72_claims() {
         !CI_DAG.contains("dag-artifact.json") && !CI_DAG.contains("--target dag"),
         "{CI_DAG_PATH}: F.11b CI receipt consumption must not use JSON IR as source authority"
     );
+}
+
+#[test]
+fn v4_workflow_ci_upsert_node_projection_substrate() {
+    assert!(
+        ROADMAP.contains("### Nine lanes")
+            && ROADMAP.contains("| **T-PB-B** | `pb_rust_tests_outside_residual_zero`")
+            && ROADMAP.contains("T-PB-B / `pb_rust_tests_outside_residual_zero`"),
+        "{ROADMAP_PATH}: F.11a P5 deferral must bind to checkable T-PB-B authority (Nine lanes + Public Operational Lanes)"
+    );
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        import_includes_name(&module, &["v4", "std", "patterns"], "Upsert"),
+        "{CI_DAG_PATH}: F.11a must import `Upsert` from `v4.std.patterns` (P2 single-authority)"
+    );
+    for needle in [
+        "fn ci_upsert_projection_edges<T>(",
+        "fn ci_upsert_projection_node<T>(upsert: Upsert<T>) -> Node",
+        "fn ci_upsert_cache_digest<T>(upsert: Upsert<T>) -> Hash",
+        "fn ci_upsert_step_projection_node<T>(step: CiUpsertStep<T>) -> Node",
+        "fn ci_upsert_input_ref_projection_node(input_ref: UpsertInputRef) -> Node",
+        "fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash",
+        "content_hash(n: ci_upsert_step_projection_node(step: step))",
+        "ci_upsert_projection_edges(",
+        "ci_projection_upsert_verify_edge",
+        "ci_projection_upsert_create_edge",
+        "ci_projection_upsert_resolve_edge",
+        "ci_upsert_cache_digest_create_sensitivity_witness_holds",
+        "Structural consumer of `v4.std.patterns.Upsert<T>`",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: F.11a Upsert<T> Node projection substrate must carry `{needle}`"
+        );
+    }
 }
