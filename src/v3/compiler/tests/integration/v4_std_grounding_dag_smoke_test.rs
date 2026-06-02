@@ -147,8 +147,8 @@ fn v4_std_grounding_key_indexes_target_and_fact_axis() {
     let module = grounding_surface_or_panic();
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleKey"),
-        vec!["subject_carrier", "target", "fact_axis"],
-        "registry key must use TargetModel + ModelCorePrimitiveFactAxis (P2)"
+        vec!["subject_carrier", "target_identity", "fact_axis"],
+        "registry key must use stable target identity + ModelCorePrimitiveFactAxis (P2)"
     );
 }
 
@@ -202,30 +202,29 @@ fn v4_std_grounding_registry_keyed_map_authority() {
 }
 
 #[test]
-fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles() {
+fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
     assert!(
         GROUNDING_DAG.contains("fact_axis: ModelCorePrimitiveFactAxis"),
         "illegal fact axes unrepresentable via model_core closed coproduct (P2)"
     );
     assert!(
-        GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol"),
-        "registry key can project the closed axis to model_core Symbol authority when an aggregation builder lands"
+        GROUNDING_DAG.contains("witness_model_core_primitive_fact_axis")
+            && !GROUNDING_DAG.contains("fn witness_canonical_primitive_fact_axis("),
+        "grouped spec_facts projection must consume the model_core-owned axis witness, not re-declare axis membership"
     );
     assert!(
-        !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry(")
-            && !GROUNDING_DAG.contains("-> PrimitiveFactBundle"),
-        "single fact-axis registry entries must not project directly to complete PrimitiveFactBundle carriers"
+        GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup(")
+            && GROUNDING_DAG.contains("-> Witness<Node>")
+            && GROUNDING_DAG.contains("match map_get(registry.by_key, key)")
+            && GROUNDING_DAG.contains("Some { value: value } => Holds { value: value }")
+            && GROUNDING_DAG.contains("None => Violates")
+            && GROUNDING_DAG.contains("Holds { value: _ }")
+            && GROUNDING_DAG.contains("Violates { diagnostic: _ }"),
+        "registry insert must consume an explicit Witness lookup bridge, not raw Map.lookup carriers"
     );
     assert!(
-        GROUNDING_DAG.contains("map_get(m: registry.by_key, key: key)"),
-        "registry insert must use v4.std.collection map_get authority (B-LOOKUP-1 / P2)"
-    );
-    assert!(
-        GROUNDING_DAG.contains("Present { value: _ }") && GROUNDING_DAG.contains("Absent =>"),
-        "duplicate-key gate: Present => reject, Absent => accept insert"
-    );
-    assert!(
-        GROUNDING_DAG.contains("Rejected { diagnostics: ds } => Rejected { diagnostics: ds }"),
-        "map_get lookup failures propagate without collapsing to Absent (P3)"
+        GROUNDING_DAG.contains("fn primitive_fact_bundle_for_registry_subject(")
+            && GROUNDING_DAG.contains("fn per_language_fact_bundle_registry_spec_facts("),
+        "ModelCore boundary must project one subject_carrier × target_identity slice, not one fact-axis row"
     );
 }

@@ -8,12 +8,14 @@
 module v4.std.grounding
 
 
-import v4.std.collection { Absent, Map, Present, empty_map, map_get, map_insert }
+import v4.std.collection {
+  Map,
+  empty_map,
+  map_insert
+}
 import v4.std.diagnostic {
-  Accepted,
   Diagnostic,
   Outcome,
-  Rejected,
   Textual,
   Unavailable,
   UserInputBoundary,
@@ -24,19 +26,21 @@ import v4.std.diagnostic {
 import v4.std.host_run { EmitHostRunReceipt }
 import v4.std.model_core {
   ModelCorePrimitiveFactAxis,
-  model_core_primitive_fact_axis_symbol
+  PrimitiveFactBundle,
+  witness_model_core_primitive_fact_axis
 }
 import v4.std.node { Node, Symbol }
 import v4.std.target_model { FunctionBoundarySite, TargetModel }
+import v4.std.witness { Holds, Violates, Witness }
 
 
-// --- G0.1: per-language fact bundle schema (subject_carrier × target × fact_axis) ---
+// --- G0.1: per-language fact bundle schema (subject_carrier × target_identity × fact_axis) ---
 
-// P2: substrate carrier + TargetModel (language identity) + closed model_core fact_axis coproduct
+// P2: substrate carrier + stable target identity + closed model_core fact_axis coproduct
 // (target_model catalog axes widen PerLanguageFactBundleKey in G.1 — no parallel Symbol taxonomy).
 type PerLanguageFactBundleKey {
   subject_carrier: Node
-  target: TargetModel
+  target_identity: Symbol
   fact_axis: ModelCorePrimitiveFactAxis
 }
 
@@ -60,6 +64,7 @@ fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
 
 
 data per_language_fact_bundle_duplicate_key_reason: Symbol = per_language_fact_bundle_duplicate_key_reason
+data per_language_fact_bundle_missing_key_reason: Symbol = per_language_fact_bundle_missing_key_reason
 
 
 fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
@@ -74,23 +79,93 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
 }
 
 
+fn per_language_fact_bundle_missing_key_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: per_language_fact_bundle_missing_key_reason,
+    at: Textual {
+      file: per_language_fact_bundle_missing_key_reason,
+      extent: WholeFile
+    },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+// 🟡 gated — bootstrap-limitation interim — feature:G0-map-lookup-witness-bridge —
+// bind: Branch G.0 M1 compile; dissolve-on: v4.std.collection.Map.lookup compiles as
+// Witness<V> at every v4 call site. Current bootstrap projects this lookup through map_get;
+// G.0 consumers see only Witness<Node> through this boundary.
+fn per_language_fact_bundle_lookup(
+  registry: PerLanguageFactBundleRegistry,
+  key: PerLanguageFactBundleKey
+) -> Witness<Node> {
+  match map_get(registry.by_key, key) {
+    Some { value: value } => Holds { value: value }
+    None => Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+  }
+}
+
+
 fn insert_per_language_fact_bundle_entry(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match map_get(m: registry.by_key, key: key) {
-    Accepted { value: opt, diagnostics: _ } => match opt {
-      Present { value: _ } =>
-        outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-      Absent =>
-        outcome_accepted(
-          value: PerLanguageFactBundleRegistry {
-            by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+  match per_language_fact_bundle_lookup(registry: registry, key: key) {
+    Holds { value: _ } =>
+      outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
+    Violates { diagnostic: _ } =>
+      outcome_accepted(
+        value: PerLanguageFactBundleRegistry {
+          by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+        }
+      )
+  }
+}
+
+
+fn per_language_fact_bundle_registry_spec_facts(
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node,
+  target_identity: Symbol
+) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match witness_model_core_primitive_fact_axis(axis: axis) {
+        Holds { value: canonical_axis } =>
+          match per_language_fact_bundle_lookup(
+            registry: registry,
+            key: PerLanguageFactBundleKey {
+              subject_carrier: subject_carrier,
+              target_identity: target_identity,
+              fact_axis: canonical_axis
+            }
+          ) {
+            Holds { value: fact_value } => Holds { value: fact_value }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
           }
-        )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
     }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+
+// G.1 / model_core boundary: project the registry's subject_carrier × target identity slice to one
+// PrimitiveFactBundle. Individual keyed rows remain storage/index facts; the ModelCore boundary
+// is bundle-shaped so sibling fact_axis rows flow forward together.
+fn primitive_fact_bundle_for_registry_subject(
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node,
+  target_identity: Symbol
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: subject_carrier,
+    spec_facts: per_language_fact_bundle_registry_spec_facts(
+      registry: registry,
+      subject_carrier: subject_carrier,
+      target_identity: target_identity
+    )
   }
 }
 
