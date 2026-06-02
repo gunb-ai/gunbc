@@ -551,16 +551,15 @@ type CiSelectionReceipt {
   component_affected_comparison: CiComponentAffected
 }
 
-// 🟡 bounded persistence — feature:f11c-ci-selection-receipt-persistence — bind node://adhoc-87c3a213-099 — dissolve-on-arrival: persisted CI selection receipts are stored by the runtime TestClaimRun/cache receipt substrate, and lookup keys are derived from canonical receipt projection hashes; forbidden: treating transient fixture construction as persisted receipt evidence.
+// 🟡 bounded persistence — feature:f11c-ci-selection-receipt-persistence — bind node://adhoc-87c3a213-099 — dissolve-on-arrival: persisted CI selection receipts are stored by the runtime TestClaimRun/cache receipt substrate, and lookup keys are derived from canonical full receipt projection hashes; interim key below is still derived from modeled receipt partition hashes, never caller-authored names. Forbidden: treating transient fixture construction as persisted receipt evidence or accepting caller-chosen symbols as lookup authority.
 type CiSelectionReceiptStoreRow {
-  key: Symbol
+  key: Hash
   receipt: CiSelectionReceipt
 }
 
-type CiSelectionReceiptLookup {
-  found: Bool
-  receipt: CiSelectionReceipt
-}
+type CiSelectionReceiptLookup
+  = CiSelectionReceiptFound { receipt: CiSelectionReceipt }
+  | CiSelectionReceiptMissing { key: Hash }
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:wave3-shadow-selection-receipt — consumer:ci_floor_held / fixture witnesses — bind docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md §8 — dissolve-on-arrival: `CiSelectionMode` drives floor policy at GHA projection sites (delete Bool projection when Active scheduling lands); forbidden: persisting independent `floor_skip` or untagged mode→Bool helpers beside `mode`.
 fn ci_floor_held(receipt: CiSelectionReceipt) -> Bool {
@@ -3644,33 +3643,179 @@ fn ci_selection_receipt_mk(
 }
 
 
+data ci_selection_receipt_persistence_key_tag: Symbol = ci_selection_receipt_persistence_key_tag
+data ci_selection_mode_shadow_tag: Symbol = ci_selection_mode_shadow_tag
+data ci_selection_mode_active_tag: Symbol = ci_selection_mode_active_tag
+data ci_selection_provenance_fixture_tag: Symbol = ci_selection_provenance_fixture_tag
+data ci_selection_provenance_live_pr_git_diff_tag: Symbol = ci_selection_provenance_live_pr_git_diff_tag
+data ci_selection_decision_run_tag: Symbol = ci_selection_decision_run_tag
+data ci_selection_decision_skip_tag: Symbol = ci_selection_decision_skip_tag
+data ci_selection_decision_carved_out_tag: Symbol = ci_selection_decision_carved_out_tag
+data ci_selection_testgen_slot_tag: Symbol = ci_selection_testgen_slot_tag
+data ci_claim_reason_fail_closed_superset_tag: Symbol = ci_claim_reason_fail_closed_superset_tag
+data ci_claim_reason_affected_frontier_empty_tag: Symbol = ci_claim_reason_affected_frontier_empty_tag
+data ci_claim_reason_affected_intersection_nonempty_tag: Symbol = ci_claim_reason_affected_intersection_nonempty_tag
+data ci_claim_reason_affected_intersection_empty_tag: Symbol = ci_claim_reason_affected_intersection_empty_tag
+data ci_claim_reason_testgen_slot_mapped_tag: Symbol = ci_claim_reason_testgen_slot_mapped_tag
+data ci_claim_reason_shadow_observe_only_tag: Symbol = ci_claim_reason_shadow_observe_only_tag
+data ci_claim_reason_floor_step_carveout_tag: Symbol = ci_claim_reason_floor_step_carveout_tag
+
+fn ci_selection_mode_digest(mode: CiSelectionMode) -> Hash {
+  match mode {
+    Shadow => ci_symbol_digest(sym: ci_selection_mode_shadow_tag)
+    Active { skip_evidence } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_selection_mode_active_tag),
+        b: skip_evidence.cached_verdict_digest
+      )
+  }
+}
+
+
+fn ci_selection_provenance_digest(provenance: CiSelectionReceiptProvenance) -> Hash {
+  match provenance {
+    FixtureReceipt => ci_symbol_digest(sym: ci_selection_provenance_fixture_tag)
+    LivePrGitDiff => ci_symbol_digest(sym: ci_selection_provenance_live_pr_git_diff_tag)
+  }
+}
+
+
+fn ci_selection_decision_digest(decision: SelectionDecision) -> Hash {
+  match decision {
+    Run => ci_symbol_digest(sym: ci_selection_decision_run_tag)
+    Skip => ci_symbol_digest(sym: ci_selection_decision_skip_tag)
+    CarvedOut { carveout_reason } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_selection_decision_carved_out_tag),
+        b: ci_symbol_digest(sym: carveout_reason)
+      )
+  }
+}
+
+
+fn ci_claim_selection_reason_digest(reason: CiClaimSelectionReason) -> Hash {
+  match reason {
+    FailClosedSuperset => ci_symbol_digest(sym: ci_claim_reason_fail_closed_superset_tag)
+    AffectedFrontierEmpty => ci_symbol_digest(sym: ci_claim_reason_affected_frontier_empty_tag)
+    AffectedIntersectionNonempty => ci_symbol_digest(sym: ci_claim_reason_affected_intersection_nonempty_tag)
+    AffectedIntersectionEmpty => ci_symbol_digest(sym: ci_claim_reason_affected_intersection_empty_tag)
+    TestgenSlotMapped => ci_symbol_digest(sym: ci_claim_reason_testgen_slot_mapped_tag)
+    ShadowObserveOnly => ci_symbol_digest(sym: ci_claim_reason_shadow_observe_only_tag)
+    FloorStepCarveout => ci_symbol_digest(sym: ci_claim_reason_floor_step_carveout_tag)
+  }
+}
+
+
+fn ci_step_selection_digest(row: CiStepSelection) -> Hash {
+  combine_hash(
+    a: content_hash(n: ci_step_id_projection_node(step_id: row.step_id)),
+    b: combine_hash(
+      a: row.cache_digest,
+      b: ci_selection_decision_digest(decision: row.decision)
+    )
+  )
+}
+
+
+fn ci_step_selection_list_digest(rows: List<CiStepSelection>) -> Hash {
+  fold_list(
+    xs: rows,
+    empty: ci_symbol_digest(sym: ci_selection_decision_run_tag),
+    cons: fn(acc, row) {
+      combine_hash(a: acc, b: ci_step_selection_digest(row: row))
+    }
+  )
+}
+
+
+fn ci_testclaim_selection_digest(row: CiTestClaimSelection) -> Hash {
+  combine_hash(
+    a: row.claim_projection_hash,
+    b: ci_claim_selection_reason_digest(reason: row.reason)
+  )
+}
+
+
+fn ci_testclaim_selection_list_digest(rows: List<CiTestClaimSelection>) -> Hash {
+  fold_list(
+    xs: rows,
+    empty: ci_symbol_digest(sym: ci_projection_command_claim_ids_edge),
+    cons: fn(acc, row) {
+      combine_hash(a: acc, b: ci_testclaim_selection_digest(row: row))
+    }
+  )
+}
+
+
+fn ci_testgen_slot_selection_digest(row: TestgenSlotSelection) -> Hash {
+  combine_hash(
+    a: ci_symbol_digest(sym: ci_selection_testgen_slot_tag),
+    b: ci_claim_selection_reason_digest(reason: row.reason)
+  )
+}
+
+
+fn ci_testgen_slot_selection_list_digest(rows: List<TestgenSlotSelection>) -> Hash {
+  fold_list(
+    xs: rows,
+    empty: ci_symbol_digest(sym: ci_selection_testgen_slot_tag),
+    cons: fn(acc, row) {
+      combine_hash(a: acc, b: ci_testgen_slot_selection_digest(row: row))
+    }
+  )
+}
+
+
+fn ci_selection_receipt_storage_key(receipt: CiSelectionReceipt) -> Hash {
+  combine_hash(
+    a: ci_symbol_digest(sym: ci_selection_receipt_persistence_key_tag),
+    b: combine_hash(
+      a: ci_selection_mode_digest(mode: receipt.mode),
+      b: combine_hash(
+        a: ci_selection_provenance_digest(provenance: receipt.provenance),
+        b: combine_hash(
+          a: ci_step_selection_list_digest(rows: receipt.decisions),
+          b: combine_hash(
+            a: ci_testclaim_selection_list_digest(rows: receipt.testclaim_decisions),
+            b: ci_testgen_slot_selection_list_digest(rows: receipt.testgen_slots)
+          )
+        )
+      )
+    )
+  )
+}
+
+
 fn ci_selection_receipt_persist(
-  key: Symbol,
   receipt: CiSelectionReceipt,
   store: List<CiSelectionReceiptStoreRow>
 ) -> List<CiSelectionReceiptStoreRow> {
   list_snoc_item(
     xs: store,
-    item: CiSelectionReceiptStoreRow { key: key, receipt: receipt }
+    item: CiSelectionReceiptStoreRow {
+      key: ci_selection_receipt_storage_key(receipt: receipt),
+      receipt: receipt
+    }
   )
 }
 
 
 fn ci_selection_receipt_lookup(
-  key: Symbol,
-  store: List<CiSelectionReceiptStoreRow>,
-  fallback: CiSelectionReceipt
+  key: Hash,
+  store: List<CiSelectionReceiptStoreRow>
 ) -> CiSelectionReceiptLookup {
   fold_list(
     xs: store,
-    empty: CiSelectionReceiptLookup { found: false, receipt: fallback },
+    empty: CiSelectionReceiptMissing { key: key },
     cons: fn(acc, row) {
-      if acc.found {
-        acc
-      } else if row.key == key {
-        CiSelectionReceiptLookup { found: true, receipt: row.receipt }
-      } else {
-        acc
+      match acc {
+        CiSelectionReceiptFound { receipt: _ } => acc
+        CiSelectionReceiptMissing { key: missing_key } =>
+          if row.key == missing_key {
+            CiSelectionReceiptFound { receipt: row.receipt }
+          } else {
+            acc
+          }
       }
     }
   )
@@ -4413,11 +4558,11 @@ data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_clo
 
 data witness_ci_wave3_shadow_testgen_receipts_ok: Bool = ci_wave3_shadow_testgen_run_receipt_holds() && ci_testgen_selected_receipt_holds(affected: ci_wave3_shadow_fail_closed_affected, profile_ref: testgen_default_profile_ref) && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
 
-data ci_selection_receipt_shadow_fixture_storage_key: Symbol = ci_selection_receipt_shadow_fixture_storage_key
+data ci_selection_receipt_shadow_fixture_storage_key: Hash =
+  ci_selection_receipt_storage_key(receipt: ci_selection_receipt_shadow_fixture_receipt)
 
 data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow> =
   ci_selection_receipt_persist(
-    key: ci_selection_receipt_shadow_fixture_storage_key,
     receipt: ci_selection_receipt_shadow_fixture_receipt,
     store: []
   )
@@ -4425,16 +4570,18 @@ data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow>
 data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup =
   ci_selection_receipt_lookup(
     key: ci_selection_receipt_shadow_fixture_storage_key,
-    store: ci_selection_receipt_shadow_fixture_store,
-    fallback: ci_wave3_shadow_fixture_fail_closed_receipt
+    store: ci_selection_receipt_shadow_fixture_store
   )
 
 fn ci_selection_receipt_shadow_fixture_persistence_lookup_holds() -> Bool {
-  let looked_up = ci_selection_receipt_shadow_fixture_lookup
-  let decisions_match = length(xs: looked_up.receipt.decisions) == length(xs: ci_selection_receipt_shadow_fixture_receipt.decisions)
-  let testclaims_match = length(xs: looked_up.receipt.testclaim_decisions) == length(xs: ci_selection_receipt_shadow_fixture_receipt.testclaim_decisions)
-  let testgen_match = length(xs: looked_up.receipt.testgen_slots) == length(xs: ci_selection_receipt_shadow_fixture_receipt.testgen_slots)
-  looked_up.found && decisions_match && testclaims_match && testgen_match
+  match ci_selection_receipt_shadow_fixture_lookup {
+    CiSelectionReceiptFound { receipt } =>
+      let decisions_match = length(xs: receipt.decisions) == length(xs: ci_selection_receipt_shadow_fixture_receipt.decisions)
+      let testclaims_match = length(xs: receipt.testclaim_decisions) == length(xs: ci_selection_receipt_shadow_fixture_receipt.testclaim_decisions)
+      let testgen_match = length(xs: receipt.testgen_slots) == length(xs: ci_selection_receipt_shadow_fixture_receipt.testgen_slots)
+      decisions_match && testclaims_match && testgen_match
+    CiSelectionReceiptMissing { key: _ } => false
+  }
 }
 
 data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool =
