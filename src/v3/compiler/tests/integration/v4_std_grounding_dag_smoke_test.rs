@@ -2,7 +2,7 @@
 //!
 //! G.0 receipt: `src/v4/std/grounding.dag` tokenizes and parses cleanly — Branch G.0 schema
 //! carriers (per-language fact bundle keys, hollow-alias bar, SG evidence shapes, per-target receipt).
-//! Parse smoke also ratchets explicit `v4.std.logic { Bool }` import for `HollowAliasGovernanceBar`.
+//! Parse smoke ratchets G.0 carriers including terminal `HollowAliasGovernanceBar` coproduct.
 //! Full `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers; cross-module
 //! resolution is exercised by M1 v4 full-tree emit in CI `ci_floor` (same posture as
 //! `v4_std_model_core_dag_smoke_test`).
@@ -135,11 +135,18 @@ fn v4_std_grounding_declares_g0_carriers() {
 }
 
 #[test]
-fn v4_std_grounding_imports_bool_for_hollow_alias_bar() {
-    let module = grounding_surface_or_panic();
+fn v4_std_grounding_hollow_alias_bar_terminal_coproduct() {
     assert!(
-        import_includes_name(&module, &["v4", "std", "logic"], "Bool"),
-        "HollowAliasGovernanceBar fields require explicit v4.std.logic Bool import (P3 fail-closed)"
+        GROUNDING_DAG.contains(
+            "// 🟢 terminal — G.0 hollow-alias governance posture"
+        ),
+        "HollowAliasGovernanceBar must be a closed terminal coproduct (no configurable Bool policy)"
+    );
+    let module = grounding_surface_or_panic();
+    assert_eq!(
+        sum_variant_names(&module, "HollowAliasGovernanceBar"),
+        vec!["HollowAliasRequiresNamedFieldsAndKernelAmbient"],
+        "single mandatory governance posture — false cases unrepresentable"
     );
 }
 

@@ -10,7 +10,6 @@ module v4.std.grounding
 
 import v4.std.collection { List, Map, empty_map, map_insert }
 import v4.std.host_run { EmitHostRunReceipt }
-import v4.std.logic { Bool }
 import v4.std.model_core { PrimitiveFactBundle }
 import v4.std.node { Node, Symbol }
 import v4.std.target_model { FunctionBoundarySite, TargetModel }
@@ -58,20 +57,15 @@ fn primitive_fact_bundle_for_entry(entry: PerLanguageFactBundleEntry) -> Primiti
 data grounding_hollow_alias_bar_reason: Symbol = grounding_hollow_alias_bar_reason
 
 
-// Structural bar: every non-exempt type carrier must read ≥1 spec fact (NamedFieldFacts) or be an
-// explicit kernel-ambient atom. Enforcement authority: v4.lens.fact_density (T-30); this carrier
-// records the governance contract for G.1 population audits — not a second classifier.
-type HollowAliasGovernanceBar {
-  requires_named_fact_fields: Bool
-  allows_kernel_ambient_atoms: Bool
-}
+// 🟢 terminal — G.0 hollow-alias governance posture (T-30 enforces via v4.lens.fact_density).
+// Closed nullary carrier: requires named spec facts and permits kernel-ambient atoms — no free
+// Bool configuration that could represent requires_named_fact_fields=false (P2 / illegal states).
+type HollowAliasGovernanceBar
+  = HollowAliasRequiresNamedFieldsAndKernelAmbient
 
 
 fn hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
-  HollowAliasGovernanceBar {
-    requires_named_fact_fields: true,
-    allows_kernel_ambient_atoms: true
-  }
+  HollowAliasRequiresNamedFieldsAndKernelAmbient
 }
 
 
