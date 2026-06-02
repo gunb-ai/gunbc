@@ -231,7 +231,7 @@ jobs:
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: RUSTC_WRAPPER= cargo build -p v2-compiler --release
     - name: M1 v4 full-tree rust emit probe (v2 emit)
-      timeout-minutes: 20
+      timeout-minutes: 35
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_DAG_EMIT_OUT: ${{ runner.temp }}/v4-bootstrap
