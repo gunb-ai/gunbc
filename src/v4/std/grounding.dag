@@ -10,8 +10,10 @@ module v4.std.grounding
 
 import v4.std.collection { Absent, Map, Present, empty_map, map_get, map_insert }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   Outcome,
+  Rejected,
   Textual,
   Unavailable,
   UserInputBoundary,
