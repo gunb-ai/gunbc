@@ -5,23 +5,27 @@ use crate::std_algebra::AlgebraTypeTemplate::{ContainerOf, ReceiverSelf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 use crate::std_algebra::CostShape::*;
+pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
 pub use crate::std_algebra::{
-    algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate,
-    AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
+    AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
 };
 pub use crate::v2_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
 pub use crate::v2_compiler_infer_env::{
-    authored_name, is_recursive_type, lookup_type, lookup_type_for, TypeBinding, TypeEnv,
+    authored_name, find_child_in_env, has_child_in_env, is_recursive_type,
+    lookup_cache_get_enriched_kernel, lookup_cache_get_scrutinee, lookup_cache_put_enriched_kernel,
+    lookup_cache_put_scrutinee, lookup_type, lookup_type_for, node_identity_key,
+    scrutinee_cache_key,
 };
-pub use crate::v2_compiler_infer_service::{
-    check_service_method_call_node, OpEntry, ServiceMethodResult,
-};
+pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v2_compiler_infer_service::check_service_method_call_node;
+pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, method_receiver_element_node,
-    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    node_is_keyed_collection, node_is_set_collection, node_type_shape, nominal_type_ref,
+    normalize_access_type_node,
 };
 use crate::v2_rt;
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
@@ -34,9 +38,11 @@ use crate::v2_std_core::MethodSemantics::{
 };
 pub use crate::v2_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_type_expr,
-    with_optional_cardinality, with_required_cardinality, Cardinality, Connective, ErrorNode,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MethodSemantics, NewlineIndex,
-    Node,
+    with_optional_cardinality, with_required_cardinality,
+};
+pub use crate::v2_std_core::{
+    Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, MethodSemantics, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -75,9 +81,10 @@ pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc
 pub fn lookup_field_type_node(
     n: Rc<Node>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let source_indices = env.source_indices.clone();
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional {
             {
@@ -85,7 +92,7 @@ pub fn lookup_field_type_node(
                 if (field_name.clone().as_str() == "value".to_string().as_str()) {
                     Some(inner)
                 } else {
-                    match lookup_field_type_node(inner, field_name.clone(), source_indices) {
+                    match lookup_field_type_node(inner, field_name.clone(), env.clone()) {
                         Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
                         None => None,
                     }
@@ -98,7 +105,7 @@ pub fn lookup_field_type_node(
                     {
                         let is_product = (n.connective.clone() == Connective::Conj);
                         if is_product {
-                            match find_child_named(n.clone(), field_name.clone(), source_indices) {
+                            match find_child_in_env(env.clone(), n.clone(), field_name.clone()) {
                                 Some(field_child) => Some(child_type_node(field_child.clone())),
                                 None => None,
                             }
@@ -106,7 +113,7 @@ pub fn lookup_field_type_node(
                             lookup_coproduct_common_field_node(
                                 n.children.clone(),
                                 field_name.clone(),
-                                source_indices,
+                                env.clone(),
                             )
                         }
                     }
@@ -121,13 +128,13 @@ pub fn lookup_field_type_node(
 pub fn lookup_coproduct_common_field_node(
     variants: Rc<Vec<Rc<Node>>>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
     {
         let found_in_all = {
             let mut __all = true;
             for v in variants.clone().iter().cloned() {
-                if !(has_child_named(v.clone(), field_name.clone(), source_indices.clone())) {
+                if !(has_child_in_env(env.clone(), v.clone(), field_name.clone())) {
                     __all = false;
                     break;
                 }
@@ -136,11 +143,9 @@ pub fn lookup_coproduct_common_field_node(
         };
         let first_field = if found_in_all {
             match variants.clone().first().cloned() {
-                Some(first_variant) => find_child_named(
-                    first_variant.clone(),
-                    field_name.clone(),
-                    source_indices.clone(),
-                ),
+                Some(first_variant) => {
+                    find_child_in_env(env.clone(), first_variant.clone(), field_name.clone())
+                }
                 None => None,
             }
         } else {
@@ -153,8 +158,87 @@ pub fn lookup_coproduct_common_field_node(
     }
 }
 
-pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
-    resolve_scrutinee_type_node_seen(env, n, v2_rt::rc_empty_map::<String, bool>())
+pub fn enriched_kernel_cache_key(
+    name: String,
+    base: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        let normed = normalize_access_type_node(base);
+        match node_identity_key(normed.clone()) {
+            None => None,
+            Some(base_key) => Some(v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(v2_rt::concat(name, "|".to_string()), base_key.clone()),
+                    "|".to_string(),
+                ),
+                node_type_shape(normed.clone(), source_indices),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScrutineeResolveResult {
+    pub node: Rc<Node>,
+    pub env: Rc<TypeEnv>,
+}
+
+pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<ScrutineeResolveResult> {
+    {
+        let normed = normalize_access_type_node(n.clone());
+        if ((normed.connective.clone() == Connective::NoConnective)
+            && ((normed.children.clone().len() as i64) == 0))
+        {
+            match scrutinee_cache_key(normed.clone()) {
+                None => Rc::new(ScrutineeResolveResult {
+                    node: resolve_scrutinee_type_node_seen(
+                        env.clone(),
+                        n.clone(),
+                        v2_rt::rc_empty_map::<String, bool>(),
+                    ),
+                    env: env.clone(),
+                }),
+                Some(key) => match lookup_cache_get_scrutinee(env.clone(), key.clone()) {
+                    Some(cached) => {
+                        let is_optional =
+                            (normed.return_cardinality.clone() == Cardinality::CardOptional);
+                        let node = if is_optional {
+                            with_optional_cardinality(cached.clone())
+                        } else {
+                            cached.clone()
+                        };
+                        Rc::new(ScrutineeResolveResult {
+                            node: node,
+                            env: env.clone(),
+                        })
+                    }
+                    None => {
+                        let resolved = resolve_scrutinee_type_node_seen(
+                            env.clone(),
+                            n.clone(),
+                            v2_rt::rc_empty_map::<String, bool>(),
+                        );
+                        let env =
+                            lookup_cache_put_scrutinee(env.clone(), key.clone(), resolved.clone());
+                        Rc::new(ScrutineeResolveResult {
+                            node: resolved.clone(),
+                            env: env.clone(),
+                        })
+                    }
+                },
+            }
+        } else {
+            Rc::new(ScrutineeResolveResult {
+                node: resolve_scrutinee_type_node_seen(
+                    env.clone(),
+                    n.clone(),
+                    v2_rt::rc_empty_map::<String, bool>(),
+                ),
+                env: env.clone(),
+            })
+        }
+    }
 }
 
 pub fn resolve_scrutinee_type_node_seen(
@@ -274,7 +358,8 @@ pub fn resolve_scrutinee_type_node_seen(
 pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
         let normed = normalize_access_type_node(type_node);
-        let resolved = resolve_scrutinee_type_node(env.clone(), normed);
+        let scrut_result = resolve_scrutinee_type_node(env.clone(), normed);
+        let resolved = scrut_result.node.clone();
         let map_type = normalize_access_type_node(resolved);
         if (node_is_keyed_collection(map_type.clone(), env.source_indices.clone())
             && ((map_type.children.clone().len() as i64) >= 2))
@@ -292,7 +377,8 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
 pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
         let normed = normalize_access_type_node(type_node);
-        let resolved = resolve_scrutinee_type_node(env.clone(), normed);
+        let scrut_result = resolve_scrutinee_type_node(env.clone(), normed);
+        let resolved = scrut_result.node.clone();
         let map_type = normalize_access_type_node(resolved);
         if (node_is_keyed_collection(map_type.clone(), env.source_indices.clone())
             && ((map_type.children.clone().len() as i64) >= 1))
@@ -310,7 +396,8 @@ pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<N
 pub fn set_element_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
         let normed = normalize_access_type_node(type_node);
-        let resolved = resolve_scrutinee_type_node(env.clone(), normed);
+        let scrut_result = resolve_scrutinee_type_node(env.clone(), normed);
+        let resolved = scrut_result.node.clone();
         let set_type = normalize_access_type_node(resolved);
         if (node_is_set_collection(set_type.clone(), env.source_indices.clone())
             && ((set_type.children.clone().len() as i64) >= 1))
@@ -331,7 +418,8 @@ pub fn field_summary_for_type(
     field: String,
 ) -> Option<Rc<FieldSummary>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let resolved = resolve_scrutinee_type_node(env.clone(), base_type);
+        let scrut_result = resolve_scrutinee_type_node(env.clone(), base_type);
+        let resolved = scrut_result.node.clone();
         let normed = normalize_access_type_node(resolved.clone());
         let normed_opt = (normed.return_cardinality.clone() == Cardinality::CardOptional);
         if ((field.clone().as_str() == "value".to_string().as_str()) && normed_opt.clone()) {
@@ -399,102 +487,151 @@ pub struct StructuralMethodLookup {
     pub kernel_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EnrichedKernelResult {
+    pub ty: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub env: Rc<TypeEnv>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StructuralMethodLookupResult {
+    pub lookup: Rc<StructuralMethodLookup>,
+    pub env: Rc<TypeEnv>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KnownMethodResolutionResult {
+    pub resolution: Rc<KnownMethodResolution>,
+    pub env: Rc<TypeEnv>,
+}
+
 pub fn lookup_field_in_product(
+    env: Rc<TypeEnv>,
     product: Rc<Node>,
     method_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<MethodFieldResult>> {
-    {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for c in product.children.clone().iter().cloned() {
-                if (authored_name_at(source_indices.clone(), c.clone()).as_str()
-                    == method_name.clone().as_str())
-                {
-                    __result.push(c);
-                }
-            }
-            __result
-        });
-        match matching.first().cloned() {
-            Some(field) => match field.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    if ((rt.params.clone().len() as i64) > 0) {
-                        match rt.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved {
-                                node: return_type, ..
-                            }) => Some(Rc::new(MethodFieldResult {
-                                field_node: field.clone(),
-                                result_type: return_type.clone(),
-                                size_effect: None,
-                                cost_shape: None,
-                                algebra_template: None,
-                            })),
-                            _ => Some(Rc::new(MethodFieldResult {
-                                field_node: field.clone(),
-                                result_type: rt.clone(),
-                                size_effect: None,
-                                cost_shape: None,
-                                algebra_template: None,
-                            })),
-                        }
-                    } else {
-                        Some(Rc::new(MethodFieldResult {
+    match find_child_in_env(env, product, method_name) {
+        Some(field) => match field.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                if ((rt.params.clone().len() as i64) > 0) {
+                    match rt.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved {
+                            node: return_type, ..
+                        }) => Some(Rc::new(MethodFieldResult {
+                            field_node: field.clone(),
+                            result_type: return_type.clone(),
+                            size_effect: None,
+                            cost_shape: None,
+                            algebra_template: None,
+                        })),
+                        _ => Some(Rc::new(MethodFieldResult {
                             field_node: field.clone(),
                             result_type: rt.clone(),
                             size_effect: None,
                             cost_shape: None,
                             algebra_template: None,
-                        }))
+                        })),
                     }
+                } else {
+                    Some(Rc::new(MethodFieldResult {
+                        field_node: field.clone(),
+                        result_type: rt.clone(),
+                        size_effect: None,
+                        cost_shape: None,
+                        algebra_template: None,
+                    }))
                 }
-                _ => None,
+            }
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+pub fn enrich_kernel_type_cached(
+    env: Rc<TypeEnv>,
+    name: String,
+    base: Rc<Node>,
+) -> Rc<EnrichedKernelResult> {
+    {
+        let source_indices = env.source_indices.clone();
+        match enriched_kernel_cache_key(name.clone(), base.clone(), source_indices.clone()) {
+            None => {
+                let built = enrich_kernel_type(name.clone(), base.clone(), source_indices.clone());
+                Rc::new(EnrichedKernelResult {
+                    ty: built.ty.clone(),
+                    diagnostics: built.diagnostics.clone(),
+                    env: env.clone(),
+                })
+            }
+            Some(key) => match lookup_cache_get_enriched_kernel(env.clone(), key.clone()) {
+                Some(cached) => Rc::new(EnrichedKernelResult {
+                    ty: cached.ty.clone(),
+                    diagnostics: cached.diagnostics.clone(),
+                    env: env.clone(),
+                }),
+                None => {
+                    let built =
+                        enrich_kernel_type(name.clone(), base.clone(), source_indices.clone());
+                    let updated =
+                        lookup_cache_put_enriched_kernel(env.clone(), key.clone(), built.clone());
+                    Rc::new(EnrichedKernelResult {
+                        ty: built.ty.clone(),
+                        diagnostics: built.diagnostics.clone(),
+                        env: updated,
+                    })
+                }
             },
-            None => None,
         }
     }
 }
 
 pub fn lookup_structural_method(
+    env: Rc<TypeEnv>,
     receiver_type: Rc<Node>,
     method_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<StructuralMethodLookup> {
+) -> Rc<StructuralMethodLookupResult> {
     {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
         if is_product {
             {
                 let direct = lookup_field_in_product(
+                    env.clone(),
                     receiver_type.clone(),
                     method_name.clone(),
-                    source_indices.clone(),
                 );
-                Rc::new(StructuralMethodLookup {
-                    resolution: direct,
-                    kernel_diagnostics: Rc::new(vec![]),
+                Rc::new(StructuralMethodLookupResult {
+                    lookup: Rc::new(StructuralMethodLookup {
+                        resolution: direct,
+                        kernel_diagnostics: Rc::new(vec![]),
+                    }),
+                    env: env.clone(),
                 })
             }
         } else {
             {
-                let enriched = enrich_kernel_type(
-                    authored_name_at(source_indices.clone(), receiver_type.clone()),
+                let receiver_name = authored_name(env.clone(), receiver_type.clone());
+                let enriched = enrich_kernel_type_cached(
+                    env.clone(),
+                    receiver_name.clone(),
                     receiver_type.clone(),
-                    source_indices.clone(),
                 );
+                let env = enriched.env.clone();
                 if ((enriched.ty.clone().connective.clone() == Connective::Conj)
                     && ((enriched.ty.clone().children.clone().len() as i64) > 0))
                 {
                     {
                         let base_result = lookup_field_in_product(
+                            env.clone(),
                             enriched.ty.clone(),
                             method_name.clone(),
-                            source_indices.clone(),
                         );
                         match base_result.clone() {
                             Some(mfr) => {
                                 let profile = v2_rt::map_get(
                                     &kernel_algebra_profile(),
-                                    authored_name_at(source_indices.clone(), receiver_type.clone()),
+                                    receiver_name.clone(),
                                 );
                                 let template_match = match profile {
                                     Some(p) => {
@@ -525,21 +662,30 @@ pub fn lookup_structural_method(
                                     })),
                                     None => base_result.clone(),
                                 };
-                                Rc::new(StructuralMethodLookup {
-                                    resolution: resolution,
-                                    kernel_diagnostics: enriched.diagnostics.clone(),
+                                Rc::new(StructuralMethodLookupResult {
+                                    lookup: Rc::new(StructuralMethodLookup {
+                                        resolution: resolution,
+                                        kernel_diagnostics: enriched.diagnostics.clone(),
+                                    }),
+                                    env: env.clone(),
                                 })
                             }
-                            None => Rc::new(StructuralMethodLookup {
-                                resolution: None,
-                                kernel_diagnostics: enriched.diagnostics.clone(),
+                            None => Rc::new(StructuralMethodLookupResult {
+                                lookup: Rc::new(StructuralMethodLookup {
+                                    resolution: None,
+                                    kernel_diagnostics: enriched.diagnostics.clone(),
+                                }),
+                                env: env.clone(),
                             }),
                         }
                     }
                 } else {
-                    Rc::new(StructuralMethodLookup {
-                        resolution: None,
-                        kernel_diagnostics: enriched.diagnostics.clone(),
+                    Rc::new(StructuralMethodLookupResult {
+                        lookup: Rc::new(StructuralMethodLookup {
+                            resolution: None,
+                            kernel_diagnostics: enriched.diagnostics.clone(),
+                        }),
+                        env: env.clone(),
                     })
                 }
             }
@@ -549,19 +695,17 @@ pub fn lookup_structural_method(
 
 pub fn resolve_known_method_node(
     receiver: Rc<Node>,
+    env: Rc<TypeEnv>,
     receiver_type: Rc<Node>,
     method_name: String,
     fold_accumulator_type: Option<Rc<Node>>,
     service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KnownMethodResolution> {
+) -> Rc<KnownMethodResolutionResult> {
     {
-        let tier0 = lookup_structural_method(
-            receiver_type.clone(),
-            method_name.clone(),
-            source_indices.clone(),
-        );
-        match tier0.resolution.clone() {
+        let tier0 =
+            lookup_structural_method(env.clone(), receiver_type.clone(), method_name.clone());
+        let env = tier0.env.clone();
+        match tier0.lookup.clone().resolution.clone() {
             Some(mfr) => {
                 let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
                     method_def: mfr.field_node.clone(),
@@ -570,33 +714,39 @@ pub fn resolve_known_method_node(
                     cost_shape: mfr.cost_shape.clone(),
                     algebra_template: mfr.algebra_template.clone(),
                 });
-                Rc::new(KnownMethodResolution {
-                    semantics: Some(semantics),
-                    result_type: Some(mfr.result_type.clone()),
-                    diagnostics: tier0.kernel_diagnostics.clone(),
+                Rc::new(KnownMethodResolutionResult {
+                    resolution: Rc::new(KnownMethodResolution {
+                        semantics: Some(semantics),
+                        result_type: Some(mfr.result_type.clone()),
+                        diagnostics: tier0.lookup.clone().kernel_diagnostics.clone(),
+                    }),
+                    env: env.clone(),
                 })
             }
             None => match check_service_method_call_node(
                 receiver_type.clone(),
                 method_name.clone(),
                 service_registry,
-                source_indices.clone(),
+                env.source_indices.clone(),
             ) {
-                Some(svc_result) => Rc::new(KnownMethodResolution {
-                    semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics {
-                        service_name: authored_name_at(
-                            source_indices.clone(),
-                            receiver_type.clone(),
-                        ),
-                        op_params: svc_result.op_params.clone(),
-                    })),
-                    result_type: Some(svc_result.result_type.clone()),
-                    diagnostics: tier0.kernel_diagnostics.clone(),
+                Some(svc_result) => Rc::new(KnownMethodResolutionResult {
+                    resolution: Rc::new(KnownMethodResolution {
+                        semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics {
+                            service_name: authored_name(env.clone(), receiver_type.clone()),
+                            op_params: svc_result.op_params.clone(),
+                        })),
+                        result_type: Some(svc_result.result_type.clone()),
+                        diagnostics: tier0.lookup.clone().kernel_diagnostics.clone(),
+                    }),
+                    env: env.clone(),
                 }),
-                None => Rc::new(KnownMethodResolution {
-                    semantics: None,
-                    result_type: None,
-                    diagnostics: tier0.kernel_diagnostics.clone(),
+                None => Rc::new(KnownMethodResolutionResult {
+                    resolution: Rc::new(KnownMethodResolution {
+                        semantics: None,
+                        result_type: None,
+                        diagnostics: tier0.lookup.clone().kernel_diagnostics.clone(),
+                    }),
+                    env: env.clone(),
                 }),
             },
         }
