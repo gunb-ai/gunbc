@@ -1046,6 +1046,22 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
         import_includes_name(
             &module,
             &["v4", "std", "grounding"],
+            "PerLanguageFactBundleRegistry"
+        ),
+        "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must expose the keyed G.0 registry authority"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grounding"],
+            "insert_per_language_fact_bundle_entry"
+        ),
+        "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must populate through the fail-closed registry insert"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grounding"],
             "PerLanguageFactBundleKey"
         ),
         "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must key by substrate carrier, TargetModel, and fact axis"
@@ -1057,7 +1073,8 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
         "go_complex_per_language_fact_bundle_entries",
         "go_bool_per_language_fact_bundle_entries",
         "go_string_per_language_fact_bundle_entries",
-        "go_g1_3_per_language_fact_bundle_entries",
+        "go_g1_3_per_language_fact_bundle_entry_rows",
+        "go_g1_3_per_language_fact_bundle_registry",
     ] {
         assert!(
             surface_declares_fn(&module, name),
@@ -1073,6 +1090,13 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
             && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_overflow_disposition")
             && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_encoding"),
         "{GO_LANGUAGE_PATH}: G.1.3 entries must trace existing Go primitive facts to canonical G.0 axes"
+    );
+    assert!(
+        GO_LANGUAGE_DAG.contains("fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry>")
+            && GO_LANGUAGE_DAG.contains("xs: go_g1_3_per_language_fact_bundle_entry_rows()")
+            && GO_LANGUAGE_DAG.contains("empty: outcome_accepted(value: empty_per_language_fact_bundle_registry())")
+            && GO_LANGUAGE_DAG.contains("insert_per_language_fact_bundle_entry("),
+        "{GO_LANGUAGE_PATH}: canonical G.1.3 Go surface must fold rows through the fail-closed registry"
     );
 }
 

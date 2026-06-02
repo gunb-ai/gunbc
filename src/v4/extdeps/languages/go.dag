@@ -56,7 +56,13 @@ import v4.std.model_core {
   primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
-import v4.std.grounding { PerLanguageFactBundleEntry, PerLanguageFactBundleKey }
+import v4.std.grounding {
+  empty_per_language_fact_bundle_registry,
+  insert_per_language_fact_bundle_entry,
+  PerLanguageFactBundleEntry,
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry
+}
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model {
@@ -86,6 +92,7 @@ import v4.std.target_model {
   target_value_template_for_kind
 }
 import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
+import v4.std.diagnostic { bind_outcome, Outcome }
 import v4.std.witness { Holds, Violates }
 import v4.std.algebra {
   BooleanAlgebra,
@@ -1253,7 +1260,7 @@ fn go_per_language_fact_bundle_entries_from_string_catalog() -> List<PerLanguage
   )
 }
 
-fn go_g1_3_per_language_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
+fn go_g1_3_per_language_fact_bundle_entry_rows() -> List<PerLanguageFactBundleEntry> {
   list_append(
     left: list_append(
       left: list_append(
@@ -1266,6 +1273,22 @@ fn go_g1_3_per_language_fact_bundle_entries() -> List<PerLanguageFactBundleEntry
       right: go_per_language_fact_bundle_entries_from_bool_catalog()
     ),
     right: go_per_language_fact_bundle_entries_from_string_catalog()
+  )
+}
+
+fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  fold_list(
+    xs: go_g1_3_per_language_fact_bundle_entry_rows(),
+    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    cons: fn(acc, entry) {
+      bind_outcome(o: acc, f: fn(registry) {
+        insert_per_language_fact_bundle_entry(
+          registry: registry,
+          key: entry.key,
+          fact_value: entry.fact_value
+        )
+      })
+    }
   )
 }
 

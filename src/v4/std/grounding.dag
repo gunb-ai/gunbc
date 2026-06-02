@@ -12,6 +12,7 @@ import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic {
   Diagnostic,
   None,
+  Some,
   Outcome,
   Textual,
   Unavailable,
