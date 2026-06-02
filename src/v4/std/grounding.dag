@@ -114,9 +114,11 @@ fn per_language_fact_bundle_lookup(
   key: PerLanguageFactBundleKey
 ) -> Witness<Node> {
   match per_language_fact_bundle_lookup_optional(registry: registry, key: key) {
-    Accepted { value: Present { value: value }, diagnostics: _ } => Holds { value: value }
-    Accepted { value: Absent, diagnostics: _ } =>
-      Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: value } => Holds { value: value }
+        Absent => Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+      }
     Rejected { diagnostics: d } => Violates { diagnostic: d.head }
   }
 }
@@ -128,14 +130,17 @@ fn insert_per_language_fact_bundle_entry(
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
   match per_language_fact_bundle_lookup_optional(registry: registry, key: key) {
-    Accepted { value: Present { value: _ }, diagnostics: _ } =>
-      outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    Accepted { value: Absent, diagnostics: _ } =>
-      outcome_accepted(
-        value: PerLanguageFactBundleRegistry {
-          by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
-        }
-      )
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: _ } =>
+          outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
+        Absent =>
+          outcome_accepted(
+            value: PerLanguageFactBundleRegistry {
+              by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+            }
+          )
+      }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }

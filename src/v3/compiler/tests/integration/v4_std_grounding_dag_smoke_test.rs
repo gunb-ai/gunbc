@@ -220,9 +220,9 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
             && GROUNDING_DAG.contains("-> Witness<Node>")
             && GROUNDING_DAG
                 .contains("match per_language_fact_bundle_lookup_optional(registry: registry, key: key)")
-            && GROUNDING_DAG
-                .contains("Accepted { value: Present { value: value }, diagnostics: _ }")
-            && GROUNDING_DAG.contains("Accepted { value: Absent, diagnostics: _ }")
+            && GROUNDING_DAG.contains("Accepted { value: opt, diagnostics: _ }")
+            && GROUNDING_DAG.contains("Present { value: value } => Holds { value: value }")
+            && GROUNDING_DAG.contains("Absent => Violates")
             && GROUNDING_DAG.contains("Rejected { diagnostics: d }")
             && GROUNDING_DAG.contains("Rejected { diagnostics: d } => Rejected { diagnostics: d }"),
         "registry insert must consume an explicit Outcome<Optional<Node>> to Witness<Node> lookup bridge, not raw Map.lookup carriers"
