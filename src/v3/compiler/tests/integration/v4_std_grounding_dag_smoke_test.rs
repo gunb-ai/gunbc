@@ -149,7 +149,8 @@ fn v4_std_grounding_declares_a3b_testclaim_receipt_carriers() {
 #[test]
 fn v4_std_grounding_execution_status_terminal_coproduct() {
     assert!(
-        GROUNDING_DAG.contains("// 🟢 coproduct dissolution — terminal A.3b execution-provenance tag"),
+        GROUNDING_DAG
+            .contains("// 🟢 coproduct dissolution — terminal A.3b execution-provenance tag"),
         "HostVerdictSurfaceExecutionStatus must carry 🟢 terminal coproduct dissolution receipt"
     );
     let module = grounding_surface_or_panic();
