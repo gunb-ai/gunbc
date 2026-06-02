@@ -207,7 +207,7 @@ fn v4_std_grounding_registry_keyed_map_authority() {
     assert!(
         GROUNDING_DAG.contains("fn insert_per_language_fact_bundle_entry(")
             && GROUNDING_DAG.contains("feature:B-LOOKUP-1")
-            && GROUNDING_DAG.contains("match map_get(registry.by_key, key)"),
+            && GROUNDING_DAG.contains("match map_get(m: registry.by_key, key: key)"),
         "fail-closed registry insert rejects duplicate PerLanguageFactBundleKey"
     );
 }
@@ -222,7 +222,7 @@ fn v4_std_grounding_primitive_fact_bundle_model_core_projection_aggregates_subje
     assert!(
         GROUNDING_DAG.contains("fn per_language_fact_bundle_subject_axis_key(")
             && GROUNDING_DAG.contains("fn per_language_fact_bundle_insert_subject_axis(")
-            && GROUNDING_DAG.contains("map_get(\n    registry.by_key"),
+            && GROUNDING_DAG.contains("map_get(\n    m: registry.by_key"),
         "PrimitiveFactBundle.spec_facts must derive from keyed subject x target x axis lookups"
     );
     assert!(
