@@ -188,9 +188,8 @@ fn v4_std_grounding_evidence_schema_terminal_coproduct() {
         "four closed SG family arms (SG-1 / SG-1b / SG-2 / SG-5)"
     );
     assert!(
-        GROUNDING_DAG.contains(
-            "Sg1bEvidence { source_carrier: Node, boundary_site: FunctionBoundarySite }"
-        ),
+        GROUNDING_DAG
+            .contains("Sg1bEvidence { source_carrier: Node, boundary_site: FunctionBoundarySite }"),
         "Sg1b arm must include boundary_site (target_model signature-realization lookup key)"
     );
 }
