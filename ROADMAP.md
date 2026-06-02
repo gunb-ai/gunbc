@@ -30,11 +30,19 @@ v4 combines substrate depth (typed Node + Behavior kernel, algebra-grounded std 
 | Pure bootstrap / self-host | Trajectory to zero hand-maintained Rust; `self_host.dag` ratchet |
 | Tests as `.dag` `TestClaim` data | Growing corpus under `src/v4/test/claim/` |
 
+<<<<<<< HEAD
 ### Bounded bridge receipts
 
 | Lane | Interim bridge | Dissolve-on |
 |------|----------------|-------------|
 | T-22 eval host transport dispatch | `run_emit_host_go` eval calls use the existing `emit_host_runner` host boundary while projecting the modeled `v4.std.host_run.EmitHostRunReceipt` / `Outcome` carriers. | Generated `.dag` eval dispatches `v4.compiler.emit_host.run_emit_host_go` host transports directly; delete the evaluator shim with the surrounding `src/v3/compiler/src/emit_host_bridge.rs` host-transport bridge. |
+=======
+### Public Operational Lanes
+
+| Row | Public tracking intent |
+|-----|------------------------|
+| T-PB-B / `pb_rust_tests_outside_residual_zero` | Move remaining hand-authored Rust boundary and smoke tests into `.dag` `TestClaim` / generated-runner coverage, keeping same-path SG-0 expansions at +0 new paths until the matching claim runner executes those facts directly. |
+>>>>>>> origin/main
 
 **Honest v4 status:** the v4 pipeline compiles and type-checks `.dag` over `src/v4` in CI. Lowering, full multi-target emission, and execute-verified test claims are still landing. v2 remains the reference for end-to-end emit until v4 closes the loop.
 
