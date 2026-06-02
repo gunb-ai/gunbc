@@ -12,7 +12,15 @@ module v4.std.collection
 
 
 import v4.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
-import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 // 🟢 coproduct dissolution — M6-Optional-generic.
@@ -90,19 +98,19 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 }
 
 
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Optional<V>);
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
 // dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at Map.lookup
 // above); v2 emit projects lookup as Option — bridge here only; forbidden: ad hoc map_get outside
 // v4.std.collection.
-// Projects Witness → Optional faithfully: Present on Holds; Absent only when Violates carries
-// map_key_absent (std Map empty_map/map_insert algebra). Other Violates: use Map.lookup + Outcome.
-fn map_get<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+// Projects Map.lookup → Outcome<Optional<V>>: Present on Holds; Absent only when Violates carries
+// map_key_absent. Other Violates: outcome_rejected (P3) — never collapsed to Absent.
+fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   match m.lookup(key) {
-    Holds { value: v } => Present { value: v }
+    Holds { value: v } => outcome_accepted(value: Present { value: v })
     Violates { diagnostic: d } =>
       match d.reason == map_key_absent {
-        true => Absent
-        false => Absent
+        true => outcome_accepted(value: Absent)
+        false => outcome_rejected(d: d)
       }
   }
 }
