@@ -25,9 +25,11 @@ import v4.extdeps.languages.dag {
   dag_round_trip_grammar_axis,
   dag_round_trip_normalization_axis,
   dag_round_trip_lex_ready,
-  dag_round_trip_normalization_declared
+  dag_round_trip_normalization_declared,
+  dag_round_trip_wave1_authorities_ready
 }
 import v4.std.verification {
+  EqualsClaim,
   ManualAnchorAbsent,
   RoundTripClaim,
   TestClaim,
@@ -78,5 +80,14 @@ data claim_dag_ingest_round_trip: TestClaim = RoundTripClaim {
   label: "T-36 W1 wave-1 readiness: dag_round_trip_mvp1 fixture + lex/grammar/C5 authorities re-derived (emit→ingest fidelity W1b)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: dag_round_trip_input_node(),
+  classification: TestClassification { tier: Tier3, layer: Integration }
+}
+
+
+data claim_dag_ingestion_floor_min: TestClaim = EqualsClaim {
+  label: "B-min .dag ingestion floor: wave-1 lex, grammar, and C5 trivia authorities are ready",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: dag_round_trip_bool_node(pass: true),
+  rhs: dag_round_trip_bool_node(pass: dag_round_trip_wave1_authorities_ready()),
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
