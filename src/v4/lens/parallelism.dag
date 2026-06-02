@@ -7,7 +7,14 @@ module v4.lens.parallelism
 
 import v4.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent }
 import v4.std.algebra { bag_eq, list_snoc_item }
-import v4.std.collection { List }
+import v4.std.collection {
+  List,
+  Optional,
+  optional_absent,
+  optional_prefer_first_present,
+  optional_present,
+  optional_present_witness
+}
 import v4.std.dependency {
   ClassifiedDependencyView,
   DependencyKindClassifier,
@@ -172,12 +179,30 @@ fn parallelism_fact_unresolved(fact: ParallelismFact) -> Bool {
   })
 }
 
+fn parallelism_first_unresolved_coupling_diagnostic(fact: ParallelismFact) -> Optional<Diagnostic> {
+  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
+    optional_prefer_first_present(
+      left: acc,
+      right: match dep.classification {
+        UnresolvedCoupling { diagnostic: d } => optional_present(value: d)
+        _ => optional_absent()
+      }
+    )
+  })
+}
+
 fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<ParallelismFact> {
   let fact = parallelism_fact(tree: tree, dependencies: dependencies)
-  if parallelism_fact_unresolved(fact: fact) {
-    Violates { diagnostic: parallelism_witness_diagnostic() }
-  } else {
-    Holds { value: fact }
+  let unresolved_diagnostic = parallelism_first_unresolved_coupling_diagnostic(fact: fact)
+  match optional_present_witness(opt: unresolved_diagnostic) {
+    Holds { value: d } =>
+      Violates { diagnostic: d }
+    Violates { diagnostic: _ } =>
+      if parallelism_fact_unresolved(fact: fact) {
+        Violates { diagnostic: parallelism_witness_diagnostic() }
+      } else {
+        Holds { value: fact }
+      }
   }
 }
 
