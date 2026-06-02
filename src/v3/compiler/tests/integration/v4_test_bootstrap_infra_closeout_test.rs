@@ -546,8 +546,10 @@ fn check_t19_testgen_activation() {
         &["ManualRefinementNonEmptyListBase"],
     );
 
+    parse_module(VERIFICATION_DAG, VERIFICATION_PATH);
+
     require_substrings(
-        "verification.dag",
+        VERIFICATION_PATH,
         VERIFICATION_DAG,
         &[
             "ManualLbeConjDagSurface",
