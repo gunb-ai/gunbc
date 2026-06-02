@@ -34,6 +34,9 @@
 //! `concrete_syntax_token_kind_*` Symbols inline), and `assert_imports_shared_token_kinds` →
 //! `assert_imports_shared_token_serializer` now requires the shared-serializer import
 //! (rust/java/typescript/swift/wasm). Both track the T-11 single-author serialization morphism.
+//! **PR #4321 (+0 census paths):** same-path structural assertions for Go G.1.3
+//! `PerLanguageFactBundleEntry` rows and the B.2.2 `parse/go_wave2a.dag` corpus symmetry file;
+//! no new hand-Rust test path, and the `.dag` rows are the authored substrate.
 //! Dissolution trigger (= this file's existing trigger, unchanged): retires under T-PB-B when the
 //! `.dag` `TestClaim` / generated-runner replacement executes these facts directly (see the
 //! **Dissolution** note below).
@@ -86,6 +89,9 @@ const MVP1_PYTHON_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_python_add_t
 const MVP1_GO_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_go_add_translate.dag");
 const MVP1_GO_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_go_add_translate.dag";
+const GO_WAVE2A_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/parse/go_wave2a.dag");
+const GO_WAVE2A_CLAIM_PATH: &str = "src/v4/test/claim/parse/go_wave2a.dag";
 const MVP1_CPP_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_cpp_add_translate.dag");
 const MVP1_CPP_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_cpp_add_translate.dag";
@@ -1023,6 +1029,81 @@ fn v4_go_language_model_declares_wave1_carriers() {
     assert!(
         import_includes_name(&module, &["v4", "std", "model_core"], "ModelCore"),
         "{GO_LANGUAGE_PATH}: must import ModelCore from v4.std.model_core"
+    );
+}
+
+#[test]
+fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
+    let module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grounding"],
+            "PerLanguageFactBundleEntry"
+        ),
+        "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must consume the G.0 PerLanguageFactBundleEntry schema"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grounding"],
+            "PerLanguageFactBundleKey"
+        ),
+        "{GO_LANGUAGE_PATH}: G.1.3 Go fact rows must key by substrate carrier, TargetModel, and fact axis"
+    );
+    for name in [
+        "go_per_language_fact_bundle_entry",
+        "go_integer_per_language_fact_bundle_entries",
+        "go_float_per_language_fact_bundle_entries",
+        "go_complex_per_language_fact_bundle_entries",
+        "go_bool_per_language_fact_bundle_entries",
+        "go_string_per_language_fact_bundle_entries",
+        "go_g1_3_per_language_fact_bundle_entries",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{GO_LANGUAGE_PATH}: must declare G.1.3 Go fact-bundle row builder `{name}`"
+        );
+    }
+    assert!(
+        GO_LANGUAGE_DAG.contains("subject_carrier: subject")
+            && GO_LANGUAGE_DAG.contains("target: go_mvp1_target_model()")
+            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_surface_spelling")
+            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_width")
+            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_signedness")
+            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_overflow_disposition")
+            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_encoding"),
+        "{GO_LANGUAGE_PATH}: G.1.3 entries must trace existing Go primitive facts to canonical G.0 axes"
+    );
+}
+
+#[test]
+fn v4_go_wave2a_parse_claim_tokenizes_and_parses() {
+    let _module = parse_module(GO_WAVE2A_CLAIM_DAG, GO_WAVE2A_CLAIM_PATH);
+}
+
+#[test]
+fn v4_go_wave2a_parse_claim_is_mvp_scoped_symmetry_row() {
+    let module = parse_module(GO_WAVE2A_CLAIM_DAG, GO_WAVE2A_CLAIM_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "extdeps", "languages", "go"],
+            "go_mvp1_source_text"
+        ) && import_includes_name(
+            &module,
+            &["v4", "extdeps", "languages", "go"],
+            "go_wave1_lex"
+        ) && import_includes_name(
+            &module,
+            &["v4", "extdeps", "languages", "go"],
+            "go_wave1_grammar"
+        ),
+        "{GO_WAVE2A_CLAIM_PATH}: B.2.2 Go parse row must use the current MVP Go source and wave1 lex/grammar authority"
+    );
+    assert!(
+        surface_declares_data(&module, "claim_go_wave2a_mvp_add_function_parses"),
+        "{GO_WAVE2A_CLAIM_PATH}: must declare the missing Go parse/ wave2a corpus TestClaim"
     );
 }
 
