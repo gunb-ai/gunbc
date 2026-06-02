@@ -3349,6 +3349,10 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
   } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval.dag" {
     path == "src/v4/test/claim/workflow/manual_corpus_eval.dag"
+  } else if segment == "src/v4/compiler/source_authority.dag" {
+    path == "src/v4/compiler/source_authority.dag"
+  } else if segment == "src/v4/test/claim/round_trip/source_authority_contract.dag" {
+    path == "src/v4/test/claim/round_trip/source_authority_contract.dag"
   } else {
     false
   }
