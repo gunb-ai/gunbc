@@ -2,7 +2,8 @@
 //!
 //! Authority: `src/v4/lens/leaf_model_verification.dag`; claim wiring in
 //! `go_r1.dag`, `go_r2a.dag`, `go_r2b.dag`, `go_r3_external.dag`.
-//! Host runners: `scripts/v4-leaf-model-go-r{1,2a,2b,3-external}-verify.sh`.
+//! Temporary host bridge: this test exercises `go build` / `go run` until T-22
+//! `run_target_verification` owns the modeled rows directly.
 //!
 //! **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** same-path expansion (+0
 //! census paths); explicit deferral **T-PB-B** / `_internal/ROADMAP_OPS.md` `pb_rust_tests_outside_residual_zero`;

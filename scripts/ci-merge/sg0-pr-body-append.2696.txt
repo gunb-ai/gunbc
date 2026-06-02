@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) deferral dispatch tracked gunbc#1974 (PB T-V2-Retirement S-1 brief / R3 gate #71 harness); net SG-0 integration add dissolves under ROADMAP.md T-PB-B `pb_rust_tests_outside_residual_zero` when `.dag` TestClaim runner absorbs the same PB-Runtime + receipt obligations without the `CARGO_BIN_EXE` splice driver.

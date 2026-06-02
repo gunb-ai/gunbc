@@ -36,7 +36,7 @@ declaration-id-raw-test-witness = []
 # gunbc#1739 #issuecomment-4392731264): `IntervalInt::ExactInterval` host
 # repr widens to `BigInt` to admit `u128::MAX`.
 num-bigint = { workspace = true }
-# W3 / T-38: executable `run_emit_host_rust` row (`emit_host_bridge.rs`); substrate stays deferred.
+# W3 / T-38 + T-22: `emit_host_bridge.rs` + `emit_host_eval.rs` → `tools/emit_host_runner`.
 emit_host_runner = { path = "../../../tools/emit_host_runner" }
 
 [target.'cfg(unix)'.dependencies]
