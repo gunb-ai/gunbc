@@ -572,6 +572,7 @@ fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
         "PerLanguageFactBundleRegistry",
         "empty_per_language_fact_bundle_registry",
         "insert_per_language_fact_bundle_entry",
+        "primitive_fact_bundle_for_subject",
     ] {
         assert!(
             import_includes_name(&module, &["v4", "std", "grounding"], name),
@@ -606,10 +607,35 @@ fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
         "python_g1_2_insert_fact_bundle_entry",
         "python_g1_2_insert_entries",
         "python_g1_2_fact_bundle_registry",
+        "python_g1_2_integer_primitive_bundles_from_registry",
+        "python_g1_2_float_primitive_bundles_from_registry",
+        "python_g1_2_complex_primitive_bundles_from_registry",
+        "python_g1_2_bool_primitive_bundles_from_registry",
+        "python_g1_2_singleton_primitive_bundles_from_registry",
+        "python_g1_2_primitive_bundles_from_registry",
+        "python_g1_2_primitive_fact_bundles",
     ] {
         assert!(
             surface_declares_fn(&module, name),
             "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must declare `{name}`"
+        );
+    }
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains("primitives: python_g1_2_primitive_fact_bundles()"),
+        "{PYTHON_LANGUAGE_PATH}: Python ModelCore primitive facts must consume the G.1.2 registry projection"
+    );
+    for name in [
+        "python_primitive_bundle_from_integer_facts",
+        "python_primitive_bundle_from_float_facts",
+        "python_primitive_bundle_from_complex_facts",
+        "python_primitive_bundle_from_bool_facts",
+        "python_primitive_bundle_from_singleton_facts",
+        "python_wave1_primitive_fact_bundles",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 must not retain legacy direct PrimitiveFactBundle builder `{name}`"
         );
     }
     assert_eq!(

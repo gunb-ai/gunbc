@@ -60,7 +60,8 @@ import v4.std.grounding {
   PerLanguageFactBundleKey,
   PerLanguageFactBundleRegistry,
   empty_per_language_fact_bundle_registry,
-  insert_per_language_fact_bundle_entry
+  insert_per_language_fact_bundle_entry,
+  primitive_fact_bundle_for_subject
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -572,132 +573,6 @@ fn python_singleton_spec_facts(facts: PythonSingletonPrimitiveFacts) -> Map<Symb
   }
 }
 
-fn python_primitive_bundle_from_integer_facts(
-  facts: PythonIntegerPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: python_integer_facts_node(facts: facts),
-    spec_facts: python_integer_spec_facts(facts: facts)
-  }
-}
-
-fn python_primitive_bundle_from_float_facts(
-  facts: PythonFloatPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: python_float_facts_node(facts: facts),
-    spec_facts: python_float_spec_facts(facts: facts)
-  }
-}
-
-fn python_primitive_bundle_from_complex_facts(
-  facts: PythonComplexPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: python_complex_facts_node(facts: facts),
-    spec_facts: python_complex_spec_facts(facts: facts)
-  }
-}
-
-fn python_primitive_bundle_from_bool_facts(
-  facts: PythonBoolPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: python_bool_facts_node(facts: facts),
-    spec_facts: python_bool_spec_facts(facts: facts)
-  }
-}
-
-fn python_primitive_bundle_from_singleton_facts(
-  facts: PythonSingletonPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: python_singleton_facts_node(facts: facts),
-    spec_facts: python_singleton_spec_facts(facts: facts)
-  }
-}
-
-fn python_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: python_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: python_primitive_bundle_from_integer_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn python_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: python_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: python_primitive_bundle_from_float_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn python_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: python_complex_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: python_primitive_bundle_from_complex_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn python_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: python_bool_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: python_primitive_bundle_from_bool_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn python_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: python_singleton_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: python_primitive_bundle_from_singleton_facts(facts: facts)
-      )
-    }
-  )
-}
-
-fn python_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  list_append(
-    left: list_append(
-      left: list_append(
-        left: list_append(
-          left: python_primitive_bundles_from_integer_catalog(),
-          right: python_primitive_bundles_from_float_catalog()
-        ),
-        right: python_primitive_bundles_from_complex_catalog()
-      ),
-      right: python_primitive_bundles_from_bool_catalog()
-    ),
-    right: python_primitive_bundles_from_singleton_catalog()
-  )
-}
-
 fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: ModelCorePrimitiveFactAxis) -> PerLanguageFactBundleKey {
   PerLanguageFactBundleKey {
     subject_carrier: subject_carrier,
@@ -924,6 +799,128 @@ fn python_g1_2_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> 
   )
 }
 
+fn python_g1_2_integer_primitive_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: primitive_fact_bundle_for_subject(
+          registry: registry,
+          subject_carrier: python_integer_facts_node(facts: facts),
+          target: python_mvp1_target_model()
+        )
+      )
+    }
+  )
+}
+
+fn python_g1_2_float_primitive_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: primitive_fact_bundle_for_subject(
+          registry: registry,
+          subject_carrier: python_float_facts_node(facts: facts),
+          target: python_mvp1_target_model()
+        )
+      )
+    }
+  )
+}
+
+fn python_g1_2_complex_primitive_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: primitive_fact_bundle_for_subject(
+          registry: registry,
+          subject_carrier: python_complex_facts_node(facts: facts),
+          target: python_mvp1_target_model()
+        )
+      )
+    }
+  )
+}
+
+fn python_g1_2_bool_primitive_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_bool_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: primitive_fact_bundle_for_subject(
+          registry: registry,
+          subject_carrier: python_bool_facts_node(facts: facts),
+          target: python_mvp1_target_model()
+        )
+      )
+    }
+  )
+}
+
+fn python_g1_2_singleton_primitive_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_singleton_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: primitive_fact_bundle_for_subject(
+          registry: registry,
+          subject_carrier: python_singleton_facts_node(facts: facts),
+          target: python_mvp1_target_model()
+        )
+      )
+    }
+  )
+}
+
+fn python_g1_2_primitive_bundles_from_registry(
+  registry: PerLanguageFactBundleRegistry
+) -> List<PrimitiveFactBundle> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: python_g1_2_integer_primitive_bundles_from_registry(registry: registry),
+          right: python_g1_2_float_primitive_bundles_from_registry(registry: registry)
+        ),
+        right: python_g1_2_complex_primitive_bundles_from_registry(registry: registry)
+      ),
+      right: python_g1_2_bool_primitive_bundles_from_registry(registry: registry)
+    ),
+    right: python_g1_2_singleton_primitive_bundles_from_registry(registry: registry)
+  )
+}
+
+fn python_g1_2_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  match python_g1_2_fact_bundle_registry() {
+    Accepted { value: registry, diagnostics: _ } =>
+      python_g1_2_primitive_bundles_from_registry(registry: registry)
+    Rejected { diagnostics: _ } =>
+      []
+  }
+}
+
 fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1053,7 +1050,7 @@ fn python_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 
 fn python_model_core_wave1() -> ModelCore {
   ModelCore {
-    primitives: python_wave1_primitive_fact_bundles(),
+    primitives: python_g1_2_primitive_fact_bundles(),
     inhabitance: python_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
