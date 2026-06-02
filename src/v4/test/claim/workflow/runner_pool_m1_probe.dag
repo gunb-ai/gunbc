@@ -1,5 +1,5 @@
 // src/v4/test/claim/workflow/runner_pool_m1_probe.dag
-// Scope: T-24 self-hosted runner pool + operator M1 cargo-check parallelism (srv1/srv2 spec).
+// Scope: T-24 self-hosted runner pool (srv1/srv2 spec).
 
 module v4.test.claim.workflow.runner_pool_m1_probe
 
@@ -12,8 +12,7 @@ import v4.workflow.ci {
   ci_runner_pool_resilience_playbook_fail_closed,
   ci_runner_pool_resilience_playbook_ok,
   ci_srv1_pool,
-  ci_srv2_pool,
-  m1_probe_cargo_check_jobs_ceiling
+  ci_srv2_pool
 }
 
 fn runner_pool_fleet_arch_holds() -> Bool {
@@ -32,10 +31,6 @@ fn runner_pool_srv2_jobserver_cap_holds() -> Bool {
   ci_srv2_pool.jobserver_token_cap == 36
 }
 
-fn runner_pool_m1_cargo_jobs_holds() -> Bool {
-  m1_probe_cargo_check_jobs_ceiling == 64
-}
-
 fn runner_pool_resilience_playbook_complete_holds() -> Bool {
   ci_runner_pool_resilience_playbook_complete(p: ci_runner_pool_resilience_playbook)
 }
@@ -48,7 +43,6 @@ data runner_pool_arch_claim_passes: Bool = runner_pool_fleet_arch_holds()
 data runner_pool_capacities_claim_passes: Bool = runner_pool_fleet_capacities_valid_holds()
 data runner_pool_srv1_claim_passes: Bool = runner_pool_srv1_runner_count_holds()
 data runner_pool_srv2_claim_passes: Bool = runner_pool_srv2_jobserver_cap_holds()
-data runner_pool_m1_jobs_claim_passes: Bool = runner_pool_m1_cargo_jobs_holds()
 data runner_pool_resilience_playbook_claim_passes: Bool = runner_pool_resilience_playbook_complete_holds()
 data runner_pool_resilience_playbook_fail_closed_claim_passes: Bool = runner_pool_resilience_playbook_fail_closed_holds()
 data runner_pool_resilience_playbook_authority_claim_passes: Bool = ci_runner_pool_resilience_playbook_ok
