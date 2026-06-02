@@ -1138,7 +1138,6 @@ data ci_upsert_lens_ownership_family_eval_inputs: List<UpsertInputRef> = ci_upse
 data v4_test_claim_workflow_lens_ownership_family_eval: Symbol = v4_test_claim_workflow_lens_ownership_family_eval
 data v4_test_claim_lens_ownership_subject_roster: Symbol = v4_test_claim_lens_ownership_subject_roster
 data ci_lens_ownership_subject_roster_decl_name: Symbol = lens_ownership_subject_rows
-data lens_ownership_node_subject_rows: Symbol = lens_ownership_node_subject_rows
 data run_lens_ownership_family_eval: Symbol = run_lens_ownership_family_eval
 data lens_ownership_family_report_tally: Symbol = lens_ownership_family_report_tally
 data lens_ownership_structural_witnesses_hold: Symbol = lens_ownership_structural_witnesses_hold
