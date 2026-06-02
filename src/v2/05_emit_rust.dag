@@ -1643,6 +1643,30 @@ fn variant_parent_defining_module_filename(parent_enum: String, variant_name: St
   }
 }
 
+fn explicit_import_source_module_for_name(name: String, import_module: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
+    None => None
+    Some { value: tm } =>
+      match module_imports(n: tm.module) |> filter(imp =>
+        import_is_all(n: imp) == false
+        && import_specific_names_at(n: imp, source_indices: source_indices) |> any(n => n == name)
+      ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
+        Some { value: src } => Some { value: src }
+        None =>
+          match module_imports(n: tm.module) |> filter(imp => import_is_all(n: imp)) |> filter(imp =>
+            let src_mod = authored_name_at(source_indices: source_indices, node: imp)
+            match map_get(export_sets, src_mod) {
+              Some { value: exported } => map_get(exported, name) == Some { value: true }
+              None => false
+            }
+          ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
+            Some { value: src } => Some { value: src }
+            None => None
+          }
+      }
+  }
+}
+
 fn reexport_variant_parent_in_import_module(variant_name: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String? {
   match reexport_source_module_name(name: variant_name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
     None => None
@@ -1655,16 +1679,19 @@ fn reexport_variant_parent_in_import_module(variant_name: String, import_module:
       ) {
         Some { value: parent } => Some { value: parent }
         None =>
-          find_variant_parent(
-            type_summaries: type_summaries,
-            variant_name: variant_name,
-            scope_enums: enum_names_in_module(
-              module_name: src_mod,
-              typed_modules: typed_modules,
-              source_indices: source_indices,
-              type_summaries: type_summaries
-            )
-          )
+          match explicit_import_source_module_for_name(name: variant_name, import_module: src_mod, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+            Some { value: hop } if hop != src_mod =>
+              reexport_variant_parent_in_import_module(
+                variant_name: variant_name,
+                import_module: hop,
+                registry: registry,
+                type_summaries: type_summaries,
+                typed_modules: typed_modules,
+                export_sets: export_sets,
+                source_indices: source_indices
+              )
+            _ => None
+          }
       }
   }
 }
@@ -1904,6 +1931,8 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
         is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
       } else if imported_name_is_non_emittable_type(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices) {
+        false
+      } else if is_kernel_type(name: n) {
         false
       } else { true }
     )
