@@ -101,6 +101,15 @@ type WellFormedFormalGrammar {
 }
 
 
+// Branch B ingestion-unification ruling (2026-06-02): concrete syntax is a
+// single authority row. LexPattern and GrammarExpr remain operational
+// projections until CP-1b convergence; they are not independent authorities.
+type ConcreteSyntaxSchema {
+  lex: LexRules
+  grammar: WellFormedFormalGrammar
+}
+
+
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
   = Terminal { token_class: Symbol }
@@ -140,6 +149,9 @@ type ParseGrammar
   | ModeledGrammar { root: GrammarRoot }
 
 
+// Operational probe bridge for today's parser. Dissolve-on: GrammarSchemaProbeBinding
+// consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the
+// well-formed formal grammar authority.
 type GrammarSchema {
   lex: LexRules
   grammar: ParseGrammar

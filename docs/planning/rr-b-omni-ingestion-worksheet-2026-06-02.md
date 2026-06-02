@@ -1,39 +1,52 @@
 # RR-B Omni-Ingestion Worksheet - Branch B-min
 
-> Status: Branch B-min implementation worksheet. This is a `.dag` authority and planning slice only: no Rust floor, no parser-stage migration, and no compiler-stage edits.
+> Status: W2 Branch B-min worksheet and substrate ruling. Scope stays below B-full: `.dag` only, no per-language ingest expansion, no hand-coded parser walk, no Rust floor.
 
-## Scope
+## 10-Field Worksheet
 
-Branch B-min establishes the smallest `.dag` ingestion floor that can fail closed today without fabricating ingest support. It binds the existing `.dag` wave-1 language model authorities into a dedicated `TestClaim` row:
+| Field | Entry |
+|---|---|
+| 1. Work item | `node://adhoc-299588a3-66b` — B-min `.dag` ingestion floor + RR-B worksheet. |
+| 2. Branch | Branch B-min now; B-full is explicitly deferred. |
+| 3. Authority | `ConcreteSyntaxSchema` in `src/v4/std/grammar.dag` is the single concrete-syntax authority carrier. |
+| 4. Projections | `LexPattern`, `GrammarExpr`, `ParseGrammar`, and `GrammarSchemaProbeBinding` are operational projections/bridges until CP-1b convergence. |
+| 5. Floor claim | `src/v4/test/claim/round_trip/dag_ingestion_floor_min.dag` re-derives `.dag` wave-1 lex, grammar, and C5 trivia readiness from `dag.dag`. |
+| 6. B-min rows | Bmin.1 single declared grammar parse path; Bmin.2 structural morphism from authority to parser projection; Bmin.3 `WellFormedFormalGrammar` validating constructor; Bmin.4 round-trip claim; Bmin.5 canonical source emission. |
+| 7. Dependency boundary | Bmin.1-3 may proceed before H.7.2. Bmin.4-5 wait for H.7.1 source authority: canonical `.dag` source AST, deterministic serializer, and normalized source AST parse/print law. |
+| 8. B.2 findings | Fold operator #7 omni-ingestion findings into RR-B before B-full dispatch; missing Go parse claim is coordination debt, not B-min implementation scope. |
+| 9. Acceptance | New evidence is `.dag` `TestClaim` data or typed substrate data; no fabricated parse, no third syntax authority, no permanent dual carrier. |
+| 10. Handoffs | Coordinate parse/print law with Source-authority Mgr; coordinate any Go parse-claim movement with the Go owner (`gentle-lynx`) before touching Go parse claims. |
 
-- Lex authority: `src/v4/extdeps/languages/dag.dag` `dag_round_trip_lex_ready`.
-- Grammar authority: `src/v4/extdeps/languages/dag.dag` `dag_round_trip_grammar_ready`.
-- C5 trivia fidelity authority: `src/v4/extdeps/languages/dag.dag` `dag_round_trip_normalization_declared`.
-- Floor claim: `src/v4/test/claim/round_trip/dag_ingestion_floor_min.dag`.
+## Branch B-Min Rows
 
-The floor deliberately reuses `dag_round_trip_wave1_authorities_ready()` instead of re-declaring axis predicates. That keeps `dag.dag` as the single authority for the wave-1 ingest-readiness cluster and avoids a parallel worksheet-local checklist.
-
-## RR-B Target
-
-RR-B is the next omni-ingestion release-readiness worksheet. Its job is to turn the current per-language ingest probe pattern into an auditable roster without implying that full source ingest is landed.
-
-Required rows:
-
-| Row | Authority | Floor intent |
+| Row | Status | Required shape |
 |---|---|---|
-| `.dag` wave-1 | `src/v4/extdeps/languages/dag.dag` | Lossless-core ingest readiness plus declared trivia normalization. |
-| English boundary | `src/v4/test/claim/boundary/english_ingest_fail_closed.dag` | Natural-language prose stays outside the lossless core and returns a typed diagnostic. |
-| LLVM IR probe | `src/v4/test/claim/manual/llvm_ir_b2_omni_in_b_probe.dag` | IN-B structured SSA/CFG/phi probe remains modeled, not a text adapter. |
-| Grammar probe family | `GrammarSchemaProbeBinding` rows in `src/v4/extdeps/languages/*` and `src/v4/extdeps/formats/*` | Each ingest candidate names lex, grammar, fixture, production, and expected parse surface. |
+| Bmin.1 | Open | `.dag` parses through one declared `ConcreteSyntaxSchema`; no bespoke `.dag` parser walk. |
+| Bmin.2 | Open | A structural morphism derives the parser-facing projection from the schema authority. |
+| Bmin.3 | Open | `WellFormedFormalGrammar` is the validating constructor/witness boundary for formal grammar authority. |
+| Bmin.4 | Blocked on H.7.1 | Round-trip claim may consume Bmin.1-3 only after source authority can state the normalized source AST parse/print law. Do not use `dag-artifact.json` or `--target dag` JSON IR equality as source authority. |
+| Bmin.5 | Blocked on H.7.1 | Canonical source emission waits for canonical `.dag` source AST plus deterministic serializer; do not claim bit-identical fidelity before W1b compare lands. |
 
-## Acceptance Bar
+## Branch B.2 Findings
 
-- New readiness evidence must be `TestClaim` data or typed substrate data.
-- A claim label must not imply bit-identical emit-to-ingest fidelity until the W1b compare lands.
-- Arbitrary English or other non-lossless inputs must reject with typed diagnostics, not plausible parses.
-- Any temporary Bool projection must name a dissolve-on-arrival path to a typed receipt carrier.
-- No new hand-authored Rust test floor is allowed for this slice.
+| Finding | Disposition |
+|---|---|
+| B2.1 `ConcreteSyntaxSchema` must be the authority | Landed as the named carrier in `std/grammar.dag`; projections remain bridges. |
+| B2.2 Go parse claim missing | Record as anomaly; do not add Go parse scope in B-min without Go-owner coordination. |
+| B2.3 LexPattern CP-1b is the omni-ingestion gate | Ruling: `LexPattern` projects from `ConcreteSyntaxSchema`; it is not an authority. |
+| B2.4 GrammarExpr CP-1b shares the same fate | Ruling: `GrammarExpr` is parser projection until derived from formal grammar authority. |
+| B2.5 `GrammarSchemaProbeBinding` roster is scattered | RR-B follow-up should replace markdown inventory with typed roster data. |
+| B2.6 English prose stays outside the lossless core | Existing fail-closed boundary claim remains the correct pattern. |
+| B2.7 LLVM IR IN-B probe is structured, not text adapter | Existing SSA/CFG/phi claim remains evidence for modeled ingest shape. |
+| B2.8 B-full per-language ingest is anti-scope | Defer the eight-row B-full expansion until B-min authority is stable. |
+| B2.9 Source authority owns parse/print law | Bmin.4-5 hand off to H.3/H.7 before round-trip/canonical-source claims; JSON IR artifacts are boundary/debug output only. |
 
-## Follow-Up
+## Current PR Slice
 
-RR-B should replace the scattered probe inventory with a typed roster carrier once the claim runner can consume `GrammarSchemaProbeBinding` directly. The dissolve target is a single roster-shaped `.dag` authority, not a Rust census entry or duplicated markdown checklist.
+This PR intentionally lands only:
+
+- the `ConcreteSyntaxSchema` carrier and projection ruling;
+- the B-min `.dag` ingestion floor claim for existing `.dag` wave-1 authority readiness;
+- this RR-B worksheet folding B-min plus B.2 findings.
+
+It does not land the Bmin.1-3 morphism implementation, a Go parse claim, B-full ingest rows, or canonical source emission. Those are downstream dispatches once the authority and dependency boundaries are accepted.
