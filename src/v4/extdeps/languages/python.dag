@@ -56,18 +56,19 @@ import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concre
 import v4.std.target_model { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.grounding {
-  HollowAliasGovernanceBar,
   PerLanguageFactBundleEntry,
   PerLanguageFactBundleKey,
   PerLanguageFactBundleRegistry,
   empty_per_language_fact_bundle_registry,
-  hollow_alias_governance_bar,
   insert_per_language_fact_bundle_entry
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
+  ModelCorePrimitiveFactAxis,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
@@ -697,7 +698,7 @@ fn python_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: Symbol) -> PerLanguageFactBundleKey {
+fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: ModelCorePrimitiveFactAxis) -> PerLanguageFactBundleKey {
   PerLanguageFactBundleKey {
     subject_carrier: subject_carrier,
     target: python_mvp1_target_model(),
@@ -707,7 +708,7 @@ fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: Symbol) -> PerL
 
 fn python_g1_2_fact_bundle_entry(
   subject_carrier: Node,
-  fact_axis: Symbol,
+  fact_axis: ModelCorePrimitiveFactAxis,
   fact_value: Node
 ) -> PerLanguageFactBundleEntry {
   PerLanguageFactBundleEntry {
@@ -726,12 +727,12 @@ fn python_g1_2_integer_fact_bundle_entries(
   [
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: python_inhabitant_atom(id: facts.surface_spelling)
     ),
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_encoding,
+      fact_axis: ModelCoreFactAxisEncoding {},
       fact_value: python_inhabitant_atom(id: facts.encoding)
     )
   ]
@@ -744,12 +745,12 @@ fn python_g1_2_float_fact_bundle_entries(
   [
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: python_inhabitant_atom(id: facts.surface_spelling)
     ),
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_encoding,
+      fact_axis: ModelCoreFactAxisEncoding {},
       fact_value: python_inhabitant_atom(id: facts.machine_representation)
     )
   ]
@@ -762,12 +763,12 @@ fn python_g1_2_complex_fact_bundle_entries(
   [
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: python_inhabitant_atom(id: facts.surface_spelling)
     ),
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_encoding,
+      fact_axis: ModelCoreFactAxisEncoding {},
       fact_value: python_inhabitant_atom(id: facts.component_machine_representation)
     )
   ]
@@ -780,12 +781,12 @@ fn python_g1_2_bool_fact_bundle_entries(
   [
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: python_inhabitant_atom(id: facts.surface_spelling)
     ),
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_encoding,
+      fact_axis: ModelCoreFactAxisEncoding {},
       fact_value: python_inhabitant_atom(id: facts.encoding)
     )
   ]
@@ -798,12 +799,12 @@ fn python_g1_2_singleton_fact_bundle_entries(
   [
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: python_inhabitant_atom(id: facts.surface_spelling)
     ),
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: primitive_fact_axis_encoding,
+      fact_axis: ModelCoreFactAxisEncoding {},
       fact_value: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant)
     )
   ]
@@ -913,12 +914,7 @@ fn python_g1_2_insert_entries(
   }
 }
 
-fn python_g1_2_hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
-  hollow_alias_governance_bar()
-}
-
 fn python_g1_2_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
-  let _bar = python_g1_2_hollow_alias_governance_bar()
   fold_list(
     xs: python_g1_2_fact_bundle_entries(),
     empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),

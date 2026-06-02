@@ -567,17 +567,25 @@ fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
 fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
     let module = parse_module(PYTHON_LANGUAGE_DAG, PYTHON_LANGUAGE_PATH);
     for name in [
-        "HollowAliasGovernanceBar",
         "PerLanguageFactBundleEntry",
         "PerLanguageFactBundleKey",
         "PerLanguageFactBundleRegistry",
         "empty_per_language_fact_bundle_registry",
-        "hollow_alias_governance_bar",
         "insert_per_language_fact_bundle_entry",
     ] {
         assert!(
             import_includes_name(&module, &["v4", "std", "grounding"], name),
             "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must consume `{name}` from v4.std.grounding"
+        );
+    }
+    for name in [
+        "ModelCorePrimitiveFactAxis",
+        "ModelCoreFactAxisEncoding",
+        "ModelCoreFactAxisSurfaceSpelling",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "model_core"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python G.1.2 fact bundle must consume typed model_core axis `{name}`"
         );
     }
     for name in ["Outcome", "Accepted", "Rejected", "outcome_accepted"] {
@@ -597,7 +605,6 @@ fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
         "python_g1_2_fact_bundle_entries",
         "python_g1_2_insert_fact_bundle_entry",
         "python_g1_2_insert_entries",
-        "python_g1_2_hollow_alias_governance_bar",
         "python_g1_2_fact_bundle_registry",
     ] {
         assert!(
