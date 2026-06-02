@@ -132,6 +132,8 @@ import v4.std.node {
   ByteOffsetCacheIneligible,
   byte_offset_cache_key,
   byte_offset_cache_key_projection_node,
+  canonical_hash_of_behavior,
+  canonical_hash_of_connective,
   canonical_tag_byte_limb_out_of_range
 }
 import v4.std.integer { int_add, int_negate }
@@ -3791,17 +3793,6 @@ data ci_artifact_kind_projection_artifact_tag: Symbol = ci_artifact_kind_project
 data ci_artifact_kind_stage0_candidate_tag: Symbol = ci_artifact_kind_stage0_candidate_tag
 data ci_artifact_kind_core_package_tag: Symbol = ci_artifact_kind_core_package_tag
 data ci_artifact_kind_witness_bundle_tag: Symbol = ci_artifact_kind_witness_bundle_tag
-data ci_connective_atom_tag: Symbol = ci_connective_atom_tag
-data ci_connective_conj_tag: Symbol = ci_connective_conj_tag
-data ci_connective_disj_tag: Symbol = ci_connective_disj_tag
-data ci_connective_arrow_tag: Symbol = ci_connective_arrow_tag
-data ci_connective_cardinality_tag: Symbol = ci_connective_cardinality_tag
-data ci_connective_instantiation_tag: Symbol = ci_connective_instantiation_tag
-data ci_behavior_value_tag: Symbol = ci_behavior_value_tag
-data ci_behavior_transform_tag: Symbol = ci_behavior_transform_tag
-data ci_behavior_branch_tag: Symbol = ci_behavior_branch_tag
-data ci_behavior_loop_tag: Symbol = ci_behavior_loop_tag
-data ci_behavior_bind_tag: Symbol = ci_behavior_bind_tag
 data ci_testgen_concept_type_construction_tag: Symbol = ci_testgen_concept_type_construction_tag
 data ci_testgen_concept_algebra_law_tag: Symbol = ci_testgen_concept_algebra_law_tag
 data ci_testgen_concept_diagnostic_exhaustiveness_tag: Symbol = ci_testgen_concept_diagnostic_exhaustiveness_tag
@@ -3878,26 +3869,12 @@ fn ci_generated_artifact_digest(artifact: GeneratedArtifact) -> Hash {
 
 
 fn ci_connective_digest(connective: Connective) -> Hash {
-  match connective {
-    Atom { identity } =>
-      combine_hash(a: ci_symbol_digest(sym: ci_connective_atom_tag), b: ci_symbol_digest(sym: identity))
-    Conj => ci_symbol_digest(sym: ci_connective_conj_tag)
-    Disj => ci_symbol_digest(sym: ci_connective_disj_tag)
-    Arrow => ci_symbol_digest(sym: ci_connective_arrow_tag)
-    Cardinality => ci_symbol_digest(sym: ci_connective_cardinality_tag)
-    Instantiation => ci_symbol_digest(sym: ci_connective_instantiation_tag)
-  }
+  canonical_hash_of_connective(c: connective)
 }
 
 
 fn ci_behavior_digest(behavior: Behavior) -> Hash {
-  match behavior {
-    Value => ci_symbol_digest(sym: ci_behavior_value_tag)
-    Transform => ci_symbol_digest(sym: ci_behavior_transform_tag)
-    Branch => ci_symbol_digest(sym: ci_behavior_branch_tag)
-    Loop => ci_symbol_digest(sym: ci_behavior_loop_tag)
-    Bind => ci_symbol_digest(sym: ci_behavior_bind_tag)
-  }
+  canonical_hash_of_behavior(b: behavior)
 }
 
 fn ci_change_kind_digest(kind: ChangeKind) -> Hash {
