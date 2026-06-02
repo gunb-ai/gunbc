@@ -3110,6 +3110,51 @@ pub fn imported_name_is_non_emittable_type(
     )
 }
 
+
+pub fn name_in_transitive_export_surface(
+    name: String,
+    module_name: String,
+    visited: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if visited.iter().any(|v| v.as_str() == module_name.as_str()) {
+        false
+    } else if match v2_rt::map_get(&export_sets, module_name.clone()) {
+        Some(exported) => v2_rt::map_get(&exported, name.clone()) == Some(true),
+        None => false,
+    } {
+        true
+    } else {
+        match typed_module_by_name(
+            module_name.clone(),
+            typed_modules.clone(),
+            source_indices.clone(),
+        ) {
+            None => false,
+            Some(tm) => module_imports(tm.module.clone())
+                .iter()
+                .cloned()
+                .filter(|imp| import_is_all(imp.clone()))
+                .any(|imp| {
+                    name_in_transitive_export_surface(
+                        name.clone(),
+                        authored_name_at(source_indices.clone(), imp.clone()),
+                        Rc::new({
+                            let mut next = visited.iter().cloned().collect::<Vec<_>>();
+                            next.push(module_name.clone());
+                            next
+                        }),
+                        export_sets.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                    )
+                }),
+        }
+    }
+}
+
 pub fn reexport_source_module_name(
     name: String,
     import_module: String,
@@ -3249,18 +3294,17 @@ pub fn reexport_source_module_name_with_visited(
                                                             source_indices.clone(),
                                                             imp.clone(),
                                                         );
-                                                        match v2_rt::map_get(
-                                                            &export_sets,
-                                                            src_mod.clone(),
-                                                        ) {
-                                                            Some(exported) => {
-                                                                (v2_rt::map_get(
-                                                                    &exported,
-                                                                    name.clone(),
-                                                                ) == Some(true))
-                                                            }
-                                                            None => false,
-                                                        }
+                                                        name_in_transitive_export_surface(
+                                                            name.clone(),
+                                                            src_mod,
+                                                            v2_rt::concat(
+                                                                visited.clone(),
+                                                                Rc::new(vec![import_module.clone()]),
+                                                            ),
+                                                            export_sets.clone(),
+                                                            typed_modules.clone(),
+                                                            source_indices.clone(),
+                                                        )
                                                     } {
                                                         __result.push(imp);
                                                     }
@@ -3754,6 +3798,7 @@ pub fn alias_rhs_rust_qualify_module_filename(
             scope,
             registry,
             export_sets.clone(),
+            typed_modules.clone(),
         );
         if has_physical_type_def_in_module_filename(
             name.clone(),
@@ -3792,6 +3837,7 @@ pub fn alias_rhs_base_module_filename(
     scope: Rc<InferScope>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
 ) -> String {
     {
         let local_mod = module_to_filename(alias_module.clone());
@@ -3810,6 +3856,7 @@ pub fn alias_rhs_base_module_filename(
                         registry,
                         local_mod,
                         export_sets,
+                        typed_modules.clone(),
                     )
                 }
             }
@@ -3820,6 +3867,7 @@ pub fn alias_rhs_base_module_filename(
                 registry,
                 local_mod,
                 export_sets,
+                typed_modules,
             ),
         }
     }
@@ -3832,6 +3880,7 @@ pub fn alias_rhs_base_module_from_import_or_registry(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     local_mod: String,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
 ) -> String {
     match Rc::new({
         let mut __result = Vec::new();
@@ -3885,12 +3934,14 @@ pub fn alias_rhs_base_module_from_import_or_registry(
                 {
                     if {
                         let import_module = authored_name_at(source_indices.clone(), imp.clone());
-                        match v2_rt::map_get(&export_sets, import_module.clone()) {
-                            Some(exported) => {
-                                (v2_rt::map_get(&exported, name.clone()) == Some(true))
-                            }
-                            None => false,
-                        }
+                        name_in_transitive_export_surface(
+                            name.clone(),
+                            import_module,
+                            Rc::new(vec![]),
+                            export_sets.clone(),
+                            typed_modules.clone(),
+                            source_indices.clone(),
+                        )
                     } {
                         __result.push(imp);
                     }
@@ -4127,6 +4178,7 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                     scope.clone(),
                     registry.clone(),
                     export_sets.clone(),
+                    typed_modules.clone(),
                 );
                 (rhs_base_has_rust_type_authority_in_module(
                     name.clone(),
@@ -4183,6 +4235,7 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
                                     scope.clone(),
                                     registry.clone(),
                                     export_sets.clone(),
+                                    typed_modules.clone(),
                                 );
                                 rhs_base_has_rust_type_authority_in_module(
                                     name.clone(),

@@ -1938,6 +1938,38 @@ fn sg8_parametric_alias_rhs_wildcard_import_uses_declared_module_not_registry_ho
 }
 
 #[test]
+fn sg8_parametric_alias_rhs_multi_hop_wildcard_import_uses_defining_carrier_module() {
+    let files = &[
+        (
+            "carrier_a.dag",
+            "module sg8_carrier_a\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        (
+            "carrier_b.dag",
+            "module sg8_carrier_b\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_carrier_a\n"),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_proxy\ntype AliasList<T> = SharedCarrier<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        content.contains("sg8_carrier_a::SharedCarrier<")
+            || content.contains("crate::sg8_carrier_a::SharedCarrier<"),
+        "multi-hop wildcard import must anchor alias RHS to defining carrier module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_carrier_b::SharedCarrier<")
+            && !content.contains("crate::sg8_carrier_b::SharedCarrier<"),
+        "multi-hop wildcard import must not pick registry homonym module; got:\n{content}"
+    );
+}
+
+#[test]
 fn sg8_parametric_alias_to_imported_opaque_homonym_stays_unemitted() {
     let files = &[
         ("carrier_a.dag", "module sg8_carrier_a\ntype SharedCarrier<T>\n"),

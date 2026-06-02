@@ -1965,7 +1965,7 @@ fn rhs_base_has_rust_type_authority_in_module(rhs_name: String, def_mod_filename
 fn alias_rhs_nominal_shell_has_rust_authority(n: Node, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.connective == NoConnective && n.children |> count > 0 {
     let name = authored_name_at(source_indices: source_indices, node: n)
-    let def_mod = alias_rhs_base_module_filename(name: name, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets)
+    let def_mod = alias_rhs_base_module_filename(name: name, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules)
     rhs_base_has_rust_type_authority_in_module(rhs_name: name, def_mod_filename: def_mod, module_name: module_name, imports: imports, scope: scope, registry: registry, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices)
       && n.children |> all(child =>
         alias_rhs_nominal_shell_has_rust_authority(
