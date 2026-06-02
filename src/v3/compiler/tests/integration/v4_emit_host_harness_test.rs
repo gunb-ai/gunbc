@@ -729,7 +729,9 @@ fn v4_nat_semiring_l1_go_compiler_slice_strict_missing_go_fails_closed() {
         let mut file = std::fs::File::create(&path).expect("create fake host tool");
         file.write_all(b"#!/bin/sh\nexit 0\n")
             .expect("write fake host tool");
-        let mut perms = std::fs::metadata(&path).expect("fake tool metadata").permissions();
+        let mut perms = std::fs::metadata(&path)
+            .expect("fake tool metadata")
+            .permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(&path, perms).expect("chmod fake host tool");
     }
