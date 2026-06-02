@@ -47,13 +47,13 @@ data generator_provenance_artifact_not_generated: Symbol = generator_provenance_
 
 fn artifact_is_generated(a: Artifact) -> Bool {
   match a.kind {
-    GeneratedSource => True
-    TestClaimArtifact => True
-    SourceFile => False
-    ProjectionArtifact => False
-    Stage0Candidate => False
-    CorePackage => False
-    WitnessBundle => False
+    GeneratedSource => true
+    TestClaimArtifact => true
+    SourceFile => false
+    ProjectionArtifact => false
+    Stage0Candidate => false
+    CorePackage => false
+    WitnessBundle => false
   }
 }
 
@@ -67,6 +67,21 @@ fn make_generated_artifact(base: Artifact, at: Locus) -> Outcome<GeneratedArtifa
     Accepted { value: refined, diagnostics } =>
       Accepted { value: GeneratedArtifact { refined: refined }, diagnostics: diagnostics }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+// Total constructor for the statically-admitted `TestClaimArtifact` kind. The kind is
+// fixed here (not a parameter), so the result provably satisfies `artifact_is_generated`
+// with no runtime check — this is the smart-constructor counterpart to
+// `make_generated_artifact`, which stays the only path for a *dynamic* Artifact whose kind
+// is not statically known. Keeps total (List-returning) testgen producers total (no
+// `Outcome` cascade) while non-generated kinds remain unrepresentable in
+// `GeneratorProvenance` (the field type is `GeneratedArtifact`, never a raw `Artifact`).
+fn test_claim_generated_artifact(id: Symbol, file_path: String) -> GeneratedArtifact {
+  GeneratedArtifact {
+    refined: Refined {
+      base: Artifact { kind: TestClaimArtifact, id: id, file_path: file_path }
+    }
   }
 }
 
