@@ -61,7 +61,8 @@ fn main() -> ExitCode {
             eprintln!();
             ci_component_affected_from_changed_paths(changed.iter().map(String::as_str))
         }
-        GitDiffRead::FailClosed => {
+        GitDiffRead::FailClosed { reason } => {
+            eprintln!("error: {reason}");
             eprintln!("Changed files in {range}: (read failed — fail-closed superset)");
             eprintln!();
             ci_component_affected_fail_closed()

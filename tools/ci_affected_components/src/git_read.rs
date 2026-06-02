@@ -6,10 +6,11 @@
 
 use std::process::Command;
 
-/// Outcome of reading the PR diff. `FailClosed` selects the fail-closed superset (all components).
+/// Outcome of reading the PR diff. `FailClosed` selects the fail-closed superset (all components)
+/// and carries a human-readable reason for the calling bin to log.
 pub enum GitDiffRead {
     Ok(Vec<String>),
-    FailClosed,
+    FailClosed { reason: String },
 }
 
 /// Diff range for a GitHub Actions event: PRs diff against `origin/main`, pushes against the prior
@@ -35,16 +36,14 @@ pub fn read_changed_paths(range: &str) -> GitDiffRead {
                 .map(str::to_string)
                 .collect(),
         ),
-        Ok(out) => {
-            eprintln!(
-                "error: git diff --name-only {range} exited {}; fail-closed (all components affected)",
+        Ok(out) => GitDiffRead::FailClosed {
+            reason: format!(
+                "git diff --name-only {range} exited {}; fail-closed (all components affected)",
                 out.status
-            );
-            GitDiffRead::FailClosed
-        }
-        Err(e) => {
-            eprintln!("error: git diff failed ({e}); fail-closed (all components affected)");
-            GitDiffRead::FailClosed
-        }
+            ),
+        },
+        Err(e) => GitDiffRead::FailClosed {
+            reason: format!("git diff failed ({e}); fail-closed (all components affected)"),
+        },
     }
 }

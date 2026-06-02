@@ -196,7 +196,10 @@ mod tests {
         for bucket in COMPONENT_BUCKETS {
             let in_sel = selected.iter().any(|b| b == bucket);
             let in_skip = skipped.iter().any(|b| b == bucket);
-            assert!(in_sel ^ in_skip, "{bucket} must be in exactly one partition");
+            assert!(
+                in_sel ^ in_skip,
+                "{bucket} must be in exactly one partition"
+            );
         }
     }
 
