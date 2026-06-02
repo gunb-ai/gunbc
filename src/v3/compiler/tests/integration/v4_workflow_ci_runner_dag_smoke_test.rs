@@ -37,6 +37,17 @@
 //! byte-for-byte carrier structural-match, not a hand-Rust binding test; ROADMAP row **T-PB-B** /
 //! `pb_rust_tests_outside_residual_zero`). Dissolve-on: same A15 Shape-B/T-24 lane as above.
 //!
+//! **INVARIANTS P5 — checkable receipt for THIS PR (Wave 3 §11.7.2 Phase-2 host emit wired):**
+//! feature `wave3-host-emit-class-c-wired`; consumers
+//! `v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml`,
+//! `v4_workflow_ci_wave3_node_selection_still_shadow_*`. SAME-PATH edit: flips the prior
+//! `*_live_emit_deferred_*` assertion to assert the host shadow-emit step IS now wired (Class C,
+//! `continue-on-error: true`) — superseding the "live emit deferred" posture — while the modeled
+//! live entry `ci_selection_receipt_shadow_from_git_diff` stays deferred to `node://adhoc-331899f9-19a`
+//! (node-frontier claim/testgen selection remains shadow). No new hand-Rust test path or authority
+//! surface (SG-0 delta 0 — path already in `EXPECTED_HAND_AUTHORED_TEST`). ROADMAP row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero`. Dissolve-on: same A15 Shape-B/T-24 lane as above.
+//!
 //! **INVARIANTS P5 — checkable receipt for PR #4323 (F.11b source-authority receipt consumption):**
 //! feature `f11b-source-authority-ci-receipt`; consumer
 //! `v4_workflow_ci_source_authority_receipt_consumes_h72_claims`. SAME-PATH SG-0 expansion:
@@ -1953,14 +1964,27 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
 }
 
 #[test]
-fn v4_workflow_ci_wave3_live_emit_deferred_in_ci_yml() {
+fn v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml() {
+    // Phase 2: the host shadow emit step IS now wired into ci.yml (component_affected_comparison
+    // is live-populated), as a non-blocking Class C step. The modeled live entry
+    // `ci_selection_receipt_shadow_from_git_diff` stays deferred until the bootstrap eval
+    // (`node://adhoc-331899f9-19a`) — the receipt's claim/testgen partitions remain queued.
     assert!(
-        !CI_YML.contains("emit-ci-wave3-shadow-receipt"),
-        "{CI_YML_PATH}: Phase 2 — live shadow emit waits on bootstrap eval entry (adhoc-331899f9-19a)"
+        CI_YML.contains("emit-ci-wave3-shadow-receipt"),
+        "{CI_YML_PATH}: Phase 2 — host shadow emit step must be wired into ci.yml"
+    );
+    let emit_block = CI_YML
+        .split("- name: Emit Wave 3 shadow selection receipt")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    - name:").next())
+        .unwrap_or("");
+    assert!(
+        emit_block.contains("continue-on-error: true"),
+        "{CI_YML_PATH}: Wave 3 host shadow emit must be Class C (continue-on-error: true)"
     );
     assert!(
         !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff"),
-        "{CI_YML_PATH}: modeled live entry not wired until eval harness lands"
+        "{CI_YML_PATH}: modeled live entry (ci_selection_receipt_shadow_from_git_diff) not wired until eval harness lands (adhoc-331899f9-19a)"
     );
 }
 
@@ -1980,10 +2004,15 @@ fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live
         !ci_floor_block.contains("needs: [affected]"),
         "{CI_YML_PATH}: `ci_floor` must not need `affected`"
     );
+    // Phase 2: the host emit step is wired (component receipt live), but the node-frontier
+    // modeled live entry stays deferred — claim/testgen selection remains shadow until eval.
     assert!(
-        !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff")
-            && !CI_YML.contains("emit-ci-wave3-shadow-receipt"),
-        "{CI_YML_PATH}: Wave 3 node-frontier receipt emit remains deferred"
+        !CI_YML.contains("ci_selection_receipt_shadow_from_git_diff"),
+        "{CI_YML_PATH}: Wave 3 node-frontier modeled live entry (ci_selection_receipt_shadow_from_git_diff) remains deferred until adhoc-331899f9-19a"
+    );
+    assert!(
+        CI_YML.contains("emit-ci-wave3-shadow-receipt"),
+        "{CI_YML_PATH}: Phase 2 host emit (Class C) is wired; component_affected_comparison live, node-frontier claim/testgen still queued"
     );
 }
 

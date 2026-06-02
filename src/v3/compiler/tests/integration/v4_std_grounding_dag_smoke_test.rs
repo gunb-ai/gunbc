@@ -133,6 +133,76 @@ fn v4_std_grounding_hollow_alias_bar_terminal_coproduct() {
 }
 
 #[test]
+fn v4_std_grounding_declares_a3b_testclaim_receipt_carriers() {
+    let module = grounding_surface_or_panic();
+    for name in [
+        "HostVerdictSurfaceExecutionStatus",
+        "PerTargetTestClaimReceipt",
+    ] {
+        assert!(
+            surface_declares_type(&module, name),
+            "grounding.dag must declare A.3b.3 carrier {name}"
+        );
+    }
+}
+
+#[test]
+fn v4_std_grounding_execution_status_terminal_coproduct() {
+    assert!(
+        GROUNDING_DAG
+            .contains("// 🟢 coproduct dissolution — terminal A.3b execution-provenance tag"),
+        "HostVerdictSurfaceExecutionStatus must carry 🟢 terminal coproduct dissolution receipt"
+    );
+    let module = grounding_surface_or_panic();
+    assert_eq!(
+        sum_variant_names(&module, "HostVerdictSurfaceExecutionStatus"),
+        vec!["RuntimeVerdicts", "AuthoringTimeVerdictSurface"],
+        "two closed provenance arms — runtime vs authoring-time (RR-A §6 forbids the latter as terminal pass)"
+    );
+}
+
+#[test]
+fn v4_std_grounding_testclaim_receipt_single_target_authority() {
+    let module = grounding_surface_or_panic();
+    assert_eq!(
+        type_record_field_names(&module, "PerTargetTestClaimReceipt"),
+        vec!["host_run", "execution_status", "verdict_tally"],
+        "TargetModel authority must be EmitHostRunReceipt.target only (P2); verdict surface is the folded VerdictTally"
+    );
+}
+
+#[test]
+fn v4_std_grounding_testclaim_terminal_gate_fails_closed_on_authoring_time() {
+    // RR-A §4 R1/R6: only RuntimeVerdicts is a terminal CI pass; authoring-time fails closed.
+    assert!(
+        GROUNDING_DAG.contains("fn host_verdict_surface_runtime_authoritative("),
+        "grounding.dag must expose the RuntimeVerdicts terminal-pass gate"
+    );
+    // Practice-10 disposition: the Bool coproduct-arm predicate must carry a checkable 🟡
+    // predicate-dissolution mark bound to the step-2/step-3 harness lane (peer pattern:
+    // verification.dag test_claim_ci_selection_fail_closed, nat.dag is_zero) — no permanent
+    // untagged Bool CI policy in std/.
+    assert!(
+        GROUNDING_DAG.contains(
+            "// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: a3b-host-verdict-surface-runtime-authority"
+        ) && GROUNDING_DAG.contains("forbidden: permanent untagged Bool coproduct-arm CI policy in std/grounding."),
+        "host_verdict_surface_runtime_authoritative must carry the 🟡 predicate-dissolution mark (Practice 10)"
+    );
+    assert!(
+        GROUNDING_DAG.contains("RuntimeVerdicts => true")
+            && GROUNDING_DAG.contains("AuthoringTimeVerdictSurface => false"),
+        "terminal gate must accept RuntimeVerdicts and fail closed on AuthoringTimeVerdictSurface"
+    );
+    // R1–R3 stay OPEN until the step-2 harness lands — dissolution mark must say so (no premature PROVEN).
+    assert!(
+        GROUNDING_DAG.contains("R1–R3")
+            && GROUNDING_DAG.contains("step-2 harness")
+            && GROUNDING_DAG.contains("does NOT itself run"),
+        "A.3b.3 must mark R1–R3 OPEN until the Compiler Spine step-2 harness lands (no authoring-time co-authority)"
+    );
+}
+
+#[test]
 fn v4_std_grounding_receipt_single_target_authority() {
     let module = grounding_surface_or_panic();
     assert_eq!(
