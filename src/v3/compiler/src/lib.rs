@@ -4163,6 +4163,7 @@ pub mod lens_unused_parameters {
     }
 }
 
+pub mod boundary_emit_gates;
 mod bounded_host_command;
 pub mod emit_host_bridge;
 pub mod emit_host_eval;
