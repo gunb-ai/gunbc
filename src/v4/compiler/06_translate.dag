@@ -126,9 +126,15 @@ import v4.std.target_model {
   target_collection_repr_kind_from_atom,
   target_collection_set_no_representation,
   target_collection_set_no_representation_diagnostic,
+  target_collection_free_monoid_no_representation,
+  target_collection_free_monoid_no_representation_diagnostic,
   target_collection_select_choice,
+  target_collection_realization_lookup_in_catalog,
+  target_carrier_free_monoid_node,
   target_collection_set_element_type_node,
+  target_collection_free_monoid_element_type_node,
   target_collection_type_node_is_set_carrier,
+  target_collection_type_node_is_free_monoid_carrier,
   target_type_expr_arrow_emitted,
   target_type_expr_arrow_labeled_codomain,
   target_type_expr_arrow_labeled_param_slots,
@@ -215,6 +221,7 @@ import v4.std.collection {
 import v4.std.algebra {
   Cons,
   Empty,
+  FreeMonoid,
   TailAbsent,
   TailFound,
   fold_list,
@@ -1599,15 +1606,21 @@ fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
           diagnostics: None
         }
       } else {
-        outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        if reason == target_collection_free_monoid_no_representation {
+          Accepted {
+            value: target_collection_free_monoid_no_representation_diagnostic(),
+            diagnostics: None
+          }
+        } else {
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+        }
       }
     }
   )
 }
 
 fn target_collection_realization_from_bundle(
-  bundle: Node,
-  target: TargetModel
+  bundle: Node
 ) -> Outcome<TargetCollectionRealization> {
   bind_outcome(
     o: conj_named_child(parent: bundle, edge_name: target_collection_row_field_source_carrier),
@@ -1660,13 +1673,48 @@ fn target_collection_realization_from_bundle(
 }
 
 fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetCollectionRealization> {
-  bind_outcome(
-    o: target_bundle_child(target: target, edge_name: target_model_edge_collection_realization),
-    f: fn(bundle) { target_collection_realization_from_bundle(bundle: bundle, target: target) }
+  collection_realization_from_target_carrier(
+    target: target,
+    expected_source_carrier: target_collection_set_carrier_node()
   )
 }
 
-fn project_set_collection_type_node(
+fn free_monoid_collection_realization_from_target(
+  target: TargetModel
+) -> Outcome<TargetCollectionRealization> {
+  collection_realization_from_target_carrier(
+    target: target,
+    expected_source_carrier: target_carrier_free_monoid_node()
+  )
+}
+
+fn collection_realization_from_target_carrier(
+  target: TargetModel,
+  expected_source_carrier: Node
+) -> Outcome<TargetCollectionRealization> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_collection_realization),
+    f: fn(catalog_node) {
+      bind_outcome(
+        o: target_collection_fold_list_from_node(
+          remaining: node_subtree_count(n: catalog_node),
+          node: catalog_node,
+          decode_item: fn(row_node) {
+            target_collection_realization_from_bundle(bundle: row_node)
+          }
+        ),
+        f: fn(rows) {
+          target_collection_realization_lookup_in_catalog(
+            catalog: rows,
+            source_carrier: expected_source_carrier
+          )
+        }
+      )
+    }
+  )
+}
+
+fn project_set_collection_type_node_impl(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -1701,6 +1749,74 @@ fn project_set_collection_type_node(
                     ),
                     diagnostics: None
                   }
+                }
+              )
+            Absent => outcome_rejected(row.fallback_diagnostic)
+          }
+        }
+      )
+    Absent =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
+}
+
+fn project_set_collection_type_node(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  project_set_collection_type_node_impl(
+    node: node,
+    target: target,
+    projection: projection
+  )
+}
+
+fn project_free_monoid_collection_type_node(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match target_collection_free_monoid_element_type_node(free_monoid_node: node) {
+    Present { value: elem } =>
+      bind_outcome(
+        o: free_monoid_collection_realization_from_target(target: target),
+        f: fn(row) {
+          match target_collection_select_choice(
+            primary: row.primary,
+            alternatives: row.alternatives,
+            elem: elem
+          ) {
+            Present { value: choice } =>
+              bind_outcome(
+                o: project_type_expression_node_bounded(
+                  remaining: node_subtree_count(n: elem),
+                  node: elem,
+                  target: target,
+                  projection: projection
+                ),
+                f: fn(elem_projected) {
+                  bind_outcome(
+                    o: translate_apply_use_site_ownership_to_projected_type(
+                      projected: elem_projected,
+                      source_carrier: elem,
+                      target: target,
+                      use_site: OwnershipAtBindingProjection
+                    ),
+                    f: fn(elem_storage) {
+                      Accepted {
+                        value: target_type_expr_instantiation_emitted(
+                          form: choice.form.apply,
+                          head: target_type_expr_atom_emitted(
+                            form: projection.atom_form,
+                            identity: choice.form.apply.surface
+                          ),
+                          args: Cons { head: elem_storage, tail: Empty }
+                        ),
+                        diagnostics: None
+                      }
+                    }
+                  )
                 }
               )
             Absent => outcome_rejected(row.fallback_diagnostic)
@@ -2082,30 +2198,34 @@ fn project_type_expression_node_bounded(
         diagnostics: None
       }
     TypeNode { connective: Instantiation } =>
-      bind_outcome(
-        o: project_type_expression_children(
-          remaining: remaining - 1,
-          anchor: node,
-          children: node_positional_child_targets(node: node),
-          target: target,
-          projection: projection
-        ),
-        f: fn(projected) {
-          bind_outcome(
-            o: list_head_and_tail(xs: projected, node: node),
-            f: fn(split) {
-              Accepted {
-                value: target_type_expr_instantiation_emitted(
-                  form: projection.instantiation_form,
-                  head: split.head,
-                  args: split.tail
-                ),
-                diagnostics: None
+      if target_collection_type_node_is_free_monoid_carrier(node: node) {
+        project_free_monoid_collection_type_node(node: node, target: target, projection: projection)
+      } else {
+        bind_outcome(
+          o: project_type_expression_children(
+            remaining: remaining - 1,
+            anchor: node,
+            children: node_positional_child_targets(node: node),
+            target: target,
+            projection: projection
+          ),
+          f: fn(projected) {
+            bind_outcome(
+              o: list_head_and_tail(xs: projected, node: node),
+              f: fn(split) {
+                Accepted {
+                  value: target_type_expr_instantiation_emitted(
+                    form: projection.instantiation_form,
+                    head: split.head,
+                    args: split.tail
+                  ),
+                  diagnostics: None
+                }
               }
-            }
-          )
-        }
-      )
+            )
+          }
+        )
+      }
     TypeNode { connective: Cardinality } =>
       if target_collection_type_node_is_set_carrier(node: node) {
         project_set_collection_type_node(node: node, target: target, projection: projection)

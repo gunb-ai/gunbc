@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_std_model_core_dag_smoke_test.rs` (INVARIANTS §P5(b) tokenize/parse receipt for `src/v4/std/model_core.dag` — Ratified Q1 `ModelCore` carrier). Follow-up dispatch to retire host smoke when `.dag` `TestClaim` / generated harness / M2 multi-module lowering covers the same facts per ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero`; tracked gunbc#3474 (this PR) + `src/v4/TASKS.md` T-33 (Wave-4-B substrate; unblocks T-34 `HostModel` import cleanup).

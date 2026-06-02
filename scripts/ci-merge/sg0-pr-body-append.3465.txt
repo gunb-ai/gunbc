@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_compiler_emit_translate_smoke_test.rs` (INVARIANTS §P5(b) tokenize/parse receipt for `06_translate.dag`, `05_emit.dag`, MVP-1 claim). Follow-up dispatch to retire host smoke when `.dag` `TestClaim` / generated harness covers the same facts per ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero`; tracked gunbc#3465 (this PR) + `docs/briefs/r4-program-dispatch-plan.md` (Wave-3-B T-10 spine).

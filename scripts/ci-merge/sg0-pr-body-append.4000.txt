@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_leaf_model_rust_r2_r3_external_rustc_test.rs` (INVARIANTS §P5(b) Phase 1 leaf-model W1.7 R2a/R2b/R3-external boundary `rustc` ratchet per `docs/planning/v4-leaf-model-verification-2026-05-30.md` §7; pairs with `scripts/v4-leaf-model-rust-r2a-verify.sh`, `scripts/v4-leaf-model-rust-r2b-verify.sh`, `scripts/v4-leaf-model-rust-r3-external-verify.sh`). Follow-up dispatch: retire when T-22 modeled `run_target_verification` exercises `rust_r2a.dag` / `rust_r2b.dag` / `rust_r3_external.dag` without this hand-Rust bridge — gunb-ai/gunbc#4000 / T-PB-B `pb_rust_tests_outside_residual_zero` in `_internal/ROADMAP_OPS.md`.

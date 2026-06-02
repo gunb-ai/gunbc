@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +0
-
-SG-0 pairing: (c) Net +0 on `EXPECTED_HAND_AUTHORED_TEST` — same-path expansion of `v4_emit_host_harness_test.rs` (INVARIANTS §P5(b) parse/tokenize receipt for `branch_dispatch/rung_8.dag` + `branch_dispatch_rung8_eval.dag`; mirrors landed #4064 nat_semiring rung-8 pattern). Deferral: `_internal/ROADMAP_OPS.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`; dissolve when branch_dispatch complete roster executes from `.dag` eval only (W3.6 / P5-C) without this host harness probe — gunb-ai/gunbc#4079.

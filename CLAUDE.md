@@ -21,7 +21,7 @@ cargo fmt --all --check                    # format check (also runs via pre-pus
 ## One-time setup
 
 ```bash
-scripts/install-hooks.sh  # enables .githooks/pre-push
+.githooks/install-hooks.sh  # enables .githooks/pre-push
 ```
 
 The pre-push hook runs `cargo fmt --all --check` on push. If drift is detected **on the branch being pushed (HEAD)**: the hook runs `cargo fmt --all`, stages tracked files, lands a `chore: apply cargo fmt` commit — and then **aborts the push**. Re-run `git push` to ship the new commit. (Git builds the push pack before the hook runs, so a commit created inside the hook can't be added to the in-flight push — a second push is required to ship it.) Requires a clean working tree (no uncommitted changes) at push time. Delete-only pushes and cross-branch pushes skip the auto-commit path.

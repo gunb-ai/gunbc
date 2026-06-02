@@ -319,8 +319,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // T-22: substrate eval intercept for `run_emit_host_rust` → `emit_host_runner` (rust row only).
     // Receipt assembly delegates to `emit_host_receipt_from_source` via `eval_callable_declaration`.
     // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** paired TEST row
-    // `v4_emit_host_eval_dispatch_test.rs`; explicit deferral ROADMAP `T-PB-B` /
-    // `pb_rust_tests_outside_residual_zero` plus `src/v4/compiler/emit_host.dag` T-22 rust row.
+    // `v4_emit_host_eval_dispatch_test.rs`; explicit deferral lane T-PB-B /
+    // `pb_rust_tests_outside_residual_zero` (checkable: `r1_release_acceptance.dag` TestClaim
+    // name `pb_rust_tests_outside_residual_zero` and `ROADMAP.md` T-PB-B row);
+    // substrate `emit_host.dag` T-22 rust intercept.
     // Dissolution: substrate Callable dispatch owns transport without this intercept; retires with
     // `emit_host_bridge.rs` when the T-PB-B lane closes.
     "src/v3/compiler/src/emit_host_eval.rs",
@@ -929,6 +931,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
+    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral lane T-PB-B / `pb_rust_tests_outside_residual_zero`
+    // (`r1_release_acceptance.dag` TestClaim name); dissolves when `.dag` TestClaim execution
+    // replaces host-runner receipts.
+    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
     // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
@@ -938,12 +946,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Dissolves: T-PB-B / T-22 T-38.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
-    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
-    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
-    // replaces host-runner receipts.
-    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
     "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",

@@ -20,11 +20,10 @@ cargo run -p v2-compiler --bin regen_stage0 -- --verify
 
 The first command writes the generated stage0 Rust files. The
 `--verify` form performs a fresh self-compile and compares it to the
-committed stage0 seed without writing. The compatibility scripts
-`scripts/regenerate-stage0.sh` and `scripts/check-stage0-freshness.sh`
-delegate to those two forms.
+committed stage0 seed without writing.
 
-CI runs the `--verify` form when `src/v2/` is affected.
+Local parity: `make stage0-freshness-check` runs the `--verify` form.
+CI runs the same check via `make ci` when validating the workspace.
 
 ## How it works
 

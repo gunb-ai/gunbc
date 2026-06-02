@@ -80,7 +80,7 @@ PR #810 §0); not as a one-off. Cite the program brief.
 ## SG-0 net-shrink discipline (required when `sg0_census_test.rs` changes)
 
 <!--
-CI: `scripts/check-pr-sg0-net-shrink-discipline.sh` (`.github/workflows/ci.yml` `ci` job).
+CI: Wave 1 §11.7.1 floor (`fmt` + `ci_floor`: M1, bootstrap, ci.dag binding smoke).
 
 When this PR edits `src/v3/compiler/tests/integration/sg0_census_test.rs`, the
 GitHub PR **description** must include a line starting exactly with

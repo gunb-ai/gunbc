@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net add is one `EXPECTED_HAND_AUTHORED_TEST` row for the v4 coverage lens ratchet (`coverage_defect_acceptance_dag_test.rs`) plus the matching `INVARIANTS.md` §P5(b) receipt row. The ratchet follows the post-#3334 canonical Layer-1 key set: L1.6 is retired into L1.10.a, and monolithic L1.10 is split into L1.10.a/L1.10.b. Dispatch posture: retire this host check when the v4 coverage lens runs as `.dag` / generated coverage per ROADMAP T-PB-B (`pb_rust_tests_outside_residual_zero`); dispatch evidence: gunbc#3318 (this PR).

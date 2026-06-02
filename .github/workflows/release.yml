@@ -120,7 +120,7 @@ jobs:
           cp install.sh dist/install.sh
           # Flat basename only — GH Release assets are a flat namespace; install.sh
           # downloads release-target-triples.sh from releases/download/{tag}/.
-          cp scripts/release-target-triples.sh dist/release-target-triples.sh
+          cp install/release-target-triples.sh dist/release-target-triples.sh
           chmod +x dist/install.sh dist/release-target-triples.sh
           ls -la dist
       - name: Create GitHub Release
