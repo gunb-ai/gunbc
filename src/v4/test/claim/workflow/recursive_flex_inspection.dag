@@ -34,28 +34,31 @@ module v4.test.claim.workflow.recursive_flex_inspection
 
 
 import v4.std.logic { Bool }
-import v4.std.node { Symbol }
-import v4.std.algebra { contains }
-import v4.test.claim.workflow.inprocess_equivalence { inprocess_equivalence_holds }
-import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.std.algebra { contains, for_all }
+import v4.test.claim.workflow.inprocess_equivalence {
+  inprocess_equivalence_holds,
+  inprocess_equivalence_slice
+}
 import v4.workflow.ci { ci_testclaim_corpus_eval_claim_ids }
 import v4.workflow.bootstrap { bootstrap_plan_accepted_hash_pins_projectable_witness }
 
 
-// The A.1.5a fixed-slice subject is built around this claim id; it is the first
-// entry of ci.dag's `ci_testclaim_corpus_eval_claim_ids` corpus frontier. As a
-// `Symbol` atom (the `data X: Symbol = X` idiom), this is the same atom that
-// frontier lists — equality is by atom identity.
-data recursive_flex_slice_claim_id: Symbol = claim_eval_mvp2_test_claim_route
-
-
-// Inspection over ci.dag: the slice the equivalence law fixes is one the live CI
-// corpus frontier actually rosters. Symbol membership via atom equality.
+// Single authority (INVARIANTS.md P2 / facts-flow-forward): the membership check
+// consumes the SAME `inprocess_equivalence_slice` the A.1.5a law proves over — not a
+// re-minted local id — and reads each subject's own `.claim`. So `inprocess_equivalence_holds()`
+// and the CI-frontier membership cannot drift onto different subjects: both are
+// keyed by the one slice authority. The `.claim` value is the same `TestClaim` that
+// ci.dag's `ci_testclaim_corpus_eval_claim_ids` frontier rosters.
 fn recursive_flex_slice_in_ci_frontier() -> Bool {
-  contains(
-    xs: ci_testclaim_corpus_eval_claim_ids,
-    item: recursive_flex_slice_claim_id,
-    eq: fn(a, b) { a == b }
+  for_all(
+    xs: inprocess_equivalence_slice,
+    predicate: fn(subject) {
+      contains(
+        xs: ci_testclaim_corpus_eval_claim_ids,
+        item: subject.claim,
+        eq: fn(a, b) { a == b }
+      )
+    }
   )
 }
 

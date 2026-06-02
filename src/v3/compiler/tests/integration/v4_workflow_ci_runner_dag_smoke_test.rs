@@ -2294,6 +2294,17 @@ fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
         ),
         "{RECURSIVE_FLEX_INSPECTION_PATH}: must consume A.1.5a `inprocess_equivalence_holds` (no re-derivation)"
     );
+    // Single authority (P2 / facts-flow-forward): membership consumes the SAME
+    // `inprocess_equivalence_slice` the A.1.5a law proves over — not a re-minted local id —
+    // so the equivalence law and the CI-frontier check cannot drift onto different subjects.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "workflow", "inprocess_equivalence"],
+            "inprocess_equivalence_slice"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: membership must key off the A.1.5a `inprocess_equivalence_slice` authority, not a re-minted id"
+    );
     // (2) Inspection over ci.dag — the live corpus claim-id frontier authority.
     assert!(
         import_includes_name(
@@ -2322,9 +2333,11 @@ fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
         );
     }
     for needle in &[
-        // The fixed slice claim id is the eval_mvp2 route (same atom ci.dag frontiers).
-        "data recursive_flex_slice_claim_id: Symbol = claim_eval_mvp2_test_claim_route",
-        // Membership over the live ci.dag frontier, Symbol eq via inline closure.
+        // Membership keys off each slice subject's own `.claim` — the single A.1.5a authority,
+        // checked across the whole slice via for_all (no drift between law and frontier check).
+        "xs: inprocess_equivalence_slice",
+        "item: subject.claim",
+        // Membership over the live ci.dag frontier, eq via inline closure.
         "xs: ci_testclaim_corpus_eval_claim_ids",
         // The receipt conjoins all three structural facts.
         "inprocess_equivalence_holds()",
