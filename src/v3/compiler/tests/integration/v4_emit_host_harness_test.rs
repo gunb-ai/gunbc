@@ -116,6 +116,53 @@ const EMIT_HOST_GO_FIXTURE_SOURCE: &str =
 const EMIT_HOST_FIXTURE_SOURCE: &str =
     "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }";
 
+#[derive(Clone, Copy)]
+struct NatSemiringCrossTargetFixture {
+    law: &'static str,
+    rust_source: &'static str,
+    python_source: &'static str,
+    go_source: &'static str,
+}
+
+const NAT_SEMIRING_CROSS_TARGET_FIXTURES: &[NatSemiringCrossTargetFixture] = &[
+    NatSemiringCrossTargetFixture {
+        law: "add_left_identity",
+        rust_source: "fn main() { let n: u64 = 7; assert_eq!(0 + n, n); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }",
+        python_source: "import sys\nn = 7\nassert 0 + n == n\nsys.stdout.buffer.write(b'\\x00' * 5)\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var n uint64 = 7; if 0 + n != n { panic(\"add_left_identity\") }; _, _ = os.Stdout.Write(make([]byte, 5)) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "add_right_identity",
+        rust_source: "fn main() { let n: u64 = 7; assert_eq!(n + 0, n); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }",
+        python_source: "import sys\nn = 7\nassert n + 0 == n\nsys.stdout.buffer.write(b'\\x00' * 5)\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var n uint64 = 7; if n + 0 != n { panic(\"add_right_identity\") }; _, _ = os.Stdout.Write(make([]byte, 5)) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "add_associativity",
+        rust_source: "fn main() { let a: u64 = 2; let b: u64 = 3; let c: u64 = 5; assert_eq!((a + b) + c, a + (b + c)); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }",
+        python_source: "import sys\na = 2\nb = 3\nc = 5\nassert (a + b) + c == a + (b + c)\nsys.stdout.buffer.write(b'\\x00' * 5)\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var a uint64 = 2; var b uint64 = 3; var c uint64 = 5; if (a + b) + c != a + (b + c) { panic(\"add_associativity\") }; _, _ = os.Stdout.Write(make([]byte, 5)) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "mul_left_identity",
+        rust_source: "fn main() { let n: u64 = 7; assert_eq!(1 * n, n); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }",
+        python_source: "import sys\nn = 7\nassert 1 * n == n\nsys.stdout.buffer.write(b'\\x00' * 5)\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var n uint64 = 7; if 1 * n != n { panic(\"mul_left_identity\") }; _, _ = os.Stdout.Write(make([]byte, 5)) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "mul_annihilator",
+        rust_source: "fn main() { let n: u64 = 7; assert_eq!(0 * n, 0); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }",
+        python_source: "import sys\nn = 7\nassert 0 * n == 0\nsys.stdout.buffer.write(b'\\x00' * 5)\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var n uint64 = 7; if 0 * n != 0 { panic(\"mul_annihilator\") }; _, _ = os.Stdout.Write(make([]byte, 5)) }\n",
+    },
+    NatSemiringCrossTargetFixture {
+        law: "mul_associativity",
+        rust_source: "fn main() { let a: u64 = 2; let b: u64 = 3; let c: u64 = 5; assert_eq!((a * b) * c, a * (b * c)); let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }",
+        python_source: "import sys\na = 2\nb = 3\nc = 5\nassert (a * b) * c == a * (b * c)\nsys.stdout.buffer.write(b'\\x00' * 5)\n",
+        go_source: "package main\nimport \"os\"\nfunc main() { var a uint64 = 2; var b uint64 = 3; var c uint64 = 5; if (a * b) * c != a * (b * c) { panic(\"mul_associativity\") }; _, _ = os.Stdout.Write(make([]byte, 5)) }\n",
+    },
+];
+
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
         tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
@@ -1038,14 +1085,8 @@ fn emit_host_runner_go_row_runs_and_parses_stdout() {
 #[test]
 fn cross_target_mvp2_stdout_parity_rust_python_go() {
     let pid = std::process::id();
-    for law in [
-        "add_left_identity",
-        "add_right_identity",
-        "add_associativity",
-        "mul_left_identity",
-        "mul_annihilator",
-        "mul_associativity",
-    ] {
+    for fixture in NAT_SEMIRING_CROSS_TARGET_FIXTURES {
+        let law = fixture.law;
         let inputs = emit_host_runner::EmitHostFixtureInputs {
             claim_input_root: format!("cross_target_{law}_claim_input"),
             expected_eval_root: format!("cross_target_{law}_expected_eval"),
@@ -1054,9 +1095,9 @@ fn cross_target_mvp2_stdout_parity_rust_python_go() {
         let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_py_{pid}"));
         let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_go_{pid}"));
         let verdict = emit_host_bridge::run_cross_target_mvp2_python_parity_transport(
-            EMIT_HOST_FIXTURE_SOURCE,
-            EMIT_HOST_PYTHON_FIXTURE_SOURCE,
-            EMIT_HOST_GO_FIXTURE_SOURCE,
+            fixture.rust_source,
+            fixture.python_source,
+            fixture.go_source,
             &inputs,
             &rust_dir,
             &py_dir,
