@@ -22,12 +22,15 @@ import v4.lens.registry {
 }
 import v4.lens.testgen { Generator, TestgenConcept }
 import v4.lens.affected_set {
+  AffectedSetReading,
   RerunNodeSet,
   RerunNodeSetFailClosed,
   RerunNodeSetProduced,
+  affected_set_reading_rerun_nodes,
   affected_set_rerun_nodes
 }
 import v4.lens.edit_locus { GitDiffNameOnly, RepoPath }
+import v4.std.witness { Holds, Violates, Witness }
 import v4.std.change {
   AffectedDependency,
   AffectedSet,
@@ -38,7 +41,7 @@ import v4.std.change {
 }
 // Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
 // `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
-import v4.std.patterns { CreateAction, ResolveExpr, VerifyCheck }
+import v4.std.patterns { CreateAction, ResolveExpr, Upsert, VerifyCheck }
 import v4.std.types { GlobPattern, GlobSegment, RepoRoot, RepositoryRoot }
 import v4.compiler.eval {
   EvalContext,
@@ -77,7 +80,7 @@ import v4.std.node {
   canonical_tag_byte_limb_out_of_range
 }
 import v4.std.integer { int_add, int_negate }
-import v4.std.algebra { Empty, fold_list, list_snoc_item }
+import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.std.collection { Absent, List }
 import v4.std.text { Char, String }
@@ -3169,19 +3172,63 @@ fn ci_upsert_input_ref_list_projection_node(refs: List<UpsertInputRef>) -> Node 
 }
 
 
+// Projects `v4.std.patterns.Upsert<T>` verify/create/resolve phase shape (P2 field alignment).
+fn ci_upsert_projection_edges<T>(
+  verify: VerifyCheck,
+  create: CreateAction,
+  resolve: ResolveExpr<T>
+) -> List<Edge> {
+  [
+    ci_named_edge(name: ci_projection_upsert_verify_edge, target: verify),
+    ci_named_edge(name: ci_projection_upsert_create_edge, target: create),
+    ci_named_edge(name: ci_projection_upsert_resolve_edge, target: resolve)
+  ]
+}
+
+
+fn ci_upsert_projection_node<T>(upsert: Upsert<T>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: ci_upsert_projection_edges(
+      verify: upsert.verify,
+      create: upsert.create,
+      resolve: upsert.resolve
+    )
+  }
+}
+
+
+fn ci_upsert_cache_digest<T>(upsert: Upsert<T>) -> Hash {
+  content_hash(n: ci_upsert_projection_node(upsert: upsert))
+}
+
+
 fn ci_upsert_step_projection_node<T>(step: CiUpsertStep<T>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      ci_named_edge(
-        name: ci_projection_upsert_inputs_edge,
-        target: ci_upsert_input_ref_list_projection_node(refs: step.inputs)
+    children: list_append(
+      left: list_snoc_item(
+        xs: ci_empty_edges(),
+        item: ci_named_edge(
+          name: ci_projection_upsert_inputs_edge,
+          target: ci_upsert_input_ref_list_projection_node(refs: step.inputs)
+        )
       ),
-      ci_named_edge(name: ci_projection_upsert_verify_edge, target: step.verify),
-      ci_named_edge(name: ci_projection_upsert_create_edge, target: step.create),
-      ci_named_edge(name: ci_projection_upsert_resolve_edge, target: step.resolve),
-      ci_named_edge(name: ci_projection_upsert_payload_type_edge, target: step.payload_type)
-    ]
+      right: list_append(
+        left: ci_upsert_projection_edges(
+          verify: step.verify,
+          create: step.create,
+          resolve: step.resolve
+        ),
+        right: list_snoc_item(
+          xs: ci_empty_edges(),
+          item: ci_named_edge(
+            name: ci_projection_upsert_payload_type_edge,
+            target: step.payload_type
+          )
+        )
+      )
+    )
   }
 }
 
@@ -4309,6 +4356,36 @@ fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -
     roster: roster,
     rerun: affected_set_rerun_nodes(affected_set_value: affected)
   )
+}
+
+
+// Node-precise CI consumer: narrows the TestClaim roster by a node-precise
+// `AffectedSetReading` (edit-locus + dependency-closure frontier) rather than coarse
+// component flags. Reuses the existing `ci_select_from_rerun_nodes` frontier filter via the
+// `affected_set_reading_rerun_nodes` lens bridge — no parallel selector authority.
+fn ci_select_from_affected_set_reading(roster: List<TestClaim>, reading: AffectedSetReading) -> List<TestClaim> {
+  ci_select_from_rerun_nodes(
+    roster: roster,
+    rerun: affected_set_reading_rerun_nodes(reading: reading)
+  )
+}
+
+
+// Node-precise CI consumer over the git-diff reading Witness produced by
+// `affected_set_reading_from_git_diff` (v4.lens.edit_locus). `Holds` narrows node-precisely;
+// `Violates` (no/ambiguous edit-locus) preserves the fail-closed superset contract — the
+// whole roster reruns — exactly like `ci_select_from_rerun_nodes`' `RerunNodeSetFailClosed`
+// arm. This keeps fail-closed in CI-consumer authority, not in a caller/test.
+fn ci_select_from_affected_set_reading_witness(
+  roster: List<TestClaim>,
+  reading_witness: Witness<AffectedSetReading>
+) -> List<TestClaim> {
+  match reading_witness {
+    Holds { value: reading } =>
+      ci_select_from_affected_set_reading(roster: roster, reading: reading)
+    Violates { diagnostic: _ } =>
+      roster
+  }
 }
 
 
