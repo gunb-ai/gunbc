@@ -38,6 +38,12 @@ data parallelism_reason_unresolved_projection: Symbol = parallelism_reason_unres
 data parallelism_reason_coupling_carrier_absent: Symbol = parallelism_reason_coupling_carrier_absent
 data parallelism_projection_virtual_file: Symbol = parallelism_projection_virtual_file
 
+// 🟢 resolved coupling only — classifier-known rows cannot carry unresolved diagnostics.
+type ResolvedParallelismRelation
+  = DataDependent
+  | EffectCoupled
+  | BarrierCoupled
+
 // 🟢 lens-specific classification; endpoints live on the inner DependencyView.
 type ParallelismRelation
   = DataDependent
@@ -47,8 +53,16 @@ type ParallelismRelation
 
 // 🟡 coproduct dissolution — feature:parallelism-relation-kind-policy-axis — consumer:parallelism_relation_for_view — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved directly from a parallelism fact carrier.
 type ParallelismKindPolicy
-  = KnownParallelismRelation { relation: ParallelismRelation }
+  = KnownParallelismRelation { relation: ResolvedParallelismRelation }
   | ReadsParallelismFacts
+
+fn parallelism_relation_from_resolved(relation: ResolvedParallelismRelation) -> ParallelismRelation {
+  match relation {
+    DataDependent => DataDependent
+    EffectCoupled => EffectCoupled
+    BarrierCoupled => BarrierCoupled
+  }
+}
 
 type ParallelismFact {
   dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
@@ -126,7 +140,7 @@ fn parallelism_relation_for_policy(
   policy: ParallelismKindPolicy
 ) -> ParallelismRelation {
   match policy {
-    KnownParallelismRelation { relation: r } => r
+    KnownParallelismRelation { relation: r } => parallelism_relation_from_resolved(relation: r)
     ReadsParallelismFacts => parallelism_relation_for_reads_parallelism_facts(tree: tree, view: view)
   }
 }
