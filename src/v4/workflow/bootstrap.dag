@@ -719,8 +719,9 @@ type BootstrapEvaluatorCorpusHarnessEntry {
   entry_module: Symbol
 }
 
-data bootstrap_corpus_eval_entry_fn: Symbol = run_manual_testclaim_corpus_eval
-data bootstrap_corpus_eval_entry_module: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
+// Symbol identities align with ci.dag `run_manual_testclaim_corpus_eval` / testclaim_corpus_runner module path.
+data bootstrap_corpus_eval_entry_fn: Symbol = bootstrap_corpus_eval_entry_fn
+data bootstrap_corpus_eval_entry_module: Symbol = bootstrap_corpus_eval_entry_module
 
 fn bootstrap_evaluator_corpus_harness_entry() -> BootstrapEvaluatorCorpusHarnessEntry {
   BootstrapEvaluatorCorpusHarnessEntry {
@@ -740,11 +741,9 @@ fn bootstrap_evaluator_corpus_harness_well_formed(entry: BootstrapEvaluatorCorpu
     && (entry.entry_module == bootstrap_corpus_eval_entry_module)
 }
 
-data bootstrap_evaluator_corpus_harness: BootstrapEvaluatorCorpusHarnessEntry =
-  bootstrap_evaluator_corpus_harness_entry()
+data bootstrap_manual_corpus_harness: BootstrapEvaluatorCorpusHarnessEntry = bootstrap_evaluator_corpus_harness_entry()
 
-data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool =
-  bootstrap_evaluator_corpus_harness_well_formed(entry: bootstrap_evaluator_corpus_harness)
+data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool = bootstrap_evaluator_corpus_harness_well_formed(entry: bootstrap_manual_corpus_harness)
 
 data bootstrap_footprint_witness: Witness<BootstrapFootprint> = bootstrap_footprint(inputs: bootstrap_projection_inputs)
 

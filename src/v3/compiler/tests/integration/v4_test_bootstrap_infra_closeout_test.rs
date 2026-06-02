@@ -948,7 +948,8 @@ fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
         BOOTSTRAP_DAG.contains("type BootstrapEvaluatorCorpusHarnessEntry")
             && BOOTSTRAP_DAG.contains("fn bootstrap_evaluator_corpus_harness_entry()")
             && BOOTSTRAP_DAG.contains("entry_fn: bootstrap_corpus_eval_entry_fn")
-            && BOOTSTRAP_DAG.contains("data bootstrap_corpus_eval_entry_fn: Symbol = run_manual_testclaim_corpus_eval")
+            && BOOTSTRAP_DAG.contains("data bootstrap_corpus_eval_entry_fn: Symbol = bootstrap_corpus_eval_entry_fn")
+            && BOOTSTRAP_DAG.contains("run_manual_testclaim_corpus_eval")
             && BOOTSTRAP_DAG.contains("runtime_model: v4_evaluator_runtime_wave1()")
             && BOOTSTRAP_DAG.contains("stage0_binary: v4_stage0_binary")
             && BOOTSTRAP_DAG.contains("data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool"),
