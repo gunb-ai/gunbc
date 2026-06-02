@@ -553,18 +553,11 @@ fn testgen_emit_refinement_preservation_claim(
 
 
 fn testgen_scheduled_refinement_preservation_generators() -> Outcome<List<Generator<TestgenConcept>>> {
-  match refinement_preservation_subject_nonempty_list_base() {
-    Accepted { value: subject, diagnostics: None } =>
+  match bootstrap_claim_generator_for_manual_anchor(key: ManualRefinementNonEmptyListBase) {
+    Accepted { value: generator, diagnostics: d } =>
       Accepted {
-        value: [
-          Generator {
-            kind: TestClaimEqualsClaimVariant,
-            classification: TestClassification { tier: Tier1, layer: Unit },
-            anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
-            slot: RefinementPreservation { subject: subject },
-          },
-        ],
-        diagnostics: None,
+        value: [generator],
+        diagnostics: d,
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
