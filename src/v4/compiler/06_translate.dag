@@ -974,14 +974,17 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
         BoundToken { token_class: _, binding: binding } =>
           // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: binding_spellings
           match map_get(target.binding_spellings, binding) {
-            Some { value: spelling } =>
-              Accepted { value: spelling, diagnostics: None }
-            None =>
-              Rejected {
-                diagnostics: diagnostics_singleton(
-                  d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                )
-              }
+            Accepted { value: opt, diagnostics: _ } => match opt {
+              Present { value: spelling } =>
+                Accepted { value: spelling, diagnostics: None }
+              Absent =>
+                Rejected {
+                  diagnostics: diagnostics_singleton(
+                    d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                  )
+                }
+            }
+            Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
           }
       }
     }
@@ -2360,13 +2363,16 @@ fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<Targe
     o: type_expr_atom_binding(node: node),
     f: fn(binding) {
       match map_get(target.binding_spellings, binding) {
-        Some { value: spelling } => Accepted { value: spelling, diagnostics: None }
-        None =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-            )
-          }
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: spelling } => Accepted { value: spelling, diagnostics: None }
+          Absent =>
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+              )
+            }
+        }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     }
   )
@@ -2603,13 +2609,16 @@ fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Ou
   match edge.label {
     Named { name: label } =>
       match map_get(target.binding_spellings, label) {
-        Some { value: spelling } => Accepted { value: spelling, diagnostics: None }
-        None =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: translate_binding_spelling_not_found_diagnostic(binding: label)
-            )
-          }
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: spelling } => Accepted { value: spelling, diagnostics: None }
+          Absent =>
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: translate_binding_spelling_not_found_diagnostic(binding: label)
+              )
+            }
+        }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     Positional =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
@@ -2790,13 +2799,16 @@ fn serialize_type_expr_arrow_param_spelling(
   label: Symbol
 ) -> Outcome<TargetSource> {
   match map_get(target.binding_spellings, label) {
-    Some { value: spelling } => outcome_accepted(spelling)
-    None =>
-      outcome_rejected(
-        diagnostics_singleton(
-          d: translate_binding_spelling_not_found_diagnostic(binding: label)
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: spelling } => outcome_accepted(spelling)
+      Absent =>
+        outcome_rejected(
+          diagnostics_singleton(
+            d: translate_binding_spelling_not_found_diagnostic(binding: label)
+          )
         )
-      )
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 

@@ -206,10 +206,20 @@ fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
   match s {
     ScopeFrame { locals: m, outer: o } =>
       match map_get(m, name) {
-        Some { value: v } => Some { value: v }
-        None => lookup_chain(s: o, name: name)
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: v } => Some { value: v }
+          Absent => lookup_chain(s: o, name: name)
+        }
+        Rejected { diagnostics: _ } => None
       }
-    ScopeRoot { module: mod } => map_get(mod.bindings, name)
+    ScopeRoot { module: mod } =>
+      match map_get(mod.bindings, name) {
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: v } => Some { value: v }
+          Absent => None
+        }
+        Rejected { diagnostics: _ } => None
+      }
   }
 }
 

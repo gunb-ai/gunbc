@@ -622,21 +622,24 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: mark_excluded decisions
       match map_get(decisions, key) {
-        Some { value: Rerun } =>
-          ChangedSubgraphFrontier {
-            boundary_exclusions: boundary_exclusions,
-            decisions: decisions
-          }
-        Some { value: Excluded { first: first, rest: rest } } =>
-          ChangedSubgraphFrontier {
-            boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { first: first, rest: list_snoc_item(xs: rest, item: proof) })
-          }
-        None =>
-          ChangedSubgraphFrontier {
-            boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
-          }
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: Rerun } =>
+            ChangedSubgraphFrontier {
+              boundary_exclusions: boundary_exclusions,
+              decisions: decisions
+            }
+          Present { value: Excluded { first: first, rest: rest } } =>
+            ChangedSubgraphFrontier {
+              boundary_exclusions: boundary_exclusions,
+              decisions: map_insert(decisions, key, Excluded { first: first, rest: list_snoc_item(xs: rest, item: proof) })
+            }
+          Absent =>
+            ChangedSubgraphFrontier {
+              boundary_exclusions: boundary_exclusions,
+              decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
+            }
+        }
+        Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
       }
   }
 }
