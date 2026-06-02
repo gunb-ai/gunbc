@@ -32,10 +32,7 @@ import v2.compiler.infer_types {
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
-  is_recursive_type, lookup_type, lookup_type_for,
-  find_child_in_env, has_child_in_env,
-  lookup_cache_get_scrutinee, lookup_cache_get_enriched_kernel,
-  lookup_cache_put_enriched_kernel, enriched_kernel_cache_key, EnrichedKernelCacheEntry
+  is_recursive_type, lookup_type, lookup_type_for
 }
 import v2.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -84,15 +81,14 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
 // Field lookup
 // =========================================================================
 
-fn lookup_field_type_node(n: Node, field_name: String, env: TypeEnv) -> Node? {
-  let source_indices = env.source_indices
+fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     let inner = with_required_cardinality(n: n)
     if field_name == "value" {
       Some { value: inner }
     } else {
-      match lookup_field_type_node(n: inner, field_name: field_name, env: env) {
+      match lookup_field_type_node(n: inner, field_name: field_name, source_indices: source_indices) {
         Some { value: inner_result } => Some { value: with_optional_cardinality(n: inner_result) }
         None => none
       }
@@ -102,26 +98,26 @@ fn lookup_field_type_node(n: Node, field_name: String, env: TypeEnv) -> Node? {
     if has_structure {
       let is_product = n.connective == Conj
       if is_product {
-        match find_child_in_env(env: env, parent: n, name: field_name) {
+        match find_child_named(n: n, name: field_name, source_indices: source_indices) {
           Some { value: field_child } =>
             Some { value: child_type_node(ch: field_child) }
           None => none
         }
       } else {
-        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name, env: env)
+        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name, source_indices: source_indices)
       }
     } else { none }
   }
 }
 
-fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, env: TypeEnv) -> Node? {
+fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   let found_in_all = variants |> all(v =>
-    has_child_in_env(env: env, parent: v, name: field_name)
+    has_child_named(n: v, name: field_name, source_indices: source_indices)
   )
   let first_field = if found_in_all {
     match variants |> first {
       Some { value: first_variant } =>
-        find_child_in_env(env: env, parent: first_variant, name: field_name)
+        find_child_named(n: first_variant, name: field_name, source_indices: source_indices)
       None => none
     }
   } else { none }
@@ -137,16 +133,7 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, 
 // =========================================================================
 
 fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
-  let normed = normalize_access_type_node(n: n)
-  if normed.connective == NoConnective && normed.children |> count == 0 {
-    let canonical = authored_name(env: env, node: normed)
-    if canonical != "" {
-      match lookup_cache_get_scrutinee(env: env, canonical: canonical) {
-        Some { value: cached } => cached
-        None => resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
-      }
-    } else { resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map()) }
-  } else { resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map()) }
+  resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
@@ -280,24 +267,9 @@ type StructuralMethodLookup {
   kernel_diagnostics: List<ErrorNode>
 }
 
-type EnrichedKernelResult {
-  ty: Node
-  diagnostics: List<ErrorNode>
-  env: TypeEnv
-}
-
-type StructuralMethodLookupResult {
-  lookup: StructuralMethodLookup
-  env: TypeEnv
-}
-
-type KnownMethodResolutionResult {
-  resolution: KnownMethodResolution
-  env: TypeEnv
-}
-
-fn lookup_field_in_product(env: TypeEnv, product: Node, method_name: String) -> MethodFieldResult? {
-  match find_child_in_env(env: env, parent: product, name: method_name) {
+fn lookup_field_in_product(product: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> MethodFieldResult? {
+  let matching = product.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == method_name)
+  match matching |> first {
     Some { value: field } =>
       match field.inferred {
         Some { value: Resolved { node: rt } } =>
@@ -315,33 +287,18 @@ fn lookup_field_in_product(env: TypeEnv, product: Node, method_name: String) -> 
   }
 }
 
-fn enrich_kernel_type_cached(env: TypeEnv, name: String, base: Node) -> EnrichedKernelResult {
-  let key = enriched_kernel_cache_key(name: name, base: base)
-  match lookup_cache_get_enriched_kernel(env: env, key: key) {
-    Some { value: cached } => EnrichedKernelResult { ty: cached.ty, diagnostics: cached.diagnostics, env: env }
-    None =>
-      let built = enrich_kernel_type(name: name, base: base, source_indices: env.source_indices)
-      let entry = EnrichedKernelCacheEntry { ty: built.ty, diagnostics: built.diagnostics }
-      let updated = lookup_cache_put_enriched_kernel(env: env, key: key, entry: entry)
-      EnrichedKernelResult { ty: built.ty, diagnostics: built.diagnostics, env: updated }
-  }
-}
-
-fn lookup_structural_method(env: TypeEnv, receiver_type: Node, method_name: String) -> StructuralMethodLookupResult {
+fn lookup_structural_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> StructuralMethodLookup {
   let is_product = receiver_type.connective == Conj
   if is_product {
-    let direct = lookup_field_in_product(env: env, product: receiver_type, method_name: method_name)
-    StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }, env: env }
+    let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
+    StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
-    let receiver_name = authored_name(env: env, node: receiver_type)
-    let enriched = enrich_kernel_type_cached(env: env, name: receiver_name, base: receiver_type)
-    let env = enriched.env
-    let kernel_diagnostics = enriched.diagnostics
+    let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
     if enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
-      let base_result = lookup_field_in_product(env: env, product: enriched.ty, method_name: method_name)
+      let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Some { value: mfr } =>
-          let profile = kernel_algebra_profile |> get(receiver_name)
+          let profile = kernel_algebra_profile |> get(authored_name_at(source_indices: source_indices, node: receiver_type))
           let template_match = match profile {
             Some { value: p } =>
               let templates = algebra_templates_for_profile(profile: p)
@@ -353,45 +310,40 @@ fn lookup_structural_method(env: TypeEnv, receiver_type: Node, method_name: Stri
               Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Some { value: t } } }
             None => base_result
           }
-          StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: resolution, kernel_diagnostics: kernel_diagnostics }, env: env }
-        None => StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: none, kernel_diagnostics: kernel_diagnostics }, env: env }
+          StructuralMethodLookup { resolution: resolution, kernel_diagnostics: enriched.diagnostics }
+        None => StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
       }
     } else {
-      StructuralMethodLookupResult { lookup: StructuralMethodLookup { resolution: none, kernel_diagnostics: kernel_diagnostics }, env: env }
+      StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
     }
   }
 }
 
-fn resolve_known_method_node(receiver: Node, env: TypeEnv, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolutionResult {
-  let tier0 = lookup_structural_method(env: env, receiver_type: receiver_type, method_name: method_name)
-  let env = tier0.env
-  match tier0.lookup.resolution {
+fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> KnownMethodResolution {
+  // Tier 0: Structural field lookup for ALL types (including collections).
+  // The algebra registry (enrich_kernel_type) provides fields for kernel
+  // types; user-defined types have their own structural children.
+  // Return types from the algebra field are passed through unsubstituted —
+  // Phase C structural resolution handles TypeVariable resolution at the call site.
+  let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
+  match tier0.resolution {
     Some { value: mfr } =>
       let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template }
-      KnownMethodResolutionResult {
-        resolution: KnownMethodResolution {
-          semantics: Some { value: semantics },
-          result_type: Some { value: mfr.result_type },
-          diagnostics: tier0.lookup.kernel_diagnostics
-        },
-        env: env
+      KnownMethodResolution {
+        semantics: Some { value: semantics },
+        result_type: Some { value: mfr.result_type },
+        diagnostics: tier0.kernel_diagnostics
       }
     None =>
-  match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry, source_indices: env.source_indices) {
+  match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry, source_indices: source_indices) {
     Some { value: svc_result } =>
-      KnownMethodResolutionResult {
-        resolution: KnownMethodResolution {
-          semantics: Some { value: ServiceMethodSemantics { service_name: authored_name(env: env, node: receiver_type), op_params: svc_result.op_params } },
-          result_type: Some { value: svc_result.result_type },
-          diagnostics: tier0.lookup.kernel_diagnostics
-        },
-        env: env
+      KnownMethodResolution {
+        semantics: Some { value: ServiceMethodSemantics { service_name: authored_name_at(source_indices: source_indices, node: receiver_type), op_params: svc_result.op_params } },
+        result_type: Some { value: svc_result.result_type },
+        diagnostics: tier0.kernel_diagnostics
       }
     None =>
-      KnownMethodResolutionResult {
-        resolution: KnownMethodResolution { semantics: none, result_type: none, diagnostics: tier0.lookup.kernel_diagnostics },
-        env: env
-      }
+      KnownMethodResolution { semantics: none, result_type: none, diagnostics: tier0.kernel_diagnostics }
   }
   }
 }

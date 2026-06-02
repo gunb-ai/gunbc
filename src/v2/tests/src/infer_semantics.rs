@@ -3,7 +3,7 @@ use std::rc::Rc;
 use v2_compiler::std_induction::SubValueRelation;
 use v2_compiler::std_types::container_param_name;
 use v2_compiler::v2_compiler_infer_access;
-use v2_compiler::v2_compiler_infer_env::{empty_lookup_cache, TypeBinding, TypeEnv};
+use v2_compiler::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
@@ -19,18 +19,6 @@ use v2_compiler::v2_std_core::{
 
 fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineIndex>>> {
     Rc::new(std::collections::HashMap::new())
-}
-
-fn empty_type_env() -> Rc<TypeEnv> {
-    Rc::new(TypeEnv {
-        bindings: Rc::new(std::collections::HashMap::new()),
-        recursive_types: Rc::new(vec![]),
-        recursive_type_set: Rc::new(std::collections::HashMap::new()),
-        inductive_fields: Rc::new(std::collections::HashMap::new()),
-        source_indices: empty_source_indices(),
-        intern_table: v2_compiler::v2_std_core::empty_intern_table(),
-        lookup_cache: empty_lookup_cache(),
-    })
 }
 
 // Test helpers: replicate deleted L1 constructor functions for test convenience.
@@ -283,7 +271,7 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
 
@@ -307,7 +295,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
 
@@ -327,7 +315,7 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
 
@@ -346,7 +334,14 @@ fn optional_match_exhaustiveness_reports_missing_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Some")]),
-        empty_type_env(),
+        Rc::new(TypeEnv {
+            bindings: Rc::new(std::collections::HashMap::new()),
+            recursive_types: Rc::new(vec![]),
+            recursive_type_set: Rc::new(std::collections::HashMap::new()),
+            inductive_fields: Rc::new(std::collections::HashMap::new()),
+            source_indices: Rc::new(std::collections::HashMap::new()),
+            intern_table: v2_compiler::v2_std_core::empty_intern_table(),
+        }),
         zero_span(),
         "test".to_string(),
     );
@@ -362,7 +357,14 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
-        empty_type_env(),
+        Rc::new(TypeEnv {
+            bindings: Rc::new(std::collections::HashMap::new()),
+            recursive_types: Rc::new(vec![]),
+            recursive_type_set: Rc::new(std::collections::HashMap::new()),
+            inductive_fields: Rc::new(std::collections::HashMap::new()),
+            source_indices: Rc::new(std::collections::HashMap::new()),
+            intern_table: v2_compiler::v2_std_core::empty_intern_table(),
+        }),
         zero_span(),
         "test".to_string(),
     );
@@ -418,7 +420,6 @@ fn resolve_node_uses_node_name_for_lookup() {
         inductive_fields: Rc::new(std::collections::HashMap::new()),
         source_indices: Rc::new(std::collections::HashMap::new()),
         intern_table: user_intern.table.clone(),
-        lookup_cache: empty_lookup_cache(),
     });
 
     let result = resolve_node(node_ref, env, "test".to_string());
@@ -462,11 +463,10 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
     for method_name in &expected_methods {
         assert!(
             v2_compiler_infer_lookup::lookup_structural_method(
-                empty_type_env(),
                 list_int.clone(),
                 method_name.to_string(),
+                empty_source_indices(),
             )
-            .lookup
             .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on List<Int>",
@@ -479,11 +479,10 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
 fn structural_method_any_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        empty_type_env(),
         list_int.clone(),
         "any".to_string(),
+        empty_source_indices(),
     )
-    .lookup
     .resolution
     .as_ref()
     .expect("any must resolve on List<Int>")
@@ -498,11 +497,10 @@ fn structural_method_any_on_list_returns_bool() {
 fn structural_method_all_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        empty_type_env(),
         list_int.clone(),
         "all".to_string(),
+        empty_source_indices(),
     )
-    .lookup
     .resolution
     .as_ref()
     .expect("all must resolve on List<Int>")
@@ -517,11 +515,10 @@ fn structural_method_all_on_list_returns_bool() {
 fn structural_method_sort_by_on_list_returns_self() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        empty_type_env(),
         list_int.clone(),
         "sort_by".to_string(),
+        empty_source_indices(),
     )
-    .lookup
     .resolution
     .as_ref()
     .expect("sort_by must resolve on List<Int>")
@@ -536,11 +533,10 @@ fn structural_method_sort_by_on_list_returns_self() {
 fn structural_method_first_on_list_returns_optional_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        empty_type_env(),
         list_int.clone(),
         "first".to_string(),
+        empty_source_indices(),
     )
-    .lookup
     .resolution
     .as_ref()
     .expect("first must resolve on List<Int>")
@@ -562,11 +558,10 @@ fn structural_method_first_on_list_returns_optional_element() {
 fn structural_method_count_on_list_returns_int() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        empty_type_env(),
         list_string,
         "count".to_string(),
+        empty_source_indices(),
     )
-    .lookup
     .resolution
     .as_ref()
     .expect("count must resolve on List<String>")
@@ -581,11 +576,10 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
     for method_name in &expected_methods {
         assert!(
             v2_compiler_infer_lookup::lookup_structural_method(
-                empty_type_env(),
                 int_node.clone(),
                 method_name.to_string(),
+                empty_source_indices(),
             )
-            .lookup
             .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on Int",
@@ -598,11 +592,10 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
 fn structural_method_compare_on_int_returns_ordering() {
     let int_node = leaf_node("Int".to_string());
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        empty_type_env(),
         int_node,
         "compare".to_string(),
+        empty_source_indices(),
     )
-    .lookup
     .resolution
     .as_ref()
     .expect("compare must resolve on Int")
@@ -634,11 +627,10 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
     for method_name in &expected_methods {
         assert!(
             v2_compiler_infer_lookup::lookup_structural_method(
-                empty_type_env(),
                 m.clone(),
                 method_name.to_string(),
+                empty_source_indices(),
             )
-            .lookup
             .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on Map<String,Int>",
@@ -654,11 +646,10 @@ fn structural_method_get_on_map_returns_optional_value() {
         leaf_node("Int".to_string()),
     );
     let result = v2_compiler_infer_lookup::lookup_structural_method(
-        empty_type_env(),
         m.clone(),
         "get".to_string(),
+        empty_source_indices(),
     )
-    .lookup
     .resolution
     .as_ref()
     .expect("get must resolve on Map<String,Int>")
@@ -682,13 +673,15 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let result =
-        v2_compiler_infer_lookup::lookup_structural_method(empty_type_env(), m, "keys".to_string())
-            .lookup
-            .resolution
-            .as_ref()
-            .expect("keys must resolve on Map<String,Int>")
-            .clone();
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        m,
+        "keys".to_string(),
+        empty_source_indices(),
+    )
+    .resolution
+    .as_ref()
+    .expect("keys must resolve on Map<String,Int>")
+    .clone();
     assert_eq!(result.result_type.name, "List", "keys should return List");
     assert_eq!(
         result.result_type.children.len(),
@@ -709,11 +702,10 @@ fn structural_method_lookup_returns_none_for_unknown_type() {
     let custom = leaf_node("MyType".to_string());
     assert!(
         v2_compiler_infer_lookup::lookup_structural_method(
-            empty_type_env(),
             custom,
             "add".to_string(),
+            empty_source_indices()
         )
-        .lookup
         .resolution
         .is_none(),
         "custom types without algebra should not have structural methods"
