@@ -1177,6 +1177,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   )
   let test_projections = extract_test_projections(typed: typed)
   let export_sets = build_module_export_sets(modules: typed.modules)
+  let module_index = build_module_index(modules: typed.modules)
   let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index))
   let test_files = typed.modules
     |> map(tm => emit_test_file(
@@ -1273,6 +1274,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
+  let module_index = build_module_index(modules: [typed_module])
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index)
 }
 
@@ -1394,26 +1396,63 @@ fn item_defining_module_filename(name: String, registry: Map<String, ItemInfo>, 
   }
 }
 
+// =========================================================================
+// ModuleIndex: O(1) module lookup precomputed once per emit, threaded through
+// the import + alias-resolution subtree. Hoists the former O(modules*items)
+// linear scans (typed_module_by_name / module_name_from_filename /
+// has_physical_type_def_in_module_filename) that ran per imported name per
+// module — the per-module-growth O(n^2) in v2 emit.
+//
+// Built by iterating `typed_modules` in list order so insert-if-absent (by_name)
+// and append (by_filename) reproduce the old `|> filter |> first` / `|> any`
+// winners exactly: module names are unique, and by_filename keeps the full
+// ordered list so `any`/`first` semantics over filename collisions are identical.
+// =========================================================================
+type ModuleIndex {
+  by_name: Map<String, TypedModule>
+  by_filename: Map<String, List<TypedModule>>
+}
+
+fn build_module_index(modules: List<TypedModule>) -> ModuleIndex {
+  let by_name = modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let nm = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
+    match map_get(acc, nm) {
+      Some { value: _ } => acc
+      None => map_insert(acc, nm, tm)
+    }
+  )
+  let by_filename = modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let fname = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
+    let prior = match map_get(acc, fname) {
+      Some { value: lst } => lst
+      None => []
+    }
+    map_insert(acc, fname, list_push(prior, tm))
+  )
+  ModuleIndex { by_name: by_name, by_filename: by_filename }
+}
+
 fn typed_module_by_name(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> TypedModule? {
-  typed_modules |> filter(tm =>
-    authored_name_at(source_indices: source_indices, node: tm.module) == module_name
-  ) |> first
+  map_get(module_index.by_name, module_name)
 }
 
 fn module_name_from_filename(mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String? {
-  typed_modules |> filter(tm =>
-    module_to_filename(name: authored_name_at(source_indices: source_indices, node: tm.module)) == mod_filename
-  ) |> map(tm => authored_name_at(source_indices: source_indices, node: tm.module)) |> first
+  match map_get(module_index.by_filename, mod_filename) {
+    Some { value: mods } => mods |> map(tm => authored_name_at(source_indices: source_indices, node: tm.module)) |> first
+    None => none
+  }
 }
 
 fn has_physical_type_def_in_module_filename(rhs_name: String, mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
-  typed_modules |> any(tm =>
-    module_to_filename(name: authored_name_at(source_indices: source_indices, node: tm.module)) == mod_filename
-    && tm.items |> any(item =>
-      authored_name_at(source_indices: source_indices, node: item) == rhs_name
-      && is_type_def_item(item: item)
+  match map_get(module_index.by_filename, mod_filename) {
+    Some { value: mods } => mods |> any(tm =>
+      tm.items |> any(item =>
+        authored_name_at(source_indices: source_indices, node: item) == rhs_name
+        && is_type_def_item(item: item)
+      )
     )
-  )
+    None => false
+  }
 }
 
 fn find_variant_parent_in_module(variant_name: String, module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String? {
