@@ -169,7 +169,6 @@ import v4.std.effects {
 // only consumes them — no artifact law is duplicated here. profile_metadata stays a
 // testgen-local concept (GeneratorProfile below) and must not leak into artifact.dag.
 import v4.std.artifact {
-  GeneratedArtifact,
   GeneratorId,
   GeneratorProvenance,
   test_claim_generated_artifact
@@ -1937,19 +1936,34 @@ fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
 }
 
 
-// F.2-P1 close criterion: every directly-scheduled generator carries consistent
-// provenance + profile metadata. Folds the two non-Outcome scheduled generator lists
-// (LBE + coproduct-exhaustiveness); Outcome-returning schedulers fail closed upstream.
-fn scheduled_generators_carry_provenance() -> Bool {
+fn all_generators_carry_provenance(gens: List<Generator<TestgenConcept>>) -> Bool {
   fold_list(
-    xs: testgen_scheduled_language_behavior_generators(),
-    empty: fold_list(
-      xs: testgen_scheduled_coproduct_exhaustiveness_generators(),
-      empty: true,
-      cons: fn(acc, g) { acc && generator_carries_provenance(g: g) },
-    ),
+    xs: gens,
+    empty: true,
     cons: fn(acc, g) { acc && generator_carries_provenance(g: g) },
   )
+}
+
+
+// Fail-closed: a scheduler that cannot produce its generators fails the witness rather
+// than vacuously passing — the claim is that ALL scheduled generators carry provenance.
+fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>>>) -> Bool {
+  match o {
+    Accepted { value: gens, diagnostics: d } => all_generators_carry_provenance(gens: gens)
+    Rejected { diagnostics: d } => false
+  }
+}
+
+
+// F.2-P1 close criterion: every scheduled generator carries consistent provenance +
+// profile metadata. Covers ALL four scheduled producers — the two direct-List schedulers
+// (LBE + coproduct-exhaustiveness) and the two Outcome-returning schedulers
+// (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
+fn scheduled_generators_carry_provenance() -> Bool {
+  all_generators_carry_provenance(gens: testgen_scheduled_language_behavior_generators())
+    && all_generators_carry_provenance(gens: testgen_scheduled_coproduct_exhaustiveness_generators())
+    && outcome_generators_carry_provenance(o: testgen_scheduled_refinement_preservation_generators())
+    && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
 }
 
 
