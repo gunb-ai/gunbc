@@ -2503,7 +2503,7 @@ fn rust_per_language_fact_bundle_key(
 ) -> PerLanguageFactBundleKey {
   PerLanguageFactBundleKey {
     subject_carrier: subject_carrier,
-    target: rust_mvp1_target_model(),
+    target_identity: rust_language_model_surface_id,
     fact_axis: fact_axis
   }
 }
@@ -2696,7 +2696,7 @@ fn rust_primitive_bundle_from_registry_subject(subject_carrier: Node) -> Primiti
   primitive_fact_bundle_for_registry_subject(
     registry: rust_checked_per_language_fact_bundle_registry(),
     subject_carrier: subject_carrier,
-    target: rust_mvp1_target_model()
+    target_identity: rust_language_model_surface_id
   )
 }
 

@@ -37,6 +37,12 @@
 //! **PR #4321 (+0 census paths):** same-path structural assertions for Go G.1.3
 //! `PerLanguageFactBundleEntry` rows and the B.2.2 `parse/go_wave2a.dag` corpus symmetry file;
 //! no new hand-Rust test path, and the `.dag` rows are the authored substrate.
+//! **PR #4320 (+0 census paths):** same-path G.1.1 Rust fact-bundle registry expansion in
+//! `v4_rust_language_model_declares_g1_fact_bundle_registry`; explicit P5 deferral to
+//! **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+//! The ratchet stays in this already-census-listed harness until `.dag` `TestClaim` coverage or a
+//! generated harness executes the Rust `PerLanguageFactBundleRegistry` construction and
+//! `ModelCore.primitives` projection directly. It adds no new hand-Rust test path.
 //! Dissolution trigger (= this file's existing trigger, unchanged): retires under T-PB-B when the
 //! `.dag` `TestClaim` / generated-runner replacement executes these facts directly (see the
 //! **Dissolution** note below).
