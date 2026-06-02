@@ -65,6 +65,28 @@ fn model_core_primitive_fact_axis_symbol(axis: ModelCorePrimitiveFactAxis) -> Sy
 }
 
 
+fn witness_model_core_primitive_fact_axis(axis: Symbol) -> Witness<ModelCorePrimitiveFactAxis> {
+  match axis {
+    primitive_fact_axis_width =>
+      Holds { value: ModelCoreFactAxisWidth {} }
+    primitive_fact_axis_signedness =>
+      Holds { value: ModelCoreFactAxisSignedness {} }
+    primitive_fact_axis_range =>
+      Holds { value: ModelCoreFactAxisRange {} }
+    primitive_fact_axis_encoding =>
+      Holds { value: ModelCoreFactAxisEncoding {} }
+    primitive_fact_axis_surface_spelling =>
+      Holds { value: ModelCoreFactAxisSurfaceSpelling {} }
+    primitive_fact_axis_overflow_disposition =>
+      Holds { value: ModelCoreFactAxisOverflowDisposition {} }
+    _ =>
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+  }
+}
+
+
 type PrimitiveFactBundle {
   substrate_carrier: Node
   spec_facts: Map<Symbol, Node>

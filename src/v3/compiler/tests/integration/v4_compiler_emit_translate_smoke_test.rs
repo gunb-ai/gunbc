@@ -329,6 +329,11 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+// P5 receipt for PR #4320: same-path G.1.1 Rust fact-bundle registry ratchet in an
+// already-census-listed harness (+0 new hand-Rust paths). Defers to ROADMAP.md T-PB-B /
+// `pb_rust_tests_outside_residual_zero`; dissolve when `.dag` TestClaim/generated coverage
+// executes Rust `PerLanguageFactBundleRegistry` construction and `ModelCore.primitives`
+// projection directly.
 fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
     let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
     for name in [
