@@ -1031,7 +1031,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
-<<<<<<< HEAD
     // Branch H.7.2 source-authority shape contract: parse-surface ratchet for
     // `src/v4/compiler/source_authority.dag` and its TestClaim visibility row.
     // Explicit P5 deferral: ROADMAP.md § "Nine lanes" row `T-PB-B` /
@@ -1042,13 +1041,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_grounding_dag_smoke_test.rs` in EXPECTED_HAND_AUTHORED_TEST.
     // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
     // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts PerLanguageFactBundleRegistry
-=======
-    // T-33: parse ratchet on `src/v4/std/model_core.dag` — Ratified Q1 ModelCore carrier.
-    // G.0: parse ratchet on `src/v4/std/grounding.dag` — Branch G.0 schema carriers.
-    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_grounding_dag_smoke_test.rs` in EXPECTED_HAND_AUTHORED_TEST.
-    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
-    // (ROADMAP.md:63); dissolves when `.dag` TestClaim coverage asserts PerLanguageFactBundleRegistry
->>>>>>> 718083d6f1 (feat(v4): G.0 grounding schema + G.3.1-3.2 spine claims + RR-G worksheet)
     // + GroundingEvidenceSchema directly.
     "src/v3/compiler/tests/integration/v4_std_grounding_dag_smoke_test.rs",
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.

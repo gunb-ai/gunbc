@@ -2,11 +2,7 @@
 //!
 //! G.0 receipt: `src/v4/std/grounding.dag` tokenizes and parses cleanly — Branch G.0 schema
 //! carriers (per-language fact bundle keys, hollow-alias bar, SG evidence shapes, per-target receipt).
-<<<<<<< HEAD
 //! Parse smoke ratchets G.0 carriers including terminal `HollowAliasGovernanceBar` coproduct.
-=======
-//! Parse smoke also ratchets explicit `v4.std.logic { Bool }` import for `HollowAliasGovernanceBar`.
->>>>>>> 718083d6f1 (feat(v4): G.0 grounding schema + G.3.1-3.2 spine claims + RR-G worksheet)
 //! Full `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers; cross-module
 //! resolution is exercised by M1 v4 full-tree emit in CI `ci_floor` (same posture as
 //! `v4_std_model_core_dag_smoke_test`).
@@ -38,27 +34,6 @@ fn grounding_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
         .unwrap_or_else(|e| panic!("{GROUNDING_PATH}: parse: {e:?}"))
 }
 
-<<<<<<< HEAD
-=======
-fn import_includes_name(
-    module: &v3_compiler::parse_surface::SurfaceModule,
-    path: &[&str],
-    name: &str,
-) -> bool {
-    module.items.iter().any(|item| match item {
-        SurfaceItem::Import {
-            path: import_path,
-            names,
-            ..
-        } => {
-            import_path.iter().map(String::as_str).collect::<Vec<_>>() == path
-                && names.iter().any(|n| n == name)
-        }
-        _ => false,
-    })
-}
-
->>>>>>> 718083d6f1 (feat(v4): G.0 grounding schema + G.3.1-3.2 spine claims + RR-G worksheet)
 fn type_record_field_names<'a>(
     module: &'a v3_compiler::parse_surface::SurfaceModule,
     name: &str,
@@ -142,7 +117,6 @@ fn v4_std_grounding_declares_g0_carriers() {
 }
 
 #[test]
-<<<<<<< HEAD
 fn v4_std_grounding_hollow_alias_bar_terminal_coproduct() {
     assert!(
         GROUNDING_DAG.contains(
@@ -155,13 +129,6 @@ fn v4_std_grounding_hollow_alias_bar_terminal_coproduct() {
         sum_variant_names(&module, "HollowAliasGovernanceBar"),
         vec!["HollowAliasRequiresNamedFieldsAndKernelAmbient"],
         "single mandatory governance posture — false cases unrepresentable"
-=======
-fn v4_std_grounding_imports_bool_for_hollow_alias_bar() {
-    let module = grounding_surface_or_panic();
-    assert!(
-        import_includes_name(&module, &["v4", "std", "logic"], "Bool"),
-        "HollowAliasGovernanceBar fields require explicit v4.std.logic Bool import (P3 fail-closed)"
->>>>>>> 718083d6f1 (feat(v4): G.0 grounding schema + G.3.1-3.2 spine claims + RR-G worksheet)
     );
 }
 
@@ -181,11 +148,7 @@ fn v4_std_grounding_key_indexes_target_and_fact_axis() {
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleKey"),
         vec!["subject_carrier", "target", "fact_axis"],
-<<<<<<< HEAD
         "registry key must use TargetModel + ModelCorePrimitiveFactAxis (P2)"
-=======
-        "registry key must use TargetModel + canonical fact_axis Symbol (P2)"
->>>>>>> 718083d6f1 (feat(v4): G.0 grounding schema + G.3.1-3.2 spine claims + RR-G worksheet)
     );
 }
 
@@ -213,7 +176,6 @@ fn v4_std_grounding_evidence_schema_terminal_coproduct() {
         vec!["Sg1Evidence", "Sg1bEvidence", "Sg2Evidence", "Sg5Evidence"],
         "four closed SG family arms (SG-1 / SG-1b / SG-2 / SG-5)"
     );
-<<<<<<< HEAD
     assert!(
         GROUNDING_DAG
             .contains("Sg1bEvidence { source_carrier: Node, boundary_site: FunctionBoundarySite }"),
@@ -223,18 +185,11 @@ fn v4_std_grounding_evidence_schema_terminal_coproduct() {
 
 #[test]
 fn v4_std_grounding_registry_keyed_map_authority() {
-=======
-}
-
-#[test]
-fn v4_std_grounding_declares_g0_1_registry() {
->>>>>>> 718083d6f1 (feat(v4): G.0 grounding schema + G.3.1-3.2 spine claims + RR-G worksheet)
     let module = grounding_surface_or_panic();
     assert!(surface_declares_type(
         &module,
         "PerLanguageFactBundleRegistry"
     ));
-<<<<<<< HEAD
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleRegistry"),
         vec!["by_key"],
@@ -257,10 +212,15 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
         "spec_facts projection uses model_core Symbol authority at bundle boundary"
     );
     assert!(
-        GROUNDING_DAG.contains("feature:B-LOOKUP-1")
-            && GROUNDING_DAG.contains("match map_get(registry.by_key, key)"),
-        "registry insert uses documented bootstrap map_get bridge until Witness dispatch"
+        GROUNDING_DAG.contains("map_get(m: registry.by_key, key: key)"),
+        "registry insert must use v4.std.collection map_get authority (B-LOOKUP-1 / P2)"
     );
-=======
->>>>>>> 718083d6f1 (feat(v4): G.0 grounding schema + G.3.1-3.2 spine claims + RR-G worksheet)
+    assert!(
+        GROUNDING_DAG.contains("Present { value: _ }") && GROUNDING_DAG.contains("Absent =>"),
+        "duplicate-key gate: Present => reject, Absent => accept insert"
+    );
+    assert!(
+        GROUNDING_DAG.contains("Rejected { diagnostics: ds } => Rejected { diagnostics: ds }"),
+        "map_get lookup failures propagate without collapsing to Absent (P3)"
+    );
 }
