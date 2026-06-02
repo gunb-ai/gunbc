@@ -1083,22 +1083,116 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
         );
     }
     assert!(
-        GO_LANGUAGE_DAG.contains("subject_carrier: subject")
-            && GO_LANGUAGE_DAG.contains("target: go_mvp1_target_model()")
-            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisSurfaceSpelling {}")
-            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisWidth {}")
-            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisSignedness {}")
-            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisOverflowDisposition {}")
-            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisEncoding {}"),
-        "{GO_LANGUAGE_PATH}: G.1.3 entries must trace existing Go primitive facts to closed G.0 model_core axes"
+        surface_fn_param_type(&module, "go_per_language_fact_bundle_key", 1)
+            .as_deref()
+            == Some("ModelCorePrimitiveFactAxis")
+            && surface_fn_param_type(&module, "go_per_language_fact_bundle_entry", 1)
+                .as_deref()
+                == Some("ModelCorePrimitiveFactAxis")
+            && surface_fn_return_type(&module, "go_per_language_fact_bundle_key").as_deref()
+                == Some("PerLanguageFactBundleKey")
+            && surface_fn_return_type(&module, "go_per_language_fact_bundle_entry").as_deref()
+                == Some("PerLanguageFactBundleEntry"),
+        "{GO_LANGUAGE_PATH}: G.1.3 keys must type fact axes as the closed G.0 ModelCorePrimitiveFactAxis carrier"
     );
     assert!(
-        GO_LANGUAGE_DAG.contains("fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry>")
-            && GO_LANGUAGE_DAG.contains("xs: go_g1_3_per_language_fact_bundle_entry_rows()")
-            && GO_LANGUAGE_DAG.contains("empty: outcome_accepted(value: empty_per_language_fact_bundle_registry())")
-            && GO_LANGUAGE_DAG.contains("cons: go_g1_3_per_language_fact_bundle_registry_step")
-            && GO_LANGUAGE_DAG.contains("insert_per_language_fact_bundle_entry("),
-        "{GO_LANGUAGE_PATH}: canonical G.1.3 Go surface must fold rows through the fail-closed registry"
+        ["subject_carrier", "go_mvp1_target_model", "fact_axis"]
+            .iter()
+            .all(|needle| surface_fn_body_mentions_name(
+                &module,
+                GO_LANGUAGE_DAG,
+                "go_per_language_fact_bundle_key",
+                needle
+            )),
+        "{GO_LANGUAGE_PATH}: G.1.3 key builder must bind subject, Go target, and closed fact-axis fields in its body"
+    );
+    for (fn_name, axes) in [
+        (
+            "go_integer_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisWidth",
+                "ModelCoreFactAxisSignedness",
+                "ModelCoreFactAxisOverflowDisposition",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+        (
+            "go_float_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisWidth",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+        (
+            "go_complex_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisWidth",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+        (
+            "go_bool_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+        (
+            "go_string_per_language_fact_bundle_entries",
+            &[
+                "ModelCoreFactAxisSurfaceSpelling",
+                "ModelCoreFactAxisEncoding",
+            ][..],
+        ),
+    ] {
+        assert!(
+            axes.iter().all(|axis| surface_fn_body_mentions_name(
+                &module,
+                GO_LANGUAGE_DAG,
+                fn_name,
+                axis
+            )),
+            "{GO_LANGUAGE_PATH}: `{fn_name}` must key Go facts through the closed model_core axes"
+        );
+    }
+    assert!(
+        surface_fn_param_type(&module, "go_g1_3_per_language_fact_bundle_registry_step", 0)
+            .as_deref()
+            == Some("Outcome<PerLanguageFactBundleRegistry>")
+            && surface_fn_param_type(&module, "go_g1_3_per_language_fact_bundle_registry_step", 1)
+                .as_deref()
+                == Some("PerLanguageFactBundleEntry")
+            && surface_fn_return_type(&module, "go_g1_3_per_language_fact_bundle_registry_step")
+                .as_deref()
+                == Some("Outcome<PerLanguageFactBundleRegistry>")
+            && surface_fn_return_type(&module, "go_g1_3_per_language_fact_bundle_registry")
+                .as_deref()
+                == Some("Outcome<PerLanguageFactBundleRegistry>"),
+        "{GO_LANGUAGE_PATH}: G.1.3 registry builders must expose the fail-closed Outcome<PerLanguageFactBundleRegistry> surface"
+    );
+    assert!(
+        surface_fn_body_mentions_name(
+            &module,
+            GO_LANGUAGE_DAG,
+            "go_g1_3_per_language_fact_bundle_registry_step",
+            "insert_per_language_fact_bundle_entry"
+        ) && [
+            "go_g1_3_per_language_fact_bundle_entry_rows",
+            "outcome_accepted",
+            "empty_per_language_fact_bundle_registry",
+            "go_g1_3_per_language_fact_bundle_registry_step",
+        ]
+        .iter()
+        .all(|needle| surface_fn_body_mentions_name(
+            &module,
+            GO_LANGUAGE_DAG,
+            "go_g1_3_per_language_fact_bundle_registry",
+            needle
+        )),
+        "{GO_LANGUAGE_PATH}: canonical G.1.3 Go registry builder must fold rows through the fail-closed insert step"
     );
 }
 
@@ -1402,6 +1496,36 @@ fn surface_fn_first_param_named_type(
     })
 }
 
+fn surface_fn_param_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    fn_name: &str,
+    index: usize,
+) -> Option<String> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Fn { name, params, .. } | SurfaceItem::FnExternalBody { name, params, .. }
+            if name == fn_name =>
+        {
+            params.get(index).map(|param| surface_type_name(&param.ty))
+        }
+        _ => None,
+    })
+}
+
+fn surface_fn_return_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    fn_name: &str,
+) -> Option<String> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Fn {
+            name, return_type, ..
+        }
+        | SurfaceItem::FnExternalBody {
+            name, return_type, ..
+        } if name == fn_name => Some(surface_type_name(return_type)),
+        _ => None,
+    })
+}
+
 fn data_named_type(
     module: &v3_compiler::parse_surface::SurfaceModule,
     name: &str,
@@ -1532,6 +1656,111 @@ fn fn_external_body_contains(
         },
         _ => false,
     })
+}
+
+fn surface_fn_body_mentions_name(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    fn_name: &str,
+    needle: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Fn { name, body, .. } if name == fn_name => expr_mentions_name(body, needle),
+        SurfaceItem::FnExternalBody {
+            name, body_span, ..
+        } if name == fn_name => source_span_without_comments(source, body_span)
+            .split(|ch: char| !(ch == '_' || ch.is_ascii_alphanumeric()))
+            .any(|token| token == needle),
+        _ => false,
+    })
+}
+
+fn source_span_without_comments(source: &str, span: &v3_compiler::SourceSpan) -> String {
+    strip_dag_comments(source_span_text(source, span))
+}
+
+fn strip_dag_comments(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '/' {
+            match chars.peek().copied() {
+                Some('/') => {
+                    chars.next();
+                    for next in chars.by_ref() {
+                        if next == '\n' {
+                            out.push('\n');
+                            break;
+                        }
+                    }
+                }
+                Some('*') => {
+                    chars.next();
+                    let mut prev = '\0';
+                    for next in chars.by_ref() {
+                        if prev == '*' && next == '/' {
+                            break;
+                        }
+                        prev = next;
+                    }
+                }
+                _ => out.push(ch),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn expr_mentions_name(expr: &SurfaceExpr, needle: &str) -> bool {
+    match expr {
+        SurfaceExpr::Literal { .. } => false,
+        SurfaceExpr::Var { name, .. } => name == needle,
+        SurfaceExpr::Path { segments, .. } => segments.iter().any(|segment| segment == needle),
+        SurfaceExpr::Call { target, args, .. } => {
+            target == needle || args.iter().any(|arg| expr_mentions_name(arg, needle))
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            segments.iter().any(|segment| segment == needle)
+                || args.iter().any(|arg| expr_mentions_name(arg, needle))
+        }
+        SurfaceExpr::VariantRecord { target, fields, .. } => {
+            target == needle
+                || fields
+                    .iter()
+                    .any(|field| expr_mentions_name(&field.value, needle))
+        }
+        SurfaceExpr::Operator { args, .. } => {
+            args.iter().any(|arg| expr_mentions_name(arg, needle))
+        }
+        SurfaceExpr::Lambda { body, .. } => expr_mentions_name(body, needle),
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_mentions_name(cond, needle)
+                || expr_mentions_name(then_branch, needle)
+                || expr_mentions_name(else_branch, needle)
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_mentions_name(scrutinee, needle)
+                || arms.iter().any(|arm| expr_mentions_name(&arm.body, needle))
+        }
+        SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .any(|field| field.name == needle || expr_mentions_name(&field.value, needle)),
+        SurfaceExpr::List { elements, .. } => elements
+            .iter()
+            .any(|element| expr_mentions_name(element, needle)),
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|entry| entry.key == needle || expr_mentions_name(&entry.value, needle)),
+    }
 }
 
 fn source_span_text<'a>(source: &'a str, span: &v3_compiler::SourceSpan) -> &'a str {
