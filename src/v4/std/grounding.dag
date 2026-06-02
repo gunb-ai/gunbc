@@ -27,7 +27,6 @@ import v4.std.model_core {
 }
 import v4.std.node { Node, Symbol }
 import v4.std.target_model { FunctionBoundarySite, TargetModel }
-import v4.std.witness { Holds, Violates, Witness }
 
 
 // --- G0.1: per-language fact bundle schema (subject_carrier × target × fact_axis) ---
@@ -74,15 +73,18 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
 }
 
 
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>);
+// dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at
+// v4.std.collection:54); site: insert_per_language_fact_bundle_entry duplicate-key gate.
 fn insert_per_language_fact_bundle_entry(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match registry.by_key.lookup(key) {
-    Holds { value: _ } =>
+  match map_get(registry.by_key, key) {
+    Some { value: _ } =>
       outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    Violates { diagnostic: _ } =>
+    None =>
       outcome_accepted(
         value: PerLanguageFactBundleRegistry {
           by_key: map_insert(m: registry.by_key, key: key, value: fact_value)

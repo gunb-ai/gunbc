@@ -212,8 +212,8 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
         "spec_facts projection uses model_core Symbol authority at bundle boundary"
     );
     assert!(
-        GROUNDING_DAG.contains("match registry.by_key.lookup(key) {")
-            && GROUNDING_DAG.contains("Holds { value: _ }"),
-        "registry insert must match Map.lookup Witness surface (v4.std.collection)"
+        GROUNDING_DAG.contains("feature:B-LOOKUP-1")
+            && GROUNDING_DAG.contains("match map_get(registry.by_key, key)"),
+        "registry insert uses documented bootstrap map_get bridge until Witness dispatch"
     );
 }
