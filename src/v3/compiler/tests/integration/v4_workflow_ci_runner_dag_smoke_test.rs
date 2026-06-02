@@ -66,6 +66,14 @@
 //! Dissolve-on: `.dag` TestClaim execution proves `content_hash(ci_upsert_step_projection_node)`
 //! sensitivity and `v4.std.patterns.Upsert<T>` field alignment without this hand-Rust ratchet.
 //!
+//! **INVARIANTS P5 — checkable receipt for node://adhoc-87c3a213-099 (F.11c receipt persistence + lookup):**
+//! feature `f11c-ci-selection-receipt-persistence`; consumer
+//! `v4_workflow_ci_selection_receipt_persistence_lookup_modeled`. SAME-PATH SG-0 expansion:
+//! stays inside this existing v4 CI smoke harness (+0 new hand-Rust test paths) and defers to
+//! ROADMAP.md § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+//! Dissolve-on: runtime TestClaimRun/cache receipt storage persists and looks up
+//! `CiSelectionReceipt` values from canonical receipt projection hashes without this string ratchet.
+//!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
@@ -2419,6 +2427,45 @@ fn v4_workflow_ci_upsert_node_projection_substrate() {
         assert!(
             CI_DAG.contains(needle),
             "{CI_DAG_PATH}: F.11a Upsert<T> Node projection substrate must carry `{needle}`"
+        );
+    }
+}
+
+#[test]
+fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    for name in [
+        "ci_selection_receipt_persist",
+        "ci_selection_receipt_lookup",
+        "ci_selection_receipt_shadow_fixture_persistence_lookup_holds",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{CI_DAG_PATH}: F.11c must declare `{name}`"
+        );
+    }
+    for needle in [
+        "type CiSelectionReceiptStoreRow",
+        "key: Symbol",
+        "receipt: CiSelectionReceipt",
+        "type CiSelectionReceiptLookup",
+        "found: Bool",
+        "data ci_selection_receipt_shadow_fixture_storage_key: Symbol",
+        "data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow>",
+        "ci_selection_receipt_persist(",
+        "receipt: ci_selection_receipt_shadow_fixture_receipt",
+        "data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup",
+        "ci_selection_receipt_lookup(",
+        "fallback: ci_wave3_shadow_fixture_fail_closed_receipt",
+        "row.key == key",
+        "CiSelectionReceiptLookup { found: true, receipt: row.receipt }",
+        "data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool",
+        "feature:f11c-ci-selection-receipt-persistence",
+        "forbidden: treating transient fixture construction as persisted receipt evidence",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: F.11c receipt persistence + lookup must carry `{needle}`"
         );
     }
 }

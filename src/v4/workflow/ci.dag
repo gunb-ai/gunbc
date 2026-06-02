@@ -551,6 +551,17 @@ type CiSelectionReceipt {
   component_affected_comparison: CiComponentAffected
 }
 
+// 🟡 bounded persistence — feature:f11c-ci-selection-receipt-persistence — bind node://adhoc-87c3a213-099 — dissolve-on-arrival: persisted CI selection receipts are stored by the runtime TestClaimRun/cache receipt substrate, and lookup keys are derived from canonical receipt projection hashes; forbidden: treating transient fixture construction as persisted receipt evidence.
+type CiSelectionReceiptStoreRow {
+  key: Symbol
+  receipt: CiSelectionReceipt
+}
+
+type CiSelectionReceiptLookup {
+  found: Bool
+  receipt: CiSelectionReceipt
+}
+
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:wave3-shadow-selection-receipt — consumer:ci_floor_held / fixture witnesses — bind docs/planning/v4-ci-selection-receipt-wave3-claim-projection-worksheet-2026-06-01.md §8 — dissolve-on-arrival: `CiSelectionMode` drives floor policy at GHA projection sites (delete Bool projection when Active scheduling lands); forbidden: persisting independent `floor_skip` or untagged mode→Bool helpers beside `mode`.
 fn ci_floor_held(receipt: CiSelectionReceipt) -> Bool {
   match receipt.mode {
@@ -3633,6 +3644,39 @@ fn ci_selection_receipt_mk(
 }
 
 
+fn ci_selection_receipt_persist(
+  key: Symbol,
+  receipt: CiSelectionReceipt,
+  store: List<CiSelectionReceiptStoreRow>
+) -> List<CiSelectionReceiptStoreRow> {
+  list_snoc_item(
+    xs: store,
+    item: CiSelectionReceiptStoreRow { key: key, receipt: receipt }
+  )
+}
+
+
+fn ci_selection_receipt_lookup(
+  key: Symbol,
+  store: List<CiSelectionReceiptStoreRow>,
+  fallback: CiSelectionReceipt
+) -> CiSelectionReceiptLookup {
+  fold_list(
+    xs: store,
+    empty: CiSelectionReceiptLookup { found: false, receipt: fallback },
+    cons: fn(acc, row) {
+      if acc.found {
+        acc
+      } else if row.key == key {
+        CiSelectionReceiptLookup { found: true, receipt: row.receipt }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+
 // ── Wave 3 §11.7.4 — CiSelectionReceipt claim projection (consumes #4178 runtime selection API) ──
 fn ci_wave3_shadow_testclaim_selection_reason(
   claim: TestClaim,
@@ -4368,6 +4412,33 @@ fn ci_wave3_shadow_fixture_manual_subset_selected_holds() -> Bool {
 data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_closed_superset_holds() && ci_wave3_shadow_fixture_floor_held_holds() && ci_wave3_shadow_fixture_provenance_is_fixture_holds() && ci_wave3_shadow_fixture_manual_subset_selected_holds() && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
 
 data witness_ci_wave3_shadow_testgen_receipts_ok: Bool = ci_wave3_shadow_testgen_run_receipt_holds() && ci_testgen_selected_receipt_holds(affected: ci_wave3_shadow_fail_closed_affected, profile_ref: testgen_default_profile_ref) && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
+
+data ci_selection_receipt_shadow_fixture_storage_key: Symbol = ci_selection_receipt_shadow_fixture_storage_key
+
+data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow> =
+  ci_selection_receipt_persist(
+    key: ci_selection_receipt_shadow_fixture_storage_key,
+    receipt: ci_selection_receipt_shadow_fixture_receipt,
+    store: []
+  )
+
+data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup =
+  ci_selection_receipt_lookup(
+    key: ci_selection_receipt_shadow_fixture_storage_key,
+    store: ci_selection_receipt_shadow_fixture_store,
+    fallback: ci_wave3_shadow_fixture_fail_closed_receipt
+  )
+
+fn ci_selection_receipt_shadow_fixture_persistence_lookup_holds() -> Bool {
+  let looked_up = ci_selection_receipt_shadow_fixture_lookup
+  let decisions_match = length(xs: looked_up.receipt.decisions) == length(xs: ci_selection_receipt_shadow_fixture_receipt.decisions)
+  let testclaims_match = length(xs: looked_up.receipt.testclaim_decisions) == length(xs: ci_selection_receipt_shadow_fixture_receipt.testclaim_decisions)
+  let testgen_match = length(xs: looked_up.receipt.testgen_slots) == length(xs: ci_selection_receipt_shadow_fixture_receipt.testgen_slots)
+  looked_up.found && decisions_match && testclaims_match && testgen_match
+}
+
+data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool =
+  ci_selection_receipt_shadow_fixture_persistence_lookup_holds()
 
 data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 
