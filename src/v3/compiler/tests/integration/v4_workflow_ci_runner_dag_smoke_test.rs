@@ -1685,7 +1685,7 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
          as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
-        CI_DAG.contains("manual_corpus_node_runtime_value_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed"),
+        CI_DAG.contains("manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed"),
         "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must bind the per-row TestClaimRun verdict surface"
     );
     assert!(
@@ -1701,11 +1701,11 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "ci_testclaim_corpus_module_manual_roster_path: Symbol = v4_test_claim_manual_manual_corpus_roster",
         "ci_testclaim_corpus_module_runner_path: Symbol = v4_test_claim_workflow_testclaim_corpus_runner",
         "ci_testclaim_corpus_module_eval_path: Symbol = v4_test_claim_workflow_manual_corpus_eval",
-        "declaration_name: ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows_name",
+        "declaration_name: ci_testclaim_corpus_decl_manual_corpus_node_subject_rows_name",
         "declaration_name: ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name",
         "declaration_name: ci_testclaim_corpus_decl_corpus_report_tally_name",
         "declaration_name: ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name",
-        "ci_testclaim_corpus_decl_manual_corpus_node_runtime_value_rows_name: Symbol = manual_corpus_node_runtime_value_rows",
+        "ci_testclaim_corpus_decl_manual_corpus_node_subject_rows_name: Symbol = manual_corpus_node_subject_rows",
         "ci_testclaim_corpus_decl_run_manual_testclaim_corpus_eval_name: Symbol = run_manual_testclaim_corpus_eval",
         "ci_testclaim_corpus_decl_corpus_report_tally_name: Symbol = corpus_report_tally",
         "ci_testclaim_corpus_decl_witness_manual_corpus_gate_closed_name: Symbol = witness_manual_corpus_gate_closed",
