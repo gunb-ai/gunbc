@@ -468,7 +468,7 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "CompilesClaim must compare actual against declared accepted Node (P2/P3 fail-closed)"
     );
     assert!(
-        EVAL_DAG.contains("eval_round_trip_claim_input_for_verdict(input: subject.input.evaluator_input)")
+        EVAL_DAG.contains("eval_round_trip_claim_input_for_verdict(input: input)")
             && EVAL_DAG.contains("run_test_claim_round_trip_verdict_runtime(")
             && EVAL_DAG.contains("dag_round_trip_wave1_authorities_ready()"),
         "RoundTripClaim must admit witness input structurally (IRT-3), not runtime-eval TypeNode, and re-derive wave-1 readiness from dag.dag authorities (P2; not Deferred)"
@@ -717,6 +717,8 @@ fn testgen_concept_surface_stays_closed_and_classified() {
             ("classification", "TestClassification"),
             ("anchor", "ClaimAnchorKey"),
             ("slot", "C"),
+            ("provenance", "GeneratorProvenance"),
+            ("profile_metadata", "GeneratorProfile"),
         ]),
         "Generator<C> must carry claim kind, anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
     );
