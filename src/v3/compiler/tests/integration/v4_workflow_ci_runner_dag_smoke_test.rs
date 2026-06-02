@@ -45,8 +45,9 @@ const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 const CI_WORKFLOW_DAG: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
-const SHARED_CLOSURE_WORKSHEET: &str =
-    include_str!("../../../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md");
+const SHARED_CLOSURE_WORKSHEET: &str = include_str!(
+    "../../../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md"
+);
 const SHARED_CLOSURE_WORKSHEET_PATH: &str =
     "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
@@ -800,7 +801,9 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         CI_DAG.contains("feature:project-github-actions-landed")
             && CI_DAG.contains("consumer:v4.workflow.ci m1_ci_live_workflow_signal")
-            && CI_DAG.contains("bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/runner_pool_m1_probe.dag"),
+            && CI_DAG.contains(
+                "bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/runner_pool_m1_probe.dag"
+            ),
         "{CI_DAG_PATH}: M1 live-workflow bridge must carry checkable P5 dissolution tags"
     );
     assert!(
