@@ -57,6 +57,7 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken }
 import v4.std.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -174,7 +175,8 @@ type GoCost {
   allocation_cost: Int
 }
 
-// ConcreteSyntaxToken: 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
+// Tokens are the shared v4.std.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
+// per-target Go coproduct dissolved into that std authority.
 
 type GoGrammarRelationRow {
   production: GrammarProduction

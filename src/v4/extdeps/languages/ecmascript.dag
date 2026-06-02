@@ -61,6 +61,7 @@ import v4.std.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken }
 import v4.std.target_model { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {

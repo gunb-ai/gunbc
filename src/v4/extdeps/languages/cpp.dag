@@ -28,6 +28,7 @@ import v4.std.lexing {
   ModeledLexRules,
   TokenRule
 }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken }
 import v4.std.target_model { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
@@ -196,7 +197,8 @@ type CppLanguageModel {
   core: ModelCore
 }
 
-// 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
+// Tokens are the shared v4.std.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
+// per-target C++ coproduct dissolved into that std authority.
 
 type CppGrammarRelationRow {
   production: GrammarProduction

@@ -924,29 +924,32 @@ fn v4_dag_language_model_declares_surface_emit_rows() {
         ),
         "{DAG_LANGUAGE_PATH}: emit rows must use the shared grammar-relation field symbols"
     );
+    // T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it
+    // through the single shared serializer, rather than re-spelling the wire-form field/kind
+    // Symbols inline. The carrier + serializer are the shared authority emit rows depend on.
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_field_kind"
+            "FixedToken"
         ),
-        "{DAG_LANGUAGE_PATH}: token rows must use the shared concrete-token field symbols"
+        "{DAG_LANGUAGE_PATH}: fixed-token rows must construct the shared ConcreteSyntaxToken carrier"
     );
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_fixed"
+            "BoundToken"
         ),
-        "{DAG_LANGUAGE_PATH}: fixed-token rows must use the shared token-kind identity"
+        "{DAG_LANGUAGE_PATH}: bound-token rows must construct the shared ConcreteSyntaxToken carrier"
     );
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_bound"
+            "concrete_syntax_token_to_node"
         ),
-        "{DAG_LANGUAGE_PATH}: bound-token rows must use the shared token-kind identity"
+        "{DAG_LANGUAGE_PATH}: token rows must serialize through the single shared token morphism"
     );
     assert!(
         surface_declares_fn(&module, "emit_fixed_token"),

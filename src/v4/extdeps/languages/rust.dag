@@ -72,6 +72,7 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken }
 import v4.std.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
