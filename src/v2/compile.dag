@@ -1187,11 +1187,7 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 // emit_resolved passes through unchanged, and the clean path appends emit_diags
 // (concat is associative, so the diagnostic order is identical).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
-<<<<<<< HEAD
-  emit_resolved(resolved: compile_to_resolved(sources: sources), target: target)
-=======
   emit_resolved_for_target(resolved: compile_to_resolved(sources: sources), target: target)
->>>>>>> origin/main
 }
 
 type ResolvedPipelineResult {

@@ -2439,11 +2439,7 @@ pub fn compile_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
-<<<<<<< HEAD
-    emit_resolved(compile_to_resolved(sources), target)
-=======
     emit_resolved_for_target(compile_to_resolved(sources), target)
->>>>>>> origin/main
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

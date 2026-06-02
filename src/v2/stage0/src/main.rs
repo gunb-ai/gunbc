@@ -241,47 +241,7 @@ fn main() {
             output_dir,
             target,
         } => {
-<<<<<<< HEAD
-            // Dual-emit: --target accepts a comma list (e.g. `rust,dag`). The
-            // front-end runs ONCE via compile_to_resolved; each target emits from
-            // the shared typed graph. Single target keeps the legacy flat layout
-            // and receipt line; multiple targets write to OUT/<target>/ subdirs.
-            let target_to_render = |t: &str| -> v2_compiler_artifact::RenderTarget {
-                match t {
-                    "rust" => v2_compiler_artifact::RenderTarget::Rust,
-                    "python" => v2_compiler_artifact::RenderTarget::Python,
-                    "go" => v2_compiler_artifact::RenderTarget::Go,
-                    "dag" => v2_compiler_artifact::RenderTarget::Dag,
-                    other => {
-                        eprintln!(
-                            "unknown target: {}. supported: rust, python, go, dag",
-                            other
-                        );
-                        std::process::exit(1);
-                    }
-                }
-            };
-            let target_names: Vec<String> = target
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            // Fail-closed: clap supplies default_value="rust" when --target is
-            // omitted, so an empty list here means malformed explicit input
-            // (e.g. `--target ,` or `--target ""`). Do NOT silently default to
-            // rust — error out (INVARIANTS P3 / M5 fail-closed).
-            if target_names.is_empty() {
-                eprintln!("error: --target resolved to no targets (empty or only separators); supported: rust, python, go, dag");
-                std::process::exit(1);
-            }
-            let multi_target = target_names.len() > 1;
-            // Validate every target up front (fail-closed before any front-end work).
-            for tname in &target_names {
-                let _ = target_to_render(tname);
-            }
-=======
             let render_targets = parse_render_targets(&target);
->>>>>>> origin/main
 
             let sources = if !source_roots.is_empty() {
                 // FF-9: Import-driven resolution from source roots
@@ -359,65 +319,6 @@ fn main() {
                 std::process::exit(1);
             };
 
-<<<<<<< HEAD
-            // Front-end runs ONCE; every target emits from the shared typed graph.
-            let resolved = v2_compiler_compile::compile_to_resolved(Rc::new(sources));
-
-            let mut any_failure = false;
-            for tname in &target_names {
-                let render_target = target_to_render(tname);
-                let target_out_dir = if multi_target {
-                    format!("{}/{}", output_dir, tname)
-                } else {
-                    output_dir.clone()
-                };
-                let result = v2_compiler_compile::emit_resolved(resolved.clone(), render_target);
-
-                std::fs::create_dir_all(format!("{}/src", target_out_dir))
-                    .unwrap_or_else(|e| panic!("failed to create output dir: {}", e));
-                for file in result.files.iter() {
-                    let out_path = format!("{}/{}", target_out_dir, file.path);
-                    if let Some(parent) = std::path::Path::new(&out_path).parent() {
-                        std::fs::create_dir_all(parent).ok();
-                    }
-                    std::fs::write(&out_path, &*file.content)
-                        .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
-                }
-                // Receipt: single-target keeps the legacy `compiled: ...` line that
-                // existing probes grep; multi-target prefixes each target name.
-                if multi_target {
-                    eprintln!(
-                        "compiled [{}]: {} files emitted, {} diagnostics",
-                        tname,
-                        result.files.len(),
-                        result.diagnostics.len()
-                    );
-                } else {
-                    eprintln!(
-                        "compiled: {} files emitted, {} diagnostics",
-                        result.files.len(),
-                        result.diagnostics.len()
-                    );
-                }
-                render_diagnostics(&result);
-                // Complexity violations are non-blocking (analyzer limitations).
-                let hard_errors = result.diagnostics.iter().any(|d| {
-                    !matches!(
-                        *d.diagnostic.clone(),
-                        CompilerDiagnostic::ComplexityUnknown { .. }
-                    )
-                });
-                if hard_errors {
-                    any_failure = true;
-                }
-                if result.files.is_empty() {
-                    eprintln!("error: no files emitted for target {}", tname);
-                    any_failure = true;
-                }
-            }
-            if any_failure {
-                std::process::exit(1);
-=======
             if render_targets.len() == 1 {
                 let result = v2_compiler_compile::compile_sources(
                     Rc::new(sources),
@@ -473,7 +374,6 @@ fn main() {
                     eprintln!("error: no files emitted for at least one target");
                     std::process::exit(1);
                 }
->>>>>>> origin/main
             }
         }
 
