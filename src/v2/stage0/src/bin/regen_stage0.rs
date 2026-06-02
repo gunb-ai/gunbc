@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::{compile_sources, SourceFile};
-use v2_compiler::v2_std_core::{diagnostic_to_message, CompilerDiagnostic};
+use v2_compiler::v2_std_core::{diagnostic_to_message, diagnostic_to_span, CompilerDiagnostic};
 
 const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
 const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";
@@ -492,7 +492,16 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
                 CompilerDiagnostic::ComplexityUnknown { .. }
             )
         })
-        .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+        .map(|d| {
+            let span = diagnostic_to_span(d.diagnostic.clone());
+            format!(
+                "{} ({}:{}-{})",
+                diagnostic_to_message(d.diagnostic.clone()),
+                span.file,
+                span.start,
+                span.end
+            )
+        })
         .collect();
     if !hard_errors.is_empty() {
         return Err(format!(
