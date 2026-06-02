@@ -276,6 +276,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
+    "src/v3/compiler/src/bin/boundary_emit_gates.rs",
     "src/v3/compiler/src/bin/gunbc_ci.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -358,6 +359,9 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
     "src/v3/compiler/src/process_exit.rs",
+    // F.14 / T-PB-B: shared `check_*` for class-5 boundary emit gates; host `#[test]`
+    // shims and `boundary_emit_gates` `bin` both call (`tests/dag/boundary_emit_gates.template.dag`).
+    "src/v3/compiler/src/boundary_emit_gates.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
     // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
     // truth for the emit-gate assertions; scaffold until R1 close dissolves it.

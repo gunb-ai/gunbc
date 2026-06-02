@@ -30,10 +30,18 @@ fn main() -> ExitCode {
     }
 
     let result = match sub.as_str() {
-        "m2-destructure-alias" => boundary_emit_gates::check_m2_multi_field_struct_variant_destructure_alias(),
-        "m2-arm-aliased-ref" => boundary_emit_gates::check_m2_multi_field_struct_variant_arm_aliased_ref(),
-        "m2-rustfmt-valid" => boundary_emit_gates::check_m2_multi_field_struct_variant_rustfmt_valid(),
-        "python-checked-division-roundtrip" => boundary_emit_gates::check_python_checked_division_roundtrips(),
+        "m2-destructure-alias" => {
+            boundary_emit_gates::check_m2_multi_field_struct_variant_destructure_alias()
+        }
+        "m2-arm-aliased-ref" => {
+            boundary_emit_gates::check_m2_multi_field_struct_variant_arm_aliased_ref()
+        }
+        "m2-rustfmt-valid" => {
+            boundary_emit_gates::check_m2_multi_field_struct_variant_rustfmt_valid()
+        }
+        "python-checked-division-roundtrip" => {
+            boundary_emit_gates::check_python_checked_division_roundtrips()
+        }
         _ => usage(),
     };
 

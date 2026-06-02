@@ -167,6 +167,7 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
         // checks without a host child, the wrappers + bin retire together
         // (R1 Closure dispatch on issue #973). Documented in ROADMAP T-Emit
         // / R1C-E lane row.
+        "boundary_emit_gates.rs",
         "gunbc_ci.rs",
         "r1c_e_emit_gates.rs",
         "regen_bootstrap.rs",
@@ -192,6 +193,7 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     assert_eq!(
         actual, expected,
         "SG-6 hand-authored bin census changed. The census is \
+         `boundary_emit_gates` (F.14 class-5 boundary `.dag` `ExecuteCommand` logical child), \
          `gunbc_ci` (modeled CI host shim), `r1c_e_emit_gates` (R1C-E T-Emit `.dag` wrapper logical child; \
          issue #973), `regen_parse` (reads `src/v3/std/parse_surface.dag` for Surface \
          carriers), `regen_tokenize` (reads `src/v3/compiler/tokenize.dag`), \

@@ -333,8 +333,7 @@ fn r1c_e_emit_gates_omni_suite_passes() {
     );
 }
 
-const BOUNDARY_EMIT_GATES_TEMPLATE: &str =
-    include_str!("../dag/boundary_emit_gates.template.dag");
+const BOUNDARY_EMIT_GATES_TEMPLATE: &str = include_str!("../dag/boundary_emit_gates.template.dag");
 const BOUNDARY_EMIT_GATES_TEMPLATE_PATH: &str =
     "src/v3/compiler/tests/dag/boundary_emit_gates.template.dag";
 const BOUNDARY_EMIT_GATES_BIN_PATH: &str = env!("CARGO_BIN_EXE_boundary_emit_gates");
@@ -345,7 +344,8 @@ fn substituted_boundary_emit_gates_source() -> String {
         BOUNDARY_EMIT_GATES_TEMPLATE.contains(BOUNDARY_EMIT_BIN_PLACEHOLDER),
         "template must contain `{BOUNDARY_EMIT_BIN_PLACEHOLDER}`: {BOUNDARY_EMIT_GATES_TEMPLATE_PATH}"
     );
-    BOUNDARY_EMIT_GATES_TEMPLATE.replace(BOUNDARY_EMIT_BIN_PLACEHOLDER, BOUNDARY_EMIT_GATES_BIN_PATH)
+    BOUNDARY_EMIT_GATES_TEMPLATE
+        .replace(BOUNDARY_EMIT_BIN_PLACEHOLDER, BOUNDARY_EMIT_GATES_BIN_PATH)
 }
 
 /// F.14 / T-PB-B: class-5 boundary emit gates as `.dag` `TestClaim` data (m2 + python division).
