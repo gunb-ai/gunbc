@@ -1890,18 +1890,19 @@ fn v4_workflow_ci_wave3_ci_dag_extension_and_fixture_receipt() {
         .nth(1)
         .and_then(|rest| rest.split("\ndata ").next())
         .unwrap_or("");
+    let fixture_mk_body = extract_fn_body(CI_DAG, "ci_wave3_shadow_fixture_fail_closed_receipt_mk");
     assert!(
-        fixture_binding.contains("provenance: FixtureReceipt"),
+        fixture_mk_body.contains("provenance: FixtureReceipt"),
         "{CI_DAG_PATH}: Wave 3 fixture receipt must construct with FixtureReceipt provenance"
     );
     assert!(
-        !fixture_binding.contains("provenance: LivePrGitDiff"),
+        !fixture_mk_body.contains("provenance: LivePrGitDiff"),
         "{CI_DAG_PATH}: Wave 3 fixture receipt must not use LivePrGitDiff"
     );
     assert!(
         fixture_binding.contains("ci_wave3_shadow_testgen_selection_rows_outcome(")
             && fixture_binding.contains("Outcome<CiSelectionReceipt>")
-            && !fixture_binding.contains("testgen_slots: Empty"),
+            && !fixture_mk_body.contains("testgen_slots: Empty"),
         "{CI_DAG_PATH}: F.2-P2 fixture must bind testgen_slots via selection_rows Outcome (not Empty truncation)"
     );
     assert!(
