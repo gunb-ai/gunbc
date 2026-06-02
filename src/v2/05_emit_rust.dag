@@ -1704,18 +1704,16 @@ fn variant_defining_module_filename_for_import(variant_name: String, import_modu
     Some { value: _parent } => module_to_filename(name: import_module)
     None =>
       match explicit_import_source_module_for_name(name: variant_name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
-        Some { value: hop } =>
-          if hop != import_module {
-            variant_defining_module_filename_for_import(
-              variant_name: variant_name,
-              import_module: hop,
-              typed_modules: typed_modules,
-              export_sets: export_sets,
-              source_indices: source_indices,
-              fallback: fallback
-            )
-          } else { fallback }
-        None => fallback
+        Some { value: hop } if hop != import_module =>
+          variant_defining_module_filename_for_import(
+            variant_name: variant_name,
+            import_module: hop,
+            typed_modules: typed_modules,
+            export_sets: export_sets,
+            source_indices: source_indices,
+            fallback: fallback
+          )
+        _ => fallback
       }
   }
 }
@@ -1789,19 +1787,17 @@ fn reexport_variant_parent_in_import_module(variant_name: String, import_module:
         Some { value: parent } => Some { value: parent }
         None =>
           match explicit_import_source_module_for_name(name: variant_name, import_module: src_mod, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
-            Some { value: hop } =>
-              if hop != src_mod {
-                reexport_variant_parent_in_import_module(
-                  variant_name: variant_name,
-                  import_module: hop,
-                  registry: registry,
-                  type_summaries: type_summaries,
-                  typed_modules: typed_modules,
-                  export_sets: export_sets,
-                  source_indices: source_indices
-                )
-              } else { none }
-            None => none
+            Some { value: hop } if hop != src_mod =>
+              reexport_variant_parent_in_import_module(
+                variant_name: variant_name,
+                import_module: hop,
+                registry: registry,
+                type_summaries: type_summaries,
+                typed_modules: typed_modules,
+                export_sets: export_sets,
+                source_indices: source_indices
+              )
+            _ => None
           }
       }
   }
