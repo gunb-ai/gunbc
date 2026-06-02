@@ -1,11 +1,20 @@
 //! Wave 3 §11.7.2 shadow receipt — Phase 2 live CI host transport (queued eval).
 //!
 //! Modeled authority: `src/v4/workflow/ci.dag` (`CiSelectionReceipt`, `ci_selection_receipt_shadow_from_git_diff`).
-//! Populated claim/testgen rows await bootstrap eval (`node://adhoc-331899f9-19a`); this transport emits an
-//! honest queued receipt — `component_affected` live-populated from the PR git diff, claim/testgen
-//! partitions empty — without fabricating `affected_set_from_diff`. Wired as a non-blocking
-//! (Class C) step in the `affected` job (`.github/workflows/ci.yml`), mirrored in the pinned carrier
-//! `dsl/gunbc/ci_github_actions_workflow.dag`.
+//!
+//! **Single-authority discipline (INVARIANTS P2).** This transport does NOT invent a parallel
+//! receipt genus. The emitted JSON is a *clearly non-authoritative transport envelope* whose
+//! `ci_selection_receipt` field is a faithful serialization of the modeled `CiSelectionReceipt`
+//! (exact modeled field names + coproduct tags). The host transport cannot resolve `Change.subject:
+//! Node` or compute the `AffectedSet` without the live Dag eval, so `pr`/`affected`/`decisions`/
+//! `testclaim_decisions`/`testgen_slots` are serialized in their honest unpopulated form — empty
+//! `ChangeSet`/lists and a fail-closed `AffectedSet` (P3) — until the bootstrap eval
+//! (`node://adhoc-331899f9-19a`) lands `ci_selection_receipt_shadow_from_git_diff`. Only
+//! `component_affected_comparison` is host-computed (same predicate set as `detect-ci-affected-components`).
+//! Status/debt live in the envelope, never mixed into the receipt fields.
+//!
+//! Wired as a non-blocking (Class C) step in the `affected` job (`.github/workflows/ci.yml`),
+//! mirrored in the pinned carrier `dsl/gunbc/ci_github_actions_workflow.dag`.
 
 use std::io;
 
@@ -17,7 +26,10 @@ use crate::{
     CiComponentAffected,
 };
 
-pub const RECEIPT_SCHEMA: &str = "gunbc/ci-selection-receipt-shadow/v1";
+/// Non-authoritative transport envelope tag (NOT a receipt-authority schema — the receipt authority
+/// is the modeled `v4.workflow.ci.CiSelectionReceipt`, serialized under `ci_selection_receipt`).
+pub const TRANSPORT_ENVELOPE: &str = "gunbc/ci-wave3-shadow-emit/v1";
+pub const RECEIPT_AUTHORITY: &str = "v4.workflow.ci.CiSelectionReceipt";
 pub const EMIT_STEP_NAME: &str = "emit-ci-wave3-shadow-receipt";
 
 pub fn build_queued_shadow_receipt(event_name: &str, git_read: GitChangedPathsRead) -> Value {
@@ -31,20 +43,50 @@ pub fn build_queued_shadow_receipt(event_name: &str, git_read: GitChangedPathsRe
         }
     };
 
+    // Reason the affected set is fail-closed (we never computed it — host has no Dag eval).
+    let affected_reason = if git_diff_read_failed {
+        "git_diff_read_failed"
+    } else {
+        "queued_pending_live_eval"
+    };
+
     json!({
-        "schema": RECEIPT_SCHEMA,
-        "mode": "Shadow",
-        "provenance": "FixtureReceipt",
+        "transport_envelope": TRANSPORT_ENVELOPE,
+        "authority": RECEIPT_AUTHORITY,
         "live_eval_status": "queued",
         "live_eval_debt": WAVE3_LIVE_EVAL_DEBT,
         "event_name": event_name,
         "git_diff_range": git_diff_range,
         "git_diff_read_failed": git_diff_read_failed,
+        // Raw git paths are transport-only diagnostics, NOT the modeled `ChangeSet`
+        // (which requires `Change.subject: Node` the host cannot resolve without the eval).
         "changed_paths": changed_paths,
-        "component_affected": component_affected_to_json(component_affected),
-        "testclaim_decisions_populated": false,
-        "testgen_slots_populated": false,
-        "note": "Phase 2 host transport: claim/testgen partitions await ci_selection_receipt_shadow_from_git_diff eval (affected_set_from_diff + live Dag); step-only shadow remains FixtureReceipt until debt closes.",
+        "note": "Non-authoritative transport envelope. `ci_selection_receipt` is a serialization of the modeled v4.workflow.ci CiSelectionReceipt (Shadow/FixtureReceipt). pr/affected/decisions/testclaim_decisions/testgen_slots await ci_selection_receipt_shadow_from_git_diff live eval (live_eval_debt); affected is fail-closed (P3) until then. Only component_affected_comparison is host-computed.",
+        "ci_selection_receipt": ci_selection_receipt_to_json(component_affected, affected_reason),
+    })
+}
+
+/// Faithful serialization of the modeled `CiSelectionReceipt` in its honest queued/shadow form.
+/// Field names and coproduct tags mirror `src/v4/workflow/ci.dag` exactly (single authority, P2).
+fn ci_selection_receipt_to_json(flags: CiComponentAffected, affected_reason: &str) -> Value {
+    json!({
+        // `pr: ChangeSet { changes: List<Change> }` — empty: host cannot resolve `Change.subject: Node`.
+        "pr": { "changes": [] },
+        // `affected: AffectedSet` — fail-closed coproduct (never computed without Dag eval; P3).
+        "affected": {
+            "AffectedSetFailClosed": {
+                "changes": { "changes": [] },
+                "evidence": { "AffectedSetReason": { "reason": affected_reason } }
+            }
+        },
+        // `mode: CiSelectionMode` — nullary `Shadow` variant.
+        "mode": "Shadow",
+        // `provenance: CiSelectionReceiptProvenance` — `FixtureReceipt` until live populate entry.
+        "provenance": "FixtureReceipt",
+        "decisions": [],
+        "testclaim_decisions": [],
+        "testgen_slots": [],
+        "component_affected_comparison": component_affected_to_json(flags),
     })
 }
 
@@ -73,7 +115,7 @@ pub fn emit_github_notice(receipt: &Value) {
     let status = receipt["live_eval_status"].as_str().unwrap_or("unknown");
     let debt = receipt["live_eval_debt"].as_str().unwrap_or("unknown");
     println!(
-        "::notice title=Wave 3 shadow receipt (Class C)::status={status} changed_paths={changed} debt={debt} — receipt JSON on runner (see step log); LivePrGitDiff + claim rows queued on bootstrap eval"
+        "::notice title=Wave 3 shadow receipt (Class C)::status={status} changed_paths={changed} debt={debt} — CiSelectionReceipt serialization in transport envelope (see step log); pr/affected/claim/testgen partitions queued on bootstrap eval"
     );
 }
 
@@ -82,7 +124,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn queued_receipt_tags_eval_debt_and_empty_partitions() {
+    fn envelope_wraps_modeled_receipt_serialization() {
         let receipt = build_queued_shadow_receipt(
             "pull_request",
             GitChangedPathsRead::Ok {
@@ -90,10 +132,48 @@ mod tests {
                 paths: vec!["src/v4/workflow/ci.dag".to_string()],
             },
         );
-        assert_eq!(receipt["provenance"], "FixtureReceipt");
+
+        // Envelope carries non-authoritative status, NOT mixed into the receipt.
+        assert_eq!(receipt["transport_envelope"], TRANSPORT_ENVELOPE);
+        assert_eq!(receipt["authority"], RECEIPT_AUTHORITY);
         assert_eq!(receipt["live_eval_status"], "queued");
         assert_eq!(receipt["live_eval_debt"], WAVE3_LIVE_EVAL_DEBT);
-        assert_eq!(receipt["testclaim_decisions_populated"], false);
-        assert_eq!(receipt["component_affected"]["v4"], true);
+
+        // `ci_selection_receipt` uses modeled field names + coproduct tags (single authority, P2).
+        let r = &receipt["ci_selection_receipt"];
+        assert_eq!(r["mode"], "Shadow");
+        assert_eq!(r["provenance"], "FixtureReceipt");
+        assert_eq!(r["pr"]["changes"], json!([]));
+        assert_eq!(r["decisions"], json!([]));
+        assert_eq!(r["testclaim_decisions"], json!([]));
+        assert_eq!(r["testgen_slots"], json!([]));
+        assert_eq!(
+            r["affected"]["AffectedSetFailClosed"]["evidence"]["AffectedSetReason"]["reason"],
+            "queued_pending_live_eval"
+        );
+        assert_eq!(r["component_affected_comparison"]["v4"], true);
+        // No invented parallel-genus fields on the receipt.
+        assert!(r.get("schema").is_none());
+        assert!(r.get("testclaim_decisions_populated").is_none());
+    }
+
+    #[test]
+    fn fail_closed_git_read_marks_affected_reason_and_superset() {
+        let receipt = build_queued_shadow_receipt(
+            "pull_request",
+            GitChangedPathsRead::FailClosed {
+                range: "origin/main...HEAD".to_string(),
+                detail: "git diff exited 1".to_string(),
+            },
+        );
+        assert_eq!(receipt["git_diff_read_failed"], true);
+        let r = &receipt["ci_selection_receipt"];
+        assert_eq!(
+            r["affected"]["AffectedSetFailClosed"]["evidence"]["AffectedSetReason"]["reason"],
+            "git_diff_read_failed"
+        );
+        // Fail-closed component superset (all flags true).
+        assert_eq!(r["component_affected_comparison"]["v2"], true);
+        assert_eq!(r["component_affected_comparison"]["v4"], true);
     }
 }
