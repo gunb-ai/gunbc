@@ -1,16 +1,11 @@
 // src/v4/test/claim/workflow/lens_ownership_family_eval.dag
-// Scope: T-38B family CI receipt — lens_ownership subject rows map through run_test_claim; resource-dependency structural witness gates the family tally.
+// Scope: T-38B family CI receipt — lens_ownership subject roster maps through run_test_claim and gates the family tally.
 // Status: source-shape receipt; host CI can pin this file until generated item-registry reflection replaces explicit family rosters.
 
 module v4.test.claim.workflow.lens_ownership_family_eval
 
 
-import v4.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  run_test_claim,
-  test_claim_run_verdict
-}
+import v4.compiler.eval { TestClaimRun, run_test_claim, test_claim_run_verdict }
 import v4.std.algebra { fold_list, is_empty }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
@@ -23,11 +18,11 @@ import v4.std.verdict {
   verdict_tally_empty,
   verdict_tally_total
 }
-import v4.test.claim.lens_ownership.resource_dependency {
-  ownership_resource_dependency_claim_passes
-}
 import v4.test.claim.lens_ownership.subject_roster {
-  lens_ownership_subject_rows
+  LensOwnershipSubject,
+  lens_ownership_subject_eval_subject,
+  lens_ownership_subject_roster,
+  lens_ownership_subject_structural_witness
 }
 
 
@@ -37,15 +32,15 @@ type LensOwnershipFamilyEvalReport {
 
 
 fn run_lens_ownership_subjects(
-  subjects: List<TestClaimEvalSubject<Node>>
+  subjects: List<LensOwnershipSubject>
 ) -> List<TestClaimRun<Node, RuntimeValue>> {
-  map(subjects, fn(subject) { run_test_claim(subject: subject) })
+  map(subjects, fn(subject) { run_test_claim(subject: lens_ownership_subject_eval_subject(subject: subject)) })
 }
 
 
 fn run_lens_ownership_family_eval() -> LensOwnershipFamilyEvalReport {
   LensOwnershipFamilyEvalReport {
-    runs: run_lens_ownership_subjects(subjects: lens_ownership_subject_rows)
+    runs: run_lens_ownership_subjects(subjects: lens_ownership_subject_roster)
   }
 }
 
@@ -73,12 +68,18 @@ fn lens_ownership_family_all_pass(report: LensOwnershipFamilyEvalReport) -> Bool
 
 
 fn lens_ownership_structural_witnesses_hold() -> Bool {
-  ownership_resource_dependency_claim_passes
+  fold_list(
+    xs: lens_ownership_subject_roster,
+    empty: true,
+    cons: fn(acc, subject) {
+      acc && lens_ownership_subject_structural_witness(subject: subject)
+    }
+  )
 }
 
 
 fn lens_ownership_family_gate(report: LensOwnershipFamilyEvalReport) -> Bool {
-  if is_empty(xs: lens_ownership_subject_rows) {
+  if is_empty(xs: lens_ownership_subject_roster) {
     false
   } else {
     lens_ownership_structural_witnesses_hold() && lens_ownership_family_all_pass(report: report)
