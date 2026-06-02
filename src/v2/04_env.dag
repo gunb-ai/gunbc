@@ -1,19 +1,12 @@
 // v2 type environment -- structural type bindings and lookup.
 module v2.compiler.infer_env
 
-import v2.std.core { Node, SourceSpan, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named }
+import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
 // Types
 // =========================================================================
-
-type LookupCache {
-  authored_names: Map<String, String>
-  child_by_name: Map<String, Map<String, Node>>
-  scrutinee_by_name: Map<String, Node>
-  enriched_kernel: Map<String, Node>
-}
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
@@ -22,91 +15,6 @@ type TypeEnv {
   inductive_fields: Map<String, List<InductiveField>>
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
-  lookup_cache: LookupCache
-}
-
-fn empty_lookup_cache() -> LookupCache {
-  LookupCache {
-    authored_names: empty_map(),
-    child_by_name: empty_map(),
-    scrutinee_by_name: empty_map(),
-    enriched_kernel: empty_map()
-  }
-}
-
-fn span_cache_key(span: SourceSpan) -> String {
-  concat(span.file, "|", to_string(value: span.start), "|", to_string(value: span.end))
-}
-
-fn node_cache_key(node: Node) -> String {
-  match node.ident_span {
-    Some { value: span } => span_cache_key(span: span)
-    None => concat("__node__|", node.name)
-  }
-}
-
-fn merge_lookup_caches(left: LookupCache, right: LookupCache) -> LookupCache {
-  LookupCache {
-    authored_names: map_merge(left.authored_names, right.authored_names),
-    child_by_name: map_merge(left.child_by_name, right.child_by_name),
-    scrutinee_by_name: map_merge(left.scrutinee_by_name, right.scrutinee_by_name),
-    enriched_kernel: map_merge(left.enriched_kernel, right.enriched_kernel)
-  }
-}
-
-fn lookup_cache_put_authored_name(cache: LookupCache, node: Node, source_indices: Map<String, NewlineIndex>) -> LookupCache {
-  match node.ident_span {
-    None => cache
-    Some { value: span } =>
-      let key = span_cache_key(span: span)
-      if map_get(cache.authored_names, key) != none { cache }
-      else {
-        LookupCache {
-          authored_names: map_insert(cache.authored_names, key, authored_name_at(source_indices: source_indices, node: node)),
-          child_by_name: cache.child_by_name,
-          scrutinee_by_name: cache.scrutinee_by_name,
-          enriched_kernel: cache.enriched_kernel
-        }
-      }
-  }
-}
-
-fn lookup_cache_index_children(cache: LookupCache, parent: Node, source_indices: Map<String, NewlineIndex>) -> LookupCache {
-  let parent_key = node_cache_key(node: parent)
-  if map_get(cache.child_by_name, parent_key) != none { cache }
-  else {
-    let child_index = fold(parent.children, init: empty_map(), f: (acc, child) =>
-      let child_name = authored_name_at(source_indices: source_indices, node: child)
-      if child_name == "" { acc } else { map_insert(acc, child_name, child) }
-    )
-    LookupCache {
-      authored_names: cache.authored_names,
-      child_by_name: map_insert(cache.child_by_name, parent_key, child_index),
-      scrutinee_by_name: cache.scrutinee_by_name,
-      enriched_kernel: cache.enriched_kernel
-    }
-  }
-}
-
-fn warm_lookup_cache_for_node(cache: LookupCache, node: Node, source_indices: Map<String, NewlineIndex>) -> LookupCache {
-  let cache = lookup_cache_put_authored_name(cache: cache, node: node, source_indices: source_indices)
-  let cache = if node.children |> count > 0 { lookup_cache_index_children(cache: cache, parent: node, source_indices: source_indices) } else { cache }
-  fold(node.children, init: cache, f: (acc, child) => warm_lookup_cache_for_node(cache: acc, node: child, source_indices: source_indices))
-}
-
-fn warm_lookup_cache(env: TypeEnv, roots: List<Node>) -> TypeEnv {
-  let cache = fold(roots, init: env.lookup_cache, f: (acc, root) =>
-    warm_lookup_cache_for_node(cache: acc, node: root, source_indices: env.source_indices)
-  )
-  TypeEnv {
-    bindings: env.bindings,
-    recursive_types: env.recursive_types,
-    recursive_type_set: env.recursive_type_set,
-    inductive_fields: env.inductive_fields,
-    source_indices: env.source_indices,
-    intern_table: env.intern_table,
-    lookup_cache: cache
-  }
 }
 
 type TypeBinding {
@@ -148,84 +56,7 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
 }
 
 fn authored_name(env: TypeEnv, node: Node) -> String {
-  match node.ident_span {
-    None => ""
-    Some { value: span } =>
-      let key = span_cache_key(span: span)
-      match map_get(env.lookup_cache.authored_names, key) {
-        Some { value: cached } => cached
-        None => authored_name_at(source_indices: env.source_indices, node: node)
-      }
-  }
-}
-
-fn find_child_in_env(env: TypeEnv, parent: Node, name: String) -> Node? {
-  let parent_key = node_cache_key(node: parent)
-  match map_get(env.lookup_cache.child_by_name, parent_key) {
-    Some { value: index } => map_get(index, name)
-    None => find_child_named(n: parent, name: name, source_indices: env.source_indices)
-  }
-}
-
-fn has_child_in_env(env: TypeEnv, parent: Node, name: String) -> Bool {
-  match find_child_in_env(env: env, parent: parent, name: name) {
-    Some { value: _ } => true
-    None => false
-  }
-}
-
-fn lookup_cache_put_scrutinee(env: TypeEnv, canonical: String, resolved: Node) -> TypeEnv {
-  if canonical == "" { env }
-  else if map_get(env.lookup_cache.scrutinee_by_name, canonical) != none { env }
-  else {
-    TypeEnv {
-      bindings: env.bindings,
-      recursive_types: env.recursive_types,
-      recursive_type_set: env.recursive_type_set,
-      inductive_fields: env.inductive_fields,
-      source_indices: env.source_indices,
-      intern_table: env.intern_table,
-      lookup_cache: LookupCache {
-        authored_names: env.lookup_cache.authored_names,
-        child_by_name: env.lookup_cache.child_by_name,
-        scrutinee_by_name: map_insert(env.lookup_cache.scrutinee_by_name, canonical, resolved),
-        enriched_kernel: env.lookup_cache.enriched_kernel
-      }
-    }
-  }
-}
-
-fn lookup_cache_get_scrutinee(env: TypeEnv, canonical: String) -> Node? {
-  map_get(env.lookup_cache.scrutinee_by_name, canonical)
-}
-
-fn lookup_cache_put_enriched_kernel(env: TypeEnv, key: String, enriched: Node) -> TypeEnv {
-  if key == "" { env }
-  else if map_get(env.lookup_cache.enriched_kernel, key) != none { env }
-  else {
-    TypeEnv {
-      bindings: env.bindings,
-      recursive_types: env.recursive_types,
-      recursive_type_set: env.recursive_type_set,
-      inductive_fields: env.inductive_fields,
-      source_indices: env.source_indices,
-      intern_table: env.intern_table,
-      lookup_cache: LookupCache {
-        authored_names: env.lookup_cache.authored_names,
-        child_by_name: env.lookup_cache.child_by_name,
-        scrutinee_by_name: env.lookup_cache.scrutinee_by_name,
-        enriched_kernel: map_insert(env.lookup_cache.enriched_kernel, key, enriched)
-      }
-    }
-  }
-}
-
-fn lookup_cache_get_enriched_kernel(env: TypeEnv, key: String) -> Node? {
-  map_get(env.lookup_cache.enriched_kernel, key)
-}
-
-fn enriched_kernel_cache_key(name: String, base: Node) -> String {
-  concat(name, "#", to_string(value: base.children |> count))
+  authored_name_at(source_indices: env.source_indices, node: node)
 }
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
@@ -304,6 +135,5 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
     Some { value: first_env } => first_env.intern_table
     None => empty_intern_table()
   }
-  let merged_lookup_cache = fold(envs, init: empty_lookup_cache(), f: (acc, env) => merge_lookup_caches(left: acc, right: env.lookup_cache))
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table, lookup_cache: merged_lookup_cache }
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
 }
