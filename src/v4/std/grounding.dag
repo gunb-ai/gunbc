@@ -8,7 +8,7 @@
 module v4.std.grounding
 
 
-import v4.std.collection { Map }
+import v4.std.collection { Map, empty_map, map_get, map_insert }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -50,26 +50,13 @@ type PerLanguageFactBundleEntry {
 }
 
 
-// P2: keyed registry — duplicate PerLanguageFactBundleKey rows are unrepresentable (fail-closed insert).
-// 🟢 coproduct dissolution — G0.1 registry lookup result.
-// Missing and found are the only legal lookup states for the registry's closed, total lookup
-// function; duplicate insertion remains fail-closed at insert_per_language_fact_bundle_entry.
-type PerLanguageFactBundleLookup
-  = PerLanguageFactBundleMissing
-  | PerLanguageFactBundleFound { value: Node }
-
-
 type PerLanguageFactBundleRegistry {
-  lookup: fn(PerLanguageFactBundleKey) -> PerLanguageFactBundleLookup
+  by_key: Map<PerLanguageFactBundleKey, Node>
 }
 
 
 fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
-  PerLanguageFactBundleRegistry {
-    lookup: fn(_) {
-      PerLanguageFactBundleMissing
-    }
-  }
+  PerLanguageFactBundleRegistry { by_key: empty_map() }
 }
 
 
@@ -101,13 +88,32 @@ fn per_language_fact_bundle_missing_key_diagnostic() -> Diagnostic {
 }
 
 
+// 🟡 gated — bootstrap-limitation interim — feature:G0-map-lookup-option-projection —
+// bind: Branch G.0/G.1 M1 compile. Model authority is v4.std.collection.map_get
+// (declared as Outcome<Optional<V>>), but the v2 Rust emitter currently projects the
+// accepted value as the bootstrap `V?` surface (`Some`/`None`). This boundary is the only
+// G.0 consumer of that projection; insert still propagates Rejected and treats only
+// accepted None as insertion permission. Dissolve when B-LOOKUP-1 emits Optional<T>
+// constructors (`Present`/`Absent`) at map_get call sites.
+fn per_language_fact_bundle_lookup_optional(
+  registry: PerLanguageFactBundleRegistry,
+  key: PerLanguageFactBundleKey
+) -> Outcome<Node?> {
+  map_get(registry.by_key, key)
+}
+
+
 fn per_language_fact_bundle_lookup(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey
 ) -> Witness<Node> {
-  match registry.lookup(key) {
-    PerLanguageFactBundleFound { value: value } => Holds { value: value }
-    PerLanguageFactBundleMissing => Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+  match per_language_fact_bundle_lookup_optional(registry: registry, key: key) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Some { value: value } => Holds { value: value }
+        None => Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+      }
+    Rejected { diagnostics: d } => Violates { diagnostic: d.head }
   }
 }
 
@@ -117,21 +123,19 @@ fn insert_per_language_fact_bundle_entry(
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match registry.lookup(key) {
-    PerLanguageFactBundleFound { value: _ } =>
-      outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    PerLanguageFactBundleMissing =>
-      outcome_accepted(
-        value: PerLanguageFactBundleRegistry {
-          lookup: fn(candidate) {
-            if candidate == key {
-              PerLanguageFactBundleFound { value: fact_value }
-            } else {
-              registry.lookup(candidate)
+  match per_language_fact_bundle_lookup_optional(registry: registry, key: key) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Some { value: _ } =>
+          outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
+        None =>
+          outcome_accepted(
+            value: PerLanguageFactBundleRegistry {
+              by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
             }
-          }
-        }
-      )
+          )
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 

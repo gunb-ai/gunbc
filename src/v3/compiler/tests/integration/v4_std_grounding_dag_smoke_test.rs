@@ -192,15 +192,12 @@ fn v4_std_grounding_registry_keyed_map_authority() {
     ));
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleRegistry"),
-        vec!["lookup"],
-        "registry must expose a keyed PerLanguageFactBundleKey lookup, not List rows that can duplicate"
+        vec!["by_key"],
+        "registry must expose a keyed PerLanguageFactBundleKey map, not List rows that can duplicate"
     );
     assert!(
-        GROUNDING_DAG.contains("type PerLanguageFactBundleLookup")
-            && GROUNDING_DAG.contains("PerLanguageFactBundleMissing")
-            && GROUNDING_DAG.contains("PerLanguageFactBundleFound { value: Node }")
-            && GROUNDING_DAG.contains("🟢 coproduct dissolution — G0.1 registry lookup result"),
-        "registry lookup result must be a declared carrier, not bootstrap Optional/Map projection"
+        GROUNDING_DAG.contains("by_key: Map<PerLanguageFactBundleKey, Node>"),
+        "registry stores rows behind a keyed map; insert owns duplicate rejection"
     );
     assert!(
         GROUNDING_DAG.contains("fn insert_per_language_fact_bundle_entry("),
@@ -220,16 +217,18 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
         "grouped spec_facts projection must consume the model_core-owned axis witness, not re-declare axis membership"
     );
     assert!(
-        !GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup_optional(")
-            && !GROUNDING_DAG.contains("map_get(registry.by_key, key)")
-            && !GROUNDING_DAG.contains("registry.by_key.lookup(key)")
+        GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup_optional(")
+            && GROUNDING_DAG.contains("-> Outcome<Node?>")
+            && GROUNDING_DAG.contains("map_get(registry.by_key, key)")
             && GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup(")
             && GROUNDING_DAG.contains("-> Witness<Node>")
-            && GROUNDING_DAG.contains("match registry.lookup(key)")
-            && GROUNDING_DAG.contains("PerLanguageFactBundleFound { value: value }")
-            && GROUNDING_DAG.contains("PerLanguageFactBundleMissing")
-            && GROUNDING_DAG.contains("lookup: fn(PerLanguageFactBundleKey) -> PerLanguageFactBundleLookup"),
-        "registry insert must consume declared lookup results without bootstrap Optional/Map projection"
+            && GROUNDING_DAG.contains("feature:G0-map-lookup-option-projection")
+            && GROUNDING_DAG
+                .contains("match per_language_fact_bundle_lookup_optional(registry: registry, key: key)")
+            && GROUNDING_DAG.contains("Some { value: value } => Holds { value: value }")
+            && GROUNDING_DAG.contains("None => Violates")
+            && GROUNDING_DAG.contains("Rejected { diagnostics: d } => Rejected { diagnostics: d }"),
+        "registry insert must isolate the bootstrap map_get option projection and propagate rejected lookup state"
     );
     assert!(
         GROUNDING_DAG.contains("fn primitive_fact_bundle_for_registry_subject(")
