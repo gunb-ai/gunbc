@@ -110,10 +110,17 @@ pub fn bootstrap_required(flags: CiComponentAffected) -> bool {
     flags.v2 || flags.v4
 }
 
-/// `saved_minutes = max(0, estimated_full_run_minutes - actual_run_minutes)`, clamped to 0 when the
-/// baseline is unset so a missing baseline never reports phantom savings.
+/// `saved_minutes = max(0, estimated_full_run_minutes - actual_run_minutes)`, but **only when both
+/// inputs are observed**. It is `0.0` when the baseline is unset OR when `actual_run_minutes` is
+/// unobserved (`<= 0.0`).
+///
+/// Fail-closed discipline (INVARIANTS P3): a CI run always takes >0 minutes, so `actual <= 0.0` means
+/// "not yet measured", not "instantaneous run". Subtracting an unobserved actual from the baseline
+/// would fabricate a full-baseline saving on every run — exactly the phantom savings this guard
+/// exists to prevent. Until the timing aggregator populates `actual_run_minutes`, savings are
+/// reported as unknown (`0.0`), never as the baseline.
 pub fn saved_minutes(estimated_full_run_minutes: f64, actual_run_minutes: f64) -> f64 {
-    if estimated_full_run_minutes <= BASELINE_FULL_RUN_MINUTES_UNSET {
+    if estimated_full_run_minutes <= BASELINE_FULL_RUN_MINUTES_UNSET || actual_run_minutes <= 0.0 {
         return 0.0;
     }
     (estimated_full_run_minutes - actual_run_minutes).max(0.0)
