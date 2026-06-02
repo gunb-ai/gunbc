@@ -8,7 +8,7 @@
 |---|---|
 | 1. Work item | `node://adhoc-299588a3-66b` — B-min `.dag` ingestion floor + RR-B worksheet. |
 | 2. Branch | Branch B-min now; B-full is explicitly deferred. |
-| 3. Authority | `ConcreteSyntaxSchema` in `src/v4/std/grammar.dag` is the single concrete-syntax authority carrier, including a terminal coverage witness tying grammar terminals to lexer token rules. |
+| 3. Authority | `ConcreteSyntaxSchema` in `src/v4/std/grammar.dag` is the staged single concrete-syntax authority carrier, including an explicit terminal-coverage obligation that Bmin.2 must close with a validator. |
 | 4. Projections | `LexPattern`, `GrammarExpr`, `ParseGrammar`, and `GrammarSchemaProbeBinding` are operational projections/bridges until CP-1b convergence. |
 | 5. Floor claim | `src/v4/test/claim/round_trip/dag_ingestion_floor_min.dag` re-derives `.dag` wave-1 lex, grammar, and C5 trivia readiness from `dag.dag`. |
 | 6. B-min rows | Bmin.1 single declared grammar parse path; Bmin.2 structural morphism from authority to parser projection; Bmin.3 `WellFormedFormalGrammar` validating constructor; Bmin.4 round-trip claim; Bmin.5 canonical source emission. |
@@ -22,7 +22,7 @@
 | Row | Status | Required shape |
 |---|---|---|
 | Bmin.1 | Open | `.dag` parses through one declared `ConcreteSyntaxSchema`; no bespoke `.dag` parser walk. |
-| Bmin.2 | Staged | `ConcreteSyntaxSchema.terminal_coverage` is a required `Witness<GrammarTerminalLexCoverage>` proving each `FormalTerminal.identity` is covered by `LexRules` token rules; downstream parser projection still needs the structural morphism and enumerating validator from this authority. |
+| Bmin.2 | Open | `ConcreteSyntaxSchema.terminal_coverage` is a `GrammarTerminalLexCoverageObligation`, not proof; downstream parser projection must add the structural morphism and enumerating validator proving each `FormalTerminal.identity` is covered by `LexRules` token rules. |
 | Bmin.3 | Open | `WellFormedFormalGrammar` is the validating constructor/witness boundary for formal grammar authority. |
 | Bmin.4 | Blocked on H.7.1 | Round-trip claim may consume Bmin.1-3 only after source authority can state the normalized source AST parse/print law. Do not use `dag-artifact.json` or `--target dag` JSON IR equality as source authority. |
 | Bmin.5 | Blocked on H.7.1 | Canonical source emission waits for canonical `.dag` source AST plus deterministic serializer; do not claim bit-identical fidelity before W1b compare lands. |
@@ -31,7 +31,7 @@
 
 | Finding | Disposition |
 |---|---|
-| B2.1 `ConcreteSyntaxSchema` must be the authority | Landed as the named carrier in `std/grammar.dag`; terminal coverage is part of the carrier, and projections remain bridges. |
+| B2.1 `ConcreteSyntaxSchema` must be the authority | Landed as the named staged carrier in `std/grammar.dag`; terminal coverage is explicit obligation/debt on the carrier until Bmin.2 validation lands, and projections remain bridges. |
 | B2.2 Go parse claim missing | Record as anomaly; do not add Go parse scope in B-min without Go-owner coordination. |
 | B2.3 LexPattern CP-1b is the omni-ingestion gate | Ruling: `LexPattern` projects from `ConcreteSyntaxSchema`; it is not an authority. |
 | B2.4 GrammarExpr CP-1b shares the same fate | Ruling: `GrammarExpr` is parser projection until derived from formal grammar authority. |
@@ -45,7 +45,7 @@
 
 This PR intentionally lands only:
 
-- the `ConcreteSyntaxSchema` carrier, terminal coverage witness, and projection ruling;
+- the staged `ConcreteSyntaxSchema` carrier, terminal-coverage obligation, and projection ruling;
 - the B-min `.dag` ingestion floor claim for existing `.dag` wave-1 authority readiness;
 - this RR-B worksheet folding B-min plus B.2 findings.
 

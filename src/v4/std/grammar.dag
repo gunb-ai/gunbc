@@ -101,38 +101,32 @@ type WellFormedFormalGrammar {
 }
 
 
-type GrammarTerminalLexCoverage {
+type GrammarTerminalLexCoverageObligation {
   lex: LexRules
   grammar: WellFormedFormalGrammar
 }
 
 
 // Branch B ingestion-unification ruling (2026-06-02): concrete syntax is a
-// single authority row. Terminal coverage is part of the authority: consumers
-// must construct the schema with a terminal_coverage witness proving every
-// FormalTerminal.identity is produced by the LexRules token rules. LexPattern
-// and GrammarExpr remain operational projections until CP-1b convergence; they
-// are not independent authorities.
+// single authority row. Terminal coverage is an explicit obligation on the
+// carrier, not a completed proof in this PR: Bmin.2 must replace this obligation
+// with an enumerating validator tying every FormalTerminal.identity to LexRules
+// token rules. LexPattern and GrammarExpr remain operational projections until
+// CP-1b convergence; they are not independent authorities.
 type ConcreteSyntaxSchema {
   lex: LexRules
   grammar: WellFormedFormalGrammar
-  terminal_coverage: Witness<GrammarTerminalLexCoverage>
+  terminal_coverage: GrammarTerminalLexCoverageObligation
 }
 
 
 fn concrete_syntax_schema(
-  terminal_coverage: Witness<GrammarTerminalLexCoverage>
-) -> Witness<ConcreteSyntaxSchema> {
-  match terminal_coverage {
-    Holds { value: coverage } =>
-      Holds {
-        value: ConcreteSyntaxSchema {
-          lex: coverage.lex,
-          grammar: coverage.grammar,
-          terminal_coverage: terminal_coverage
-        }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+  terminal_coverage: GrammarTerminalLexCoverageObligation
+) -> ConcreteSyntaxSchema {
+  ConcreteSyntaxSchema {
+    lex: terminal_coverage.lex,
+    grammar: terminal_coverage.grammar,
+    terminal_coverage: terminal_coverage
   }
 }
 
