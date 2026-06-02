@@ -291,7 +291,7 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
         ),
         "{RUST_LANGUAGE_PATH}: Rust TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, RUST_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, RUST_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "RustGrammarRelationRow"),
         "{RUST_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -392,7 +392,7 @@ fn v4_java_language_model_declares_t11_translation_rules() {
         ),
         "{JAVA_LANGUAGE_PATH}: Java TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, JAVA_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, JAVA_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "JavaGrammarRelationRow"),
         "{JAVA_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -758,7 +758,7 @@ fn v4_typescript_language_model_declares_t11_translation_rules() {
         ),
         "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, TYPESCRIPT_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, TYPESCRIPT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "TsGrammarRelationRow"),
         "{TYPESCRIPT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -780,7 +780,7 @@ fn v4_swift_language_model_declares_t11_translation_rules() {
         ),
         "{SWIFT_LANGUAGE_PATH}: Swift TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, SWIFT_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, SWIFT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "SwiftGrammarRelationRow"),
         "{SWIFT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -838,7 +838,7 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
         ),
         "{WASM_LANGUAGE_PATH}: Wasm TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, WASM_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, WASM_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "WasmGrammarRelationRow"),
         "{WASM_LANGUAGE_PATH}: must declare the grammar relation row carrier"

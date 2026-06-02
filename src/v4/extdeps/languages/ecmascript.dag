@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/ecmascript.dag
 // Scope: ECMAScript ES2022 (ECMA-262 13th Edition) primitive fact-bundles + T-11 MVP-1 grammar-data target model.
-// Owns: EcmascriptSingletonKind, EcmascriptScalar, EcmascriptCost, ConcreteSyntaxToken,
+// Owns: EcmascriptSingletonKind, EcmascriptScalar, EcmascriptCost,
 //   EcmascriptGrammarRelationRow, EcmascriptLanguageModel, EcmascriptNumberPrimitiveFacts,
 //   EcmascriptBigIntPrimitiveFacts, EcmascriptBooleanPrimitiveFacts, EcmascriptStringPrimitiveFacts,
 //   EcmascriptSingletonPrimitiveFacts, ecmascript_language_model_wave1 (+ supporting fns).
