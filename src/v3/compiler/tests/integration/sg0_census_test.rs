@@ -276,6 +276,16 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
+    // F.14 / T-PB-B: `ExecuteCommand` logical child for `tests/dag/boundary_emit_gates.template.dag`.
+    // Irreducible host-shim bin (exit 0/1); calls `v3_compiler::boundary_emit_gates::check_*`.
+    // **P5 receipt (Mechanism (b), disposition (3)):** deferral to ROADMAP.md **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` and active deferral **PB-Runtime-External-Toolchain-TestClaims**
+    // (hand `tests/boundary/*.rs` → `.dag` `TestClaim` / substrate target verification).
+    // Dissolution: delete this bin when the last class-5 boundary host shim in `tests/boundary/`
+    // is retired and `boundary_emit_gates.template.dag` (or generated runner) is sole authority
+    // for the remaining `ExecuteCommand` claims — checkable: SG-0 `EXPECTED_HAND_AUTHORED_TEST`
+    // no longer lists any `tests/boundary/*` path still covered only by this bin.
+    "src/v3/compiler/src/bin/boundary_emit_gates.rs",
     "src/v3/compiler/src/bin/gunbc_ci.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -358,6 +368,14 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
     "src/v3/compiler/src/process_exit.rs",
+    // F.14 / T-PB-B: shared `check_*` for class-5 boundary emit gates; thin host `#[test]`
+    // shims and `boundary_emit_gates` bin both call (`tests/dag/boundary_emit_gates.template.dag`).
+    // **P5 receipt (Mechanism (b), disposition (3)):** deferral to ROADMAP.md **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` + **PB-Runtime-External-Toolchain-TestClaims**.
+    // Dissolution: delete when every claim in `boundary_emit_gates.template.dag` is evaluated by
+    // substrate `run_target_verification` / v4 `.dag` `TestClaim` runtime without this module
+    // (same lane as `r1c_e_gates.rs` scaffold, but boundary-class scope not R1C-E / issue #973).
+    "src/v3/compiler/src/boundary_emit_gates.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
     // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
     // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
@@ -404,7 +422,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
-    "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
+    // **P5 receipt (F.14 / T-PB-B):** `m2_emit_multi_field_struct_variant_test.rs` retired;
+    // `tests/dag/boundary_emit_gates.template.dag` + `boundary_emit_gates` bin are authority
+    // (`t_pb_b_1_dag_runner_test::boundary_emit_gates_suite_passes_through_runner`).
     // Phase 1 leaf-model go R1/R2a/R2b/R3-external: boundary Go toolchain exercise for
     // R1 int surface spelling, R2a int algebra ops, R2b int64 overflow wrap, R3-external
     // Symbol-as-string projection until T-22 modeled `run_target_verification` owns target
