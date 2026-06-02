@@ -68,6 +68,9 @@ const WAVE3_ROSTER_PATH: &str = "src/v4/test/claim/workflow/wave3_shadow_roster.
 const TESTCLAIM_CORPUS_RUNNER_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/testclaim_corpus_runner.dag");
 const TESTCLAIM_CORPUS_RUNNER_PATH: &str = "src/v4/test/claim/workflow/testclaim_corpus_runner.dag";
+const MANUAL_CORPUS_ROSTER_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/manual_corpus_roster.dag");
+const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_roster.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 
@@ -1771,7 +1774,32 @@ fn v4_workflow_ci_wave3_fixture_receipt_documents_live_ci_deferral() {
 #[test]
 fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
-    parse_module(TESTCLAIM_CORPUS_RUNNER_DAG, TESTCLAIM_CORPUS_RUNNER_PATH);
+    let corpus_runner_module =
+        parse_module(TESTCLAIM_CORPUS_RUNNER_DAG, TESTCLAIM_CORPUS_RUNNER_PATH);
+    let manual_roster_module = parse_module(MANUAL_CORPUS_ROSTER_DAG, MANUAL_CORPUS_ROSTER_PATH);
+    assert!(
+        imports_name(
+            &corpus_runner_module,
+            &["v4", "test", "claim", "manual", "manual_corpus_roster"],
+            "manual_corpus_node_subject_rows"
+        ),
+        "{TESTCLAIM_CORPUS_RUNNER_PATH}: runner must import the manual subject-roster authority"
+    );
+    assert!(
+        surface_declares_fn(&corpus_runner_module, "run_node_runtime_value_subjects")
+            && surface_declares_fn(
+                &corpus_runner_module,
+                "manual_testclaim_subject_roster_family_receipt"
+            ),
+        "{TESTCLAIM_CORPUS_RUNNER_PATH}: runner must declare the subject-to-run helper and family receipt"
+    );
+    assert!(
+        matches!(
+            data_body(&manual_roster_module, "manual_corpus_node_subject_rows"),
+            SurfaceExpr::List { .. }
+        ),
+        "{MANUAL_CORPUS_ROSTER_PATH}: manual_corpus_node_subject_rows must remain a concrete subject roster"
+    );
     assert!(
         CI_DAG.contains("| TestClaimCorpusEvalCommand"),
         "{CI_DAG_PATH}: T-38 dissolution step must declare TestClaimCorpusEvalCommand arm in CiCommand"
