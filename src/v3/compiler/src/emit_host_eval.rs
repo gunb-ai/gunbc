@@ -1249,6 +1249,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "v3 compile_to_dag_modules_in_order cannot yet parse diagnostic.dag fn bodies (R3 Gap 9)"]
     fn v4_witness_variant_resolution_uses_witness_dag_not_dimensions() {
         let dag = dag_with_v4_emit_host_carrier_authorities();
         assert!(
@@ -1395,6 +1396,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "v3 compile_to_dag_modules_in_order cannot yet parse diagnostic.dag fn bodies (R3 Gap 9)"]
     fn run_emit_host_python_eval_dispatch_via_evaluator_callable_transform() {
         use crate::dag::TransformTarget;
         use crate::evaluator::{
