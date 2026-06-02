@@ -125,15 +125,15 @@ const DELEGATED_DAG_COLLECT_SYMBOLS: &[&str] = &[
 const GENERATED_METHOD_TEMPLATE_PROJECTION_DAG: &str = r#"module generated.method_template_projection
 
 data rust_method_template_emit: Map<String, String> = {
-  "chars": "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
+  "chars": "\{recv\}.chars().map(|c| c as i64).collect::<Vector<_>>()",
   "count": "(\{recv\}.len() as i64)",
-  "enumerate": "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",
+  "enumerate": "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vector<_>>()",
   "first": "\{recv\}.first().cloned()",
   "join": "\{recv\}.join(&\{arg\})",
   "last": "\{recv\}.last().cloned()",
-  "skip": "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",
-  "split": "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
-  "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",
+  "skip": "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vector<_>>()",
+  "split": "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vector<_>>()",
+  "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vector<_>>()",
 }
 
 data python_method_template_emit: Map<String, String> = {
