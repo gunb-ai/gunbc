@@ -471,15 +471,18 @@ data claim_rust_language_model_emit_mechanical_reverification: TestClaim = Equal
 }
 
 
+data subject_rust_language_model_emit_mechanical_reverification_claim: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_rust_language_model_emit_mechanical_reverification,
+  context: subsumption_context(),
+  tree: subsumption_inferred_tree(
+    root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
+  ),
+  evaluator_pin: subsumption_evaluator_pin
+)
+
+
 data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<Node, RuntimeValue> = run_test_claim(
-  subject: eval_test_claim_subject(
-    claim: claim_rust_language_model_emit_mechanical_reverification,
-    context: subsumption_context(),
-    tree: subsumption_inferred_tree(
-      root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
-    ),
-    evaluator_pin: subsumption_evaluator_pin
-  )
+  subject: subject_rust_language_model_emit_mechanical_reverification_claim
 )
 
 
@@ -534,13 +537,16 @@ data claim_rust_language_model_emit_subsumption_reverifies: TestClaim = EqualsCl
 }
 
 
+data subject_rust_language_model_emit_subsumption_reverifies: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_rust_language_model_emit_subsumption_reverifies,
+  context: subsumption_context(),
+  tree: subsumption_inferred_tree(
+    root: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption)
+  ),
+  evaluator_pin: subsumption_evaluator_pin
+)
+
+
 data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, RuntimeValue> = run_test_claim(
-  subject: eval_test_claim_subject(
-    claim: claim_rust_language_model_emit_subsumption_reverifies,
-    context: subsumption_context(),
-    tree: subsumption_inferred_tree(
-      root: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption)
-    ),
-    evaluator_pin: subsumption_evaluator_pin
-  )
+  subject: subject_rust_language_model_emit_subsumption_reverifies
 )
