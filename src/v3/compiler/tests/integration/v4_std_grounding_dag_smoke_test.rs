@@ -213,15 +213,18 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
         "grouped spec_facts projection must consume the model_core-owned axis witness, not re-declare axis membership"
     );
     assert!(
-        GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup(")
+        GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup_optional(")
+            && GROUNDING_DAG.contains("-> Outcome<Optional<Node>>")
+            && GROUNDING_DAG.contains("map_get(registry.by_key, key)")
+            && GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup(")
             && GROUNDING_DAG.contains("-> Witness<Node>")
-            && GROUNDING_DAG.contains("match map_get(registry.by_key, key)")
+            && GROUNDING_DAG
+                .contains("match per_language_fact_bundle_lookup_optional(registry: registry, key: key)")
             && GROUNDING_DAG
                 .contains("Accepted { value: Present { value: value }, diagnostics: _ }")
             && GROUNDING_DAG.contains("Accepted { value: Absent, diagnostics: _ }")
             && GROUNDING_DAG.contains("Rejected { diagnostics: d }")
-            && GROUNDING_DAG.contains("Holds { value: _ }")
-            && GROUNDING_DAG.contains("Violates { diagnostic: _ }"),
+            && GROUNDING_DAG.contains("Rejected { diagnostics: d } => Rejected { diagnostics: d }"),
         "registry insert must consume an explicit Outcome<Optional<Node>> to Witness<Node> lookup bridge, not raw Map.lookup carriers"
     );
     assert!(

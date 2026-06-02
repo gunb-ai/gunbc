@@ -11,6 +11,7 @@ module v4.std.grounding
 import v4.std.collection {
   Absent,
   Map,
+  Optional,
   Present,
   empty_map,
   map_insert
@@ -99,11 +100,19 @@ fn per_language_fact_bundle_missing_key_diagnostic() -> Diagnostic {
 // bind: Branch G.0 M1 compile; dissolve-on: v4.std.collection.Map.lookup compiles as
 // Witness<V> at every v4 call site. Current bootstrap projects this lookup through map_get;
 // G.0 consumers see only Witness<Node> through this boundary.
+fn per_language_fact_bundle_lookup_optional(
+  registry: PerLanguageFactBundleRegistry,
+  key: PerLanguageFactBundleKey
+) -> Outcome<Optional<Node>> {
+  map_get(registry.by_key, key)
+}
+
+
 fn per_language_fact_bundle_lookup(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey
 ) -> Witness<Node> {
-  match map_get(registry.by_key, key) {
+  match per_language_fact_bundle_lookup_optional(registry: registry, key: key) {
     Accepted { value: Present { value: value }, diagnostics: _ } => Holds { value: value }
     Accepted { value: Absent, diagnostics: _ } =>
       Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
@@ -117,15 +126,16 @@ fn insert_per_language_fact_bundle_entry(
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match per_language_fact_bundle_lookup(registry: registry, key: key) {
-    Holds { value: _ } =>
+  match per_language_fact_bundle_lookup_optional(registry: registry, key: key) {
+    Accepted { value: Present { value: _ }, diagnostics: _ } =>
       outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    Violates { diagnostic: _ } =>
+    Accepted { value: Absent, diagnostics: _ } =>
       outcome_accepted(
         value: PerLanguageFactBundleRegistry {
           by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
         }
       )
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
