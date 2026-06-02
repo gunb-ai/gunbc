@@ -8,10 +8,12 @@
 module v4.std.grounding
 
 
-import v4.std.collection { Map, empty_map, map_insert }
+import v4.std.collection { Absent, Map, Present, empty_map, map_get, map_insert }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   Outcome,
+  Rejected,
   Unavailable,
   UserInputBoundary,
   outcome_accepted,
@@ -77,7 +79,7 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
 }
 
 
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>);
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
 // dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at
 // v4.std.collection:54); site: insert_per_language_fact_bundle_entry duplicate-key gate.
 fn insert_per_language_fact_bundle_entry(
@@ -85,15 +87,18 @@ fn insert_per_language_fact_bundle_entry(
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match map_get(registry.by_key, key) {
-    Some { value: _ } =>
-      outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
-    None =>
-      outcome_accepted(
-        value: PerLanguageFactBundleRegistry {
-          by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
-        }
-      )
+  match map_get(m: registry.by_key, key: key) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: _ } =>
+        outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
+      Absent =>
+        outcome_accepted(
+          value: PerLanguageFactBundleRegistry {
+            by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+          }
+        )
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 
@@ -119,21 +124,24 @@ fn per_language_fact_bundle_insert_subject_axis(
   fact_axis: ModelCorePrimitiveFactAxis
 ) -> Map<Symbol, Node> {
   match map_get(
-    registry.by_key,
-    per_language_fact_bundle_subject_axis_key(
+    m: registry.by_key,
+    key: per_language_fact_bundle_subject_axis_key(
       subject_carrier: subject_carrier,
       target: target,
       fact_axis: fact_axis
     )
   ) {
-    Some { value: fact_value } =>
-      map_insert(
-        m: spec_facts,
-        key: model_core_primitive_fact_axis_symbol(axis: fact_axis),
-        value: fact_value
-      )
-    None =>
-      spec_facts
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: fact_value } =>
+        map_insert(
+          m: spec_facts,
+          key: model_core_primitive_fact_axis_symbol(axis: fact_axis),
+          value: fact_value
+        )
+      Absent =>
+        spec_facts
+    }
+    Rejected { diagnostics: _ } => spec_facts
   }
 }
 
