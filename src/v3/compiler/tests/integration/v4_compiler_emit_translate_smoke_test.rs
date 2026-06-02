@@ -339,6 +339,20 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
         );
     }
     for name in [
+        "ModelCoreFactAxisEncoding",
+        "ModelCoreFactAxisOverflowDisposition",
+        "ModelCoreFactAxisRange",
+        "ModelCoreFactAxisSignedness",
+        "ModelCoreFactAxisSurfaceSpelling",
+        "ModelCoreFactAxisWidth",
+        "ModelCorePrimitiveFactAxis",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "model_core"], name),
+            "{RUST_LANGUAGE_PATH}: Rust G.1.1 registry keys must consume model_core::{name}"
+        );
+    }
+    for name in [
         "rust_per_language_fact_bundle_key",
         "rust_per_language_fact_bundle_entry",
         "rust_integer_per_language_fact_bundle_entries",
@@ -354,6 +368,16 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
             "{RUST_LANGUAGE_PATH}: Rust G.1.1 fact bundle must declare {name}"
         );
     }
+    assert_eq!(
+        surface_fn_param_named_type(&module, "rust_per_language_fact_bundle_key", 1).as_deref(),
+        Some("ModelCorePrimitiveFactAxis"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 registry key axis must be the closed model_core coproduct, not Symbol"
+    );
+    assert_eq!(
+        surface_fn_param_named_type(&module, "rust_per_language_fact_bundle_entry", 1).as_deref(),
+        Some("ModelCorePrimitiveFactAxis"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 registry entry axis must be the closed model_core coproduct, not Symbol"
+    );
     assert!(
         fn_external_body_contains(
             &module,
@@ -375,6 +399,10 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
     assert!(
         !RUST_LANGUAGE_DAG.contains("rust_per_language_fact_bundle_registry_value"),
         "{RUST_LANGUAGE_PATH}: Rust G.1.1 must not bypass fail-closed registry insertion with a value-only map_insert fold"
+    );
+    assert!(
+        !RUST_LANGUAGE_DAG.contains("Rejected { diagnostics: _ } => empty_per_language_fact_bundle_registry()"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 rejected registry construction must not fail open to an empty registry"
     );
 }
 
@@ -1539,11 +1567,19 @@ fn surface_fn_first_param_named_type(
     module: &v3_compiler::parse_surface::SurfaceModule,
     fn_name: &str,
 ) -> Option<String> {
+    surface_fn_param_named_type(module, fn_name, 0)
+}
+
+fn surface_fn_param_named_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    fn_name: &str,
+    param_index: usize,
+) -> Option<String> {
     module.items.iter().find_map(|item| match item {
         SurfaceItem::Fn { name, params, .. } | SurfaceItem::FnExternalBody { name, params, .. }
             if name == fn_name =>
         {
-            params.first().and_then(|param| match &param.ty {
+            params.get(param_index).and_then(|param| match &param.ty {
                 SurfaceType::Named { name, .. } => Some(name.clone()),
                 _ => None,
             })
