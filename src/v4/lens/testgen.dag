@@ -6,7 +6,7 @@ module v4.lens.testgen
 
 
 import v4.std.collection { List }
-import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right, length, list_append, non_empty, list_snoc_item }
+import v4.std.algebra { FreeMonoid, Empty, Cons, filter, fold_list, fold_list_right, length, list_append, non_empty, list_snoc_item }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -275,6 +275,18 @@ data testgen_lens_file_path: String = "src/v4/lens/testgen.dag"
 
 fn default_generator_profile() -> GeneratorProfile {
   GeneratorProfile { profile_ref: testgen_default_profile_ref }
+}
+
+
+data testgen_profile_roster_mismatch: Symbol = testgen_profile_roster_mismatch
+
+
+fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: testgen_profile_roster_mismatch,
+    at: Textual { file: testgen_lens_file_path, extent: WholeFile },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
 
@@ -2013,23 +2025,42 @@ type TestgenRunReceipt {
 }
 
 
-fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt> {
-  bind_outcome(
-    o: testgen_scheduled_generators_outcome(),
-    f: fn(gens) {
-      outcome_accepted(
-        value: TestgenRunReceipt {
-          profile_ref: profile_ref,
-          generators: gens
-        }
-      )
+fn generator_matches_profile(g: Generator<TestgenConcept>, profile_ref: Symbol) -> Bool {
+  g.profile_metadata.profile_ref == profile_ref
+}
+
+
+fn testgen_scheduled_generators_matching_profile(
+  gens: List<Generator<TestgenConcept>>,
+  profile_ref: Symbol
+) -> List<Generator<TestgenConcept>> {
+  filter(
+    xs: gens,
+    predicate: fn(g) {
+      generator_matches_profile(g: g, profile_ref: profile_ref)
     }
   )
 }
 
 
-fn generator_matches_profile(g: Generator<TestgenConcept>, profile_ref: Symbol) -> Bool {
-  g.profile_metadata.profile_ref == profile_ref
+fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt> {
+  bind_outcome(
+    o: testgen_scheduled_generators_outcome(),
+    f: fn(gens) {
+      let matched =
+        testgen_scheduled_generators_matching_profile(gens: gens, profile_ref: profile_ref)
+      if length(xs: matched) == 0 && length(xs: gens) > 0 {
+        outcome_rejected(d: testgen_profile_roster_mismatch_diagnostic())
+      } else {
+        outcome_accepted(
+          value: TestgenRunReceipt {
+            profile_ref: profile_ref,
+            generators: matched
+          }
+        )
+      }
+    }
+  )
 }
 
 
