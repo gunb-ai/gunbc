@@ -13,7 +13,7 @@ import v4.std.host_run { EmitHostRunReceipt }
 import v4.std.logic { Bool }
 import v4.std.model_core { PrimitiveFactBundle }
 import v4.std.node { Node, Symbol }
-import v4.std.target_model { TargetModel }
+import v4.std.target_model { FunctionBoundarySite, TargetModel }
 
 
 // --- G0.1: per-language fact bundle schema (subject_carrier × target × fact_axis) ---
@@ -85,11 +85,13 @@ fn hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
 // --- G0.3: SG-1 / SG-1b / SG-2 / SG-5 evidence (single coproduct; variant arm pins target_model edge family) ---
 
 // 🟢 coproduct dissolution — terminal G.0 evidence-family tag: one arm per closed SG-1 / SG-1b / SG-2 / SG-5
-// target_model catalog row kind (variant arm is the authority; source_carrier indexes the substrate witness).
-// P2: no parallel shape record + axis enum duplicating the same datum.
+// target_model catalog row kind (variant arm is the authority).
+// P2: payload carries canonical target_model lookup coordinates per family — not a shared opaque Node:
+//   Sg1/Sg2/Sg5: source_carrier Node key; Sg1b: source_carrier × boundary_site (per
+//   target_function_signature_realization_lookup_in_catalog_node in target_model.dag).
 type GroundingEvidenceSchema
   = Sg1Evidence { source_carrier: Node }
-  | Sg1bEvidence { source_carrier: Node }
+  | Sg1bEvidence { source_carrier: Node, boundary_site: FunctionBoundarySite }
   | Sg2Evidence { source_carrier: Node }
   | Sg5Evidence { source_carrier: Node }
 
