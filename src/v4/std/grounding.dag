@@ -22,6 +22,7 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.host_run { EmitHostRunReceipt }
+import v4.std.logic { Bool }
 import v4.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisOverflowDisposition,
