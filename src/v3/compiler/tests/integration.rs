@@ -301,6 +301,10 @@ mod v4_extdeps_formatters_black_dag_smoke_test;
 mod v4_extdeps_react_dag_smoke_test;
 #[path = "boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"]
 mod v4_leaf_model_go_r1_r2_r3_external_test;
+#[path = "boundary/v4_leaf_model_python_cross_runtime_drift_test.rs"]
+mod v4_leaf_model_python_cross_runtime_drift_test;
+#[path = "boundary/v4_leaf_model_python_l1_static_receipts_test.rs"]
+mod v4_leaf_model_python_l1_static_receipts_test;
 #[path = "boundary/v4_leaf_model_python_r1_test.rs"]
 mod v4_leaf_model_python_r1_test;
 #[path = "boundary/v4_leaf_model_python_r2_r3_external_test.rs"]
@@ -319,6 +323,8 @@ mod v4_lens_affected_set_dag_smoke_test;
 mod v4_lens_application_dag_smoke_test;
 #[path = "integration/v4_lens_edit_locus_dag_smoke_test.rs"]
 mod v4_lens_edit_locus_dag_smoke_test;
+#[path = "integration/v4_lens_idempotency_claim_dag_smoke_test.rs"]
+mod v4_lens_idempotency_claim_dag_smoke_test;
 #[path = "integration/v4_lens_identical_variant_payload_dag_smoke_test.rs"]
 mod v4_lens_identical_variant_payload_dag_smoke_test;
 #[path = "integration/v4_lens_registry_dag_smoke_test.rs"]

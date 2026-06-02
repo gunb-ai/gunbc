@@ -14,8 +14,9 @@ import v4.compiler.eval {
   test_claim_run_verdict
 }
 import v4.std.collection { List }
+import v4.std.logic { Bool }
 import v4.std.nat { Nat }
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verdict {
   VerdictTally,
@@ -37,6 +38,41 @@ type CorpusEvalEntry {
 type CorpusEvalReport {
   entries: List<CorpusEvalEntry>
 }
+
+
+type TestClaimSubjectRosterUnsupportedRow {
+  subject_family: Symbol
+  reason: Symbol
+}
+
+
+type TestClaimSubjectRosterFamilyReceipt {
+  subject_family: Symbol
+  run_family: Symbol
+  subjects: List<TestClaimEvalSubject<Node>>
+  runs: List<TestClaimRun<Node, RuntimeValue>>
+  unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow>
+  report: CorpusEvalReport
+}
+
+
+data testclaim_subject_roster_family_node_runtime_value: Symbol = testclaim_subject_roster_family_node_runtime_value
+data testclaim_subject_roster_run_test_claim: Symbol = run_test_claim
+data testclaim_subject_roster_family_ci_pipeline: Symbol = testclaim_subject_roster_family_ci_pipeline
+data testclaim_subject_roster_family_non_runtime_value: Symbol = testclaim_subject_roster_family_non_runtime_value
+data testclaim_subject_roster_unsupported_until_runner_projection_lands: Symbol = testclaim_subject_roster_unsupported_until_runner_projection_lands
+
+
+data testclaim_subject_roster_unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow> = [
+  TestClaimSubjectRosterUnsupportedRow {
+    subject_family: testclaim_subject_roster_family_ci_pipeline,
+    reason: testclaim_subject_roster_unsupported_until_runner_projection_lands
+  },
+  TestClaimSubjectRosterUnsupportedRow {
+    subject_family: testclaim_subject_roster_family_non_runtime_value,
+    reason: testclaim_subject_roster_unsupported_until_runner_projection_lands
+  }
+]
 
 
 fn corpus_entry_label(e: CorpusEvalEntry) -> String {
@@ -99,3 +135,27 @@ fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
     )
   }
 }
+
+
+fn manual_testclaim_subject_roster_family_receipt() -> TestClaimSubjectRosterFamilyReceipt {
+  let runs = run_node_runtime_value_subjects(subjects: manual_corpus_node_subject_rows)
+  TestClaimSubjectRosterFamilyReceipt {
+    subject_family: testclaim_subject_roster_family_node_runtime_value,
+    run_family: testclaim_subject_roster_run_test_claim,
+    subjects: manual_corpus_node_subject_rows,
+    runs: runs,
+    unsupported_rows: testclaim_subject_roster_unsupported_rows,
+    report: CorpusEvalReport {
+      entries: corpus_entries_from_node_runtime_value_runs(runs: runs)
+    }
+  }
+}
+
+
+fn manual_testclaim_subject_roster_family_receipt_holds() -> Bool {
+  let receipt = manual_testclaim_subject_roster_family_receipt()
+  receipt.report.entries == corpus_entries_from_node_runtime_value_runs(runs: receipt.runs)
+}
+
+
+data witness_manual_testclaim_subject_roster_family_receipt: Bool = manual_testclaim_subject_roster_family_receipt_holds()
