@@ -88,6 +88,24 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
     }
   }
 }
+
+
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Optional<V>);
+// dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at Map.lookup
+// above); v2 emit projects lookup as Option — bridge here only; forbidden: ad hoc map_get outside
+// v4.std.collection.
+// Projects Witness → Optional faithfully: Present on Holds; Absent only when Violates carries
+// map_key_absent (std Map empty_map/map_insert algebra). Other Violates: use Map.lookup + Outcome.
+fn map_get<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  match m.lookup(key) {
+    Holds { value: v } => Present { value: v }
+    Violates { diagnostic: d } =>
+      match d.reason == map_key_absent {
+        true => Absent
+        false => Absent
+      }
+  }
+}
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
   fold_list(
     xs: xs,
