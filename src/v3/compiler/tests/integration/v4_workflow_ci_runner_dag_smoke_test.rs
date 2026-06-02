@@ -1101,7 +1101,8 @@ fn v4_workflow_ci_manager_waves_2_4_and_four_compile_closeout_receipt() {
     assert!(
         CI_MANAGER_CLOSEOUT.contains("No new compiler stage, substrate type, or target semantics")
             && CI_MANAGER_CLOSEOUT.contains("same-path P5(b) receipt")
-            && CI_MANAGER_CLOSEOUT.contains("dissolves with that harness"),
+            && CI_MANAGER_CLOSEOUT.contains("dissolves with")
+            && CI_MANAGER_CLOSEOUT.contains("harness when generated workflow/TestClaim execution covers these facts directly"),
         "{CI_MANAGER_CLOSEOUT_PATH}: closeout must state non-goals and dissolution path"
     );
 }
