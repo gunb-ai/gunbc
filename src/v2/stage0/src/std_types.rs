@@ -17,9 +17,8 @@ use self::Platform::*;
 use self::SymlinkTarget::*;
 use self::TopologyNodeKind::*;
 use self::Vendor::*;
-pub use crate::std_algebra::{
-    algebra_type_param_names, kernel_algebra_profile, BooleanAlgebra, FreeMonoid, PartialFunction,
-};
+pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
+pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

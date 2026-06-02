@@ -2232,15 +2232,105 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   }
 }
 
+fn rust_pub_use_module_name(line: String) -> String {
+  let prefix_parts = line |> split(delimiter: "pub use crate::")
+  match prefix_parts |> skip(1) |> first {
+    Some { value: rest } =>
+      match rest |> split(delimiter: "::") |> first {
+        Some { value: mod_name } => mod_name
+        None => ""
+      }
+    None => ""
+  }
+}
+
+fn rust_pub_use_singleton_name(line: String) -> String {
+  if contains(line, "pub use crate::") && !contains(line, "::{") && !contains(line, "::*;") {
+    let prefix_parts = line |> split(delimiter: "pub use crate::")
+    match prefix_parts |> skip(1) |> first {
+      Some { value: rest } =>
+        match rest |> split(delimiter: "::") |> skip(1) |> first {
+          Some { value: name_part } =>
+            match name_part |> split(delimiter: ";") |> first {
+              Some { value: name } => name
+              None => ""
+            }
+          None => ""
+        }
+      None => ""
+    }
+  } else {
+    ""
+  }
+}
+
+fn rust_pub_use_braced_names(line: String) -> List<String> {
+  if contains(line, "pub use crate::") && contains(line, "::{") {
+    let prefix_parts = line |> split(delimiter: "::{")
+    match prefix_parts |> skip(1) |> first {
+      Some { value: rest } =>
+        match rest |> split(delimiter: "}") |> first {
+          Some { value: names } => names |> split(delimiter: ", ")
+          None => []
+        }
+      None => []
+    }
+  } else {
+    []
+  }
+}
+
+fn rust_pub_use_braced_line_has_name(line: String, mod_name: String, name: String) -> Bool {
+  rust_pub_use_module_name(line: line) == mod_name
+    && contains(line, "::{")
+    && (contains(line, concat("{", name, ","))
+      || contains(line, concat(", ", name, ","))
+      || contains(line, concat(", ", name, "}"))
+      || contains(line, concat("{", name, "}")))
+}
+
+fn rust_pub_use_singleton_covered(line: String, lines: List<String>) -> Bool {
+  let mod_name = rust_pub_use_module_name(line: line)
+  let name = rust_pub_use_singleton_name(line: line)
+  if mod_name == "" || name == "" {
+    false
+  } else {
+    lines |> any(other => rust_pub_use_braced_line_has_name(line: other, mod_name: mod_name, name: name))
+  }
+}
+
+fn rust_pub_use_braced_subset_covered(line: String, lines: List<String>) -> Bool {
+  let mod_name = rust_pub_use_module_name(line: line)
+  let names = rust_pub_use_braced_names(line: line)
+  if mod_name == "" || names |> count == 0 {
+    false
+  } else {
+    lines |> any(other =>
+      other != line
+        && rust_pub_use_module_name(line: other) == mod_name
+        && contains(other, "::{")
+        && names |> all(name => rust_pub_use_braced_line_has_name(line: other, mod_name: mod_name, name: name))
+    )
+  }
+}
+
+fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
+  let exact = unique_strings(items: lines |> filter(line => line != ""))
+  exact |> filter(line =>
+    rust_pub_use_singleton_covered(line: line, lines: exact) == false
+      && rust_pub_use_braced_subset_covered(line: line, lines: exact) == false
+  )
+}
+
 fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String {
   if imports |> count == 0 {
     ""
   } else {
     let import_modules = unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp)))
-    let import_lines = import_modules |> map(import_module =>
+    let import_lines = import_modules |> flat_map(import_module =>
       let mod_imports = imports |> filter(imp => authored_name_at(source_indices: source_indices, node: imp) == import_module)
       let mod_name = module_to_filename(name: import_module)
-      if mod_imports |> any(imp => import_is_all(n: imp)) {
+      let block = if mod_imports |> any(imp => import_is_all(n: imp)) {
         let wildcard_line = concat("use crate::", mod_name, "::*;")
         let reexport_surface = wildcard_reexport_surface_names(import_module: import_module, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices)
         let merged_specific = unique_strings(items: concat(
@@ -2280,8 +2370,9 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
           source_indices: source_indices
         )
       }
+      block |> split(delimiter: "\n")
     )
-    unique_strings(items: import_lines |> filter(line => line != "")) |> join(separator: "\n")
+    dedupe_rust_import_lines(lines: import_lines) |> join(separator: "\n")
   }
 }
 

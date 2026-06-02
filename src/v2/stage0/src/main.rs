@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::cli_run;
+use v2_compiler::v2_compiler_artifact;
 use v2_compiler::v2_compiler_compile;
 use v2_compiler::v2_compiler_compile::PipelineResult;
 use v2_compiler::v2_std_core::{
