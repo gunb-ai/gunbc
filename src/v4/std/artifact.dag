@@ -23,6 +23,13 @@ type Artifact {
   file_path: String
 }
 
+// Stable identity of the generator that produced an artifact (F.2-P1 shared fact;
+// coordinated with Source-authority Mgr per Branch H §H.5). Idiomatic Id-alias shape
+// (cf. v4.std.leaf_model_verification LeafModelClaimId = Symbol, Artifact.id: Symbol).
+// Referenced by testgen Generator provenance (v4.lens.testgen) so a generated
+// `GeneratedSource` / `TestClaimArtifact` carries the producing generator's identity.
+type GeneratorId = Symbol
+
 type NodeArtifactProvenance {
   node: Node
   artifact: Artifact
