@@ -3718,6 +3718,7 @@ data ci_digest_empty_dependency_kind_list_tag: Symbol = ci_digest_empty_dependen
 data ci_digest_empty_step_selection_list_tag: Symbol = ci_digest_empty_step_selection_list_tag
 data ci_digest_empty_testclaim_selection_list_tag: Symbol = ci_digest_empty_testclaim_selection_list_tag
 data ci_digest_empty_testgen_slot_selection_list_tag: Symbol = ci_digest_empty_testgen_slot_selection_list_tag
+data ci_digest_empty_node_list_tag: Symbol = ci_digest_empty_node_list_tag
 data ci_change_kind_node_changed_tag: Symbol = ci_change_kind_node_changed_tag
 data ci_change_kind_node_added_tag: Symbol = ci_change_kind_node_added_tag
 data ci_change_kind_node_removed_tag: Symbol = ci_change_kind_node_removed_tag
@@ -3790,6 +3791,7 @@ data ci_artifact_kind_projection_artifact_tag: Symbol = ci_artifact_kind_project
 data ci_artifact_kind_stage0_candidate_tag: Symbol = ci_artifact_kind_stage0_candidate_tag
 data ci_artifact_kind_core_package_tag: Symbol = ci_artifact_kind_core_package_tag
 data ci_artifact_kind_witness_bundle_tag: Symbol = ci_artifact_kind_witness_bundle_tag
+data ci_connective_atom_tag: Symbol = ci_connective_atom_tag
 data ci_connective_conj_tag: Symbol = ci_connective_conj_tag
 data ci_connective_disj_tag: Symbol = ci_connective_disj_tag
 data ci_connective_arrow_tag: Symbol = ci_connective_arrow_tag
@@ -3822,6 +3824,17 @@ fn ci_hash_list_digest(xs: List<Hash>) -> Hash {
     empty: ci_symbol_digest(sym: ci_digest_empty_hash_list_tag),
     cons: fn(acc, item) {
       combine_hash(a: acc, b: item)
+    }
+  )
+}
+
+
+fn ci_node_list_digest(nodes: List<Node>) -> Hash {
+  fold_list(
+    xs: nodes,
+    empty: ci_symbol_digest(sym: ci_digest_empty_node_list_tag),
+    cons: fn(acc, node) {
+      combine_hash(a: acc, b: content_hash(n: node))
     }
   )
 }
@@ -3867,7 +3880,7 @@ fn ci_generated_artifact_digest(artifact: GeneratedArtifact) -> Hash {
 fn ci_connective_digest(connective: Connective) -> Hash {
   match connective {
     Atom { identity } =>
-      combine_hash(a: ci_symbol_digest(sym: ci_projection_atom_authority_edge), b: ci_symbol_digest(sym: identity))
+      combine_hash(a: ci_symbol_digest(sym: ci_connective_atom_tag), b: ci_symbol_digest(sym: identity))
     Conj => ci_symbol_digest(sym: ci_connective_conj_tag)
     Disj => ci_symbol_digest(sym: ci_connective_disj_tag)
     Arrow => ci_symbol_digest(sym: ci_connective_arrow_tag)
@@ -4335,6 +4348,100 @@ fn ci_testclaim_selection_list_digest(rows: List<CiTestClaimSelection>) -> Hash 
 }
 
 
+fn ci_type_construction_subject_digest(subject: TypeConstructionSubject) -> Hash {
+  match subject {
+    ConnectiveKernel { connective } => ci_connective_digest(connective: connective)
+    BehaviorValueSubject { behavior } => ci_behavior_digest(behavior: behavior)
+  }
+}
+
+
+fn ci_algebra_law_subject_digest(subject: AlgebraLawSubject) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_symbol_digest(sym: subject.algebra),
+    ci_symbol_digest(sym: subject.inhabitant),
+    ci_symbol_digest(sym: subject.law)
+  ])
+}
+
+
+fn ci_lens_applicability_subject_digest(subject: LensApplicabilitySubject) -> Hash {
+  combine_hash(a: ci_symbol_digest(sym: subject.lens), b: content_hash(n: subject.program))
+}
+
+
+fn ci_bidirectional_roundtrip_subject_digest(subject: BidirectionalRoundtripSubject) -> Hash {
+  combine_hash(a: ci_symbol_digest(sym: subject.language), b: ci_symbol_digest(sym: subject.production))
+}
+
+
+fn ci_language_behavior_io_mock_digest(mock: LanguageBehaviorIoMock) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_symbol_digest(sym: mock.snapshot.language),
+    content_hash(n: mock.snapshot.input_node),
+    content_hash(n: mock.snapshot.expected_value)
+  ])
+}
+
+
+fn ci_language_behavior_equivalence_subject_digest(subject: LanguageBehaviorEquivalenceSubject) -> Hash {
+  combine_hash(
+    a: ci_type_construction_subject_digest(subject: subject.subject),
+    b: ci_symbol_digest(sym: subject.language)
+  )
+}
+
+
+fn ci_refinement_preservation_subject_digest(subject: RefinementPreservationSubject) -> Hash {
+  ci_hash_list_digest(xs: [
+    ci_node_list_digest(nodes: subject.refined.base),
+    ci_node_list_digest(nodes: subject.original)
+  ])
+}
+
+
+fn ci_testgen_concept_digest(concept: TestgenConcept) -> Hash {
+  match concept {
+    TypeConstruction { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_type_construction_tag),
+        b: ci_type_construction_subject_digest(subject: subject)
+      )
+    AlgebraLaw { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_algebra_law_tag),
+        b: ci_algebra_law_subject_digest(subject: subject)
+      )
+    DiagnosticExhaustiveness { omitted_variant } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_diagnostic_exhaustiveness_tag),
+        b: ci_testclaim_variant_digest(variant: omitted_variant)
+      )
+    LensApplicability { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_lens_applicability_tag),
+        b: ci_lens_applicability_subject_digest(subject: subject)
+      )
+    BidirectionalRoundtrip { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_bidirectional_roundtrip_tag),
+        b: ci_bidirectional_roundtrip_subject_digest(subject: subject)
+      )
+    LanguageBehaviorEquivalence { subject, mock } =>
+      ci_hash_list_digest(xs: [
+        ci_symbol_digest(sym: ci_testgen_concept_language_behavior_equivalence_tag),
+        ci_language_behavior_equivalence_subject_digest(subject: subject),
+        ci_language_behavior_io_mock_digest(mock: mock)
+      ])
+    RefinementPreservation { subject } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_testgen_concept_refinement_preservation_tag),
+        b: ci_refinement_preservation_subject_digest(subject: subject)
+      )
+  }
+}
+
+
 fn ci_testgen_slot_selection_digest(row: TestgenSlotSelection) -> Hash {
   combine_hash(
     a: ci_testclaim_variant_digest(variant: row.generator.kind),
@@ -4343,14 +4450,20 @@ fn ci_testgen_slot_selection_digest(row: TestgenSlotSelection) -> Hash {
       b: combine_hash(
         a: ci_claim_anchor_digest(anchor: row.generator.anchor),
         b: combine_hash(
-          a: ci_symbol_digest(sym: row.generator.provenance.generator_id),
+          a: ci_testgen_concept_digest(concept: row.generator.slot),
           b: combine_hash(
-            a: ci_symbol_digest(sym: row.generator.profile_metadata.profile_ref),
+            a: ci_symbol_digest(sym: row.generator.provenance.generator_id),
             b: combine_hash(
-              a: ci_claim_anchor_digest(anchor: row.emits_claim_anchor),
+              a: ci_generated_artifact_digest(artifact: row.generator.provenance.artifact),
               b: combine_hash(
-                a: ci_bool_digest(value: row.selected),
-                b: ci_claim_selection_reason_digest(reason: row.reason)
+                a: ci_symbol_digest(sym: row.generator.profile_metadata.profile_ref),
+                b: combine_hash(
+                  a: ci_claim_anchor_digest(anchor: row.emits_claim_anchor),
+                  b: combine_hash(
+                    a: ci_bool_digest(value: row.selected),
+                    b: ci_claim_selection_reason_digest(reason: row.reason)
+                  )
+                )
               )
             )
           )
