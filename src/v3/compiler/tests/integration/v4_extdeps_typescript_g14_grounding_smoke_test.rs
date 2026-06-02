@@ -82,9 +82,9 @@ fn v4_typescript_g14_declares_per_language_fact_bundle_registry() {
         "registry must use fail-closed insert_per_language_fact_bundle_entry"
     );
     assert!(
-        TYPESCRIPT_LANGUAGE_DAG.contains("primitive_fact_axis_surface_spelling")
-            && TYPESCRIPT_LANGUAGE_DAG.contains("primitive_fact_axis_width")
-            && TYPESCRIPT_LANGUAGE_DAG.contains("primitive_fact_axis_encoding"),
-        "wave-2b registry must key canonical model_core fact axes"
+        TYPESCRIPT_LANGUAGE_DAG.contains("ModelCoreFactAxisSurfaceSpelling")
+            && TYPESCRIPT_LANGUAGE_DAG.contains("ModelCoreFactAxisWidth")
+            && TYPESCRIPT_LANGUAGE_DAG.contains("ModelCoreFactAxisEncoding"),
+        "wave-2b registry must key ModelCorePrimitiveFactAxis coproduct arms"
     );
 }

@@ -77,6 +77,7 @@ import v4.std.model_core {
   EffectSignature,
   FailClosedAtBoundary,
   ModelCore,
+  ModelCorePrimitiveFactAxis,
   model_core_wave1_law_field_algebra,
   model_core_wave1_law_field_kind,
   model_core_wave1_law_field_subject,
@@ -3179,7 +3180,7 @@ fn ts_insert_per_language_primitive_axis(
   registry: PerLanguageFactBundleRegistry,
   subject: Node,
   target: TargetModel,
-  axis: Symbol,
+  axis: ModelCorePrimitiveFactAxis,
   value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
   insert_per_language_fact_bundle_entry(
@@ -3203,7 +3204,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
     registry: empty_per_language_fact_bundle_registry(),
     subject: number_subject,
     target: target,
-    axis: primitive_fact_axis_surface_spelling,
+    axis: ModelCoreFactAxisSurfaceSpelling {},
     value: ts_inhabitant_atom(id: ts_facts_number.surface_spelling)
   ) {
     Accepted { value: r0, diagnostics: _ } =>
@@ -3211,7 +3212,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
         registry: r0,
         subject: number_subject,
         target: target,
-        axis: primitive_fact_axis_width,
+        axis: ModelCoreFactAxisWidth {},
         value: ts_inhabitant_atom(id: ts_tag_bits64)
       ) {
         Accepted { value: r1, diagnostics: _ } =>
@@ -3219,7 +3220,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
             registry: r1,
             subject: number_subject,
             target: target,
-            axis: primitive_fact_axis_encoding,
+            axis: ModelCoreFactAxisEncoding {},
             value: ts_inhabitant_atom(id: ts_facts_number.ieee754_binary)
           ) {
             Accepted { value: r2, diagnostics: _ } =>
@@ -3227,7 +3228,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
                 registry: r2,
                 subject: bigint_subject,
                 target: target,
-                axis: primitive_fact_axis_surface_spelling,
+                axis: ModelCoreFactAxisSurfaceSpelling {},
                 value: ts_inhabitant_atom(id: ts_facts_bigint.surface_spelling)
               ) {
                 Accepted { value: r3, diagnostics: _ } =>
@@ -3235,7 +3236,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
                     registry: r3,
                     subject: bigint_subject,
                     target: target,
-                    axis: primitive_fact_axis_encoding,
+                    axis: ModelCoreFactAxisEncoding {},
                     value: ts_inhabitant_atom(id: ts_facts_bigint.encoding)
                   ) {
                     Accepted { value: r4, diagnostics: _ } =>
@@ -3243,7 +3244,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
                         registry: r4,
                         subject: bool_subject,
                         target: target,
-                        axis: primitive_fact_axis_surface_spelling,
+                        axis: ModelCoreFactAxisSurfaceSpelling {},
                         value: ts_inhabitant_atom(id: ts_facts_boolean.surface_spelling)
                       ) {
                         Accepted { value: r5, diagnostics: _ } =>
@@ -3251,7 +3252,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
                             registry: r5,
                             subject: bool_subject,
                             target: target,
-                            axis: primitive_fact_axis_encoding,
+                            axis: ModelCoreFactAxisEncoding {},
                             value: ts_inhabitant_atom(id: ts_facts_boolean.encoding)
                           ) {
                             Accepted { value: r6, diagnostics: _ } =>
@@ -3259,7 +3260,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
                                 registry: r6,
                                 subject: string_subject,
                                 target: target,
-                                axis: primitive_fact_axis_surface_spelling,
+                                axis: ModelCoreFactAxisSurfaceSpelling {},
                                 value: ts_inhabitant_atom(id: ts_facts_string.surface_spelling)
                               ) {
                                 Accepted { value: r7, diagnostics: _ } =>
@@ -3267,7 +3268,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundle
                                     registry: r7,
                                     subject: string_subject,
                                     target: target,
-                                    axis: primitive_fact_axis_encoding,
+                                    axis: ModelCoreFactAxisEncoding {},
                                     value: ts_inhabitant_atom(id: ts_facts_string.encoding)
                                   )
                                 Rejected { diagnostics: d } =>
