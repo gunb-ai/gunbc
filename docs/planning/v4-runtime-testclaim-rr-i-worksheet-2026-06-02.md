@@ -40,7 +40,7 @@ DFS path:
   corpus runner contract (DESIGN only):
     - v4.compiler.eval — run_test_claim : TestClaimEvalSubject<Node> -> TestClaimRun<Node, RuntimeValue>
     - v4.test.claim.workflow.testclaim_corpus_runner — testclaim_subject_roster_unsupported_rows
-    - v4.test.claim.manual.manual_corpus_roster — manual 4-row Node/RuntimeValue wedge
+    - v4.test.claim.manual.manual_corpus_roster — manual 5-row Node/RuntimeValue wedge
 Deepest unsound boundary:
   run_test_claim is monomorphic over (Node, RuntimeValue). The two unsupported families
   are not "not yet wired" — they are domains whose evaluator input and actual-value type
@@ -78,7 +78,7 @@ Metric allowed only as secondary:
 
 | Layer / doc | State | RR-I posture |
 | ----------- | ----- | ------------ |
-| RR-A (Branch A runtime engine) | Ratified #4296 | **Consume** A.2 survey + manual 4-row wedge; do not re-litigate `run_test_claim` ownership |
+| RR-A (Branch A runtime engine) | Ratified #4296 | **Consume** A.2 survey + manual 5-row wedge; do not re-litigate `run_test_claim` ownership |
 | T-13 family ratchet (#4264, #4292) | MERGED | Prerequisite — the four families are the closure subject, not re-authored here |
 | #3468 signature-derived effect-kind set | Open (BLOCKING follow-up) | T-13-*-unresolved scaffolds **stay** until #3468; this PR documents, does not dissolve |
 | I.1.1 collapse lane | Class 2 child | RR-I states the contract; collapse PR cites §4 R1–R4 |
@@ -103,7 +103,7 @@ grep -n 'type DependencyKindClassifier\|type ClassifiedDependencyView' src/v4/st
 | `parallelism` | `ParallelismRelation = DataDependent \| EffectCoupled \| BarrierCoupled \| UnknownCoupling` | 9 of 15 `DependencyKind`s map to `UnknownCoupling` — **honest** (does not fabricate coupling it cannot derive) | `ParallelismFact.dependencies: List<ClassifiedDependencyView<ParallelismRelation>>` — no copied endpoints |
 | `effect` | `EffectClassification {}` — single signature-deferred slot | Effect kind routed via `tree.facts.lookup(dependency.source)`; `DependencyKind` is NOT the effect authority (B3 / P2 / Practice 5) | Parametric `ClassifiedDependencyView<EffectClassification>`; closing the kind set is #3468 |
 | `ownership` | `OwnershipMode = OwnedContainment \| SharedRead \| RequiresAccessWitness \| BorrowedDependency \| UnknownOwnership` | Access/alias-mode evidence routed via `RequiresAccessWitness`; closed access carrier is a #3468 follow-up | `ClassifiedDependencyView<OwnershipMode>` — no parallel substrate |
-| `idempotency` | `IdempotencyVerdict = AlgebraicIdempotenceProven { law: Witness<InferredFacts> } \| RequiresAlgebraWitness \| Violates { diagnostic }` | Algebra-law witness IS the verdict payload; edge identity authority is `ClassifiedDependencyView.dependency` | No nested per-row `EffectDependencyFact` |
+| `idempotency` | `IdempotencyVerdict = AlgebraicIdempotenceProven { law: Witness<InferredFacts> } \| RequiresAlgebraWitness` (the law `Witness` itself carries `Holds`/`Violates { diagnostic }`) | Algebra-law witness IS the verdict payload; edge identity authority is `ClassifiedDependencyView.dependency` | No nested per-row `EffectDependencyFact` |
 
 **Closure contract (what "closed" means, ratified):**
 
@@ -120,7 +120,7 @@ grep -n 'type DependencyKindClassifier\|type ClassifiedDependencyView' src/v4/st
 **Current authority (consume, do not fork):**
 
 - `run_test_claim : TestClaimEvalSubject<Node> -> TestClaimRun<Node, RuntimeValue>` — monomorphic over `(Node, RuntimeValue)` (`05_eval.dag:1931`).
-- `testclaim_corpus_runner.dag` — folds `manual_corpus_node_subject_rows` (4-row wedge) through `run_test_claim` into `CorpusEvalReport`; `TestClaimRun<S, A>` is already generic, only the runner driver is monomorphic.
+- `testclaim_corpus_runner.dag` — folds `manual_corpus_node_subject_rows` (5-row wedge) through `run_test_claim` into `CorpusEvalReport`; `TestClaimRun<S, A>` is already generic, only the runner driver is monomorphic.
 - `testclaim_subject_roster_unsupported_rows` — two rows, both reason `..._unsupported_until_runner_projection_lands`.
 
 **Why the two families are unsupported (root cause, not "not yet wired"):**
@@ -226,4 +226,4 @@ Default deliverable is this types/authority doc, NOT an `eval_parallel` runtime 
 - `src/v4/lens/{parallelism,effect,ownership,idempotency}.dag` — the four closed families
 - `src/v4/compiler/05_eval.dag:1931` — `run_test_claim`
 - `src/v4/test/claim/workflow/testclaim_corpus_runner.dag` — `testclaim_subject_roster_unsupported_rows`
-- `src/v4/test/claim/manual/manual_corpus_roster.dag` — manual 4-row Node/RuntimeValue wedge
+- `src/v4/test/claim/manual/manual_corpus_roster.dag` — manual 5-row Node/RuntimeValue wedge
