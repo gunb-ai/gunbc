@@ -59,7 +59,7 @@ pub use crate::v2_std_core::{
     expr_call_func_at, expr_method_name_at, field_access_field_at, field_binding_name_at,
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
-    field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at, intern,
+    field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at,
     is_error_diagnostic, is_internable_token, lambda_param_names_at, make_error_node,
     module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
     param_node_span, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
@@ -2333,7 +2333,7 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 }
 
 fn frontend_worker_count(source_count: usize) -> usize {
-    const MAX_FRONTEND_WORKERS: usize = 8;
+    const MAX_FRONTEND_WORKERS: usize = 128;
     if source_count <= 1 {
         return 1;
     }
@@ -2469,13 +2469,25 @@ fn collect_frontend_intern_plans(sources: Rc<Vec<Rc<SourceFile>>>) -> Vec<Fronte
 }
 
 fn build_frontend_intern_table(plans: &[FrontendInternPlan]) -> Rc<InternTable> {
-    let mut table = empty_intern_table();
+    let mut strings = Vec::new();
+    let mut index = HashMap::new();
+    strings.push("".to_string());
+    index.insert("".to_string(), 0);
+
     for plan in plans {
         for s in &plan.intern_strings {
-            table = intern(table, s.clone()).table.clone();
+            if !index.contains_key(s) {
+                let id = strings.len() as i64;
+                strings.push(s.clone());
+                index.insert(s.clone(), id);
+            }
         }
     }
-    table
+    Rc::new(InternTable {
+        next_id: strings.len() as i64,
+        strings: Rc::new(strings),
+        index: Rc::new(index),
+    })
 }
 
 fn intern_table_from_parts(
