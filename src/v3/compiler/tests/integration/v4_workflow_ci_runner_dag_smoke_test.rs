@@ -49,7 +49,9 @@
 //! **INVARIANTS P5 — checkable receipt for F.11a (`Upsert<T>` Node projection substrate):**
 //! feature `f11a-ci-upsert-node-projection`; consumer
 //! `v4_workflow_ci_upsert_node_projection_substrate`. SAME-PATH SG-0 expansion in this harness;
-//! defers to ROADMAP.md § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+//! defers to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:59-63; Public Operational Lanes summary
+//! ROADMAP.md:43). Consumer test asserts those strings are present in-tree (checkable receipt).
 //! Dissolve-on: `.dag` TestClaim execution proves `content_hash(ci_upsert_step_projection_node)`
 //! sensitivity and `v4.std.patterns.Upsert<T>` field alignment without this hand-Rust ratchet.
 //!
@@ -102,6 +104,8 @@ const INPROCESS_EQUIVALENCE_DAG: &str =
 const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_equivalence.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
+const ROADMAP: &str = include_str!("../../../../ROADMAP.md");
+const ROADMAP_PATH: &str = "ROADMAP.md";
 
 const CI_CHANGED_PATH_AFFECTS_FNS: &[&str] = &[
     "ci_changed_path_affects_v2",
@@ -2325,6 +2329,12 @@ fn v4_workflow_ci_source_authority_receipt_consumes_h72_claims() {
 
 #[test]
 fn v4_workflow_ci_upsert_node_projection_substrate() {
+    assert!(
+        ROADMAP.contains("### Nine lanes")
+            && ROADMAP.contains("| **T-PB-B** | `pb_rust_tests_outside_residual_zero`")
+            && ROADMAP.contains("T-PB-B / `pb_rust_tests_outside_residual_zero`"),
+        "{ROADMAP_PATH}: F.11a P5 deferral must bind to checkable T-PB-B authority (Nine lanes + Public Operational Lanes)"
+    );
     let module = parse_module(CI_DAG, CI_DAG_PATH);
     assert!(
         import_includes_name(&module, &["v4", "std", "patterns"], "Upsert"),
