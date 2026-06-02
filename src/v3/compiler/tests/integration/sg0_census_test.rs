@@ -954,6 +954,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
+    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
+    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
+    // replaces host-runner receipts.
+    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
     // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
@@ -973,12 +979,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
     // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
-    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
-    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
-    // replaces host-runner receipts.
-    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
     "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
@@ -1025,6 +1025,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
     // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
+    // Branch H.7.2 source-authority shape contract: parse-surface ratchet for
+    // `src/v4/compiler/source_authority.dag` and its TestClaim visibility row.
+    // Explicit P5 deferral: ROADMAP.md § "Nine lanes" row `T-PB-B` /
+    // `pb_rust_tests_outside_residual_zero`; dissolves when a `.dag` TestClaim or
+    // generated harness executes the source-authority receipt directly.
+    "src/v3/compiler/tests/integration/v4_source_authority_contract_smoke_test.rs",
     // T-33: parse ratchet on `src/v4/std/model_core.dag` — Ratified Q1 ModelCore carrier.
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
@@ -1039,8 +1045,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
+    // PR #4295 (+0 paths): `check_t19_testgen_activation` same-path expansion —
+    // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
-    // TestClaims or generated harness coverage.
+    // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
     // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
     "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",

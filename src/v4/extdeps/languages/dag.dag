@@ -60,11 +60,10 @@ import v4.std.lexing {
 import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.node_query { find_named_child }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
+  ConcreteSyntaxToken,
+  FixedToken,
+  BoundToken,
+  concrete_syntax_token_to_node,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens
@@ -413,41 +412,19 @@ fn dag_positional_edge(target: Node) -> Edge {
 }
 
 
+// T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it through
+// the single shared serializer (v4.std.target_model.concrete_syntax_token_to_node). The Conj wire
+// node is returned so the result still composes with nonterminal sub-trees in heterogeneous
+// grammar-row token lists.
 fn emit_fixed_token(token_class: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: concrete_syntax_token_field_kind,
-        target: dag_grammar_atom(id: concrete_syntax_token_kind_fixed)
-      ),
-      dag_named_edge(
-        name: concrete_syntax_token_field_class,
-        target: dag_grammar_atom(id: token_class)
-      )
-    ]
-  }
+  concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
 }
 
 
 fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: concrete_syntax_token_field_kind,
-        target: dag_grammar_atom(id: concrete_syntax_token_kind_bound)
-      ),
-      dag_named_edge(
-        name: concrete_syntax_token_field_class,
-        target: dag_grammar_atom(id: token_class)
-      ),
-      dag_named_edge(
-        name: concrete_syntax_token_field_binding,
-        target: dag_grammar_atom(id: binding)
-      )
-    ]
-  }
+  concrete_syntax_token_to_node(
+    token: BoundToken { token_class: token_class, binding: binding }
+  )
 }
 
 

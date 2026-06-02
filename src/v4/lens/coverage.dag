@@ -27,6 +27,7 @@ import v4.lens.testgen {
   testgen_concept_for_manual_claim,
   testgen_scheduled_coproduct_exhaustiveness_generators,
   testgen_scheduled_language_behavior_generators,
+  testgen_scheduled_refinement_preservation_generators,
   Generator
 }
 import v4.std.refinement { refined_base }
@@ -751,28 +752,54 @@ fn expected_coproduct_exhaustiveness_testgen_keys() -> List<TestgenCoverageKey> 
 }
 
 
+fn expected_refinement_preservation_testgen_keys() -> Outcome<List<TestgenCoverageKey>> {
+  bind_outcome(
+    o: testgen_scheduled_refinement_preservation_generators(),
+    f: fn(generators) {
+      outcome_accepted(
+        value: testgen_coverage_keys_from_scheduled_generators(
+          generators: generators
+        )
+      )
+    }
+  )
+}
+
+
 // 🟡 gated — feature:testgen-lens-applicability-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: LensApplicability enters expected_testgen_coverage_keys via scheduled-generator projection.
 // 🟡 gated — feature:testgen-bidirectional-roundtrip-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: BidirectionalRoundtrip enters expected_testgen_coverage_keys via scheduled-generator projection.
-// 🟡 gated — feature:testgen-refinement-preservation-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: RefinementPreservation enters expected_testgen_coverage_keys via scheduled-generator projection.
 // 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: replace hand-assembled expected slices with full manifest projection.
-fn expected_testgen_coverage_keys() -> List<TestgenCoverageKey> {
-  fold_list_right(
-    xs: expected_type_construction_testgen_keys(),
-    empty: fold_list_right(
-      xs: expected_algebra_law_testgen_keys(),
-      empty: fold_list_right(
-        xs: expected_language_behavior_equivalence_testgen_keys(),
-        empty: expected_coproduct_exhaustiveness_testgen_keys(),
-        snoc: fn(acc, item) {
-          dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
-        }
-      ),
-      snoc: fn(acc, item) {
-        dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
-      }
-    ),
-    snoc: fn(acc, item) {
-      dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+fn expected_testgen_coverage_keys() -> Outcome<List<TestgenCoverageKey>> {
+  bind_outcome(
+    o: expected_refinement_preservation_testgen_keys(),
+    f: fn(refinement_keys) {
+      outcome_accepted(
+        value: fold_list_right(
+          xs: expected_type_construction_testgen_keys(),
+          empty: fold_list_right(
+            xs: expected_algebra_law_testgen_keys(),
+            empty: fold_list_right(
+              xs: expected_language_behavior_equivalence_testgen_keys(),
+              empty: fold_list_right(
+                xs: expected_coproduct_exhaustiveness_testgen_keys(),
+                empty: refinement_keys,
+                snoc: fn(acc, item) {
+                  dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+                }
+              ),
+              snoc: fn(acc, item) {
+                dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+              }
+            ),
+            snoc: fn(acc, item) {
+              dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+            }
+          ),
+          snoc: fn(acc, item) {
+            dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+          }
+        )
+      )
     }
   )
 }
@@ -1135,28 +1162,33 @@ fn coverage_reading(corpus: List<TestClaim>) -> Outcome<CoverageReading> {
               bind_outcome(
                 o: collect_testgen_coverage_keys(corpus: corpus),
                 f: fn(testgen_actual) {
-                  outcome_accepted(
-                    value: CoverageReading {
-                      l6_missing: missing_coverage(
-                        expected: expected_l6_coverage_keys(),
-                        actual: l6_actual,
-                        eq: l6_coverage_key_eq
-                      ),
-                      l7_missing: missing_coverage(
-                        expected: expected_l7_coverage_keys(),
-                        actual: l7_actual,
-                        eq: l7_coverage_key_eq
-                      ),
-                      impossible_bug_missing: missing_coverage(
-                        expected: expected_impossible_bug_coverage_keys(),
-                        actual: impossible_bug_actual,
-                        eq: impossible_bug_coverage_key_eq
-                      ),
-                      testgen_missing: missing_coverage(
-                        expected: expected_testgen_coverage_keys(),
-                        actual: testgen_actual,
-                        eq: testgen_coverage_key_eq
-                      ),
+                  bind_outcome(
+                    o: expected_testgen_coverage_keys(),
+                    f: fn(testgen_expected) {
+                      outcome_accepted(
+                        value: CoverageReading {
+                          l6_missing: missing_coverage(
+                            expected: expected_l6_coverage_keys(),
+                            actual: l6_actual,
+                            eq: l6_coverage_key_eq
+                          ),
+                          l7_missing: missing_coverage(
+                            expected: expected_l7_coverage_keys(),
+                            actual: l7_actual,
+                            eq: l7_coverage_key_eq
+                          ),
+                          impossible_bug_missing: missing_coverage(
+                            expected: expected_impossible_bug_coverage_keys(),
+                            actual: impossible_bug_actual,
+                            eq: impossible_bug_coverage_key_eq
+                          ),
+                          testgen_missing: missing_coverage(
+                            expected: testgen_expected,
+                            actual: testgen_actual,
+                            eq: testgen_coverage_key_eq
+                          ),
+                        }
+                      )
                     }
                   )
                 }

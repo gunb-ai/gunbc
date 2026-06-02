@@ -101,6 +101,42 @@ type WellFormedFormalGrammar {
 }
 
 
+type GrammarTerminalLexCoverageObligation {
+  lex: LexRules
+  grammar: WellFormedFormalGrammar
+}
+
+
+// Branch B ingestion-unification ruling (2026-06-02): concrete syntax is a
+// single authority row. Terminal coverage is an explicit obligation on the
+// carrier, not a completed proof in this PR: Bmin.2 must replace this obligation
+// with an enumerating validator tying every FormalTerminal.identity to LexRules
+// token rules. LexPattern and GrammarExpr remain operational projections until
+// CP-1b convergence; they are not independent authorities.
+type ConcreteSyntaxSchema {
+  terminal_coverage: GrammarTerminalLexCoverageObligation
+}
+
+
+fn concrete_syntax_schema(
+  terminal_coverage: GrammarTerminalLexCoverageObligation
+) -> ConcreteSyntaxSchema {
+  ConcreteSyntaxSchema {
+    terminal_coverage: terminal_coverage
+  }
+}
+
+
+fn concrete_syntax_schema_lex(schema: ConcreteSyntaxSchema) -> LexRules {
+  schema.terminal_coverage.lex
+}
+
+
+fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFormalGrammar {
+  schema.terminal_coverage.grammar
+}
+
+
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
   = Terminal { token_class: Symbol }
@@ -140,6 +176,7 @@ type ParseGrammar
   | ModeledGrammar { root: GrammarRoot }
 
 
+// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — bind TASKS.md T-6/T-7 — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
 type GrammarSchema {
   lex: LexRules
   grammar: ParseGrammar
