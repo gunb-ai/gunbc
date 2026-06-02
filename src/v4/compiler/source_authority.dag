@@ -1,6 +1,8 @@
 // src/v4/compiler/source_authority.dag
 // Scope: Branch H.7.2 source-authority contract for `.dag` source round trips.
-// Status: modeled contract over canonical source text; JSON IR/debug artifacts are excluded.
+// Status: modeled shape contract over canonical source text; equality witnesses become executable
+// once ParseTree/ResolvedTree equality and a canonical `.dag` TargetModel row are substrate-backed.
+// JSON IR/debug artifacts are excluded.
 // Anchor: Branch H source-authority worksheet H.1-H.3/H.7.2.
 
 module v4.compiler.source_authority

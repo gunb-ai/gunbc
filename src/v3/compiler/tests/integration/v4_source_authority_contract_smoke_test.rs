@@ -1,8 +1,14 @@
 //! **Layer:** integration
 //!
-//! Branch H.7.2 source-authority contract: the compiler surface must model
+//! Branch H.7.2 source-authority shape contract: the compiler surface must model
 //! canonical `.dag` source round trips as source text plus source AST/IR equality,
-//! without treating `dag-artifact.json` as source authority.
+//! without treating `dag-artifact.json` as source authority. This smoke is intentionally
+//! parser-level until substrate equality and canonical `.dag` `TargetModel` execution land.
+//!
+//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+//! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:57); dissolves when a `.dag`
+//! TestClaim or generated harness executes the Branch H.7.2 source-authority receipt directly.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
