@@ -15,13 +15,11 @@ import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.std.verification {
   EqualsClaim,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
-}
-import v4.test.claim.manual.manual_anchor_manifest {
-  ManualAnchorAbsent,
+  Unit,
   manual_claim_anchor
 }
 import v4.test.claim.lens_ownership.resource_dependency {
