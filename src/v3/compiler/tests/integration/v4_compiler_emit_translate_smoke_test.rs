@@ -323,6 +323,37 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    for name in [
+        "PerLanguageFactBundleEntry",
+        "PerLanguageFactBundleKey",
+        "PerLanguageFactBundleRegistry",
+        "empty_per_language_fact_bundle_registry",
+        "insert_per_language_fact_bundle_entry",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "grounding"], name),
+            "{RUST_LANGUAGE_PATH}: Rust G.1.1 fact bundle must consume v4.std.grounding::{name}"
+        );
+    }
+    for name in [
+        "rust_per_language_fact_bundle_key",
+        "rust_per_language_fact_bundle_entry",
+        "rust_integer_per_language_fact_bundle_entries",
+        "rust_float_per_language_fact_bundle_entries",
+        "rust_noninteger_per_language_fact_bundle_entries",
+        "rust_per_language_fact_bundle_entries",
+        "rust_per_language_fact_bundle_registry",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{RUST_LANGUAGE_PATH}: Rust G.1.1 fact bundle must declare {name}"
+        );
+    }
+}
+
+#[test]
 fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
     let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
     assert_eq!(
