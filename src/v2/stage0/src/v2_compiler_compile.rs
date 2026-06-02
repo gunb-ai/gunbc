@@ -73,6 +73,21 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::Instant;
+
+fn compile_profile_enabled() -> bool {
+    std::env::var("V2_COMPILE_PROFILE").ok().as_deref() == Some("1")
+}
+
+fn compile_profile_log(stage: &str, elapsed: std::time::Duration) {
+    if compile_profile_enabled() {
+        eprintln!(
+            "[v2-compile-profile] {}: {:.3}s",
+            stage,
+            elapsed.as_secs_f64()
+        );
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFile {
@@ -2292,6 +2307,8 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
+        let profile = compile_profile_enabled();
+        let parse_start = if profile { Some(Instant::now()) } else { None };
         let acc = sources.iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
@@ -2321,6 +2338,9 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 }
             },
         );
+        if let Some(start) = parse_start {
+            compile_profile_log("parse", start.elapsed());
+        }
         let parse_results = acc.parse_results.clone();
         let newline_indices = acc.newline_indices.clone();
         let intern_table = acc.intern_table.clone();
@@ -2357,7 +2377,11 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                         v2_rt::rc_map_insert(acc, si.file.clone(), si.clone())
                     },
                 );
+                let resolve_start = if profile { Some(Instant::now()) } else { None };
                 let graph = resolve_modules(modules, source_indices);
+                if let Some(start) = resolve_start {
+                    compile_profile_log("resolve", start.elapsed());
+                }
                 Rc::new(FrontendResult {
                     graph: Some(graph.clone()),
                     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
@@ -2398,6 +2422,12 @@ pub struct ResolvedPipelineResult {
 
 pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
     {
+        let profile = compile_profile_enabled();
+        let total_start = if profile { Some(Instant::now()) } else { None };
+        let file_count = sources.len();
+        if profile {
+            eprintln!("[v2-compile-profile] source_files: {}", file_count);
+        }
         let frontend = front_end_sources(sources);
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
@@ -2436,7 +2466,11 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                         v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
+                let normalize_start = if profile { Some(Instant::now()) } else { None };
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
+                if let Some(start) = normalize_start {
+                    compile_profile_log("normalize", start.elapsed());
+                }
                 let norm_diags = norm.diagnostics.clone();
                 let norm_errors = Rc::new({
                     let mut __result = Vec::new();
@@ -2460,17 +2494,29 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                         newline_indices: newline_indices.clone(),
                     });
                 }
+                let reconcile_start = if profile { Some(Instant::now()) } else { None };
                 let typed = reconcile(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
                 );
+                if let Some(start) = reconcile_start {
+                    compile_profile_log("reconcile", start.elapsed());
+                }
                 let typed_diags = typed.diagnostics.clone();
+                let recursion_start = if profile { Some(Instant::now()) } else { None };
                 let func_entries = extract_func_entries(typed.clone());
                 let recursion_ctx = build_recursion_context(typed.clone());
+                if let Some(start) = recursion_start {
+                    compile_profile_log("recursion-context", start.elapsed());
+                }
+                let complexity_start = if profile { Some(Instant::now()) } else { None };
                 let complexity =
                     build_complexity_report(func_entries, recursion_ctx, source_indices.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
+                if let Some(start) = complexity_start {
+                    compile_profile_log("complexity", start.elapsed());
+                }
                 let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
                 let type_errors = Rc::new({
                     let mut __result = Vec::new();
@@ -2494,8 +2540,12 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                         newline_indices: newline_indices.clone(),
                     });
                 }
+                let ownership_start = if profile { Some(Instant::now()) } else { None };
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
+                if let Some(start) = ownership_start {
+                    compile_profile_log("ownership", start.elapsed());
+                }
                 let ownership_errors = Rc::new({
                     let mut __result = Vec::new();
                     for d in ownership_diags.clone().iter().cloned() {
@@ -2520,6 +2570,9 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                         ownership: ownership.clone(),
                         newline_indices: newline_indices.clone(),
                     });
+                }
+                if let Some(start) = total_start {
+                    compile_profile_log("compile_to_resolved_total", start.elapsed());
                 }
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
