@@ -133,6 +133,65 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, 
   }
 }
 
+fn substitute_generic_field_slots(n: Node, slot_bindings: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
+  let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
+  if is_slot {
+    match map_get(slot_bindings, authored_name_at(source_indices: source_indices, node: n)) {
+      Some { value: concrete } => concrete
+      None => n
+    }
+  } else {
+    let new_children = n.children |> map(child =>
+      substitute_generic_field_slots(n: child, slot_bindings: slot_bindings, source_indices: source_indices)
+    )
+    let new_inferred = match n.inferred {
+      Some { value: Resolved { node: rt } } =>
+        Some { value: Resolved { node: substitute_generic_field_slots(n: rt, slot_bindings: slot_bindings, source_indices: source_indices) } }
+      _ => n.inferred
+    }
+    Node {
+      name: n.name, span: n.span, ident_span: n.ident_span, children: new_children,
+      connective: n.connective, params: n.params, inferred: new_inferred,
+      return_cardinality: n.return_cardinality, uses: n.uses, body: n.body,
+      transport: n.transport, properties: n.properties, type_annotation: n.type_annotation,
+      is_self_recursive: n.is_self_recursive,
+      has_non_tail_self_call: n.has_non_tail_self_call,
+      match_pattern: n.match_pattern, expr_data: n.expr_data
+    }
+  }
+}
+
+fn instantiate_generic_record_for_lookup(env: TypeEnv, n: Node) -> Node? {
+  let normed = normalize_access_type_node(n: n)
+  if normed.connective == NoConnective && normed.children |> count > 0 {
+    match lookup_type_for(env: env, node: normed) {
+      Some { value: decl } =>
+        if decl.params |> count == normed.children |> count && decl.connective != NoConnective {
+          let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+            let idx = pair.first
+            let slot_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
+            match normed.children |> enumerate |> filter(p => p.first == idx) |> map(p => p.second) |> first {
+              Some { value: arg } => map_insert(acc, slot_name, arg)
+              None => acc
+            }
+          )
+          Some { value: Node {
+            name: normed.name, span: normed.span, ident_span: normed.ident_span,
+            children: decl.children |> map(child => substitute_generic_field_slots(n: child, slot_bindings: slot_bindings, source_indices: env.source_indices)),
+            connective: decl.connective, params: [],
+            inferred: normed.inferred, return_cardinality: normed.return_cardinality,
+            uses: normed.uses, body: normed.body, transport: normed.transport,
+            properties: decl.properties, type_annotation: normed.type_annotation,
+            is_self_recursive: normed.is_self_recursive,
+            has_non_tail_self_call: normed.has_non_tail_self_call,
+            match_pattern: normed.match_pattern, expr_data: normed.expr_data
+          } }
+        } else { none }
+      None => none
+    }
+  } else { none }
+}
+
 // Cache key: profile name + receiver identity + structural shape (type args / children).
 fn enriched_kernel_cache_key(name: String, base: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let normed = normalize_access_type_node(n: base)
@@ -189,6 +248,11 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
     match normed.inferred {
       Some { value: Resolved { node: target } } => resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen)
       _ => normed
+    }
+  } else if normed.connective == NoConnective && normed.children |> count > 0 {
+    match instantiate_generic_record_for_lookup(env: env, n: normed) {
+      Some { value: instantiated } => instantiated
+      None => normed
     }
   } else if normed.connective == NoConnective && normed.children |> count == 0 {
     let canonical = authored_name(env: env, node: normed)
