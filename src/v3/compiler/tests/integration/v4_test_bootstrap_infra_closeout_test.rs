@@ -17,6 +17,12 @@
 //! in #4252, operator 2026-06-01 CI hygiene; not re-deleted in this PR). No new
 //! `EXPECTED_HAND_AUTHORED_TEST` census row; dissolves under the T-PB-B row above
 //! when T-22 generated harness or `.dag` TestClaim rows own these substrate checks.
+//!
+//! **PR #4335 P5 receipt (+0 SG-0 paths):** same-path expansion in this file for
+//! `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` — structural parse-surface
+//! ratchet for RR-A §5.2 bootstrap harness entry (no new `EXPECTED_HAND_AUTHORED_TEST`
+//! census row). Dissolves under the T-PB-B row above when modeled `.dag` `TestClaim`
+//! rows or generated harness coverage own these substrate checks.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
