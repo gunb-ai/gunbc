@@ -1035,7 +1035,7 @@ fn go_per_language_fact_bundle_key(
 ) -> PerLanguageFactBundleKey {
   PerLanguageFactBundleKey {
     subject_carrier: subject,
-    target: go_mvp1_target_model(),
+    target_identity: go_language_model_surface_id,
     fact_axis: axis
   }
 }

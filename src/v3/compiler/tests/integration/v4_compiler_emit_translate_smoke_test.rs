@@ -1186,7 +1186,12 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
         "{GO_LANGUAGE_PATH}: G.1.3 keys must type fact axes as the closed G.0 ModelCorePrimitiveFactAxis carrier"
     );
     assert!(
-        ["subject_carrier", "go_mvp1_target_model", "fact_axis"]
+        [
+            "subject_carrier",
+            "target_identity",
+            "go_language_model_surface_id",
+            "fact_axis",
+        ]
             .iter()
             .all(|needle| surface_fn_body_mentions_name(
                 &module,
@@ -1194,7 +1199,7 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
                 "go_per_language_fact_bundle_key",
                 needle
             )),
-        "{GO_LANGUAGE_PATH}: G.1.3 key builder must bind subject, Go target, and closed fact-axis fields in its body"
+        "{GO_LANGUAGE_PATH}: G.1.3 key builder must bind subject, stable Go target identity, and closed fact-axis fields in its body"
     );
     for (fn_name, axes) in [
         (
