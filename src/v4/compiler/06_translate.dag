@@ -973,7 +973,9 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
         FixedToken { token_class: token_class } =>
           lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
         BoundToken { token_class: _, binding: binding } =>
-          // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: binding_spellings
+          // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+          // dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate at v4.std.collection);
+          // site: binding_spellings
           match map_get(target.binding_spellings, binding) {
             Accepted { value: opt, diagnostics: _ } => match opt {
               Present { value: spelling } =>

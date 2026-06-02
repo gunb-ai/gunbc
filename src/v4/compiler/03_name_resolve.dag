@@ -151,7 +151,9 @@ fn admit_export_symbol(
     AdmissionRejected { diagnostics: d } =>
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
-      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: admit_export_symbol origins
+      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
+      // dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate at v4.std.collection);
+      // site: admit_export_symbol origins
       match map_get(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
