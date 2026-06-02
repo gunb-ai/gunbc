@@ -124,6 +124,7 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.lens_effect.effect_depends_on { claim_lens_effect_depends_on_runtime_verdict }
 import v4.test.claim.workflow.wave3_shadow_roster {
   ci_wave3_shadow_claim_roster,
   ci_wave3_shadow_generated_claim_roster,
@@ -1016,6 +1017,7 @@ data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStepSymbol = ci_
 // Forbidden: adding/removing manual corpus rows without the matching claim id here.
 data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
   claim_eval_mvp2_test_claim_route,
+  claim_lens_effect_depends_on_runtime_verdict,
   claim_rust_language_model_emit_mechanical_reverification,
   claim_rust_language_model_emit_subsumption_reverifies
 ]
