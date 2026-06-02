@@ -216,18 +216,11 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
         GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup(")
             && GROUNDING_DAG.contains("-> Witness<Node>")
             && GROUNDING_DAG.contains("match map_get(registry.by_key, key)")
-<<<<<<< HEAD
             && GROUNDING_DAG.contains("Some { value: value } => Holds { value: value }")
             && GROUNDING_DAG.contains("None => Violates")
             && GROUNDING_DAG.contains("Holds { value: _ }")
             && GROUNDING_DAG.contains("Violates { diagnostic: _ }"),
         "registry insert must consume an explicit Witness lookup bridge, not raw Map.lookup carriers"
-=======
-            && GROUNDING_DAG.contains("Some { value: value }")
-            && GROUNDING_DAG.contains("Some { value: _ }")
-            && GROUNDING_DAG.contains("None =>"),
-        "registry insert must consume an explicit Optional lookup bridge, not raw Map.lookup carriers"
->>>>>>> 2fd0289cd2 (fix(grounding): align optional lookup bridge)
     );
     assert!(
         GROUNDING_DAG.contains("fn primitive_fact_bundle_for_registry_subject(")
