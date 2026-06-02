@@ -22,12 +22,15 @@ import v4.lens.registry {
 }
 import v4.lens.testgen { Generator, TestgenConcept }
 import v4.lens.affected_set {
+  AffectedSetReading,
   RerunNodeSet,
   RerunNodeSetFailClosed,
   RerunNodeSetProduced,
+  affected_set_reading_rerun_nodes,
   affected_set_rerun_nodes
 }
 import v4.lens.edit_locus { GitDiffNameOnly, RepoPath }
+import v4.std.witness { Holds, Violates, Witness }
 import v4.std.change {
   AffectedDependency,
   AffectedSet,
@@ -4353,6 +4356,36 @@ fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -
     roster: roster,
     rerun: affected_set_rerun_nodes(affected_set_value: affected)
   )
+}
+
+
+// Node-precise CI consumer: narrows the TestClaim roster by a node-precise
+// `AffectedSetReading` (edit-locus + dependency-closure frontier) rather than coarse
+// component flags. Reuses the existing `ci_select_from_rerun_nodes` frontier filter via the
+// `affected_set_reading_rerun_nodes` lens bridge — no parallel selector authority.
+fn ci_select_from_affected_set_reading(roster: List<TestClaim>, reading: AffectedSetReading) -> List<TestClaim> {
+  ci_select_from_rerun_nodes(
+    roster: roster,
+    rerun: affected_set_reading_rerun_nodes(reading: reading)
+  )
+}
+
+
+// Node-precise CI consumer over the git-diff reading Witness produced by
+// `affected_set_reading_from_git_diff` (v4.lens.edit_locus). `Holds` narrows node-precisely;
+// `Violates` (no/ambiguous edit-locus) preserves the fail-closed superset contract — the
+// whole roster reruns — exactly like `ci_select_from_rerun_nodes`' `RerunNodeSetFailClosed`
+// arm. This keeps fail-closed in CI-consumer authority, not in a caller/test.
+fn ci_select_from_affected_set_reading_witness(
+  roster: List<TestClaim>,
+  reading_witness: Witness<AffectedSetReading>
+) -> List<TestClaim> {
+  match reading_witness {
+    Holds { value: reading } =>
+      ci_select_from_affected_set_reading(roster: roster, reading: reading)
+    Violates { diagnostic: _ } =>
+      roster
+  }
 }
 
 
