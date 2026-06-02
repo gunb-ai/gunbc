@@ -226,7 +226,10 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
                   value: found,
                   diagnostics: diagnostics_merge(outer: d_here, inner: d_outer)
                 }
-              Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+              Rejected { diagnostics: ds } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: d_here, rejected: ds)
+                }
             }
         }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
