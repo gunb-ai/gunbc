@@ -5,7 +5,7 @@
 module v4.lens.affected_set
 
 
-import v4.std.collection { List, Map }
+import v4.std.collection { Absent, List, Map, Present, map_get, map_insert }
 import v4.std.algebra { contains, list_append, list_snoc_item }
 import v4.compiler.infer { InferredTree }
 import v4.std.change {
