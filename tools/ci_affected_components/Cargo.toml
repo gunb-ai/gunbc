@@ -8,6 +8,14 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
 [[bin]]
 name = "detect-ci-affected-components"
 path = "src/main.rs"
+
+[[bin]]
+name = "emit-affected-set-ci-receipt"
+path = "src/bin/emit_affected_set_ci_receipt.rs"

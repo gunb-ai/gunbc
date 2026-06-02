@@ -7,6 +7,8 @@
 //! so the affected job can emit `v3=false` without compiling the frozen v3 package first
 //! (INVARIANTS P3 fail-closed boundary).
 
+pub mod git_read;
+pub mod receipt;
 pub mod runner_pool;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CiComponentAffected {
