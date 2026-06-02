@@ -42,6 +42,9 @@ const SG1B_FAILCLOSED_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/sg1b_signature_realization_failclosed.dag");
 const SG1B_FAILCLOSED_PATH: &str =
     "src/v4/test/claim/manual/sg1b_signature_realization_failclosed.dag";
+const DAG_REGEN_RR_E_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/dag_regen_readiness_review.dag");
+const DAG_REGEN_RR_E_PATH: &str = "src/v4/test/claim/manual/dag_regen_readiness_review.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
 const LBE_GENERATED_DAG: &str =
@@ -776,6 +779,11 @@ fn collect_dag_files(root: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+#[test]
+fn rr_e_dag_regen_readiness_review_claims_parse() {
+    parse_module(DAG_REGEN_RR_E_DAG, DAG_REGEN_RR_E_PATH);
 }
 
 fn parse_module(source: &str, file: &str) -> SurfaceModule {
