@@ -9,13 +9,14 @@
 //! row in `sg0_census_test.rs` paired with `v4_emit_host_eval_dispatch_test.rs`. Explicit
 //! deferral: lane T-PB-B / `pb_rust_tests_outside_residual_zero` (checkable:
 //! `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag` TestClaim name and `ROADMAP.md`
-//! T-PB-B row) plus `emit_host.dag` T-22 rust
-//! intercept. Dissolution: substrate Callable
-//! dispatch owns `run_emit_host_rust` without this intercept; retires with `emit_host_bridge.rs`.
+//! T-PB-B row) plus `emit_host.dag` T-22 rust/go
+//! intercepts. Dissolution: substrate Callable
+//! dispatch owns `run_emit_host_{rust,go}` without this intercept; retires with
+//! `emit_host_bridge.rs`.
 
 use crate::dag::{ArrowBody, Dag, DeclarationId, LiteralBits, TypeConnective};
 
-/// Canonical substrate authority for `run_emit_host_rust` (see `src/v4/compiler/emit_host.dag`).
+/// Canonical substrate authority for `run_emit_host_{rust,go}` (see `src/v4/compiler/emit_host.dag`).
 const EMIT_HOST_DAG_AUTHORITY_SUFFIX: &str = "emit_host.dag";
 
 use crate::evaluator::{EvalError, EvalStateStack, EvalStrategy, NamedField, Value};
