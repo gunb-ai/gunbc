@@ -3676,6 +3676,14 @@ data ci_claim_reason_floor_step_carveout_tag: Symbol = ci_claim_reason_floor_ste
 data ci_digest_true_tag: Symbol = ci_digest_true_tag
 data ci_digest_false_tag: Symbol = ci_digest_false_tag
 data ci_digest_empty_hash_list_tag: Symbol = ci_digest_empty_hash_list_tag
+data ci_digest_empty_change_set_tag: Symbol = ci_digest_empty_change_set_tag
+data ci_digest_empty_affected_dependency_list_tag: Symbol = ci_digest_empty_affected_dependency_list_tag
+data ci_digest_empty_diagnostics_list_tag: Symbol = ci_digest_empty_diagnostics_list_tag
+data ci_digest_empty_affected_exclusion_list_tag: Symbol = ci_digest_empty_affected_exclusion_list_tag
+data ci_digest_empty_dependency_kind_list_tag: Symbol = ci_digest_empty_dependency_kind_list_tag
+data ci_digest_empty_step_selection_list_tag: Symbol = ci_digest_empty_step_selection_list_tag
+data ci_digest_empty_testclaim_selection_list_tag: Symbol = ci_digest_empty_testclaim_selection_list_tag
+data ci_digest_empty_testgen_slot_selection_list_tag: Symbol = ci_digest_empty_testgen_slot_selection_list_tag
 data ci_change_kind_node_changed_tag: Symbol = ci_change_kind_node_changed_tag
 data ci_change_kind_node_added_tag: Symbol = ci_change_kind_node_added_tag
 data ci_change_kind_node_removed_tag: Symbol = ci_change_kind_node_removed_tag
@@ -3686,6 +3694,9 @@ data ci_dependency_endpoint_dependent_tag: Symbol = ci_dependency_endpoint_depen
 data ci_affected_set_produced_tag: Symbol = ci_affected_set_produced_tag
 data ci_affected_set_fail_closed_tag: Symbol = ci_affected_set_fail_closed_tag
 data ci_affected_set_diagnostics_tag: Symbol = ci_affected_set_diagnostics_tag
+data ci_no_correction_user_input_boundary_tag: Symbol = ci_no_correction_user_input_boundary_tag
+data ci_no_correction_ambiguous_intent_tag: Symbol = ci_no_correction_ambiguous_intent_tag
+data ci_no_correction_external_contract_unknown_tag: Symbol = ci_no_correction_external_contract_unknown_tag
 data ci_dependency_kind_contains_tag: Symbol = ci_dependency_kind_contains_tag
 data ci_dependency_kind_binds_to_tag: Symbol = ci_dependency_kind_binds_to_tag
 data ci_dependency_kind_type_depends_on_tag: Symbol = ci_dependency_kind_type_depends_on_tag
@@ -3790,7 +3801,7 @@ fn ci_change_digest(change: Change) -> Hash {
 fn ci_change_set_digest(changes: ChangeSet) -> Hash {
   fold_list(
     xs: changes.changes,
-    empty: ci_symbol_digest(sym: ci_change_kind_node_changed_tag),
+    empty: ci_symbol_digest(sym: ci_digest_empty_change_set_tag),
     cons: fn(acc, change) {
       combine_hash(a: acc, b: ci_change_digest(change: change))
     }
@@ -3855,7 +3866,7 @@ fn ci_affected_dependency_digest(dep: AffectedDependency) -> Hash {
 fn ci_affected_dependency_list_digest(xs: List<AffectedDependency>) -> Hash {
   fold_list(
     xs: xs,
-    empty: ci_symbol_digest(sym: ci_affected_set_produced_tag),
+    empty: ci_symbol_digest(sym: ci_digest_empty_affected_dependency_list_tag),
     cons: fn(acc, dep) {
       combine_hash(a: acc, b: ci_affected_dependency_digest(dep: dep))
     }
@@ -3887,9 +3898,9 @@ fn ci_locus_digest(locus: Locus) -> Hash {
 
 fn ci_no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
   match reason {
-    UserInputBoundary => ci_symbol_digest(sym: ci_receipt_inputs_fail_closed_reason)
-    AmbiguousIntent => ci_symbol_digest(sym: ci_workflow_receipt_unexpected_verdict)
-    ExternalContractUnknown => ci_symbol_digest(sym: ci_selection_shadow_reason)
+    UserInputBoundary => ci_symbol_digest(sym: ci_no_correction_user_input_boundary_tag)
+    AmbiguousIntent => ci_symbol_digest(sym: ci_no_correction_ambiguous_intent_tag)
+    ExternalContractUnknown => ci_symbol_digest(sym: ci_no_correction_external_contract_unknown_tag)
   }
 }
 
@@ -3916,7 +3927,7 @@ fn ci_diagnostic_digest(diagnostic: Diagnostic) -> Hash {
 fn ci_diagnostics_list_digest(xs: List<Diagnostic>) -> Hash {
   fold_list(
     xs: xs,
-    empty: ci_symbol_digest(sym: ci_affected_set_diagnostics_tag),
+    empty: ci_symbol_digest(sym: ci_digest_empty_diagnostics_list_tag),
     cons: fn(acc, diagnostic) {
       combine_hash(a: acc, b: ci_diagnostic_digest(diagnostic: diagnostic))
     }
@@ -3949,7 +3960,7 @@ fn ci_affected_exclusion_digest(exclusion: AffectedExclusion) -> Hash {
 fn ci_affected_exclusion_list_digest(xs: List<AffectedExclusion>) -> Hash {
   fold_list(
     xs: xs,
-    empty: ci_symbol_digest(sym: ci_affected_set_diagnostics_tag),
+    empty: ci_symbol_digest(sym: ci_digest_empty_affected_exclusion_list_tag),
     cons: fn(acc, exclusion) {
       combine_hash(a: acc, b: ci_affected_exclusion_digest(exclusion: exclusion))
     }
@@ -3960,7 +3971,7 @@ fn ci_affected_exclusion_list_digest(xs: List<AffectedExclusion>) -> Hash {
 fn ci_dependency_kind_list_digest(xs: List<DependencyKind>) -> Hash {
   fold_list(
     xs: xs,
-    empty: ci_symbol_digest(sym: ci_dependency_kind_contains_tag),
+    empty: ci_symbol_digest(sym: ci_digest_empty_dependency_kind_list_tag),
     cons: fn(acc, kind) {
       combine_hash(a: acc, b: ci_dependency_kind_digest(kind: kind))
     }
@@ -4173,7 +4184,7 @@ fn ci_step_selection_digest(row: CiStepSelection) -> Hash {
 fn ci_step_selection_list_digest(rows: List<CiStepSelection>) -> Hash {
   fold_list(
     xs: rows,
-    empty: ci_symbol_digest(sym: ci_selection_decision_run_tag),
+    empty: ci_symbol_digest(sym: ci_digest_empty_step_selection_list_tag),
     cons: fn(acc, row) {
       combine_hash(a: acc, b: ci_step_selection_digest(row: row))
     }
@@ -4204,7 +4215,7 @@ fn ci_testclaim_selection_digest(row: CiTestClaimSelection) -> Hash {
 fn ci_testclaim_selection_list_digest(rows: List<CiTestClaimSelection>) -> Hash {
   fold_list(
     xs: rows,
-    empty: ci_symbol_digest(sym: ci_projection_command_claim_ids_edge),
+    empty: ci_symbol_digest(sym: ci_digest_empty_testclaim_selection_list_tag),
     cons: fn(acc, row) {
       combine_hash(a: acc, b: ci_testclaim_selection_digest(row: row))
     }
@@ -4241,7 +4252,7 @@ fn ci_testgen_slot_selection_digest(row: TestgenSlotSelection) -> Hash {
 fn ci_testgen_slot_selection_list_digest(rows: List<TestgenSlotSelection>) -> Hash {
   fold_list(
     xs: rows,
-    empty: ci_symbol_digest(sym: ci_selection_testgen_slot_tag),
+    empty: ci_symbol_digest(sym: ci_digest_empty_testgen_slot_selection_list_tag),
     cons: fn(acc, row) {
       combine_hash(a: acc, b: ci_testgen_slot_selection_digest(row: row))
     }
