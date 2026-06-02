@@ -413,6 +413,22 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // verdicts; P5 deferral to ROADMAP.md `PB-Runtime-External-Toolchain-TestClaims`.
     // Interim host runners: scripts/v4-leaf-model-go-r{1,2a,2b,3-external}-verify.sh.
     "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs",
+    // Phase 1 leaf-model python cross-runtime DRIFT (Worksheet C): boundary tokenize/parse smoke
+    // of the drift std/lens/claim dags + runtime divergence exercise for
+    // `python_cross_runtime_drift_*` (Python arbitrary precision vs Rust/Go fixed-width wrap);
+    // host runner `scripts/v4-leaf-model-python-cross-runtime-drift-verify.sh`.
+    //
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
+    // receipt is this registration itself (per-PR mechanism (b)) — the `EXPECTED_HAND_AUTHORED_TEST`
+    // census moves by exactly +1 now and must shrink by 1 at dissolution; the sorted/unique and
+    // disk-vs-list census tests in this file mechanically enforce it. Deferral lane —
+    // **ROADMAP.md** "What v4 is building toward" rows "Tests as `.dag` `TestClaim` data"
+    // (`src/v4/test/claim/`) and "Pure bootstrap / self-host" (trajectory to zero hand-maintained
+    // Rust; `self_host.dag` ratchet). Concrete dissolution trigger: delete this hand-Rust test when
+    // the modeled `TestClaim` runner exercises
+    // `src/v4/test/claim/language_model/python_cross_runtime_drift.dag` directly, so the boundary
+    // host-process bridge is no longer the only exerciser of the drift claim.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_cross_runtime_drift_test.rs",
     // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
     // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
     // `run_target_verification` owns target verdicts; interim host runner

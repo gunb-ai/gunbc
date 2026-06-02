@@ -14,12 +14,14 @@ import v4.extdeps.languages.go {
   go_facts_int64,
   go_integer_algebra_inhabitance,
   go_integer_facts_node,
+  go_repr_twos_complement_integer,
   go_surface_spelling_int
 }
 import v4.extdeps.languages.python {
   python_atom_realization_symbol,
   python_facts_field_encoding,
   python_integer_algebra_inhabitance_python_facts_int,
+  python_repr_int_arbitrary_precision,
   python_surface_spelling_int
 }
 import v4.extdeps.typecheckers.pyright {
@@ -37,6 +39,7 @@ import v4.extdeps.languages.rust {
   rust_coercion_field_i32_spelling,
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_mvp1_target_model_staging,
+  rust_repr_integer_twos_complement,
   rust_surface_spelling_i32,
   rust_target_atom_realization_symbol,
   rust_target_atom_type_form
@@ -44,6 +47,7 @@ import v4.extdeps.languages.rust {
 import v4.std.algebra { algebra_inhabitance_node }
 import v4.std.collection { optional_absent }
 import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.host_run { ValueDiff }
 import v4.std.logic { Bool }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -75,6 +79,8 @@ import v4.std.leaf_model_verification {
   LeafModelTypeScriptRuntimeFixture,
   LeafModelTypeScriptRuntimeFixturePair,
   LeafModelRustFixture,
+  LeafModelCrossRuntimeDriftProbe,
+  leaf_model_claim_python_cross_runtime_drift_arbitrary_precision,
   leaf_model_claim_go_r1_int_surface_spelling,
   leaf_model_claim_go_r2a_int_algebra_operations,
   leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
@@ -269,6 +275,42 @@ fn python_r2b_fixture_pair() -> LeafModelPythonFixturePair {
 
 fn python_r2b_fixture() -> LeafModelPythonFixturePair {
   python_r2b_fixture_pair()
+}
+
+// --- PY-L2-CROSS-RUNTIME-DRIFT — positive cross-runtime divergence receipt ---
+// The same modeled program — exact integer add at the fixed-width boundary, `MAX + 1` — realized
+// in each target's native integer. Python's Int is arbitrary precision, so it prints the exact sum
+// (9223372036854775808). Rust `i64` and Go `int64` are fixed-width two's-complement, so the same add
+// wraps to i64::MIN (-9223372036854775808). The runner asserts the drift POSITIVELY: python_value !=
+// rust_value (and != go_value when Go is present), while rust_value == go_value (cross-runtime
+// fixed-width agreement). Rust uses `wrapping_add` so the boundary is defined behavior (no debug
+// overflow panic); Go signed overflow is defined to wrap by the language spec. Complement of the L2
+// parity lane (PR #4154), which asserts EQUALITY on the common domain.
+data python_cross_runtime_drift_python_source: String = "def add_exact(a: int, b: int) -> int:\n    return a + b\n\nif __name__ == \"__main__\":\n    print(add_exact((2 ** 63) - 1, 1))\n"
+
+data python_cross_runtime_drift_rust_source: String = "fn add_exact(a: i64, b: i64) -> i64 { a.wrapping_add(b) }\nfn main() {\n    println!(\"{}\", add_exact(i64::MAX, 1));\n}\n"
+
+data python_cross_runtime_drift_go_source: String = "package main\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\nfunc addExact(a int64, b int64) int64 { return a + b }\n\nfunc main() {\n\tfmt.Println(addExact(math.MaxInt64, 1))\n}\n"
+
+// Arbitrary-precision (Python) value vs fixed-width wrapped (Rust/Go) value — the modeled divergence.
+data python_cross_runtime_drift_arbitrary_precision_value: String = "9223372036854775808"
+
+data python_cross_runtime_drift_fixed_width_value: String = "-9223372036854775808"
+
+fn python_cross_runtime_drift_probe() -> LeafModelCrossRuntimeDriftProbe {
+  LeafModelCrossRuntimeDriftProbe {
+    claim_id: leaf_model_claim_python_cross_runtime_drift_arbitrary_precision,
+    arbitrary_precision_fact: python_repr_int_arbitrary_precision,
+    fixed_width_rust_fact: rust_repr_integer_twos_complement,
+    fixed_width_go_fact: go_repr_twos_complement_integer,
+    arbitrary_precision_source: python_cross_runtime_drift_python_source,
+    fixed_width_rust_source: python_cross_runtime_drift_rust_source,
+    fixed_width_go_source: python_cross_runtime_drift_go_source,
+    expected_divergence: ValueDiff {
+      expected: python_cross_runtime_drift_arbitrary_precision_value,
+      actual: python_cross_runtime_drift_fixed_width_value
+    }
+  }
 }
 
 // R3-external — Symbol atom realization: nominal class (happy) vs ctor arity mismatch (falsification).
