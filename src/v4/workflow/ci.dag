@@ -366,6 +366,72 @@ data ci_always_run_carveouts: List<CiCarveout> = [
   }
 ]
 
+// ── Wave 2 — §11.7.5 temporary shell exception table (Class A safety floor) ──────────────────
+// Authority: #4137 §11.7.5 "The temporary CI cut rule (codified)". A shell-owned check may remain
+// REQUIRED on every PR only if it (1) protects a named §11.7.1 safety-floor item, (2) has no
+// runtime-authoritative `CiUpsertStep` replacement yet, (3) is listed in THIS table, (4) names a
+// structural dissolution path. Conditions (2)+(3) are definitional: a row exists here iff the step
+// is still shell-owned and not yet emitted FROM its `CiUpsertStep` as ci.yml runtime authority.
+// This is the first executable slice of Wave 2 (shell→`CiUpsertStep` migration, §11.7.7 lane 6):
+// it models the exception registry the no-new-shell ratchet (§11.7.1 #5) consumes — the set of
+// REQUIRED shell-owned ci-floor steps must equal these rows' `step_id`s; any unlisted required
+// shell is a ratchet regression. Reuses `CiStepId` + `DissolutionTarget` (no parallel exception
+// genus); sibling to `ci_always_run_carveouts` (run-policy carveout) — distinct concept (shell
+// retirement vs always-run), shared leaf substrate.
+
+// §11.7.1 bare-minimum safety-floor item a shell exception protects (§11.7.5 cond 1).
+type CiSafetyFloorItem
+  = FmtCheck
+  | BootstrapMinimalViability
+  | OneRustEmitProbe
+  | CiDagStructuralReceipt
+  | NoNewShellRatchet
+
+// Repo-relative path of the `.github/ci-floor/*.sh` script currently owning a Class-A floor step.
+type ShellScriptPath = String
+
+// 🟡 coproduct dissolution — feature:wave2-class-a-shell-exception-table — bind #4137 §11.7.5 — dissolve-on-arrival: a row is DELETED when ci.yml emits its `step_id` FROM `replacement_upsert` as runtime authority (T-24), not when the shadow `CiUpsertStep` row merely exists; forbidden: a row without a named `dissolution_target`, or a Class-B/C/D (non-floor) step carried as a shell exception.
+type CiShellExceptionRow {
+  step_id: CiStepId
+  shell_owner: ShellScriptPath
+  protects_floor: CiSafetyFloorItem
+  // The shadow `CiUpsertStep` that retires this row once it becomes ci.yml runtime authority.
+  replacement_upsert: Symbol
+  dissolution_target: DissolutionTarget
+}
+
+// `replacement_upsert` symbol atoms — name the existing shadow `CiUpsertStep` rows (above) that
+// each shell exception migrates onto. Dissolution `what` atoms — the runtime-authority emission
+// substrate whose arrival deletes the row.
+data ci_upsert_v2_bootstrap_smoke_execution_step: Symbol = ci_upsert_v2_bootstrap_smoke_execution_step
+data ci_upsert_m1_rust_emit_probe_execution_step: Symbol = ci_upsert_m1_rust_emit_probe_execution_step
+data ci_bootstrap_step_emitted_from_upsert_runtime_authority: Symbol = ci_bootstrap_step_emitted_from_upsert_runtime_authority
+data ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority: Symbol = ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
+
+data ci_class_a_shell_exceptions: List<CiShellExceptionRow> = [
+  CiShellExceptionRow {
+    step_id: JobStep { job: v2_bootstrap_smoke_execution, step: v2_bootstrap_smoke_execution },
+    shell_owner: ".github/ci-floor/v4-bootstrap-viability.sh",
+    protects_floor: BootstrapMinimalViability,
+    replacement_upsert: ci_upsert_v2_bootstrap_smoke_execution_step,
+    dissolution_target: ModelMissingSubstrate {
+      what: ci_bootstrap_step_emitted_from_upsert_runtime_authority
+    }
+  },
+  CiShellExceptionRow {
+    step_id: JobStep {
+      job: m1_rust_emit_probe_execution,
+      step: m1_rust_emit_probe_execution
+    },
+    shell_owner: ".github/ci-floor/v4-m1-rust-emit-probe.sh",
+    protects_floor: OneRustEmitProbe,
+    replacement_upsert: ci_upsert_m1_rust_emit_probe_execution_step,
+    dissolution_target: ModelMissingSubstrate {
+      what: ci_m1_rust_emit_step_emitted_from_upsert_runtime_authority
+    }
+  }
+]
+
 // Wave 3 §11.7.4 — extend existing receipt (arbiter §8 2026-06-01); no parallel shadow receipt type.
 // 🟡 coproduct dissolution — feature:wave3-shadow-selection-receipt — bind Wave 4 active-skip — dissolve-on-arrival: `CiActiveFloorSkipEvidence` is populated from cached TestClaimRun verdict partition; forbidden: bare `Active` tag without skip evidence (illegal floor-skip state).
 type CiActiveFloorSkipEvidence {
