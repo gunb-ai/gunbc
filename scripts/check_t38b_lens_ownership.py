@@ -49,6 +49,7 @@ def main() -> None:
             "type LensOwnershipSubject",
             "claim_id: Symbol",
             "data claim_lens_ownership_resource_dependency_id: Symbol = claim_lens_ownership_resource_dependency",
+            "eval_subject: TestClaimEvalSubject<Node>",
             "structural_witness: Bool",
             "ownership_resource_dependency_claim_passes",
             "fn ownership_claim_input(ok: Bool) -> Node",
