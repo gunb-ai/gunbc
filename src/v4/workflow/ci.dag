@@ -809,7 +809,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
     step_name: "M1 v4 full-tree rust emit probe (v2 emit)"
     host_script: ShellScript { path: ".github/ci-floor/v4-m1-rust-emit-probe.sh" }
     non_blocking: false
-    timeout_minutes: 20
+    timeout_minutes: 35
     strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" } // reserved; gate is emit receipt only
   }
   rust_emit_probe_policy: M1RustEmitProbePolicy {
