@@ -743,9 +743,12 @@ fn emit_host_runner_rust_row_builds_runs_and_parses_stdout() {
         claim_input_root: "w2_harness_claim_input".to_string(),
         expected_eval_root: "w2_harness_expected_eval".to_string(),
     };
-    let receipt =
-        emit_host_runner::run_emit_host_rust(EMIT_HOST_FIXTURE_SOURCE, &inputs, &work_dir)
-            .expect("run_emit_host_rust");
+    let receipt = emit_host_runner::run_emit_host_rust(
+        EMIT_HOST_FIXTURE_SOURCE,
+        &inputs.transport(),
+        &work_dir,
+    )
+    .expect("run_emit_host_rust");
     assert!(
         receipt.exit.exit_holds(),
         "expected successful host exit (Holds witness), got {:?}",
@@ -1090,9 +1093,12 @@ fn emit_host_runner_go_row_runs_and_parses_stdout() {
         claim_input_root: "w5_go_claim_input".to_string(),
         expected_eval_root: "w5_go_expected_eval".to_string(),
     };
-    let receipt =
-        emit_host_runner::run_emit_host_go(EMIT_HOST_GO_FIXTURE_SOURCE, &inputs, &work_dir)
-            .expect("run_emit_host_go");
+    let receipt = emit_host_runner::run_emit_host_go(
+        EMIT_HOST_GO_FIXTURE_SOURCE,
+        &inputs.transport(),
+        &work_dir,
+    )
+    .expect("run_emit_host_go");
     assert!(receipt.exit.exit_holds());
     emit_host_runner::runtime_value_parse_go(&receipt.stdout_bytes).expect("parse");
 }
@@ -1207,9 +1213,12 @@ fn emit_host_runner_python_row_runs_and_parses_stdout() {
         claim_input_root: "w34_py_claim_input".to_string(),
         expected_eval_root: "w34_py_expected_eval".to_string(),
     };
-    let receipt =
-        emit_host_runner::run_emit_host_python(EMIT_HOST_PYTHON_FIXTURE_SOURCE, &inputs, &work_dir)
-            .expect("run_emit_host_python");
+    let receipt = emit_host_bridge::run_emit_host_python_transport(
+        EMIT_HOST_PYTHON_FIXTURE_SOURCE,
+        &inputs,
+        &work_dir,
+    )
+    .expect("run_emit_host_python_transport");
     assert!(receipt.exit.exit_holds());
     emit_host_runner::runtime_value_parse_python(&receipt.stdout_bytes).expect("parse");
 }
