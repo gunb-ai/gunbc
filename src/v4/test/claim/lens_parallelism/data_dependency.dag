@@ -25,6 +25,7 @@ import v4.std.dependency {
   DataDependsOn,
   DependencyView
 }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.runtime { RuntimeValue }
@@ -92,6 +93,13 @@ type LensParallelismClaim {
   input: InferredTree
   expected: ParallelismFact
   actual: Witness<ParallelismFact>
+}
+
+type LensParallelismSubjectRosterContract {
+  claim: TestClaim
+  subject: TestClaimEvalSubject<Node>
+  run: TestClaimRun<Node, RuntimeValue>
+  unsupported_rows: List<Symbol>
 }
 
 data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismClaim {
@@ -182,3 +190,12 @@ data subject_parallelism_data_dependency_receipt: TestClaimEvalSubject<Node> = e
 data run_parallelism_data_dependency_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: subject_parallelism_data_dependency_receipt
 )
+
+data lens_parallelism_unsupported_subject_rows: List<Symbol> = []
+
+data lens_parallelism_data_dependency_subject_roster_contract: LensParallelismSubjectRosterContract = LensParallelismSubjectRosterContract {
+  claim: claim_parallelism_data_dependency_run_test_claim_receipt,
+  subject: subject_parallelism_data_dependency_receipt,
+  run: run_parallelism_data_dependency_receipt,
+  unsupported_rows: lens_parallelism_unsupported_subject_rows
+}
