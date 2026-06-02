@@ -1,7 +1,7 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; Wave-0 TestClaim roster selection.
 // Wave-0 partial close (this PR): T-21/T-24 affected-set authority, detect-affected-components.sh dissolution, runner-pool/M1 facts modeled.
-// T-24 CI/YAML authority bridge (emitter wired, hand-authored ci.yml deleted) remains open per src/v4/TASKS.md §T-24 — interim hand ci.yml edits are transport wiring only, not YAML-authority dissolution.
+// CI/YAML authority bridge remains open under ROADMAP.md T-PB-B / `pb_rust_tests_outside_residual_zero` plus workflow TestClaim receipts — interim hand ci.yml edits are transport wiring only, not YAML-authority dissolution.
 // Status: filled — declarative core + eager well-formedness + T-21/T-24 component affected-set + T-24 bankruptcy Tier-0: `ci_select_ci_jobs_from_affected_set`; I2–I4 v2/v3 commands; I7 `V4T15SelfHostFixedPointCommand`; I5/I6/I8 via existing bootstrap/M1/corpus jobs; TestClaim roster selection + P5 Layer 2 structural bridge (positive-Y `ci_upsert_testclaim_corpus_eval_*`; T-38-PR2 runtime verdict CI remains open).
 
 module v4.workflow.ci
@@ -124,6 +124,7 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.lens_effect.effect_depends_on { claim_lens_effect_depends_on_runtime_verdict }
 import v4.test.claim.workflow.wave3_shadow_roster {
   ci_wave3_shadow_claim_roster,
   ci_wave3_shadow_generated_claim_roster,
@@ -463,7 +464,7 @@ type CiComponentAffected {
 // `Rejected` selects the superset `ci_component_affected_fail_closed` (all flags true).
 // Uses canonical `Outcome<GitDiffNameOnly>` from std.diagnostic (Practice 10 — no parallel read carrier).
 // RULING-1: 🟢 pretty-much-done — self-hosted fleet substrate (operator 2026-05-28: srv1/srv2 Ampere Altra / Arm64).
-// Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
+// Consumed by YamlStatic workflow projection.
 // Fleet arch is a closed operator fact as `arch: Symbol` (not a sum type — avoids Lens-CI coproduct resolution).
 // 🟡 gated — feature:formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 type SelfHostedRunnerPool {
@@ -474,6 +475,20 @@ type SelfHostedRunnerPool {
   jobserver_token_cap: Int // 🟡 gated: formatter-int-refinement — must be ≥1
 }
 
+type RunnerPoolResilienceStep {
+  trigger: Symbol
+  action: Symbol
+  owner: Symbol
+  fail_closed: Bool
+}
+
+type RunnerPoolResiliencePlaybook {
+  detection: RunnerPoolResilienceStep
+  fallback: RunnerPoolResilienceStep
+  comms: RunnerPoolResilienceStep
+  recovery: RunnerPoolResilienceStep
+}
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
 type LensCiLiveWorkflowSignal {
   smoke_step_name: String
@@ -481,7 +496,7 @@ type LensCiLiveWorkflowSignal {
   semantic_target: String
 }
 
-// 🟡 gated — live-workflow projection interim (docs/modeling-discipline.md Practice 2/10) — feature:project-github-actions-landed — consumer:CiLiveWorkflowStepSignal strict env projection — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads typed step env from `ci_pipeline`/command policy rows and this bridge carrier is deleted; forbidden: encoding absent env bindings as empty strings.
+// 🟡 gated — live-workflow projection interim (docs/modeling-discipline.md Practice 2/10) — feature:project-github-actions-landed — consumer:CiLiveWorkflowStepSignal strict env projection — bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/ci_component_affected.dag — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads typed step env from `ci_pipeline`/command policy rows and this bridge carrier is deleted; forbidden: encoding absent env bindings as empty strings.
 type StrictEnvBinding
   = NoStrictEnvBinding
   | StrictEnvBinding { var: String, value: String }
@@ -492,7 +507,7 @@ type CiWorkflowHostScript
   = ShellScript { path: String }
   | NoShellScript
 
-// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/runner_pool_m1_probe.dag — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
 type CiLiveWorkflowStepSignal {
   binding_smoke_step_name: String
   step_name: String
@@ -535,6 +550,16 @@ data phase1_nat_semiring_rung_gate_signal: Symbol = phase1_nat_semiring_rung_gat
 data ci_srv1_host: Symbol = ci_srv1_host
 data ci_srv2_host: Symbol = ci_srv2_host
 data ci_runner_arch_arm64: Symbol = ci_runner_arch_arm64
+data runner_pool_jobserver_coupling_lost: Symbol = runner_pool_jobserver_coupling_lost
+data runner_pool_ci_required_path_at_risk: Symbol = runner_pool_ci_required_path_at_risk
+data runner_pool_operator_status_change_required: Symbol = runner_pool_operator_status_change_required
+data runner_pool_capacity_restored: Symbol = runner_pool_capacity_restored
+data runner_pool_fail_required_path: Symbol = runner_pool_fail_required_path
+data runner_pool_route_to_github_hosted_floor: Symbol = runner_pool_route_to_github_hosted_floor
+data runner_pool_notify_parent_dashboard: Symbol = runner_pool_notify_parent_dashboard
+data runner_pool_reenable_self_hosted_capacity: Symbol = runner_pool_reenable_self_hosted_capacity
+data ci_manager_owner: Symbol = ci_manager_owner
+data ci_operator_owner: Symbol = ci_operator_owner
 
 data ci_srv1_pool: SelfHostedRunnerPool = {
   host: ci_srv1_host
@@ -556,6 +581,34 @@ data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
   ci_srv1_pool,
   ci_srv2_pool
 ]
+
+data ci_runner_pool_resilience_playbook: RunnerPoolResiliencePlaybook = {
+  detection: RunnerPoolResilienceStep {
+    trigger: runner_pool_jobserver_coupling_lost
+    action: runner_pool_fail_required_path
+    owner: ci_manager_owner
+    fail_closed: true
+  }
+  fallback: RunnerPoolResilienceStep {
+    trigger: runner_pool_ci_required_path_at_risk
+    action: runner_pool_route_to_github_hosted_floor
+    owner: ci_manager_owner
+    fail_closed: true
+  }
+  comms: RunnerPoolResilienceStep {
+    trigger: runner_pool_operator_status_change_required
+    action: runner_pool_notify_parent_dashboard
+    owner: ci_manager_owner
+    fail_closed: true
+  }
+  recovery: RunnerPoolResilienceStep {
+    trigger: runner_pool_capacity_restored
+    action: runner_pool_reenable_self_hosted_capacity
+    owner: ci_operator_owner
+    fail_closed: true
+  }
+}
+
 
 // RUNNER-ISOLATION SECURITY FLOOR — gunbc is PUBLIC on the private self-hosted fleet (srv1/srv2),
 // so fork-PR `pull_request` runs execute attacker-controlled code on those runners. The operator
@@ -621,7 +674,7 @@ data ci_runner_isolation_policy: RunnerIsolationPolicy = {
 //   INTERIM (operator 2026-06-01, "stop the bleeding"): the ci.yml `Cache Cargo` key was
 //   de-churned (Cargo.lock+toolchain only) so restores actually hit and stop evicting the warm
 //   v2 `gunbc-bin` cache. This is transport repair of an existing block, not new design surface,
-//   and does NOT touch the two dominant ci_floor steps (M1 emit-probe cargo-check ~13m, v2→v4
+//   and does NOT touch the two dominant ci_floor steps (M1 emit-probe v2 compile, v2→v4
 //   bootstrap ~9m) — those compile freshly-emitted trees in $RUNNER_TEMP whose target/ is
 //   discarded each run, so only content-addressed sccache (the modeled projection) can warm them.
 
@@ -643,11 +696,11 @@ data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
 data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   step: CiLiveWorkflowStepSignal {
     binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
-    step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
+    step_name: "M1 v4 full-tree rust emit probe (v2 emit)"
     host_script: ShellScript { path: ".github/ci-floor/v4-m1-rust-emit-probe.sh" }
     non_blocking: false
     timeout_minutes: 20
-    strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" }
+    strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" } // reserved; gate is emit receipt only
   }
   rust_emit_probe_policy: M1RustEmitProbePolicy {
     emit_preconditions_block_required_path: true
@@ -1016,6 +1069,7 @@ data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStepSymbol = ci_
 // Forbidden: adding/removing manual corpus rows without the matching claim id here.
 data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
   claim_eval_mvp2_test_claim_route,
+  claim_lens_effect_depends_on_runtime_verdict,
   claim_rust_language_model_emit_mechanical_reverification,
   claim_rust_language_model_emit_subsumption_reverifies
 ]
@@ -4314,6 +4368,23 @@ fn ci_runner_pool_fleet_capacities_valid() -> Bool {
   for_all(xs: ci_self_hosted_runner_pools, predicate: ci_runner_pool_capacity_valid)
 }
 
+fn ci_runner_pool_resilience_step_fail_closed(step: RunnerPoolResilienceStep) -> Bool {
+  step.fail_closed
+}
+
+fn ci_runner_pool_resilience_playbook_fail_closed(p: RunnerPoolResiliencePlaybook) -> Bool {
+  ci_runner_pool_resilience_step_fail_closed(step: p.detection)
+    && ci_runner_pool_resilience_step_fail_closed(step: p.fallback)
+    && ci_runner_pool_resilience_step_fail_closed(step: p.comms)
+    && ci_runner_pool_resilience_step_fail_closed(step: p.recovery)
+}
+
+fn ci_runner_pool_resilience_playbook_complete(p: RunnerPoolResiliencePlaybook) -> Bool {
+  ci_runner_pool_resilience_playbook_fail_closed(p: p)
+}
+
+data ci_runner_pool_resilience_playbook_ok: Bool = ci_runner_pool_resilience_playbook_complete(p: ci_runner_pool_resilience_playbook)
+
 
 // A faithful runner-isolation floor must (a) fail closed on a re-privileged runner — both the
 // uid-0 and the passwordless-sudo regression shapes — (b) be a required-path gate, since an
@@ -4336,32 +4407,6 @@ fn ci_runner_isolation_policy_valid(p: RunnerIsolationPolicy) -> Bool {
 
 // Receipt: the runner de-priv regression guard is modeled as a fail-closed, required-path floor.
 data ci_runner_isolation_policy_ok: Bool = ci_runner_isolation_policy_valid(p: ci_runner_isolation_policy)
-
-
-// RULING-1: 🟢 operator fact — M1 rust-emit probe parallelism. The emitted-tree `cargo check` runs
-// JOBSERVER-COUPLED: the host token pool bounds rustc processes across all runners, so the check
-// fills the machine when idle and pares down under load — NOT a fixed projection. Two coupling
-// sources: (1) on GHA, the actions-runner@.service systemd unit exports MAKEFLAGS=--jobserver-auth,
-// so raw cargo joins the pool directly (ctrl-build is NOT installed on GHA runners); (2) in session
-// containers, ctrl-build sets MAKEFLAGS from CTRL_JOBSERVER_FIFO and adds the MemAvailable picker +
-// sccache. NO FALLBACK: the inherited MAKEFLAGS path is taken only when the jobserver source is
-// VALIDATED usable (live FIFO/fds, not a substring match); if NEITHER coupling is usable the probe
-// fails closed (operator policy: a missing/stale jobserver coupling must surface immediately, never
-// a silent uncoupled run).
-//   `m1_probe_cargo_check_jobs_ceiling` — per-invocation `--jobs` ceiling on the raw/GHA path; the
-//     jobserver pares actual concurrency below it. (On the ctrl-build path the MemAvailable picker
-//     governs instead.)
-// ci_srv1_pool/ci_srv2_pool retain host capacity facts for YamlStatic projection follow-on (T-24/#98).
-// 🟡 gated — feature:elastic-compute-fabric — the "jobserver÷runner allocation rule" (the old
-//   Wave-0 TODO) is realized at runtime by the host jobserver (runner-unit MAKEFLAGS on GHA,
-//   ctrl-build in session containers); its first-authority model is
-//   dsl/std/compute_fabric.dag (Worksheet A, landed PR #4095). dissolve-on-arrival: when
-//   compute_fabric's `satisfies` lease predicate lands (cases 7–8, currently a P-CF-WITNESS stub),
-//   this ceiling scalar is replaced by a projected ComputeLease/WorkDemand over the
-//   SelfHostedRunnerPool supply rows. forbidden until then: fabricating a lease projection on the
-//   unfinished predicate, or re-pinning a single fixed `cargo check --jobs` operating point
-//   (parallelism is memory-governed, not a fixed number).
-data m1_probe_cargo_check_jobs_ceiling: Int = 64
 
 
 fn ci_char_projection_out_of_range_injective_witness() -> Bool {

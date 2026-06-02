@@ -944,7 +944,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
-    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Dissolves: T-PB-B / T-22 T-38.
+    // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
+    // compiler-slice claim parse surface; pairs with
+    // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
+    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
+    // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:47-51`).
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
@@ -966,6 +970,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
+    // T-38B: lens_idempotency subject roster + run_test_claim + family receipt (eval_mvp2 wedge).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (table row at ROADMAP.md:57); M1(2.7)
+    // tokenize/parse ratchet on `src/v4/test/claim/lens_idempotency/*` until cross-module
+    // v4 `compile_to_dag` import merge lands (peer `v4_lens_edit_locus_dag_smoke_test`
+    // posture). Lane: T-38B TestClaimRun structural receipts; dissolves when substrate
+    // eval executes the roster without this hand-Rust parse smoke.
+    "src/v3/compiler/tests/integration/v4_lens_idempotency_claim_dag_smoke_test.rs",
     // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
     // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_identical_variant_payload_dag_smoke_test.rs",
