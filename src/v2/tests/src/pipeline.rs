@@ -1514,6 +1514,25 @@ fn sg8_reexported_variant_skips_proxy_local_enum_homonym() {
 }
 
 #[test]
+fn sg8_kernel_type_import_does_not_emit_rust_use_line() {
+    let files = &[
+        ("types.dag", "module sg8_types\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_types { Int }\nfn f(x: Int) -> Int { x }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        !content.contains("use crate::sg8_types::{Int}")
+            && !content.contains("pub use crate::sg8_types::{Int}"),
+        "ambient kernel types must not emit module import lines; got:\n{content}"
+    );
+}
+
+#[test]
 fn sg8_reexported_variant_specific_import_chain_reaches_defining_module() {
     let files = &[
         ("def.dag", "module sg8_def\ntype E = A | B\n"),

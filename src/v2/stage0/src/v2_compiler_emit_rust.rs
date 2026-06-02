@@ -3523,9 +3523,7 @@ pub fn explicit_import_source_module_for_name(
                     .filter(|imp| {
                         let src_mod = authored_name_at(source_indices.clone(), imp.clone());
                         match v2_rt::map_get(&export_sets, src_mod.clone()) {
-                            Some(exported) => {
-                                v2_rt::map_get(&exported, name.clone()) == Some(true)
-                            }
+                            Some(exported) => v2_rt::map_get(&exported, name.clone()) == Some(true),
                             None => false,
                         }
                     })
