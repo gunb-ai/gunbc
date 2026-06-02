@@ -23,6 +23,9 @@
 //! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
 //! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
+//! **Go L1 (+0 paths, release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate
+//! claim parse surface + `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured
+//! JSON receipt; chained from rung gate after R2-go-compile). SG-0 + INVARIANTS §P5(b) in PR body.
 //! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte
 //! stdout contract; not per-law emitted artifacts until emit pipeline wires law subjects).
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
@@ -33,7 +36,7 @@
 
 use v3_compiler::emit_host_bridge;
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceVariant};
+use v3_compiler::parse_surface::{SurfaceItem, SurfaceVariant};
 use v3_compiler::tokenize_for_test;
 
 const EMIT_HOST_DAG: &str = include_str!("../../../../v4/compiler/emit_host.dag");
@@ -49,10 +52,6 @@ const NAT_SEMIRING_RUNG34_EVAL_PATH: &str =
 const NAT_SEMIRING_RUNG_3_4_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_3_4.dag");
 const NAT_SEMIRING_RUNG_3_4_PATH: &str = "src/v4/test/claim/nat_semiring/rung_3_4.dag";
-const NAT_SEMIRING_RUNG_0_TO_2_DAG: &str =
-    include_str!("../../../../v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag");
-const NAT_SEMIRING_RUNG_0_TO_2_PATH: &str =
-    "src/v4/test/claim/nat_semiring/rung_0_to_2_three_targets.dag";
 const NAT_SEMIRING_RUNG_5_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_5.dag");
 const NAT_SEMIRING_RUNG_5_PATH: &str = "src/v4/test/claim/nat_semiring/rung_5.dag";
@@ -60,6 +59,10 @@ const NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_DAG: &str =
     include_str!("../../../../v4/test/claim/nat_semiring/rung_l1_python_runtime.dag");
 const NAT_SEMIRING_RUNG_L1_PYTHON_RUNTIME_PATH: &str =
     "src/v4/test/claim/nat_semiring/rung_l1_python_runtime.dag";
+const NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG: &str =
+    include_str!("../../../../v4/test/claim/nat_semiring/rung_l1_go_compiler_slice.dag");
+const NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH: &str =
+    "src/v4/test/claim/nat_semiring/rung_l1_go_compiler_slice.dag";
 const NAT_SEMIRING_RUNG5_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/nat_semiring_rung5_eval.dag");
 const NAT_SEMIRING_RUNG5_EVAL_PATH: &str = "src/v4/test/claim/workflow/nat_semiring_rung5_eval.dag";
@@ -140,24 +143,6 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
             SurfaceItem::Data { name: decl_name, .. } if decl_name == name
         )
     })
-}
-
-fn data_body<'a>(
-    module: &'a v3_compiler::parse_surface::SurfaceModule,
-    name: &str,
-) -> &'a SurfaceExpr {
-    module
-        .items
-        .iter()
-        .find_map(|item| match item {
-            SurfaceItem::Data {
-                name: item_name,
-                body: Some(body),
-                ..
-            } if item_name == name => Some(body),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("missing data body `{name}`"))
 }
 
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
@@ -605,6 +590,60 @@ fn v4_nat_semiring_rung_l1_python_runtime_dag_tokenizes_and_parses_claim_row() {
 }
 
 #[test]
+fn v4_nat_semiring_rung_l1_go_compiler_slice_dag_tokenizes_and_parses_claim_row() {
+    let module = parse_module(
+        NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG,
+        NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH,
+    );
+    assert!(
+        surface_declares_data(&module, "go_l1_nat_semiring_rung2"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: canonical slice id symbol"
+    );
+    assert!(
+        surface_declares_data(&module, "go_l1_nat_semiring_rung2_l1_host_gate"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 host gate path"
+    );
+    assert!(
+        surface_declares_data(&module, "go_l1_nat_semiring_rung2_l1_receipt_schema"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 JSON receipt schema"
+    );
+    assert!(
+        surface_declares_data(&module, "phase1_l1_go_compiler_slice_subject_slice_binding"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: slice id bound on receipt subject"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG.contains(
+            "scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"
+        ),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: receipt schema must match host transport"
+    );
+    assert!(
+        surface_declares_data(&module, "phase1_nat_semiring_l1_go_compiler_slice_subject"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: Conj receipt subject carrier"
+    );
+    assert!(
+        surface_declares_data(
+            &module,
+            "claim_phase1_nat_semiring_l1_go_compiler_slice_compile"
+        ),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 go compiler-slice claim"
+    );
+    assert!(
+        surface_declares_data(
+            &module,
+            "phase1_nat_semiring_l1_go_compiler_slice_claim_rows"
+        ),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: L1 claim roster"
+    );
+    assert!(
+        NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG.contains("input: phase1_nat_semiring_l1_go_compiler_slice_subject")
+            && NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG
+                .contains("target: phase1_l1_go_compiler_slice_subject_slice_binding"),
+        "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: CompilesClaim must reference structural slice binding"
+    );
+}
+
+#[test]
 fn emit_host_bridge_rust_transport_builds_runs_and_parses_stdout() {
     let work_dir = emit_host_runner::default_work_dir(&format!(
         "gunbc_emit_host_bridge_{}",
@@ -785,46 +824,6 @@ fn v4_nat_semiring_rung_gate_dag_tokenizes_and_parses_populated_roster_gates() {
             "run_phase1_nat_semiring_rung4_rust_emit_equals_eval"
         ),
         "{NAT_SEMIRING_RUNG_3_4_PATH}: rung-4 roster row (#4046)"
-    );
-}
-
-#[test]
-fn v4_nat_semiring_go_l1_rung2_receipt_anchor_tokenizes_and_parses() {
-    let module = parse_module(NAT_SEMIRING_RUNG_0_TO_2_DAG, NAT_SEMIRING_RUNG_0_TO_2_PATH);
-    for name in [
-        "go_l1_nat_semiring_rung2",
-        "go_l1_nat_semiring_rung2_slice_symbol",
-        "go_l1_nat_semiring_rung2_receipt_schema",
-        "go_l1_nat_semiring_rung2_slice_subject",
-        "claim_go_l1_nat_semiring_rung2_go_build_receipt",
-        "phase1_nat_semiring_rung_0_to_2_roster",
-        "go_l1_nat_semiring_rung2_receipt_roster",
-    ] {
-        assert!(
-            surface_declares_data(&module, name),
-            "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: missing Go L1 receipt anchor data `{name}`"
-        );
-    }
-    assert!(
-        NAT_SEMIRING_RUNG_0_TO_2_DAG
-            .contains("v4.test.claim.nat_semiring.go_l1_compile_receipt_v1"),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt schema must use stable logical receipt id (host shell deleted)"
-    );
-    assert!(
-        NAT_SEMIRING_RUNG_0_TO_2_DAG.contains(
-            "slice=go_l1_nat_semiring_rung2 fixture=phase1/nat_semiring predicate=R2-go-compile receipt=go_l1_compile_receipt_v1"
-        ),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 CompilesClaim label must bind slice id, fixture, predicate, and receipt"
-    );
-    let ladder_roster = data_body(&module, "phase1_nat_semiring_rung_0_to_2_roster");
-    assert!(
-        !format!("{ladder_roster:?}").contains("claim_go_l1_nat_semiring_rung2_go_build_receipt"),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: ladder roster must remain the eight rung x target predicates"
-    );
-    let go_l1_roster = data_body(&module, "go_l1_nat_semiring_rung2_receipt_roster");
-    assert!(
-        format!("{go_l1_roster:?}").contains("claim_go_l1_nat_semiring_rung2_go_build_receipt"),
-        "{NAT_SEMIRING_RUNG_0_TO_2_PATH}: Go L1 receipt claim must live on its separate receipt roster"
     );
 }
 
