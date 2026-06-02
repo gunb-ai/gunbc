@@ -37,6 +37,17 @@
 //! byte-for-byte carrier structural-match, not a hand-Rust binding test; ROADMAP row **T-PB-B** /
 //! `pb_rust_tests_outside_residual_zero`). Dissolve-on: same A15 Shape-B/T-24 lane as above.
 //!
+//! **INVARIANTS P5 — checkable receipt for THIS PR (Wave 3 §11.7.2 Phase-2 host emit wired):**
+//! feature `wave3-host-emit-class-c-wired`; consumers
+//! `v4_workflow_ci_wave3_host_emit_wired_class_c_in_ci_yml`,
+//! `v4_workflow_ci_wave3_node_selection_still_shadow_*`. SAME-PATH edit: flips the prior
+//! `*_live_emit_deferred_*` assertion to assert the host shadow-emit step IS now wired (Class C,
+//! `continue-on-error: true`) — superseding the "live emit deferred" posture — while the modeled
+//! live entry `ci_selection_receipt_shadow_from_git_diff` stays deferred to `node://adhoc-331899f9-19a`
+//! (node-frontier claim/testgen selection remains shadow). No new hand-Rust test path or authority
+//! surface (SG-0 delta 0 — path already in `EXPECTED_HAND_AUTHORED_TEST`). ROADMAP row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero`. Dissolve-on: same A15 Shape-B/T-24 lane as above.
+//!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
