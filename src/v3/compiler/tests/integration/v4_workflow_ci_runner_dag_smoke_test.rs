@@ -2478,6 +2478,7 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         "init: CiSelectionReceiptMissing { key: key }",
         "if row.key == missing_key",
         "CiSelectionReceiptFound { receipt: row.receipt }",
+        "ci_selection_receipt_storage_key(receipt: receipt) == ci_selection_receipt_shadow_fixture_storage_key",
         "CiSelectionReceiptMissing { key: _ } => false",
         "data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool",
         "feature:f11c-ci-selection-receipt-persistence",
@@ -2493,5 +2494,11 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         !CI_DAG.contains("fallback: ci_wave3_shadow_fixture_fail_closed_receipt")
             && !CI_DAG.contains("data ci_selection_receipt_shadow_fixture_storage_key: Symbol"),
         "{CI_DAG_PATH}: F.11c lookup misses must not expose fallback receipts or caller-authored Symbol keys"
+    );
+    assert!(
+        !CI_DAG.contains("let decisions_match = length(xs: receipt.decisions)")
+            && !CI_DAG.contains("let testclaims_match = length(xs: receipt.testclaim_decisions)")
+            && !CI_DAG.contains("let testgen_match = length(xs: receipt.testgen_slots)"),
+        "{CI_DAG_PATH}: F.11c persistence witness must compare canonical receipt keys, not partition lengths"
     );
 }

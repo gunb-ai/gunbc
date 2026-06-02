@@ -5065,10 +5065,7 @@ data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup = ci_s
 fn ci_selection_receipt_shadow_fixture_persistence_lookup_holds() -> Bool {
   match ci_selection_receipt_shadow_fixture_lookup {
     CiSelectionReceiptFound { receipt } =>
-      let decisions_match = length(xs: receipt.decisions) == length(xs: ci_selection_receipt_shadow_fixture_receipt.decisions)
-      let testclaims_match = length(xs: receipt.testclaim_decisions) == length(xs: ci_selection_receipt_shadow_fixture_receipt.testclaim_decisions)
-      let testgen_match = length(xs: receipt.testgen_slots) == length(xs: ci_selection_receipt_shadow_fixture_receipt.testgen_slots)
-      decisions_match && testclaims_match && testgen_match
+      ci_selection_receipt_storage_key(receipt: receipt) == ci_selection_receipt_shadow_fixture_storage_key
     CiSelectionReceiptMissing { key: _ } => false
   }
 }
