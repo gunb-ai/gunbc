@@ -15,6 +15,12 @@
 //! Wave-0 wiring sentences inside `bootstrap_claim_generator_for_manual_anchor` / `Generator`
 //! construction until M2 can compile this module end-to-end (codex **#14839** — bounded parse
 //! ratchet, not a permanent substitute for `.dag` `TestClaim` coverage).
+//!
+//! **PR #4265 P5 receipt (+0 SG-0 paths):** same-path expansion for the T-38B
+//! `lens_effect/effect_depends_on` TestClaimRun roster receipt. This uses the existing
+//! `EXPECTED_HAND_AUTHORED_TEST` census entry for this file; dissolves under ROADMAP.md
+//! **T-PB-B / `pb_rust_tests_outside_residual_zero`** when generated or `.dag` TestClaim
+//! coverage owns the lens_effect roster/claim-id receipt without this Rust string ratchet.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -35,6 +41,9 @@ const LENS_TESTGEN_DAG_INPUT_SURFACE_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_testgen/dag_input_surface.dag");
 const LENS_TESTGEN_DAG_INPUT_SURFACE_PATH: &str =
     "src/v4/test/claim/lens_testgen/dag_input_surface.dag";
+const LENS_EFFECT_DEPENDS_ON_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_effect/effect_depends_on.dag");
+const LENS_EFFECT_DEPENDS_ON_PATH: &str = "src/v4/test/claim/lens_effect/effect_depends_on.dag";
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -109,6 +118,28 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim")
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim"),
         "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring"
+    );
+}
+
+#[test]
+fn v4_lens_effect_depends_on_routes_through_testclaim_run() {
+    tokenize_for_test(LENS_EFFECT_DEPENDS_ON_DAG, LENS_EFFECT_DEPENDS_ON_PATH)
+        .unwrap_or_else(|e| panic!("{LENS_EFFECT_DEPENDS_ON_PATH}: tokenize: {e:?}"));
+    assert!(
+        LENS_EFFECT_DEPENDS_ON_DAG.matches("fn effect_depends_on_claim_holds").count() == 1
+            && LENS_EFFECT_DEPENDS_ON_DAG.matches("fn effect_context").count() == 1,
+        "{LENS_EFFECT_DEPENDS_ON_PATH}: lens_effect family receipt must keep its local predicate and runtime context"
+    );
+    assert!(
+        LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data claim_lens_effect_depends_on_runtime_verdict: TestClaim = EqualsClaim"
+        ) && LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data subject_lens_effect_depends_on_runtime_verdict: TestClaimEvalSubject<Node> = eval_test_claim_subject("
+        ) && LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data run_lens_effect_depends_on_runtime_verdict: TestClaimRun<Node, RuntimeValue> = run_test_claim("
+        ) && LENS_EFFECT_DEPENDS_ON_DAG
+            .contains("value: RuntimeUnitValue { unit_type: effect_runtime_type_node() }"),
+        "{LENS_EFFECT_DEPENDS_ON_PATH}: missing T-38 subject roster/run_test_claim wiring"
     );
 }
 

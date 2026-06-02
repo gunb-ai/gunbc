@@ -14,18 +14,27 @@ import v4.extdeps.languages.go {
   go_facts_int64,
   go_integer_algebra_inhabitance,
   go_integer_facts_node,
+  go_repr_twos_complement_integer,
   go_surface_spelling_int
 }
 import v4.extdeps.languages.python {
   python_atom_realization_symbol,
   python_facts_field_encoding,
   python_integer_algebra_inhabitance_python_facts_int,
+  python_repr_int_arbitrary_precision,
   python_surface_spelling_int
 }
 import v4.extdeps.typecheckers.pyright {
   pyright_tool_id,
   pyright_profile_l1_id,
-  pyright_diag_report_return_type
+  pyright_diag_report_return_type,
+  pyright_diag_report_undefined_variable,
+  pyright_diag_report_missing_imports
+}
+import v4.extdeps.typecheckers.mypy {
+  mypy_tool_id,
+  mypy_profile_l1_id,
+  mypy_diag_return_value
 }
 import v4.extdeps.languages.typescript {
   ts_atom_realization_symbol,
@@ -37,13 +46,15 @@ import v4.extdeps.languages.rust {
   rust_coercion_field_i32_spelling,
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_mvp1_target_model_staging,
+  rust_repr_integer_twos_complement,
   rust_surface_spelling_i32,
   rust_target_atom_realization_symbol,
   rust_target_atom_type_form
 }
 import v4.std.algebra { algebra_inhabitance_node }
-import v4.std.collection { optional_absent }
+import v4.std.collection { List, optional_absent }
 import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.host_run { ValueDiff }
 import v4.std.logic { Bool }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -75,6 +86,8 @@ import v4.std.leaf_model_verification {
   LeafModelTypeScriptRuntimeFixture,
   LeafModelTypeScriptRuntimeFixturePair,
   LeafModelRustFixture,
+  LeafModelCrossRuntimeDriftProbe,
+  leaf_model_claim_python_cross_runtime_drift_arbitrary_precision,
   leaf_model_claim_go_r1_int_surface_spelling,
   leaf_model_claim_go_r2a_int_algebra_operations,
   leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
@@ -84,6 +97,8 @@ import v4.std.leaf_model_verification {
   leaf_model_claim_python_r2b_int_arbitrary_precision_add,
   leaf_model_claim_python_r3_external_symbol_projection,
   leaf_model_claim_python_l1_static_return_type,
+  leaf_model_claim_python_l1_static_undefined_variable,
+  leaf_model_claim_python_l1_static_missing_import,
   leaf_model_claim_ts_r2a_number_algebra_operations,
   leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
   leaf_model_claim_ts_r3_external_symbol_projection,
@@ -269,6 +284,42 @@ fn python_r2b_fixture_pair() -> LeafModelPythonFixturePair {
 
 fn python_r2b_fixture() -> LeafModelPythonFixturePair {
   python_r2b_fixture_pair()
+}
+
+// --- PY-L2-CROSS-RUNTIME-DRIFT — positive cross-runtime divergence receipt ---
+// The same modeled program — exact integer add at the fixed-width boundary, `MAX + 1` — realized
+// in each target's native integer. Python's Int is arbitrary precision, so it prints the exact sum
+// (9223372036854775808). Rust `i64` and Go `int64` are fixed-width two's-complement, so the same add
+// wraps to i64::MIN (-9223372036854775808). The runner asserts the drift POSITIVELY: python_value !=
+// rust_value (and != go_value when Go is present), while rust_value == go_value (cross-runtime
+// fixed-width agreement). Rust uses `wrapping_add` so the boundary is defined behavior (no debug
+// overflow panic); Go signed overflow is defined to wrap by the language spec. Complement of the L2
+// parity lane (PR #4154), which asserts EQUALITY on the common domain.
+data python_cross_runtime_drift_python_source: String = "def add_exact(a: int, b: int) -> int:\n    return a + b\n\nif __name__ == \"__main__\":\n    print(add_exact((2 ** 63) - 1, 1))\n"
+
+data python_cross_runtime_drift_rust_source: String = "fn add_exact(a: i64, b: i64) -> i64 { a.wrapping_add(b) }\nfn main() {\n    println!(\"{}\", add_exact(i64::MAX, 1));\n}\n"
+
+data python_cross_runtime_drift_go_source: String = "package main\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\nfunc addExact(a int64, b int64) int64 { return a + b }\n\nfunc main() {\n\tfmt.Println(addExact(math.MaxInt64, 1))\n}\n"
+
+// Arbitrary-precision (Python) value vs fixed-width wrapped (Rust/Go) value — the modeled divergence.
+data python_cross_runtime_drift_arbitrary_precision_value: String = "9223372036854775808"
+
+data python_cross_runtime_drift_fixed_width_value: String = "-9223372036854775808"
+
+fn python_cross_runtime_drift_probe() -> LeafModelCrossRuntimeDriftProbe {
+  LeafModelCrossRuntimeDriftProbe {
+    claim_id: leaf_model_claim_python_cross_runtime_drift_arbitrary_precision,
+    arbitrary_precision_fact: python_repr_int_arbitrary_precision,
+    fixed_width_rust_fact: rust_repr_integer_twos_complement,
+    fixed_width_go_fact: go_repr_twos_complement_integer,
+    arbitrary_precision_source: python_cross_runtime_drift_python_source,
+    fixed_width_rust_source: python_cross_runtime_drift_rust_source,
+    fixed_width_go_source: python_cross_runtime_drift_go_source,
+    expected_divergence: ValueDiff {
+      expected: python_cross_runtime_drift_arbitrary_precision_value,
+      actual: python_cross_runtime_drift_fixed_width_value
+    }
+  }
 }
 
 // R3-external — Symbol atom realization: nominal class (happy) vs ctor arity mismatch (falsification).
@@ -750,4 +801,94 @@ fn python_l1_static_fixture_pair() -> LeafModelPythonStaticFixturePair {
 
 fn python_l1_static_fixture() -> LeafModelPythonStaticFixturePair {
   python_l1_static_fixture_pair()
+}
+
+// --- PY-L1-STATIC-STRUCTURAL fixture-scale roster ---
+// L1 fixture-scale: the single return-type pair above is widened to a roster of
+// distinct pyright structural diagnostic classes, each consuming the SAME shared
+// TargetStaticAnalysisInvocation / TargetStaticAnalysisVerdict carriers and the SAME
+// pyright_profile_l1 (no per-fixture tool config). Every falsification below holds the
+// same hard third-authority property as F1: CPython `py_compile` ACCEPTS it and `python3`
+// runs it with exit 0 (the defect sits in a function that is never called), so neither the
+// compile nor the runtime authority catches it — only pyright does, under the modeled
+// diagnostic rule. Each pair anchors `surface_spelling_fact: python_surface_spelling_int`
+// (every fixture annotates `-> int`). Roster membership is the single modeled authority for
+// the PY-L1 static receipt. (A shell host-runner formerly iterated this list; the
+// scripts/ runners were retired repo-wide per operator directive #4252, leaving the modeled
+// .dag claims as the receipt authority.)
+
+// reportUndefinedVariable: the dead function references a name that is never bound. pyright
+// flags it statically; py_compile accepts (names resolve at runtime) and the module runs
+// clean because the function is never invoked.
+data python_l1_static_undefined_variable_happy_fixture_source: String = "def l1_undefined_variable() -> int:\n    bound = 0\n    return bound\n"
+data python_l1_static_undefined_variable_falsification_fixture_source: String = "def l1_undefined_variable() -> int:\n    return undefined_symbol\n"
+
+// reportMissingImports: the dead function imports a module that does not exist. pyright
+// flags it statically; py_compile accepts and the module runs clean because the import is
+// inside a function that is never called (so no runtime ImportError fires).
+data python_l1_static_missing_import_happy_fixture_source: String = "def l1_missing_import() -> int:\n    import math\n    return int(math.floor(1.0))\n"
+data python_l1_static_missing_import_falsification_fixture_source: String = "def l1_missing_import() -> int:\n    import totally_not_a_real_module_xyz\n    return totally_not_a_real_module_xyz.value\n"
+
+fn python_l1_static_undefined_variable_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_undefined_variable,
+    surface_spelling_fact: python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_undefined_variable_happy_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_undefined_variable_falsification_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id,
+      tool_id: pyright_tool_id,
+      diagnostic_code: pyright_diag_report_undefined_variable
+    }
+  }
+}
+
+fn python_l1_static_missing_import_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_missing_import,
+    surface_spelling_fact: python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_missing_import_happy_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_missing_import_falsification_fixture_source },
+      tool_profile_ref: pyright_profile_l1_id,
+      tool_id: pyright_tool_id,
+      diagnostic_code: pyright_diag_report_missing_imports
+    }
+  }
+}
+
+fn python_l1_static_fixture_roster() -> List<LeafModelPythonStaticFixturePair> {
+  [
+    python_l1_static_fixture_pair(),
+    python_l1_static_undefined_variable_fixture_pair(),
+    python_l1_static_missing_import_fixture_pair()
+  ]
+}
+
+// Worksheet B — mypy companion on the same F1 return-type sources; distinct tool/profile namespace.
+fn python_l1_static_mypy_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_return_type,
+    surface_spelling_fact: python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
+      tool_profile_ref: mypy_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
+      tool_profile_ref: mypy_profile_l1_id,
+      tool_id: mypy_tool_id,
+      diagnostic_code: mypy_diag_return_value
+    }
+  }
+}
+
+fn python_l1_static_mypy_fixture() -> LeafModelPythonStaticFixturePair {
+  python_l1_static_mypy_fixture_pair()
 }
