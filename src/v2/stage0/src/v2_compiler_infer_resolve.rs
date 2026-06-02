@@ -316,6 +316,80 @@ pub fn resolve_alias_target(
     }
 }
 
+pub fn is_parametric_type_alias_decl(item: Rc<Node>) -> bool {
+    ((((((item.params.clone().len() as i64) > 0)
+        && (item.connective.clone() == Connective::NoConnective))
+        && (item.body.clone() == None))
+        && (item.transport.clone() == None))
+        && (item.inferred.clone() != None))
+}
+
+pub fn resolve_nominal_alias_rhs(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<NodeResolveResult> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0))
+        {
+            {
+                let arg_results = Rc::new({
+                    let mut __result = Vec::new();
+                    for child in n.children.clone().iter().cloned() {
+                        __result.push(resolve_nominal_alias_rhs(
+                            child.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let resolved_args = Rc::new({
+                    let mut __result = Vec::new();
+                    for ar in arg_results.clone().iter().cloned() {
+                        __result.push(ar.resolved.clone());
+                    }
+                    __result
+                });
+                let arg_diags = Rc::new({
+                    let mut __result = Vec::new();
+                    for ar in arg_results.clone().iter().cloned() {
+                        __result.extend((*ar.diagnostics.clone()).iter().cloned());
+                    }
+                    __result
+                });
+                let validation = resolve_node(n.clone(), env.clone(), module_name.clone());
+                Rc::new(NodeResolveResult {
+                    resolved: Rc::new(Node {
+                        name: n.name.clone(),
+                        ident: n.ident.clone(),
+                        span: n.span.clone(),
+                        ident_span: n.ident_span.clone(),
+                        children: resolved_args,
+                        connective: n.connective.clone(),
+                        params: n.params.clone(),
+                        inferred: n.inferred.clone(),
+                        return_cardinality: n.return_cardinality.clone(),
+                        uses: n.uses.clone(),
+                        body: n.body.clone(),
+                        transport: n.transport.clone(),
+                        properties: n.properties.clone(),
+                        type_annotation: n.type_annotation.clone(),
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                    }),
+                    diagnostics: v2_rt::concat(arg_diags, validation.diagnostics.clone()),
+                })
+            }
+        } else {
+            resolve_node(n.clone(), env.clone(), module_name.clone())
+        }
+    })
+}
+
 pub fn resolve_node_bounded(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -2747,8 +2821,20 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
             }
             __result
         });
-        let ret_result =
-            resolve_optional_node(item.inferred.clone(), env.clone(), module_name.clone());
+        let ret_result = if is_parametric_type_alias_decl(item.clone()) {
+            match item.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved {
+                    node: authored_rhs, ..
+                }) => resolve_nominal_alias_rhs(
+                    authored_rhs.clone(),
+                    env.clone(),
+                    module_name.clone(),
+                ),
+                _ => resolve_optional_node(item.inferred.clone(), env.clone(), module_name.clone()),
+            }
+        } else {
+            resolve_optional_node(item.inferred.clone(), env.clone(), module_name.clone())
+        };
         let ret_resolved = ret_result.resolved.clone();
         let ret_diags = ret_result.diagnostics.clone();
         let resolved_ret = if (item.inferred.clone() == None) {
