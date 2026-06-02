@@ -3785,20 +3785,16 @@ fn ci_wave3_shadow_testgen_selection_rows_outcome(
   affected: AffectedSet,
   profile_ref: Symbol
 ) -> Outcome<List<TestgenSlotSelection>> {
-  match testgen_scheduled_generators_outcome() {
+  match testgen_run_receipt_outcome(profile_ref: profile_ref) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: roster, diagnostics: d_sched } =>
-      match testgen_run_receipt_outcome(profile_ref: profile_ref) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: _, diagnostics: d_run } =>
-          Accepted {
-            value: ci_wave3_shadow_testgen_selection_rows_for_roster(
-              affected: affected,
-              profile_ref: profile_ref,
-              roster: roster
-            ),
-            diagnostics: diagnostics_merge(outer: d_sched, inner: d_run)
-          }
+    Accepted { value: receipt, diagnostics: d } =>
+      Accepted {
+        value: ci_wave3_shadow_testgen_selection_rows_for_roster(
+          affected: affected,
+          profile_ref: profile_ref,
+          roster: receipt.generators
+        ),
+        diagnostics: d
       }
   }
 }
