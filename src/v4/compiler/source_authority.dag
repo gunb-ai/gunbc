@@ -8,7 +8,7 @@
 module v4.compiler.source_authority
 
 
-import v4.compiler.normalize { normalize }
+import v4.compiler.normalize { normalize, NormalizedTree }
 import v4.compiler.parse { parse }
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.compiler.tokenize { tokenize }
@@ -43,7 +43,7 @@ type DagSourceAst {
 }
 
 type NormalizedDagSourceAst {
-  tree: ParseTree
+  tree: NormalizedTree
 }
 
 type DagSemanticIr {
@@ -124,8 +124,13 @@ fn parse_dag_source_ast(source: DagSource) -> Outcome<DagSourceAst> {
 }
 
 
-fn normalize_dag_source_ast(ast: DagSourceAst) -> NormalizedDagSourceAst {
-  NormalizedDagSourceAst { tree: ast.tree }
+fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst> {
+  bind_outcome(
+    o: normalize(parse_tree: ast.tree),
+    f: fn(normalized) {
+      outcome_accepted(value: NormalizedDagSourceAst { tree: normalized })
+    }
+  )
 }
 
 
@@ -201,40 +206,45 @@ fn deterministic_dag_source_serializer_witness(
 
 
 fn canonical_dag_source_emission_law_from_parts(
-  original_ast: DagSourceAst,
   canonical_source_first: DagSource,
   canonical_source_second: DagSource,
+  original_normalized_ast: NormalizedDagSourceAst,
   reparsed_ast: DagSourceAst
 ) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
-  let serializer_law = deterministic_dag_source_serializer_witness(
-    first: canonical_source_first,
-    second: canonical_source_second
-  )
-  let parse_print_law = normalized_source_ast_equal_witness(
-    original: normalize_dag_source_ast(ast: original_ast),
-    reparsed: normalize_dag_source_ast(ast: reparsed_ast)
-  )
-  match serializer_law {
-    Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
-    Holds { value: serializer_law_value } =>
-      match parse_print_law {
+  bind_outcome(
+    o: normalize_dag_source_ast(ast: reparsed_ast),
+    f: fn(reparsed_normalized_ast) {
+      let serializer_law = deterministic_dag_source_serializer_witness(
+        first: canonical_source_first,
+        second: canonical_source_second
+      )
+      let parse_print_law = normalized_source_ast_equal_witness(
+        original: original_normalized_ast,
+        reparsed: reparsed_normalized_ast
+      )
+      match serializer_law {
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
-        Holds { value: parse_print_law_value } =>
-          outcome_accepted(
-            value: Holds {
-              value: CanonicalDagSourceEmissionLaw {
-                serializer_law: serializer_law_value,
-                parse_print_law: NormalizedDagSourceParsePrintLaw {
-                  canonical_source: canonical_source_first,
-                  normalized_source_law: parse_print_law_value
+        Holds { value: serializer_law_value } =>
+          match parse_print_law {
+            Violates { diagnostic: d } =>
+              Rejected { diagnostics: diagnostics_singleton(d: d) }
+            Holds { value: parse_print_law_value } =>
+              outcome_accepted(
+                value: Holds {
+                  value: CanonicalDagSourceEmissionLaw {
+                    serializer_law: serializer_law_value,
+                    parse_print_law: NormalizedDagSourceParsePrintLaw {
+                      canonical_source: canonical_source_first,
+                      normalized_source_law: parse_print_law_value
+                    }
+                  }
                 }
-              }
-            }
-          )
+              )
+          }
       }
-  }
+    }
+  )
 }
 
 
