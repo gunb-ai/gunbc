@@ -18,13 +18,6 @@ import v4.std.target_model { FunctionBoundarySite, TargetModel }
 
 // --- G0.1: per-language fact bundle schema (subject_carrier × target × fact_axis) ---
 
-// 🟢 coproduct dissolution — closed subject-kind axis for G.1 audit classification (not a registry key).
-type GroundingSubjectKind
-  = SubjectPrimitiveCarrier
-  | SubjectAlgebraInhabitance
-  | SubjectTargetRealization
-
-
 // P2: substrate carrier + TargetModel (language identity) + canonical fact_axis Symbol
 // (model_core primitive_fact_axis_* or target_model catalog edge) — no parallel GroundingLanguage /
 // GroundingFactClass coproducts that can drift from spec_facts.
