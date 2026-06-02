@@ -345,6 +345,8 @@ mod v4_std_text_dag_smoke_test;
 mod v4_t15_self_host_fixed_point_harness_test;
 #[path = "integration/v4_test_bootstrap_infra_closeout_test.rs"]
 mod v4_test_bootstrap_infra_closeout_test;
+#[path = "integration/v4_testclaim_in_process_equivalence_smoke_test.rs"]
+mod v4_testclaim_in_process_equivalence_smoke_test;
 #[path = "integration/v4_test_fixture_task_manager_demo_smoke_test.rs"]
 mod v4_test_fixture_task_manager_demo_smoke_test;
 #[path = "integration/v4_workflow_ci_runner_dag_smoke_test.rs"]
