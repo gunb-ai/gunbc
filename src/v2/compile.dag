@@ -19,7 +19,7 @@ import v2.std.core {
   LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
   NewlineIndex, build_newline_index,
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at,
-  InternTable, empty_intern_table, pre_intern_tokens, merge_intern_tables
+  InternTable, empty_intern_table, pre_intern_tokens
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_with_table, ParseResult }
@@ -1125,16 +1125,20 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     FrontendPrepared { tokens: tokens, newline_index: si }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parse_runs = prepared |> map(p =>
-    parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: intern_table)
+  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
+    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+    FrontendAccum {
+      parse_results: list_push(acc.parse_results, parsed.result),
+      newline_indices: list_push(acc.newline_indices, p.newline_index),
+      intern_table: parsed.intern_table
+    }
   )
-  let parse_results = parse_runs |> map(r => r.result)
-  let final_intern_table = merge_intern_tables(tables: concat([intern_table], parse_runs |> map(r => r.intern_table)))
-  let newline_indices = prepared |> map(p => p.newline_index)
+  let parse_results = parsed.parse_results
+  let newline_indices = parsed.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_parse_errors = parse_results |> any(p => p.error != None)
   if has_parse_errors {
-    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: final_intern_table }
+    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: parsed.intern_table }
   } else {
     let modules = parse_results |> map(p => p.module.value)
     let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
@@ -1143,7 +1147,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       graph: Some { value: graph },
       diagnostics: concat(parse_diagnostics, graph.diagnostics),
       newline_indices: newline_indices,
-      intern_table: final_intern_table
+      intern_table: parsed.intern_table
     }
   }
 }
