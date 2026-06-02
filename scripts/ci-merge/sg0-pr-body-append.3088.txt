@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net add is one `EXPECTED_HAND_AUTHORED_TEST` ratchet for R3 gate #39 (`no_coercion_cost_dimension`); no same-PR census retirement. **INVARIANTS §P5 Mechanism (b) deferral receipt — concrete `ROADMAP.md` row:** `ROADMAP.md` → `### Nine lanes` → **T-PB-B** / `pb_rust_tests_outside_residual_zero` (hand-authored test census partition). **Plan anchor:** `docs/r3-program-plan.md` §1.8 gate **#39** `no_coercion_cost_dimension` (T-CostLens-Composition). Follow-on CostLens composition dispatch remains tracked gunbc#2141; worker brief `docs/briefs/r3-substrate-t-costlens-composition-worker.md`.

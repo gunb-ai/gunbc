@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) follow-up dispatch via gunb-ai/gunbc#3859 — RELEASE_TODO.md §5 Phase 1a net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_workflow_release_dag_smoke_test.rs` (INVARIANTS §P5(b) parse smoke on `src/v4/workflow/release.dag` six-target matrix + hand-synced `release.yml` published triple/artifact basename parity; install.dag Phase 1b follow-on). Dissolves when `release_pipeline` YamlStatic emits `.github/workflows/release.yml` without this host parse probe (T-24-style emission slice).

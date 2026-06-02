@@ -159,6 +159,7 @@ import v4.std.target_model {
   target_collection_set_carrier,
   target_collection_set_carrier_node,
   target_collection_set_no_representation_diagnostic,
+  target_collection_free_monoid_no_representation,
   target_collection_trait_ord,
   target_collection_trait_hash,
   target_collection_trait_eq,
@@ -177,6 +178,7 @@ import v4.std.target_model {
   target_collection_set_no_representation,
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
+  TargetCollectionReprVec,
   target_type_expr_atom_emitted,
   target_type_expr_arrow_emitted,
   target_type_expr_field_atom,
@@ -1563,6 +1565,7 @@ fn rust_mvp1_translation_rules_node() -> Node {
 
 data rust_collection_surface_btree_set: Symbol = rust_collection_surface_btree_set
 data rust_collection_surface_hash_set: Symbol = rust_collection_surface_hash_set
+data rust_collection_surface_vec: Symbol = rust_collection_surface_vec
 
 fn rust_set_collection_apply_btree() -> TargetGenericApply {
   TargetGenericApply {
@@ -1580,6 +1583,15 @@ fn rust_set_collection_apply_hash() -> TargetGenericApply {
     open: rust_token_lt,
     separator: rust_token_comma,
     field_label_separator: optional_absent(),
+    close: rust_token_gt
+  }
+}
+
+fn rust_free_monoid_collection_apply_vec() -> TargetGenericApply {
+  TargetGenericApply {
+    surface: rust_collection_surface_vec,
+    open: rust_token_lt,
+    separator: rust_token_comma,
     close: rust_token_gt
   }
 }
@@ -1614,6 +1626,20 @@ fn rust_set_collection_alternative_choices() -> List<TargetRepresentationChoice>
     head: rust_set_collection_hash_choice(),
     tail: Empty
   }
+}
+
+fn rust_free_monoid_collection_primary_choice() -> TargetRepresentationChoice {
+  TargetRepresentationChoice {
+    form: TargetRepresentation {
+      kind: TargetCollectionReprVec,
+      apply: rust_free_monoid_collection_apply_vec()
+    },
+    constraints: []
+  }
+}
+
+fn rust_free_monoid_collection_alternative_choices() -> List<TargetRepresentationChoice> {
+  Empty
 }
 
 fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
@@ -1745,6 +1771,43 @@ fn rust_set_collection_realization_bundle_node() -> Node {
   }
 }
 
+fn rust_free_monoid_collection_realization_bundle_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: target_collection_row_field_source_carrier,
+        target: target_carrier_free_monoid_node()
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_primary,
+        target: rust_collection_choice_bundle_node(choice: rust_free_monoid_collection_primary_choice())
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_alternatives,
+        target: fold_list_node(
+          xs: rust_free_monoid_collection_alternative_choices(),
+          item_node: rust_collection_choice_bundle_node
+        )
+      ),
+      rust_named_edge(
+        name: target_collection_row_field_fallback,
+        target: rust_inhabitant_atom(id: target_collection_free_monoid_no_representation)
+      )
+    ]
+  }
+}
+
+fn rust_collection_realization_catalog_node() -> Node {
+  fold_list_node(
+    xs: Cons {
+      head: rust_set_collection_realization_bundle_node(),
+      tail: Cons { head: rust_free_monoid_collection_realization_bundle_node(), tail: Empty }
+    },
+    item_node: fn(row) { row }
+  )
+}
+
 fn rust_mvp1_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1767,34 +1830,20 @@ fn rust_mvp1_target_model_bundle_core() -> Node {
       ),
       rust_named_edge(
         name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
+        target: rust_collection_realization_catalog_node()
       )
     ]
   }
 }
 
 fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(empty_map(), rust_binding_fn_add, "add"),
-            rust_binding_param_x,
-            "x"
-          ),
-          rust_binding_param_y,
-          "y"
-        ),
-        rust_collection_surface_btree_set,
-        "std::collections::BTreeSet"
-      ),
-      rust_collection_surface_hash_set,
-      "std::collections::HashSet"
-    ),
-    target_collection_set_carrier,
-    "Set"
-  )
+  let m0 = map_insert(empty_map(), rust_binding_fn_add, "add")
+  let m1 = map_insert(m0, rust_binding_param_x, "x")
+  let m2 = map_insert(m1, rust_binding_param_y, "y")
+  let m3 = map_insert(m2, rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let m4 = map_insert(m3, rust_collection_surface_hash_set, "std::collections::HashSet")
+  let m5 = map_insert(m4, rust_collection_surface_vec, "Vec")
+  map_insert(m5, target_collection_set_carrier, "Set")
 }
 
 fn rust_mvp1_target_model_staging() -> TargetModel {
@@ -1900,7 +1949,7 @@ fn rust_mvp1_target_model_node() -> Node {
       ),
       rust_named_edge(
         name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
+        target: rust_collection_realization_catalog_node()
       ),
       rust_named_edge(
         name: target_model_edge_atom_realizations,
@@ -3481,79 +3530,26 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
   // type (peer of "bool"/"char"), NOT a Symbol→String name-keyed coercion. The SG-1b signature
   // realization row remains the sole authority deciding that a kernel-Symbol boundary projects to
   // String; this entry only spells the resolved target type once it has been chosen.
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(
-                    map_insert(
-                      map_insert(
-                        map_insert(
-                          map_insert(
-                            map_insert(
-                              map_insert(
-                                map_insert(
-                                  map_insert(
-                                    map_insert(
-                                      map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar"),
-                                      rust_binding_sg2_x,
-                                      "X"
-                                    ),
-                                    rust_binding_sg2_y,
-                                    "Y"
-                                  ),
-                                  rust_binding_sg2_rc,
-                                  "Rc"
-                                ),
-                                rust_binding_sg_rc_box,
-                                "Box"
-                              ),
-                              target_carrier_diagnostics,
-                              "Diagnostics"
-                            ),
-                            target_carrier_node,
-                            "Node"
-                          ),
-                          target_carrier_test_claim,
-                          "TestClaim"
-                        ),
-                        target_carrier_free_monoid,
-                        "FreeMonoid"
-                      ),
-                      target_carrier_outcome,
-                      "Outcome"
-                    ),
-                    target_carrier_model_core,
-                    "ModelCore"
-                  ),
-                  target_carrier_algebra_inhabitance_decl,
-                  "AlgebraInhabitanceDecl"
-                ),
-                target_carrier_probe_heap,
-                "ProbeHeap"
-              ),
-              rust_collection_surface_btree_set,
-              "std::collections::BTreeSet"
-            ),
-            rust_collection_surface_hash_set,
-            "std::collections::HashSet"
-          ),
-          target_collection_set_carrier,
-          "Set"
-        ),
-        rust_target_atom_type_spelling_string,
-        "String"
-      ),
-      rust_sg_rc_ctor_rc_new,
-      "Rc::new"
-    ),
-    rust_sg_rc_ctor_box_new,
-    "Box::new"
-  )
+  let m0 = map_insert(empty_map(), rust_binding_sg2_foobar, "FooBar")
+  let m1 = map_insert(m0, rust_binding_sg2_x, "X")
+  let m2 = map_insert(m1, rust_binding_sg2_y, "Y")
+  let m3 = map_insert(m2, rust_binding_sg2_rc, "Rc")
+  let m4 = map_insert(m3, rust_binding_sg_rc_box, "Box")
+  let m5 = map_insert(m4, target_carrier_diagnostics, "Diagnostics")
+  let m6 = map_insert(m5, target_carrier_node, "Node")
+  let m7 = map_insert(m6, target_carrier_test_claim, "TestClaim")
+  let m8 = map_insert(m7, target_carrier_free_monoid, "FreeMonoid")
+  let m9 = map_insert(m8, target_carrier_outcome, "Outcome")
+  let m10 = map_insert(m9, target_carrier_model_core, "ModelCore")
+  let m11 = map_insert(m10, target_carrier_algebra_inhabitance_decl, "AlgebraInhabitanceDecl")
+  let m12 = map_insert(m11, target_carrier_probe_heap, "ProbeHeap")
+  let m13 = map_insert(m12, rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let m14 = map_insert(m13, rust_collection_surface_hash_set, "std::collections::HashSet")
+  let m15 = map_insert(m14, rust_collection_surface_vec, "Vec")
+  let m16 = map_insert(m15, target_collection_set_carrier, "Set")
+  let m18 = map_insert(m16, rust_target_atom_type_spelling_string, "String")
+  let m19 = map_insert(m18, rust_sg_rc_ctor_rc_new, "Rc::new")
+  map_insert(m19, rust_sg_rc_ctor_box_new, "Box::new")
 }
 fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
@@ -3605,7 +3601,7 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
       ),
       rust_named_edge(
         name: target_model_edge_collection_realization,
-        target: rust_set_collection_realization_bundle_node()
+        target: rust_collection_realization_catalog_node()
       ),
       rust_named_edge(
         name: target_model_edge_reference_layer_tokens,

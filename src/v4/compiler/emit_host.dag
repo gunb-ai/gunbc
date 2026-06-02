@@ -1,8 +1,8 @@
 // src/v4/compiler/emit_host.dag
 // Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
-// Status: T-22 rust row — eval intercept (`emit_host_eval.rs`) runs `emit_host_runner` and
+// Status: T-22 rust/go rows — eval intercept (`emit_host_eval.rs`) runs `emit_host_runner` and
 //   assembles receipts via `emit_host_receipt_from_source` (substrate eval, not hand-encoded).
-//   Python/go rows stay `transport_not_wired`. `emit_host_bridge.rs` remains for W3 harness
+//   Python row stays `transport_not_wired`. `emit_host_bridge.rs` remains for W3 harness
 //   until T-PB-B dissolution (SG-0 + `v4_emit_host_eval_dispatch_test.rs` receipts).
 // Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
 // Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
@@ -300,7 +300,8 @@ fn run_test_claim_emit_vs_eval_for_claim(
         source: source,
         fixture_inputs: inputs_for_emit_host(
           claim_input_root: claim_input_root,
-          expected_eval_root: expected_eval_root
+          expected_eval_root: expected_eval_root,
+          claim_pin: subject.input.evaluator_pin
         )
       ) {
         Accepted { value: host_receipt, diagnostics: _ } =>

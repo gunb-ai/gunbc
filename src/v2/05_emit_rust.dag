@@ -211,13 +211,17 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   }
 }
 
-// Single authority: shared_types decides Rc<> on applied generic instantiations.
-fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
-  let type_name = authored_name_at(source_indices: source_indices, node: n)
+fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared_types: Set<String>) -> String {
   if set_contains(shared_types, type_name) && !rust_type_is_rc_wrapped(type_name: rendered) {
     wrap_shared_type(target: Rust, inner: rendered)
   } else { rendered }
+}
+
+// Single authority: shared_types decides Rc<> on rendered Rust type shells.
+fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+  let type_name = authored_name_at(source_indices: source_indices, node: n)
+  render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, shared_types: shared_types)
 }
 
 // Generic type-param leaves compose with the canonical renderer (else arm);
@@ -240,7 +244,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let base = coerce_primitive_type(target: Rust, dag_name: name)
         let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
         let applied_ty = concat(base, "<", args, ">")
-        if set_contains(shared_types, name) { concat("Rc<", applied_ty, ">") } else { applied_ty }
+        render_rust_shared_type_if_needed(type_name: name, rendered: applied_ty, shared_types: shared_types)
       } else {
         render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
       }
@@ -1748,8 +1752,7 @@ fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, 
           let base = coerce_primitive_type(target: Rust, dag_name: rt_child_name)
           let param_names = resolved.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
           let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
-          if set_contains(shared_types, rt_child_name) { concat("Rc<", with_params, ">") }
-          else { with_params }
+          render_rust_shared_type_if_needed(type_name: rt_child_name, rendered: with_params, shared_types: shared_types)
         } else {
           render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
         }
@@ -1762,7 +1765,7 @@ fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, 
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
   } else if rt_child.return_cardinality != CardOptional && set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
-    concat("Rc<", generic_ty, ">")
+    wrap_shared_type(target: Rust, inner: generic_ty)
   } else { generic_ty }
   let rename_attr = match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
     Some { value: prop } => match field_init_node_value(n: prop).expr_data {

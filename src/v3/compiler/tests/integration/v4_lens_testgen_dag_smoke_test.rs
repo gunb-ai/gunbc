@@ -15,6 +15,12 @@
 //! Wave-0 wiring sentences inside `bootstrap_claim_generator_for_manual_anchor` / `Generator`
 //! construction until M2 can compile this module end-to-end (codex **#14839** — bounded parse
 //! ratchet, not a permanent substitute for `.dag` `TestClaim` coverage).
+//!
+//! **PR #4265 P5 receipt (+0 SG-0 paths):** same-path expansion for the T-38B
+//! `lens_effect/effect_depends_on` TestClaimRun roster receipt. This uses the existing
+//! `EXPECTED_HAND_AUTHORED_TEST` census entry for this file; dissolves under ROADMAP.md
+//! **T-PB-B / `pb_rust_tests_outside_residual_zero`** when generated or `.dag` TestClaim
+//! coverage owns the lens_effect roster/claim-id receipt without this Rust string ratchet.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -31,6 +37,13 @@ const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
 const WITNESS_VALIDITY_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/witness_validity.dag");
 const WITNESS_VALIDITY_PATH: &str = "src/v4/test/claim/generated/witness_validity.dag";
+const LENS_TESTGEN_DAG_INPUT_SURFACE_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_testgen/dag_input_surface.dag");
+const LENS_TESTGEN_DAG_INPUT_SURFACE_PATH: &str =
+    "src/v4/test/claim/lens_testgen/dag_input_surface.dag";
+const LENS_EFFECT_DEPENDS_ON_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_effect/effect_depends_on.dag");
+const LENS_EFFECT_DEPENDS_ON_PATH: &str = "src/v4/test/claim/lens_effect/effect_depends_on.dag";
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -58,6 +71,10 @@ fn v4_lens_testgen_p9_registry_owner_claim_parses_and_checks_registry_exclusivit
 fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
     let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
+    let lens_testgen_claim = parse_module(
+        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG,
+        LENS_TESTGEN_DAG_INPUT_SURFACE_PATH,
+    );
     assert_eq!(
         module_paths(&testgen),
         vec![vec!["v4", "lens", "testgen"]],
@@ -67,6 +84,62 @@ fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
         module_paths(&verification),
         vec![vec!["v4", "std", "verification"]],
         "`TestClaim` schema should remain v4.std.verification"
+    );
+    assert_eq!(
+        module_paths(&lens_testgen_claim),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "lens_testgen",
+            "dag_input_surface"
+        ]],
+        "lens_testgen claim module should stay under recursive T-22 discovery"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
+    let module = parse_module(
+        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG,
+        LENS_TESTGEN_DAG_INPUT_SURFACE_PATH,
+    );
+    assert!(
+        function_count(&module, "language_behavior_generator_uses_dag_input") == 1
+            && function_count(&module, "scheduled_language_behavior_generators_cover_dag_inputs")
+                == 1
+            && function_count(&module, "bootstrap_generator_has_conj_dag_input_surface") == 1,
+        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: claim file must prove scheduled + bootstrap .dag input surface"
+    );
+    assert!(
+        LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("dag_language_model_surface_id")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("testgen_scheduled_language_behavior_generators")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("bootstrap_claim_generator_for_manual_anchor")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_schedules_dag_input_surface: TestClaim = EqualsClaim")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("data claim_lens_testgen_bootstrap_generator_reifies_dag_input_surface: TestClaim = EqualsClaim"),
+        "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring"
+    );
+}
+
+#[test]
+fn v4_lens_effect_depends_on_routes_through_testclaim_run() {
+    tokenize_for_test(LENS_EFFECT_DEPENDS_ON_DAG, LENS_EFFECT_DEPENDS_ON_PATH)
+        .unwrap_or_else(|e| panic!("{LENS_EFFECT_DEPENDS_ON_PATH}: tokenize: {e:?}"));
+    assert!(
+        LENS_EFFECT_DEPENDS_ON_DAG.matches("fn effect_depends_on_claim_holds").count() == 1
+            && LENS_EFFECT_DEPENDS_ON_DAG.matches("fn effect_context").count() == 1,
+        "{LENS_EFFECT_DEPENDS_ON_PATH}: lens_effect family receipt must keep its local predicate and runtime context"
+    );
+    assert!(
+        LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data claim_lens_effect_depends_on_runtime_verdict: TestClaim = EqualsClaim"
+        ) && LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data subject_lens_effect_depends_on_runtime_verdict: TestClaimEvalSubject<Node> = eval_test_claim_subject("
+        ) && LENS_EFFECT_DEPENDS_ON_DAG.contains(
+            "data run_lens_effect_depends_on_runtime_verdict: TestClaimRun<Node, RuntimeValue> = run_test_claim("
+        ) && LENS_EFFECT_DEPENDS_ON_DAG
+            .contains("value: RuntimeUnitValue { unit_type: effect_runtime_type_node() }"),
+        "{LENS_EFFECT_DEPENDS_ON_PATH}: missing T-38 subject roster/run_test_claim wiring"
     );
 }
 
@@ -154,12 +227,17 @@ fn v4_lens_testgen_wave0_nat_symbol_import_authority() {
         "nat-law AlgebraLawSubject algebra/inhabitant must project from `v4.std.nat` substrate Symbol bundle (no shared bootstrap placeholders)"
     );
     let names = import_names_for_path(&testgen, &["v4", "std", "nat"]).expect(
-        "testgen must import `v4.std.nat` for AlgebraLawSubject Symbol carriers (parsed `Import`)",
+        "testgen must import `v4.std.nat` for AlgebraLawSubject obligation carriers (parsed `Import`)",
     );
     for sym in [
-        "nat_algebra_law_subject_symbol_additive_monoid",
-        "nat_algebra_law_subject_symbol_commutative_semiring",
-        "nat_algebra_law_subject_symbol_inhabitant_nat",
+        "NatAlgebraLawObligation",
+        "nat_declared_algebra_law_obligations",
+        "law_nat_add_associativity",
+        "law_nat_add_left_identity",
+        "law_nat_add_right_identity",
+        "law_nat_mul_annihilator",
+        "law_nat_mul_associativity",
+        "law_nat_mul_left_identity",
     ] {
         assert!(
             names.iter().any(|n| n == sym),
@@ -327,7 +405,8 @@ fn assert_nat_algebra_law_subject_symbols_in_substrate(nat_src: &str) {
     }
 }
 
-/// Pin the six Nat algebra-law anchors while allowing a single helper-owned AlgebraLaw constructor.
+/// Pin the six Nat algebra-law anchors while allowing only the scheduled row and helper-owned
+/// AlgebraLaw constructors.
 fn assert_six_algebra_law_subject_paths_in_testgen(testgen_src: &str) {
     assert!(
         testgen_src.contains("fn testgen_concept_for_manual_claim"),
@@ -345,8 +424,8 @@ fn assert_six_algebra_law_subject_paths_in_testgen(testgen_src: &str) {
     );
     assert_eq!(
         testgen_src.matches("value: AlgebraLaw {").count(),
-        1,
-        "AlgebraLaw construction should be centralized after helper projection"
+        2,
+        "AlgebraLaw construction should stay limited to scheduled dispatch plus helper projection"
     );
     let helper = between(
         testgen_src,
