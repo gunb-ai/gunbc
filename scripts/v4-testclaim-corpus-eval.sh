@@ -452,7 +452,7 @@ def check_generated_corpus_eval(corpus_eval_rs: Path) -> None:
             "manual_corpus_gate(run_manual_testclaim_corpus_eval())",
         ],
         corpus_eval_rs,
-        "generated witness folds modeled TestClaimRun roster",
+        "generated witness references modeled corpus runner",
     )
 
 
@@ -579,16 +579,16 @@ files_emitted="$(grep -E '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$rus
 cat <<JSON
 {
   "schema": "scripts/v4-testclaim-corpus-eval.sh::host_verdict_surface_receipt_v3",
-  "execution_status": "modeled_per_row_t22_eval_surface",
-  "verdict_surface_source": "modeled corpus runner maps manual_corpus_node_subject_rows through run_test_claim, then folds CorpusEvalReport / VerdictTally",
+  "execution_status": "modeled_per_row_t22_eval_surface_source_verified",
+  "verdict_surface_source": "source-shape receipt: modeled corpus runner maps manual_corpus_node_subject_rows through run_test_claim, then folds CorpusEvalReport / VerdictTally; this host transport does not execute the generated witness or runner",
   "manual_dag_files": ${#manual_files[@]},
   "manual_corpus_registry_rows": ${#run_rows[@]},
   "manual_corpus_registry_roster": ${run_registry_json},
   "verdict_surface_roster_rows": ${#surface_rows[@]},
   "verdict_surface_roster": ${surface_roster_json},
-  "verdict_surface_roster_note": "the subjects manual_corpus_node_subject_rows that run_manual_testclaim_corpus_eval evaluates with run_test_claim; the tally witness covers ONLY these subject rows",
+  "verdict_surface_roster_note": "the subjects manual_corpus_node_subject_rows that run_manual_testclaim_corpus_eval is modeled to evaluate with run_test_claim; source-shape checks bind the tally witness to ONLY these subject rows",
   "corpus_tally_gate_witness": "witness_manual_corpus_gate_closed",
-  "corpus_tally_gate_witness_status": "binding present in source with predicate verified by grep; generated runner shape verifies per-row run_test_claim dispatch before tally fold",
+  "corpus_tally_gate_witness_status": "binding present in source with predicate verified by grep; generated runner shape verifies per-row run_test_claim dispatch before tally fold; NOT CI-evaluated by this transport",
   "corpus_gate_predicate": "non-empty roster AND zero Fail AND zero Deferred",
   "rust_emit_files_emitted": ${files_emitted},
   "structural_witness": "PASS"
@@ -599,7 +599,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     echo "### T-22 TestClaim corpus eval — verdict surface (modeled CiUpsertStep)"
     echo ""
-    echo "**execution_status:** \`modeled_per_row_t22_eval_surface\` — the modeled corpus tally witness (\`witness_manual_corpus_gate_closed\`, predicate: non-empty AND zero Fail AND zero Deferred) covers the ${#surface_rows[@]}-row \`manual_corpus_node_subject_rows\` roster evaluated through \`run_test_claim\`; the full manual TestClaimRun registry is ${#run_rows[@]} rows."
+    echo "**execution_status:** \`modeled_per_row_t22_eval_surface_source_verified\` — source-shape checks bind the modeled corpus tally witness (\`witness_manual_corpus_gate_closed\`, predicate: non-empty AND zero Fail AND zero Deferred) to the ${#surface_rows[@]}-row \`manual_corpus_node_subject_rows\` roster modeled through \`run_test_claim\`; this transport does not execute the generated witness or runner. The full manual TestClaimRun registry is ${#run_rows[@]} rows."
     echo ""
     echo "| receipt | status |"
     echo "| --- | --- |"
@@ -607,9 +607,9 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo "| upstream bootstrap dag emit (0-diagnostic) | PASS |"
     echo "| manual corpus modules + TestClaimRun registry | PASS (${#manual_files[@]} files, ${#run_rows[@]} runs) |"
     echo "| MVP generated-Rust + modeled runner structural witness | PASS |"
-    echo "| corpus tally gate witness (covers ${#surface_rows[@]}-row roster) | DECLARED — source-present + per-row run_test_claim dispatch verified |"
+    echo "| corpus tally gate witness (covers ${#surface_rows[@]}-row roster) | DECLARED — source-present + per-row run_test_claim dispatch shape verified; NOT CI-evaluated |"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
 
-echo "T-22 TestClaim corpus eval PASS: ${#manual_files[@]} manual .dag files; ${#run_rows[@]} TestClaimRun registry rows; tally witness covers ${#surface_rows[@]}-row subject roster evaluated through run_test_claim."
+echo "T-22 TestClaim corpus source-shape receipt PASS: ${#manual_files[@]} manual .dag files; ${#run_rows[@]} TestClaimRun registry rows; tally witness is bound to ${#surface_rows[@]}-row subject roster modeled through run_test_claim (not CI-evaluated by this transport)."
 exit 0
