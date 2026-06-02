@@ -31,6 +31,11 @@ import v4.extdeps.typecheckers.pyright {
   pyright_diag_report_undefined_variable,
   pyright_diag_report_missing_imports
 }
+import v4.extdeps.typecheckers.mypy {
+  mypy_tool_id,
+  mypy_profile_l1_id,
+  mypy_diag_return_value
+}
 import v4.extdeps.languages.typescript {
   ts_atom_realization_symbol,
   ts_bigint_algebra_inhabitance_ts_facts_bigint,
@@ -864,4 +869,26 @@ fn python_l1_static_fixture_roster() -> List<LeafModelPythonStaticFixturePair> {
     python_l1_static_undefined_variable_fixture_pair(),
     python_l1_static_missing_import_fixture_pair()
   ]
+}
+
+// Worksheet B — mypy companion on the same F1 return-type sources; distinct tool/profile namespace.
+fn python_l1_static_mypy_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_return_type,
+    surface_spelling_fact: python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
+      tool_profile_ref: mypy_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
+      tool_profile_ref: mypy_profile_l1_id,
+      tool_id: mypy_tool_id,
+      diagnostic_code: mypy_diag_return_value
+    }
+  }
+}
+
+fn python_l1_static_mypy_fixture() -> LeafModelPythonStaticFixturePair {
+  python_l1_static_mypy_fixture_pair()
 }

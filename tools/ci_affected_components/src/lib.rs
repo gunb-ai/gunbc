@@ -218,6 +218,9 @@ mod tests {
             "src/v4/test/claim/manual/mvp1_rust_add_translate.dag"
         ));
         assert!(ci_changed_path_affects_testclaim_corpus(
+            "src/v4/test/claim/lens_parallelism/data_dependency.dag"
+        ));
+        assert!(ci_changed_path_affects_testclaim_corpus(
             "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"
         ));
         assert!(!ci_changed_path_affects_testclaim_corpus(

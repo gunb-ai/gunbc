@@ -98,6 +98,7 @@ import v4.std.diagnostic {
   node_locus
 }
 import v4.std.node_query { find_named_child }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
   TargetAtomRealization,
@@ -119,11 +120,6 @@ import v4.std.target_model {
   TargetTypeExprVariantSlot
 }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -226,15 +222,12 @@ type TsLanguageModel {
 }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-type TsConcreteSyntaxToken
-  = TsFixedToken { token_class: Symbol }
-  | TsBoundToken { token_class: Symbol, binding: Symbol }
 
 // 🟢 grounded.
 type TsGrammarRelationRow {
   production: FormalProduction
   emitted: Node
-  tokens: List<TsConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 data ts_language_model_surface_id: Symbol = ts_language_model_surface_id
@@ -401,28 +394,28 @@ data ts_mvp1_source_literal: Symbol = ts_mvp1_source_literal
 data ts_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data ts_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
-fn ts_mvp1_concrete_tokens() -> List<TsConcreteSyntaxToken> {
+fn ts_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    TsFixedToken { token_class: ts_token_kw_function },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_fn_add },
-    TsFixedToken { token_class: ts_token_lparen },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_comma },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_rparen },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_lbrace },
-    TsFixedToken { token_class: ts_token_kw_return },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-    TsFixedToken { token_class: ts_token_plus },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
-    TsFixedToken { token_class: ts_token_semicolon },
-    TsFixedToken { token_class: ts_token_rbrace }
+    FixedToken { token_class: ts_token_kw_function },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_fn_add },
+    FixedToken { token_class: ts_token_lparen },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_comma },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_rparen },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_lbrace },
+    FixedToken { token_class: ts_token_kw_return },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+    FixedToken { token_class: ts_token_plus },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
+    FixedToken { token_class: ts_token_semicolon },
+    FixedToken { token_class: ts_token_rbrace }
   ]
 }
 data ts_mvp1_source_text: String = "function add(x: number, y: number): number { return x + y; }"
@@ -640,51 +633,19 @@ fn ts_mvp1_source_text_authority() -> String {
   ts_mvp1_source_text
 }
 
-fn ts_concrete_token_class(token: TsConcreteSyntaxToken) -> Symbol {
+fn ts_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    TsFixedToken { token_class: c } => c
-    TsBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn ts_concrete_token_node(token: TsConcreteSyntaxToken) -> Node {
-  match token {
-    TsFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          ts_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: ts_inhabitant_atom(id: concrete_syntax_token_kind_fixed)
-          ),
-          ts_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: ts_inhabitant_atom(id: c)
-          )
-        ]
-      }
-    TsBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          ts_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: ts_inhabitant_atom(id: concrete_syntax_token_kind_bound)
-          ),
-          ts_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: ts_inhabitant_atom(id: c)
-          ),
-          ts_named_edge(
-            name: concrete_syntax_token_field_binding,
-            target: ts_inhabitant_atom(id: b)
-          )
-        ]
-      }
-  }
+fn ts_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn ts_mvp1_positional_token_edge(token: TsConcreteSyntaxToken) -> Edge {
+fn ts_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge {
     label: Positional,
     target: ts_concrete_token_node(token: token)
@@ -775,7 +736,7 @@ fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   }
 }
 
-fn ts_relation_token_edges(tokens: List<TsConcreteSyntaxToken>) -> List<Edge> {
+fn ts_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1033,22 +994,22 @@ fn ts_wave2a_task_serialize_source_witness() -> Witness<Node> {
   }
 }
 
-fn ts_pr3_identity_concrete_tokens() -> List<TsConcreteSyntaxToken> {
+fn ts_pr3_identity_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    TsFixedToken { token_class: ts_token_kw_function },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_pr3_identity },
-    TsFixedToken { token_class: ts_token_lparen },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_rparen },
-    TsFixedToken { token_class: ts_token_colon },
-    TsFixedToken { token_class: ts_token_ty_number },
-    TsFixedToken { token_class: ts_token_lbrace },
-    TsFixedToken { token_class: ts_token_kw_return },
-    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-    TsFixedToken { token_class: ts_token_semicolon },
-    TsFixedToken { token_class: ts_token_rbrace }
+    FixedToken { token_class: ts_token_kw_function },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_pr3_identity },
+    FixedToken { token_class: ts_token_lparen },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_rparen },
+    FixedToken { token_class: ts_token_colon },
+    FixedToken { token_class: ts_token_ty_number },
+    FixedToken { token_class: ts_token_lbrace },
+    FixedToken { token_class: ts_token_kw_return },
+    BoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+    FixedToken { token_class: ts_token_semicolon },
+    FixedToken { token_class: ts_token_rbrace }
   ]
 }
 
@@ -2400,14 +2361,14 @@ fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
 
 
 
-fn ts_formal_grammar_symbol_from_token(token: TsConcreteSyntaxToken) -> FormalGrammarSymbol {
+fn ts_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
   match token {
-    TsFixedToken { token_class: c } => grammar_formal_terminal(identity: c)
-    TsBoundToken { token_class: c, binding: b } => grammar_formal_terminal_bound(identity: c, binding: b)
+    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } => grammar_formal_terminal_bound(identity: c, binding: b)
   }
 }
 
-fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn ts_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,

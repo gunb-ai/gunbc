@@ -78,14 +78,85 @@ data grammar_relation_field_tokens: Symbol = grammar_relation_field_tokens
 data concrete_syntax_token_field_kind: Symbol = concrete_syntax_token_field_kind
 data concrete_syntax_token_field_class: Symbol = concrete_syntax_token_field_class
 data concrete_syntax_token_field_binding: Symbol = concrete_syntax_token_field_binding
-// 🟡 gated — feature:T-11-typed-concrete-syntax-token-variants — bind TASKS.md T-11 —
-// dissolve-on: target_model.dag declares a typed ConcreteSyntaxToken coproduct (FixedToken |
-// BoundToken) and emit_fixed_token/emit_bound_token in dag.dag produce typed values; the
-// Symbol-equality discriminators below dissolve into structural pattern matching.
+// T-11: the typed ConcreteSyntaxToken coproduct below is the single concrete-syntax-token
+// authority (P2). Per-language `*ConcreteSyntaxToken` coproducts dissolve into this carrier
+// (src/v4/extdeps/languages/*.dag), dag.dag's emit_fixed_token/emit_bound_token construct it,
+// and 06_translate matches it structurally. The `concrete_syntax_token_kind_{fixed,bound}`
+// Symbols persist only as the serialized wire-form tags written by `concrete_syntax_token_to_node`
+// and read back by the translate-side decoder — they are no longer dispatch discriminators.
 data concrete_syntax_token_kind_fixed: Symbol = concrete_syntax_token_kind_fixed
 data concrete_syntax_token_kind_bound: Symbol = concrete_syntax_token_kind_bound
 data serialize_source_field_source_text: Symbol = serialize_source_field_source_text
 data serialize_source_field_source_grammar: Symbol = serialize_source_field_source_grammar
+
+// T-11 shared concrete-syntax-token carrier (single authority per INVARIANTS P2).
+// FixedToken: a terminal whose spelling is the token class' literal lexeme.
+// BoundToken: a terminal whose spelling is resolved from a binding (e.g. an identifier site).
+// 🟢 coproduct dissolution — terminal sum, no further dissolution. FixedToken and BoundToken are
+// genuine one-at-a-time alternatives (a concrete-syntax terminal is either a fixed lexeme or a
+// binding-resolved terminal, never both) and the bound arm carries a `binding` payload the fixed
+// arm lacks — an irreducible sum, not compressed record coordinates (INVARIANTS §C-vs-coordinates
+// at INVARIANTS.md:179-184). Inherits the 🟢 classification the dissolved per-language
+// *ConcreteSyntaxToken coproducts carried before this carrier consolidated them.
+type ConcreteSyntaxToken
+  = FixedToken { token_class: Symbol }
+  | BoundToken { token_class: Symbol, binding: Symbol }
+
+// Sole serialization morphism: typed token -> Conj wire node carrying the
+// concrete_syntax_token_field_* edges and concrete_syntax_token_kind_* tags. Both the
+// per-language grammar-row builders and dag.dag's self-emission project through this function,
+// so the wire shape has exactly one author.
+fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
+  match token {
+    FixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: concrete_syntax_token_field_kind },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: concrete_syntax_token_kind_fixed } },
+              children: []
+            }
+          },
+          Edge {
+            label: Named { name: concrete_syntax_token_field_class },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: c } },
+              children: []
+            }
+          }
+        ]
+      }
+    BoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: concrete_syntax_token_field_kind },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: concrete_syntax_token_kind_bound } },
+              children: []
+            }
+          },
+          Edge {
+            label: Named { name: concrete_syntax_token_field_class },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: c } },
+              children: []
+            }
+          },
+          Edge {
+            label: Named { name: concrete_syntax_token_field_binding },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: b } },
+              children: []
+            }
+          }
+        ]
+      }
+  }
+}
 
 data target_model_edge_atom_realizations: Symbol = target_model_edge_atom_realizations
 
