@@ -213,19 +213,16 @@ fn v4_std_grounding_primitive_fact_axis_model_core_authority() {
         "grouped spec_facts projection must consume the model_core-owned axis witness, not re-declare axis membership"
     );
     assert!(
-        GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup_optional(")
-            && GROUNDING_DAG.contains("-> Outcome<Node?>")
-            && GROUNDING_DAG.contains("map_get(registry.by_key, key)")
+        !GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup_optional(")
+            && !GROUNDING_DAG.contains("map_get(registry.by_key, key)")
             && GROUNDING_DAG.contains("fn per_language_fact_bundle_lookup(")
             && GROUNDING_DAG.contains("-> Witness<Node>")
-            && GROUNDING_DAG
-                .contains("match per_language_fact_bundle_lookup_optional(registry: registry, key: key)")
-            && GROUNDING_DAG.contains("Accepted { value: opt, diagnostics: _ }")
-            && GROUNDING_DAG.contains("Some { value: value } => Holds { value: value }")
-            && GROUNDING_DAG.contains("None => Violates")
-            && GROUNDING_DAG.contains("Rejected { diagnostics: d }")
-            && GROUNDING_DAG.contains("Rejected { diagnostics: d } => Rejected { diagnostics: d }"),
-        "registry insert must consume an explicit Outcome<Node?> to Witness<Node> lookup bridge, not raw Map.lookup carriers"
+            && GROUNDING_DAG.contains("registry.by_key.lookup(key)")
+            && GROUNDING_DAG.contains("Holds { value: _ }")
+            && GROUNDING_DAG.contains("Violates { diagnostic: d }")
+            && GROUNDING_DAG.contains("if d.reason == map_key_absent")
+            && GROUNDING_DAG.contains("Rejected { diagnostics: diagnostics_singleton(d: d) }"),
+        "registry insert must treat only canonical map absence as insert permission; other lookup violations reject"
     );
     assert!(
         GROUNDING_DAG.contains("fn primitive_fact_bundle_for_registry_subject(")
