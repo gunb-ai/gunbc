@@ -2294,18 +2294,28 @@ fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
         ),
         "{RECURSIVE_FLEX_INSPECTION_PATH}: must consume A.1.5a `inprocess_equivalence_holds` (no re-derivation)"
     );
-    // Single authority (P2 / facts-flow-forward): membership consumes the SAME
-    // `inprocess_equivalence_slice` the A.1.5a law proves over — not a re-minted local id —
-    // so the equivalence law and the CI-frontier check cannot drift onto different subjects.
+    // Single authority (P2 / facts-flow-forward): the rostering check consumes the SAME
+    // `inprocess_equivalence_slice` the A.1.5a law proves over — not a re-minted id — so the
+    // equivalence law and the rostering check cannot drift onto different subjects.
     assert!(
         import_includes_name(
             &module,
             &["v4", "test", "claim", "workflow", "inprocess_equivalence"],
             "inprocess_equivalence_slice"
         ),
-        "{RECURSIVE_FLEX_INSPECTION_PATH}: membership must key off the A.1.5a `inprocess_equivalence_slice` authority, not a re-minted id"
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: rostering must key off the A.1.5a `inprocess_equivalence_slice` authority, not a re-minted id"
     );
-    // (2) Inspection over ci.dag — the live corpus claim-id frontier authority.
+    // (2a) Well-typed subject membership over the live corpus subject roster ci.dag evaluates
+    // — `TestClaimEvalSubject<Node>` both sides, not a `TestClaim`-vs-`Symbol` cross-type compare.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "manual", "manual_corpus_roster"],
+            "manual_corpus_node_subject_rows"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must roster the slice against `manual_corpus_node_subject_rows` (well-typed subject membership)"
+    );
+    // (2b) Inspection over ci.dag — the live corpus claim-id frontier authority (cardinality cover).
     assert!(
         import_includes_name(
             &module,
@@ -2324,7 +2334,8 @@ fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
         "{RECURSIVE_FLEX_INSPECTION_PATH}: must inspect bootstrap.dag fixed-point hash-pin witness"
     );
     for fn_name in &[
-        "recursive_flex_slice_in_ci_frontier",
+        "recursive_flex_slice_rostered",
+        "recursive_flex_ci_frontier_covers_roster",
         "recursive_flex_inspection_holds",
     ] {
         assert!(
@@ -2333,15 +2344,17 @@ fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
         );
     }
     for needle in &[
-        // Membership keys off each slice subject's own `.claim` — the single A.1.5a authority,
-        // checked across the whole slice via for_all (no drift between law and frontier check).
+        // Rostering keys off the A.1.5a slice authority via for_all, probing the subject itself
+        // (well-typed `TestClaimEvalSubject` membership — no `TestClaim`-vs-`Symbol` compare).
         "xs: inprocess_equivalence_slice",
-        "item: subject.claim",
-        // Membership over the live ci.dag frontier, eq via inline closure.
-        "xs: ci_testclaim_corpus_eval_claim_ids",
-        // The receipt conjoins all three structural facts.
+        "item: subject",
+        "xs: manual_corpus_node_subject_rows",
+        // ci.dag touch: frontier covers the roster by cardinality (well-typed Int equality).
+        "length(xs: ci_testclaim_corpus_eval_claim_ids) == length(xs: manual_corpus_node_subject_rows)",
+        // The receipt conjoins the facts.
         "inprocess_equivalence_holds()",
-        "&& recursive_flex_slice_in_ci_frontier()",
+        "&& recursive_flex_slice_rostered()",
+        "&& recursive_flex_ci_frontier_covers_roster()",
         "&& bootstrap_plan_accepted_hash_pins_projectable_witness",
         "data witness_recursive_flex_inspection: Bool = recursive_flex_inspection_holds()",
     ] {

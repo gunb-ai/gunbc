@@ -1,9 +1,9 @@
 // src/v4/test/claim/workflow/recursive_flex_inspection.dag
-// Scope: F.12a recursive-flex THIN — a T-38 *inspection receipt* over the two v4
-//   workflow authorities (`v4.workflow.ci` + `v4.workflow.bootstrap`), scoped to
-//   the A.1.5a in-process equivalence claim (#4313) ONLY.
+// Scope: F.12a recursive-flex THIN — a T-38 *inspection receipt* over the v4 CI
+//   pipeline + self-host bootstrap authorities, scoped to the A.1.5a in-process
+//   equivalence claim (#4313) ONLY.
 //
-// "Recursive-flex": the compiler's own CI pipeline (`ci.dag`) and self-host
+// "Recursive-flex": the compiler's own CI corpus rostering (`ci.dag`) and self-host
 //   bootstrap plan (`bootstrap.dag`) are inspected *together* with the A.1.5a
 //   runtime-equivalence law, in a single compile-time receipt. It flexes the
 //   recursion — a TestClaim about the runtime, checked against the workflow that
@@ -11,13 +11,25 @@
 //   loop. This is the THIN slice; the FULL self-host loop (harness execution +
 //   runtime verdict feedback into the bootstrap) is F.12b, deliberately NOT here.
 //
-// The receipt conjoins three structural facts that ALL already live on main:
+// The receipt conjoins facts that ALL already live on main:
 //   (1) `inprocess_equivalence_holds()` — A.1.5a: on the fixed eval_mvp2 slice the
 //       harness path and the direct `run_test_claim` path agree (#4313).
-//   (2) `recursive_flex_slice_in_ci_frontier` — the A.1.5a slice's claim id
-//       (`claim_eval_mvp2_test_claim_route`) is present in ci.dag's live corpus
-//       claim-id frontier `ci_testclaim_corpus_eval_claim_ids` (so the subject the
-//       equivalence law fixes is one CI actually rosters).
+//   (2a) `recursive_flex_slice_rostered()` — every subject of the A.1.5a
+//        `inprocess_equivalence_slice` is present in the live corpus subject roster
+//        `manual_corpus_node_subject_rows` that ci.dag's `TestClaimCorpusEvalCommand`
+//        job evaluates. WELL-TYPED `TestClaimEvalSubject<Node>` membership and SINGLE
+//        AUTHORITY: both sides bind the same `subject_eval_mvp2_test_claim_route`, so
+//        the equivalence law and the rostering check cannot drift onto different
+//        subjects (INVARIANTS.md P2 / facts-flow-forward; P3 fail-closed — no cross-type
+//        compare). NOTE we deliberately do NOT probe `ci_testclaim_corpus_eval_claim_ids`
+//        (a `List<Symbol>`) with `subject.claim` (a `TestClaim`): those are distinct
+//        types (`src/v4/std/verification.dag` vs `src/v4/std/node.dag`) and the substrate
+//        carries no `TestClaim -> claim-id Symbol` projection, so that compare would be
+//        ill-typed. The roster is the canonical subject authority the frontier derives from.
+//   (2b) `recursive_flex_ci_frontier_covers_roster()` — ci.dag's corpus claim-id
+//        frontier `ci_testclaim_corpus_eval_claim_ids` has one id per rostered subject
+//        (cardinality match): the CI frontier covers exactly the corpus roster that
+//        holds the A.1.5a slice. WELL-TYPED `Int` equality — the literal ci.dag touch.
 //   (3) `bootstrap_plan_accepted_hash_pins_projectable_witness` — bootstrap.dag's
 //       structural fixed-point hash-pin projection holds (the self-host plan the
 //       claim would build under is well-formed).
@@ -34,28 +46,27 @@ module v4.test.claim.workflow.recursive_flex_inspection
 
 
 import v4.std.logic { Bool }
-import v4.std.algebra { contains, for_all }
+import v4.std.algebra { contains, for_all, length }
 import v4.test.claim.workflow.inprocess_equivalence {
   inprocess_equivalence_holds,
   inprocess_equivalence_slice
 }
+import v4.test.claim.manual.manual_corpus_roster { manual_corpus_node_subject_rows }
 import v4.workflow.ci { ci_testclaim_corpus_eval_claim_ids }
 import v4.workflow.bootstrap { bootstrap_plan_accepted_hash_pins_projectable_witness }
 
 
-// Single authority (INVARIANTS.md P2 / facts-flow-forward): the membership check
-// consumes the SAME `inprocess_equivalence_slice` the A.1.5a law proves over — not a
-// re-minted local id — and reads each subject's own `.claim`. So `inprocess_equivalence_holds()`
-// and the CI-frontier membership cannot drift onto different subjects: both are
-// keyed by the one slice authority. The `.claim` value is the same `TestClaim` that
-// ci.dag's `ci_testclaim_corpus_eval_claim_ids` frontier rosters.
-fn recursive_flex_slice_in_ci_frontier() -> Bool {
+// (2a) Single authority (P2 / facts-flow-forward), well-typed (P3 fail-closed): every
+// subject of the A.1.5a slice is in the live corpus subject roster ci.dag evaluates.
+// `subject` and the roster elements are both `TestClaimEvalSubject<Node>`, and both
+// sides bind the same `subject_eval_mvp2_test_claim_route` — no drift, no cross-type compare.
+fn recursive_flex_slice_rostered() -> Bool {
   for_all(
     xs: inprocess_equivalence_slice,
     predicate: fn(subject) {
       contains(
-        xs: ci_testclaim_corpus_eval_claim_ids,
-        item: subject.claim,
+        xs: manual_corpus_node_subject_rows,
+        item: subject,
         eq: fn(a, b) { a == b }
       )
     }
@@ -63,11 +74,21 @@ fn recursive_flex_slice_in_ci_frontier() -> Bool {
 }
 
 
-// The recursive-flex receipt: the runtime-equivalence law holds for a subject CI
-// rosters, under a self-host bootstrap plan whose hash-pin projection is well-formed.
+// (2b) Inspection over ci.dag: its corpus claim-id frontier carries exactly one id per
+// rostered corpus subject (cardinality bijection), so the frontier covers the roster
+// that holds the A.1.5a slice. Well-typed `Int` equality — the literal ci.dag touch.
+fn recursive_flex_ci_frontier_covers_roster() -> Bool {
+  length(xs: ci_testclaim_corpus_eval_claim_ids) == length(xs: manual_corpus_node_subject_rows)
+}
+
+
+// The recursive-flex receipt: the runtime-equivalence law holds for a subject the live
+// CI corpus roster carries and ci.dag's frontier covers, under a self-host bootstrap
+// plan whose hash-pin projection is well-formed.
 fn recursive_flex_inspection_holds() -> Bool {
   inprocess_equivalence_holds()
-    && recursive_flex_slice_in_ci_frontier()
+    && recursive_flex_slice_rostered()
+    && recursive_flex_ci_frontier_covers_roster()
     && bootstrap_plan_accepted_hash_pins_projectable_witness
 }
 
