@@ -72,7 +72,9 @@ import v4.std.change {
   Change,
   ChangeKind,
   ChangeSet,
-  DependencyEndpoint
+  DependencyEndpoint,
+  DependencySource,
+  NodeChanged
 }
 import v4.std.artifact {
   Artifact,
@@ -86,7 +88,7 @@ import v4.std.artifact {
   TestClaimArtifact,
   WitnessBundle
 }
-import v4.std.dependency { DependencyKind, DependencyView }
+import v4.std.dependency { Contains, DependencyKind, DependencyView }
 // Phase 1.4 canonical authority: `dsl/std/patterns.dag` (#3981). v4 compile uses `v4.std.patterns` /
 // `v4.std.types` mirrors (shapes aligned; see module headers) until compile roots include dsl/std.
 import v4.std.patterns { CreateAction, ResolveExpr, Upsert, VerifyCheck }
@@ -149,6 +151,7 @@ import v4.std.diagnostic {
   Locus,
   NoCorrectionReason,
   Diagnostics,
+  NonEmptyDiagnostics,
   Outcome,
   Accepted,
   Rejected,
@@ -3732,9 +3735,13 @@ data ci_dependency_endpoint_dependent_tag: Symbol = ci_dependency_endpoint_depen
 data ci_affected_set_produced_tag: Symbol = ci_affected_set_produced_tag
 data ci_affected_set_fail_closed_tag: Symbol = ci_affected_set_fail_closed_tag
 data ci_affected_set_diagnostics_tag: Symbol = ci_affected_set_diagnostics_tag
+data ci_affected_set_reason_evidence_tag: Symbol = ci_affected_set_reason_evidence_tag
+data ci_affected_set_diagnostics_evidence_tag: Symbol = ci_affected_set_diagnostics_evidence_tag
 data ci_no_correction_user_input_boundary_tag: Symbol = ci_no_correction_user_input_boundary_tag
 data ci_no_correction_ambiguous_intent_tag: Symbol = ci_no_correction_ambiguous_intent_tag
 data ci_no_correction_external_contract_unknown_tag: Symbol = ci_no_correction_external_contract_unknown_tag
+data ci_correction_suggested_tag: Symbol = ci_correction_suggested_tag
+data ci_correction_unavailable_tag: Symbol = ci_correction_unavailable_tag
 data ci_extent_whole_file_tag: Symbol = ci_extent_whole_file_tag
 data ci_extent_byte_range_tag: Symbol = ci_extent_byte_range_tag
 data ci_locus_textual_tag: Symbol = ci_locus_textual_tag
@@ -4025,8 +4032,16 @@ fn ci_no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
 
 fn ci_correction_digest(correction: Correction) -> Hash {
   match correction {
-    Suggested { node } => content_hash(n: node)
-    Unavailable { reason } => ci_no_correction_reason_digest(reason: reason)
+    Suggested { node } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_correction_suggested_tag),
+        b: content_hash(n: node)
+      )
+    Unavailable { reason } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_correction_unavailable_tag),
+        b: ci_no_correction_reason_digest(reason: reason)
+      )
   }
 }
 
@@ -4116,9 +4131,16 @@ fn ci_affected_set_digest(affected: AffectedSet) -> Hash {
         b: combine_hash(
           a: ci_change_set_digest(changes: changes),
           b: match evidence {
-            AffectedSetReason { reason } => ci_symbol_digest(sym: reason)
+            AffectedSetReason { reason } =>
+              combine_hash(
+                a: ci_symbol_digest(sym: ci_affected_set_reason_evidence_tag),
+                b: ci_symbol_digest(sym: reason)
+              )
             AffectedSetDiagnostics { diagnostics } =>
-              ci_non_empty_diagnostics_digest(diagnostics: diagnostics)
+              combine_hash(
+                a: ci_symbol_digest(sym: ci_affected_set_diagnostics_evidence_tag),
+                b: ci_non_empty_diagnostics_digest(diagnostics: diagnostics)
+              )
           }
         )
       )
