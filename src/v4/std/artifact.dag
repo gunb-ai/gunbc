@@ -30,6 +30,15 @@ type Artifact {
 // `GeneratedSource` / `TestClaimArtifact` carries the producing generator's identity.
 type GeneratorId = Symbol
 
+// Provenance of a generated artifact: the generator identity plus the Artifact it
+// emitted. Bundles the artifact-domain pair so testgen carriers (v4.lens.testgen
+// Generator<C>) hold a single provenance field rather than parallel id/artifact
+// fields (Cost-of-Change single authority; mirrors NodeArtifactProvenance below).
+type GeneratorProvenance {
+  generator_id: GeneratorId
+  artifact: Artifact
+}
+
 type NodeArtifactProvenance {
   node: Node
   artifact: Artifact
