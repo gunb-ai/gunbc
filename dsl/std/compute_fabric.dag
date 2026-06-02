@@ -8,9 +8,10 @@
 
 module std.compute_fabric
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int }
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.float { Float }
-import std.measure { Measure, Time, Memory, DataRate, One }
+import std.measure { Measure, Time, DataRate, One, ByteSize }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId }
 
 // 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
 type Witness<C> = Node
@@ -52,15 +53,10 @@ type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
 type OomSignalClass = KillProcess | Throttle | ReportOnly
 
-type LogicalTime = NonEmptyStr where brand("LogicalTime")
-type ByteSize = Measure<Memory, One>
 type Bandwidth = Measure<DataRate, One>
 type Duration = Measure<Time, One>
 type HostIdentity = NonEmptyStr where brand("HostIdentity")
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
-type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
-// Forward reference — Worksheet B / harness identity carrier (P2; no import cache_interface).
-type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
 
 type ComputeArtifactLocality
   = InProcess

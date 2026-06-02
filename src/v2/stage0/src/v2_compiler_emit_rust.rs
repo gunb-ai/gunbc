@@ -151,9 +151,11 @@ pub fn render_rust_type(
                     )
                 }
             }
-            None => {
-                render_rust_type_without_applied_binding(n.clone(), shared_types, source_indices)
-            }
+            None => render_rust_type_without_applied_binding(
+                n.clone(),
+                shared_types,
+                source_indices.clone(),
+            ),
         },
     }
 }
@@ -253,7 +255,7 @@ pub fn render_rust_applied_type(
             RenderTarget::Rust,
             authored_name_at(source_indices.clone(), n.clone()),
         );
-        let applied = if ((n.children.clone().len() as i64) == 0) {
+        if ((n.children.clone().len() as i64) == 0) {
             base
         } else {
             {
@@ -275,8 +277,20 @@ pub fn render_rust_applied_type(
                     ">".to_string(),
                 )
             }
-        };
-        applied
+        }
+    }
+}
+
+pub fn render_rust_shared_type_if_needed(
+    type_name: String,
+    rendered: String,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+) -> String {
+    if (v2_rt::set_contains(&shared_types, type_name) && !rust_type_is_rc_wrapped(rendered.clone()))
+    {
+        wrap_shared_type(RenderTarget::Rust, rendered.clone())
+    } else {
+        rendered.clone()
     }
 }
 
@@ -289,18 +303,12 @@ pub fn render_rust_applied_type_shared(
     {
         let rendered = render_rust_applied_type(
             n.clone(),
-            generic_param_names.clone(),
+            generic_param_names,
             shared_types.clone(),
             source_indices.clone(),
         );
         let type_name = authored_name_at(source_indices.clone(), n.clone());
-        if (v2_rt::set_contains(&shared_types, type_name)
-            && !rust_type_is_rc_wrapped(rendered.clone()))
-        {
-            wrap_shared_type(RenderTarget::Rust, rendered)
-        } else {
-            rendered
-        }
+        render_rust_shared_type_if_needed(type_name, rendered, shared_types.clone())
     }
 }
 
@@ -311,80 +319,28 @@ pub fn render_rust_decl_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match find_property(
+        let applied_prop = find_property(
             n.properties.clone(),
             "__applied_type_args".to_string(),
             source_indices.clone(),
-        ) {
+        );
+        let applied_overlay = match applied_prop {
             Some(applied) => {
                 if ((applied.children.clone().len() as i64) > 0) {
-                    render_rust_applied_type_shared(
-                        applied.clone(),
-                        generic_param_names.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                    )
+                    Some(applied.clone())
                 } else {
-                    {
-                        let name = authored_name_at(source_indices.clone(), n.clone());
-                        if (((n.connective.clone() == Connective::NoConnective)
-                            && ((n.children.clone().len() as i64) == 0))
-                            && {
-                                let mut __found = false;
-                                for g in generic_param_names.clone().iter().cloned() {
-                                    if (g.clone().as_str() == name.clone().as_str()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            })
-                        {
-                            name.clone()
-                        } else {
-                            if ((n.connective.clone() == Connective::NoConnective)
-                                && ((n.children.clone().len() as i64) > 0))
-                            {
-                                {
-                                    let base =
-                                        coerce_primitive_type(RenderTarget::Rust, name.clone());
-                                    let args = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for arg in n.children.clone().iter().cloned() {
-                                            __result.push(render_rust_decl_type(
-                                                arg.clone(),
-                                                generic_param_names.clone(),
-                                                shared_types.clone(),
-                                                source_indices.clone(),
-                                            ));
-                                        }
-                                        __result
-                                    })
-                                    .join(&", ".to_string());
-                                    let applied_ty = v2_rt::concat(
-                                        v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
-                                        ">".to_string(),
-                                    );
-                                    if v2_rt::set_contains(&shared_types, name.clone()) {
-                                        v2_rt::concat(
-                                            v2_rt::concat("Rc<".to_string(), applied_ty),
-                                            ">".to_string(),
-                                        )
-                                    } else {
-                                        applied_ty
-                                    }
-                                }
-                            } else {
-                                render_rust_type_with_applied_binding(
-                                    n.clone(),
-                                    shared_types.clone(),
-                                    source_indices.clone(),
-                                )
-                            }
-                        }
-                    }
+                    None
                 }
             }
+            None => None,
+        };
+        match applied_overlay {
+            Some(applied) => render_rust_applied_type_shared(
+                applied.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ),
             None => {
                 let name = authored_name_at(source_indices.clone(), n.clone());
                 if (((n.connective.clone() == Connective::NoConnective)
@@ -424,14 +380,11 @@ pub fn render_rust_decl_type(
                                 v2_rt::concat(v2_rt::concat(base, "<".to_string()), args),
                                 ">".to_string(),
                             );
-                            if v2_rt::set_contains(&shared_types, name.clone()) {
-                                v2_rt::concat(
-                                    v2_rt::concat("Rc<".to_string(), applied_ty),
-                                    ">".to_string(),
-                                )
-                            } else {
-                                applied_ty
-                            }
+                            render_rust_shared_type_if_needed(
+                                name.clone(),
+                                applied_ty,
+                                shared_types.clone(),
+                            )
                         }
                     } else {
                         render_rust_type_with_applied_binding(
@@ -452,8 +405,8 @@ pub fn render_rust_fn_sig_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((generic_param_names.len() as i64) > 0) {
-        render_rust_decl_type(n, generic_param_names, shared_types, source_indices)
+    if ((generic_param_names.clone().len() as i64) > 0) {
+        render_rust_decl_type(n, generic_param_names.clone(), shared_types, source_indices)
     } else {
         render_rust_type_with_applied_binding(n, shared_types, source_indices)
     }
@@ -596,7 +549,7 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
 
 pub fn rust_nominal_ord_resolved_shape(n: Rc<Node>) -> Rc<Node> {
     match n.inferred.clone().as_deref().cloned() {
-        Some(Resolved { node: rt, .. }) => rt.clone(),
+        Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
         _ => n.clone(),
     }
 }
@@ -605,27 +558,31 @@ pub fn rust_nominal_ord_record_shape_eligible(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((n.connective.clone() == Conj) && ((n.children.clone().len() as i64) == 1))
+    (((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 1))
         && match n.children.clone().first().cloned() {
-            Some(child) => rust_nominal_ord_type_eligible(
-                child_type_node(child.clone()),
-                source_indices.clone(),
-            ),
+            Some(child) => {
+                rust_nominal_ord_type_eligible(child_type_node(child.clone()), source_indices)
+            }
             None => false,
-        }
+        })
 }
 
 pub fn rust_nominal_ord_coproduct_shape_eligible(n: Rc<Node>) -> bool {
-    ((n.connective.clone() == Disj) && ((n.children.clone().len() as i64) > 0))
-        && n.children
-            .clone()
-            .iter()
-            .cloned()
-            .all(|v| ((v.children.clone().len() as i64) == 0))
+    (((n.connective.clone() == Connective::Disj) && ((n.children.clone().len() as i64) > 0)) && {
+        let mut __all = true;
+        for v in n.children.clone().iter().cloned() {
+            if !((v.children.clone().len() as i64) == 0) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    })
 }
 
 pub fn rust_nominal_ord_reference_shape_eligible(n: Rc<Node>) -> bool {
-    (((n.connective.clone() == NoConnective) && ((n.children.clone().len() as i64) == 0))
+    (((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) == 0))
         && ((n.params.clone().len() as i64) == 0))
 }
 
@@ -634,30 +591,32 @@ pub fn rust_nominal_ord_derives_for_shape(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    let shape = Rc::new(Node {
-        name,
-        span: make_span(0, 0),
-        ident_span: None,
-        children,
-        connective: Conj,
-        params: Rc::new(vec![]),
-        inferred: None,
-        return_cardinality: Required,
-        uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
-        properties: Rc::new(vec![]),
-        type_annotation: None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: None,
-        expr_data: Rc::new(NoExprData),
-        ident: None,
-    });
-    if rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()) {
-        rust_ord_derives_text()
-    } else {
-        "".to_string()
+    {
+        let shape = Rc::new(Node {
+            name: name,
+            span: make_span(0, 0),
+            ident_span: None,
+            children: children,
+            connective: Connective::Conj,
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        if rust_nominal_ord_record_shape_eligible(shape, source_indices) {
+            rust_ord_derives_text()
+        } else {
+            "".to_string()
+        }
     }
 }
 
@@ -665,11 +624,13 @@ pub fn rust_nominal_ord_type_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let shape = rust_nominal_ord_resolved_shape(elem_node.clone());
-    (((rust_nominal_identity_carrier_shape_eligible(shape.clone(), source_indices.clone())
-        || rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()))
-        || rust_nominal_ord_coproduct_shape_eligible(shape.clone()))
-        || rust_nominal_ord_reference_shape_eligible(shape.clone()))
+    {
+        let shape = rust_nominal_ord_resolved_shape(elem_node);
+        (((rust_nominal_identity_carrier_shape_eligible(shape.clone(), source_indices.clone())
+            || rust_nominal_ord_record_shape_eligible(shape.clone(), source_indices.clone()))
+            || rust_nominal_ord_coproduct_shape_eligible(shape.clone()))
+            || rust_nominal_ord_reference_shape_eligible(shape.clone()))
+    }
 }
 
 pub fn rust_serde_tag_attr() -> String {
@@ -3805,20 +3766,11 @@ pub fn emit_struct_field_from_child(
                                                     ),
                                                     ">".to_string(),
                                                 );
-                                                if v2_rt::set_contains(
-                                                    &shared_types,
+                                                render_rust_shared_type_if_needed(
                                                     rt_child_name.clone(),
-                                                ) {
-                                                    v2_rt::concat(
-                                                        v2_rt::concat(
-                                                            "Rc<".to_string(),
-                                                            with_params,
-                                                        ),
-                                                        ">".to_string(),
-                                                    )
-                                                } else {
-                                                    with_params
-                                                }
+                                                    with_params,
+                                                    shared_types.clone(),
+                                                )
                                             }
                                         } else {
                                             render_rust_type(
@@ -3865,10 +3817,7 @@ pub fn emit_struct_field_from_child(
                 ))
                 && !rust_type_is_rc_wrapped(generic_ty.clone()))
             {
-                v2_rt::concat(
-                    v2_rt::concat("Rc<".to_string(), generic_ty.clone()),
-                    ">".to_string(),
-                )
+                wrap_shared_type(RenderTarget::Rust, generic_ty.clone())
             } else {
                 generic_ty.clone()
             }
@@ -3959,7 +3908,6 @@ pub fn emit_rust_field_definition(
 
 pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
     {
-        let _ = name;
         let complex = Rc::new({
             let mut __result = Vec::new();
             for v in children.iter().cloned() {
@@ -5345,20 +5293,6 @@ pub fn emit_tco_params(
     }
 }
 
-pub fn render_rust_param_sig_type(
-    param: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    let type_node = resolved_type(param.clone());
-    if ((generic_param_names.len() as i64) > 0) {
-        render_rust_decl_type(type_node, generic_param_names, shared_types, source_indices)
-    } else {
-        render_rust_field_type_with_applied_binding(param, shared_types, source_indices)
-    }
-}
-
 pub fn emit_tco_param(
     param: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -5369,15 +5303,15 @@ pub fn emit_tco_param(
         let authored = param_node_type_expr(param.clone());
         let ty = if ((authored.params.clone().len() as i64) > 0) {
             emit_rust_param_type(
-                authored,
-                generic_param_names.clone(),
+                authored.clone(),
+                generic_param_names,
                 shared_types,
                 source_indices.clone(),
             )
         } else {
             render_rust_param_sig_type(
                 param.clone(),
-                generic_param_names.clone(),
+                generic_param_names,
                 shared_types,
                 source_indices.clone(),
             )
@@ -5494,6 +5428,27 @@ pub fn emit_params(
     }
 }
 
+pub fn render_rust_param_sig_type(
+    param: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let type_node = resolved_type(param.clone());
+        if ((generic_param_names.clone().len() as i64) > 0) {
+            render_rust_decl_type(
+                type_node,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices,
+            )
+        } else {
+            render_rust_field_type_with_applied_binding(param.clone(), shared_types, source_indices)
+        }
+    }
+}
+
 pub fn emit_rust_param_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -5556,15 +5511,15 @@ pub fn emit_param(
         let authored = param_node_type_expr(param.clone());
         let ty = if ((authored.params.clone().len() as i64) > 0) {
             emit_rust_param_type(
-                authored,
-                generic_param_names.clone(),
+                authored.clone(),
+                generic_param_names,
                 shared_types,
                 source_indices.clone(),
             )
         } else {
             render_rust_param_sig_type(
                 param.clone(),
-                generic_param_names.clone(),
+                generic_param_names,
                 shared_types,
                 source_indices.clone(),
             )
@@ -16802,7 +16757,8 @@ pub fn emit_data_def_body(
                             "compile_error!(\"BoundedLattice data missing bottom\")".to_string()
                         }
                     };
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: Box::new(".to_string()), top_str), "),\n".to_string()), "                bottom: Box::new(".to_string()), bottom_str), "),\n".to_string()), "            })".to_string())
+                    let inner = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: Box::new(".to_string()), top_str), "),\n".to_string()), "                bottom: Box::new(".to_string()), bottom_str), "),\n".to_string()), "            })".to_string());
+                    v2_rt::concat("            ".to_string(), inner)
                 }
                 _ => "            compile_error!(\"BoundedLattice data must be a record\")"
                     .to_string(),
@@ -17795,9 +17751,8 @@ pub fn emit_main_mod_uses(
         if has_pipeline {
             {
                 let pipeline_mod = module_to_filename("v2.compiler.compile".to_string());
-                let artifact_mod = module_to_filename("v2.compiler.artifact".to_string());
                 let core_mod = module_to_filename("v2.std.core".to_string());
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(base, "\nuse std::collections::HashMap;\n".to_string()), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), artifact_mod), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(base, "\nuse std::collections::HashMap;\n".to_string()), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
             }
         } else {
             base
@@ -17873,7 +17828,7 @@ pub fn emit_subcommand_enum(
             __result
         });
         let compile_variant = if has_pipeline.clone() {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("/// Compile .dag source files to a target language\n".to_string(), make_indent((depth.clone() + 1))), "Compile {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files).\n".to_string()), make_indent((depth.clone() + 2))), "/// Module imports are resolved transitively from these roots.\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Legacy: single source directory (all .dag files loaded, no import resolution)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-dir\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_dir: Option<String>,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long)]\n".to_string()), make_indent((depth.clone() + 2))), "output_dir: String,\n".to_string()), make_indent((depth.clone() + 2))), "/// Target language: rust, python, go, dag\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"rust\")]\n".to_string()), make_indent((depth.clone() + 2))), "target: String,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("/// Compile .dag source files to a target language\n".to_string(), make_indent((depth.clone() + 1))), "Compile {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files).\n".to_string()), make_indent((depth.clone() + 2))), "/// Module imports are resolved transitively from these roots.\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Legacy: single source directory (all .dag files loaded, no import resolution)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-dir\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_dir: Option<String>,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long)]\n".to_string()), make_indent((depth.clone() + 2))), "output_dir: String,\n".to_string()), make_indent((depth.clone() + 2))), "/// Target language: rust, python, go, dag, or + separated set such as rust+dag\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"rust\")]\n".to_string()), make_indent((depth.clone() + 2))), "target: String,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
         } else {
             "".to_string()
         };
@@ -18129,8 +18084,7 @@ pub fn emit_main_fn(
 pub fn emit_compile_match_arm(crate_name: String) -> String {
     {
         let pipeline_mod = module_to_filename("v2.compiler.compile".to_string());
-        let artifact_mod = module_to_filename("v2.compiler.artifact".to_string());
-        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Commands::Compile { source_roots, source_dir, output_dir, target } => {\n".to_string(), "            let render_target = match target.as_str() {\n".to_string()), "                \"rust\" => ".to_string()), artifact_mod.clone()), "::RenderTarget::Rust,\n".to_string()), "                \"python\" => ".to_string()), artifact_mod.clone()), "::RenderTarget::Python,\n".to_string()), "                \"go\" => ".to_string()), artifact_mod.clone()), "::RenderTarget::Go,\n".to_string()), "                \"dag\" => ".to_string()), artifact_mod.clone()), "::RenderTarget::Dag,\n".to_string()), "                other => {\n".to_string()), "                    eprintln!(\"unknown target: {}. supported: rust, python, go, dag\", other);\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            };\n".to_string()), "\n".to_string()), "            let sources = if !source_roots.is_empty() {\n".to_string()), "                // FF-9: Import-driven resolution from source roots\n".to_string()), "                let index = build_module_index(&source_roots);\n".to_string()), "                eprintln!(\"indexed {} modules from {} source roots\", index.len(), source_roots.len());\n".to_string()), "\n".to_string()), "                // Entry modules: all .dag files in the FIRST source root.\n".to_string()), "                // Additional roots are dependency pools resolved via imports.\n".to_string()), "                // This is intentional: --source-root src/v2 --source-root dsl\n".to_string()), "                // means 'compile src/v2, using dsl as a dependency pool.'\n".to_string()), "                let first_root = std::path::Path::new(&source_roots[0]);\n".to_string()), "                let mut entry_files = Vec::new();\n".to_string()), "                if first_root.is_dir() {\n".to_string()), "                    let mut dag_paths = Vec::new();\n".to_string()), "                    collect_dag_files(first_root, &mut dag_paths);\n".to_string()), "                    for path in dag_paths {\n".to_string()), "                        let content = std::fs::read_to_string(&path)\n".to_string()), "                            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                        entry_files.push((path.to_string_lossy().to_string(), content));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut seen: HashMap<String, Rc<".to_string()), pipeline_mod.clone()), "::SourceFile>> = HashMap::new();\n".to_string()), "                let mut entry_for_queue = Vec::new();\n".to_string()), "                for (path, content) in &entry_files {\n".to_string()), "                    if let Some(mod_path) = extract_module_path(content) {\n".to_string()), "                        let source = Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                            path: path.clone(),\n".to_string()), "                            content: content.clone(),\n".to_string()), "                        });\n".to_string()), "                        seen.insert(mod_path, source);\n".to_string()), "                    }\n".to_string()), "                    entry_for_queue.push((path.clone(), content.clone()));\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);\n".to_string()), "                for (path, content) in entry_files {\n".to_string()), "                    let already_there = resolved.iter().any(|s| s.path == path);\n".to_string()), "                    if !already_there {\n".to_string()), "                        resolved.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile { path, content }));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                eprintln!(\"resolved {} sources (transitive import closure)\", resolved.len());\n".to_string()), "                resolved\n".to_string()), "\n".to_string()), "            } else if let Some(dir) = source_dir {\n".to_string()), "                // Legacy: flat directory scan (backward compatibility)\n".to_string()), "                let mut dag_paths = Vec::new();\n".to_string()), "                collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);\n".to_string()), "                let mut sources = Vec::new();\n".to_string()), "                for path in &dag_paths {\n".to_string()), "                    let content = std::fs::read_to_string(path)\n".to_string()), "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n".to_string()), "                    sources.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                        path: filename,\n".to_string()), "                        content,\n".to_string()), "                    }));\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), dir, target);\n".to_string()), "                sources\n".to_string()), "\n".to_string()), "            } else {\n".to_string()), "                eprintln!(\"error: provide --source-root or --source-dir\");\n".to_string()), "                std::process::exit(1);\n".to_string()), "            };\n".to_string()), "\n".to_string()), "            let result = ".to_string()), pipeline_mod.clone()), "::compile_sources(Rc::new(sources), render_target);\n".to_string()), "\n".to_string()), "            std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n".to_string()), "                .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n".to_string()), "            for file in result.files.iter() {\n".to_string()), "                let out_path = format!(\"{}/{}\", output_dir, file.path);\n".to_string()), "                if let Some(parent) = std::path::Path::new(&out_path).parent() {\n".to_string()), "                    std::fs::create_dir_all(parent).ok();\n".to_string()), "                }\n".to_string()), "                std::fs::write(&out_path, &*file.content)\n".to_string()), "                    .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n".to_string()), "            }\n".to_string()), "            eprintln!(\"compiled: {} files emitted, {} diagnostics\",\n".to_string()), "                result.files.len(), result.diagnostics.len());\n".to_string()), "            render_diagnostics(&result);\n".to_string()), "            // Complexity violations are non-blocking (analyzer limitations).\n".to_string()), "            let hard_errors = result.diagnostics.iter().any(|d| {\n".to_string()), "                !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n".to_string()), "            });\n".to_string()), "            if hard_errors {\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            if result.files.is_empty() {\n".to_string()), "                eprintln!(\"error: no files emitted\");\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "        },".to_string())
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Commands::Compile { source_roots, source_dir, output_dir, target } => {\n".to_string(), "            let render_targets = parse_render_targets(&target);\n".to_string()), "\n".to_string()), "            let sources = if !source_roots.is_empty() {\n".to_string()), "                // FF-9: Import-driven resolution from source roots\n".to_string()), "                let index = build_module_index(&source_roots);\n".to_string()), "                eprintln!(\"indexed {} modules from {} source roots\", index.len(), source_roots.len());\n".to_string()), "\n".to_string()), "                // Entry modules: all .dag files in the FIRST source root.\n".to_string()), "                // Additional roots are dependency pools resolved via imports.\n".to_string()), "                // This is intentional: --source-root src/v2 --source-root dsl\n".to_string()), "                // means 'compile src/v2, using dsl as a dependency pool.'\n".to_string()), "                let first_root = std::path::Path::new(&source_roots[0]);\n".to_string()), "                let mut entry_files = Vec::new();\n".to_string()), "                if first_root.is_dir() {\n".to_string()), "                    let mut dag_paths = Vec::new();\n".to_string()), "                    collect_dag_files(first_root, &mut dag_paths);\n".to_string()), "                    for path in dag_paths {\n".to_string()), "                        let content = std::fs::read_to_string(&path)\n".to_string()), "                            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                        entry_files.push((path.to_string_lossy().to_string(), content));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut seen: HashMap<String, Rc<".to_string()), pipeline_mod.clone()), "::SourceFile>> = HashMap::new();\n".to_string()), "                let mut entry_for_queue = Vec::new();\n".to_string()), "                for (path, content) in &entry_files {\n".to_string()), "                    if let Some(mod_path) = extract_module_path(content) {\n".to_string()), "                        let source = Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                            path: path.clone(),\n".to_string()), "                            content: content.clone(),\n".to_string()), "                        });\n".to_string()), "                        seen.insert(mod_path, source);\n".to_string()), "                    }\n".to_string()), "                    entry_for_queue.push((path.clone(), content.clone()));\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);\n".to_string()), "                for (path, content) in entry_files {\n".to_string()), "                    let already_there = resolved.iter().any(|s| s.path == path);\n".to_string()), "                    if !already_there {\n".to_string()), "                        resolved.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile { path, content }));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                eprintln!(\"resolved {} sources (transitive import closure)\", resolved.len());\n".to_string()), "                resolved\n".to_string()), "\n".to_string()), "            } else if let Some(dir) = source_dir {\n".to_string()), "                // Legacy: flat directory scan (backward compatibility)\n".to_string()), "                let mut dag_paths = Vec::new();\n".to_string()), "                collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);\n".to_string()), "                let mut sources = Vec::new();\n".to_string()), "                for path in &dag_paths {\n".to_string()), "                    let content = std::fs::read_to_string(path)\n".to_string()), "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n".to_string()), "                    sources.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                        path: filename,\n".to_string()), "                        content,\n".to_string()), "                    }));\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), dir, target);\n".to_string()), "                sources\n".to_string()), "\n".to_string()), "            } else {\n".to_string()), "                eprintln!(\"error: provide --source-root or --source-dir\");\n".to_string()), "                std::process::exit(1);\n".to_string()), "            };\n".to_string()), "\n".to_string()), "            if render_targets.len() == 1 {\n".to_string()), "                let result = ".to_string()), pipeline_mod.clone()), "::compile_sources(Rc::new(sources), render_targets[0].1.clone());\n".to_string()), "                write_output_files(&output_dir, &result);\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", result.files.len(), result.diagnostics.len());\n".to_string()), "                render_diagnostics(&result);\n".to_string()), "                if hard_errors(&result) {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if result.files.is_empty() {\n".to_string()), "                    eprintln!(\"error: no files emitted\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            } else {\n".to_string()), "                let resolved = ".to_string()), pipeline_mod.clone()), "::compile_to_resolved(Rc::new(sources));\n".to_string()), "                let mut any_hard_errors = false;\n".to_string()), "                let mut any_empty = false;\n".to_string()), "                let mut total_files = 0usize;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for (name, render_target) in render_targets {\n".to_string()), "                    let result = ".to_string()), pipeline_mod.clone()), "::emit_resolved_for_target(resolved.clone(), render_target);\n".to_string()), "                    let target_output_dir = format!(\"{}/{}\", output_dir, name);\n".to_string()), "                    write_output_files(&target_output_dir, &result);\n".to_string()), "                    eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", name, result.files.len(), result.diagnostics.len());\n".to_string()), "                    render_diagnostics(&result);\n".to_string()), "                    any_hard_errors |= hard_errors(&result);\n".to_string()), "                    any_empty |= result.files.is_empty();\n".to_string()), "                    total_files += result.files.len();\n".to_string()), "                    total_diagnostics += result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", total_files, total_diagnostics);\n".to_string()), "                if any_hard_errors {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if any_empty {\n".to_string()), "                    eprintln!(\"error: no files emitted for at least one target\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "        },".to_string())
     }
 }
 
@@ -18147,17 +18101,29 @@ pub fn emit_run_match_arm(crate_name: String) -> String {
 pub fn emit_main_pipeline_fns(crate_name: String) -> String {
     {
         let pipeline_mod = module_to_filename("v2.compiler.compile".to_string());
+        let artifact_mod = module_to_filename("v2.compiler.artifact".to_string());
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
-                    v2_rt::concat(emit_collect_dag_files_fn(), emit_extract_module_path_fn()),
-                    emit_extract_import_paths_fn(),
+                    v2_rt::concat(
+                        v2_rt::concat(emit_collect_dag_files_fn(), emit_extract_module_path_fn()),
+                        emit_extract_import_paths_fn(),
+                    ),
+                    emit_build_module_index_fn(),
                 ),
-                emit_build_module_index_fn(),
+                emit_resolve_transitively_fn(crate_name.clone(), pipeline_mod.clone()),
             ),
-            emit_resolve_transitively_fn(crate_name, pipeline_mod),
+            emit_compile_target_helpers(crate_name.clone(), pipeline_mod.clone(), artifact_mod),
         )
     }
+}
+
+pub fn emit_compile_target_helpers(
+    crate_name: String,
+    pipeline_mod: String,
+    artifact_mod: String,
+) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("fn render_target_from_name(target: &str) -> Option<".to_string(), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget> {\n".to_string()), "    match target {\n".to_string()), "        \"rust\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Rust),\n".to_string()), "        \"python\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Python),\n".to_string()), "        \"go\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Go),\n".to_string()), "        \"dag\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Dag),\n".to_string()), "        _ => None,\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn parse_render_targets(target: &str) -> Vec<(String, ".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget)> {\n".to_string()), "    let mut targets = Vec::new();\n".to_string()), "    for part in target.split('+') {\n".to_string()), "        let trimmed = part.trim();\n".to_string()), "        if trimmed.is_empty() {\n".to_string()), "            continue;\n".to_string()), "        }\n".to_string()), "        match render_target_from_name(trimmed) {\n".to_string()), "            Some(render_target) => targets.push((trimmed.to_string(), render_target)),\n".to_string()), "            None => {\n".to_string()), "                eprintln!(\"unknown target: {}. supported: rust, python, go, dag, rust+dag\", target);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    if targets.is_empty() {\n".to_string()), "        eprintln!(\"error: --target must name at least one target\");\n".to_string()), "        std::process::exit(1);\n".to_string()), "    }\n".to_string()), "    targets\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn write_output_files(output_dir: &str, result: &".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult) {\n".to_string()), "    std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n".to_string()), "        .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n".to_string()), "    for file in result.files.iter() {\n".to_string()), "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n".to_string()), "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n".to_string()), "            std::fs::create_dir_all(parent).ok();\n".to_string()), "        }\n".to_string()), "        std::fs::write(&out_path, &*file.content)\n".to_string()), "            .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn hard_errors(result: &".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult) -> bool {\n".to_string()), "    result.diagnostics.iter().any(|d| {\n".to_string()), "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n".to_string()), "    })\n".to_string()), "}\n".to_string()), "\n".to_string())
 }
 
 pub fn emit_collect_dag_files_fn() -> String {

@@ -300,7 +300,8 @@ fn run_test_claim_emit_vs_eval_for_claim(
         source: source,
         fixture_inputs: inputs_for_emit_host(
           claim_input_root: claim_input_root,
-          expected_eval_root: expected_eval_root
+          expected_eval_root: expected_eval_root,
+          claim_pin: subject.input.evaluator_pin
         )
       ) {
         Accepted { value: host_receipt, diagnostics: _ } =>

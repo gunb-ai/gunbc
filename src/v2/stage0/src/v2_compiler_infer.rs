@@ -9123,6 +9123,57 @@ pub fn collect_variant_constructors(
                 }
                 None => acc.clone(),
             },
+            ExprData::ExprCall { .. } => {
+                let callee = expr_call_func_at(body.clone(), type_env.source_indices.clone());
+                match v2_rt::map_get(&func_sigs, callee) {
+                    Some(sig) => {
+                        if ((authored_name_at(
+                            type_env.source_indices.clone(),
+                            sig.inferred.clone(),
+                        )
+                        .as_str()
+                            == parent_enum.clone().as_str())
+                            && ((Rc::new(v2_rt::map_keys(&sig.variant_provenance.clone())).len()
+                                as i64)
+                                > 0))
+                        {
+                            {
+                                let call_args = call_args_by_name(
+                                    body.clone(),
+                                    type_env.source_indices.clone(),
+                                );
+                                Rc::new(v2_rt::map_keys(&sig.variant_provenance.clone())).iter().cloned().fold(acc.clone(), |variant_acc: Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>, variant_name: String| match v2_rt::map_get(&sig.variant_provenance.clone(), variant_name.clone()) {
+    Some(field_map) => {
+                        let composed_field_map = Rc::new(v2_rt::map_keys(&field_map)).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(), |fm_acc: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>, field_name: String| match v2_rt::map_get(&field_map, field_name.clone()) {
+    Some(param_map) => {
+                            let composed = compose_callee_param_map(param_map.clone(), call_args.clone(), param_names.clone(), param_types.clone(), type_env.clone(), func_sigs.clone(), let_prov.clone());
+if ((Rc::new(v2_rt::map_keys(&composed)).len() as i64) > 0) {
+                                v2_rt::rc_map_insert(fm_acc.clone(), field_name.clone(), composed.clone())
+                            } else {
+                                fm_acc.clone()
+                            }
+},
+    None => fm_acc.clone(),
+});
+if ((Rc::new(v2_rt::map_keys(&composed_field_map)).len() as i64) > 0) {
+                            match v2_rt::map_get(&variant_acc, variant_name.clone()) {
+    Some(existing) => v2_rt::rc_map_insert(variant_acc.clone(), variant_name.clone(), merge_field_prov_maps(existing.clone(), composed_field_map.clone())),
+    None => v2_rt::rc_map_insert(variant_acc.clone(), variant_name.clone(), composed_field_map.clone()),
+}
+                        } else {
+                            variant_acc.clone()
+                        }
+},
+    None => variant_acc.clone(),
+})
+                            }
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                    None => acc.clone(),
+                }
+            }
             ExprData::ExprMatch => match_arm_nodes(body.clone()).iter().cloned().fold(
                 acc.clone(),
                 |a: Rc<
@@ -9389,6 +9440,13 @@ pub fn populate_output_provenance(
                                             .cloned();
                                             match list_field.clone() {
                                                 Some(ind_field) => {
+                                                    let relation =
+                                                        Rc::new(SubValueRelation::StrictSubValue {
+                                                            field: ind_field.clone(),
+                                                            factor: Rc::new(
+                                                                ShrinkFactor::UnitShrink,
+                                                            ),
+                                                        });
                                                     let provenance =
                                                         Rc::new(vec![v2_rt::rc_map_insert(
                                                             v2_rt::rc_empty_map::<
@@ -9397,14 +9455,7 @@ pub fn populate_output_provenance(
                                                             >(
                                                             ),
                                                             pname.clone(),
-                                                            Rc::new(
-                                                                SubValueRelation::StrictSubValue {
-                                                                    field: ind_field.clone(),
-                                                                    factor: Rc::new(
-                                                                        ShrinkFactor::UnitShrink,
-                                                                    ),
-                                                                },
-                                                            ),
+                                                            relation.clone(),
                                                         )]);
                                                     match v2_rt::map_get(&acc, fn_name.clone()) {
                                                         Some(sig) => v2_rt::rc_map_insert(

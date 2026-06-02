@@ -1179,6 +1179,31 @@ mod parse_stage4_prep {
     }
 
     #[test]
+    fn handwritten_parser_accepts_cache_identity_dag() {
+        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+        // `pb_rust_tests_outside_residual_zero`; narrow parser smoke for `std.cache_identity`
+        // (P2 dup-authority substrate) until T-PB-B hand-Rust test floor reaches zero.
+        parse_file(
+            include_str!("../../../../dsl/std/cache_identity.dag"),
+            "dsl/std/cache_identity.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_compute_fabric_dag() {
+        // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** explicit
+        // deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+        // `pb_rust_tests_outside_residual_zero`; Worksheet A §2 parser gate
+        // (`docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md`) until T-PB-B
+        // hand-Rust test floor reaches zero.
+        parse_file(
+            include_str!("../../../../dsl/std/compute_fabric.dag"),
+            "dsl/std/compute_fabric.dag",
+        );
+    }
+
+    #[test]
     fn handwritten_parser_accepts_cache_interface_dag() {
         // P5 receipt (Dispatch-Discipline (b) deferral): Worksheet B gate P-CI-TYPE —
         // `docs/planning/v4-elastic-cache-interface-worksheet-2026-05-30.md` §2 Parser gates.

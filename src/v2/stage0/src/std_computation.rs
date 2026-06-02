@@ -90,7 +90,9 @@ pub struct LoweringTarget {
     pub factor: Option<Rc<ShrinkFactor>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum IterationPrimitive {
     Fold,
@@ -205,7 +207,9 @@ pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum IterationDimension {
     TreeDescent,

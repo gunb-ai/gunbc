@@ -89,6 +89,13 @@ type TargetPythonExerciseVerdict
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
+// 🟢 coproduct dissolution — CP-LMV-TARGET-RUNTIME-EXERCISE-VERDICT-PHASE1 (generalizes Go + TypeScript R2b runtime;
+// dissolved CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1 and CP-LMV-TARGET-GO-RUNTIME-VERDICT-PHASE1 on main).
+// dissolve-on-arrival: fold into LeafModelFixture<C>.expected_verdict once T-22 run_target_verification lands.
+type TargetRuntimeExerciseVerdict
+  = TargetRuntimeExerciseAccepted
+  | TargetRuntimeExerciseRejected { diagnostic_code: Symbol }
+
 // --- PY-L1-STATIC-STRUCTURAL: shared cross-target static-analysis carriers ---
 // Arbiter ruling (Modeling DFS, proud-fox-405, msg_41813c03): static structural
 // analysis by a third-party type checker is a SHARED cross-target authority — one
@@ -126,27 +133,18 @@ type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted
   | TargetTypeScriptCompileRejected { diagnostic_code: Symbol }
 
-// 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1 (Phase 1 Node gate; widen per target).
-type TargetTypeScriptRuntimeVerdict
-  = TargetTypeScriptRuntimeAccepted
-  | TargetTypeScriptRuntimeRejected { diagnostic_code: Symbol }
-
-// 🟢 coproduct dissolution — CP-LMV-TARGET-GO-RUNTIME-VERDICT-PHASE1 (Phase 1 `go run` gate; widen per target).
-type TargetGoRuntimeVerdict
-  = TargetGoRuntimeAccepted
-  | TargetGoRuntimeRejected { diagnostic_code: Symbol }
-
 data target_diagnostic_e0308_type_mismatch: Symbol = target_diagnostic_e0308_type_mismatch
 data target_diagnostic_e0423_expected_value_found_type: Symbol = target_diagnostic_e0423_expected_value_found_type
 data target_diagnostic_e0599_method_not_found: Symbol = target_diagnostic_e0599_method_not_found
-data target_diagnostic_go_undefined_identifier: Symbol = target_diagnostic_go_undefined_identifier
-data target_diagnostic_go_method_not_found: Symbol = target_diagnostic_go_method_not_found
-data target_diagnostic_go_too_many_conversion_args: Symbol = target_diagnostic_go_too_many_conversion_args
 data target_diagnostic_python_name_error_undefined_name: Symbol = target_diagnostic_python_name_error_undefined_name
 data target_diagnostic_python_attribute_error_method_not_found: Symbol = target_diagnostic_python_attribute_error_method_not_found
 data target_diagnostic_python_type_error_init_arity_mismatch: Symbol = target_diagnostic_python_type_error_init_arity_mismatch
 data target_diagnostic_ts2339_property_does_not_exist: Symbol = target_diagnostic_ts2339_property_does_not_exist
 data target_diagnostic_ts7009_new_expression_not_constructable: Symbol = target_diagnostic_ts7009_new_expression_not_constructable
+data target_diagnostic_go_undefined_type: Symbol = target_diagnostic_go_undefined_type
+data target_diagnostic_go_undefined_method: Symbol = target_diagnostic_go_undefined_method
+data target_diagnostic_go_invalid_conversion_arity: Symbol = target_diagnostic_go_invalid_conversion_arity
+data target_diagnostic_go_runtime_panic: Symbol = target_diagnostic_go_runtime_panic
 
 type LeafModelClaimId = Symbol
 
@@ -156,10 +154,6 @@ data leaf_model_claim_python_r2a_int_algebra_operations: LeafModelClaimId = leaf
 data leaf_model_claim_python_r2b_int_arbitrary_precision_add: LeafModelClaimId = leaf_model_claim_python_r2b_int_arbitrary_precision_add
 data leaf_model_claim_python_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_python_r3_external_symbol_projection
 data leaf_model_claim_python_l1_static_return_type: LeafModelClaimId = leaf_model_claim_python_l1_static_return_type
-data leaf_model_claim_go_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_go_r1_int_surface_spelling
-data leaf_model_claim_go_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_go_r2a_int_algebra_operations
-data leaf_model_claim_go_r2b_int64_overflow_wrap: LeafModelClaimId = leaf_model_claim_go_r2b_int64_overflow_wrap
-data leaf_model_claim_go_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_go_r3_external_symbol_projection
 data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_model_claim_rust_r2a_i32_algebra_operations
 data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
 data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
@@ -168,6 +162,10 @@ data leaf_model_claim_rust_r3_internal_symbol_coupling: LeafModelClaimId = leaf_
 data leaf_model_claim_ts_r2a_number_algebra_operations: LeafModelClaimId = leaf_model_claim_ts_r2a_number_algebra_operations
 data leaf_model_claim_ts_r2b_bigint_beyond_safe_integer: LeafModelClaimId = leaf_model_claim_ts_r2b_bigint_beyond_safe_integer
 data leaf_model_claim_ts_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_ts_r3_external_symbol_projection
+data leaf_model_claim_go_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_go_r1_int_surface_spelling
+data leaf_model_claim_go_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_go_r2a_int_algebra_operations
+data leaf_model_claim_go_r2b_int64_silent_overflow_truncates: LeafModelClaimId = leaf_model_claim_go_r2b_int64_silent_overflow_truncates
+data leaf_model_claim_go_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_go_r3_external_symbol_projection
 data leaf_model_claim_python_cross_runtime_drift_arbitrary_precision: LeafModelClaimId = leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
 
 // --- PY-L2-CROSS-RUNTIME-DRIFT: positive cross-runtime divergence receipt ---
@@ -259,42 +257,40 @@ type LeafModelPythonFixturePair {
   falsification: LeafModelPythonFalsificationCase
 }
 
-// 🟡 gated — feature:leaf-model-r1-r3-go-bridge — bind go.dag release-minimum lane —
-// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
-// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once T-22 run_target_verification lands.
-type LeafModelGoFixture {
+// 🟡 gated — feature:leaf-model-go-bridge — bind docs/planning/v4-go-leaf-model-verification-worksheet-2026-06-01 —
+// dissolve-on-arrival: fold into LeafModelFixture<C> once T-22 modeled run_target_verification consumes Go rows.
+type LeafModelGoBuildFixture {
   source: String
 }
 
-type LeafModelGoFalsificationCase {
-  fixture: LeafModelGoFixture
+type LeafModelGoRunFixture {
+  source: String
+}
+
+type LeafModelGoCompileFalsificationCase {
+  fixture: LeafModelGoBuildFixture
   expected_verdict: TargetCompileVerdict
 }
 
-type LeafModelGoFixturePair {
+type LeafModelGoCompileFixturePair {
   claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
-  encoding_spelling_fact: Symbol
-  happy: LeafModelGoFixture
+  fact_anchor: Node
+  happy: LeafModelGoBuildFixture
   expected_happy_verdict: TargetCompileVerdict
-  falsification: LeafModelGoFalsificationCase
+  falsification: LeafModelGoCompileFalsificationCase
 }
 
-// 🟡 gated — feature:leaf-model-r1-r3-go-bridge — dissolve-on-arrival: R2b `go run`
-// runtime rows fold into LeafModelFixture<C> once T-22 run_target_verification lands.
-type LeafModelGoRuntimeFixture {
-  source: String
+type LeafModelGoRuntimeFalsificationCase {
+  fixture: LeafModelGoRunFixture
+  expected_verdict: TargetRuntimeExerciseVerdict
 }
 
-// 🟡 gated — feature:leaf-model-r1-r3-go-bridge — dissolve-on-arrival: R2b int64
-// overflow-wrap runtime observation under LeafModelFixture<C>. No falsification slot:
-// this row proves a target runtime behavior, not a negative compile/runtime witness.
 type LeafModelGoRuntimeFixturePair {
   claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
-  encoding_spelling_fact: Symbol
-  happy: LeafModelGoRuntimeFixture
-  expected_happy_verdict: TargetGoRuntimeVerdict
+  fact_anchor: Node
+  happy: LeafModelGoRunFixture
+  expected_happy_verdict: TargetRuntimeExerciseVerdict
+  falsification: LeafModelGoRuntimeFalsificationCase
 }
 
 // PY-L1-STATIC-STRUCTURAL fixture carriers. Polarity AND role are STRUCTURAL, not prose:
@@ -400,15 +396,23 @@ type LeafModelTypeScriptRuntimeFixturePair {
   surface_spelling_fact: Symbol
   encoding_spelling_fact: Symbol
   happy: LeafModelTypeScriptRuntimeFixture
-  expected_happy_verdict: TargetTypeScriptRuntimeVerdict
+  expected_happy_verdict: TargetRuntimeExerciseVerdict
   falsification: LeafModelTypeScriptRuntimeFixture
-  expected_falsification_verdict: TargetTypeScriptRuntimeVerdict
+  expected_falsification_verdict: TargetRuntimeExerciseVerdict
 }
 
 type LeafModelVerificationRunReceipt {
   claim_id: LeafModelClaimId
   happy_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
   falsification_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
+}
+
+// 🟡 gated — feature:leaf-model-runtime-exercise-bridge — bind go_r2b + T-22 runtime receipts —
+// dissolve-on-arrival: generalize or fold when run_target_verification consumes runtime verdict slots.
+type LeafModelRuntimeVerificationRunReceipt {
+  claim_id: LeafModelClaimId
+  happy_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
+  falsification_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
 }
 
 fn leaf_model_verification_claim_passes(
