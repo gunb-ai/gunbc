@@ -379,7 +379,7 @@ data ci_always_run_carveouts: List<CiCarveout> = [
 // genus); sibling to `ci_always_run_carveouts` (run-policy carveout) — distinct concept (shell
 // retirement vs always-run), shared leaf substrate.
 
-// §11.7.1 bare-minimum safety-floor item a shell exception protects (§11.7.5 cond 1).
+// 🟡 coproduct dissolution — feature:wave2-class-a-shell-exception-table — bind #4137 §11.7.1 — dissolve-on-arrival: this closed enumeration mirrors the §11.7.1 bare-minimum floor; it is DELETED when the dynamic affected-set + testgen safety net (§11.7.7 end state) replaces the static floor list and `protects_floor` no longer needs a fixed-arm carrier; forbidden: an open `Symbol`/`String` floor key, or an arm with no §11.7.1 row.
 type CiSafetyFloorItem
   = FmtCheck
   | BootstrapMinimalViability
@@ -387,13 +387,12 @@ type CiSafetyFloorItem
   | CiDagStructuralReceipt
   | NoNewShellRatchet
 
-// Repo-relative path of the `.github/ci-floor/*.sh` script currently owning a Class-A floor step.
-type ShellScriptPath = String
-
 // 🟡 coproduct dissolution — feature:wave2-class-a-shell-exception-table — bind #4137 §11.7.5 — dissolve-on-arrival: a row is DELETED when ci.yml emits its `step_id` FROM `replacement_upsert` as runtime authority (T-24), not when the shadow `CiUpsertStep` row merely exists; forbidden: a row without a named `dissolution_target`, or a Class-B/C/D (non-floor) step carried as a shell exception.
 type CiShellExceptionRow {
   step_id: CiStepId
-  shell_owner: ShellScriptPath
+  // Repo-relative path of the `.github/ci-floor/*.sh` script owning this Class-A floor step.
+  // Canonical `RepoPath` carrier (v4.lens.edit_locus) — NOT a parallel path-as-String authority.
+  shell_owner: RepoPath
   protects_floor: CiSafetyFloorItem
   // The existing shadow `CiUpsertStep` AUTHORITY that retires this row once it becomes ci.yml
   // runtime authority. Binds to the canonical `CiUpsertStepSymbol` data (single-authority, P2) —
