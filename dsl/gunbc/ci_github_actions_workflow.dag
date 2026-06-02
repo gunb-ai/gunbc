@@ -30,6 +30,29 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }
   },
   jobs: [{
+      id: "infra_isolation",
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+      steps: [RunStep {
+          name: Some { value: "Assert runner is de-privileged (adversarial)" },
+          id: none,
+          run: "fail(){ echo \"::error::INFRA ISOLATION REGRESSION: $1\"; exit 1; }\n[ \"$(id -u)\" -ne 0 ] || fail \"running as root\"\nfor g in docker sudo lxd wheel root; do id -nG | tr ' ' '\\n' | grep -qx \"$g\" && fail \"in privileged group $g\"; done\ncat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail \"can read the App private key\"\nsudo -n true 2>/dev/null && fail \"has passwordless sudo\"\ntest -r /var/run/docker.sock && fail \"can access docker.sock\"\necho \"OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, no docker.sock\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }],
+      needs: [],
+      env: none,
+      outputs: none,
+      if_condition: none,
+      strategy: none,
+      timeout_minutes: Some { value: 5 },
+      continue_on_error: false,
+      concurrency: none
+    }, {
       id: "fmt",
       name: none,
       runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
@@ -339,29 +362,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       env: none,
       outputs: none,
       if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true }}" },
-      strategy: none,
-      timeout_minutes: Some { value: 5 },
-      continue_on_error: false,
-      concurrency: none
-    }, {
-      id: "infra_isolation",
-      name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
-      steps: [RunStep {
-          name: Some { value: "Assert runner is de-privileged (adversarial)" },
-          id: none,
-          run: "fail(){ echo \"::error::INFRA ISOLATION REGRESSION: $1\"; exit 1; }\n[ \"$(id -u)\" -ne 0 ] || fail \"running as root\"\nfor g in docker sudo lxd wheel root; do id -nG | tr ' ' '\\n' | grep -qx \"$g\" && fail \"in privileged group $g\"; done\ncat /etc/actions-runner/app.pem >/dev/null 2>&1 && fail \"can read the App private key\"\nsudo -n true 2>/dev/null && fail \"has passwordless sudo\"\ntest -r /var/run/docker.sock && fail \"can access docker.sock\"\necho \"OK: non-root, no privileged groups (docker/sudo/lxd/wheel/root), App key unreadable, no passwordless sudo, no docker.sock\"\n",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }],
-      needs: [],
-      env: none,
-      outputs: none,
-      if_condition: none,
       strategy: none,
       timeout_minutes: Some { value: 5 },
       continue_on_error: false,

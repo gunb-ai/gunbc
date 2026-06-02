@@ -1329,8 +1329,8 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     );
     assert!(
         CI_WORKFLOW_DAG.contains("id: \"ci\"")
-            && CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_floor\"]"),
-        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt plus `ci_floor`"
+            && CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_floor\", \"infra_isolation\"]"),
+        "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
     let affected_idx = CI_WORKFLOW_DAG
         .find("id: \"affected\"")
@@ -1527,7 +1527,8 @@ fn v4_workflow_ci_wave3_live_emit_deferred_in_ci_yml() {
 #[test]
 fn v4_workflow_ci_wave3_node_selection_still_shadow_while_component_receipt_live() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor]") && CI_YML.contains("needs.affected.result"),
+        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]")
+            && CI_YML.contains("needs.affected.result"),
         "{CI_YML_PATH}: component affected-set receipt must be live"
     );
     let ci_floor_block = CI_YML
