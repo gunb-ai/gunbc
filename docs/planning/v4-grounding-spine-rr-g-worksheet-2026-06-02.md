@@ -82,3 +82,17 @@ Metric allowed only as secondary:
 - `cargo test -p v3-compiler v4_std_grounding_dag_smoke` — parse surface for `grounding.dag`
 - M1 v4 emit (CI) — full `src/v4` compile including new std + claim modules
 - T-38 manual corpus — spine claims compile; execution deferred until family activation
+
+## §5 P5 hand-Rust receipt
+
+- **Changed hand-Rust surface:** `src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs`
+  expands its existing SG-0 row with `v4_python_language_model_declares_g1_2_fact_bundle_registry`.
+- **SG-0 census delta:** +0 paths. The path already appears in
+  `src/v3/compiler/tests/integration/sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_TEST`.
+- **Deleted scaffold path:** none in this PR; this is a same-file assertion expansion over existing
+  parse-surface smoke infrastructure.
+- **Explicit deferral:** ROADMAP.md `T-PB-B` / `pb_rust_tests_outside_residual_zero` (same row named
+  by the SG-0 census comment for `v4_compiler_emit_translate_smoke_test.rs`).
+- **Dissolution trigger:** delete this host-side assertion when a `.dag` `TestClaim` or generated
+  harness directly checks the Python G.1.2 `PerLanguageFactBundleRegistry` imports and population
+  without Rust parse-surface traversal.
