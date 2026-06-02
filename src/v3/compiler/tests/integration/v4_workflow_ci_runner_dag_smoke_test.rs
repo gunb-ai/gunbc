@@ -17,6 +17,12 @@
 //! (P5 same-path expansion — `_internal/INVARIANTS_OPS.md` → this file, PR #4101 / #4174 / #4214).
 //! T-38 PR2 same-path assertion expansion: explicit P5 deferral to T-PB-B test sub-ratchet;
 //! ROADMAP.md § "Milestone shape" row 4 ("Self-host fixed point") tracks hand-maintained file count -> 0.
+//! T-38B same-path assertion expansion: explicit P5 deferral to ROADMAP.md § "Nine lanes"
+//! row **T-PB-B** / `pb_rust_tests_outside_residual_zero`; this adds no new hand-Rust
+//! test path and stays within the existing SG-0 census entry for this v4 CI smoke harness.
+//! Dissolve-on: generated `.dag` TestClaim execution covers
+//! `manual_testclaim_subject_roster_family_receipt` and the CI verdict-surface projection
+//! without this hand-Rust parse/string ratchet.
 //!
 //! **INVARIANTS P5 — checkable receipt for this PR:** feature `affected-component-live-receipt`;
 //! consumers `v4_workflow_ci_wave1_*` and `v4_workflow_ci_wave3_node_selection_still_shadow_*`.
