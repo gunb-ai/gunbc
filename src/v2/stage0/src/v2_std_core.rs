@@ -34,9 +34,8 @@ use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::{
     container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
-    kernel_type_set,
+    kernel_type_set, FilePath, NonEmptyStr, SourceSpan,
 };
-pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

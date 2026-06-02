@@ -3,11 +3,12 @@
 
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Go, Python, Rust};
-pub use crate::v2_compiler_coercion::extract_coercion_tests;
 use crate::v2_compiler_coercion::CoercionAssertion::{
     CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion,
 };
-pub use crate::v2_compiler_coercion::{CoercionAssertion, CoercionTestEntry};
+pub use crate::v2_compiler_coercion::{
+    extract_coercion_tests, CoercionAssertion, CoercionTestEntry,
+};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

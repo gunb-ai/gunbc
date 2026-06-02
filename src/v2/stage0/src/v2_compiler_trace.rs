@@ -3,8 +3,8 @@
 
 use self::TraceEvent::*;
 use self::TraceFilter::*;
-pub use crate::std_types::SourceSpan;
 use crate::v2_rt;
+pub use crate::v2_std_core::SourceSpan;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
