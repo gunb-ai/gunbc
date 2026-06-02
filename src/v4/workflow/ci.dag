@@ -29,6 +29,7 @@ import v4.lens.testgen {
   generator_matches_profile,
   testgen_default_profile_ref,
   testgen_run_receipt_outcome,
+  testgen_run_receipt_carries_profile_roster,
   testgen_scheduled_generators_matching_profile,
   testgen_scheduled_generators_outcome,
   testgen_scheduled_generators_roster_holds
@@ -4315,15 +4316,7 @@ fn ci_wave3_shadow_fixture_testgen_slots_populated_holds() -> Bool {
 fn ci_wave3_shadow_testgen_run_receipt_holds() -> Bool {
   match testgen_run_receipt_outcome(profile_ref: testgen_default_profile_ref) {
     Accepted { value: receipt, diagnostics: _ } =>
-      match testgen_scheduled_generators_outcome() {
-        Accepted { value: roster, diagnostics: _ } =>
-          let profile_roster = testgen_scheduled_generators_matching_profile(
-            gens: roster,
-            profile_ref: receipt.profile_ref
-          )
-          length(xs: receipt.generators) == length(xs: profile_roster)
-        Rejected { diagnostics: _ } => false
-      }
+      testgen_run_receipt_carries_profile_roster(receipt: receipt)
     Rejected { diagnostics: _ } => false
   }
 }

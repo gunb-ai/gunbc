@@ -6,7 +6,19 @@ module v4.lens.testgen
 
 
 import v4.std.collection { List }
-import v4.std.algebra { FreeMonoid, Empty, Cons, filter, fold_list, fold_list_right, length, list_append, non_empty, list_snoc_item }
+import v4.std.algebra {
+  FreeMonoid,
+  Empty,
+  Cons,
+  count_where,
+  filter,
+  fold_list,
+  fold_list_right,
+  length,
+  list_append,
+  non_empty,
+  list_snoc_item
+}
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -2065,6 +2077,54 @@ fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt
 
 fn generator_id_eq(left: Generator<TestgenConcept>, right: Generator<TestgenConcept>) -> Bool {
   left.provenance.generator_id == right.provenance.generator_id
+}
+
+
+fn generator_in_list_by_id(g: Generator<TestgenConcept>, xs: List<Generator<TestgenConcept>>) -> Bool {
+  count_where(
+    xs: xs,
+    predicate: fn(candidate) {
+      generator_id_eq(left: candidate, right: g)
+    }
+  ) != 0
+}
+
+
+// Canonical roster equality for F.2-P2 receipts: same cardinality is insufficient (P3 / facts-flow-forward).
+fn testgen_generators_roster_equal_by_id(
+  left: List<Generator<TestgenConcept>>,
+  right: List<Generator<TestgenConcept>>
+) -> Bool {
+  length(xs: left) == length(xs: right)
+    && fold_list(
+      xs: left,
+      empty: true,
+      cons: fn(acc, g) {
+        acc && generator_in_list_by_id(g: g, xs: right)
+      }
+    )
+    && fold_list(
+      xs: right,
+      empty: true,
+      cons: fn(acc, g) {
+        acc && generator_in_list_by_id(g: g, xs: left)
+      }
+    )
+}
+
+
+fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Bool {
+  match testgen_scheduled_generators_outcome() {
+    Accepted { value: roster, diagnostics: _ } =>
+      testgen_generators_roster_equal_by_id(
+        left: receipt.generators,
+        right: testgen_scheduled_generators_matching_profile(
+          gens: roster,
+          profile_ref: receipt.profile_ref
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 

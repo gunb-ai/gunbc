@@ -55,6 +55,7 @@ const LENS_TESTGEN_SHADOW_CI_RECEIPT_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_testgen/shadow_ci_receipt.dag");
 const LENS_TESTGEN_SHADOW_CI_RECEIPT_PATH: &str =
     "src/v4/test/claim/lens_testgen/shadow_ci_receipt.dag";
+const ROADMAP: &str = include_str!("../../../../../ROADMAP.md");
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -243,6 +244,16 @@ fn v4_lens_testgen_generator_provenance_claim_parses_and_pins_witness() {
             "data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()"
         ),
         "{LENS_TESTGEN_GENERATOR_PROVENANCE_PATH}: must pin the testgen provenance witness via EqualsClaim + green Bool routed through the lens helper"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_p5_roadmap_t_pb_b_deferral_is_checkable() {
+    assert!(
+        ROADMAP.contains("### Nine lanes")
+            && ROADMAP.contains("| **T-PB-B** | `pb_rust_tests_outside_residual_zero`")
+            && ROADMAP.contains("T-PB-B / `pb_rust_tests_outside_residual_zero`"),
+        "P5 deferral must bind to checkable T-PB-B authority (Nine lanes + Public Operational Lanes)"
     );
 }
 
