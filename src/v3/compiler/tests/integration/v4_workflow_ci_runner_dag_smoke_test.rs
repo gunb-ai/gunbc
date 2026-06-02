@@ -518,6 +518,33 @@ fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
     &rest[..end]
 }
 
+fn workflow_dag_job_block<'a>(workflow_dag: &'a str, job_id: &str) -> &'a str {
+    let marker = format!("id: \"{job_id}\"");
+    let id_start = workflow_dag
+        .find(&marker)
+        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing `{job_id}` job"));
+    let block_start = workflow_dag[..id_start]
+        .rfind('{')
+        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: malformed `{job_id}` job"));
+    let mut depth = 0usize;
+    for (offset, ch) in workflow_dag[block_start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth
+                    .checked_sub(1)
+                    .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: malformed job braces"));
+                if depth == 0 {
+                    let end = block_start + offset + ch.len_utf8();
+                    return &workflow_dag[block_start..end];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("{CI_WORKFLOW_DAG_PATH}: unterminated `{job_id}` job")
+}
+
 fn surface_declares_test_claim_data(
     module: &v3_compiler::parse_surface::SurfaceModule,
     name: &str,
@@ -1423,15 +1450,9 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
             && CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_floor\"]"),
         "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt plus `ci_floor`"
     );
-    let affected_idx = CI_WORKFLOW_DAG
-        .find("id: \"affected\"")
-        .unwrap_or_else(|| panic!("{CI_WORKFLOW_DAG_PATH}: missing `affected` job"));
-    let affected_window = CI_WORKFLOW_DAG[affected_idx..]
-        .split("    }, {")
-        .next()
-        .unwrap_or("");
+    let affected_job = workflow_dag_job_block(CI_WORKFLOW_DAG, "affected");
     assert!(
-        affected_window.contains("continue_on_error: false"),
+        affected_job.contains("continue_on_error: false"),
         "{CI_WORKFLOW_DAG_PATH}: component `affected` receipt must be live"
     );
     assert!(
