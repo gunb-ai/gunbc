@@ -76,7 +76,7 @@ fn source_authority_round_trip_boundary_holds() -> Bool {
   ) {
     Accepted { value: witness, diagnostics: _ } =>
       match witness {
-        Holds { value: _: SourceAuthorityRoundTripLaw } => true
+        Holds { value: _law } => true
         Violates { diagnostic: _ } => false
       }
     Rejected { diagnostics: _ } => false

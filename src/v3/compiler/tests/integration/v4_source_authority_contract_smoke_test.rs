@@ -164,7 +164,7 @@ fn v4_source_authority_claim_imports_contract_entrypoint() {
     );
     assert!(
         CLAIM_DAG.contains("Accepted { value: witness, diagnostics: _ }")
-            && CLAIM_DAG.contains("Holds { value: _: SourceAuthorityRoundTripLaw }"),
+            && CLAIM_DAG.contains("Holds { value: _law }"),
         "{CLAIM_PATH}: claim must project the round-trip witness to pass/fail claim input"
     );
 }
