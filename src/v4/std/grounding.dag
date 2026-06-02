@@ -9,13 +9,17 @@ module v4.std.grounding
 
 
 import v4.std.collection {
+  Absent,
   Map,
+  Present,
   empty_map,
   map_insert
 }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   Outcome,
+  Rejected,
   Textual,
   Unavailable,
   UserInputBoundary,
@@ -100,8 +104,10 @@ fn per_language_fact_bundle_lookup(
   key: PerLanguageFactBundleKey
 ) -> Witness<Node> {
   match map_get(registry.by_key, key) {
-    Some { value: value } => Holds { value: value }
-    None => Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+    Accepted { value: Present { value: value }, diagnostics: _ } => Holds { value: value }
+    Accepted { value: Absent, diagnostics: _ } =>
+      Violates { diagnostic: per_language_fact_bundle_missing_key_diagnostic() }
+    Rejected { diagnostics: d } => Violates { diagnostic: d.head }
   }
 }
 
