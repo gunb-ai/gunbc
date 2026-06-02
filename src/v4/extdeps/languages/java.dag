@@ -67,13 +67,9 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -180,14 +176,11 @@ type JavaLanguageModel {
 // T-11 java grammar relation row: fixed terminals and bound terminals share
 // the Java grammar production instead of an operator string template.
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type JavaConcreteSyntaxToken
-  = JavaFixedToken { token_class: Symbol }
-  | JavaBoundToken { token_class: Symbol, binding: Symbol }
 
 type JavaGrammarRelationRow {
   production: GrammarProduction
   emitted: Node
-  tokens: List<JavaConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 data java_language_model_surface_id: Symbol = java_language_model_surface_id
@@ -408,25 +401,25 @@ data java_mvp1_source_literal: Symbol = java_mvp1_source_literal
 data java_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data java_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
-fn java_mvp1_concrete_tokens() -> List<JavaConcreteSyntaxToken> {
+fn java_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    JavaFixedToken { token_class: java_token_kw_static },
-    JavaFixedToken { token_class: java_token_kw_int },
-    JavaBoundToken { token_class: java_token_ident, binding: java_binding_method_add },
-    JavaFixedToken { token_class: java_token_lparen },
-    JavaFixedToken { token_class: java_token_kw_int },
-    JavaBoundToken { token_class: java_token_ident, binding: java_binding_param_x },
-    JavaFixedToken { token_class: java_token_comma },
-    JavaFixedToken { token_class: java_token_kw_int },
-    JavaBoundToken { token_class: java_token_ident, binding: java_binding_param_y },
-    JavaFixedToken { token_class: java_token_rparen },
-    JavaFixedToken { token_class: java_token_lbrace },
-    JavaFixedToken { token_class: java_token_kw_return },
-    JavaBoundToken { token_class: java_token_ident, binding: java_binding_param_x },
-    JavaFixedToken { token_class: java_token_plus },
-    JavaBoundToken { token_class: java_token_ident, binding: java_binding_param_y },
-    JavaFixedToken { token_class: java_token_semicolon },
-    JavaFixedToken { token_class: java_token_rbrace }
+    FixedToken { token_class: java_token_kw_static },
+    FixedToken { token_class: java_token_kw_int },
+    BoundToken { token_class: java_token_ident, binding: java_binding_method_add },
+    FixedToken { token_class: java_token_lparen },
+    FixedToken { token_class: java_token_kw_int },
+    BoundToken { token_class: java_token_ident, binding: java_binding_param_x },
+    FixedToken { token_class: java_token_comma },
+    FixedToken { token_class: java_token_kw_int },
+    BoundToken { token_class: java_token_ident, binding: java_binding_param_y },
+    FixedToken { token_class: java_token_rparen },
+    FixedToken { token_class: java_token_lbrace },
+    FixedToken { token_class: java_token_kw_return },
+    BoundToken { token_class: java_token_ident, binding: java_binding_param_x },
+    FixedToken { token_class: java_token_plus },
+    BoundToken { token_class: java_token_ident, binding: java_binding_param_y },
+    FixedToken { token_class: java_token_semicolon },
+    FixedToken { token_class: java_token_rbrace }
   ]
 }
 data java_mvp1_source_text: String = "static int add(int x, int y) { return x + y; }"
@@ -797,51 +790,19 @@ fn java_mvp1_source_text_authority() -> String {
 
 // MVP serialize_source — literal symbol + grammar production + token relation (aligned with source text).
 // dissolve-on: T-10 literal Node + bidirectional grammar-as-bidir emit/ingest round-trip.
-fn java_concrete_token_class(token: JavaConcreteSyntaxToken) -> Symbol {
+fn java_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    JavaFixedToken { token_class: c } => c
-    JavaBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn java_concrete_token_node(token: JavaConcreteSyntaxToken) -> Node {
-  match token {
-    JavaFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          java_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: java_inhabitant_atom(id: concrete_syntax_token_kind_fixed)
-          ),
-          java_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: java_inhabitant_atom(id: c)
-          )
-        ]
-      }
-    JavaBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          java_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: java_inhabitant_atom(id: concrete_syntax_token_kind_bound)
-          ),
-          java_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: java_inhabitant_atom(id: c)
-          ),
-          java_named_edge(
-            name: concrete_syntax_token_field_binding,
-            target: java_inhabitant_atom(id: b)
-          )
-        ]
-      }
-  }
+fn java_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn java_mvp1_positional_token_edge(token: JavaConcreteSyntaxToken) -> Edge {
+fn java_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge {
     label: Positional,
     target: java_concrete_token_node(token: token)
@@ -937,7 +898,7 @@ fn java_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   )
 }
 
-fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: JavaConcreteSyntaxToken) -> GrammarExpr {
+fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
   let token_class = java_concrete_token_class(token: token)
   if token_class == java_token_kw_static {
     acc
@@ -967,7 +928,7 @@ fn java_mvp1_grammar_relation_row() -> JavaGrammarRelationRow {
   }
 }
 
-fn java_relation_token_edges(tokens: List<JavaConcreteSyntaxToken>) -> List<Edge> {
+fn java_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1108,7 +1069,7 @@ fn java_grammar_atom(id: Symbol) -> Node {
 
 
 
-fn java_formal_rhs_from_tokens(tokens: List<JavaConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn java_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
