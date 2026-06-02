@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 55512a228095d4125057914a86604aa8b30f9fd611dd76fceecd266a8f787c6d
+// Source-SHA256(.github/workflows/ci.yml): 82ccf3a721cbadfc7c7a07cf76006d9165ca627b15fa67bc1530d8a7e6f3fe1a
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -293,7 +293,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
-          timeout_minutes: Some { value: 20 }
+          timeout_minutes: Some { value: 35 }
         }, RunStep {
           name: Some { value: "v2 DAG emit parity receipt (required before bootstrap reuse)" },
           id: none,
