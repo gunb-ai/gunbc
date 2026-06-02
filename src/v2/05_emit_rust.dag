@@ -2288,7 +2288,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
 
 fn emit_prelude() -> String {
   let use_line = concat(
-    "use im::{OrdMap, OrdSet, Vector};\n",
+    "use im::", "{", "OrdMap, OrdSet, Vector", "}", ";\n",
     "use std::rc::Rc;\n",
     "use crate::v2_rt;")
   let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
@@ -6957,7 +6957,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
             concat("            __m.insert(\"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\".to_string(), ", val_str, ");")
           )
           let inserts_str = inserts |> join(separator: "\n")
-          concat("            let mut __m = HashMap::new();\n",
+          concat("            let mut __m = OrdMap::new();\n",
             inserts_str, "\n",
             "            Rc::new(__m)")
         _ =>
