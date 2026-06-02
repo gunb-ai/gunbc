@@ -31,10 +31,15 @@ fn main() -> ExitCode {
     }
 
     let git_read = git_read_changed_paths_for_event(event_name.as_str());
-    if let ci_affected_components::git_diff_transport::GitChangedPathsRead::Ok { ref range, ref paths } =
-        git_read
+    if let ci_affected_components::git_diff_transport::GitChangedPathsRead::Ok {
+        ref range,
+        ref paths,
+    } = git_read
     {
-        eprintln!("Wave 3 shadow receipt: git diff {range} ({} paths)", paths.len());
+        eprintln!(
+            "Wave 3 shadow receipt: git diff {range} ({} paths)",
+            paths.len()
+        );
         for path in paths {
             eprintln!("  {path}");
         }
@@ -48,8 +53,10 @@ fn main() -> ExitCode {
 
     let receipt = build_queued_shadow_receipt(event_name.as_str(), git_read);
     let out_path = receipt_output_path();
-    if let Err(e) = write_receipt_json(out_path.to_str().unwrap_or("wave3-shadow-receipt.json"), &receipt)
-    {
+    if let Err(e) = write_receipt_json(
+        out_path.to_str().unwrap_or("wave3-shadow-receipt.json"),
+        &receipt,
+    ) {
         eprintln!("error: write receipt: {e}");
         return ExitCode::from(1);
     }

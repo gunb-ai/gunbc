@@ -8,29 +8,24 @@ use std::io;
 
 use serde_json::{json, Value};
 
-use crate::{
-    ci_component_affected_fail_closed, ci_component_affected_from_changed_paths, CiComponentAffected,
-};
 use crate::git_diff_transport::{GitChangedPathsRead, WAVE3_LIVE_EVAL_DEBT};
+use crate::{
+    ci_component_affected_fail_closed, ci_component_affected_from_changed_paths,
+    CiComponentAffected,
+};
 
 pub const RECEIPT_SCHEMA: &str = "gunbc/ci-selection-receipt-shadow/v1";
 pub const EMIT_STEP_NAME: &str = "emit-ci-wave3-shadow-receipt";
 
-pub fn build_queued_shadow_receipt(
-    event_name: &str,
-    git_read: GitChangedPathsRead,
-) -> Value {
+pub fn build_queued_shadow_receipt(event_name: &str, git_read: GitChangedPathsRead) -> Value {
     let (git_diff_range, changed_paths, component_affected, git_diff_read_failed) = match git_read {
         GitChangedPathsRead::Ok { range, paths } => {
             let flags = ci_component_affected_from_changed_paths(paths.iter().map(String::as_str));
             (range, paths, flags, false)
         }
-        GitChangedPathsRead::FailClosed { range, detail: _ } => (
-            range,
-            Vec::new(),
-            ci_component_affected_fail_closed(),
-            true,
-        ),
+        GitChangedPathsRead::FailClosed { range, detail: _ } => {
+            (range, Vec::new(), ci_component_affected_fail_closed(), true)
+        }
     };
 
     json!({
@@ -72,9 +67,7 @@ pub fn emit_github_notice(receipt: &Value) {
         .as_array()
         .map(|a| a.len())
         .unwrap_or(0);
-    let status = receipt["live_eval_status"]
-        .as_str()
-        .unwrap_or("unknown");
+    let status = receipt["live_eval_status"].as_str().unwrap_or("unknown");
     let debt = receipt["live_eval_debt"].as_str().unwrap_or("unknown");
     println!(
         "::notice title=Wave 3 shadow receipt (Class C)::status={status} changed_paths={changed} debt={debt} — receipt JSON on runner (see step log); LivePrGitDiff + claim rows queued on bootstrap eval"

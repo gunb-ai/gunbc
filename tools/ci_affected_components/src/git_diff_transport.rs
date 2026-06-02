@@ -13,11 +13,17 @@ pub fn diff_range_for_event(event_name: &str) -> &'static str {
 }
 
 pub enum GitChangedPathsRead {
-    Ok { range: String, paths: Vec<String> },
+    Ok {
+        range: String,
+        paths: Vec<String>,
+    },
     /// `detail` carries the structured reason for fail-closed so the binary
     /// entrypoint can surface it (library crates do not print — see
     /// `clippy::disallowed_macros`).
-    FailClosed { range: String, detail: String },
+    FailClosed {
+        range: String,
+        detail: String,
+    },
 }
 
 pub fn git_read_changed_paths_for_event(event_name: &str) -> GitChangedPathsRead {
