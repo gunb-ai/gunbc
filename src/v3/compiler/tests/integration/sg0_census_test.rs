@@ -954,6 +954,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
+    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
+    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
+    // replaces host-runner receipts.
+    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
     // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
@@ -969,12 +975,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
     // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:47-51`).
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
-    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
-    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
-    // replaces host-runner receipts.
-    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
     "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
@@ -993,6 +993,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
     // T-23: lens application surface (`src/v4/lens/application.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
+    // T-38B: lens_ownership + lens_parallelism subject roster + run_test_claim + family
+    // receipt (eval_mvp2 wedge) — extends the lens_idempotency T-38B posture to the two
+    // remaining single-worked-claim `ClassifiedDependencyView<_>` dependency-lens families.
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (ROADMAP.md:57); M1(2.7) tokenize/parse ratchet
+    // until cross-module v4 `compile_to_dag` import merge lands; dissolves when substrate
+    // eval executes the roster without this hand-Rust parse smoke.
+    "src/v3/compiler/tests/integration/v4_lens_dependency_family_t38b_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
     // T-38B: lens_idempotency subject roster + run_test_claim + family receipt (eval_mvp2 wedge).
