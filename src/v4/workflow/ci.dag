@@ -4384,44 +4384,32 @@ fn ci_runner_pool_resilience_playbook_fail_closed(p: RunnerPoolResiliencePlayboo
   for_all(xs: p.steps, predicate: ci_runner_pool_resilience_step_fail_closed)
 }
 
-fn ci_runner_pool_resilience_step_is_detection(step: RunnerPoolResilienceStep) -> Bool {
-  step.phase == RunnerPoolDetect
+fn ci_runner_pool_resilience_step_phase_eq(
+  step: RunnerPoolResilienceStep,
+  phase: RunnerPoolResiliencePhase
+) -> Bool {
+  step.phase == phase
 }
 
-fn ci_runner_pool_resilience_step_is_fallback(step: RunnerPoolResilienceStep) -> Bool {
-  step.phase == RunnerPoolFallback
-}
-
-fn ci_runner_pool_resilience_step_is_comms(step: RunnerPoolResilienceStep) -> Bool {
-  step.phase == RunnerPoolComms
-}
-
-fn ci_runner_pool_resilience_step_is_recovery(step: RunnerPoolResilienceStep) -> Bool {
-  step.phase == RunnerPoolRecovery
-}
-
-fn ci_runner_pool_resilience_playbook_has_detection(p: RunnerPoolResiliencePlaybook) -> Bool {
-  count_where(xs: p.steps, predicate: ci_runner_pool_resilience_step_is_detection) >= 1
-}
-
-fn ci_runner_pool_resilience_playbook_has_fallback(p: RunnerPoolResiliencePlaybook) -> Bool {
-  count_where(xs: p.steps, predicate: ci_runner_pool_resilience_step_is_fallback) >= 1
-}
-
-fn ci_runner_pool_resilience_playbook_has_comms(p: RunnerPoolResiliencePlaybook) -> Bool {
-  count_where(xs: p.steps, predicate: ci_runner_pool_resilience_step_is_comms) >= 1
-}
-
-fn ci_runner_pool_resilience_playbook_has_recovery(p: RunnerPoolResiliencePlaybook) -> Bool {
-  count_where(xs: p.steps, predicate: ci_runner_pool_resilience_step_is_recovery) >= 1
+fn ci_runner_pool_resilience_playbook_has_phase(
+  p: RunnerPoolResiliencePlaybook,
+  phase: RunnerPoolResiliencePhase
+) -> Bool {
+  fold_list(
+    xs: p.steps,
+    empty: false,
+    cons: fn(acc, step) {
+      acc || ci_runner_pool_resilience_step_phase_eq(step: step, phase: phase)
+    }
+  )
 }
 
 fn ci_runner_pool_resilience_playbook_complete(p: RunnerPoolResiliencePlaybook) -> Bool {
   ci_runner_pool_resilience_playbook_fail_closed(p: p)
-    && ci_runner_pool_resilience_playbook_has_detection(p: p)
-    && ci_runner_pool_resilience_playbook_has_fallback(p: p)
-    && ci_runner_pool_resilience_playbook_has_comms(p: p)
-    && ci_runner_pool_resilience_playbook_has_recovery(p: p)
+    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: RunnerPoolDetect)
+    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: RunnerPoolFallback)
+    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: RunnerPoolComms)
+    && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: RunnerPoolRecovery)
 }
 
 data ci_runner_pool_resilience_playbook_ok: Bool = ci_runner_pool_resilience_playbook_complete(p: ci_runner_pool_resilience_playbook)
