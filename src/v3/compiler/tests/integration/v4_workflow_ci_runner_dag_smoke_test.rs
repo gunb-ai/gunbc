@@ -2259,6 +2259,106 @@ fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
     );
 }
 
+/// F.12a recursive-flex THIN (inspection receipt): the receipt must (a) tokenize/parse,
+/// (b) inspect BOTH v4 workflow authorities — importing `ci_testclaim_corpus_eval_claim_ids`
+/// from `v4.workflow.ci` and `bootstrap_plan_accepted_hash_pins_projectable_witness` from
+/// `v4.workflow.bootstrap` — alongside the A.1.5a `inprocess_equivalence_holds` law, and
+/// (c) conjoin all three into a single `witness_recursive_flex_inspection` Bool. The slice
+/// membership uses `contains` with an inline `fn(a, b) { a == b }` Symbol eq (no new std
+/// helper). It is import/inspect only: it must NOT declare a `data : TestClaimRun` co-authority
+/// row (RR-A §6) and is the THIN slice — the full self-host loop is F.12b, named as deferred.
+/// SG-0 delta 0 (same-path expansion; `pb_rust_tests_outside_residual_zero`).
+#[test]
+fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
+    let module = parse_module(
+        RECURSIVE_FLEX_INSPECTION_DAG,
+        RECURSIVE_FLEX_INSPECTION_PATH,
+    );
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "workflow",
+            "recursive_flex_inspection"
+        ]],
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: module authority path"
+    );
+    // (1) A.1.5a equivalence law — consumed from the #4313 module, no re-derivation.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "workflow", "inprocess_equivalence"],
+            "inprocess_equivalence_holds"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must consume A.1.5a `inprocess_equivalence_holds` (no re-derivation)"
+    );
+    // (2) Inspection over ci.dag — the live corpus claim-id frontier authority.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "workflow", "ci"],
+            "ci_testclaim_corpus_eval_claim_ids"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must inspect ci.dag `ci_testclaim_corpus_eval_claim_ids` frontier"
+    );
+    // (3) Inspection over bootstrap.dag — the fixed-point hash-pin projection witness.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "workflow", "bootstrap"],
+            "bootstrap_plan_accepted_hash_pins_projectable_witness"
+        ),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must inspect bootstrap.dag fixed-point hash-pin witness"
+    );
+    for fn_name in &[
+        "recursive_flex_slice_in_ci_frontier",
+        "recursive_flex_inspection_holds",
+    ] {
+        assert!(
+            surface_declares_fn(&module, fn_name),
+            "{RECURSIVE_FLEX_INSPECTION_PATH}: must declare {fn_name}"
+        );
+    }
+    for needle in &[
+        // The fixed slice claim id is the eval_mvp2 route (same atom ci.dag frontiers).
+        "data recursive_flex_slice_claim_id: Symbol = claim_eval_mvp2_test_claim_route",
+        // Membership over the live ci.dag frontier, Symbol eq via inline closure.
+        "xs: ci_testclaim_corpus_eval_claim_ids",
+        // The receipt conjoins all three structural facts.
+        "inprocess_equivalence_holds()",
+        "&& recursive_flex_slice_in_ci_frontier()",
+        "&& bootstrap_plan_accepted_hash_pins_projectable_witness",
+        "data witness_recursive_flex_inspection: Bool = recursive_flex_inspection_holds()",
+    ] {
+        assert!(
+            RECURSIVE_FLEX_INSPECTION_DAG.contains(needle),
+            "{RECURSIVE_FLEX_INSPECTION_PATH}: F.12a inspection receipt must carry `{needle}`"
+        );
+    }
+    // Import/inspect only — the receipt must NOT declare a `data : TestClaimRun` co-authority
+    // row (RR-A §6 authoring-time co-authority forbidden); runtime execution is F.12b.
+    let declares_test_claim_run_data = module.items.iter().any(|item| {
+        use v3_compiler::parse_surface::SurfaceType;
+        matches!(
+            item,
+            SurfaceItem::Data {
+                ty: SurfaceType::Named { name, .. },
+                ..
+            } if name == "TestClaimRun"
+        )
+    });
+    assert!(
+        !declares_test_claim_run_data,
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must not declare a `data : TestClaimRun` row (RR-A §6 co-authority); runtime loop is F.12b"
+    );
+    assert!(
+        RECURSIVE_FLEX_INSPECTION_DAG.contains("F.12b"),
+        "{RECURSIVE_FLEX_INSPECTION_PATH}: must name the deferred full self-host loop (F.12b) as out of scope"
+    );
+}
+
 #[test]
 fn v4_workflow_ci_source_authority_receipt_consumes_h72_claims() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);

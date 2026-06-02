@@ -54,7 +54,7 @@ fn recursive_flex_slice_in_ci_frontier() -> Bool {
   contains(
     xs: ci_testclaim_corpus_eval_claim_ids,
     item: recursive_flex_slice_claim_id,
-    eq: fn(a: Symbol, b: Symbol) -> Bool { a == b }
+    eq: fn(a, b) { a == b }
   )
 }
 
