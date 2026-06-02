@@ -1082,33 +1082,60 @@ fn emit_host_runner_go_row_runs_and_parses_stdout() {
     emit_host_runner::runtime_value_parse_go(&receipt.stdout_bytes).expect("parse");
 }
 
-#[test]
-fn cross_target_mvp2_stdout_parity_rust_python_go() {
+fn assert_cross_target_mvp2_stdout_parity_rust_python_go(fixture: NatSemiringCrossTargetFixture) {
     let pid = std::process::id();
-    for fixture in NAT_SEMIRING_CROSS_TARGET_FIXTURES {
-        let law = fixture.law;
-        let inputs = emit_host_runner::EmitHostFixtureInputs {
-            claim_input_root: format!("cross_target_{law}_claim_input"),
-            expected_eval_root: format!("cross_target_{law}_expected_eval"),
-        };
-        let rust_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_rust_{pid}"));
-        let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_py_{pid}"));
-        let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_go_{pid}"));
-        let verdict = emit_host_bridge::run_cross_target_mvp2_python_parity_transport(
-            fixture.rust_source,
-            fixture.python_source,
-            fixture.go_source,
-            &inputs,
-            &rust_dir,
-            &py_dir,
-            &go_dir,
-        );
-        assert_eq!(
-            verdict,
-            emit_host_bridge::EmitHostCrossTargetParityVerdict::Pass,
-            "L2 cross-target stdout parity failed for law={law}"
-        );
-    }
+    let law = fixture.law;
+    let inputs = emit_host_runner::EmitHostFixtureInputs {
+        claim_input_root: format!("cross_target_{law}_claim_input"),
+        expected_eval_root: format!("cross_target_{law}_expected_eval"),
+    };
+    let rust_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_rust_{pid}"));
+    let py_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_py_{pid}"));
+    let go_dir = emit_host_runner::default_work_dir(&format!("gunbc_xct_{law}_go_{pid}"));
+    let verdict = emit_host_bridge::run_cross_target_mvp2_python_parity_transport(
+        fixture.rust_source,
+        fixture.python_source,
+        fixture.go_source,
+        &inputs,
+        &rust_dir,
+        &py_dir,
+        &go_dir,
+    );
+    assert_eq!(
+        verdict,
+        emit_host_bridge::EmitHostCrossTargetParityVerdict::Pass,
+        "L2 cross-target stdout parity failed for law={law}"
+    );
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_add_left_identity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[0]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_add_right_identity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[1]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_add_associativity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[2]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_mul_left_identity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[3]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_mul_annihilator() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[4]);
+}
+
+#[test]
+fn cross_target_mvp2_stdout_parity_rust_python_go_mul_associativity() {
+    assert_cross_target_mvp2_stdout_parity_rust_python_go(NAT_SEMIRING_CROSS_TARGET_FIXTURES[5]);
 }
 
 #[test]
