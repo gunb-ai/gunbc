@@ -1,0 +1,133 @@
+// src/v4/test/claim/workflow/inprocess_equivalence.dag
+// Scope: A.1.5a — in-process `TestClaimRun` equivalence claim (RR-A §4 R7).
+// Status: harness-correctness gate. On a fixed corpus slice the harness path
+//   (corpus-runner machinery: run_node_runtime_value_subjects → entry wrap, the
+//   same fold `run_manual_testclaim_corpus_eval` applies) must produce the same
+//   `TestClaimRun` rows as the in-process path (direct `run_test_claim`). The
+//   bootstrap evaluator harness (separate A.1 lane) executes this claim at
+//   runtime; this `.dag` is the single substrate authority both paths satisfy.
+// Forbidden (RR-A §6): treating this const fold as runtime pass authority — it is
+//   the equivalence *spec*; the runtime verdict comes from the harness invoking it.
+
+module v4.test.claim.workflow.inprocess_equivalence
+
+
+import v4.compiler.eval {
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_test_claim_subject,
+  run_test_claim
+}
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.runtime { RuntimeValue }
+import v4.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  manual_claim_anchor
+}
+import v4.test.claim.manual.eval_runtime_mvp {
+  eval_mvp2_context,
+  eval_mvp2_evaluator_pin,
+  eval_mvp2_inferred_tree,
+  subject_eval_mvp2_test_claim_route
+}
+import v4.test.claim.workflow.testclaim_corpus_runner {
+  CorpusEvalEntry,
+  corpus_entries_from_node_runtime_value_runs,
+  corpus_entry_from_node_runtime_value_run,
+  run_node_runtime_value_subjects
+}
+
+
+data inprocess_equivalence_pass_symbol: Symbol = inprocess_equivalence_pass_symbol
+data inprocess_equivalence_fail_symbol: Symbol = inprocess_equivalence_fail_symbol
+
+
+// Fixed slice: the canonical eval_mvp2 route subject (RR-A §4 R7 "fixed slice").
+data inprocess_equivalence_slice: List<TestClaimEvalSubject<Node>> = [
+  subject_eval_mvp2_test_claim_route
+]
+
+
+// Harness path: corpus-runner machinery (map run_test_claim over the slice, then
+// wrap into CorpusEvalEntry rows) — the same fold `run_manual_testclaim_corpus_eval`
+// applies to the full manual roster, scoped here to the fixed slice.
+fn inprocess_equivalence_harness_entries() -> List<CorpusEvalEntry> {
+  corpus_entries_from_node_runtime_value_runs(
+    runs: run_node_runtime_value_subjects(subjects: inprocess_equivalence_slice)
+  )
+}
+
+
+// In-process path: direct `run_test_claim` on the same fixed subject, wrapped into
+// a CorpusEvalEntry so the two paths compare at the same type.
+fn inprocess_equivalence_inprocess_entries() -> List<CorpusEvalEntry> {
+  [
+    corpus_entry_from_node_runtime_value_run(
+      run: run_test_claim(subject: subject_eval_mvp2_test_claim_route)
+    )
+  ]
+}
+
+
+fn inprocess_equivalence_holds() -> Bool {
+  inprocess_equivalence_harness_entries() == inprocess_equivalence_inprocess_entries()
+}
+
+
+data witness_inprocess_equivalence: Bool = inprocess_equivalence_holds()
+
+
+fn inprocess_equivalence_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: inprocess_equivalence_pass_symbol } },
+    children: []
+  }
+}
+
+
+fn inprocess_equivalence_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: inprocess_equivalence_fail_symbol } },
+    children: []
+  }
+}
+
+
+fn inprocess_equivalence_claim_input(ok: Bool) -> Node {
+  if ok {
+    inprocess_equivalence_pass_node()
+  } else {
+    inprocess_equivalence_fail_node()
+  }
+}
+
+
+// Executable receipt: the equivalence Bool gates an EqualsClaim, run through the
+// same `run_test_claim` interpreter so the harness lane can pick it up as a row.
+data claim_inprocess_equivalence_receipt: TestClaim = EqualsClaim {
+  label: "A.1.5a harness path matches in-process run_test_claim on fixed corpus slice",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: inprocess_equivalence_claim_input(ok: witness_inprocess_equivalence),
+  rhs: inprocess_equivalence_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+
+data subject_inprocess_equivalence_receipt: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_inprocess_equivalence_receipt,
+  context: eval_mvp2_context(),
+  tree: eval_mvp2_inferred_tree(),
+  evaluator_pin: eval_mvp2_evaluator_pin
+)
+
+
+data run_inprocess_equivalence_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_inprocess_equivalence_receipt
+)
