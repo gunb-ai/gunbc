@@ -65,17 +65,14 @@ type NormalizedSourceAstEqual {
   reparsed: NormalizedDagSourceAst
 }
 
-type DeterministicDagSourceSerializerLaw {
-  first: DagSource
-  second: DagSource
-}
+type DeterministicDagSourceSerializerLaw {}
 
 type NormalizedDagSourceParsePrintLaw {
-  canonical_source: DagSource
   normalized_source_law: NormalizedSourceAstEqual
 }
 
 type CanonicalDagSourceEmissionLaw {
+  canonical_source: DagSource
   serializer_law: DeterministicDagSourceSerializerLaw
   parse_print_law: NormalizedDagSourceParsePrintLaw
 }
@@ -196,7 +193,7 @@ fn deterministic_dag_source_serializer_witness(
   second: DagSource
 ) -> Witness<DeterministicDagSourceSerializerLaw> {
   if first == second {
-    Holds { value: DeterministicDagSourceSerializerLaw { first: first, second: second } }
+    Holds { value: DeterministicDagSourceSerializerLaw {} }
   } else {
     Violates {
       diagnostic: source_authority_diagnostic(reason: source_authority_serializer_nondeterministic)
@@ -236,9 +233,9 @@ fn canonical_dag_source_emission_law_from_parts(
                   outcome_accepted(
                     value: Holds {
                       value: CanonicalDagSourceEmissionLaw {
+                        canonical_source: canonical_source_first,
                         serializer_law: serializer_law_value,
                         parse_print_law: NormalizedDagSourceParsePrintLaw {
-                          canonical_source: canonical_source_first,
                           normalized_source_law: parse_print_law_value
                         }
                       }
