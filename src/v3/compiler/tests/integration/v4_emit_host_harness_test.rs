@@ -23,9 +23,10 @@
 //! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
 //! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
-//! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target plus L2 Rust/Python/Go stdout
-//! parity across the six-law roster via `emit_host_bridge` integration harness (five-byte stdout
-//! contract; not a `.dag` TestClaim until emit pipeline wires law subjects into host transport).
+//! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target plus L2 Rust/Python/Go host
+//! execution for six nat-semiring law-gated fixtures, followed by shared five-byte MVP-2 stdout
+//! parity via `emit_host_bridge` (not a `.dag` TestClaim until emit pipeline wires law subjects
+//! into host transport).
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
 //! **TASKS.md** T-22 T-38.
 //!
