@@ -1987,7 +1987,7 @@ fn alias_rhs_nominal_shell_has_rust_authority(n: Node, module_name: String, impo
       if name == "" || is_kernel_type(name: name) {
         true
       } else {
-        let def_mod = alias_rhs_base_module_filename(name: name, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets)
+        let def_mod = alias_rhs_base_module_filename(name: name, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules)
         rhs_base_has_rust_type_authority_in_module(rhs_name: name, def_mod_filename: def_mod, module_name: module_name, imports: imports, scope: scope, registry: registry, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices)
       }
     }

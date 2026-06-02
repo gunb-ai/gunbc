@@ -3110,7 +3110,6 @@ pub fn imported_name_is_non_emittable_type(
     )
 }
 
-
 pub fn name_in_transitive_export_surface(
     name: String,
     module_name: String,
@@ -3299,7 +3298,9 @@ pub fn reexport_source_module_name_with_visited(
                                                             src_mod,
                                                             v2_rt::concat(
                                                                 visited.clone(),
-                                                                Rc::new(vec![import_module.clone()]),
+                                                                Rc::new(
+                                                                    vec![import_module.clone()],
+                                                                ),
                                                             ),
                                                             export_sets.clone(),
                                                             typed_modules.clone(),
