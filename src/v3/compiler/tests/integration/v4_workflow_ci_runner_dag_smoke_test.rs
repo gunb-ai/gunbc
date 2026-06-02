@@ -56,6 +56,11 @@ const SHARED_CLOSURE_WORKSHEET: &str = include_str!(
 );
 const SHARED_CLOSURE_WORKSHEET_PATH: &str =
     "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
+const CI_MANAGER_CLOSEOUT: &str = include_str!(
+    "../../../../../docs/planning/ci-manager-waves-2-4-four-compile-closeout-2026-06-02.md"
+);
+const CI_MANAGER_CLOSEOUT_PATH: &str =
+    "docs/planning/ci-manager-waves-2-4-four-compile-closeout-2026-06-02.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
     include_str!("../../../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
@@ -1052,6 +1057,52 @@ fn v4_workflow_ci_four_compile_collapse_jobs_consume_v2_compile_src_v4_closure()
             && CI_DAG.contains("id: lens_ci_registry_execution,")
             && CI_DAG.contains("id: phase1_nat_semiring_rung_gate_execution,"),
         "{CI_DAG_PATH}: collapse must not remove the three modeled closure-compile jobs"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_manager_waves_2_4_and_four_compile_closeout_receipt() {
+    assert!(
+        CI_MANAGER_CLOSEOUT.contains("node://adhoc-f70d7842-933")
+            && CI_MANAGER_CLOSEOUT.contains("CI Manager Waves 2-4")
+            && CI_MANAGER_CLOSEOUT.contains("#4091 §1.2 four-compile collapse"),
+        "{CI_MANAGER_CLOSEOUT_PATH}: closeout must bind the assigned dashboard node and collapse scope"
+    );
+    assert!(
+        CI_DAG.contains("data ci_upsert_steps_slice_bijection_ok")
+            && CI_DAG.contains("ci_upsert_steps_full_in_scope_step_ids")
+            && CI_DAG.contains("ci_upsert_steps_slice_bijection_for_pipeline"),
+        "{CI_DAG_PATH}: Wave 2 closeout must keep CiUpsertStep rows bijected with the pipeline shadow universe"
+    );
+    assert!(
+        CI_DAG.contains("type CiTestClaimSelection")
+            && CI_DAG.contains("type TestgenSlotSelection")
+            && CI_DAG.contains("data ci_wave3_shadow_fixture_receipt_ok"),
+        "{CI_DAG_PATH}: Wave 3 closeout must preserve the CiSelectionReceipt TestClaim/testgen partition"
+    );
+    assert!(
+        CI_DAG.contains("Active { skip_evidence: CiActiveFloorSkipEvidence }")
+            && CI_DAG.contains("fn ci_floor_held")
+            && !CI_DAG.contains("floor_skip:"),
+        "{CI_DAG_PATH}: Wave 4 closeout must keep active floor skip modeled through CiSelectionMode evidence"
+    );
+    for upstream_edge in [
+        "data ci_upsert_v4_t15_self_host_fixed_point_execution_inputs: List<UpsertInputRef> = [\n  ci_upsert_file_set_input(segment: \"src/v4/**\"),\n  ci_upsert_upstream_job_input(job: v2_compile_src_v4)",
+        "data ci_upsert_m1_rust_emit_probe_execution_inputs: List<UpsertInputRef>",
+        "data ci_upsert_phase1_nat_semiring_rung_gate_execution_inputs: List<UpsertInputRef>",
+        "data ci_upsert_lens_ci_registry_execution_inputs: List<UpsertInputRef> = list_snoc_item",
+        "data ci_upsert_testclaim_corpus_eval_upstream_inputs: List<UpsertInputRef> = [\n  ci_upsert_upstream_job_input(job: m1_rust_emit_probe_execution)",
+    ] {
+        assert!(
+            CI_DAG.contains(upstream_edge),
+            "{CI_DAG_PATH}: closeout must preserve upstream compile-consumption edge `{upstream_edge}`"
+        );
+    }
+    assert!(
+        CI_MANAGER_CLOSEOUT.contains("No new compiler stage, substrate type, or target semantics")
+            && CI_MANAGER_CLOSEOUT.contains("same-path P5(b) receipt")
+            && CI_MANAGER_CLOSEOUT.contains("dissolves with that harness"),
+        "{CI_MANAGER_CLOSEOUT_PATH}: closeout must state non-goals and dissolution path"
     );
 }
 
