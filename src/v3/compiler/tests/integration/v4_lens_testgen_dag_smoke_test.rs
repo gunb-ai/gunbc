@@ -105,7 +105,10 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
         LENS_TESTGEN_DAG_INPUT_SURFACE_PATH,
     );
     assert!(
-        function_count(&module, "language_behavior_generator_uses_dag_input") == 1
+        function_count(&module, "language_behavior_generator_uses_conj_dag_input") == 1
+            && function_count(&module, "language_behavior_generator_uses_disj_dag_input") == 1
+            && function_count(&module, "language_behavior_generator_uses_transform_dag_input") == 1
+            && function_count(&module, "language_behavior_generator_uses_dag_input") == 1
             && function_count(&module, "scheduled_language_behavior_generators_cover_dag_inputs")
                 == 1
             && function_count(&module, "bootstrap_generator_has_conj_dag_input_surface") == 1,
@@ -123,6 +126,15 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
             && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
                 "data witness_lens_testgen_bootstrap_generator_reifies_dag_input_surface_green: Bool"
             )
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("for_all(")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
+                "language_behavior_generator_uses_disj_dag_input"
+            )
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains(
+                "language_behavior_generator_uses_transform_dag_input"
+            )
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("stub_empty_disj")
+            && LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("stub_empty_transform")
             && !LENS_TESTGEN_DAG_INPUT_SURFACE_DAG.contains("compile-only until T-19"),
         "{LENS_TESTGEN_DAG_INPUT_SURFACE_PATH}: missing .dag input surface TestClaim wiring or green witnesses"
     );
