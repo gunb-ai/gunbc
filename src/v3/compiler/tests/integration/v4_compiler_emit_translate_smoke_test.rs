@@ -346,6 +346,7 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
         "rust_noninteger_per_language_fact_bundle_entries",
         "rust_per_language_fact_bundle_entries",
         "rust_per_language_fact_bundle_registry",
+        "rust_checked_per_language_fact_bundle_registry",
         "rust_wave1_primitive_fact_bundles_from_registry",
     ] {
         assert!(
@@ -361,6 +362,19 @@ fn v4_rust_language_model_declares_g1_fact_bundle_registry() {
             "rust_wave1_primitive_fact_bundles_from_registry()"
         ),
         "{RUST_LANGUAGE_PATH}: Rust ModelCore.primitives must consume the G.1.1 registry projection"
+    );
+    assert!(
+        fn_external_body_contains(
+            &module,
+            RUST_LANGUAGE_DAG,
+            "rust_primitive_bundle_from_registry_subject",
+            "rust_checked_per_language_fact_bundle_registry()"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust ModelCore registry projection must consume the fail-closed Outcome registry"
+    );
+    assert!(
+        !RUST_LANGUAGE_DAG.contains("rust_per_language_fact_bundle_registry_value"),
+        "{RUST_LANGUAGE_PATH}: Rust G.1.1 must not bypass fail-closed registry insertion with a value-only map_insert fold"
     );
 }
 

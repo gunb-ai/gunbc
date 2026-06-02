@@ -2650,25 +2650,6 @@ fn rust_per_language_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
   )
 }
 
-fn rust_insert_per_language_fact_bundle_entry_value(
-  registry: PerLanguageFactBundleRegistry,
-  entry: PerLanguageFactBundleEntry
-) -> PerLanguageFactBundleRegistry {
-  PerLanguageFactBundleRegistry {
-    by_key: map_insert(m: registry.by_key, key: entry.key, value: entry.fact_value)
-  }
-}
-
-fn rust_per_language_fact_bundle_registry_value() -> PerLanguageFactBundleRegistry {
-  fold_list(
-    xs: rust_per_language_fact_bundle_entries(),
-    empty: empty_per_language_fact_bundle_registry(),
-    cons: fn(registry, entry) {
-      rust_insert_per_language_fact_bundle_entry_value(registry: registry, entry: entry)
-    }
-  )
-}
-
 fn rust_insert_per_language_fact_bundle_entry_outcome(
   acc: Outcome<PerLanguageFactBundleRegistry>,
   entry: PerLanguageFactBundleEntry
@@ -2697,9 +2678,16 @@ fn rust_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegi
   )
 }
 
+fn rust_checked_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
+  match rust_per_language_fact_bundle_registry() {
+    Accepted { value: registry, diagnostics: _ } => registry
+    Rejected { diagnostics: _ } => empty_per_language_fact_bundle_registry()
+  }
+}
+
 fn rust_primitive_bundle_from_registry_subject(subject_carrier: Node) -> PrimitiveFactBundle {
   primitive_fact_bundle_for_registry_subject(
-    registry: rust_per_language_fact_bundle_registry_value(),
+    registry: rust_checked_per_language_fact_bundle_registry(),
     subject_carrier: subject_carrier,
     target: rust_mvp1_target_model()
   )
