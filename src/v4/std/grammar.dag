@@ -114,8 +114,6 @@ type GrammarTerminalLexCoverageObligation {
 // token rules. LexPattern and GrammarExpr remain operational projections until
 // CP-1b convergence; they are not independent authorities.
 type ConcreteSyntaxSchema {
-  lex: LexRules
-  grammar: WellFormedFormalGrammar
   terminal_coverage: GrammarTerminalLexCoverageObligation
 }
 
@@ -124,10 +122,18 @@ fn concrete_syntax_schema(
   terminal_coverage: GrammarTerminalLexCoverageObligation
 ) -> ConcreteSyntaxSchema {
   ConcreteSyntaxSchema {
-    lex: terminal_coverage.lex,
-    grammar: terminal_coverage.grammar,
     terminal_coverage: terminal_coverage
   }
+}
+
+
+fn concrete_syntax_schema_lex(schema: ConcreteSyntaxSchema) -> LexRules {
+  schema.terminal_coverage.lex
+}
+
+
+fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFormalGrammar {
+  schema.terminal_coverage.grammar
 }
 
 
