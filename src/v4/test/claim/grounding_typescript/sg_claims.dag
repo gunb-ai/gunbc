@@ -39,7 +39,9 @@ import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v4.std.runtime { RuntimeValue }
 import v4.std.target_model {
   symbol_kernel_type_node,
-  target_atom_realization_lookup_in_catalog
+  target_atom_realization_lookup_in_catalog,
+  target_carrier_free_monoid_node,
+  target_collection_set_carrier_node
 }
 import v4.std.verification {
   EqualsClaim,
@@ -94,8 +96,13 @@ fn ts_g2_sg2_evidence() -> GroundingEvidenceSchema {
 }
 
 
-fn ts_g2_sg5_absence_evidence() -> GroundingEvidenceSchema {
-  Sg5Evidence { source_carrier: symbol_kernel_type_node() }
+fn ts_g2_sg5_set_absence_evidence() -> GroundingEvidenceSchema {
+  Sg5Evidence { source_carrier: target_collection_set_carrier_node() }
+}
+
+
+fn ts_g2_sg5_free_monoid_absence_evidence() -> GroundingEvidenceSchema {
+  Sg5Evidence { source_carrier: target_carrier_free_monoid_node() }
 }
 
 
@@ -117,10 +124,25 @@ fn ts_g2_sg2_evidence_targets_canonical_carrier() -> Bool {
 }
 
 
-fn ts_g2_sg5_absence_evidence_targets_canonical_carrier() -> Bool {
-  match ts_g2_sg5_absence_evidence() {
+fn ts_g2_sg5_set_absence_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg5_set_absence_evidence() {
     Sg5Evidence { source_carrier } =>
-      ts_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: target_collection_set_carrier_node()
+      )
+    _ => false
+  }
+}
+
+
+fn ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg5_free_monoid_absence_evidence() {
+    Sg5Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: target_carrier_free_monoid_node()
+      )
     _ => false
   }
 }
@@ -185,7 +207,8 @@ fn ts_g2_sg2_type_expression_projection_holds() -> Bool {
 
 
 fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
-  ts_g2_sg5_absence_evidence_targets_canonical_carrier()
+  ts_g2_sg5_set_absence_evidence_targets_canonical_carrier()
+    && ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier()
     && match collection_realization_from_target(target: ts_sg2_type_expr_target_model()) {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: _ } => true

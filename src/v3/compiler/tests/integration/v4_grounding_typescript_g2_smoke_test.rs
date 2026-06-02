@@ -2,6 +2,11 @@
 //!
 //! G.2 receipt: `grounding_typescript/*` T-38B claim family parses and declares the four-row
 //! SG-1 / G.1.4 / SG-2 / SG-5 executable claim stack (parse-surface only).
+//!
+//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+//! explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:62); dissolves when substrate
+//! `run_test_claim` executes the grounding_typescript roster without this hand-Rust parse smoke.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
