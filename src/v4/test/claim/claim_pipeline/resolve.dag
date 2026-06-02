@@ -26,18 +26,14 @@ import v4.std.verification {
 }
 
 
-data spine_resolve_module_sym: Symbol = spine_resolve_module_sym
+data spine_resolve_module: Symbol = spine_resolve_module
+data spine_resolve_module_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: spine_resolve_module } },
+  children: []
+}
 data spine_resolve_pass: Symbol = spine_resolve_pass
 data spine_resolve_fail: Symbol = spine_resolve_fail
 data spine_resolve_service_decl: Symbol = spine_resolve_service_decl
-
-
-fn spine_resolve_module_subject() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: spine_resolve_module_sym } },
-    children: []
-  }
-}
 
 
 fn spine_resolve_service_parse_tree() -> Node {
@@ -89,8 +85,8 @@ fn spine_resolve_bool_atom(b: Bool) -> Node {
 data claim_pipeline_resolve_module_compiles: TestClaim = CompilesClaim {
   label: "claim_pipeline/resolve: v4.compiler.resolve stage module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: spine_resolve_module_subject(),
-  expected_value: spine_resolve_module_subject(),
+  input: spine_resolve_module_subject,
+  expected_value: spine_resolve_module_subject,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
