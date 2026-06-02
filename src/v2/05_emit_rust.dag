@@ -1600,17 +1600,31 @@ fn enum_physically_defined_in_module(enum_name: String, module_name: String, typ
 
 // Wildcard import of a proxy module must still emit defining-module lines for
 // re-exported names (variants/types) that `use proxy::*` cannot surface in Rust.
+// export_sets[import_module] omits wildcard-pooled names (get_exported_names
+// only records specific imports), so also scan wildcard source modules' surfaces.
 fn wildcard_reexport_surface_names(import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  match map_get(export_sets, import_module) {
-    Some { value: exported } =>
-      map_keys(exported) |> filter(n =>
-        match reexport_source_module_name(name: n, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
-          Some { value: src } => src != import_module
-          None => false
-        }
-      )
+  let local_candidates = match map_get(export_sets, import_module) {
+    Some { value: exported } => map_keys(exported)
     None => []
   }
+  let wildcard_pool_candidates = match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
+    None => []
+    Some { value: tm } =>
+      module_imports(n: tm.module)
+        |> filter(imp => import_is_all(n: imp))
+        |> flat_map(imp =>
+          match map_get(export_sets, authored_name_at(source_indices: source_indices, node: imp)) {
+            Some { value: exported } => map_keys(exported)
+            None => []
+          }
+        )
+  }
+  unique_strings(items: concat(local_candidates, wildcard_pool_candidates) |> filter(n =>
+    match reexport_source_module_name(name: n, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+      Some { value: src } => src != import_module
+      None => false
+    }
+  ))
 }
 
 fn graph_type_import_module_filename(name: String, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String {
