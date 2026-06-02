@@ -14,12 +14,14 @@ import v4.extdeps.languages.go {
   go_facts_int64,
   go_integer_algebra_inhabitance,
   go_integer_facts_node,
+  go_repr_twos_complement_integer,
   go_surface_spelling_int
 }
 import v4.extdeps.languages.python {
   python_atom_realization_symbol,
   python_facts_field_encoding,
   python_integer_algebra_inhabitance_python_facts_int,
+  python_repr_int_arbitrary_precision,
   python_surface_spelling_int
 }
 import v4.extdeps.typecheckers.pyright {
@@ -37,6 +39,7 @@ import v4.extdeps.languages.rust {
   rust_coercion_field_i32_spelling,
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_mvp1_target_model_staging,
+  rust_repr_integer_twos_complement,
   rust_surface_spelling_i32,
   rust_target_atom_realization_symbol,
   rust_target_atom_type_form
@@ -297,6 +300,9 @@ data python_cross_runtime_drift_fixed_width_value: String = "-922337203685477580
 fn python_cross_runtime_drift_probe() -> LeafModelCrossRuntimeDriftProbe {
   LeafModelCrossRuntimeDriftProbe {
     claim_id: leaf_model_claim_python_cross_runtime_drift_arbitrary_precision,
+    arbitrary_precision_fact: python_repr_int_arbitrary_precision,
+    fixed_width_rust_fact: rust_repr_integer_twos_complement,
+    fixed_width_go_fact: go_repr_twos_complement_integer,
     arbitrary_precision_source: python_cross_runtime_drift_python_source,
     fixed_width_rust_source: python_cross_runtime_drift_rust_source,
     fixed_width_go_source: python_cross_runtime_drift_go_source,
