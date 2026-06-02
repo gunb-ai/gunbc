@@ -15,8 +15,8 @@ use std::path::Path;
 use crate::dag::{ArrowBody, AtomPayload, Dag, DeclarationId, LiteralBits, TypeConnective};
 use crate::evaluator::{EvalError, EvalStateStack, EvalStrategy, NamedField, Value};
 use emit_host_runner::{
-    EmitHostRunReceipt, EmitHostTransportInputs, ExitWitness, HostExit,
-    HostExitOutcome, HostLogicalFailure, HostSetupFailure,
+    EmitHostRunReceipt, EmitHostTransportInputs, ExitWitness, HostExit, HostExitOutcome,
+    HostLogicalFailure, HostSetupFailure,
 };
 
 #[cfg(test)]
@@ -1064,7 +1064,9 @@ fn emit_host_receipt_value(
 mod tests {
     use super::*;
     use crate::compile_to_dag_modules_in_order;
-    use crate::dag::{ArrowBody, AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, TypeConnective};
+    use crate::dag::{
+        ArrowBody, AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, TypeConnective,
+    };
     use crate::diagnostics::SourceSpan;
     use crate::evaluator::{EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder};
     use crate::CompileError;
