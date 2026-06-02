@@ -373,11 +373,18 @@ data ci_always_run_carveouts: List<CiCarveout> = [
 // structural dissolution path. Conditions (2)+(3) are definitional: a row exists here iff the step
 // is still shell-owned and not yet emitted FROM its `CiUpsertStep` as ci.yml runtime authority.
 // This is the first executable slice of Wave 2 (shell→`CiUpsertStep` migration, §11.7.7 lane 6):
-// it models the exception registry the no-new-shell ratchet (§11.7.1 #5) consumes — the set of
-// REQUIRED shell-owned ci-floor steps must equal these rows' `step_id`s; any unlisted required
-// shell is a ratchet regression. Reuses `CiStepId` + `DissolutionTarget` (no parallel exception
-// genus); sibling to `ci_always_run_carveouts` (run-policy carveout) — distinct concept (shell
-// retirement vs always-run), shared leaf substrate.
+// it models the exception registry the no-new-shell ratchet (§11.7.1 #5) consumes. INTENDED
+// contract: the set of REQUIRED shell-owned ci-floor steps equals these rows' `step_id`s.
+// ENFORCED today (`v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice`): a path-keyed
+// bijection between the required `.github/ci-floor/*.sh` invocations in ci.yml and these rows
+// (block-form-safe, count-exact) — a new unlisted required shell fails CLOSED. RESIDUAL (tracked,
+// openai-pro #4284): the gate keys on script path, not the modeled `(job, step)` `CiStepId`, since
+// ci.yml's step→`CiStepId` mapping is not yet string-checkable; a *second* step reusing a listed
+// script is not yet distinguished by `step_id`. Dissolves when the generated `.dag` CI step model
+// lets the ratchet compare live `(job, step, script)` against `step_id + shell_owner` directly.
+// Reuses `CiStepId` + `DissolutionTarget` (no parallel exception genus); sibling to
+// `ci_always_run_carveouts` (run-policy carveout) — distinct concept (shell retirement vs
+// always-run), shared leaf substrate.
 
 // 🟡 coproduct dissolution — feature:wave2-class-a-shell-exception-table — bind #4137 §11.7.1 — dissolve-on-arrival: this closed enumeration mirrors the §11.7.1 bare-minimum floor; it is DELETED when the dynamic affected-set + testgen safety net (§11.7.7 end state) replaces the static floor list and `protects_floor` no longer needs a fixed-arm carrier; forbidden: an open `Symbol`/`String` floor key, or an arm with no §11.7.1 row.
 type CiSafetyFloorItem

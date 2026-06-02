@@ -1229,21 +1229,61 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         );
     }
 
-    // no-new-shell ratchet (§11.7.1 #5): the converse direction — every REQUIRED `ci-floor/*.sh`
-    // invocation in ci.yml must be listed in the table. A new required shell with no exception
-    // row is a ratchet regression caught here.
+    // no-new-shell ratchet (§11.7.1 #5) — bidirectional bijection between the REQUIRED
+    // `.github/ci-floor/*.sh` invocations in ci.yml and the table's rows.
+    //
+    // Scan EVERY line (not just lines beginning `run: bash …`) so a block-scalar `run: |` body
+    // such as `        bash .github/ci-floor/foo.sh` cannot evade the gate by its YAML spelling.
+    let mut ci_floor_scripts: Vec<String> = Vec::new();
     for line in CI_YML.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("run: bash .github/ci-floor/") {
-            let leaf = rest.split_whitespace().next().unwrap_or("");
-            let script = format!(".github/ci-floor/{leaf}");
-            assert!(
-                table.contains(&script),
-                "{CI_YML_PATH}: required ci-floor shell `{script}` has no §11.7.5 \
-                 exception row (no-new-shell ratchet — add a CiShellExceptionRow or model it)"
-            );
+        if !line.contains("bash ") {
+            continue;
+        }
+        if let Some(idx) = line.find(".github/ci-floor/") {
+            let leaf: String = line[idx..]
+                .chars()
+                .take_while(|c| !c.is_whitespace())
+                .collect();
+            if leaf.ends_with(".sh") {
+                ci_floor_scripts.push(leaf);
+            }
         }
     }
+    ci_floor_scripts.sort();
+    ci_floor_scripts.dedup();
+    assert!(
+        !ci_floor_scripts.is_empty(),
+        "{CI_YML_PATH}: expected at least one required ci-floor shell invocation to ratchet"
+    );
+
+    // Forward — every required ci-floor shell must have an exception row (fail CLOSED on a new
+    // unlisted required shell).
+    for script in &ci_floor_scripts {
+        assert!(
+            table.contains(script.as_str()),
+            "{CI_YML_PATH}: required ci-floor shell `{script}` has no §11.7.5 \
+             exception row (no-new-shell ratchet — add a CiShellExceptionRow or model it)"
+        );
+    }
+    // Bijection — distinct required scripts must equal the row count, so a NEW ci-floor shell (or
+    // a duplicate/extra row) breaks the 1:1 correspondence and fails the gate rather than passing
+    // open on mere string containment.
+    assert_eq!(
+        ci_floor_scripts.len(),
+        table.matches("CiShellExceptionRow {").count(),
+        "{CI_DAG_PATH}: §11.7.5 table must be 1:1 with the required ci-floor invocations \
+         in {CI_YML_PATH} (count {} scripts vs rows) — a new required shell or an extra/stale \
+         row breaks the no-new-shell bijection",
+        ci_floor_scripts.len()
+    );
+
+    // RESIDUAL (tracked, openai-pro #4284): this gate keys on the script PATH, not the modeled
+    // `(job, step)` `CiStepId`, because ci.yml's step→`CiStepId` mapping is not yet available in a
+    // string-checkable form here. A *second* required step reusing an already-listed ci-floor
+    // script would not yet be distinguished by its own `step_id`. Dissolves on the same trigger as
+    // this harness's overall retirement: the generated `.dag` CI step model lets the ratchet
+    // compare live `(job, step, script)` against `step_id + shell_owner` directly. Until then the
+    // bijection above (path-keyed, block-form-safe, count-exact) is the enforced contract.
 }
 
 #[test]
