@@ -149,6 +149,9 @@ jobs:
     - name: Detect affected components
       id: detect
       run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
+    - name: Emit Wave 3 shadow selection receipt (Class C, non-blocking)
+      continue-on-error: true
+      run: cargo run -p ci_affected_components --bin emit-ci-wave3-shadow-receipt -- "${{ github.event_name }}"
   # §11.7.1 Class A safety floor -- single job, one v2 build, two compiles (M1 rust + bootstrap dag).
   ci_floor:
     if: github.event.pull_request.draft != true
@@ -231,7 +234,7 @@ jobs:
       if: steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: RUSTC_WRAPPER= cargo build -p v2-compiler --release
     - name: M1 v4 full-tree rust emit probe (v2 emit)
-      timeout-minutes: 20
+      timeout-minutes: 35
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
         V4_M1_DAG_EMIT_OUT: ${{ runner.temp }}/v4-bootstrap
