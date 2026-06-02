@@ -142,7 +142,7 @@ type PythonLanguageModel {
   grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
-  core: Outcome<ModelCore>
+  core: ModelCore
 }
 
 // 🟢 grounded.
@@ -1809,12 +1809,20 @@ fn python_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn python_language_model_wave1() -> PythonLanguageModel {
-  PythonLanguageModel {
-    lex: python_wave1_lex(),
-    grammar: python_wave1_grammar(),
-    language_identity: python_language_model_surface_id,
-    canonical_symbols: python_language_model_canonical_symbols(),
-    core: python_model_core_wave1()
+fn python_language_model_wave1() -> Outcome<PythonLanguageModel> {
+  match python_model_core_wave1() {
+    Accepted { value: core, diagnostics: d } =>
+      Accepted {
+        value: PythonLanguageModel {
+          lex: python_wave1_lex(),
+          grammar: python_wave1_grammar(),
+          language_identity: python_language_model_surface_id,
+          canonical_symbols: python_language_model_canonical_symbols(),
+          core: core
+        },
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
   }
 }
