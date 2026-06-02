@@ -1,4 +1,3 @@
-// noop perf-probe comment
 // v2 Rust renderer -- emits Rust source files from a typed module graph.
 //
 // This module contains all Rust-specific rendering logic: Rust syntax
