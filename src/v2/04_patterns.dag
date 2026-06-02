@@ -25,7 +25,8 @@ import v2.compiler.infer_types {
 }
 import v2.compiler.infer_env {
   TypeEnv,
-  lookup_type, lookup_type_by_name
+  lookup_type, lookup_type_by_name,
+  find_child_in_env, authored_name
 }
 
 // =========================================================================
@@ -127,7 +128,7 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   )
 }
 
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>, field_binding_count: Int) -> NodeLookupResult {
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
@@ -138,13 +139,13 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])
       } else {
-        let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
+        let direct_match = find_child_in_env(env: env, parent: scrut_node, name: variant_name)
         // Record / generic-record destructuring: `LocusAnchor { at: x }` against
         // `LocusAnchor<A>` (Conj) — requires brace syntax (field_binding_count > 0).
         // Bare `LocusAnchor` without `{…}` must not match; direct_match on sum variants still wins.
         let record_destructure = field_binding_count > 0
           && scrut_node.connective == Conj
-          && authored_name_at(source_indices: source_indices, node: scrut_node) == variant_name
+          && authored_name(env: env, node: scrut_node) == variant_name
         let fallback = if scrut_opt && variant_name == "Some" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
         } else if scrut_opt && variant_name == "None" {
@@ -152,7 +153,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         } else if record_destructure {
           node_lookup_resolved(node: scrut_node)
         } else {
-          variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+          variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: env.source_indices)
         }
         match direct_match {
           Some { value: v } => node_lookup_resolved(node: v)
@@ -162,18 +163,18 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
   }
 }
 
-fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
+fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String, env: TypeEnv) -> NodeLookupResult {
   match variant {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
       node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: variant_node } =>
-      match find_child_named(n: variant_node, name: field_name, source_indices: source_indices) {
+      match find_child_in_env(env: env, parent: variant_node, name: field_name) {
         Some { value: field_child } =>
           let resolved = child_type_node(ch: field_child)
           node_lookup_resolved(node: resolved)
-        None => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
+        None => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name(env: env, node: variant_node), span: variant_node.span }, module_name: module_name)])
       }
   }
 }
@@ -194,7 +195,7 @@ fn check_match_exhaustiveness(
   let resolved_raw = if has_structure {
     scrutinee_type
   } else {
-    match lookup_type_by_name(env: env, name: authored_name_at(source_indices: env.source_indices, node: scrutinee_type)) {
+    match lookup_type_by_name(env: env, name: authored_name(env: env, node: scrutinee_type)) {
       Some { value: def } => def
       None => scrutinee_type
     }
@@ -206,7 +207,7 @@ fn check_match_exhaustiveness(
     let variant_names = if resolved_is_optional {
       ["Some", "None"]
     } else {
-      resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c))
+      resolved.children |> map(c => authored_name(env: env, node: c))
     }
     let has_catch_all = any(arms, arm =>
       match arm_pattern(n: arm) {
