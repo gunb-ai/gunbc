@@ -165,13 +165,25 @@ pub struct BuildLog {
     pub lines: Vec<String>,
 }
 
-/// Host fixture input pins — mirrors `.dag` split of `claim_input_root` (evaluator input /
-/// `Inputs.root` for `run_emit_host`) vs `expected_eval_root` (rhs / `expected_value` for eval).
-/// W2 MVP fixture ignores pin semantics; W3 wires Node→host ABI and rejects mismatched pins.
+/// Claim-only pins at the `run_emit_host_*` substrate transport boundary (`Inputs.root` only).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmitHostTransportInputs {
+    pub claim_input_root: String,
+}
+
+/// Full emit-vs-eval fixture pins — claim + expected eval root (both required facts).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmitHostFixtureInputs {
     pub claim_input_root: String,
     pub expected_eval_root: String,
+}
+
+impl EmitHostFixtureInputs {
+    pub fn transport(&self) -> EmitHostTransportInputs {
+        EmitHostTransportInputs {
+            claim_input_root: self.claim_input_root.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -399,13 +411,28 @@ fn host_exit_from_bounded(output: &BoundedChildOutput, phase: HostPhase) -> Host
     }
 }
 
-/// Fail-closed when fixture pins are absent (W3 will require typed Node pins).
-pub fn validate_emit_host_fixture_inputs(
-    inputs: &EmitHostFixtureInputs,
+/// Fail-closed when `run_emit_host_*` transport is invoked without a claim input pin.
+///
+/// At the substrate `run_emit_host_*` boundary only `claim_input_root` is modeled in
+/// `Inputs.root` (`emit_host.dag` `run_test_claim_emit_vs_eval_for_claim` passes
+/// `fixture_inputs: Inputs { root: claim_input_root }`). `expected_eval_root` is evaluated
+/// separately and is not in scope on this call path — do not require it here.
+pub fn validate_emit_host_transport_inputs(
+    inputs: &EmitHostTransportInputs,
 ) -> Result<(), HostSetupFailure> {
     if inputs.claim_input_root.is_empty() {
         return Err(HostSetupFailure::EmptyClaimInputRoot);
     }
+    Ok(())
+}
+
+/// Fail-closed when emit-vs-eval / harness callers omit either pin (both must be distinct facts).
+///
+/// Production callers: `emit_host_bridge` transport and cross-target parity entrypoints.
+pub fn validate_emit_host_fixture_inputs(
+    inputs: &EmitHostFixtureInputs,
+) -> Result<(), HostSetupFailure> {
+    validate_emit_host_transport_inputs(&inputs.transport())?;
     if inputs.expected_eval_root.is_empty() {
         return Err(HostSetupFailure::EmptyExpectedEvalRoot);
     }
@@ -415,10 +442,10 @@ pub fn validate_emit_host_fixture_inputs(
 /// Compile `source` as a Rust binary crate in `work_dir`, run it, capture stdout/stderr.
 pub fn run_emit_host_rust(
     source: &str,
-    inputs: &EmitHostFixtureInputs,
+    inputs: &EmitHostTransportInputs,
     work_dir: &Path,
 ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
-    validate_emit_host_fixture_inputs(inputs)?;
+    validate_emit_host_transport_inputs(inputs)?;
     fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
         source: e.to_string(),
     })?;
@@ -481,10 +508,10 @@ pub fn run_emit_host_rust(
 /// Run `source` as a Go program in `work_dir` via `go run`, capture stdout/stderr.
 pub fn run_emit_host_go(
     source: &str,
-    inputs: &EmitHostFixtureInputs,
+    inputs: &EmitHostTransportInputs,
     work_dir: &Path,
 ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
-    validate_emit_host_fixture_inputs(inputs)?;
+    validate_emit_host_transport_inputs(inputs)?;
     fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
         source: e.to_string(),
     })?;
@@ -517,10 +544,10 @@ pub fn python3_binary() -> String {
 /// Run `source` as a Python script in `work_dir`, capture stdout/stderr.
 pub fn run_emit_host_python(
     source: &str,
-    inputs: &EmitHostFixtureInputs,
+    inputs: &EmitHostTransportInputs,
     work_dir: &Path,
 ) -> Result<EmitHostRunReceipt, HostSetupFailure> {
-    validate_emit_host_fixture_inputs(inputs)?;
+    validate_emit_host_transport_inputs(inputs)?;
     fs::create_dir_all(work_dir).map_err(|e| HostSetupFailure::WorkDirCreateFailed {
         source: e.to_string(),
     })?;
@@ -571,6 +598,16 @@ mod tests {
         assert_ne!(
             a, b,
             "concurrent eval calls must not share a work directory"
+        );
+    }
+
+    #[test]
+    fn validate_emit_host_transport_inputs_accepts_claim_only() {
+        assert!(
+            validate_emit_host_transport_inputs(&EmitHostTransportInputs {
+                claim_input_root: "claim".into(),
+            })
+            .is_ok()
         );
     }
 

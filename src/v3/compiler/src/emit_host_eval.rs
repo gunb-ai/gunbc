@@ -1,28 +1,40 @@
-//! T-22 substrate eval dispatch: `run_emit_host_{rust,go}` → `tools/emit_host_runner`.
+//! T-22 substrate eval dispatch for `v4.compiler.emit_host` → `emit_host_runner`.
 //!
-//! **Modeled authority:** `src/v4/compiler/emit_host.dag` + `v4.std.host_run` — host receipt
-//! assembly (`emit_host_receipt_from_source`, `host_logical_run_from_exit`) is evaluated via
-//! [`evaluator::eval_callable_declaration`], not re-encoded here. This module only maps runner
-//! facts → substrate operand carriers and invokes the eval hook.
+//! **Rust row (`run_emit_host_rust`):** runs the runner, then assembles receipts via
+//! `emit_host_receipt_from_source` / [`evaluator::eval_callable_declaration`] (substrate eval).
 //!
-//! **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** `EXPECTED_HAND_AUTHORED_NON_TEST`
-//! row in `sg0_census_test.rs` paired with `v4_emit_host_eval_dispatch_test.rs`. Explicit
-//! deferral: lane T-PB-B / `pb_rust_tests_outside_residual_zero` (checkable:
-//! `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag` TestClaim name and `ROADMAP.md`
-//! T-PB-B row) plus `emit_host.dag` T-22 rust/go
-//! intercepts. Dissolution: substrate Callable
-//! dispatch owns `run_emit_host_{rust,go}` without this intercept; retires with
-//! `emit_host_bridge.rs`.
+//! **Python row (`run_emit_host_python`):** runs the runner and hand-reifies `v4.std.host_run`
+//! carriers on this hook (substrate fn body stays `transport_not_wired`). Go remains unwired.
+//!
+//! **P5:** SG-0 census in `sg0_census_test.rs` (T-PB-B); dissolution when substrate owns all rows.
 
-use crate::dag::{ArrowBody, Dag, DeclarationId, LiteralBits, TypeConnective};
+use std::path::Path;
 
-/// Canonical substrate authority for `run_emit_host_{rust,go}` (see `src/v4/compiler/emit_host.dag`).
-const EMIT_HOST_DAG_AUTHORITY_SUFFIX: &str = "emit_host.dag";
-
+use crate::dag::{ArrowBody, AtomPayload, Dag, DeclarationId, LiteralBits, TypeConnective};
 use crate::evaluator::{EvalError, EvalStateStack, EvalStrategy, NamedField, Value};
 use emit_host_runner::{
-    ExitWitness, HostExit, HostExitOutcome, HostLogicalFailure, HostSetupFailure,
+    EmitHostFixtureInputs, EmitHostRunReceipt, EmitHostTransportInputs, ExitWitness, HostExit,
+    HostExitOutcome, HostLogicalFailure, HostSetupFailure,
 };
+
+type HostTransportRun =
+    fn(&str, &EmitHostTransportInputs, &Path) -> Result<EmitHostRunReceipt, HostSetupFailure>;
+
+/// Modeled carrier authority for `v4.std.diagnostic` (`emit_host.dag` import graph).
+const V4_STD_DIAGNOSTIC_AUTHORITY: &str = "src/v4/std/diagnostic.dag";
+/// Modeled carrier authority for `v4.std.witness` (`host_run.dag` / `emit_host.dag` imports).
+const V4_STD_WITNESS_AUTHORITY: &str = "src/v4/std/witness.dag";
+/// `List<T> = FreeMonoid<T>` alias authority (`host_run.dag` import graph).
+const V4_STD_COLLECTION_AUTHORITY: &str = "src/v4/std/collection.dag";
+/// `FreeMonoid` `Empty`/`Cons` arm authority for list reification.
+const V4_STD_ALGEBRA_AUTHORITY: &str = "src/v4/std/algebra.dag";
+/// `Byte` / `List<Bit>` authority (`host_run` `ByteString = List<Byte>`).
+const V4_STD_MACHINE_AUTHORITY: &str = "src/v4/std/machine.dag";
+/// `String` authority (`host_run` `BuildLog.lines: List<String>`).
+const V4_STD_TEXT_AUTHORITY: &str = "src/v4/std/text.dag";
+
+/// Canonical substrate authority for `run_emit_host_*` rows (see `src/v4/compiler/emit_host.dag`).
+const EMIT_HOST_DAG_AUTHORITY_SUFFIX: &str = "emit_host.dag";
 
 /// Eval-time dispatch for `run_emit_host_rust` (substrate `emit_host.dag` only).
 pub fn try_dispatch_emit_host_rust(
@@ -46,7 +58,7 @@ pub fn try_dispatch_emit_host_rust(
         Ok(source) => source,
         Err(err) => return Some(Err(err)),
     };
-    let inputs = match emit_host_fixture_inputs(dag, &operands[2], state, strategy) {
+    let inputs = match emit_host_transport_inputs(dag, &operands[2], state, strategy) {
         Ok(inputs) => inputs,
         Err(err) => return Some(Err(err)),
     };
@@ -94,87 +106,11 @@ pub fn try_dispatch_emit_host_rust(
     )
 }
 
-/// Eval-time dispatch for `run_emit_host_go` (substrate `emit_host.dag` only).
-pub fn try_dispatch_emit_host_go(
-    dag: &Dag,
-    callee_decl: DeclarationId,
-    operands: &[Value],
-    state: &mut EvalStateStack<Value>,
-    strategy: &EvalStrategy,
-) -> Option<Result<Value, EvalError>> {
-    if !is_run_emit_host_go_decl(dag, callee_decl) {
-        return None;
-    }
-    if operands.len() != 3 {
-        return Some(Err(EvalError::TransformArityMismatch {
-            expected: 3,
-            got: operands.len(),
-        }));
-    }
-
-    let source = match expect_string_operand(&operands[1]) {
-        Ok(source) => source,
-        Err(err) => return Some(Err(err)),
-    };
-    let inputs = match emit_host_fixture_inputs(dag, &operands[2], state, strategy) {
-        Ok(inputs) => inputs,
-        Err(err) => return Some(Err(err)),
-    };
-    let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_emit_host_go");
-    let receipt = match emit_host_runner::run_emit_host_go(source, &inputs, &work_dir) {
-        Ok(receipt) => receipt,
-        Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
-    };
-    let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
-        Ok(id) => id,
-        Err(err) => return Some(Err(err)),
-    };
-    let exit = match host_exit_value(dag, &receipt.exit) {
-        Ok(v) => v,
-        Err(err) => return Some(Err(err)),
-    };
-    let stdout = match byte_string_value(dag, &receipt.stdout_bytes) {
-        Ok(v) => v,
-        Err(err) => return Some(Err(err)),
-    };
-    let stderr = match byte_string_value(dag, &receipt.stderr_bytes) {
-        Ok(v) => v,
-        Err(err) => return Some(Err(err)),
-    };
-    let build_log = match build_log_value(dag, &receipt.build_log.lines) {
-        Ok(v) => v,
-        Err(err) => return Some(Err(err)),
-    };
-    Some(
-        crate::evaluator::eval_callable_declaration(
-            dag,
-            callee,
-            vec![
-                operands[0].clone(),
-                Value::LiteralValue(LiteralBits::String(receipt.source_text)),
-                exit,
-                stdout,
-                stderr,
-                build_log,
-            ],
-            state,
-            strategy,
-        )
-        .and_then(|value| accepted_variant(dag, value)),
-    )
-}
-
 fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
-    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_rust")
-}
-
-fn is_run_emit_host_go_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
-    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_go")
-}
-
-fn is_run_emit_host_decl(dag: &Dag, callee_decl: DeclarationId, name: &str) -> bool {
-    let callee = dag.declaration(callee_decl);
-    if callee.name.as_deref() != Some(name) {
+    let Some(callee) = dag.declaration_opt(&callee_decl) else {
+        return false;
+    };
+    if callee.name.as_deref() != Some("run_emit_host_rust") {
         return false;
     }
     if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_SUFFIX) {
@@ -199,6 +135,90 @@ fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
         })
 }
 
+/// Eval-time dispatch for substrate `run_emit_host_python` / future `run_emit_host_go`.
+///
+/// `run_emit_host_rust` is dispatched separately in `lib.rs` (needs eval state for
+/// `emit_host_receipt_from_source`). Keep this chain ordered when adding go.
+pub fn try_dispatch_emit_host(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    if let Some(result) = try_dispatch_emit_host_python(dag, callee_decl, operands, state, strategy)
+    {
+        return Some(result);
+    }
+    None
+}
+
+/// Eval-time dispatch for `run_emit_host_python` in `emit_host.dag`.
+pub fn try_dispatch_emit_host_python(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    try_dispatch_emit_host_transport(
+        dag,
+        callee_decl,
+        operands,
+        state,
+        strategy,
+        "run_emit_host_python",
+        "gunbc_eval_emit_host_python",
+        emit_host_runner::run_emit_host_python,
+    )
+}
+
+fn try_dispatch_emit_host_transport(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+    fn_name: &str,
+    work_dir_prefix: &str,
+    run: HostTransportRun,
+) -> Option<Result<Value, EvalError>> {
+    let Some(callee) = dag.declaration_opt(&callee_decl) else {
+        return None;
+    };
+    if callee.name.as_deref() != Some(fn_name)
+        || !callee.span.file.ends_with("v4/compiler/emit_host.dag")
+    {
+        return None;
+    }
+    if operands.len() != 3 {
+        return Some(Err(EvalError::TransformArityMismatch {
+            expected: 3,
+            got: operands.len(),
+        }));
+    }
+
+    let source = match expect_string_operand(&operands[1]) {
+        Ok(source) => source,
+        Err(err) => return Some(Err(err)),
+    };
+    let inputs = match emit_host_transport_inputs(dag, &operands[2], state, strategy) {
+        Ok(inputs) => inputs,
+        Err(err) => return Some(Err(err)),
+    };
+    let work_dir = emit_host_runner::unique_work_dir(work_dir_prefix);
+    let receipt = match run(source, &inputs, &work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => {
+            return Some(run_emit_host_setup_rejected(dag, &setup));
+        }
+    };
+    Some(
+        emit_host_receipt_value(dag, &operands[0], receipt)
+            .and_then(|value| accepted_variant(dag, value)),
+    )
+}
+
 fn run_emit_host_setup_rejected(dag: &Dag, setup: &HostSetupFailure) -> Result<Value, EvalError> {
     rejected_outcome_variant(
         dag,
@@ -220,14 +240,14 @@ fn emit_host_fixture_inputs(
     value: &Value,
     state: &mut EvalStateStack<Value>,
     strategy: &EvalStrategy,
-) -> Result<emit_host_runner::EmitHostFixtureInputs, EvalError> {
+) -> Result<EmitHostFixtureInputs, EvalError> {
     let claim_root = inputs_root_field(value)?;
     let claim_pin_source =
         inputs_optional_present_node_field(dag, value, "host_claim_pin")?.unwrap_or(claim_root);
     let claim_pin = host_pin_from_inputs_root(dag, claim_pin_source, state, strategy)?;
     let expected_root = inputs_expected_eval_root_field(dag, value)?;
     let expected_pin = host_pin_from_inputs_root(dag, expected_root, state, strategy)?;
-    Ok(emit_host_runner::EmitHostFixtureInputs {
+    Ok(EmitHostFixtureInputs {
         claim_input_root: claim_pin,
         expected_eval_root: expected_pin,
     })
@@ -444,19 +464,57 @@ fn record_fields(value: &Value) -> Option<&[NamedField]> {
     }
 }
 
-fn variant_decl_id(
+/// Build claim-only transport pins for `run_emit_host_*` substrate rows.
+///
+/// Operand `Inputs` at this boundary carries only `root` (claim pin). Expected eval root is
+/// modeled separately on emit-vs-eval harness paths via [`emit_host_fixture_inputs`].
+fn emit_host_transport_inputs(
     dag: &Dag,
+    fixture_inputs: &Value,
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Result<EmitHostTransportInputs, EvalError> {
+    let claim_root = inputs_root_field(fixture_inputs)?;
+    let claim_pin_source =
+        inputs_optional_present_node_field(dag, fixture_inputs, "host_claim_pin")?
+            .unwrap_or(claim_root);
+    let claim_input_root = host_pin_from_inputs_root(dag, claim_pin_source, state, strategy)?;
+    Ok(EmitHostTransportInputs { claim_input_root })
+}
+
+/// Resolve a top-level v4 std carrier by **source file** (not `declaration_by_name` rank).
+///
+/// Bootstrap `Dag::new()` also embeds `src/v3/std/dimensions.dag` `Witness<Carrier>`
+/// (`Inhabits` / `Violates`). Host-run reification must use `v4.std.witness.Witness`
+/// (`Holds` / `Violates`) from the emit-host import graph.
+fn v4_carrier_decl_id(
+    dag: &Dag,
+    authority_file_suffix: &str,
+    type_name: &str,
+) -> Result<DeclarationId, EvalError> {
+    dag.declarations()
+        .iter()
+        .filter(|decl| {
+            decl.name.as_deref() == Some(type_name)
+                && decl.span.file.ends_with(authority_file_suffix)
+        })
+        .max_by_key(|decl| std::cmp::Reverse(decl.id.raw()))
+        .map(|decl| decl.id)
+        .ok_or(EvalError::BadTransformOperands {
+            reason: "v4 carrier type not found in modeled authority file",
+        })
+}
+
+fn v4_carrier_variant_tag(
+    dag: &Dag,
+    authority_file_suffix: &str,
     type_name: &str,
     variant_name: &str,
 ) -> Result<DeclarationId, EvalError> {
-    let Some(decl) = dag.declaration_by_name(type_name) else {
+    let decl_id = v4_carrier_decl_id(dag, authority_file_suffix, type_name)?;
+    let TypeConnective::Disj { variants } = &dag.declaration(decl_id).connective else {
         return Err(EvalError::BadTransformOperands {
-            reason: "variant carrier type not found",
-        });
-    };
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        return Err(EvalError::BadTransformOperands {
-            reason: "variant carrier is not a sum type",
+            reason: "v4 carrier is not a sum type",
         });
     };
     variants
@@ -464,21 +522,22 @@ fn variant_decl_id(
         .find(|variant| variant.label == variant_name)
         .map(|variant| variant.ty)
         .ok_or(EvalError::BadTransformOperands {
-            reason: "variant arm not found",
+            reason: "v4 carrier variant arm not found in modeled authority file",
         })
+}
+
+fn is_v4_std_authority_file(file: &str) -> bool {
+    file.contains("src/v4/std/")
 }
 
 fn list_instantiation_for_element(
     dag: &Dag,
     element_ty: DeclarationId,
 ) -> Result<DeclarationId, EvalError> {
-    let list_decl = dag
-        .declaration_by_name("List")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "List type not found",
-        })?;
+    let list_id = v4_carrier_decl_id(dag, V4_STD_COLLECTION_AUTHORITY, "List")?;
     dag.declarations()
         .iter()
+        .filter(|decl| is_v4_std_authority_file(&decl.span.file))
         .find_map(|decl| {
             let TypeConnective::Instantiation {
                 template,
@@ -487,12 +546,56 @@ fn list_instantiation_for_element(
             else {
                 return None;
             };
-            (*template == list_decl.id && arguments.len() == 1 && arguments[0].value == element_ty)
+            (*template == list_id && arguments.len() == 1 && arguments[0].value == element_ty)
                 .then_some(decl.id)
         })
         .ok_or(EvalError::BadTransformOperands {
-            reason: "List<element> instantiation not found in dag",
+            reason: "v4 List<element> instantiation not found in modeled authority files",
         })
+}
+
+fn list_element_ty(dag: &Dag, list_ty: DeclarationId) -> Result<DeclarationId, EvalError> {
+    let list_id = v4_carrier_decl_id(dag, V4_STD_COLLECTION_AUTHORITY, "List")?;
+    let free_monoid_id = v4_carrier_decl_id(dag, V4_STD_ALGEBRA_AUTHORITY, "FreeMonoid").ok();
+    peel_list_element_ty(dag, list_ty, list_id, free_monoid_id, 0)
+}
+
+fn peel_list_element_ty(
+    dag: &Dag,
+    ty: DeclarationId,
+    list_id: DeclarationId,
+    free_monoid_id: Option<DeclarationId>,
+    depth: usize,
+) -> Result<DeclarationId, EvalError> {
+    if depth >= 8 {
+        return Err(EvalError::BadTransformOperands {
+            reason: "List<elem> alias peel depth exceeded",
+        });
+    }
+    match &dag.declaration(ty).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.len() == 1 => {
+            if *template == list_id || free_monoid_id == Some(*template) {
+                Ok(arguments[0].value)
+            } else {
+                peel_list_element_ty(dag, *template, list_id, free_monoid_id, depth + 1)
+            }
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            peel_list_element_ty(dag, *next, list_id, free_monoid_id, depth + 1)
+        }
+        _ => Err(EvalError::BadTransformOperands {
+            reason: "expected List<elem> instantiation",
+        }),
+    }
+}
+
+/// `Empty` / `Cons` arm type from `v4.std.algebra.FreeMonoid` (not bootstrap `List`).
+fn v4_free_monoid_variant_arm_type(dag: &Dag, variant: &str) -> Result<DeclarationId, EvalError> {
+    v4_carrier_variant_tag(dag, V4_STD_ALGEBRA_AUTHORITY, "FreeMonoid", variant)
 }
 
 fn find_list_variant_tag(
@@ -500,40 +603,11 @@ fn find_list_variant_tag(
     list_ty: DeclarationId,
     variant: &str,
 ) -> Result<DeclarationId, EvalError> {
-    let list_decl = dag
-        .declaration_by_name("List")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "List type not found",
-        })?;
-    let arm_ty = match &list_decl.connective {
-        TypeConnective::Disj { variants } => {
-            variants
-                .iter()
-                .find(|v| v.label == variant)
-                .ok_or(EvalError::BadTransformOperands {
-                    reason: "List variant arm not found",
-                })?
-                .ty
-        }
-        _ => {
-            return Err(EvalError::BadTransformOperands {
-                reason: "List is not a sum type",
-            });
-        }
-    };
-    let elem_ty = match &dag.declaration(list_ty).connective {
-        TypeConnective::Instantiation {
-            template,
-            arguments,
-        } if *template == list_decl.id && arguments.len() == 1 => arguments[0].value,
-        _ => {
-            return Err(EvalError::BadTransformOperands {
-                reason: "expected List<elem> instantiation",
-            });
-        }
-    };
+    let elem_ty = list_element_ty(dag, list_ty)?;
+    let arm_ty = v4_free_monoid_variant_arm_type(dag, variant)?;
     dag.declarations()
         .iter()
+        .filter(|decl| is_v4_std_authority_file(&decl.span.file))
         .find_map(|decl| {
             let TypeConnective::Instantiation {
                 template,
@@ -546,7 +620,7 @@ fn find_list_variant_tag(
                 .then_some(decl.id)
         })
         .ok_or(EvalError::BadTransformOperands {
-            reason: "List variant constructor tag not found",
+            reason: "v4 FreeMonoid variant constructor tag not found in modeled authority files",
         })
 }
 
@@ -601,33 +675,23 @@ fn bool_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
 }
 
 fn byte_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
-    let byte_ty = dag
-        .declaration_by_name("Byte")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "Byte type not found",
-        })?
-        .id;
+    let byte_ty = v4_carrier_decl_id(dag, V4_STD_MACHINE_AUTHORITY, "Byte")?;
     list_instantiation_for_element(dag, byte_ty)
 }
 
 fn string_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
-    list_instantiation_for_element(
-        dag,
-        dag.declaration_by_name("String")
-            .ok_or(EvalError::BadTransformOperands {
-                reason: "String type not found",
-            })?
-            .id,
-    )
+    let string_ty = v4_carrier_decl_id(dag, V4_STD_TEXT_AUTHORITY, "String")?;
+    list_instantiation_for_element(dag, string_ty)
 }
 
 fn byte_value(dag: &Dag, byte: u8) -> Result<Value, EvalError> {
     let bits: Vec<Value> = (0..8)
         .map(|shift| Value::LiteralValue(LiteralBits::Bool((byte >> (7 - shift)) & 1 != 0)))
         .collect();
+    let bits_list = list_from_values(dag, bool_list_ty(dag)?, bits)?;
     Ok(Value::RecordValue(vec![NamedField {
         label: "bits".to_string(),
-        value: list_from_values(dag, bool_list_ty(dag)?, bits)?,
+        value: bits_list,
     }]))
 }
 
@@ -653,26 +717,16 @@ fn build_log_value(dag: &Dag, lines: &[String]) -> Result<Value, EvalError> {
     }]))
 }
 
-fn diagnostic_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
-    let diagnostic_ty = dag
-        .declaration_by_name("Diagnostic")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "Diagnostic type not found",
-        })?
-        .id;
-    list_instantiation_for_element(dag, diagnostic_ty)
-}
-
 fn diagnostics_none_variant(dag: &Dag) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Diagnostics", "None")?,
+        tag: v4_carrier_variant_tag(dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Diagnostics", "None")?,
         payload: Box::new(Value::RecordValue(Vec::new())),
     })
 }
 
 fn accepted_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Outcome", "Accepted")?,
+        tag: v4_carrier_variant_tag(dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Outcome", "Accepted")?,
         payload: Box::new(Value::RecordValue(vec![
             NamedField {
                 label: "value".to_string(),
@@ -688,12 +742,17 @@ fn accepted_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
 
 fn rejected_outcome_variant(dag: &Dag, diagnostics: Value) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Outcome", "Rejected")?,
+        tag: v4_carrier_variant_tag(dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Outcome", "Rejected")?,
         payload: Box::new(Value::RecordValue(vec![NamedField {
             label: "diagnostics".to_string(),
             value: diagnostics,
         }])),
     })
+}
+
+fn diagnostic_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
+    let diagnostic_ty = v4_carrier_decl_id(dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Diagnostic")?;
+    list_instantiation_for_element(dag, diagnostic_ty)
 }
 
 fn non_empty_diagnostics_singleton(dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
@@ -711,11 +770,21 @@ fn non_empty_diagnostics_singleton(dag: &Dag, diagnostic: Value) -> Result<Value
 
 fn correction_unavailable_variant(dag: &Dag) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Correction", "Unavailable")?,
+        tag: v4_carrier_variant_tag(
+            dag,
+            V4_STD_DIAGNOSTIC_AUTHORITY,
+            "Correction",
+            "Unavailable",
+        )?,
         payload: Box::new(Value::RecordValue(vec![NamedField {
             label: "reason".to_string(),
             value: Value::VariantValue {
-                tag: variant_decl_id(dag, "NoCorrectionReason", "ExternalContractUnknown")?,
+                tag: v4_carrier_variant_tag(
+                    dag,
+                    V4_STD_DIAGNOSTIC_AUTHORITY,
+                    "NoCorrectionReason",
+                    "ExternalContractUnknown",
+                )?,
                 payload: Box::new(Value::RecordValue(vec![])),
             },
         }])),
@@ -724,7 +793,7 @@ fn correction_unavailable_variant(dag: &Dag) -> Result<Value, EvalError> {
 
 fn port_locus_value(dag: &Dag, port: &str) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Locus", "PortLocus")?,
+        tag: v4_carrier_variant_tag(dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Locus", "PortLocus")?,
         payload: Box::new(Value::RecordValue(vec![NamedField {
             label: "anchor".to_string(),
             value: Value::RecordValue(vec![NamedField {
@@ -752,6 +821,18 @@ fn emit_host_port_diagnostic(dag: &Dag, reason: &str) -> Result<Value, EvalError
     ]))
 }
 
+fn host_logical_failure_diagnostic(
+    dag: &Dag,
+    failure: &HostLogicalFailure,
+) -> Result<Value, EvalError> {
+    let reason = match failure {
+        HostLogicalFailure::TimedOut { .. } => "emit_host_exit_timed_out",
+        HostLogicalFailure::NoExitStatus { .. } => "emit_host_exit_no_status",
+        HostLogicalFailure::ExitedNonzero { .. } => "emit_host_exit_nonzero",
+    };
+    emit_host_port_diagnostic(dag, reason)
+}
+
 fn host_setup_failure_reason(failure: &HostSetupFailure) -> &'static str {
     match failure {
         HostSetupFailure::SpawnFailed { .. } => "emit_host_setup_spawn_failed",
@@ -767,18 +848,6 @@ fn host_setup_failure_reason(failure: &HostSetupFailure) -> &'static str {
     }
 }
 
-fn host_logical_failure_diagnostic(
-    dag: &Dag,
-    failure: &HostLogicalFailure,
-) -> Result<Value, EvalError> {
-    let reason = match failure {
-        HostLogicalFailure::TimedOut { .. } => "emit_host_exit_timed_out",
-        HostLogicalFailure::NoExitStatus { .. } => "emit_host_exit_no_status",
-        HostLogicalFailure::ExitedNonzero { .. } => "emit_host_exit_nonzero",
-    };
-    emit_host_port_diagnostic(dag, reason)
-}
-
 fn host_setup_failure_diagnostic(
     dag: &Dag,
     failure: &HostSetupFailure,
@@ -788,7 +857,7 @@ fn host_setup_failure_diagnostic(
 
 fn witness_holds_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Witness", "Holds")?,
+        tag: v4_carrier_variant_tag(dag, V4_STD_WITNESS_AUTHORITY, "Witness", "Holds")?,
         payload: Box::new(Value::RecordValue(vec![NamedField {
             label: "value".to_string(),
             value,
@@ -798,12 +867,19 @@ fn witness_holds_variant(dag: &Dag, value: Value) -> Result<Value, EvalError> {
 
 fn witness_violates_variant(dag: &Dag, diagnostic: Value) -> Result<Value, EvalError> {
     Ok(Value::VariantValue {
-        tag: variant_decl_id(dag, "Witness", "Violates")?,
+        tag: v4_carrier_variant_tag(dag, V4_STD_WITNESS_AUTHORITY, "Witness", "Violates")?,
         payload: Box::new(Value::RecordValue(vec![NamedField {
             label: "diagnostic".to_string(),
             value: diagnostic,
         }])),
     })
+}
+
+fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
+    Ok(Value::RecordValue(vec![NamedField {
+        label: "outcome".to_string(),
+        value: host_exit_outcome_value(dag, exit)?,
+    }]))
 }
 
 fn host_exit_outcome_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
@@ -829,89 +905,87 @@ fn host_exit_outcome_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalErro
     }
 }
 
-fn host_exit_value(dag: &Dag, exit: &HostExit) -> Result<Value, EvalError> {
-    Ok(Value::RecordValue(vec![NamedField {
-        label: "outcome".to_string(),
-        value: host_exit_outcome_value(dag, exit)?,
-    }]))
+/// Mirrors `host_logical_run_from_exit` in `v4.std.host_run`.
+fn host_logical_run_outcome_value(
+    dag: &Dag,
+    exit: &HostExit,
+    stdout_bytes: &[u8],
+) -> Result<Value, EvalError> {
+    match &exit.outcome {
+        HostExitOutcome::Accepted(ExitWitness::Holds(_)) => {
+            let stdout = Value::RecordValue(vec![NamedField {
+                label: "bytes".to_string(),
+                value: byte_string_value(dag, stdout_bytes)?,
+            }]);
+            accepted_variant(
+                dag,
+                Value::RecordValue(vec![NamedField {
+                    label: "stdout".to_string(),
+                    value: stdout,
+                }]),
+            )
+        }
+        HostExitOutcome::Accepted(ExitWitness::Violates(failure)) => rejected_outcome_variant(
+            dag,
+            non_empty_diagnostics_singleton(dag, host_logical_failure_diagnostic(dag, failure)?)?,
+        ),
+        HostExitOutcome::Rejected(setup) => rejected_outcome_variant(
+            dag,
+            non_empty_diagnostics_singleton(dag, host_setup_failure_diagnostic(dag, setup)?)?,
+        ),
+    }
+}
+
+fn emit_host_receipt_value(
+    dag: &Dag,
+    target: &Value,
+    receipt: EmitHostRunReceipt,
+) -> Result<Value, EvalError> {
+    let exit = host_exit_outcome_value(dag, &receipt.exit)?;
+    let logical_run = host_logical_run_outcome_value(dag, &receipt.exit, &receipt.stdout_bytes)?;
+    Ok(Value::RecordValue(vec![
+        NamedField {
+            label: "target".to_string(),
+            value: target.clone(),
+        },
+        NamedField {
+            label: "source_text".to_string(),
+            value: Value::LiteralValue(LiteralBits::String(receipt.source_text)),
+        },
+        NamedField {
+            label: "exit".to_string(),
+            value: Value::RecordValue(vec![NamedField {
+                label: "outcome".to_string(),
+                value: exit,
+            }]),
+        },
+        NamedField {
+            label: "logical_run".to_string(),
+            value: logical_run,
+        },
+        NamedField {
+            label: "stderr_bytes".to_string(),
+            value: byte_string_value(dag, &receipt.stderr_bytes)?,
+        },
+        NamedField {
+            label: "build_log".to_string(),
+            value: Value::RecordValue(vec![NamedField {
+                label: "lines".to_string(),
+                value: string_list_value(dag, &receipt.build_log.lines)?,
+            }]),
+        },
+    ]))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{AtomPayload, BindNodeId, Dag, Declaration, DeclarationId, TypeConnective};
+    use crate::compile_to_dag_modules_in_order;
+    use crate::dag::{AtomPayload, Dag, Declaration, TypeConnective};
     use crate::diagnostics::SourceSpan;
-    use crate::evaluator::{EvalFrame, InputEvaluationOrder};
+    use crate::evaluator::{EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder};
+    use crate::CompileError;
     use emit_host_runner::HostSetupFailure;
-
-    fn span(file: &str) -> SourceSpan {
-        SourceSpan::new(file, 0, 1)
-    }
-
-    fn atom_decl(dag: &mut Dag, name: &str, file: &str) -> DeclarationId {
-        let id = dag.alloc_declaration_id();
-        dag.push_declaration(Declaration {
-            id,
-            name: Some(name.to_string()),
-            connective: TypeConnective::Atom(AtomPayload::TypeParam(name.to_string())),
-            type_params: Vec::new(),
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: span(file),
-        });
-        id
-    }
-
-    fn run_emit_host_decl(dag: &mut Dag, name: &str, file: &str) -> DeclarationId {
-        let target = atom_decl(dag, "TargetModel", file);
-        let source = atom_decl(dag, "TargetSource", file);
-        let inputs = atom_decl(dag, "Inputs", file);
-        let output = atom_decl(dag, "OutcomeEmitHostRunReceipt", file);
-        let body_value = dag.push_value(LiteralBits::Bool(false), span(file));
-        let bind = dag.push_bind(
-            "transport_not_wired_body",
-            body_value,
-            Vec::new(),
-            span(file),
-        );
-        let id = dag.alloc_declaration_id();
-        dag.push_declaration(Declaration {
-            id,
-            name: Some(name.to_string()),
-            connective: TypeConnective::Arrow {
-                inputs: vec![target, source, inputs],
-                output,
-                body: ArrowBody::UserDefined(
-                    BindNodeId::from_bind_node(dag, bind).expect("bind body"),
-                ),
-            },
-            type_params: Vec::new(),
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: span(file),
-        });
-        id
-    }
-
-    fn empty_state() -> EvalStateStack<Value> {
-        EvalStateStack::with_root_frame(EvalFrame::empty())
-    }
-
-    fn eager_strategy() -> EvalStrategy {
-        EvalStrategy::ApplicativeOrder {
-            input_order: InputEvaluationOrder::LeftFirst,
-        }
-    }
 
     fn optional_variant(dag: &Dag, name: &str, payload: Value) -> Value {
         let tag = dag
@@ -937,6 +1011,44 @@ mod tests {
         optional_variant(dag, "Some", value)
     }
 
+    fn empty_eval_state() -> EvalStateStack<Value> {
+        EvalStateStack::with_root_frame(EvalFrame::empty())
+    }
+
+    fn applicative_strategy() -> EvalStrategy {
+        EvalStrategy::ApplicativeOrder {
+            input_order: InputEvaluationOrder::LeftFirst,
+        }
+    }
+
+    const V4_NODE_DAG: &str = include_str!("../../../v4/std/node.dag");
+    const V4_NODE_PATH: &str = "src/v4/std/node.dag";
+    const V4_ALGEBRA_DAG: &str = include_str!("../../../v4/std/algebra.dag");
+    const V4_ALGEBRA_PATH: &str = "src/v4/std/algebra.dag";
+    const V4_DIAGNOSTIC_DAG: &str = include_str!("../../../v4/std/diagnostic.dag");
+    const V4_DIAGNOSTIC_PATH: &str = "src/v4/std/diagnostic.dag";
+    const V4_WITNESS_DAG: &str = include_str!("../../../v4/std/witness.dag");
+    const V4_WITNESS_PATH: &str = "src/v4/std/witness.dag";
+
+    fn dag_with_v4_emit_host_carrier_authorities() -> Dag {
+        let sources = [
+            (V4_NODE_DAG, V4_NODE_PATH),
+            (V4_ALGEBRA_DAG, V4_ALGEBRA_PATH),
+            (V4_DIAGNOSTIC_DAG, V4_DIAGNOSTIC_PATH),
+            (V4_WITNESS_DAG, V4_WITNESS_PATH),
+        ];
+        match compile_to_dag_modules_in_order(&sources) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                panic!(
+                    "emit_host eval carrier modules: semantic errors: {:?}",
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                );
+            }
+            Err(other) => panic!("emit_host eval carrier modules: {other:?}"),
+        }
+    }
+
     #[test]
     fn emit_host_fixture_inputs_projects_distinct_claim_and_expected_roots() {
         let dag = Dag::new();
@@ -953,10 +1065,8 @@ mod tests {
                 ),
             },
         ]);
-        let mut state = EvalStateStack::with_root_frame(EvalFrame::empty());
-        let strategy = EvalStrategy::ApplicativeOrder {
-            input_order: InputEvaluationOrder::LeftFirst,
-        };
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
         let pins =
             emit_host_fixture_inputs(&dag, &inputs, &mut state, &strategy).expect("Inputs pins");
         assert_eq!(pins.claim_input_root, "claim_pin");
@@ -986,10 +1096,8 @@ mod tests {
                 ),
             },
         ]);
-        let mut state = EvalStateStack::with_root_frame(EvalFrame::empty());
-        let strategy = EvalStrategy::ApplicativeOrder {
-            input_order: InputEvaluationOrder::LeftFirst,
-        };
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
         let pins =
             emit_host_fixture_inputs(&dag, &inputs, &mut state, &strategy).expect("Inputs pins");
         assert_eq!(pins.claim_input_root, "host_claim_pin");
@@ -997,82 +1105,224 @@ mod tests {
     }
 
     #[test]
-    fn emit_host_fixture_inputs_rejects_malformed_host_claim_pin() {
+    fn v4_witness_variant_resolution_uses_witness_dag_not_dimensions() {
+        let dag = dag_with_v4_emit_host_carrier_authorities();
+        assert!(
+            v4_carrier_variant_tag(&dag, V4_STD_WITNESS_AUTHORITY, "Witness", "Holds").is_ok(),
+            "v4.std.witness.Witness must expose Holds"
+        );
+        assert!(
+            v4_carrier_variant_tag(&dag, V4_STD_WITNESS_AUTHORITY, "Witness", "Inhabits").is_err(),
+            "dimensions.dag Witness must not satisfy Holds lookup"
+        );
+    }
+
+    #[test]
+    fn try_dispatch_emit_host_python_ignores_unrelated_callable() {
+        let mut dag = Dag::empty();
+        let unrelated_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unrelated_id,
+            name: Some("unrelated_callable".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
+                "probe".to_string(),
+            )),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("unrelated.dag", 0, 1),
+        });
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+        assert!(
+            try_dispatch_emit_host_python(&dag, unrelated_id, &[], &mut state, &strategy).is_none(),
+            "unrelated callable must not intercept eval dispatch"
+        );
+        assert!(
+            try_dispatch_emit_host_python(
+                &dag,
+                DeclarationId::test_raw(999),
+                &[],
+                &mut state,
+                &strategy
+            )
+            .is_none(),
+            "missing declaration must not intercept eval dispatch"
+        );
+    }
+
+    #[test]
+    fn emit_host_transport_inputs_carries_claim_only_at_transport_boundary() {
         let dag = Dag::new();
-        let inputs = Value::RecordValue(vec![
-            NamedField {
+        let inputs = Value::RecordValue(vec![NamedField {
+            label: "root".to_string(),
+            value: Value::LiteralValue(LiteralBits::String("claim_only".to_string())),
+        }]);
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+        let pins =
+            emit_host_transport_inputs(&dag, &inputs, &mut state, &strategy).expect("claim pin");
+        assert_eq!(pins.claim_input_root, "claim_only");
+        assert!(
+            emit_host_runner::validate_emit_host_transport_inputs(&pins).is_ok(),
+            "transport validation must accept claim-only pins"
+        );
+    }
+
+    #[test]
+    fn emit_host_fixture_inputs_rejects_missing_root_field() {
+        let inputs = Value::RecordValue(vec![NamedField {
+            label: "not_root".to_string(),
+            value: Value::LiteralValue(LiteralBits::String("x".to_string())),
+        }]);
+        let dag = Dag::new();
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+        let err = emit_host_transport_inputs(&dag, &inputs, &mut state, &strategy).unwrap_err();
+        assert!(matches!(
+            err,
+            EvalError::BadTransformOperands {
+                reason: "expected Inputs.root field"
+            }
+        ));
+    }
+
+    #[test]
+    fn emit_host_fixture_inputs_rejects_non_record_operand() {
+        let dag = Dag::new();
+        let mut state = empty_eval_state();
+        let strategy = applicative_strategy();
+        let err = emit_host_transport_inputs(
+            &dag,
+            &Value::LiteralValue(LiteralBits::String("not_inputs".to_string())),
+            &mut state,
+            &strategy,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            EvalError::BadTransformOperands {
+                reason: "expected Inputs record"
+            }
+        ));
+    }
+
+    /// Five-byte MVP-2 stdout (same contract as `v4_emit_host_harness_test`).
+    const EVAL_DISPATCH_PYTHON_FIXTURE: &str =
+        "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n";
+
+    fn run_emit_host_python_decl(dag: &mut Dag) -> DeclarationId {
+        let callee_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: callee_decl,
+            name: Some("run_emit_host_python".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
+                "run_emit_host_python".to_string(),
+            )),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v4/compiler/emit_host.dag", 207, 216),
+        });
+        callee_decl
+    }
+
+    fn eval_dispatch_operands() -> [Value; 3] {
+        [
+            Value::LiteralValue(LiteralBits::String("eval_target_stub".to_string())),
+            Value::LiteralValue(LiteralBits::String(
+                EVAL_DISPATCH_PYTHON_FIXTURE.to_string(),
+            )),
+            Value::RecordValue(vec![NamedField {
                 label: "root".to_string(),
-                value: Value::LiteralValue(LiteralBits::String("eval_root_pin".to_string())),
-            },
-            NamedField {
-                label: "expected_eval_root".to_string(),
-                value: optional_present_value(
-                    &dag,
-                    Value::LiteralValue(LiteralBits::String("expected_eval_pin".to_string())),
-                ),
-            },
-            NamedField {
-                label: "host_claim_pin".to_string(),
-                value: Value::LiteralValue(LiteralBits::String("not_optional".to_string())),
-            },
-        ]);
-        let mut state = EvalStateStack::with_root_frame(EvalFrame::empty());
+                value: Value::LiteralValue(LiteralBits::String("eval_claim_root".to_string())),
+            }]),
+        ]
+    }
+
+    #[test]
+    fn run_emit_host_python_eval_dispatch_via_evaluator_callable_transform() {
+        use crate::dag::TransformTarget;
+        use crate::evaluator::{
+            eval_node, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder,
+        };
+
+        let mut dag = dag_with_v4_emit_host_carrier_authorities();
+        let callee_decl = run_emit_host_python_decl(&mut dag);
+        let span = SourceSpan::new("emit_host_eval_dispatch_test.v3", 0, 1);
+        let target_port = dag.alloc_port(None);
+        let source_port = dag.alloc_port(None);
+        let inputs_port = dag.alloc_port(None);
+        let call_output = dag.push_transform(
+            TransformTarget::Callable(callee_decl),
+            vec![target_port, source_port, inputs_port],
+            span.clone(),
+        );
+        let entry = dag
+            .port(call_output)
+            .produced_by
+            .expect("callable transform must produce output port");
+        let operands = eval_dispatch_operands();
+        let frame = EvalFrame::from_bindings([
+            (target_port, operands[0].clone()),
+            (source_port, operands[1].clone()),
+            (inputs_port, operands[2].clone()),
+        ])
+        .expect("eval operand bindings");
+        let mut state = EvalStateStack::with_root_frame(frame);
         let strategy = EvalStrategy::ApplicativeOrder {
             input_order: InputEvaluationOrder::LeftFirst,
         };
-        let err = emit_host_fixture_inputs(&dag, &inputs, &mut state, &strategy)
-            .expect_err("malformed host_claim_pin must fail closed");
-        assert_eq!(
-            err,
-            EvalError::BadTransformOperands {
-                reason: "expected Inputs optional field to be Optional variant"
-            }
-        );
-    }
 
-    #[test]
-    fn host_setup_failure_reason_maps_variant() {
+        let via_eval = eval_node(&dag, entry, &mut state, &strategy).expect("eval dispatch");
         assert_eq!(
-            host_setup_failure_reason(&HostSetupFailure::EmptyClaimInputRoot),
-            "emit_host_setup_empty_claim_input_root"
+            state.frames_outer_to_inner().len(),
+            1,
+            "eval frame must pop"
         );
-    }
 
-    #[test]
-    fn go_eval_dispatch_claims_only_emit_host_authority_decl() {
-        let mut dag = Dag::new();
-        let go_decl = run_emit_host_decl(
-            &mut dag,
-            "run_emit_host_go",
-            "src/v4/compiler/emit_host.dag",
-        );
-        let lookalike_decl =
-            run_emit_host_decl(&mut dag, "run_emit_host_go", "src/v4/compiler/other.dag");
-        let rust_decl = run_emit_host_decl(
-            &mut dag,
-            "run_emit_host_rust",
-            "src/v4/compiler/emit_host.dag",
-        );
-        let mut state = empty_state();
-        let strategy = eager_strategy();
-
-        let claimed =
-            try_dispatch_emit_host_go(&dag, go_decl, &[], &mut state, &strategy).expect("claimed");
+        let Value::VariantValue { tag, payload } = &via_eval else {
+            panic!("expected Outcome variant, got {via_eval:?}");
+        };
         assert_eq!(
-            claimed,
-            Err(EvalError::TransformArityMismatch {
-                expected: 3,
-                got: 0
-            }),
-            "the Go hook must claim the substrate run_emit_host_go declaration before user-body eval"
+            v4_carrier_variant_tag(&dag, V4_STD_DIAGNOSTIC_AUTHORITY, "Outcome", "Accepted")
+                .expect("v4.std.diagnostic.Outcome::Accepted"),
+            *tag,
+            "evaluator Callable dispatch must reify Accepted host receipt"
         );
-        assert!(
-            try_dispatch_emit_host_go(&dag, lookalike_decl, &[], &mut state, &strategy).is_none(),
-            "same-name declarations outside emit_host.dag must not be intercepted"
-        );
-        assert!(
-            try_dispatch_emit_host_go(&dag, rust_decl, &[], &mut state, &strategy).is_none(),
-            "run_emit_host_rust must stay on the Rust dispatch hook"
+        let Value::RecordValue(outcome_fields) = &**payload else {
+            panic!("expected Accepted payload record");
+        };
+        let Value::RecordValue(receipt_fields) = &outcome_fields
+            .iter()
+            .find(|field| field.label == "value")
+            .expect("Accepted.value")
+            .value
+        else {
+            panic!("expected EmitHostRunReceipt record");
+        };
+        let source = receipt_fields
+            .iter()
+            .find(|field| field.label == "source_text")
+            .expect("receipt.source_text")
+            .value
+            .clone();
+        assert_eq!(
+            source,
+            Value::LiteralValue(LiteralBits::String(
+                EVAL_DISPATCH_PYTHON_FIXTURE.to_string()
+            )),
+            "eval dispatch must invoke emit_host_runner with the source operand"
         );
     }
 }
