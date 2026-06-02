@@ -123,6 +123,11 @@ fn v4_source_authority_contract_uses_source_and_serializer_authorities() {
         "{SOURCE_AUTHORITY_PATH}: B-min law must name normalized .dag source AST explicitly"
     );
     assert!(
+        SOURCE_AUTHORITY_DAG.contains("type NormalizedDagSourceAst {\n  tree: NormalizedTree")
+            && SOURCE_AUTHORITY_DAG.contains("o: normalize(parse_tree: ast.tree)"),
+        "{SOURCE_AUTHORITY_PATH}: normalized source AST must consume the compiler normalize stage"
+    );
+    assert!(
         surface_declares_type(&module, "NormalizedDagSourceParsePrintLaw"),
         "{SOURCE_AUTHORITY_PATH}: B-min law must model parse/print over normalized source AST"
     );

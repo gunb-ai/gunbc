@@ -206,43 +206,48 @@ fn deterministic_dag_source_serializer_witness(
 
 
 fn canonical_dag_source_emission_law_from_parts(
+  original_ast: DagSourceAst,
   canonical_source_first: DagSource,
   canonical_source_second: DagSource,
-  original_normalized_ast: NormalizedDagSourceAst,
   reparsed_ast: DagSourceAst
 ) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
   bind_outcome(
-    o: normalize_dag_source_ast(ast: reparsed_ast),
-    f: fn(reparsed_normalized_ast) {
-      let serializer_law = deterministic_dag_source_serializer_witness(
-        first: canonical_source_first,
-        second: canonical_source_second
-      )
-      let parse_print_law = normalized_source_ast_equal_witness(
-        original: original_normalized_ast,
-        reparsed: reparsed_normalized_ast
-      )
-      match serializer_law {
-        Violates { diagnostic: d } =>
-          Rejected { diagnostics: diagnostics_singleton(d: d) }
-        Holds { value: serializer_law_value } =>
-          match parse_print_law {
+    o: normalize_dag_source_ast(ast: original_ast),
+    f: fn(original_normalized_ast) {
+      bind_outcome(
+        o: normalize_dag_source_ast(ast: reparsed_ast),
+        f: fn(reparsed_normalized_ast) {
+          let serializer_law = deterministic_dag_source_serializer_witness(
+            first: canonical_source_first,
+            second: canonical_source_second
+          )
+          let parse_print_law = normalized_source_ast_equal_witness(
+            original: original_normalized_ast,
+            reparsed: reparsed_normalized_ast
+          )
+          match serializer_law {
             Violates { diagnostic: d } =>
               Rejected { diagnostics: diagnostics_singleton(d: d) }
-            Holds { value: parse_print_law_value } =>
-              outcome_accepted(
-                value: Holds {
-                  value: CanonicalDagSourceEmissionLaw {
-                    serializer_law: serializer_law_value,
-                    parse_print_law: NormalizedDagSourceParsePrintLaw {
-                      canonical_source: canonical_source_first,
-                      normalized_source_law: parse_print_law_value
+            Holds { value: serializer_law_value } =>
+              match parse_print_law {
+                Violates { diagnostic: d } =>
+                  Rejected { diagnostics: diagnostics_singleton(d: d) }
+                Holds { value: parse_print_law_value } =>
+                  outcome_accepted(
+                    value: Holds {
+                      value: CanonicalDagSourceEmissionLaw {
+                        serializer_law: serializer_law_value,
+                        parse_print_law: NormalizedDagSourceParsePrintLaw {
+                          canonical_source: canonical_source_first,
+                          normalized_source_law: parse_print_law_value
+                        }
+                      }
                     }
-                  }
-                }
-              )
+                  )
+              }
           }
-      }
+        }
+      )
     }
   )
 }
