@@ -1126,6 +1126,14 @@ fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
 /// no-new-shell ratchet (§11.7.1 #5): every REQUIRED ci-floor shell invocation in ci.yml must
 /// carry a row here. Dissolve-on: ci.yml emits these steps FROM their `CiUpsertStep` (T-24),
 /// at which point the rows delete and this slice retires.
+///
+/// **P5 receipt (T-PB-B same-path SG-0 expansion):** this is a +0-new-path addition to the
+/// existing `v4_workflow_ci_runner_dag_smoke_test` harness (already carried by one SG-0
+/// hand-authored-test census entry), NOT a new hand-Rust test path/authority surface — same
+/// posture as the T-38/T-38B expansions documented in this file's header. Explicit P5 deferral:
+/// ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`. Dissolution:
+/// generated `.dag` `TestClaim` execution covers the §11.7.5 shell-exception table + no-new-shell
+/// ratchet (and A15 Shape-B emitted `ci.yml`), retiring this hand-Rust parse/string harness.
 #[test]
 fn v4_workflow_ci_class_a_shell_exception_table_first_slice() {
     let module = parse_module(CI_DAG, CI_DAG_PATH);
