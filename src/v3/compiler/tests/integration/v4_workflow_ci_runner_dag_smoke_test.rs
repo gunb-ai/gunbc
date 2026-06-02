@@ -560,20 +560,6 @@ fn workflow_dag_job_block<'a>(workflow_dag: &'a str, job_id: &str) -> &'a str {
     panic!("{CI_WORKFLOW_DAG_PATH}: unterminated `{job_id}` job")
 }
 
-<<<<<<< HEAD
-/// Job-level `continue_on_error` is the last such field in a generated workflow job block.
-fn workflow_dag_job_continue_on_error_value(job_block: &str) -> Option<bool> {
-    let idx = job_block.rfind("continue_on_error: ")?;
-    let value = job_block[idx..]
-        .strip_prefix("continue_on_error: ")?
-        .split(|ch: char| ch == ',' || ch.is_whitespace())
-        .next()?;
-    match value {
-        "true" => Some(true),
-        "false" => Some(false),
-        _ => None,
-    }
-=======
 /// True for a generated-workflow job field line (6-space indent), not nested step rows (10+ spaces).
 fn workflow_dag_line_is_job_level_field(line: &str) -> bool {
     line.strip_prefix("      ")
@@ -661,7 +647,6 @@ fn ci_yml_job_level_omits_continue_on_error(job_block: &str) -> bool {
     !job_block.lines().any(|line| {
         ci_yml_line_is_job_level_field(line) && line.trim_start().starts_with("continue-on-error:")
     })
->>>>>>> origin/main
 }
 
 fn surface_declares_test_claim_data(
@@ -1559,13 +1544,6 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
             && CI_WORKFLOW_DAG.contains("needs: [\"affected\", \"ci_floor\", \"infra_isolation\"]"),
         "{CI_WORKFLOW_DAG_PATH}: `ci` job must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
-<<<<<<< HEAD
-    let affected_job = workflow_dag_job_block(CI_WORKFLOW_DAG, "affected");
-    assert_eq!(
-        workflow_dag_job_continue_on_error_value(affected_job),
-        Some(false),
-        "{CI_WORKFLOW_DAG_PATH}: component `affected` receipt must be live"
-=======
     let affected_dag = workflow_dag_job_block(CI_WORKFLOW_DAG, "affected");
     assert!(
         workflow_dag_job_level_continue_on_error_is_false(affected_dag),
@@ -1575,7 +1553,6 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     assert!(
         ci_yml_job_level_omits_continue_on_error(affected_yml),
         "{CI_YML_PATH}: component `affected` receipt must be live (no job-level continue-on-error anywhere in job block)"
->>>>>>> origin/main
     );
     assert!(
         !CI_WORKFLOW_DAG.contains("id: \"ci_integration\"")
