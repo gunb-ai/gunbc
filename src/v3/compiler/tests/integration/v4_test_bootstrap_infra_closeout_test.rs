@@ -5,24 +5,26 @@
 //! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 //! This hand-Rust ratchet retires when T-22 generated harness coverage
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
-//! **P5 receipt for same-path expansion:** explicit deferral to `ROADMAP.md`
-//! § "Nine lanes" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; this
-//! file remains inside the SG-0 T-PB-B test subset and dissolves when these
-//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated
-//! harness coverage.
+//! **P5 receipt for same-path expansion (INVARIANTS.md §P5 Mechanism (b)):** explicit
+//! deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43,63); this file remains inside
+//! the SG-0 T-PB-B test subset (`sg0_census_test.rs:1065`) and dissolves when these
+//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated harness
+//! coverage.
 //!
 //! **PR #4295 P5 receipt (+0 SG-0 paths):** same-path expansion in this file for
 //! `check_t19_testgen_activation` — structural migration of the activation gate
 //! formerly enforced by `scripts/check_t19_testgen_activation.py` (deleted on main
 //! in #4252, operator 2026-06-01 CI hygiene; not re-deleted in this PR). No new
-//! `EXPECTED_HAND_AUTHORED_TEST` census row; dissolves under the T-PB-B row above
-//! when T-22 generated harness or `.dag` TestClaim rows own these substrate checks.
+//! `EXPECTED_HAND_AUTHORED_TEST` census row (ROADMAP.md:43,63; `sg0_census_test.rs:1065`);
+//! dissolves when T-22 generated harness or `.dag` TestClaim rows own these substrate checks.
 //!
-//! **PR #4335 P5 receipt (+0 SG-0 paths):** same-path expansion in this file for
-//! `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` — structural parse-surface
-//! ratchet for RR-A §5.2 bootstrap harness entry (no new `EXPECTED_HAND_AUTHORED_TEST`
-//! census row). Dissolves under the T-PB-B row above when modeled `.dag` `TestClaim`
-//! rows or generated harness coverage own these substrate checks.
+//! **PR #4335 P5 receipt (INVARIANTS.md §P5 Mechanism (b) — +0 SG-0 paths):**
+//! disposition (3) explicit deferral — **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+//! `pb_rust_tests_outside_residual_zero` (ROADMAP.md:43,63); same-path expansion for
+//! `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` under existing census row
+//! `sg0_census_test.rs:1065` (no new `EXPECTED_HAND_AUTHORED_TEST` entry). Dissolves when
+//! modeled `.dag` `TestClaim` rows or generated harness coverage own these substrate checks.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;

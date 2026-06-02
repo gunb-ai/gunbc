@@ -1058,6 +1058,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
     // PR #4295 (+0 paths): `check_t19_testgen_activation` same-path expansion —
     // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
+    // PR #4335 (+0 paths): `rr_a_step2_bootstrap_evaluator_corpus_harness_entry` RR-A §5.2
+    // bootstrap harness parse-surface ratchet (ROADMAP.md:43,63 T-PB-B deferral).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
