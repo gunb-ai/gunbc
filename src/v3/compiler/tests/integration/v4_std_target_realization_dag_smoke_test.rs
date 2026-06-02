@@ -1,9 +1,9 @@
 //! **Layer:** integration
 //!
 //! **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST` same-path
-//! expansion):** explicit deferral to **`_internal/ROADMAP_OPS.md`** § **Nine lanes** row
+//! expansion):** explicit deferral to **`ROADMAP.md`** § **Public Operational Lanes** row
 //! **T-PB-B** / `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test
-//! floor; `ROADMAP.md` delegates operational lanes there), same
+//! floor), same
 //! structural class as co-listed `t_gate_58_apply_lens_self_application_test.rs`: parse-surface
 //! smokes discharge until `.dag` `TestClaim` asserts the same substrate facts without this file.
 //! **Mechanism (b):** matching `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` +
@@ -24,10 +24,17 @@
 //! **This PR (+0 SG-0 paths):** TS L0 TargetAtomRealization same-path expansion —
 //! `v4_typescript_language_model_declares_target_atom_realization_rows` per
 //! `docs/planning/v4-ts-target-atom-realization-worksheet-2026-06-01.md` §8; ROADMAP row
-//! `_internal/ROADMAP_OPS.md` § **Nine lanes** / T-PB-B
+//! `ROADMAP.md` § **Public Operational Lanes** / T-PB-B
 //! (`pb_rust_tests_outside_residual_zero`). Dissolves when `.dag` `TestClaim` /
 //! generated harness execution covers TS Symbol/Bool/String TargetAtomRealization catalog
 //! facts directly without this host Rust parse-surface smoke.
+//! **This PR (+0 SG-0 paths):** TS SG-2 arrow wire-shape widening — extends
+//! `v4_typescript_language_model_declares_type_expression_projection_row` with parse-surface
+//! receipts for `ts_sg2_arrow_labeled_xy_emitted` and `ts_sg2_arrow_mixed_wire_emitted`
+//! golden probes (`typescript.dag`). Behavioral contracts (wire-shape, labeled serialize,
+//! mixed-wire rejection) live in `src/v4/test/claim/manual/sg2_typescript_type_expression_projection.dag`;
+//! dissolves when manual-claim runner executes those `TestClaim`s without this file. ROADMAP:
+//! `_internal/ROADMAP_OPS.md` § **Nine lanes** / T-PB-B (`pb_rust_tests_outside_residual_zero`).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
@@ -47,6 +54,10 @@ const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const SG_RC_LAYERING_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/sg_rc_layering.dag");
 const SG_RC_LAYERING_CLAIM_PATH: &str = "src/v4/test/claim/manual/sg_rc_layering.dag";
+const SG_COLLECTION_PROJECTION_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/sg_collection_projection.dag");
+const SG_COLLECTION_PROJECTION_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/sg_collection_projection.dag";
 const BOUNDED_LATTICE_COMPLETENESS_DAG: &str =
     include_str!("../../../../v4/std/bounded_lattice_completeness.dag");
 const BOUNDED_LATTICE_COMPLETENESS_PATH: &str = "src/v4/std/bounded_lattice_completeness.dag";
@@ -577,6 +588,10 @@ fn v4_rust_language_model_declares_type_expression_projection_row() {
         RUST_LANGUAGE_DAG.contains("fn rust_sg2_rc_foobar_xy_emitted()"),
         "{RUST_LANGUAGE_PATH}: golden Rc<FooBar<X,Y>> emitted node for falsification probe"
     );
+    assert!(
+        surface_declares_fn(&module, "rust_collection_realization_catalog_node"),
+        "{RUST_LANGUAGE_PATH}: Rust target model must expose collection rows through one carrier-keyed catalog"
+    );
 }
 
 #[test]
@@ -620,6 +635,17 @@ fn v4_std_target_model_declares_target_collection_realization_carrier() {
         "{TARGET_MODEL_PATH}: representation kind must be a coproduct (M6)"
     );
     assert!(
+        TARGET_MODEL_DAG.contains("TargetCollectionReprVec"),
+        "{TARGET_MODEL_PATH}: FreeMonoid sequence rows must have a Vec representation kind"
+    );
+    assert!(
+        surface_declares_fn(
+            &module,
+            "target_collection_type_node_is_free_monoid_carrier"
+        ),
+        "{TARGET_MODEL_PATH}: FreeMonoid carrier recognition must be substrate-owned"
+    );
+    assert!(
         surface_declares_type(&module, "RequiredTraitWitness"),
         "{TARGET_MODEL_PATH}: per-alternative trait witnesses must be typed"
     );
@@ -645,8 +671,32 @@ fn v4_translate_dag_imports_collection_realization_consumer() {
         "{TRANSLATE_PATH}: Set carrier projection must consume TargetCollectionRealization rows"
     );
     assert!(
+        surface_declares_fn(&module, "project_free_monoid_collection_type_node"),
+        "{TRANSLATE_PATH}: FreeMonoid carrier projection must consume TargetCollectionRealization rows"
+    );
+    assert!(
         surface_declares_fn(&module, "collection_realization_from_target"),
         "{TRANSLATE_PATH}: collection rows must decode from TargetModel bundle"
+    );
+}
+
+// P5 receipt: same-path hand-Rust smoke expansion in an existing SG-0-listed file,
+// explicitly deferred to `ROADMAP.md` § Public Operational Lanes / T-PB-B
+// (`pb_rust_tests_outside_residual_zero`). Dissolves when the `.dag` manual-claim runner
+// executes `src/v4/test/claim/manual/sg_collection_projection.dag` directly.
+#[test]
+fn v4_sg_collection_projection_claim_declares_vec_rc_receipt() {
+    let module = parse_module(
+        SG_COLLECTION_PROJECTION_CLAIM_DAG,
+        SG_COLLECTION_PROJECTION_CLAIM_PATH,
+    );
+    assert!(
+        surface_declares_data(&module, "claim_sg_collection_free_monoid_vec_rc_projection"),
+        "{SG_COLLECTION_PROJECTION_CLAIM_PATH}: FreeMonoid<T> -> Vec<Rc<T>> claim must be authored"
+    );
+    assert!(
+        SG_COLLECTION_PROJECTION_CLAIM_DAG.contains("Vec<Rc<Node>>"),
+        "{SG_COLLECTION_PROJECTION_CLAIM_PATH}: claim must pin the Rust Vec<Rc<T>> boundary"
     );
 }
 
@@ -712,7 +762,9 @@ fn v4_typescript_language_model_declares_target_atom_realization_rows() {
     );
 }
 
-// P5 receipt: TS SG-2 same-path expansion beyond L0 row-2 (Conj) — Instantiation/Arrow/Disj probes.
+// P5 receipt (+0 SG-0): TS SG-2 same-path expansion beyond L0 row-2 — Instantiation/Arrow/Disj
+// golden fn-decl probes; arrow labeled/mixed-wire behavioral contracts in
+// sg2_typescript_type_expression_projection.dag (PR #4226).
 #[test]
 fn v4_typescript_language_model_declares_type_expression_projection_row() {
     let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
@@ -739,6 +791,14 @@ fn v4_typescript_language_model_declares_type_expression_projection_row() {
     assert!(
         surface_declares_fn(&module, "ts_sg2_arrow_xy_emitted"),
         "{TYPESCRIPT_LANGUAGE_PATH}: golden (X) => Y Arrow emitted node (beyond row-2)"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_arrow_labeled_xy_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: golden (X: X) => Y labeled Arrow emitted node"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_sg2_arrow_mixed_wire_emitted"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: mixed positional+labeled arrow wire falsification probe"
     );
     assert!(
         surface_declares_fn(&module, "ts_sg2_sum_xy_emitted"),

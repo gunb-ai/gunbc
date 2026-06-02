@@ -913,6 +913,36 @@ fn dag_pipeline_smoke() {
     );
 }
 
+#[test]
+fn dag_emit_from_resolved_matches_compile_sources_for_v4_slice() {
+    let ws = workspace_root();
+    let fixture_dir = ws.join("fixtures/v4-mvp1");
+    let mut sources = Vec::new();
+    collect_dag_sources(&ws, &fixture_dir, &mut sources);
+    assert!(
+        !sources.is_empty(),
+        "expected fixed v4 fixture slice under {}",
+        fixture_dir.display()
+    );
+
+    let standalone = v2_compiler::v2_compiler_compile::compile_sources(
+        Rc::new(sources.clone()),
+        RenderTarget::Dag,
+    );
+    let resolved = v2_compiler::v2_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let from_resolved =
+        v2_compiler::v2_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
+
+    assert_eq!(
+        standalone.diagnostics, from_resolved.diagnostics,
+        "resolved-to-DAG emit diagnostics must match standalone --target dag diagnostics"
+    );
+    assert_eq!(
+        standalone.files, from_resolved.files,
+        "resolved-to-DAG emit files must match standalone --target dag files byte-for-byte"
+    );
+}
+
 /// Regression for recursive by-value DAG serialization: shared subgraphs must
 /// appear once in `nodes` and be cited via multiple `$ref`s (see artifact.dag).
 #[test]

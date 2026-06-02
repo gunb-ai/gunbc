@@ -174,3 +174,6 @@ fn scale_exponent(s: Scale) -> Int {
 //   - No mechanical Measure-witness derivation declared here -- same
 //     substrate gap as `GroupCompletion<M>`; inhabitance lens follow-up.
 type Measure<Q, S>
+
+// Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
+type ByteSize = Measure<Memory, One>
