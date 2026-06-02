@@ -76,13 +76,9 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -156,15 +152,12 @@ type WasmLanguageModel {
 }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-type WasmConcreteSyntaxToken
-  = WasmFixedToken { token_class: Symbol }
-  | WasmBoundToken { token_class: Symbol, binding: Symbol }
 
 // 🟢 grounded.
 type WasmGrammarRelationRow {
   production: GrammarProduction
   emitted: Node
-  tokens: List<WasmConcreteSyntaxToken>
+  tokens: List<ConcreteSyntaxToken>
 }
 
 data wasm_language_model_surface_id: Symbol = wasm_language_model_surface_id
@@ -326,26 +319,26 @@ data wasm_mvp1_source_literal: Symbol = wasm_mvp1_source_literal
 data wasm_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data wasm_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
-fn wasm_mvp1_concrete_tokens() -> List<WasmConcreteSyntaxToken> {
+fn wasm_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
-    WasmFixedToken { token_class: wasm_token_lparen },
-    WasmFixedToken { token_class: wasm_token_kw_func },
-    WasmBoundToken { token_class: wasm_token_ident, binding: wasm_binding_fn_add },
-    WasmFixedToken { token_class: wasm_token_lparen },
-    WasmFixedToken { token_class: wasm_token_kw_param },
-    WasmFixedToken { token_class: wasm_token_type_i32 },
-    WasmFixedToken { token_class: wasm_token_type_i32 },
-    WasmFixedToken { token_class: wasm_token_rparen },
-    WasmFixedToken { token_class: wasm_token_lparen },
-    WasmFixedToken { token_class: wasm_token_kw_result },
-    WasmFixedToken { token_class: wasm_token_type_i32 },
-    WasmFixedToken { token_class: wasm_token_rparen },
-    WasmFixedToken { token_class: wasm_token_local_get },
-    WasmBoundToken { token_class: wasm_token_localidx_literal, binding: wasm_binding_localidx_0 },
-    WasmFixedToken { token_class: wasm_token_local_get },
-    WasmBoundToken { token_class: wasm_token_localidx_literal, binding: wasm_binding_localidx_1 },
-    WasmFixedToken { token_class: wasm_token_i32_add },
-    WasmFixedToken { token_class: wasm_token_rparen }
+    FixedToken { token_class: wasm_token_lparen },
+    FixedToken { token_class: wasm_token_kw_func },
+    BoundToken { token_class: wasm_token_ident, binding: wasm_binding_fn_add },
+    FixedToken { token_class: wasm_token_lparen },
+    FixedToken { token_class: wasm_token_kw_param },
+    FixedToken { token_class: wasm_token_type_i32 },
+    FixedToken { token_class: wasm_token_type_i32 },
+    FixedToken { token_class: wasm_token_rparen },
+    FixedToken { token_class: wasm_token_lparen },
+    FixedToken { token_class: wasm_token_kw_result },
+    FixedToken { token_class: wasm_token_type_i32 },
+    FixedToken { token_class: wasm_token_rparen },
+    FixedToken { token_class: wasm_token_local_get },
+    BoundToken { token_class: wasm_token_localidx_literal, binding: wasm_binding_localidx_0 },
+    FixedToken { token_class: wasm_token_local_get },
+    BoundToken { token_class: wasm_token_localidx_literal, binding: wasm_binding_localidx_1 },
+    FixedToken { token_class: wasm_token_i32_add },
+    FixedToken { token_class: wasm_token_rparen }
   ]
 }
 data wasm_mvp1_source_text: String = "(func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)"
@@ -690,51 +683,19 @@ fn wasm_mvp1_source_text_authority() -> String {
   wasm_mvp1_source_text
 }
 
-fn wasm_concrete_token_class(token: WasmConcreteSyntaxToken) -> Symbol {
+fn wasm_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
   match token {
-    WasmFixedToken { token_class: c } => c
-    WasmBoundToken { token_class: c, binding: _ } => c
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
   }
 }
 
-fn wasm_concrete_token_node(token: WasmConcreteSyntaxToken) -> Node {
-  match token {
-    WasmFixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          wasm_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: wasm_inhabitant_atom(id: concrete_syntax_token_kind_fixed)
-          ),
-          wasm_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: wasm_inhabitant_atom(id: c)
-          )
-        ]
-      }
-    WasmBoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          wasm_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: wasm_inhabitant_atom(id: concrete_syntax_token_kind_bound)
-          ),
-          wasm_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: wasm_inhabitant_atom(id: c)
-          ),
-          wasm_named_edge(
-            name: concrete_syntax_token_field_binding,
-            target: wasm_inhabitant_atom(id: b)
-          )
-        ]
-      }
-  }
+fn wasm_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn wasm_mvp1_positional_token_edge(token: WasmConcreteSyntaxToken) -> Edge {
+fn wasm_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
   Edge {
     label: Positional,
     target: wasm_concrete_token_node(token: token)
@@ -822,7 +783,7 @@ fn wasm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Sequence { left: left, right: right }
 }
 
-fn wasm_grammar_sequence_fold_step(acc: GrammarExpr, token: WasmConcreteSyntaxToken) -> GrammarExpr {
+fn wasm_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
   let token_class = wasm_concrete_token_class(token: token)
   if token_class == wasm_token_lparen {
     acc
@@ -852,7 +813,7 @@ fn wasm_mvp1_grammar_relation_row() -> WasmGrammarRelationRow {
   }
 }
 
-fn wasm_relation_token_edges(tokens: List<WasmConcreteSyntaxToken>) -> List<Edge> {
+fn wasm_relation_token_edges(tokens: List<ConcreteSyntaxToken>) -> List<Edge> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1295,7 +1256,7 @@ fn wasm_wave1_lex() -> LexRules {
 
 
 
-fn wasm_formal_rhs_from_tokens(tokens: List<WasmConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn wasm_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
