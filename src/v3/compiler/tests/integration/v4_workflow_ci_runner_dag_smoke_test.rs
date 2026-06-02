@@ -104,7 +104,7 @@ const INPROCESS_EQUIVALENCE_DAG: &str =
 const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_equivalence.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
-const ROADMAP: &str = include_str!("../../../../ROADMAP.md");
+const ROADMAP: &str = include_str!("../../../../../ROADMAP.md");
 const ROADMAP_PATH: &str = "ROADMAP.md";
 
 const CI_CHANGED_PATH_AFFECTS_FNS: &[&str] = &[
