@@ -10,6 +10,13 @@
 //! file remains inside the SG-0 T-PB-B test subset and dissolves when these
 //! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated
 //! harness coverage.
+//!
+//! **PR #4295 P5 receipt (+0 SG-0 paths):** same-path expansion in this file for
+//! `check_t19_testgen_activation` — structural migration of the activation gate
+//! formerly enforced by `scripts/check_t19_testgen_activation.py` (deleted on main
+//! in #4252, operator 2026-06-01 CI hygiene; not re-deleted in this PR). No new
+//! `EXPECTED_HAND_AUTHORED_TEST` census row; dissolves under the T-PB-B row above
+//! when T-22 generated harness or `.dag` TestClaim rows own these substrate checks.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -484,8 +491,9 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
     );
 }
 
-/// Post-`scripts/` deletion ratchet for T-19 testgen activation (formerly
-/// `scripts/check_t19_testgen_activation.py`). Substrate parse + structural receipts only.
+/// T-19 testgen activation ratchet (INVARIANTS §P5 same-path expansion; +0 SG-0).
+/// Replaces `scripts/check_t19_testgen_activation.py` after #4252 removed `scripts/`.
+/// Substrate parse + structural substring receipts only.
 #[test]
 fn check_t19_testgen_activation() {
     parse_module(DAG_INPUT_SURFACE_DAG, DAG_INPUT_SURFACE_PATH);

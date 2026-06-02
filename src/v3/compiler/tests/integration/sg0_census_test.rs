@@ -1035,8 +1035,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-15: bin/main.dag execution + bootstrap fixpt stage1==stage2 harness (`t_15_self_host_fixed_point`).
     "src/v3/compiler/tests/integration/v4_t15_self_host_fixed_point_harness_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
+    // PR #4295 (+0 paths): `check_t19_testgen_activation` same-path expansion —
+    // Rust migration of `scripts/check_t19_testgen_activation.py` (deleted #4252).
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
-    // TestClaims or generated harness coverage.
+    // TestClaims or generated harness coverage (ROADMAP.md T-PB-B row).
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
     // T-16-A+ TaskManager omni fixture: compile_to_dag smoke + SQL DDL projection receipt.
     "src/v3/compiler/tests/integration/v4_test_fixture_task_manager_demo_smoke_test.rs",
