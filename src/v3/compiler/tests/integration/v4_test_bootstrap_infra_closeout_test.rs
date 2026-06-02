@@ -42,9 +42,6 @@ const SG1B_FAILCLOSED_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/sg1b_signature_realization_failclosed.dag");
 const SG1B_FAILCLOSED_PATH: &str =
     "src/v4/test/claim/manual/sg1b_signature_realization_failclosed.dag";
-const DAG_REGEN_RR_E_DAG: &str =
-    include_str!("../../../../v4/test/claim/manual/dag_regen_readiness_review.dag");
-const DAG_REGEN_RR_E_PATH: &str = "src/v4/test/claim/manual/dag_regen_readiness_review.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
 const LBE_GENERATED_DAG: &str =
@@ -620,32 +617,6 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         ]),
         "BootstrapPlan must stay the seed/self0/self1/fixpt chain"
     );
-    assert_eq!(
-        record_field_type_map(type_record(&module, "DagRegenDesign")),
-        expected_field_type_map(&[
-            ("convergence", "ConvergenceLadder"),
-            ("design_only", "DagRegenDesignOnly"),
-        ]),
-        "RR-E DAG regeneration must be a design receipt over the convergence ladder, not a W2 execution plan"
-    );
-    assert_eq!(
-        record_field_type_map(type_record(&module, "DagRegenReadinessReview")),
-        expected_field_type_map(&[
-            ("design", "DagRegenDesign"),
-            ("bootstrap_plan", "BootstrapPlan"),
-            ("fixed_point", "FixptStage1Stage2"),
-        ]),
-        "RR-E readiness review must join the regen design to the bootstrap-as-data plan and fixed point"
-    );
-    assert!(
-        BOOTSTRAP_DAG.contains("data bootstrap_regen_design_not_w2_executable: Symbol = bootstrap_regen_design_not_w2_executable")
-            && BOOTSTRAP_DAG.contains("fn dag_regen_design_from_ladder(")
-            && BOOTSTRAP_DAG.contains("design_only.sentinel == bootstrap_regen_design_not_w2_executable")
-            && BOOTSTRAP_DAG.contains("data dag_regen_readiness_review_rr_e: Witness<DagRegenReadinessReview>")
-            && !BOOTSTRAP_DAG.contains("fn run_dag_regen")
-            && !BOOTSTRAP_DAG.contains("fn execute_dag_regen"),
-        "RR-E must stay data/design-only in W2 and must not add a regeneration executor"
-    );
 
     let plan = data_expr(&module, "bootstrap_plan");
     let call_args = match plan {
@@ -779,11 +750,6 @@ fn collect_dag_files(root: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
-}
-
-#[test]
-fn rr_e_dag_regen_readiness_review_claims_parse() {
-    parse_module(DAG_REGEN_RR_E_DAG, DAG_REGEN_RR_E_PATH);
 }
 
 fn parse_module(source: &str, file: &str) -> SurfaceModule {

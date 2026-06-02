@@ -142,29 +142,10 @@ type ConvergenceLadder {
   fixed_point: FixptStage1Stage2
 }
 
-// RR-E / Branch E: DAG regeneration is modeled as a design receipt over the
-// bootstrap-as-data plan. It does not execute regeneration in W2.
-type DagRegenDesignOnly {
-  sentinel: Symbol
-}
-
-type DagRegenDesign {
-  convergence: ConvergenceLadder
-  design_only: DagRegenDesignOnly
-}
-
-type DagRegenReadinessReview {
-  design: DagRegenDesign
-  bootstrap_plan: BootstrapPlan
-  fixed_point: FixptStage1Stage2
-}
-
 data bootstrap_mis_wired: Symbol = bootstrap_mis_wired
 data bootstrap_footprint_not_realized: Symbol = bootstrap_footprint_not_realized
 data bootstrap_capability_not_minimal: Symbol = bootstrap_capability_not_minimal
 data bootstrap_plan_unavailable_for_ladder: Symbol = bootstrap_plan_unavailable_for_ladder
-data bootstrap_regen_design_not_w2_executable: Symbol = bootstrap_regen_design_not_w2_executable
-data bootstrap_regen_design_mis_wired: Symbol = bootstrap_regen_design_mis_wired
 data bootstrap_diverse_compilation_mismatch: Symbol = bootstrap_diverse_compilation_mismatch
 data bootstrap_phase1_frozen_submodel: Symbol = bootstrap_phase1_frozen_submodel
 data bootstrap_seed_language_model_identity: Symbol = bootstrap_seed_language_model_identity
@@ -630,46 +611,6 @@ fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<Converg
   }
 }
 
-fn dag_regen_design_from_ladder(
-  ladder: Witness<ConvergenceLadder>,
-  design_only: DagRegenDesignOnly
-) -> Witness<DagRegenDesign> {
-  match ladder {
-    Holds { value: l } =>
-      if design_only.sentinel == bootstrap_regen_design_not_w2_executable {
-        Holds {
-          value: DagRegenDesign {
-            convergence: l,
-            design_only: design_only
-          }
-        }
-      } else {
-        Violates { diagnostic: bs_diagnostic(reason: bootstrap_regen_design_mis_wired) }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn dag_regen_readiness_review(
-  design: Witness<DagRegenDesign>
-) -> Witness<DagRegenReadinessReview> {
-  match design {
-    Holds { value: d } =>
-      match bootstrap_fixpt_witness(f: d.convergence.fixed_point) {
-        Holds { value: f } =>
-          Holds {
-            value: DagRegenReadinessReview {
-              design: d,
-              bootstrap_plan: d.convergence.plan,
-              fixed_point: f
-            }
-          }
-        Violates { diagnostic: fd } => Violates { diagnostic: fd }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
 fn independent_compiler_pair_witness(
   primary: Symbol,
   secondary: Symbol,
@@ -899,16 +840,3 @@ data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
   Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
 }
-
-data dag_regen_design_only_w2: DagRegenDesignOnly = DagRegenDesignOnly {
-  sentinel: bootstrap_regen_design_not_w2_executable
-}
-
-data dag_regen_design: Witness<DagRegenDesign> = dag_regen_design_from_ladder(
-  ladder: bootstrap_convergence_ladder_witness,
-  design_only: dag_regen_design_only_w2
-)
-
-data dag_regen_readiness_review_rr_e: Witness<DagRegenReadinessReview> = dag_regen_readiness_review(
-  design: dag_regen_design
-)
