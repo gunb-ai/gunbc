@@ -2106,6 +2106,8 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       )
     )
     let remote_parent_list = parent_list |> filter(p =>
+      direct_names |> all(n => n != p)
+    ) |> filter(p =>
       deduped_names |> any(n =>
         match find_variant_parent_in_module(
           variant_name: n,
