@@ -1968,7 +1968,9 @@ fn scheduled_generators_carry_provenance() -> Bool {
 
 
 // F.2-P2 / F.2.6 — aggregate every scheduled producer (Outcome schedulers contribute on
-// Accepted only; Rejected does not fail-closed-expand the roster).
+// Accepted only; Rejected does not fail-closed-expand the roster). v4.std.diagnostic has
+// bind_outcome/outcome_accepted but no canonical Outcome→default fold yet — explicit match
+// (same shape as outcome_generators_carry_provenance below).
 fn outcome_scheduled_generators(o: Outcome<List<Generator<TestgenConcept>>>) -> List<Generator<TestgenConcept>> {
   match o {
     Accepted { value: gens, diagnostics: _ } => gens

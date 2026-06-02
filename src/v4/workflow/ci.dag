@@ -4174,19 +4174,12 @@ data ci_wave3_shadow_selected_testgen_receipt: SelectedTestgenReceipt = ci_testg
   profile_ref: testgen_default_profile_ref
 )
 
-fn ci_wave3_shadow_testgen_slot_not_selected(slot: TestgenSlotSelection) -> Bool {
-  if slot.selected {
-    false
-  } else {
-    true
-  }
-}
-
-
 fn ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() -> Bool {
   for_all(
     xs: ci_wave3_shadow_fixture_fail_closed_receipt.testgen_slots,
-    predicate: ci_wave3_shadow_testgen_slot_not_selected
+    predicate: fn(slot) {
+      slot.selected == false
+    }
   )
 }
 
