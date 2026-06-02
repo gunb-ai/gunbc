@@ -964,10 +964,12 @@ fn rr_a_step2_bootstrap_evaluator_corpus_harness_entry() {
         "RR-A §5.2: bootstrap must model stage0 corpus harness with wave1 runtime pin and run_manual_testclaim_corpus_eval entry"
     );
     assert!(
-        CLI_DAG.contains("data gunbc_test_manual_corpus_harness_route: GunbcTestRoute")
-            && CLI_DAG.contains("selection_fn: run_manual_testclaim_corpus_eval")
+        CLI_DAG.contains("type GunbcTestCorpusHarnessRoute")
+            && CLI_DAG.contains("data gunbc_test_manual_corpus_harness_route: GunbcTestCorpusHarnessRoute")
+            && CLI_DAG.contains("harness: bootstrap_manual_corpus_harness")
+            && CLI_DAG.contains(".harness.entry_fn == run_manual_testclaim_corpus_eval")
             && CLI_DAG.contains("fn gunbc_test_manual_corpus_harness_route_well_formed()"),
-        "cli.dag must expose gunbc test route bound to bootstrap corpus harness entry"
+        "cli.dag must expose harness route typed separately from GunbcTestRoute.selection_fn (P2)"
     );
 }
 

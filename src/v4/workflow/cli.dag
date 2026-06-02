@@ -17,6 +17,8 @@ import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.artifact { GeneratorId, GeneratedArtifact, GeneratorProvenance }
 import v4.workflow.bootstrap {
+  BootstrapEvaluatorCorpusHarnessEntry,
+  bootstrap_manual_corpus_harness,
   run_manual_testclaim_corpus_eval,
   witness_bootstrap_evaluator_corpus_harness_well_formed
 }
@@ -55,6 +57,7 @@ type GunbcTestRoute {
 // the per-row accessors below, so the name is a function of the row type.
 data gunbc_testgen_route_name: Symbol = gunbc_testgen_route_name
 data gunbc_test_route_name: Symbol = gunbc_test_route_name
+data gunbc_test_corpus_harness_route_name: Symbol = gunbc_test_corpus_harness_route_name
 
 
 // Route name derived from the row type (not a stored field): a `GunbcTestgenRoute` is
@@ -67,6 +70,17 @@ fn gunbc_test_route_name_of(_route: GunbcTestRoute) -> Symbol {
   gunbc_test_route_name
 }
 
+fn gunbc_test_corpus_harness_route_name_of(_route: GunbcTestCorpusHarnessRoute) -> Symbol {
+  gunbc_test_corpus_harness_route_name
+}
+
+
+// RR-A §5.2: bootstrap stage0 corpus harness — run entry lives on the modeled harness row,
+// not on `GunbcTestRoute.selection_fn` (that field mirrors `ci.dag` corpus narrowing only).
+type GunbcTestCorpusHarnessRoute {
+  harness: BootstrapEvaluatorCorpusHarnessEntry
+}
+
 
 // Route class derived from the row type (not a stored field): both rows are
 // Runtime/TestClaim routes and cannot be misclassified as source-authority (§H.5 / M2).
@@ -75,6 +89,10 @@ fn gunbc_testgen_route_semantics(_route: GunbcTestgenRoute) -> GunbcCliRouteSema
 }
 
 fn gunbc_test_route_semantics(_route: GunbcTestRoute) -> GunbcCliRouteSemantics {
+  RuntimeTestClaimRoute
+}
+
+fn gunbc_test_corpus_harness_route_semantics(_route: GunbcTestCorpusHarnessRoute) -> GunbcCliRouteSemantics {
   RuntimeTestClaimRoute
 }
 
@@ -94,13 +112,14 @@ fn gunbc_testgen_route_provenance(
 }
 
 
-// RR-A §5.2: canonical `gunbc test` row for manual corpus harness — selection_fn names the
-// bootstrap stage0 Run entry (`run_manual_testclaim_corpus_eval` in testclaim_corpus_runner).
-data gunbc_test_manual_corpus_harness_route: GunbcTestRoute = GunbcTestRoute {
-  selection_fn: run_manual_testclaim_corpus_eval
+// RR-A §5.2: canonical manual-corpus harness CLI row — imports bootstrap harness substrate;
+// `GunbcTestRoute.selection_fn` remains reserved for `ci_testclaim_corpus_selection_fn` narrowing.
+data gunbc_test_manual_corpus_harness_route: GunbcTestCorpusHarnessRoute = GunbcTestCorpusHarnessRoute {
+  harness: bootstrap_manual_corpus_harness
 }
 
 fn gunbc_test_manual_corpus_harness_route_well_formed() -> Bool {
-  (gunbc_test_manual_corpus_harness_route.selection_fn == run_manual_testclaim_corpus_eval)
+  (gunbc_test_manual_corpus_harness_route.harness == bootstrap_manual_corpus_harness)
+    && (gunbc_test_manual_corpus_harness_route.harness.entry_fn == run_manual_testclaim_corpus_eval)
     && witness_bootstrap_evaluator_corpus_harness_well_formed
 }
