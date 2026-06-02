@@ -72,8 +72,8 @@ pub use crate::v2_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
-use std::collections::VecDeque;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -2332,40 +2332,273 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
     )
 }
 
+fn frontend_worker_count(source_count: usize) -> usize {
+    const MAX_FRONTEND_WORKERS: usize = 8;
+    if source_count <= 1 {
+        return 1;
+    }
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .max(1)
+        .min(MAX_FRONTEND_WORKERS)
+        .min(source_count)
+}
+
+fn token_qualified_name(tokens: &[Rc<Token>], start: usize) -> Option<(String, usize)> {
+    let first = tokens.get(start)?;
+    if !is_internable_token(first.shape.clone()) {
+        return None;
+    }
+    let mut name = first.text.clone();
+    let mut cursor = start + 1;
+    while cursor + 1 < tokens.len()
+        && tokens[cursor].text.as_str() == "."
+        && is_internable_token(tokens[cursor + 1].shape.clone())
+    {
+        name = v2_rt::concat(
+            v2_rt::concat(name, ".".to_string()),
+            tokens[cursor + 1].text.clone(),
+        );
+        cursor += 2;
+    }
+    Some((name, cursor))
+}
+
+fn frontend_intern_strings(tokens: Rc<Vec<Rc<Token>>>) -> Vec<String> {
+    let mut strings = Vec::new();
+    for tok in tokens.iter() {
+        if is_internable_token(tok.shape.clone()) {
+            strings.push(tok.text.clone());
+        }
+    }
+
+    let mut module_name = None;
+    let mut imports = Vec::new();
+    let mut cursor = 0;
+    while cursor < tokens.len() && tokens[cursor].text.as_str() == "\n" {
+        cursor += 1;
+    }
+    if cursor < tokens.len() && tokens[cursor].text.as_str() == "module" {
+        if let Some((name, next)) = token_qualified_name(&tokens, cursor + 1) {
+            module_name = Some(name);
+            cursor = next;
+        }
+    }
+    loop {
+        while cursor < tokens.len() && tokens[cursor].text.as_str() == "\n" {
+            cursor += 1;
+        }
+        if cursor < tokens.len() && tokens[cursor].text.as_str() == "import" {
+            if let Some((name, next)) = token_qualified_name(&tokens, cursor + 1) {
+                imports.push(name);
+                cursor = next;
+                continue;
+            }
+        };
+        break;
+    }
+
+    strings.extend(imports);
+    if let Some(name) = module_name {
+        strings.push(name);
+    }
+    strings
+}
+
+fn collect_frontend_intern_plans(sources: Rc<Vec<Rc<SourceFile>>>) -> Vec<FrontendInternPlan> {
+    let inputs = sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| FrontendSourceInput {
+            index,
+            path: source.path.clone(),
+            content: source.content.clone(),
+        })
+        .collect::<Vec<_>>();
+    let worker_count = frontend_worker_count(inputs.len());
+    if worker_count == 1 {
+        return inputs
+            .into_iter()
+            .map(|input| {
+                let tokens = tokenize(input.content.clone(), input.path.clone());
+                FrontendInternPlan {
+                    index: input.index,
+                    path: input.path,
+                    content: input.content,
+                    intern_strings: frontend_intern_strings(tokens),
+                }
+            })
+            .collect();
+    }
+
+    let queue = Arc::new(Mutex::new(VecDeque::from(inputs)));
+    let mut handles = Vec::new();
+    for _ in 0..worker_count {
+        let queue = Arc::clone(&queue);
+        handles.push(std::thread::spawn(move || {
+            let mut local = Vec::new();
+            loop {
+                let input = {
+                    let mut queue = queue.lock().expect("frontend intern queue poisoned");
+                    queue.pop_front()
+                };
+                match input {
+                    Some(input) => {
+                        let tokens = tokenize(input.content.clone(), input.path.clone());
+                        local.push(FrontendInternPlan {
+                            index: input.index,
+                            path: input.path,
+                            content: input.content,
+                            intern_strings: frontend_intern_strings(tokens),
+                        });
+                    }
+                    None => break,
+                }
+            }
+            local
+        }));
+    }
+
+    let mut plans = Vec::with_capacity(sources.len());
+    for handle in handles {
+        plans.extend(handle.join().expect("frontend intern worker panicked"));
+    }
+    plans.sort_by_key(|plan| plan.index);
+    plans
+}
+
+fn build_frontend_intern_table(plans: &[FrontendInternPlan]) -> Rc<InternTable> {
+    let mut table = empty_intern_table();
+    for plan in plans {
+        for s in &plan.intern_strings {
+            table = intern(table, s.clone()).table.clone();
+        }
+    }
+    table
+}
+
+fn intern_table_from_parts(
+    strings: Arc<Vec<String>>,
+    index: Arc<HashMap<String, i64>>,
+    next_id: i64,
+) -> Rc<InternTable> {
+    Rc::new(InternTable {
+        strings: Rc::new((*strings).clone()),
+        index: Rc::new((*index).clone()),
+        next_id,
+    })
+}
+
+fn parse_frontend_sources_parallel(
+    plans: &[FrontendInternPlan],
+    intern_table: Rc<InternTable>,
+) -> Vec<ParsedFrontendSource> {
+    let inputs = plans
+        .iter()
+        .map(|plan| FrontendSourceInput {
+            index: plan.index,
+            path: plan.path.clone(),
+            content: plan.content.clone(),
+        })
+        .collect::<Vec<_>>();
+    let worker_count = frontend_worker_count(inputs.len());
+    let strings = Arc::new((*intern_table.strings).clone());
+    let index = Arc::new((*intern_table.index).clone());
+    let next_id = intern_table.next_id;
+
+    if worker_count == 1 {
+        return inputs
+            .into_iter()
+            .map(|input| {
+                let tokens = tokenize(input.content.clone(), input.path.clone());
+                let si = build_newline_index(input.path.clone(), input.content.clone());
+                let parsed = parse_with_table(
+                    tokens,
+                    v2_rt::rc_map_insert(
+                        v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                        si.file.clone(),
+                        si,
+                    ),
+                    intern_table.clone(),
+                );
+                ParsedFrontendSource {
+                    index: input.index,
+                    parse_result: ThreadOwnedRc(parsed.result.clone()),
+                }
+            })
+            .collect();
+    }
+
+    let queue = Arc::new(Mutex::new(VecDeque::from(inputs)));
+    let mut handles = Vec::new();
+    for _ in 0..worker_count {
+        let queue = Arc::clone(&queue);
+        let strings = Arc::clone(&strings);
+        let index = Arc::clone(&index);
+        handles.push(std::thread::spawn(move || {
+            let intern_table = intern_table_from_parts(strings, index, next_id);
+            let mut local = Vec::new();
+            loop {
+                let input = {
+                    let mut queue = queue.lock().expect("frontend parse queue poisoned");
+                    queue.pop_front()
+                };
+                match input {
+                    Some(input) => {
+                        let tokens = tokenize(input.content.clone(), input.path.clone());
+                        let si = build_newline_index(input.path.clone(), input.content.clone());
+                        let parsed = parse_with_table(
+                            tokens,
+                            v2_rt::rc_map_insert(
+                                v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                                si.file.clone(),
+                                si,
+                            ),
+                            intern_table.clone(),
+                        );
+                        local.push(ParsedFrontendSource {
+                            index: input.index,
+                            parse_result: ThreadOwnedRc(parsed.result.clone()),
+                        });
+                    }
+                    None => break,
+                }
+            }
+            local
+        }));
+    }
+
+    let mut parsed = Vec::with_capacity(plans.len());
+    for handle in handles {
+        parsed.extend(handle.join().expect("frontend parse worker panicked"));
+    }
+    parsed.sort_by_key(|item| item.index);
+    parsed
+}
+
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
-        let acc = sources.iter().cloned().fold(
-            Rc::new(FrontendAccum {
-                parse_results: Rc::new(vec![]),
-                newline_indices: Rc::new(vec![]),
-                intern_table: empty_intern_table(),
-            }),
-            |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| {
-                let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
-                {
-                    let tokens = tokenize(s.content.clone(), s.path.clone());
-                    let si = build_newline_index(s.path.clone(), s.content.clone());
-                    let parsed = parse_with_table(
-                        tokens.clone(),
-                        v2_rt::rc_map_insert(
-                            v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                            si.file.clone(),
-                            si.clone(),
-                        ),
-                        acc.intern_table,
-                    );
-                    let pr = parsed.result.clone();
-                    Rc::new(FrontendAccum {
-                        parse_results: v2_rt::rc_list_push(acc.parse_results, pr.clone()),
-                        newline_indices: v2_rt::rc_list_push(acc.newline_indices, si.clone()),
-                        intern_table: parsed.intern_table.clone(),
-                    })
-                }
-            },
-        );
-        let parse_results = acc.parse_results.clone();
-        let newline_indices = acc.newline_indices.clone();
-        let intern_table = acc.intern_table.clone();
+        let intern_plans = collect_frontend_intern_plans(sources.clone());
+        let intern_table = build_frontend_intern_table(&intern_plans);
+        let parsed_sources = parse_frontend_sources_parallel(&intern_plans, intern_table.clone());
+        let parse_results = Rc::new({
+            let mut __result = Vec::new();
+            for parsed in parsed_sources {
+                __result.push(parsed.parse_result.into_inner());
+            }
+            __result
+        });
+        let newline_indices = Rc::new({
+            let mut __result = Vec::new();
+            for source in sources.iter().cloned() {
+                __result.push(build_newline_index(
+                    source.path.clone(),
+                    source.content.clone(),
+                ));
+            }
+            __result
+        });
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
         let has_parse_errors = {
             let mut __found = false;
