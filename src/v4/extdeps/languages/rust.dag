@@ -49,6 +49,14 @@ import v4.std.lexing {
   lex_rule_set_token_class_member
 }
 import v4.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent, optional_present }
+import v4.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v4.std.grounding {
+  PerLanguageFactBundleEntry,
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry,
+  empty_per_language_fact_bundle_registry,
+  insert_per_language_fact_bundle_entry
+}
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   AlgebraLawObligation,
@@ -2618,6 +2626,187 @@ fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
       right: rust_primitive_bundles_from_float_catalog()
     ),
     right: rust_primitive_bundles_from_noninteger_catalog()
+  )
+}
+
+fn rust_per_language_fact_bundle_key(
+  subject_carrier: Node,
+  fact_axis: Symbol
+) -> PerLanguageFactBundleKey {
+  PerLanguageFactBundleKey {
+    subject_carrier: subject_carrier,
+    target: rust_mvp1_target_model(),
+    fact_axis: fact_axis
+  }
+}
+
+fn rust_per_language_fact_bundle_entry(
+  subject_carrier: Node,
+  fact_axis: Symbol,
+  fact_value: Node
+) -> PerLanguageFactBundleEntry {
+  PerLanguageFactBundleEntry {
+    key: rust_per_language_fact_bundle_key(
+      subject_carrier: subject_carrier,
+      fact_axis: fact_axis
+    ),
+    fact_value: fact_value
+  }
+}
+
+fn rust_integer_per_language_fact_bundle_entries(
+  facts: RustIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_integer_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_width,
+      fact_value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_signedness,
+      fact_value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_encoding,
+      fact_value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_range,
+      fact_value: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_overflow_disposition,
+      fact_value: rust_overflow_disposition_node(disposition: facts.overflow_disposition)
+    )
+  ]
+}
+
+fn rust_float_per_language_fact_bundle_entries(
+  facts: RustFloatPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_float_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_width,
+      fact_value: rust_float_width_node(width: facts.width)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_encoding,
+      fact_value: rust_inhabitant_atom(id: facts.ieee754_binary)
+    )
+  ]
+}
+
+fn rust_noninteger_per_language_fact_bundle_entries(
+  facts: RustNonIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  let subject_carrier = rust_noninteger_facts_node(facts: facts)
+  [
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_surface_spelling,
+      fact_value: rust_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    rust_per_language_fact_bundle_entry(
+      subject_carrier: subject_carrier,
+      fact_axis: primitive_fact_axis_encoding,
+      fact_value: rust_inhabitant_atom(id: facts.representation)
+    )
+  ]
+}
+
+fn rust_per_language_fact_bundle_entries_from_integer_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_integer_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries_from_float_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_float_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries_from_noninteger_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: rust_noninteger_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: rust_noninteger_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_per_language_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
+  list_append(
+    left: list_append(
+      left: rust_per_language_fact_bundle_entries_from_integer_catalog(),
+      right: rust_per_language_fact_bundle_entries_from_float_catalog()
+    ),
+    right: rust_per_language_fact_bundle_entries_from_noninteger_catalog()
+  )
+}
+
+fn rust_insert_per_language_fact_bundle_entry_outcome(
+  acc: Outcome<PerLanguageFactBundleRegistry>,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  match acc {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: registry, diagnostics: _ } =>
+      insert_per_language_fact_bundle_entry(
+        registry: registry,
+        key: entry.key,
+        fact_value: entry.fact_value
+      )
+  }
+}
+
+fn rust_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  fold_list(
+    xs: rust_per_language_fact_bundle_entries(),
+    empty: Accepted {
+      value: empty_per_language_fact_bundle_registry(),
+      diagnostics: None
+    },
+    cons: fn(acc, entry) {
+      rust_insert_per_language_fact_bundle_entry_outcome(acc: acc, entry: entry)
+    }
   )
 }
 
