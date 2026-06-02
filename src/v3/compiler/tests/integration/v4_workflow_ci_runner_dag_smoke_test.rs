@@ -1258,13 +1258,17 @@ fn v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice() {
         "{CI_YML_PATH}: expected at least one required ci-floor shell invocation to ratchet"
     );
 
-    // Forward — every required ci-floor shell must have an exception row (fail CLOSED on a new
-    // unlisted required shell).
+    // Forward — every required ci-floor shell must have an exception row, matched at the
+    // `shell_owner` FIELD (`shell_owner: "<path>"`), NOT bare path containment over the slice.
+    // A path can also appear in a row comment (e.g. the bootstrap row documents what the script
+    // does), so containment would pass even with a stale/wrong `shell_owner` field — i.e. fail
+    // OPEN. Pinning to the field spelling keeps it fail-CLOSED (openai-pro #4284).
     for script in &ci_floor_scripts {
         assert!(
-            table.contains(script.as_str()),
+            table.contains(&format!("shell_owner: \"{script}\"")),
             "{CI_YML_PATH}: required ci-floor shell `{script}` has no §11.7.5 \
-             exception row (no-new-shell ratchet — add a CiShellExceptionRow or model it)"
+             `CiShellExceptionRow.shell_owner` field (no-new-shell ratchet — the path appearing \
+             only in a comment does not count; add/repair the `shell_owner` field or model it)"
         );
     }
     // Bijection — distinct required scripts must equal the row count, so a NEW ci-floor shell (or

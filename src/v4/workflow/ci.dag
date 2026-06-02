@@ -392,9 +392,10 @@ data ci_always_run_carveouts: List<CiCarveout> = [
 // This is the first executable slice of Wave 2 (shell→`CiUpsertStep` migration, §11.7.7 lane 6):
 // it models the exception registry the no-new-shell ratchet (§11.7.1 #5) consumes. INTENDED
 // contract: the set of REQUIRED shell-owned ci-floor steps equals these rows' `step_id`s.
-// ENFORCED today (`v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice`): a path-keyed
-// bijection between the required `.github/ci-floor/*.sh` invocations in ci.yml and these rows
-// (block-form-safe, count-exact) — a new unlisted required shell fails CLOSED. RESIDUAL (tracked,
+// ENFORCED today (`v4_workflow_ci_wave1_class_a_shell_exception_table_first_slice`): a bijection
+// between the required `.github/ci-floor/*.sh` invocations in ci.yml and these rows, matched at the
+// `shell_owner` FIELD (not bare path containment, which a row comment could satisfy fail-open) and
+// block-form-safe + count-exact — a new unlisted required shell fails CLOSED. RESIDUAL (tracked,
 // openai-pro #4284): the gate keys on script path, not the modeled `(job, step)` `CiStepId`, since
 // ci.yml's step→`CiStepId` mapping is not yet string-checkable; a *second* step reusing a listed
 // script is not yet distinguished by `step_id`. Dissolves when the generated `.dag` CI step model
