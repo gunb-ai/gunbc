@@ -46,6 +46,13 @@
 //! `claim_source_authority_contract_compiles` and `claim_bmin_canonical_dag_source_parse_print_law`
 //! through `SourceAuthorityReceiptEvalCommand` without this hand-Rust parse/string ratchet.
 //!
+//! **INVARIANTS P5 — checkable receipt for F.11a (`Upsert<T>` Node projection substrate):**
+//! feature `f11a-ci-upsert-node-projection`; consumer
+//! `v4_workflow_ci_upsert_node_projection_substrate`. SAME-PATH SG-0 expansion in this harness;
+//! defers to ROADMAP.md § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+//! Dissolve-on: `.dag` TestClaim execution proves `content_hash(ci_upsert_step_projection_node)`
+//! sensitivity and `v4.std.patterns.Upsert<T>` field alignment without this hand-Rust ratchet.
+//!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
@@ -2314,4 +2321,33 @@ fn v4_workflow_ci_source_authority_receipt_consumes_h72_claims() {
         !CI_DAG.contains("dag-artifact.json") && !CI_DAG.contains("--target dag"),
         "{CI_DAG_PATH}: F.11b CI receipt consumption must not use JSON IR as source authority"
     );
+}
+
+#[test]
+fn v4_workflow_ci_upsert_node_projection_substrate() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        import_includes_name(&module, &["v4", "std", "patterns"], "Upsert"),
+        "{CI_DAG_PATH}: F.11a must import `Upsert` from `v4.std.patterns` (P2 single-authority)"
+    );
+    for needle in [
+        "fn ci_upsert_projection_edges<T>(",
+        "fn ci_upsert_projection_node<T>(upsert: Upsert<T>) -> Node",
+        "fn ci_upsert_cache_digest<T>(upsert: Upsert<T>) -> Hash",
+        "fn ci_upsert_step_projection_node<T>(step: CiUpsertStep<T>) -> Node",
+        "fn ci_upsert_input_ref_projection_node(input_ref: UpsertInputRef) -> Node",
+        "fn ci_upsert_step_cache_digest<T>(step: CiUpsertStep<T>) -> Hash",
+        "content_hash(n: ci_upsert_step_projection_node(step: step))",
+        "ci_upsert_projection_edges(",
+        "ci_projection_upsert_verify_edge",
+        "ci_projection_upsert_create_edge",
+        "ci_projection_upsert_resolve_edge",
+        "ci_upsert_cache_digest_create_sensitivity_witness_holds",
+        "Structural consumer of `v4.std.patterns.Upsert<T>`",
+    ] {
+        assert!(
+            CI_DAG.contains(needle),
+            "{CI_DAG_PATH}: F.11a Upsert<T> Node projection substrate must carry `{needle}`"
+        );
+    }
 }
