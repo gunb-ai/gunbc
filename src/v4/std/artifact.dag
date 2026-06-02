@@ -4,7 +4,9 @@
 
 module v4.std.artifact
 
+import v4.std.diagnostic { Accepted, Locus, Outcome, Rejected }
 import v4.std.node { Node, Symbol }
+import v4.std.refinement { Refined, Validation, refine }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution
@@ -30,13 +32,52 @@ type Artifact {
 // `GeneratedSource` / `TestClaimArtifact` carries the producing generator's identity.
 type GeneratorId = Symbol
 
-// Provenance of a generated artifact: the generator identity plus the Artifact it
-// emitted. Bundles the artifact-domain pair so testgen carriers (v4.lens.testgen
-// Generator<C>) hold a single provenance field rather than parallel id/artifact
-// fields (Cost-of-Change single authority; mirrors NodeArtifactProvenance below).
+// An Artifact constrained to generator-output kinds (`GeneratedSource` /
+// `TestClaimArtifact`). A generator's provenance may name only artifacts it produced;
+// the refinement makes non-generated kinds (`SourceFile`, `CorePackage`, …)
+// unrepresentable in `GeneratorProvenance` (Source-authority guardrail per Branch H §H.5
+// — generated output is not, and cannot be tagged as, canonical source). Single authority
+// over `Artifact` via refinement, not a parallel kind enumeration. Pattern: posix.dag
+// ProcessId/ExitCode over `Refined<Int>`.
+type GeneratedArtifact {
+  refined: Refined<Artifact>
+}
+
+data generator_provenance_artifact_not_generated: Symbol = generator_provenance_artifact_not_generated
+
+fn artifact_is_generated(a: Artifact) -> Bool {
+  match a.kind {
+    GeneratedSource => True
+    TestClaimArtifact => True
+    SourceFile => False
+    ProjectionArtifact => False
+    Stage0Candidate => False
+    CorePackage => False
+    WitnessBundle => False
+  }
+}
+
+data generated_artifact_validation: Validation<Artifact> = Validation {
+  reason: generator_provenance_artifact_not_generated,
+  admits: artifact_is_generated
+}
+
+fn make_generated_artifact(base: Artifact, at: Locus) -> Outcome<GeneratedArtifact> {
+  match refine(base: base, by: generated_artifact_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: GeneratedArtifact { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+// Provenance of a generated artifact: the generator identity plus the generated Artifact
+// it emitted. Bundles the artifact-domain pair so testgen carriers (v4.lens.testgen
+// Generator<C>) hold a single provenance field rather than parallel id/artifact fields
+// (Cost-of-Change single authority; mirrors NodeArtifactProvenance below). The `artifact`
+// is a `GeneratedArtifact`, so only generator-output kinds are representable.
 type GeneratorProvenance {
   generator_id: GeneratorId
-  artifact: Artifact
+  artifact: GeneratedArtifact
 }
 
 type NodeArtifactProvenance {

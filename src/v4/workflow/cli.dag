@@ -11,13 +11,14 @@ module v4.workflow.cli
 
 
 import v4.std.node { Symbol }
-import v4.std.artifact { GeneratorId }
+import v4.std.artifact { GeneratorId, GeneratedArtifact, GeneratorProvenance }
 
 
 // Semantic class of a gunbc CLI route, per §H.5 RR-H acceptance ("CLI routes named by
-// source vs debug semantics"). A neutral shared classifier: rows in each domain tag
-// their own semantics, so Source-authority can add `SourceAuthorityRoute`-classed rows
-// (compile --target dag) alongside these Runtime/TestClaim rows without contention.
+// source vs debug semantics"). A neutral shared classifier: each domain's route rows are
+// classified by their *row type* (see the per-row `*_semantics` functions below), so
+// Source-authority can add `SourceAuthorityRoute`-classed rows (compile --target dag)
+// alongside these Runtime/TestClaim rows without contention.
 // 🟢 coproduct dissolution
 type GunbcCliRouteSemantics
   = SourceAuthorityRoute
@@ -25,24 +26,33 @@ type GunbcCliRouteSemantics
   | BoundaryDebugRoute
 
 
-// `gunbc testgen` — synthesize generated TestClaim artifacts. A Runtime/TestClaim route:
-// it emits `GeneratedSource` / `TestClaimArtifact` whose provenance names the producing
-// generator (`GeneratorId`). It never produces canonical source — generated `.dag` text
-// is not source-fidelity proof (Source-authority guardrail).
+// `gunbc testgen` — synthesize generated TestClaim artifacts. The row names the producing
+// generator; its route class is fixed by the row type (RuntimeTestClaimRoute, via
+// `gunbc_testgen_route_semantics`), not a caller-supplied field, so it cannot be authored
+// as a source-authority route (§H.5 / M2 single authority).
 type GunbcTestgenRoute {
   route_name: Symbol
-  semantics: GunbcCliRouteSemantics
   generator: GeneratorId
 }
 
 
 // `gunbc test` — execute the TestClaim corpus at runtime (T-38 harness). A runtime verdict
 // surface keyed by a corpus selection function, not an authoring-time / source-authority
-// route. Mirrors the `selection_fn` authority on `ci.dag` `TestClaimCorpusEvalCommand`.
+// route. `selection_fn` mirrors the authority on `ci.dag` `TestClaimCorpusEvalCommand`.
 type GunbcTestRoute {
   route_name: Symbol
-  semantics: GunbcCliRouteSemantics
   selection_fn: Symbol
+}
+
+
+// Route class is *derived from the row type*, not stored as payload — a Runtime/TestClaim
+// route cannot be misclassified as source-authority.
+fn gunbc_testgen_route_semantics(_route: GunbcTestgenRoute) -> GunbcCliRouteSemantics {
+  RuntimeTestClaimRoute
+}
+
+fn gunbc_test_route_semantics(_route: GunbcTestRoute) -> GunbcCliRouteSemantics {
+  RuntimeTestClaimRoute
 }
 
 
@@ -52,21 +62,33 @@ data gunbc_testgen_route_name: Symbol = gunbc_testgen_route_name
 data gunbc_test_route_name: Symbol = gunbc_test_route_name
 
 
-// Canonical constructors pin each row's name and semantics so a consumer cannot
-// misclassify a Runtime/TestClaim route as source-authority (enforces §H.5 naming).
+// Canonical constructors pin each row's name so a consumer cannot mint an off-contract
+// route name.
 fn gunbc_testgen_route(generator: GeneratorId) -> GunbcTestgenRoute {
   GunbcTestgenRoute {
     route_name: gunbc_testgen_route_name,
-    semantics: RuntimeTestClaimRoute,
     generator: generator
   }
 }
 
-
 fn gunbc_test_route(selection_fn: Symbol) -> GunbcTestRoute {
   GunbcTestRoute {
     route_name: gunbc_test_route_name,
-    semantics: RuntimeTestClaimRoute,
     selection_fn: selection_fn
+  }
+}
+
+
+// A `gunbc testgen` route attributes provenance to each generated artifact it emits,
+// naming itself (its `generator`) as producer. This is the structural consumer of
+// `GeneratorProvenance` / `GeneratedArtifact` on the CLI surface: the route + a generated
+// artifact yield the provenance fact the testgen lens carries on `Generator<C>`.
+fn gunbc_testgen_route_provenance(
+  route: GunbcTestgenRoute,
+  artifact: GeneratedArtifact
+) -> GeneratorProvenance {
+  GeneratorProvenance {
+    generator_id: route.generator,
+    artifact: artifact
   }
 }
