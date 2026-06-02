@@ -621,8 +621,15 @@ fn v4_python_language_model_declares_g1_2_fact_bundle_registry() {
         );
     }
     assert!(
-        PYTHON_LANGUAGE_DAG.contains("primitives: python_g1_2_primitive_fact_bundles()"),
-        "{PYTHON_LANGUAGE_PATH}: Python ModelCore primitive facts must consume the G.1.2 registry projection"
+        PYTHON_LANGUAGE_DAG.contains("core: Outcome<ModelCore>")
+            && PYTHON_LANGUAGE_DAG.contains("fn python_model_core_wave1() -> Outcome<ModelCore>")
+            && PYTHON_LANGUAGE_DAG.contains("match python_g1_2_primitive_fact_bundles()"),
+        "{PYTHON_LANGUAGE_PATH}: Python ModelCore primitive facts must propagate G.1.2 registry diagnostics"
+    );
+    assert!(
+        PYTHON_LANGUAGE_DAG.contains("primitives: primitives")
+            && !PYTHON_LANGUAGE_DAG.contains("Rejected { diagnostics: _ } =>\n      []"),
+        "{PYTHON_LANGUAGE_PATH}: Python G.1.2 registry rejection must not be coerced to an empty primitive list"
     );
     for name in [
         "python_primitive_bundle_from_integer_facts",

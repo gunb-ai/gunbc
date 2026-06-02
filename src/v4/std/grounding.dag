@@ -49,7 +49,8 @@ type PerLanguageFactBundleEntry {
 
 
 // P2: `entries` is the sole fact-value authority. `by_key` is a key-only duplicate index
-// and cannot carry an independently divergent fact payload.
+// and cannot carry an independently divergent fact payload. `std.collection.Set<T>` is
+// predicate-only here, so Map<K,K> is the bounded insertable key-index encoding.
 type PerLanguageFactBundleRegistry {
   by_key: Map<PerLanguageFactBundleKey, PerLanguageFactBundleKey>
   entries: List<PerLanguageFactBundleEntry>

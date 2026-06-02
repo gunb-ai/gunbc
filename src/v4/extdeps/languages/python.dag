@@ -142,7 +142,7 @@ type PythonLanguageModel {
   grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
-  core: ModelCore
+  core: Outcome<ModelCore>
 }
 
 // 🟢 grounded.
@@ -912,12 +912,15 @@ fn python_g1_2_primitive_bundles_from_registry(
   )
 }
 
-fn python_g1_2_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn python_g1_2_primitive_fact_bundles() -> Outcome<List<PrimitiveFactBundle>> {
   match python_g1_2_fact_bundle_registry() {
-    Accepted { value: registry, diagnostics: _ } =>
-      python_g1_2_primitive_bundles_from_registry(registry: registry)
-    Rejected { diagnostics: _ } =>
-      []
+    Accepted { value: registry, diagnostics: d } =>
+      Accepted {
+        value: python_g1_2_primitive_bundles_from_registry(registry: registry),
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
   }
 }
 
@@ -1048,13 +1051,21 @@ fn python_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn python_model_core_wave1() -> ModelCore {
-  ModelCore {
-    primitives: python_g1_2_primitive_fact_bundles(),
-    inhabitance: python_model_core_inhabitance_decls(),
-    laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+fn python_model_core_wave1() -> Outcome<ModelCore> {
+  match python_g1_2_primitive_fact_bundles() {
+    Accepted { value: primitives, diagnostics: d } =>
+      Accepted {
+        value: ModelCore {
+          primitives: primitives,
+          inhabitance: python_model_core_inhabitance_decls(),
+          laws: [],
+          effects: EffectSemanticsDecl { operations: [] },
+          partiality: PartialitySemanticsDecl { operations: [] }
+        },
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
   }
 }
 
