@@ -70,11 +70,22 @@ fn lens_ownership_family_all_pass(report: LensOwnershipFamilyEvalReport) -> Bool
 }
 
 
+fn lens_ownership_structural_witnesses_hold() -> Bool {
+  fold_list(
+    xs: lens_ownership_subject_roster,
+    empty: true,
+    cons: fn(acc, subject) {
+      acc && subject.structural_witness
+    }
+  )
+}
+
+
 fn lens_ownership_family_gate(report: LensOwnershipFamilyEvalReport) -> Bool {
   if is_empty(xs: lens_ownership_subject_roster) {
     false
   } else {
-    lens_ownership_family_all_pass(report: report)
+    lens_ownership_structural_witnesses_hold() && lens_ownership_family_all_pass(report: report)
   }
 }
 
