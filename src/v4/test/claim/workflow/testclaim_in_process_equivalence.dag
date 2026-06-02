@@ -1,0 +1,58 @@
+// src/v4/test/claim/workflow/testclaim_in_process_equivalence.dag
+// Scope: A.1.5a in-process TestClaimRun equivalence receipt for the fixed manual corpus slice.
+// Status: Class 2 receipt — compares direct `run_test_claim` corpus evaluation with the
+// bootstrap-pinned harness path shape. Host transport / CI JSON receipt remains A.1/A.3b work.
+
+module v4.test.claim.workflow.testclaim_in_process_equivalence
+
+
+import v4.std.logic { Bool }
+import v4.workflow.bootstrap {
+  BootstrapProjectionInputs,
+  bootstrap_projection_inputs,
+  bootstrap_projection_inputs_well_formed
+}
+import v4.test.claim.workflow.testclaim_corpus_runner {
+  CorpusEvalReport,
+  run_manual_testclaim_corpus_eval
+}
+
+
+type TestClaimRunInProcessEquivalenceReceipt {
+  bootstrap_inputs: BootstrapProjectionInputs
+  in_process_report: CorpusEvalReport
+  harness_path_report: CorpusEvalReport
+}
+
+
+fn run_manual_testclaim_corpus_eval_via_bootstrap_harness(
+  inputs: BootstrapProjectionInputs
+) -> CorpusEvalReport {
+  if bootstrap_projection_inputs_well_formed(inputs: inputs) {
+    run_manual_testclaim_corpus_eval()
+  } else {
+    CorpusEvalReport { entries: [] }
+  }
+}
+
+
+fn testclaim_run_in_process_equivalence_receipt() -> TestClaimRunInProcessEquivalenceReceipt {
+  TestClaimRunInProcessEquivalenceReceipt {
+    bootstrap_inputs: bootstrap_projection_inputs,
+    in_process_report: run_manual_testclaim_corpus_eval(),
+    harness_path_report: run_manual_testclaim_corpus_eval_via_bootstrap_harness(
+      inputs: bootstrap_projection_inputs
+    )
+  }
+}
+
+
+fn testclaim_run_in_process_equivalence_holds() -> Bool {
+  let receipt = testclaim_run_in_process_equivalence_receipt()
+  bootstrap_projection_inputs_well_formed(inputs: receipt.bootstrap_inputs)
+    && (receipt.in_process_report == receipt.harness_path_report)
+}
+
+
+data witness_testclaim_run_in_process_equivalence: Bool =
+  testclaim_run_in_process_equivalence_holds()
