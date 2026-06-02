@@ -82,7 +82,7 @@ import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
 import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
-import std.types { is_container_type }
+import std.types { is_container_type, is_kernel_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name }
 import v2.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
@@ -95,7 +95,7 @@ import v2.compiler.infer_method {
 import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
-  ItemInfo, DataItem
+  ItemInfo, DataItem, TypeItem, OtherItem
 }
 import v2.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
@@ -111,6 +111,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key
 }
+import v2.compiler.resolve { get_exported_names }
 import v2.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
 
@@ -261,6 +262,32 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   }
 }
 
+// Alias RHS: preserve nominal DAG type names (FreeMonoid<T>, Box<T>) — no container coercion.
+// Qualify bases from defining modules when RHS type lives outside the alias module.
+fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>) -> String {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
+    name
+  } else if n.connective == NoConnective && n.children |> count > 0 {
+    let local_mod = module_to_filename(name: module_name)
+    let def_mod = alias_rhs_rust_qualify_module_filename(name: name, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices)
+    let base = if def_mod != local_mod {
+      concat("crate::", def_mod, "::", name)
+    } else {
+      name
+    }
+    let args = n.children |> map(arg => render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules)) |> join(separator: ", ")
+    let applied_ty = concat(base, "<", args, ">")
+    if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+      wrap_shared_type(target: Rust, inner: applied_ty)
+    } else {
+      applied_ty
+    }
+  } else {
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
 fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
@@ -339,9 +366,9 @@ fn rust_nominal_identity_carrier_def(name: String) -> String {
   concat(rust_ord_derives_text(), "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, "(pub String);")
 }
 
-// 🟡 gated — nominal Ord carrier shape derivation for M3 Symbol/DiffId and
-// structurally equivalent carriers. Dissolve into a declared type property when
-// type-level target traits land.
+// 🟡 gated — nominal Ord carrier whitelist for M3 Symbol/DiffId only.
+// Next nominal carrier must move this to a declared type property instead of
+// extending the string predicates below.
 fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
   type_name == "Symbol"
 }
@@ -351,43 +378,34 @@ fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<Str
     && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
 }
 
-fn rust_nominal_ord_resolved_shape(n: Node) -> Node {
-  match n.inferred {
-    Some { value: Resolved { node: rt } } => rt
-    _ => n
+fn rust_diff_id_ord_carrier_shape_eligible(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if name != "DiffId" || (children |> count) != 1 {
+    false
+  } else {
+    match children |> first {
+      Some { value: child } =>
+        rust_nominal_identity_carrier_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
+      None => false
+    }
   }
-}
-
-fn rust_nominal_ord_record_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.connective == Conj && (n.children |> count) == 1 && match n.children |> first {
-    Some { value: child } => rust_nominal_ord_type_eligible(elem_node: child_type_node(ch: child), source_indices: source_indices)
-    None => false
-  }
-}
-
-fn rust_nominal_ord_coproduct_shape_eligible(n: Node) -> Bool {
-  n.connective == Disj && (n.children |> count) > 0 && n.children |> all(v => (v.children |> count) == 0)
-}
-
-fn rust_nominal_ord_reference_shape_eligible(n: Node) -> Bool {
-  n.connective == NoConnective && (n.children |> count) == 0 && (n.params |> count) == 0
 }
 
 fn rust_nominal_ord_derives_for_shape(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
-  let shape = Node { name: name, span: make_span(start: 0, end: 0), ident_span: none, children: children, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  if rust_nominal_ord_record_shape_eligible(n: shape, source_indices: source_indices) {
+  if rust_diff_id_ord_carrier_shape_eligible(name: name, children: children, source_indices: source_indices) {
     rust_ord_derives_text()
   } else {
     ""
   }
 }
 
+fn rust_nominal_ord_type_name_eligible(type_name: String) -> Bool {
+  type_name == "Symbol" || type_name == "DiffId"
+}
+
 fn rust_nominal_ord_type_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let shape = rust_nominal_ord_resolved_shape(n: elem_node)
-  rust_nominal_identity_carrier_shape_eligible(n: shape, source_indices: source_indices)
-    || rust_nominal_ord_record_shape_eligible(n: shape, source_indices: source_indices)
-    || rust_nominal_ord_coproduct_shape_eligible(n: shape)
-    || rust_nominal_ord_reference_shape_eligible(n: shape)
+  rust_nominal_identity_carrier_shape_eligible(n: elem_node, source_indices: source_indices)
+    || rust_nominal_ord_type_name_eligible(type_name: authored_name_at(source_indices: source_indices, node: elem_node))
+    || rust_diff_id_ord_carrier_shape_eligible(name: authored_name_at(source_indices: source_indices, node: elem_node), children: elem_node.children, source_indices: source_indices)
 }
 
 fn rust_serde_tag_attr() -> String {
@@ -1158,7 +1176,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     )
   )
   let test_projections = extract_test_projections(typed: typed)
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items))
+  let export_sets = build_module_export_sets(modules: typed.modules)
+  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules))
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -1234,6 +1253,8 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
 // Module emission
 // =========================================================================
 
+// Single-module harness entry: export_sets/typed_modules are one-element, so
+// cross-module parametric alias emission only works via emit_rust (full graph).
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let base_info = build_emit_graph_info(modules: [typed_module])
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
@@ -1251,10 +1272,20 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     read_only_params: empty_set()
   }
   let shared_types = emit_info.shared_types
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]))
+  let export_sets = build_module_export_sets(modules: [typed_module])
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module])
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>) -> TextFile {
+fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let m_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
+    let exported = get_exported_names(module: tm.module, source_indices: tm.type_env.source_indices)
+    let exported_set = exported |> fold(init: empty_map(), f: (inner, n) => map_insert(inner, n, true))
+    map_insert(acc, m_name, exported_set)
+  )
+}
+
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let scoped_data_items = build_scoped_data_item_index(typed_module: typed_module, data_items: data_items)
@@ -1266,7 +1297,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
     )
     |> map(item => authored_name(env: scope.type_env, node: item))
-  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, source_indices: scope.type_env.source_indices)
+  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
@@ -1305,7 +1336,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       })
     |> first
   let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: typed_module.items, imports: module_import_items))
+    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: typed_module.items, imports: module_import_items, export_sets: export_sets, typed_modules: typed_modules))
     |> join(separator: "\n\n")
   let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let filename = if raw_filename == "main" { "main_mod" } else { raw_filename }
@@ -1331,77 +1362,919 @@ fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
   if is_data { to_snake(n) } else { n }
 }
 
-fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  if imports |> count == 0 {
+// SG-8: graph type imports proven from the declared import module's physical defs
+// and export surface — never from bare-name registry lookup (global homonyms).
+fn is_import_graph_type_name(name: String, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: module_to_filename(name: import_module), typed_modules: typed_modules, source_indices: source_indices) {
+    true
+  } else if match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+    Some { value: src } => type_name_is_rust_importable_in_module(name: name, module_name: src, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices)
+    None => false
+  } {
+    true
+  } else if is_enum_in_summaries(type_summaries: type_summaries, type_name: name) {
+    false
+  } else if is_known_variant(type_summaries: type_summaries, name: name) {
+    false
+  } else {
+    match map_get(export_sets, import_module) {
+      Some { value: exported } =>
+        if map_get(exported, name) == Some { value: true } {
+          type_name_is_rust_importable_in_module(name: name, module_name: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices)
+        } else { false }
+      None => false
+    }
+  }
+}
+
+fn item_defining_module_filename(name: String, registry: Map<String, ItemInfo>, fallback: String) -> String {
+  match lookup_item(registry: registry, name: name) {
+    Some { value: info } => module_to_filename(name: info.module_name)
+    None => fallback
+  }
+}
+
+fn typed_module_by_name(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> TypedModule? {
+  typed_modules |> filter(tm =>
+    authored_name_at(source_indices: source_indices, node: tm.module) == module_name
+  ) |> first
+}
+
+fn module_name_from_filename(mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String? {
+  typed_modules |> filter(tm =>
+    module_to_filename(name: authored_name_at(source_indices: source_indices, node: tm.module)) == mod_filename
+  ) |> map(tm => authored_name_at(source_indices: source_indices, node: tm.module)) |> first
+}
+
+fn has_physical_type_def_in_module_filename(rhs_name: String, mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  typed_modules |> any(tm =>
+    module_to_filename(name: authored_name_at(source_indices: source_indices, node: tm.module)) == mod_filename
+    && tm.items |> any(item =>
+      authored_name_at(source_indices: source_indices, node: item) == rhs_name
+      && is_type_def_item(item: item)
+    )
+  )
+}
+
+fn find_variant_parent_in_module(variant_name: String, module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+    None => None
+    Some { value: tm } =>
+      tm.items
+        |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+        |> filter(item =>
+          item.children |> any(child =>
+            authored_name_at(source_indices: source_indices, node: child) == variant_name
+          )
+        )
+        |> map(item => authored_name_at(source_indices: source_indices, node: item))
+        |> first
+  }
+}
+
+fn type_name_is_export_source_in_module(name: String, module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+    None => false
+    Some { value: tm } =>
+      tm.items |> any(item =>
+        authored_name_at(source_indices: source_indices, node: item) == name
+        && (is_type_def_item(item: item)
+          || is_type_alias_item(item: item, source_indices: source_indices)
+          || is_type_decl_item(item: item, source_indices: source_indices))
+      )
+  }
+}
+
+// Rust import emission must match alias emission: only names with nominal-shell authority
+// (struct/enum/alias/identity carrier/emittable parametric alias), not opaque carriers.
+fn type_name_is_rust_importable_in_module(name: String, module_name: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+    None => false
+    Some { value: tm } =>
+      match tm.items
+        |> filter(item =>
+          authored_name_at(source_indices: source_indices, node: item) == name
+          && (is_type_def_item(item: item)
+            || is_type_alias_item(item: item, source_indices: source_indices)
+            || is_type_decl_item(item: item, source_indices: source_indices))
+        )
+        |> first {
+        None => false
+        Some { value: item } =>
+          type_item_has_rust_nominal_shell_authority(
+            item: item,
+            item_text: name,
+            module_name: module_name,
+            imports: module_imports(n: tm.module),
+            scope: module_emit_scope(typed_module: tm),
+            registry: registry,
+            export_sets: export_sets,
+            typed_modules: typed_modules,
+            source_indices: source_indices
+          )
+      }
+  }
+}
+
+// Exported type names without Rust nominal-shell authority must not emit `use` lines
+// (E0432 when the defining module intentionally emits no symbol).
+fn imported_name_is_non_emittable_type(name: String, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let defining_module = match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+    Some { value: src } => src
+    None => import_module
+  }
+  type_name_is_export_source_in_module(name: name, module_name: defining_module, typed_modules: typed_modules, source_indices: source_indices)
+  && type_name_is_rust_importable_in_module(name: name, module_name: defining_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices) == false
+}
+
+// Walk explicit re-export chains (resolve get_exported_names surfaces) to the defining module.
+fn name_in_transitive_export_surface(name: String, module_name: String, visited: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if visited |> any(v => v == module_name) {
+    false
+  } else {
+    let in_local = match map_get(export_sets, module_name) {
+      Some { value: exported } => map_get(exported, name) == Some { value: true }
+      None => false
+    }
+    if in_local {
+      true
+    } else {
+      match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+        None => false
+        Some { value: tm } =>
+          module_imports(n: tm.module)
+            |> filter(imp => import_is_all(n: imp))
+            |> any(imp =>
+              name_in_transitive_export_surface(
+                name: name,
+                module_name: authored_name_at(source_indices: source_indices, node: imp),
+                visited: concat(visited, [module_name]),
+                export_sets: export_sets,
+                typed_modules: typed_modules,
+                source_indices: source_indices
+              )
+            )
+      }
+    }
+  }
+}
+
+fn reexport_source_module_name(name: String, import_module: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String? {
+  reexport_source_module_name_with_visited(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices)
+}
+
+fn reexport_source_module_name_with_visited(name: String, import_module: String, visited: List<String>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String? {
+  if visited |> any(v => v == import_module) {
+    None
+  } else {
+    match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
+      None => None
+      Some { value: tm } =>
+        if type_name_is_export_source_in_module(name: name, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
+          Some { value: import_module }
+        } else {
+          match find_variant_parent_in_module(
+            variant_name: name,
+            module_name: import_module,
+            typed_modules: typed_modules,
+            source_indices: source_indices
+          ) {
+            Some { value: _parent } => Some { value: import_module }
+            None =>
+          match module_imports(n: tm.module) |> filter(imp =>
+            import_is_all(n: imp) == false
+            && import_specific_names_at(n: imp, source_indices: source_indices) |> any(n => n == name)
+          ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
+            Some { value: src } =>
+              reexport_source_module_name_with_visited(
+                name: name,
+                import_module: src,
+                visited: concat(visited, [import_module]),
+                typed_modules: typed_modules,
+                export_sets: export_sets,
+                source_indices: source_indices
+              )
+            None =>
+              match module_imports(n: tm.module) |> filter(imp => import_is_all(n: imp)) |> filter(imp =>
+                let src_mod = authored_name_at(source_indices: source_indices, node: imp)
+                name_in_transitive_export_surface(name: name, module_name: src_mod, visited: concat(visited, [import_module]), export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices)
+              ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
+                Some { value: src } =>
+                  reexport_source_module_name_with_visited(
+                    name: name,
+                    import_module: src,
+                    visited: concat(visited, [import_module]),
+                    typed_modules: typed_modules,
+                    export_sets: export_sets,
+                    source_indices: source_indices
+                  )
+                None => None
+              }
+          }
+          }
+        }
+    }
+  }
+}
+
+fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let physical = enum_names_in_module(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, type_summaries: type_summaries)
+  let reexport_parents = match map_get(export_sets, import_module) {
+    Some { value: exported } =>
+      map_keys(exported) |> filter(n =>
+        is_known_variant(type_summaries: type_summaries, name: n)
+        && is_enum_in_summaries(type_summaries: type_summaries, type_name: n) == false
+      ) |> map(n =>
+        match reexport_variant_parent_in_import_module(
+          variant_name: n,
+          import_module: import_module,
+          registry: registry,
+          type_summaries: type_summaries,
+          typed_modules: typed_modules,
+          export_sets: export_sets,
+          source_indices: source_indices
+        ) {
+          Some { value: parent } => parent
+          None => ""
+        }
+      ) |> filter(p => p != "")
+    None => []
+  }
+  unique_strings(items: concat(physical, reexport_parents))
+}
+
+fn enum_names_in_module(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>) -> List<String> {
+  match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+    None => []
+    Some { value: tm } =>
+      tm.items
+        |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+        |> map(item => authored_name_at(source_indices: source_indices, node: item))
+        |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+  }
+}
+
+fn enum_physically_defined_in_module(enum_name: String, module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+    None => false
+    Some { value: tm } =>
+      tm.items |> any(item =>
+        authored_name_at(source_indices: source_indices, node: item) == enum_name
+        && is_type_def_item(item: item)
+        && is_coproduct_type(n: item)
+      )
+  }
+}
+
+// Recursively collect names reachable through wildcard import pools.
+// export_sets[src] only records specific re-exports; wildcard-pooled names
+// live on deeper modules in the chain (proxy2 -> proxy1 -> def).
+fn wildcard_import_pool_surface_names(module_name: String, visited: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  if visited |> any(v => v == module_name) {
+    []
+  } else {
+    match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices) {
+      None => []
+      Some { value: tm } =>
+        module_imports(n: tm.module)
+          |> filter(imp => import_is_all(n: imp))
+          |> flat_map(imp =>
+            let src_mod = authored_name_at(source_indices: source_indices, node: imp)
+            let direct = match map_get(export_sets, src_mod) {
+              Some { value: exported } => map_keys(exported)
+              None => []
+            }
+            concat(
+              direct,
+              wildcard_import_pool_surface_names(
+                module_name: src_mod,
+                visited: concat(visited, [module_name]),
+                export_sets: export_sets,
+                typed_modules: typed_modules,
+                source_indices: source_indices
+              )
+            )
+          )
+    }
+  }
+}
+
+// Wildcard import of a proxy module must still emit defining-module lines for
+// re-exported names (variants/types) that `use proxy::*` cannot surface in Rust.
+// export_sets[import_module] omits wildcard-pooled names (get_exported_names
+// only records specific imports), so also scan wildcard source modules' surfaces.
+fn wildcard_reexport_surface_names(import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let local_candidates = match map_get(export_sets, import_module) {
+    Some { value: exported } => map_keys(exported)
+    None => []
+  }
+  let wildcard_pool_candidates = wildcard_import_pool_surface_names(
+    module_name: import_module,
+    visited: [],
+    export_sets: export_sets,
+    typed_modules: typed_modules,
+    source_indices: source_indices
+  )
+  unique_strings(items: concat(local_candidates, wildcard_pool_candidates) |> filter(n =>
+    match reexport_source_module_name(name: n, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+      Some { value: src } => src != import_module
+      None => false
+    }
+  ))
+}
+
+fn graph_type_import_module_filename(name: String, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String {
+  if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: mod_name, typed_modules: typed_modules, source_indices: source_indices) {
+    mod_name
+  } else {
+    match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+      Some { value: src } => module_to_filename(name: src)
+      None => mod_name
+    }
+  }
+}
+
+fn variant_defining_module_filename_for_import(variant_name: String, import_module: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, fallback: String) -> String {
+  match find_variant_parent_in_module(
+    variant_name: variant_name,
+    module_name: import_module,
+    typed_modules: typed_modules,
+    source_indices: source_indices
+  ) {
+    Some { value: _parent } => module_to_filename(name: import_module)
+    None =>
+      match explicit_import_source_module_for_name(name: variant_name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+        Some { value: hop } if hop != import_module =>
+          variant_defining_module_filename_for_import(
+            variant_name: variant_name,
+            import_module: hop,
+            typed_modules: typed_modules,
+            export_sets: export_sets,
+            source_indices: source_indices,
+            fallback: fallback
+          )
+        _ => fallback
+      }
+  }
+}
+
+fn variant_parent_defining_module_filename(parent_enum: String, variant_name: String, import_module: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, registry: Map<String, ItemInfo>, fallback: String) -> String {
+  match find_variant_parent_in_module(
+    variant_name: variant_name,
+    module_name: import_module,
+    typed_modules: typed_modules,
+    source_indices: source_indices
+  ) {
+    Some { value: local_parent } =>
+      if local_parent == parent_enum {
+        module_to_filename(name: import_module)
+      } else {
+        variant_defining_module_filename_for_import(
+          variant_name: variant_name,
+          import_module: import_module,
+          typed_modules: typed_modules,
+          export_sets: export_sets,
+          source_indices: source_indices,
+          fallback: item_defining_module_filename(name: parent_enum, registry: registry, fallback: fallback)
+        )
+      }
+    None =>
+      variant_defining_module_filename_for_import(
+        variant_name: variant_name,
+        import_module: import_module,
+        typed_modules: typed_modules,
+        export_sets: export_sets,
+        source_indices: source_indices,
+        fallback: item_defining_module_filename(name: parent_enum, registry: registry, fallback: fallback)
+      )
+  }
+}
+
+fn explicit_import_source_module_for_name(name: String, import_module: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
+    None => None
+    Some { value: tm } =>
+      match module_imports(n: tm.module) |> filter(imp =>
+        import_is_all(n: imp) == false
+        && import_specific_names_at(n: imp, source_indices: source_indices) |> any(n => n == name)
+      ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
+        Some { value: src } => Some { value: src }
+        None =>
+          match module_imports(n: tm.module) |> filter(imp => import_is_all(n: imp)) |> filter(imp =>
+            let src_mod = authored_name_at(source_indices: source_indices, node: imp)
+            match map_get(export_sets, src_mod) {
+              Some { value: exported } => map_get(exported, name) == Some { value: true }
+              None => false
+            }
+          ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
+            Some { value: src } => Some { value: src }
+            None => None
+          }
+      }
+  }
+}
+
+fn reexport_variant_parent_in_import_module(variant_name: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match reexport_source_module_name(name: variant_name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+    None => None
+    Some { value: src_mod } =>
+      match find_variant_parent_in_module(
+        variant_name: variant_name,
+        module_name: src_mod,
+        typed_modules: typed_modules,
+        source_indices: source_indices
+      ) {
+        Some { value: parent } => Some { value: parent }
+        None =>
+          match explicit_import_source_module_for_name(name: variant_name, import_module: src_mod, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+            Some { value: hop } if hop != src_mod =>
+              reexport_variant_parent_in_import_module(
+                variant_name: variant_name,
+                import_module: hop,
+                registry: registry,
+                type_summaries: type_summaries,
+                typed_modules: typed_modules,
+                export_sets: export_sets,
+                source_indices: source_indices
+              )
+            _ => None
+          }
+      }
+  }
+}
+
+fn alias_rhs_rust_qualify_module_filename(name: String, alias_module: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String {
+  let spell_mod = alias_rhs_base_module_filename(name: name, alias_module: alias_module, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules)
+  if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: spell_mod, typed_modules: typed_modules, source_indices: source_indices) {
+    spell_mod
+  } else {
+    match module_name_from_filename(mod_filename: spell_mod, typed_modules: typed_modules, source_indices: source_indices) {
+      Some { value: mod_name } =>
+        match reexport_source_module_name(name: name, import_module: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+          Some { value: src } => module_to_filename(name: src)
+          None => spell_mod
+        }
+      None => spell_mod
+    }
+  }
+}
+
+// Parametric alias RHS bases must not use bare global registry homonym lookup when the
+// spelling is declared via import — import_module is the authority (P2 boundary discipline).
+fn alias_rhs_base_module_filename(name: String, alias_module: String, imports: List<Node>, source_indices: Map<String, NewlineIndex>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>) -> String {
+  let local_mod = module_to_filename(name: alias_module)
+  match lookup_item(registry: scope.item_registry, name: name) {
+    Some { value: info } =>
+      if info.module_name == alias_module && (info.kind == TypeItem || info.kind == OtherItem) {
+        local_mod
+      } else {
+        alias_rhs_base_module_from_import_or_registry(name: name, imports: imports, source_indices: source_indices, registry: registry, local_mod: local_mod, export_sets: export_sets, typed_modules: typed_modules)
+      }
+    None =>
+      alias_rhs_base_module_from_import_or_registry(name: name, imports: imports, source_indices: source_indices, registry: registry, local_mod: local_mod, export_sets: export_sets, typed_modules: typed_modules)
+  }
+}
+
+fn alias_rhs_base_module_from_import_or_registry(name: String, imports: List<Node>, source_indices: Map<String, NewlineIndex>, registry: Map<String, ItemInfo>, local_mod: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>) -> String {
+  match imports |> filter(imp =>
+    import_specific_names_at(n: imp, source_indices: source_indices) |> any(n => n == name)
+  ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
+    Some { value: import_module } => module_to_filename(name: import_module)
+    None =>
+      match imports |> filter(imp => import_is_all(n: imp)) |> filter(imp =>
+        let import_module = authored_name_at(source_indices: source_indices, node: imp)
+        name_in_transitive_export_surface(name: name, module_name: import_module, visited: [], export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices)
+      ) |> map(imp => authored_name_at(source_indices: source_indices, node: imp)) |> first {
+        Some { value: import_module } => module_to_filename(name: import_module)
+        None => item_defining_module_filename(name: name, registry: registry, fallback: local_mod)
+      }
+  }
+}
+
+fn item_generic_param_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  item.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+}
+
+fn type_item_by_name_in_module_filename(rhs_name: String, mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match module_name_from_filename(mod_filename: mod_filename, typed_modules: typed_modules, source_indices: source_indices) {
+    Some { value: mod_name } =>
+      match typed_module_by_name(module_name: mod_name, typed_modules: typed_modules, source_indices: source_indices) {
+        Some { value: tm } =>
+          tm.items |> filter(item =>
+            authored_name_at(source_indices: source_indices, node: item) == rhs_name
+            && (is_type_def_item(item: item)
+              || is_type_alias_item(item: item, source_indices: source_indices)
+              || is_type_decl_item(item: item, source_indices: source_indices))
+          ) |> first
+        None => none
+      }
+    None => none
+  }
+}
+
+// Nominal shells referenced in alias RHS must map to types that actually emit Rust
+// (struct/enum/alias/identity carrier/parametric alias), not opaque carriers.
+fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if is_type_def_item(item: item) {
+    true
+  } else if is_type_alias_item(item: item, source_indices: source_indices) {
+    true
+  } else if is_type_decl_item(item: item, source_indices: source_indices) {
+    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+      true
+    } else if (item.params |> count) > 0 {
+      let rhs = resolved_type(n: item)
+      if is_type_alias_return_node(n: rhs, source_indices: source_indices) && (rhs.children |> count) > 0 {
+        alias_rhs_nominal_shell_has_rust_authority(
+          n: rhs,
+          module_name: module_name,
+          imports: imports,
+          scope: scope,
+          registry: registry,
+          export_sets: export_sets,
+          typed_modules: typed_modules,
+          source_indices: source_indices
+        )
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
+// Parametric alias emission (F3/F4): only real `type Foo<T> = Bar<T>` shapes — not opaque
+// carriers (`type GroupCompletion<M>`) or container-lowering stubs as invalid Rust aliases.
+// Authority is module-scoped: bare type_summaries collide on homonyms (P2/P3 fail-closed).
+fn rhs_base_has_rust_type_authority_in_module(rhs_name: String, def_mod_filename: String, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match type_item_by_name_in_module_filename(rhs_name: rhs_name, mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices) {
+    Some { value: item } =>
+      match module_name_from_filename(mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices) {
+        Some { value: def_module_name } =>
+          match typed_module_by_name(module_name: def_module_name, typed_modules: typed_modules, source_indices: source_indices) {
+            Some { value: tm } =>
+              type_item_has_rust_nominal_shell_authority(
+                item: item,
+                item_text: rhs_name,
+                module_name: def_module_name,
+                imports: module_imports(n: tm.module),
+                scope: module_emit_scope(typed_module: tm),
+                registry: registry,
+                export_sets: export_sets,
+                typed_modules: typed_modules,
+                source_indices: source_indices
+              )
+            None => false
+          }
+        None => false
+      }
+    None =>
+      match module_name_from_filename(mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices) {
+        Some { value: mod_name } =>
+          match map_get(export_sets, mod_name) {
+            Some { value: exported } =>
+              if map_get(exported, rhs_name) == Some { value: true } {
+                match reexport_source_module_name(name: rhs_name, import_module: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+                  Some { value: src } =>
+                    rhs_base_has_rust_type_authority_in_module(
+                      rhs_name: rhs_name,
+                      def_mod_filename: module_to_filename(name: src),
+                      module_name: module_name,
+                      imports: imports,
+                      scope: scope,
+                      registry: registry,
+                      typed_modules: typed_modules,
+                      export_sets: export_sets,
+                      source_indices: source_indices
+                    )
+                  None => false
+                }
+              } else { false }
+            None => false
+          }
+        None => false
+      }
+  }
+}
+
+// Every applied nominal shell in alias RHS must have Rust type authority in its
+// defining module (P2/P3) — matches recursive render_rust_alias_rhs_type emission.
+fn alias_rhs_nominal_shell_has_rust_authority(n: Node, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if n.connective == NoConnective && n.children |> count > 0 {
+    let name = authored_name_at(source_indices: source_indices, node: n)
+    let def_mod = alias_rhs_base_module_filename(name: name, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules)
+    rhs_base_has_rust_type_authority_in_module(rhs_name: name, def_mod_filename: def_mod, module_name: module_name, imports: imports, scope: scope, registry: registry, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices)
+      && n.children |> all(child =>
+        alias_rhs_nominal_shell_has_rust_authority(
+          n: child,
+          module_name: module_name,
+          imports: imports,
+          scope: scope,
+          registry: registry,
+          export_sets: export_sets,
+          typed_modules: typed_modules,
+          source_indices: source_indices
+        )
+      )
+  } else if n.connective == NoConnective && n.children |> count == 0 {
+    if n.inferred != none && is_type_variable(inferred: n.inferred.value) {
+      true
+    } else {
+      let name = authored_name_at(source_indices: source_indices, node: n)
+      if name == "" || is_kernel_type(name: name) {
+        true
+      } else {
+        let def_mod = alias_rhs_base_module_filename(name: name, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules)
+        rhs_base_has_rust_type_authority_in_module(rhs_name: name, def_mod_filename: def_mod, module_name: module_name, imports: imports, scope: scope, registry: registry, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices)
+      }
+    }
+  } else {
+    true
+  }
+}
+
+fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source_indices: Map<String, NewlineIndex>, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>) -> Bool {
+  if (item.params |> count) == 0 {
+    false
+  } else {
+    let rhs = resolved_type(n: item)
+    if rhs.inferred != none && is_compiler_error(inferred: rhs.inferred.value) {
+      false
+    } else if !is_type_alias_return_node(n: rhs, source_indices: source_indices) {
+      false
+    } else {
+      let rhs_name = authored_name_at(source_indices: source_indices, node: rhs)
+      (rhs_name != item_text)
+        && ((rhs.children |> count) > 0)
+        && alias_rhs_nominal_shell_has_rust_authority(
+          n: rhs,
+          module_name: module_name,
+          imports: imports,
+          scope: scope,
+          registry: registry,
+          export_sets: export_sets,
+          typed_modules: typed_modules,
+          source_indices: source_indices
+        )
+    }
+  }
+}
+
+fn emit_specific_import_block(import_module: String, mod_name: String, filtered_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String {
+  let type_summaries = emit_info.type_summaries
+  let deduped_names = unique_strings(items: filtered_names |> filter(n => local_names |> all(ln => ln != n)))
+  if deduped_names |> count == 0 {
     ""
   } else {
-    let type_summaries = emit_info.type_summaries
-    let import_lines = imports |> map(imp =>
-      let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
-      if import_is_all(n: imp) {
-        concat("use crate::", mod_name, "::*;")
+    let top_level = deduped_names |> filter(n =>
+      if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices) {
+        true
+      } else if is_known_variant(type_summaries: type_summaries, name: n) {
+        is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
+      } else if imported_name_is_non_emittable_type(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices) {
+        false
+      } else if is_kernel_type(name: n) {
+        false
+      } else { true }
+    )
+    let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices)
+    let imported_enums = deduped_names |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+    let all_parents = deduped_names |> map(n =>
+      if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices) {
+        ""
+      } else if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) {
+        ""
       } else {
-          let specific_names = import_specific_names_at(n: imp, source_indices: source_indices)
-          let filtered_names = specific_names |> filter(n => local_names |> all(ln => ln != n))
-          if filtered_names |> count == 0 {
-            ""
-          } else {
-            let deduped_names = unique_strings(items: filtered_names)
-            let top_level = deduped_names |> filter(n =>
-              if is_known_variant(type_summaries: type_summaries, name: n) {
-                is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
-              } else { true }
-            )
-            let all_enum_names = map_keys(type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-            let imported_enums = deduped_names |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-            let all_parents = deduped_names |> map(n =>
-              if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { "" }
-              else {
+        match find_variant_parent_in_module(
+          variant_name: n,
+          module_name: import_module,
+          typed_modules: typed_modules,
+          source_indices: source_indices
+        ) {
+          Some { value: parent } => parent
+          None =>
+            match reexport_variant_parent_in_import_module(
+              variant_name: n,
+              import_module: import_module,
+              registry: registry,
+              type_summaries: type_summaries,
+              typed_modules: typed_modules,
+              export_sets: export_sets,
+              source_indices: source_indices
+            ) {
+              Some { value: parent } => parent
+              None =>
                 match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: imported_enums) {
                   Some { value: parent } => parent
                   None =>
-                    match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: all_enum_names) {
+                    match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: import_module_enums) {
                       Some { value: parent } => parent
                       None => ""
                     }
                 }
+            }
+        }
+      }
+    ) |> filter(p => p != "")
+    let parent_list = unique_strings(items: all_parents)
+    let non_variant_top = top_level |> filter(n =>
+      if is_known_variant(type_summaries: type_summaries, name: n) {
+        is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
+      } else { true }
+    )
+    let direct_names = unique_strings(items: non_variant_top)
+    // Same-module variant parents belong in the direct braced use (legacy top_with_parents
+    // merge). Only cross-module parents get a separate defining-module pub use (SG-8).
+    let local_parent_names = parent_list |> filter(p =>
+      deduped_names |> any(n =>
+        match find_variant_parent_in_module(
+          variant_name: n,
+          module_name: import_module,
+          typed_modules: typed_modules,
+          source_indices: source_indices
+        ) {
+          Some { value: found } => found == p
+          None => false
+        }
+      )
+    )
+    let remote_parent_list = parent_list |> filter(p =>
+      deduped_names |> any(n =>
+        match find_variant_parent_in_module(
+          variant_name: n,
+          module_name: import_module,
+          typed_modules: typed_modules,
+          source_indices: source_indices
+        ) {
+          Some { value: found } => found == p
+          None => false
+        }
+      ) == false
+    )
+    let merged_direct_names = unique_strings(items: concat(direct_names, local_parent_names))
+    let type_direct_names = merged_direct_names |> filter(n =>
+      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices)
+    )
+    let other_direct_names = merged_direct_names |> filter(n =>
+      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices) == false
+    )
+    let type_direct_mods = unique_strings(items: type_direct_names |> map(n =>
+      graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices)
+    ))
+    let type_direct_lines = type_direct_mods |> map(def_mod =>
+      let group = type_direct_names |> filter(n =>
+        graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) == def_mod
+      )
+      if group |> count > 0 {
+        let names_str = group |> map(n =>
+          emit_import_name(n: n, registry: registry)
+        ) |> join(separator: ", ")
+        concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};")
+      } else { "" }
+    )
+    let other_direct_line = if other_direct_names |> count > 0 {
+      let names_str = other_direct_names |> map(n =>
+        emit_import_name(n: n, registry: registry)
+      ) |> join(separator: ", ")
+      concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
+    } else { "" }
+    let direct_lines = concat(type_direct_lines |> filter(l => l != ""), if other_direct_line != "" { [other_direct_line] } else { [] })
+    let parent_defining_mods = unique_strings(items: remote_parent_list |> map(p =>
+      let rep_variant = deduped_names |> filter(n =>
+        match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
+          Some { value: found } => found == p
+          None =>
+            match reexport_variant_parent_in_import_module(variant_name: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+              Some { value: found } => found == p
+              None => false
+            }
+        }
+      ) |> first
+      match rep_variant {
+        Some { value: v } => variant_parent_defining_module_filename(parent_enum: p, variant_name: v, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, registry: registry, fallback: mod_name)
+        None => item_defining_module_filename(name: p, registry: registry, fallback: mod_name)
+      }
+    ))
+    let parent_main_lines = parent_defining_mods |> map(def_mod =>
+      let group = remote_parent_list |> filter(p =>
+        let rep_variant = deduped_names |> filter(n =>
+          match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
+            Some { value: found } => found == p
+            None =>
+              match reexport_variant_parent_in_import_module(variant_name: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+                Some { value: found } => found == p
+                None => false
               }
-            ) |> filter(p => p != "")
-            let parent_list = unique_strings(items: all_parents)
-            let top_with_parents = unique_strings(items: concat(top_level, parent_list))
-            let main_line = if top_with_parents |> count > 0 {
-              let names_str = top_with_parents |> map(n =>
-                emit_import_name(n: n, registry: registry)
-              ) |> join(separator: ", ")
-              concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
-            } else { "" }
-            let variant_lines = parent_list |> map(parent =>
-              let variants = deduped_names |> filter(n =>
-                if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { false }
-                else {
+          }
+        ) |> first
+        match rep_variant {
+          Some { value: v } => variant_parent_defining_module_filename(parent_enum: p, variant_name: v, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, registry: registry, fallback: mod_name) == def_mod
+          None => item_defining_module_filename(name: p, registry: registry, fallback: mod_name) == def_mod
+        }
+      )
+      if group |> count > 0 {
+        let names_str = group |> join(separator: ", ")
+        concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};")
+      } else { "" }
+    )
+    let main_lines = if direct_lines |> count > 0 {
+      concat(direct_lines, parent_main_lines |> filter(l => l != ""))
+    } else {
+      parent_main_lines |> filter(l => l != "")
+    }
+    let variant_lines = parent_list |> map(parent =>
+      let variants = deduped_names |> filter(n =>
+        if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices) {
+          false
+        } else if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) {
+          false
+        } else {
+          match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices) {
+            Some { value: found } => found == parent
+            None =>
+              match reexport_variant_parent_in_import_module(variant_name: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices) {
+                Some { value: found } => found == parent
+                None =>
                   match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: [parent]) {
                     Some { value: _ } => true
                     None => false
                   }
-                }
-              )
-              let vars_str = variants |> join(separator: ", ")
-              concat("use crate::", mod_name, "::", parent, "::{", vars_str, "};")
-            )
-            let imported_enums = top_level |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-            let wildcard_enum_lines = imported_enums
-              |> filter(en => parent_list |> any(p => p == en) == false)
-              |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
-            let all_lines = if main_line != "" {
-              concat([main_line], variant_lines |> filter(l => l != ""), wildcard_enum_lines)
-            } else {
-              concat(variant_lines |> filter(l => l != ""), wildcard_enum_lines)
-            }
-            all_lines |> join(separator: "\n")
+              }
           }
+        }
+      )
+      let parent_mod = match variants |> first {
+        Some { value: v } => variant_parent_defining_module_filename(parent_enum: parent, variant_name: v, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, registry: registry, fallback: mod_name)
+        None => item_defining_module_filename(name: parent, registry: registry, fallback: mod_name)
+      }
+      let vars_str = variants |> join(separator: ", ")
+      concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
+    )
+    let imported_enums = top_level |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+    let wildcard_enum_lines = imported_enums
+      |> filter(en => parent_list |> any(p => p == en) == false)
+      |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
+    let all_lines = concat(
+      main_lines |> filter(l => l != ""),
+      variant_lines |> filter(l => l != ""),
+      wildcard_enum_lines
+    )
+    all_lines |> join(separator: "\n")
+  }
+}
+
+fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String {
+  if imports |> count == 0 {
+    ""
+  } else {
+    let import_modules = unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp)))
+    let import_lines = import_modules |> map(import_module =>
+      let mod_imports = imports |> filter(imp => authored_name_at(source_indices: source_indices, node: imp) == import_module)
+      let mod_name = module_to_filename(name: import_module)
+      if mod_imports |> any(imp => import_is_all(n: imp)) {
+        let wildcard_line = concat("use crate::", mod_name, "::*;")
+        let reexport_surface = wildcard_reexport_surface_names(import_module: import_module, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices)
+        let merged_specific = unique_strings(items: concat(
+          mod_imports
+            |> filter(imp => import_is_all(n: imp) == false)
+            |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices)),
+          reexport_surface
+        ))
+        let specific_block = emit_specific_import_block(
+          import_module: import_module,
+          mod_name: mod_name,
+          filtered_names: merged_specific,
+          emit_info: emit_info,
+          registry: registry,
+          local_names: local_names,
+          export_sets: export_sets,
+          typed_modules: typed_modules,
+          source_indices: source_indices
+        )
+        if specific_block != "" {
+          concat(wildcard_line, "\n", specific_block)
+        } else {
+          wildcard_line
+        }
+      } else {
+        let merged_specific = mod_imports |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices))
+        emit_specific_import_block(
+          import_module: import_module,
+          mod_name: mod_name,
+          filtered_names: merged_specific,
+          emit_info: emit_info,
+          registry: registry,
+          local_names: local_names,
+          export_sets: export_sets,
+          typed_modules: typed_modules,
+          source_indices: source_indices
+        )
       }
     )
-    import_lines |> filter(line => line != "") |> join(separator: "\n")
+    unique_strings(items: import_lines |> filter(line => line != "")) |> join(separator: "\n")
   }
 }
 
@@ -1465,7 +2338,7 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
+fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
   let item_text = authored_name(env: env, node: item)
@@ -1482,6 +2355,30 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
+    } else if is_emittable_parametric_type_alias_item(item: item, item_text: item_text, source_indices: env.source_indices, module_name: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules) {
+      let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+      let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
+      concat(
+        rust_visibility_prefix(),
+        rust_items().type_alias_keyword,
+        " ",
+        item_text,
+        type_params,
+        " = ",
+        render_rust_alias_rhs_type(
+          n: resolved_type(n: item),
+          generic_param_names: generic_names,
+          shared_types: shared_types,
+          source_indices: env.source_indices,
+          scope: scope,
+          imports: imports,
+          registry: registry,
+          module_name: module_name,
+          export_sets: export_sets,
+          typed_modules: typed_modules
+        ),
+        ";"
+      )
     } else {
       ""
     }
@@ -2237,8 +3134,6 @@ fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_typ
 //   here and "compensate" only in the emitter: that splits clone authority
 //   between the type signature and ownership analysis and breaks fixed-point.
 //   See docs/postmortems/pr-650-emitter-callable-clone-bound.md.
-// Parameter signature renderer: generic items use decl-type preservation;
-// non-generic items use field applied-binding facts flow (param.properties).
 fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let type_node = resolved_type(n: param)
   if generic_param_names |> count > 0 {
@@ -6037,13 +6932,12 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           None => "compile_error!(\"BoundedLattice data missing bottom\")"
         }
-        let inner = concat("Rc::new(BoundedLattice {\n",
+        concat("            Rc::new(BoundedLattice {\n",
           "                meet: Rc::new(", meet_str, "),\n",
           "                join: Rc::new(", join_str, "),\n",
           "                top: Box::new(", top_str, "),\n",
           "                bottom: Box::new(", bottom_str, "),\n",
           "            })")
-        concat("            ", inner)
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
@@ -6419,12 +7313,14 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
   let base = use_lines |> join(separator: "\n")
   if has_pipeline {
     let pipeline_mod = module_to_filename(name: "v2.compiler.compile")
+    let artifact_mod = module_to_filename(name: "v2.compiler.artifact")
     let core_mod = module_to_filename(name: "v2.std.core")
     concat(base,
       "\nuse std::collections::HashMap;\n",
       "use std::rc::Rc;\n",
       "use ", crate_name, "::", pipeline_mod, ";\n",
       "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
+      "use ", crate_name, "::", artifact_mod, ";\n",
       "use ", crate_name, "::", core_mod, "::", "{",
       "\n    diagnostic_to_message, diagnostic_to_span,\n",
       "    byte_to_line_col, source_line_at, NewlineIndex,\n",

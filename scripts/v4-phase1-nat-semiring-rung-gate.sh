@@ -86,7 +86,7 @@ command -v "$gofmt_bin"  >/dev/null 2>&1 || missing_tools+=("$gofmt_bin")
 command -v "$rustc_bin"  >/dev/null 2>&1 || missing_tools+=("$rustc_bin")
 if [[ "${#missing_tools[@]}" -gt 0 ]]; then
   echo "error: required host toolchain(s) missing: ${missing_tools[*]}" >&2
-  if [[ "$strict" == "1" ]]; then
+  if [[ "$strict" == "1" || "$l1_runtime_strict" == "1" || "$l1_go_compiler_slice_strict" == "1" ]]; then
     echo "::error title=phase1/nat_semiring rung gate setup::host toolchain missing: ${missing_tools[*]} (phase1/nat_semiring/setup/host_toolchain_missing)"
     exit 2
   fi
