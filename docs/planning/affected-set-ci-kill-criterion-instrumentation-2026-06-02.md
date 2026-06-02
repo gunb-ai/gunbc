@@ -24,7 +24,7 @@ is therefore currently unmeasurable — it would be a guess. This receipt makes 
 - `tools/ci_affected_components`:
   - `receipt.rs` — `AffectedSetCiReceipt` struct + pure builders (`component_partition`,
     `bootstrap_required`, `saved_minutes`). JSON `schema_version = 1`.
-  - `git_read.rs` — shared `git diff --name-only` host transport (also adopted by the existing
+  - `git_diff_transport.rs` — shared `git diff --name-only` host transport (also adopted by the existing
     `detect-ci-affected-components` bin; single source for the diff range + fail-closed read).
   - `bin/emit_affected_set_ci_receipt.rs` — emits the receipt JSON.
 - `.github/workflows/ci.yml` `affected` job — one emit step + `actions/upload-artifact`
