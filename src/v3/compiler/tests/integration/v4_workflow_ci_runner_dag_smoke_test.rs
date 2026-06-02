@@ -76,6 +76,14 @@ const TESTCLAIM_CORPUS_RUNNER_PATH: &str = "src/v4/test/claim/workflow/testclaim
 const MANUAL_CORPUS_ROSTER_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/manual_corpus_roster.dag");
 const MANUAL_CORPUS_ROSTER_PATH: &str = "src/v4/test/claim/manual/manual_corpus_roster.dag";
+// A.1.5a (RR-A §4 R7): in-process `TestClaimRun` equivalence claim — harness path
+// (corpus-runner machinery) must produce the same runs as direct `run_test_claim`
+// on a fixed corpus slice. SG-0 delta 0 — same-path expansion in this v4 CI smoke
+// harness; `pb_rust_tests_outside_residual_zero`. Dissolve-on: `.dag` TestClaim
+// execution exercises `inprocess_equivalence` without this hand-Rust parse ratchet.
+const INPROCESS_EQUIVALENCE_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/inprocess_equivalence.dag");
+const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_equivalence.dag";
 const CI_AFFECTED_COMPONENTS_LIB: &str =
     include_str!("../../../../../tools/ci_affected_components/src/lib.rs");
 
@@ -2130,5 +2138,103 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
             SurfaceItem::TypeSum { name, .. } if name == "CiCommand"
         )),
         "{CI_DAG_PATH}: CiCommand sum type must exist"
+    );
+}
+
+/// A.1.5a (RR-A §4 R7): the in-process `TestClaimRun` equivalence claim must (a) tokenize/parse,
+/// (b) build both paths from the *same* fixed corpus slice — the harness path via the corpus-runner
+/// machinery (`run_node_runtime_value_subjects` + `corpus_entry_from_node_runtime_value_run`) and
+/// the in-process path via direct `run_test_claim` — and (c) gate the equivalence on the
+/// `witness_inprocess_equivalence` Bool. The file is a tracked deferral: it declares NO
+/// `data run_*: TestClaimRun = run_test_claim(...)` row (RR-A §6 forbids that authoring-time
+/// co-authority); runtime execution + roster wiring is the A.1 harness lane.
+/// SG-0 delta 0 (same-path expansion; `pb_rust_tests_outside_residual_zero`).
+#[test]
+fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
+    let module = parse_module(INPROCESS_EQUIVALENCE_DAG, INPROCESS_EQUIVALENCE_PATH);
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "workflow",
+            "inprocess_equivalence"
+        ]],
+        "{INPROCESS_EQUIVALENCE_PATH}: module authority path"
+    );
+    // The fixed slice and both equivalence paths are sourced from a single subject authority.
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "test", "claim", "manual", "eval_runtime_mvp"],
+            "subject_eval_mvp2_test_claim_route"
+        ),
+        "{INPROCESS_EQUIVALENCE_PATH}: fixed slice must come from the canonical eval_mvp2 subject authority"
+    );
+    for name in &[
+        "run_node_runtime_value_subjects",
+        "corpus_entry_from_node_runtime_value_run",
+        "corpus_entries_from_node_runtime_value_runs",
+    ] {
+        assert!(
+            import_includes_name(
+                &module,
+                &["v4", "test", "claim", "workflow", "testclaim_corpus_runner"],
+                name
+            ),
+            "{INPROCESS_EQUIVALENCE_PATH}: harness path must reuse corpus-runner machinery `{name}` (no parallel runner)"
+        );
+    }
+    for fn_name in &[
+        "inprocess_equivalence_harness_entries",
+        "inprocess_equivalence_inprocess_entries",
+        "inprocess_equivalence_holds",
+    ] {
+        assert!(
+            surface_declares_fn(&module, fn_name),
+            "{INPROCESS_EQUIVALENCE_PATH}: must declare {fn_name}"
+        );
+    }
+    for needle in &[
+        // Harness path is the corpus-runner machinery applied to the fixed slice.
+        "run_node_runtime_value_subjects(subjects: inprocess_equivalence_slice)",
+        // In-process path is direct run_test_claim on the same subject.
+        "run_test_claim(subject: subject_eval_mvp2_test_claim_route)",
+        // Equivalence witness compares the two paths' rows.
+        "inprocess_equivalence_harness_entries() == inprocess_equivalence_inprocess_entries()",
+        "data witness_inprocess_equivalence: Bool = inprocess_equivalence_holds()",
+    ] {
+        assert!(
+            INPROCESS_EQUIVALENCE_DAG.contains(needle),
+            "{INPROCESS_EQUIVALENCE_PATH}: A.1.5a equivalence contract must carry `{needle}`"
+        );
+    }
+    // Tracked deferral (RR-A §6): the equivalence spec must NOT declare an authoring-time
+    // `data run_*: TestClaimRun = run_test_claim(...)` co-authority row. Runtime execution and
+    // roster/claim-id wiring belong to the A.1 harness lane, named in the file's DEFERRAL note.
+    // Structural check (substring would false-match the prose in the DEFERRAL note).
+    let declares_test_claim_run_data = module.items.iter().any(|item| {
+        use v3_compiler::parse_surface::SurfaceType;
+        matches!(
+            item,
+            SurfaceItem::Data {
+                ty: SurfaceType::Named { name, .. },
+                ..
+            } if name == "TestClaimRun"
+        )
+    });
+    assert!(
+        !declares_test_claim_run_data,
+        "{INPROCESS_EQUIVALENCE_PATH}: must not declare a `data : TestClaimRun` harness-row receipt (RR-A §6 authoring-time co-authority)"
+    );
+    assert!(
+        !surface_declares_fn(&module, "inprocess_equivalence_pass_node"),
+        "{INPROCESS_EQUIVALENCE_PATH}: equivalence spec must not carry an EqualsClaim receipt scaffold"
+    );
+    assert!(
+        INPROCESS_EQUIVALENCE_DAG.contains("DEFERRAL")
+            && INPROCESS_EQUIVALENCE_DAG.contains("A.1 harness lane"),
+        "{INPROCESS_EQUIVALENCE_PATH}: must carry the explicit harness-execution deferral note"
     );
 }
