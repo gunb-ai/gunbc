@@ -1,4 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net add is one `EXPECTED_HAND_AUTHORED_TEST` integration harness for R3 §1.8 gate **#106** `show_correct_code_diagnostic_coverage` (substrate structural locks + one live-correction roundtrip anchor); same-PR census retirement not applicable. Verification-lane continuation (full diagnostic-class TestClaim audit + zero-`DeferredCorrection` corpus tally per §1.8 row #106) stays dispatch-tracked under Gap 9 / gate #106 in `docs/briefs/r3-verification-manager.md`.
-docs/briefs/r3-verification-manager.md

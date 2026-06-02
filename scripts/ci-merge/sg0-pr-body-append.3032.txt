@@ -1,4 +1,0 @@
-SG-0 hand-path delta: +2
-
-SG-0 pairing: (c) dispatch-tracked T-WAD Full R3-close program (operator/Director ratification) covers this census net-add for Slice 6 / gate #102 program; P5(b) receipt — deleted scaffold `scripts/test-node-wall-clock-ratchet.jsonl` (interim warn-token bridge → `dsl/gunbc/test_node_wall_clock_ratchet.dag` + `gunbc-ci`; **not** #102 closure — pass target remains `TestNodeCostDimension` timing facts).
-gunbc#828

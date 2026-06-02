@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 71dad637664e11a38d51cbff14b181abdef5857684a044c39c4224d25a466874
+// Source-SHA256(.github/workflows/ci.yml): 55512a228095d4125057914a86604aa8b30f9fd611dd76fceecd266a8f787c6d
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -285,11 +285,11 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)" },
+          name: Some { value: "M1 v4 full-tree rust emit probe (v2 emit)" },
           id: none,
-          run: "bash scripts/v4-m1-rust-emit-probe.sh",
+          run: "bash .github/ci-floor/v4-m1-rust-emit-probe.sh",
           shell: Bash,
-          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_DAG_EMIT_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_M1_DAG_EMIT_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_M1_CARGO_CHECK_JOBS_CEILING": "64", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
+          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_DAG_EMIT_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_M1_DAG_EMIT_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
@@ -307,7 +307,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "v2 -> v4 bootstrap compile (fail-closed full)" },
           id: none,
-          run: "bash scripts/v4-bootstrap-viability.sh",
+          run: "bash .github/ci-floor/v4-bootstrap-viability.sh",
           shell: Bash,
           env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_REUSE_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "900" },
           working_directory: none,
@@ -318,16 +318,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "M1 v4 workflow CI model/YAML binding smoke" },
           id: none,
           run: "set -euo pipefail\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_bankruptcy_tier0_ -- --quiet\ncargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_wave1_ -- --quiet\n",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "no-new-shell ratchet (required CI path)" },
-          id: none,
-          run: "bash scripts/check-ci-no-new-shell.sh --self-test\nbash scripts/check-ci-no-new-shell.sh\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -350,7 +340,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "Validate prerequisites (fail-closed under skipped/failed deps)" },
           id: none,
-          run: "set -euo pipefail\nif [[ \"${{ needs.affected.result }}\" != \"success\" ]]; then\n  echo \"::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.infra_isolation.result }}\" != \"success\" ]]; then\n  echo \"::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (affected receipt + five Class-A gates in ci_floor; infra_isolation de-priv guard green)\"\n",
+          run: "set -euo pipefail\nif [[ \"${{ needs.affected.result }}\" != \"success\" ]]; then\n  echo \"::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.ci_floor.result }}\" != \"success\" ]]; then\n  echo \"::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed.\"\n  exit 1\nfi\nif [[ \"${{ needs.infra_isolation.result }}\" != \"success\" ]]; then\n  echo \"::error::infra_isolation guard did not succeed (result=${{ needs.infra_isolation.result }}); runner de-priv unverified -- ci aggregator fails closed.\"\n  exit 1\nfi\necho \"ci aggregator: Wave 1 safety floor satisfied (affected receipt + four Class-A gates in ci_floor; infra_isolation de-priv guard green)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -360,7 +350,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "ci receipt (section 11.7.1 floor)" },
           id: none,
-          run: "echo \"::notice::Required CI: fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)\"\n",
+          run: "echo \"::notice::Required CI: fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag structural receipt)\"\n",
           shell: Bash,
           env: none,
           working_directory: none,

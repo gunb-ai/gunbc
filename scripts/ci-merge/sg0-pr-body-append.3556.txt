@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) follow-up dispatch via gunb-ai/gunbc#3556 — T-21/T-24 Wave-0 net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_workflow_ci_runner_dag_smoke_test.rs` (INVARIANTS §P5(b) parse smoke on `workflow/ci.dag` selection entrypoints). Dissolves when Node-level TestClaim CI selection runs via `.dag` harness / host runner (subtree work-items A/B/C).

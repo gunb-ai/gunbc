@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +2
-
-SG-0 pairing: (c) Net +2 on `EXPECTED_HAND_AUTHORED_*`: +1 non-test `bounded_host_command.rs` (P5(b) INVARIANTS_OPS row; single authority for W1/L5/post-emit bounded host I/O, wired from `test_runner` + `post_emit_verifier`) and +1 test `emit_verification_gates_test.rs` (E-5 `PROGRAM_FIXTURES` + R1C-E `program_fixtures_post_emit_clean_all_targets` ExecuteCommand). Follow-up dispatch: dissolve both hand-Rust paths when `.dag` TestClaim rows own post-emit obligations — gunb-ai/gunbc#3913.
