@@ -490,10 +490,6 @@ type RunnerPoolResilienceStep {
 
 type RunnerPoolResiliencePlaybook {
   steps: List<RunnerPoolResilienceStep>
-  detection_phase: RunnerPoolResiliencePhase
-  fallback_phase: RunnerPoolResiliencePhase
-  comms_phase: RunnerPoolResiliencePhase
-  recovery_phase: RunnerPoolResiliencePhase
 }
 
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
@@ -620,10 +616,6 @@ data ci_runner_pool_resilience_playbook: RunnerPoolResiliencePlaybook = {
       fail_closed: true
     }
   ]
-  detection_phase: RunnerPoolDetect
-  fallback_phase: RunnerPoolFallback
-  comms_phase: RunnerPoolComms
-  recovery_phase: RunnerPoolRecovery
 }
 
 
