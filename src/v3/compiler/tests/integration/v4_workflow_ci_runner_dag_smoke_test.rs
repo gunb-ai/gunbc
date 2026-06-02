@@ -1945,8 +1945,11 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
 /// A.1.5a (RR-A §4 R7): the in-process `TestClaimRun` equivalence claim must (a) tokenize/parse,
 /// (b) build both paths from the *same* fixed corpus slice — the harness path via the corpus-runner
 /// machinery (`run_node_runtime_value_subjects` + `corpus_entry_from_node_runtime_value_run`) and
-/// the in-process path via direct `run_test_claim` — and (c) gate an executable `TestClaimRun`
-/// receipt on their equality. SG-0 delta 0 (same-path expansion; `pb_rust_tests_outside_residual_zero`).
+/// the in-process path via direct `run_test_claim` — and (c) gate the equivalence on the
+/// `witness_inprocess_equivalence` Bool. The file is a tracked deferral: it declares NO
+/// `data run_*: TestClaimRun = run_test_claim(...)` row (RR-A §6 forbids that authoring-time
+/// co-authority); runtime execution + roster wiring is the A.1 harness lane.
+/// SG-0 delta 0 (same-path expansion; `pb_rust_tests_outside_residual_zero`).
 #[test]
 fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
     let module = parse_module(INPROCESS_EQUIVALENCE_DAG, INPROCESS_EQUIVALENCE_PATH);

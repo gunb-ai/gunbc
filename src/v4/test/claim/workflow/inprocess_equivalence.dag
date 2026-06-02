@@ -1,40 +1,32 @@
 // src/v4/test/claim/workflow/inprocess_equivalence.dag
 // Scope: A.1.5a — in-process `TestClaimRun` equivalence claim (RR-A §4 R7).
-// Status: harness-correctness gate. On a fixed corpus slice the harness path
-//   (corpus-runner machinery: run_node_runtime_value_subjects → entry wrap, the
-//   same fold `run_manual_testclaim_corpus_eval` applies) must produce the same
-//   `TestClaimRun` rows as the in-process path (direct `run_test_claim`). The
-//   bootstrap evaluator harness (separate A.1 lane) executes this claim at
-//   runtime; this `.dag` is the single substrate authority both paths satisfy.
-// Forbidden (RR-A §6): treating this const fold as runtime pass authority — it is
-//   the equivalence *spec*; the runtime verdict comes from the harness invoking it.
+// Status: equivalence SPEC (tracked deferral on harness execution). On a fixed
+//   corpus slice the harness path (corpus-runner machinery
+//   `run_node_runtime_value_subjects` → entry wrap, the same fold
+//   `run_manual_testclaim_corpus_eval` applies to the full manual roster) must
+//   produce the same `TestClaimRun` rows as the in-process path (direct
+//   `run_test_claim`). `witness_inprocess_equivalence` is that compile-time law.
+//
+// DEFERRAL (RR-A §5 landing order / §6): this file is NOT itself a harness-executed
+//   gate and deliberately declares NO `data run_*: TestClaimRun = run_test_claim(...)`
+//   row — that authoring-time co-authority is forbidden (RR-A §6). The runtime
+//   verdict and the corpus/claim-id roster wiring belong to the A.1 harness lane
+//   (Compiler Spine bootstrap entry + `manual_corpus_roster`/`ci.dag` claim-id
+//   frontier), which consumes this slice and asserts the same equivalence at
+//   execution time. Dissolve-on: A.1 harness wires `inprocess_equivalence_slice`
+//   into the runner roster and the runtime report satisfies `inprocess_equivalence_holds`.
 
 module v4.test.claim.workflow.inprocess_equivalence
 
 
 import v4.compiler.eval {
   TestClaimEvalSubject,
-  TestClaimRun,
-  eval_test_claim_subject,
   run_test_claim
 }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.runtime { RuntimeValue }
-import v4.std.verification {
-  EqualsClaim,
-  Integration,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  manual_claim_anchor
-}
+import v4.std.node { Node }
 import v4.test.claim.manual.eval_runtime_mvp {
-  eval_mvp2_context,
-  eval_mvp2_evaluator_pin,
-  eval_mvp2_inferred_tree,
   subject_eval_mvp2_test_claim_route
 }
 import v4.test.claim.workflow.testclaim_corpus_runner {
@@ -45,11 +37,8 @@ import v4.test.claim.workflow.testclaim_corpus_runner {
 }
 
 
-data inprocess_equivalence_pass_symbol: Symbol = inprocess_equivalence_pass_symbol
-data inprocess_equivalence_fail_symbol: Symbol = inprocess_equivalence_fail_symbol
-
-
 // Fixed slice: the canonical eval_mvp2 route subject (RR-A §4 R7 "fixed slice").
+// The A.1 harness lane wires this same slice into the live runner roster.
 data inprocess_equivalence_slice: List<TestClaimEvalSubject<Node>> = [
   subject_eval_mvp2_test_claim_route
 ]
@@ -76,58 +65,11 @@ fn inprocess_equivalence_inprocess_entries() -> List<CorpusEvalEntry> {
 }
 
 
+// The equivalence law: harness path and in-process path agree row-for-row on the
+// fixed slice. The A.1 harness lane re-asserts this at runtime over the live report.
 fn inprocess_equivalence_holds() -> Bool {
   inprocess_equivalence_harness_entries() == inprocess_equivalence_inprocess_entries()
 }
 
 
 data witness_inprocess_equivalence: Bool = inprocess_equivalence_holds()
-
-
-fn inprocess_equivalence_pass_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: inprocess_equivalence_pass_symbol } },
-    children: []
-  }
-}
-
-
-fn inprocess_equivalence_fail_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: inprocess_equivalence_fail_symbol } },
-    children: []
-  }
-}
-
-
-fn inprocess_equivalence_claim_input(ok: Bool) -> Node {
-  if ok {
-    inprocess_equivalence_pass_node()
-  } else {
-    inprocess_equivalence_fail_node()
-  }
-}
-
-
-// Executable receipt: the equivalence Bool gates an EqualsClaim, run through the
-// same `run_test_claim` interpreter so the harness lane can pick it up as a row.
-data claim_inprocess_equivalence_receipt: TestClaim = EqualsClaim {
-  label: "A.1.5a harness path matches in-process run_test_claim on fixed corpus slice",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: inprocess_equivalence_claim_input(ok: witness_inprocess_equivalence),
-  rhs: inprocess_equivalence_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
-
-
-data subject_inprocess_equivalence_receipt: TestClaimEvalSubject<Node> = eval_test_claim_subject(
-  claim: claim_inprocess_equivalence_receipt,
-  context: eval_mvp2_context(),
-  tree: eval_mvp2_inferred_tree(),
-  evaluator_pin: eval_mvp2_evaluator_pin
-)
-
-
-data run_inprocess_equivalence_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(
-  subject: subject_inprocess_equivalence_receipt
-)
