@@ -1026,27 +1026,98 @@ fn parse_item_keyword_arm_count() {
     );
 }
 
+/// Read a `data foo: String = "..."` literal from `dsl/gunbc/tools/ratchet.dag`.
+/// Patterns must not be duplicated in Rust — ratchet.dag is the sole authority.
+fn l1_ratchet_pattern_from_dag(data_name: &str) -> String {
+    let ratchet = workspace_root().join("dsl/gunbc/tools/ratchet.dag");
+    let content = std::fs::read_to_string(&ratchet)
+        .unwrap_or_else(|e| panic!("read {}: {e}", ratchet.display()));
+    let marker = format!("data {data_name}: String = \"");
+    let line = content
+        .lines()
+        .find(|l| l.contains(&marker))
+        .unwrap_or_else(|| panic!("missing `{marker}` in {}", ratchet.display()));
+    let rest = line.split_once(&marker).expect("marker on line").1;
+    unescape_dag_string_literal(rest)
+}
+
+fn unescape_dag_string_literal(mut rest: &str) -> String {
+    let mut out = String::new();
+    while let Some(ch) = rest.chars().next() {
+        rest = &rest[ch.len_utf8()..];
+        if ch == '"' {
+            break;
+        }
+        if ch == '\\' {
+            let (esc, tail) = rest
+                .chars()
+                .next()
+                .map(|c| (c, &rest[c.len_utf8()..]))
+                .expect("trailing backslash in ratchet.dag pattern");
+            rest = tail;
+            out.push(match esc {
+                'n' => '\n',
+                't' => '\t',
+                '\\' => '\\',
+                '"' => '"',
+                other => other,
+            });
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Tri-state grep: Ok(true) = match, Ok(false) = no match, Err = tool failure.
+fn l1_grep_has_match(dir: &Path, pattern: &str) -> Result<bool, String> {
+    let output = std::process::Command::new("grep")
+        .args(["-rqE", "--include=*.dag", pattern, &dir.to_string_lossy()])
+        .output()
+        .expect("grep must be on PATH for L1 ratchet");
+    match output.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        code => Err(format!(
+            "grep error (exit {code:?}): {}",
+            String::from_utf8_lossy(&output.stderr)
+        )),
+    }
+}
+
+fn l1_grep_violation_report(dir: &Path, pattern: &str) -> String {
+    let output = std::process::Command::new("grep")
+        .args(["-rnE", "--include=*.dag", pattern, &dir.to_string_lossy()])
+        .output()
+        .expect("grep detail for L1 ratchet");
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
 #[test]
 fn l1_type_knowledge_ratchet() {
-    // Delegate to scripts/l1-ratchet.sh (single authority) instead of
-    // reimplementing the pattern matching in Rust.
-    let ws = crate::helpers::workspace_root();
-    let script = ws.join("scripts/l1-ratchet.sh");
-    let output = std::process::Command::new("bash")
-        .arg(&script)
-        .arg("--check")
-        .current_dir(&ws)
-        .output()
-        .expect("failed to run l1-ratchet.sh");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    eprintln!("{}", stdout);
-    assert!(
-        output.status.success(),
-        "l1-ratchet.sh --check failed:\n{}\n{}",
-        stdout,
-        stderr
-    );
+    // Hermetic source audit: patterns from ratchet.dag, corpus src/v3 only (see deleted
+    // scripts/l1-ratchet.sh). CI still runs gunbc `run_l1_ratchet`; this test mirrors it
+    // without requiring a release binary or parsing the full dsl/ tree.
+    let ws = workspace_root();
+    let corpus = ws.join("src/v3");
+    assert!(corpus.is_dir(), "L1 corpus {} must exist", corpus.display());
+
+    let ctor_pat = l1_ratchet_pattern_from_dag("l1_constructor_pattern");
+    let type_pat = l1_ratchet_pattern_from_dag("l1_typename_pattern");
+
+    let ctor = l1_grep_has_match(&corpus, &ctor_pat).expect("constructor pattern grep");
+    let typ = l1_grep_has_match(&corpus, &type_pat).expect("typename pattern grep");
+
+    if ctor || typ {
+        let mut report = String::new();
+        if ctor {
+            report.push_str(&l1_grep_violation_report(&corpus, &ctor_pat));
+        }
+        if typ {
+            report.push_str(&l1_grep_violation_report(&corpus, &type_pat));
+        }
+        panic!("L1 ratchet failed (patterns from dsl/gunbc/tools/ratchet.dag):\n{report}");
+    }
 }
 
 #[test]

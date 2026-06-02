@@ -154,7 +154,7 @@ data test_gate: CIGate = {
 data l1_gate: CIGate = {
   id: "l1-ratchet",
   name: "L1 Type Knowledge Ratchet",
-  command: ShellCommand { command: "scripts/l1-ratchet.sh --check" },
+  command: ShellCommand { command: "gunbc run --source-root dsl --function run_l1_ratchet" },
   blocking: true,
   source: RatchetGate { metric: L1TypeKnowledge, direction: Stable }
 }

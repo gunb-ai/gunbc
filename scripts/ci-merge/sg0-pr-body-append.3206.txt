@@ -1,4 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net add is one `EXPECTED_HAND_AUTHORED_TEST` row for the v4 React extdeps `compile_to_dag` smoke (`v4_extdeps_react_dag_smoke_test.rs`) plus the matching INVARIANTS §P5(b) receipt row — hand-Rust until `.dag` `TestClaim` / generated harness can assert the same facts per ROADMAP T-PB-B / `pb_rust_tests_outside_residual_zero` dispatch posture.
-gunbc#3206 (this PR) tracks the integration; follow-close dispatch when the smoke obligation migrates off `EXPECTED_HAND_AUTHORED_TEST`.
