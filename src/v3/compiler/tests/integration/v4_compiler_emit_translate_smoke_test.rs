@@ -1549,12 +1549,13 @@ fn data_body_source<'a>(
         SurfaceItem::Data {
             name: item_name,
             body: Some(body),
+            body_span,
             ..
         } if item_name == name => Some(match body {
             SurfaceExpr::List { .. } | SurfaceExpr::Record { .. } => {
                 source_span_text(source, &body.span())
             }
-            _ => return None,
+            _ => source_span_text(source, body_span),
         }),
         SurfaceItem::Data {
             name: item_name,
