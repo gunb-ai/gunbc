@@ -34,24 +34,6 @@ fn grounding_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
         .unwrap_or_else(|e| panic!("{GROUNDING_PATH}: parse: {e:?}"))
 }
 
-fn import_includes_name(
-    module: &v3_compiler::parse_surface::SurfaceModule,
-    path: &[&str],
-    name: &str,
-) -> bool {
-    module.items.iter().any(|item| match item {
-        SurfaceItem::Import {
-            path: import_path,
-            names,
-            ..
-        } => {
-            import_path.iter().map(String::as_str).collect::<Vec<_>>() == path
-                && names.iter().any(|n| n == name)
-        }
-        _ => false,
-    })
-}
-
 fn type_record_field_names<'a>(
     module: &'a v3_compiler::parse_surface::SurfaceModule,
     name: &str,
