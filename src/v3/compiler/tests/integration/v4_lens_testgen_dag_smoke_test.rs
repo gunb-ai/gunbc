@@ -78,7 +78,13 @@ fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
     );
     assert_eq!(
         module_paths(&lens_testgen_claim),
-        vec![vec!["v4", "test", "claim", "lens_testgen", "dag_input_surface"]],
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "lens_testgen",
+            "dag_input_surface"
+        ]],
         "lens_testgen claim module should stay under recursive T-22 discovery"
     );
 }
