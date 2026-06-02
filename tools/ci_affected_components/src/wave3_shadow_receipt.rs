@@ -43,13 +43,6 @@ pub fn build_queued_shadow_receipt(event_name: &str, git_read: GitChangedPathsRe
         }
     };
 
-    // Reason the affected set is fail-closed (we never computed it — host has no Dag eval).
-    let affected_reason = if git_diff_read_failed {
-        "git_diff_read_failed"
-    } else {
-        "queued_pending_live_eval"
-    };
-
     json!({
         "transport_envelope": TRANSPORT_ENVELOPE,
         "authority": RECEIPT_AUTHORITY,
@@ -62,7 +55,7 @@ pub fn build_queued_shadow_receipt(event_name: &str, git_read: GitChangedPathsRe
         // (which requires `Change.subject: Node` the host cannot resolve without the eval).
         "changed_paths": changed_paths,
         "note": "Non-authoritative transport envelope. `ci_selection_receipt` is a serialization of the modeled v4.workflow.ci CiSelectionReceipt (Shadow/FixtureReceipt). pr/affected/decisions/testclaim_decisions/testgen_slots await ci_selection_receipt_shadow_from_git_diff live eval (live_eval_debt); affected is fail-closed (P3) until then. Only component_affected_comparison is host-computed.",
-        "ci_selection_receipt": ci_selection_receipt_to_json(component_affected, affected_reason),
+        "ci_selection_receipt": ci_selection_receipt_to_json(component_affected),
     })
 }
 
