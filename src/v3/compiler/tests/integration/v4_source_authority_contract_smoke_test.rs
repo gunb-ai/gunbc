@@ -101,21 +101,29 @@ fn v4_source_authority_contract_uses_source_and_serializer_authorities() {
         "{SOURCE_AUTHORITY_PATH}: module path"
     );
     assert!(
-        surface_declares_type(&module, "SourceAuthorityRoundTripReceipt"),
-        "{SOURCE_AUTHORITY_PATH}: receipt type"
+        surface_declares_type(&module, "SourceAuthorityRoundTripLaw"),
+        "{SOURCE_AUTHORITY_PATH}: round-trip law type"
     );
     assert!(
         SOURCE_AUTHORITY_DAG.contains("source_law: SourceAstEqual"),
-        "{SOURCE_AUTHORITY_PATH}: receipt must carry proven source equality payload, not Witness arm"
+        "{SOURCE_AUTHORITY_PATH}: law must carry proven source equality payload"
     );
     assert!(
         SOURCE_AUTHORITY_DAG.contains("semantic_law: SemanticIrEqual"),
-        "{SOURCE_AUTHORITY_PATH}: receipt must carry proven semantic equality payload, not Witness arm"
+        "{SOURCE_AUTHORITY_PATH}: law must carry proven semantic equality payload"
     );
     assert!(
-        !SOURCE_AUTHORITY_DAG.contains("source_law: Witness<SourceAstEqual>")
-            && !SOURCE_AUTHORITY_DAG.contains("semantic_law: Witness<SemanticIrEqual>"),
-        "{SOURCE_AUTHORITY_PATH}: accepted receipt must not represent failing witness arms"
+        !SOURCE_AUTHORITY_DAG.contains("type SourceAuthorityRoundTripReceipt"),
+        "{SOURCE_AUTHORITY_PATH}: receipt carrier must not duplicate forgeable law fields"
+    );
+    assert!(
+        SOURCE_AUTHORITY_DAG.contains(") -> Outcome<Witness<SourceAuthorityRoundTripLaw>>"),
+        "{SOURCE_AUTHORITY_PATH}: public boundary must stay fail-closed over the round-trip law witness"
+    );
+    assert!(
+        SOURCE_AUTHORITY_DAG.contains("Violates { diagnostic: d } =>\n      Rejected")
+            && SOURCE_AUTHORITY_DAG.contains("Violates { diagnostic: d } =>\n          Rejected"),
+        "{SOURCE_AUTHORITY_PATH}: equality witness violations must reject before accepted law output"
     );
     assert!(
         surface_declares_fn(&module, "source_authority_round_trip"),

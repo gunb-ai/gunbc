@@ -56,7 +56,7 @@ type SemanticIrEqual {
   reparsed: DagSemanticIr
 }
 
-type SourceAuthorityRoundTripReceipt {
+type SourceAuthorityRoundTripLaw {
   canonical_source: DagSource
   source_law: SourceAstEqual
   semantic_law: SemanticIrEqual
@@ -140,13 +140,13 @@ fn semantic_ir_equal_witness(
 }
 
 
-fn source_authority_receipt_from_parts(
+fn source_authority_law_from_parts(
   original_ast: DagSourceAst,
   canonical_source: DagSource,
   reparsed_ast: DagSourceAst,
   original_ir: DagSemanticIr,
   reparsed_ir: DagSemanticIr
-) -> Outcome<SourceAuthorityRoundTripReceipt> {
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   let source_law = source_ast_equal_witness(original: original_ast, reparsed: reparsed_ast)
   let semantic_law = semantic_ir_equal_witness(original: original_ir, reparsed: reparsed_ir)
   match source_law {
@@ -158,10 +158,12 @@ fn source_authority_receipt_from_parts(
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: semantic_law_value } =>
           outcome_accepted(
-            value: SourceAuthorityRoundTripReceipt {
-              canonical_source: canonical_source,
-              source_law: source_law_value,
-              semantic_law: semantic_law_value
+            value: Holds {
+              value: SourceAuthorityRoundTripLaw {
+                canonical_source: canonical_source,
+                source_law: source_law_value,
+                semantic_law: semantic_law_value
+              }
             }
           )
       }
@@ -173,7 +175,7 @@ fn source_authority_round_trip_with_model(
   source: DagSource,
   canonical_source_target: TargetModel,
   lm: DagLanguageModel
-) -> Outcome<SourceAuthorityRoundTripReceipt> {
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   bind_outcome(
     o: parse_dag_source_ast_with_model(source: source, lm: lm),
     f: fn(original_ast) {
@@ -192,7 +194,7 @@ fn source_authority_round_trip_with_model(
                   bind_outcome(
                     o: semantic_ir_from_ast_with_model(ast: reparsed_ast, lm: lm),
                     f: fn(reparsed_ir) {
-                      source_authority_receipt_from_parts(
+                      source_authority_law_from_parts(
                         original_ast: original_ast,
                         canonical_source: canonical_source,
                         reparsed_ast: reparsed_ast,
@@ -215,7 +217,7 @@ fn source_authority_round_trip_with_model(
 fn source_authority_round_trip(
   source: DagSource,
   canonical_source_target: TargetModel
-) -> Outcome<SourceAuthorityRoundTripReceipt> {
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   source_authority_round_trip_with_model(
     source: source,
     canonical_source_target: canonical_source_target,
