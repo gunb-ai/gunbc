@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/manual_corpus_roster.dag
 // Scope: T-38 manual TestClaim subject roster (RuntimeValue wedge).
-// Status: wedge — four rows; expand per-A.
+// Status: wedge — five rows; expand per-A.
 // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: item-registry reflection replaces explicit import roster when T-19 testclaim-coproduct-reflection lands.
 
 module v4.test.claim.manual.manual_corpus_roster
@@ -9,6 +9,9 @@ module v4.test.claim.manual.manual_corpus_roster
 import v4.compiler.eval { TestClaimEvalSubject }
 import v4.std.collection { List }
 import v4.std.node { Node }
+import v4.test.claim.lens_parallelism.data_dependency {
+  subject_parallelism_data_dependency_receipt
+}
 import v4.test.claim.manual.dissolution_subsumption_reverification {
   subject_rust_language_model_emit_mechanical_reverification_claim,
   subject_rust_language_model_emit_subsumption_reverifies
@@ -21,6 +24,7 @@ import v4.test.claim.lens_effect.effect_depends_on {
 
 data manual_corpus_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_eval_mvp2_test_claim_route,
+  subject_parallelism_data_dependency_receipt,
   subject_lens_effect_depends_on_runtime_verdict,
   subject_rust_language_model_emit_mechanical_reverification_claim,
   subject_rust_language_model_emit_subsumption_reverifies
