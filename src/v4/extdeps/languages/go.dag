@@ -92,7 +92,7 @@ import v4.std.target_model {
   target_value_template_for_kind
 }
 import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
-import v4.std.diagnostic { bind_outcome, Outcome }
+import v4.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
 import v4.std.witness { Holds, Violates }
 import v4.std.algebra {
   BooleanAlgebra,
