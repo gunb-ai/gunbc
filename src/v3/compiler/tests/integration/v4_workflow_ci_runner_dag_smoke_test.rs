@@ -629,10 +629,10 @@ fn ci_yml_job_block<'a>(workflow_yml: &'a str, job_id: &str) -> &'a str {
     &workflow_yml[start..end]
 }
 
-/// True for a workflow job field line (4-space indent), not nested step rows (6+ spaces).
+/// True for a workflow job field line (`    key:`), not step list rows (`    - name:`) or nested keys.
 fn ci_yml_line_is_job_level_field(line: &str) -> bool {
     line.strip_prefix("    ")
-        .is_some_and(|rest| !rest.starts_with(' '))
+        .is_some_and(|rest| !rest.starts_with(' ') && !rest.starts_with('-'))
 }
 
 /// Live receipt: sliced job must not declare job-level `continue-on-error` anywhere (keys are order-insensitive).

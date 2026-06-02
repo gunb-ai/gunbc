@@ -14,7 +14,7 @@ spurious binding failures).
 `workflow_dag_job_block` / `ci_yml_job_block` + fail-closed job-level
 `continue_on_error` / header-only `continue-on-error` checks aligned with post-#4220
 live `affected` component receipt (DAG: job-level field exactly `false`, not
-satisfied by step-level `continue_on_error: false`; YAML: header omits
-`continue-on-error`, not merely non-`true`).
+satisfied by step-level `continue_on_error: false`; YAML: sliced job block omits
+job-level `continue-on-error` anywhere, not merely in the pre-`steps:` header).
 
 **Check:** `cargo test -p v3-compiler --test integration v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape -- --exact`
