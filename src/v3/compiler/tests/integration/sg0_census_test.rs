@@ -966,8 +966,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
     // compiler-slice claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
+    // **PR #4285 Go L1 strict setup (+0 paths):** same-path assertion-list expansion verifies
+    // the parent rung gate fails closed when
+    // `V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT=1` and `go`/`gofmt` are missing.
+    // Dissolve with the same generated/TestClaim host setup receipt as #4229.
     // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
-    // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:47-51`).
+    // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
     // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
     // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
