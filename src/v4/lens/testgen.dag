@@ -284,7 +284,7 @@ data testgen_profile_roster_mismatch: Symbol = testgen_profile_roster_mismatch
 fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: testgen_profile_roster_mismatch,
-    at: Textual { file: testgen_lens_file_path, extent: WholeFile },
+    at: Textual { file: testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
