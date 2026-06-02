@@ -4412,8 +4412,7 @@ fn ci_runner_pool_resilience_playbook_complete(p: RunnerPoolResiliencePlaybook) 
     && ci_runner_pool_resilience_playbook_has_phase(p: p, phase: p.recovery_phase)
 }
 
-data ci_runner_pool_resilience_playbook_ok: Bool =
-  ci_runner_pool_resilience_playbook_complete(p: ci_runner_pool_resilience_playbook)
+data ci_runner_pool_resilience_playbook_ok: Bool = ci_runner_pool_resilience_playbook_complete(p: ci_runner_pool_resilience_playbook)
 
 
 // A faithful runner-isolation floor must (a) fail closed on a re-privileged runner — both the
