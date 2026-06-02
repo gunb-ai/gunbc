@@ -89,9 +89,14 @@ fn v4_leaf_model_python_l1_static_profiles_are_distinct_authorities() {
 #[test]
 fn v4_leaf_model_python_l1_static_claim_wires_blocking_verdicts() {
     assert!(CLAIM_DAG.contains("claim_python_l1_static_fixture_pair_wired"));
+    assert!(CLAIM_DAG.contains("claim_python_l1_static_mypy_fixture_pair_wired"));
+    assert!(CLAIM_DAG.contains("claim_python_l1_static_mypy_expected_verdicts_wired"));
     assert!(CLAIM_DAG.contains("BlockingForRung"));
     assert!(CLAIM_DAG.contains("StaticAnalysisRejected"));
     assert!(CLAIM_DAG.contains("pyright_diag_report_return_type"));
+    assert!(CLAIM_DAG.contains("mypy_diag_return_value"));
+    assert!(CLAIM_DAG.contains("python_l1_static_mypy_fixture"));
+    assert!(CLAIM_DAG.contains("mypy_profile_l1_id"));
 }
 
 #[test]

@@ -128,37 +128,15 @@ mypy_profile_args=()
 [[ "$mypy_strict" == true ]] && mypy_profile_args+=(--strict)
 [[ "$mypy_show_error_codes" == true ]] && mypy_profile_args+=(--show-error-codes)
 
+# Hermetic tool policy (TESTING.md): consume a pre-provisioned `mypy` on PATH whose
+# `--version` matches mypy_profile_l1.mypy_version. No pip/venv/bootstrap/network fetch.
 mypy_run() {
   local target="$1" out="$2"
-  local cmd
-  if command -v mypy >/dev/null 2>&1 && mypy --version 2>/dev/null | grep -qw "$mypy_version"; then
-    cmd=(mypy --python-version "$mypy_python_version" "${mypy_profile_args[@]}" "$target")
-  elif command -v python3 >/dev/null 2>&1; then
-    if [[ ! -x "${scratch}/mypy-venv/bin/mypy" ]]; then
-      if python3 -m venv "${scratch}/mypy-venv" >/dev/null 2>&1; then
-        "${scratch}/mypy-venv/bin/python" -m pip install --disable-pip-version-check -q "mypy==${mypy_version}" >/dev/null 2>&1 || return 2
-      else
-        mkdir -p "${scratch}/pip-bootstrap" "${scratch}/mypy-site" "${scratch}/mypy-venv/bin"
-        python3 - "${scratch}/pip-bootstrap/get-pip.py" <<'PY' || return 2
-import sys
-import urllib.request
-
-urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", sys.argv[1])
-PY
-        python3 "${scratch}/pip-bootstrap/get-pip.py" --target "${scratch}/pip-bootstrap/site" --no-warn-script-location >/dev/null 2>&1 || return 2
-        PYTHONPATH="${scratch}/pip-bootstrap/site" python3 -m pip install --disable-pip-version-check -q --target "${scratch}/mypy-site" "mypy==${mypy_version}" >/dev/null 2>&1 || return 2
-        cat >"${scratch}/mypy-venv/bin/mypy" <<SH
-#!/usr/bin/env bash
-PYTHONPATH="${scratch}/mypy-site" python3 -m mypy "\$@"
-SH
-        chmod +x "${scratch}/mypy-venv/bin/mypy"
-      fi
-    fi
-    cmd=("${scratch}/mypy-venv/bin/mypy" --python-version "$mypy_python_version" "${mypy_profile_args[@]}" "$target")
-  else
+  if ! command -v mypy >/dev/null 2>&1 \
+     || ! mypy --version 2>/dev/null | grep -qw "$mypy_version"; then
     return 2
   fi
-  "${cmd[@]}" >"$out" 2>&1 || true
+  mypy --python-version "$mypy_python_version" "${mypy_profile_args[@]}" "$target" >"$out" 2>&1 || true
   grep -qE 'Success: no issues found|error: ' "$out" || return 2
   return 0
 }
