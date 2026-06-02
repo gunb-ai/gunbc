@@ -20,7 +20,6 @@
 //! **W3.4 (+0 SG-0 paths):** extends bridge with python transport + rung-6 post-emit law
 //! preservation (`rung_6.dag`, `rung_5_6_common.dag`, `nat_semiring_rung56_eval.dag`).
 //! Tranche-1 additive-Monoid + tranche-2 multiplicative-Monoid + annihilator (rust + python).
-<<<<<<< HEAD
 //! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts,
 //! worksheet-B falsification probes (runtime reject / parse fail / value mismatch), and
 //! `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` for emitted-fixture execution.
@@ -31,15 +30,6 @@
 //! **Go L1 (+0 paths, release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate
 //! claim parse surface + `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured
 //! JSON receipt; chained from rung gate after R2-go-compile). SG-0 + INVARIANTS §P5(b) in PR body.
-<<<<<<< HEAD
-=======
-=======
-//! **Python L1/L2 (release-minimum):** rung-5 full-law roster python transport receipts and
-//! worksheet-B falsification probes (runtime reject / parse fail / value mismatch).
->>>>>>> 471c7a0352 (WIP: Python RCA L1 runtime fixture coverage expansion)
-//! Behavior receipts: MVP-2 emit-vs-eval `Pass` per law×target via `emit_host_bridge` (five-byte
-//! stdout contract; not per-law emitted artifacts until emit pipeline wires law subjects).
->>>>>>> d7c439b9f8 (WIP: Python RCA L1 runtime fixture coverage expansion)
 //! Substrate rows stay `Deferred` until T-22 dispatch. Dissolution: **ROADMAP.md** T-PB-B /
 //! **TASKS.md** T-22 T-38; delete these hand-authored per-target snippets when generated
 //! `TestClaimRun` host transport materializes the six rung-5 law subjects for Rust/Python/Go.
