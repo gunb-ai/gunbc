@@ -60,14 +60,13 @@ pub use crate::v2_std_core::{
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
     field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at,
-    is_error_diagnostic, lambda_param_names_at, make_error_node, merge_intern_tables,
-    module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
-    param_node_span, param_node_type_expr, pre_intern_tokens, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, BinOp, CallSemantics, Cardinality, CompileResult,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, InternTable, LiteralValue, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, Token, UnaryOpKind,
-    VarBindingKind,
+    is_error_diagnostic, lambda_param_names_at, make_error_node, module_imports, module_items,
+    no_span, param_node_default_value, param_node_name_at, param_node_span, param_node_type_expr,
+    pre_intern_tokens, record_lit_type_name_at, resource_use_name_at, resource_use_resource, BinOp,
+    CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternTable,
+    LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
+    TextFile, Token, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2339,45 +2338,40 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             empty_intern_table(),
             |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
         );
-        let parse_runs = Rc::new({
-            let mut __result = Vec::new();
-            for p in prepared.clone().iter().cloned() {
-                __result.push(parse_with_table(
-                    p.tokens.clone(),
-                    v2_rt::rc_map_insert(
-                        v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                        p.newline_index.clone().file.clone(),
-                        p.newline_index.clone(),
-                    ),
-                    intern_table.clone(),
-                ));
-            }
-            __result
-        });
-        let parse_results = Rc::new({
-            let mut __result = Vec::new();
-            for r in parse_runs.clone().iter().cloned() {
-                __result.push(r.result.clone());
-            }
-            __result
-        });
-        let final_intern_table = merge_intern_tables(v2_rt::concat(
-            Rc::new(vec![intern_table.clone()]),
-            Rc::new({
-                let mut __result = Vec::new();
-                for r in parse_runs.clone().iter().cloned() {
-                    __result.push(r.intern_table.clone());
-                }
-                __result
+        let parsed = prepared.clone().iter().cloned().fold(
+            Rc::new(FrontendAccum {
+                parse_results: Rc::new(vec![]),
+                newline_indices: Rc::new(vec![]),
+                intern_table: intern_table,
             }),
-        ));
-        let newline_indices = Rc::new({
-            let mut __result = Vec::new();
-            for p in prepared.clone().iter().cloned() {
-                __result.push(p.newline_index.clone());
-            }
-            __result
-        });
+            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+                let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
+                {
+                    let parsed = parse_with_table(
+                        p.tokens.clone(),
+                        v2_rt::rc_map_insert(
+                            v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                            p.newline_index.clone().file.clone(),
+                            p.newline_index.clone(),
+                        ),
+                        acc.intern_table,
+                    );
+                    Rc::new(FrontendAccum {
+                        parse_results: v2_rt::rc_list_push(
+                            acc.parse_results,
+                            parsed.result.clone(),
+                        ),
+                        newline_indices: v2_rt::rc_list_push(
+                            acc.newline_indices,
+                            p.newline_index.clone(),
+                        ),
+                        intern_table: parsed.intern_table.clone(),
+                    })
+                }
+            },
+        );
+        let parse_results = parsed.parse_results.clone();
+        let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
         let has_parse_errors = {
             let mut __found = false;
@@ -2394,7 +2388,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 graph: None,
                 diagnostics: parse_diagnostics,
                 newline_indices: newline_indices.clone(),
-                intern_table: final_intern_table,
+                intern_table: parsed.intern_table.clone(),
             })
         } else {
             {
@@ -2416,7 +2410,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     graph: Some(graph.clone()),
                     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
                     newline_indices: newline_indices.clone(),
-                    intern_table: final_intern_table,
+                    intern_table: parsed.intern_table.clone(),
                 })
             }
         }
