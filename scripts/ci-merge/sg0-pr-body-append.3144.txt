@@ -1,4 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) One `EXPECTED_HAND_AUTHORED_TEST` entry clocks P5 Mechanism **(b)** for `src/v3/compiler/tests/integration/r3_path_b_brief3_char_in_class_execution_test.rs` (Brief 3 `char_in_class` evaluator vs `byte_matches` parity harness); tokenizer Class 5 Gap 3 structural rows + `regen_tokenize` ingest dispatch remains anchored in `docs/briefs/substrate-language-gaps/r3-class-5-std-fn-body-lowering-program.md` alongside docs PR **`gunbc#3139`**.
-docs/briefs/substrate-language-gaps/r3-class-5-std-fn-body-lowering-program.md

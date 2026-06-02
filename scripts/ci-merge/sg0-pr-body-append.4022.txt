@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_leaf_model_python_r1_test.rs` (INVARIANTS §P5(b) Phase 1 leaf-model python R1 boundary CPython ratchet per PR #3938 §11.4 W2.6; pairs with `scripts/v4-leaf-model-python-r1-verify.sh`). Follow-up dispatch: retire when T-22 modeled `run_target_verification` exercises `src/v4/test/claim/language_model/python_r1.dag` without this hand-Rust bridge — gunb-ai/gunbc#4022 / T-PB-B `pb_rust_tests_outside_residual_zero` in `_internal/ROADMAP_OPS.md`.

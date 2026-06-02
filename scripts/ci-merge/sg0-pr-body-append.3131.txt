@@ -1,9 +1,0 @@
-SG-0 hand-path delta: +1
-SG-0 pairing: (c) R3 gate #95 iteration-opt-in parallelism LAS (`t_las_parallelism_iteration_gate95_demo_test`) dispatch tracked gunbc#3131
-P5 Mechanism (b) co-receipt (gate #95): one PR-body bundle naming every non-test hand-Rust surface expanded for this gate (each path already on baseline `EXPECTED_HAND_AUTHORED_NON_TEST` with its generic INVARIANTS row; gate **#95**-specific plan prose remains anchored on `enforced_lens_application.rs`):
-- `src/v3/compiler/src/enforced_lens_application.rs` — parallelism LAS consumer; routes violation decisions through authored `parallelism_enforcement_violates` (`parallelism.dag`) via `apply_lens_declaration` (single substrate authority for semantics); Rust maps `loop_iteration_parallel_emission_indicator` → `parallelism_iteration_observed_mode` / witness paths only.
-- `src/v3/compiler/src/dag.rs` — `node_scope_subject_within_arrow_declaration` couples `SectionRef::NodeScope` to declaration identity for Lane‑2 read paths (no drift from raw name strings).
-- `src/v3/compiler/src/lib.rs` — `lens_parallelism` host bridge (`ParallelismMode`, `loop_iteration_parallel_emission_indicator`, `parallelism_iteration_observed_mode`; generated internals in `lens_parallelism_generated.rs`); import-gated `needs_parallelism_lens_authority_prepended` + `pub use parallelism_iteration_opt_in_enforcement_violates` so `compile_to_dag` prepends `parallelism.dag` authority on the same edges as complexity prepending.
-- `src/v3/compiler/src/lower.rs` — `append_parallelism_lens_authority` mirrors the import graph for lowering; static `include_str!(../../lenses/parallelism.dag)` keeps LAS authority consistent with `compile_to_dag`.
-
-Matching non-test receipt rows remain in INVARIANTS.md (`EXPECTED_HAND_AUTHORED_NON_TEST` literals) same PR as this prepend + census line.

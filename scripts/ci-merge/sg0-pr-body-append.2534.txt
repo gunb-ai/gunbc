@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1 T-PB-B (`EXPECTED_HAND_AUTHORED_TEST`: `src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs`).
-P5 receipt (INVARIANTS.md P5(b), explicit deferral): cites **ROADMAP.md** Post-merge debt bullet **R3 gate #78 — unary-bind `SymbolicCost` iterate alias collapse post-pass** (`ROADMAP.md:~654`, https://github.com/gunb-ai/gunbc/blob/main/ROADMAP.md#L654). Lane **Lane 2 Stage 2d / DB-7** and dissolution trigger are named in that row (lift alias-aware folding into `algebra.dag` `iterate` / `normalize` so host `symbolic_cost_of` wrapper can dissolve).
-SG-0 pairing: (c) dispatch — T-PB-B census ratchet entry for the gate #78 shared countdown oracle helper; consolidation tracked gunbc#2534.

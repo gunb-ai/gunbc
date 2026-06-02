@@ -316,15 +316,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // § SG-0 hand-authored compiler non-test paths (`T-PB-B` / `pb_rust_tests_outside_residual_zero`).
     // Dissolution: delete when substrate eval owns host dispatch without hand-Rust bridge.
     "src/v3/compiler/src/emit_host_bridge.rs",
-    // T-22: substrate eval intercept for `run_emit_host_rust` → `emit_host_runner` (rust row only).
-    // Receipt assembly delegates to `emit_host_receipt_from_source` via `eval_callable_declaration`.
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0):** paired TEST row
-    // `v4_emit_host_eval_dispatch_test.rs`; explicit deferral lane T-PB-B /
-    // `pb_rust_tests_outside_residual_zero` (checkable: `r1_release_acceptance.dag` TestClaim
-    // name `pb_rust_tests_outside_residual_zero` and `ROADMAP.md` T-PB-B row);
-    // substrate `emit_host.dag` T-22 rust intercept.
-    // Dissolution: substrate Callable dispatch owns transport without this intercept; retires with
-    // `emit_host_bridge.rs` when the T-PB-B lane closes.
+    // T-22: `emit_host_eval.rs` — rust row (#4225/#4254 main) + python transport wire (this PR).
+    // **P5 receipt (Mechanism (b)) — disposition (3) explicit deferral:** lane **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (gate marker
+    // `src/v3/compiler/tests/fixtures/r1_release_acceptance.dag:25`; ROADMAP `ROADMAP.md:31`, `:43`).
+    // Paired tests: `v4_emit_host_eval_dispatch_test.rs` + in-module python eval dispatch tests.
+    // Census **+0 NON_TEST** (row on main since #4225; this PR extends eval hook, no new SG-0 path).
+    // Dissolution: substrate Callable dispatch owns all host rows without this hand-Rust eval hook.
     "src/v3/compiler/src/emit_host_eval.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/emit_rust_bin_shim.rs",
@@ -413,6 +411,31 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // verdicts; P5 deferral to ROADMAP.md `PB-Runtime-External-Toolchain-TestClaims`.
     // Interim host runners: scripts/v4-leaf-model-go-r{1,2a,2b,3-external}-verify.sh.
     "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs",
+    // Phase 1 leaf-model python cross-runtime DRIFT (Worksheet C): boundary tokenize/parse smoke
+    // of the drift std/lens/claim dags + runtime divergence exercise for
+    // `python_cross_runtime_drift_*` (Python arbitrary precision vs Rust/Go fixed-width wrap);
+    // host runner `scripts/v4-leaf-model-python-cross-runtime-drift-verify.sh`.
+    //
+    // **P5 receipt (INVARIANTS.md §P5 — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):** the checkable
+    // receipt is this registration itself (per-PR mechanism (b)) — the `EXPECTED_HAND_AUTHORED_TEST`
+    // census moves by exactly +1 now and must shrink by 1 at dissolution; the sorted/unique and
+    // disk-vs-list census tests in this file mechanically enforce it. Deferral lane —
+    // **ROADMAP.md** "What v4 is building toward" rows "Tests as `.dag` `TestClaim` data"
+    // (`src/v4/test/claim/`) and "Pure bootstrap / self-host" (trajectory to zero hand-maintained
+    // Rust; `self_host.dag` ratchet). Concrete dissolution trigger: delete this hand-Rust test when
+    // the modeled `TestClaim` runner exercises
+    // `src/v4/test/claim/language_model/python_cross_runtime_drift.dag` directly, so the boundary
+    // host-process bridge is no longer the only exerciser of the drift claim.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_cross_runtime_drift_test.rs",
+    // Python RCA release-minimum lane (#4137 section 11.8): L1 static structural mypy (Worksheet B);
+    // host runner v4-leaf-model-python-l1-mypy-static-verify.sh (pyright roster on main #4231).
+    //
+    // **P5 receipt (Mechanism (b), disposition (2)):** `EXPECTED_HAND_AUTHORED_TEST` 171 → 172;
+    // T-PB-B partition (module doc lines 9–10 + `tests/boundary/README.md`); lane
+    // `docs/planning/v4-python-rca-manager-worksheets-2026-06-01.md` Worksheet B (#4137 §11.8);
+    // host runner v4-leaf-model-python-l1-mypy-static-verify.sh. Dissolution: drop when
+    // modeled verification supersedes `src/v4/test/claim/language_model/python_l1_static.dag`.
+    "src/v3/compiler/tests/boundary/v4_leaf_model_python_l1_static_receipts_test.rs",
     // Phase 1 leaf-model python R1 (W2.6 / PR #3938 §11.4): boundary CPython exercise for
     // `src/v4/lens/leaf_model_verification.dag` python fixtures until T-22 modeled
     // `run_target_verification` owns target verdicts; interim host runner
@@ -931,12 +954,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
-    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
-    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral lane T-PB-B / `pb_rust_tests_outside_residual_zero`
-    // (`r1_release_acceptance.dag` TestClaim name); dissolves when `.dag` TestClaim execution
-    // replaces host-runner receipts.
-    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // W2 / T-38 rung-4 host harness: behavior-driven `tools/emit_host_runner` + `.dag` surface
     // needles (`emit_host.dag`, `host_run.dag`, `test_claim_falsification.dag`).
     // **PR #4063 W3.4 (+0 paths):** extends harness with python transport + rung-6 additive-Monoid
@@ -944,8 +961,20 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **PR #4167 Python L1/L2 (+0 paths):** extends same harness with rung-5 python law roster
     // transport, worksheet-B falsification probes, L1 claim parse surface; pairs with
     // `scripts/v4-phase1-nat-semiring-python-runtime-gate.sh` chained from rung gate.
-    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Dissolves: T-PB-B / T-22 T-38.
+    // **PR #4222 Python L1 fixture coverage (+0 paths):** same-path assertion-list expansion
+    // for `rung_l1_python_runtime.dag` coverage + six per-law runtime claim rows.
+    // **PR #4229 Go L1 (+0 paths):** extends same harness with `go_l1_nat_semiring_rung2`
+    // compiler-slice claim parse surface; pairs with
+    // `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` chained from rung gate.
+    // SG-0 + INVARIANTS §P5(b) receipt (PR body Mechanism (b) block). Deferral:
+    // `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero` (`ROADMAP.md:47-51`).
     "src/v3/compiler/tests/integration/v4_emit_host_harness_test.rs",
+    // T-22: eval dispatch runner fail-closed receipts (pairs with `emit_host_eval.rs` NON_TEST row).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral ROADMAP `T-PB-B` / `pb_rust_tests_outside_residual_zero` plus
+    // `emit_host.dag` T-22 rust eval intercept; dissolves when `.dag` TestClaim execution
+    // replaces host-runner receipts.
+    "src/v3/compiler/tests/integration/v4_emit_host_eval_dispatch_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
     "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
@@ -966,6 +995,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
+    // T-38B: lens_idempotency subject roster + run_test_claim + family receipt (eval_mvp2 wedge).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (table row at ROADMAP.md:57); M1(2.7)
+    // tokenize/parse ratchet on `src/v4/test/claim/lens_idempotency/*` until cross-module
+    // v4 `compile_to_dag` import merge lands (peer `v4_lens_edit_locus_dag_smoke_test`
+    // posture). Lane: T-38B TestClaimRun structural receipts; dissolves when substrate
+    // eval executes the roster without this hand-Rust parse smoke.
+    "src/v3/compiler/tests/integration/v4_lens_idempotency_claim_dag_smoke_test.rs",
     // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
     // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_identical_variant_payload_dag_smoke_test.rs",
@@ -988,8 +1026,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_target_realization_dag_smoke_test.rs` in INVARIANTS_OPS.md.
     // PR #4121 (+0 paths): same-file SG-5/SG-6 smoke expansion; PR #4116 (+0 paths): SG-RC-LAYERING smoke expansion.
-    // PR #4226 (+0 paths): TS SG-2 arrow wire-shape golden probes (ts_sg2_arrow_labeled_xy_emitted,
-    // ts_sg2_arrow_mixed_wire_emitted); behavioral TestClaims in sg2_typescript_type_expression_projection.dag.
     "src/v3/compiler/tests/integration/v4_std_target_realization_dag_smoke_test.rs",
     // E0308 W1-A2: `src/v4/std/text.dag` HostStringText host-string/text-carrier boundary.
     // Explicit P5 deferral: ROADMAP.md § "Nine lanes" row `T-PB-B` /

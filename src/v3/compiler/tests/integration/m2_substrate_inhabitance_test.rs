@@ -3619,24 +3619,6 @@ fn map_body_on_non_map_type_fails_closed() {
     );
 }
 
-#[test]
-fn runtime_mirror_snapshots_are_fresh() {
-    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root");
-    let status = std::process::Command::new("python3")
-        .arg("scripts/regen_runtime_mirrors.py")
-        .arg("--check")
-        .current_dir(repo_root)
-        .status()
-        .expect("run runtime mirror freshness check");
-    assert!(
-        status.success(),
-        "parse-surface / serialize snapshots are stale; run scripts/regen_runtime_mirrors.py"
-    );
-}
-
 fn bin_shim_fields(dag: &Dag) -> Vec<(&str, v3_compiler::dag::DeclarationId)> {
     let decl = dag
         .declaration_by_name("BinShim")

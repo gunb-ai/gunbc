@@ -1,2 +1,0 @@
-SG-0 hand-path delta: +1
-SG-0 pairing: (a) removed src/v3/compiler/tests/l5_cross_target_consistency.rs (PR-only crate-root binary path retired before merge to main; census substitution pairs +1 `tests/boundary/l5_cross_target_consistency.rs` vs that superseded path per SG-0 class-(a) “removed” token requirement)

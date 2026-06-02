@@ -3,7 +3,7 @@
 //! RELEASE_TODO.md §5 Phase 1a–1b: `src/v4/workflow/release.dag` is semantic authority;
 //! `.github/workflows/release.yml` is a hand-synced projection until YamlStatic emission lands
 //! (same deferral posture as `v4.workflow.ci` / T-24). Install scripts (`install.sh`,
-//! `scripts/release-target-triples.sh`) are hand-synced from `install.dag` (Phase 1b).
+//! `install/release-target-triples.sh`) are hand-synced from `install.dag` (Phase 1b).
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge deferred.
 //!
@@ -24,8 +24,8 @@ const RELEASE_YML_PATH: &str = ".github/workflows/release.yml";
 const INSTALL_SH: &str = include_str!("../../../../../install.sh");
 const INSTALL_SH_PATH: &str = "install.sh";
 const RELEASE_TARGET_TRIPLES_SH: &str =
-    include_str!("../../../../../scripts/release-target-triples.sh");
-const RELEASE_TARGET_TRIPLES_SH_PATH: &str = "scripts/release-target-triples.sh";
+    include_str!("../../../../../install/release-target-triples.sh");
+const RELEASE_TARGET_TRIPLES_SH_PATH: &str = "install/release-target-triples.sh";
 const V2_COMPILER_CARGO_TOML: &str = include_str!("../../../../v2/stage0/Cargo.toml");
 const V2_COMPILER_CARGO_TOML_PATH: &str = "src/v2/stage0/Cargo.toml";
 
@@ -277,7 +277,7 @@ fn v4_install_scripts_hand_synced_to_release_authority() {
         );
     }
     assert!(
-        INSTALL_SH.contains("scripts/release-target-triples.sh"),
+        INSTALL_SH.contains("install/release-target-triples.sh"),
         "{INSTALL_SH_PATH}: must source hand-synced target authority script"
     );
     assert!(

@@ -12,10 +12,17 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
+use std::time::Instant;
 
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::{compile_sources, SourceFile};
 use v2_compiler::v2_std_core::{diagnostic_to_message, CompilerDiagnostic};
+
+const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
+const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";
+const BOOTSTRAP_TIMING_RECEIPT_ENV: &str = "GUNBC_BOOTSTRAP_TIMING_RECEIPT";
+const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
+    "target/bootstrap_timing/v2_regen_stage0_receipt.json";
 
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
@@ -175,6 +182,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), String> {
+    let run_started = Instant::now();
     let args: Vec<String> = env::args().skip(1).collect();
     let verify_only = match args.as_slice() {
         [] => false,
@@ -191,29 +199,92 @@ fn run() -> Result<(), String> {
     assert_registry_is_partitioned()?;
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace = workspace_root(&manifest_dir)?;
+    let receipt_path = bootstrap_timing_receipt_path(&workspace);
     let stage0_src = manifest_dir.join("src");
     let fresh_dir = temp_dir("v2-regen-stage0-fresh");
     let _ = fs::remove_dir_all(&fresh_dir);
     fs::create_dir_all(fresh_dir.join("src"))
         .map_err(|e| format!("create {}: {e}", fresh_dir.display()))?;
 
-    let emitted = compile_stage0(&workspace)?;
-    write_emitted_crate(&fresh_dir, &emitted)?;
-    copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))?;
-    patch_bootstrap_dag_collect(&fresh_dir.join("src"))?;
-    patch_cargo_toml_for_generated_crate(&fresh_dir)?;
-    rustfmt_generated_crate(&fresh_dir)?;
-    assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))?;
+    let mut phases = Vec::new();
+    let emitted = time_phase(&mut phases, "compile_stage0", || compile_stage0(&workspace))?;
+    time_phase(&mut phases, "write_emitted_crate", || {
+        write_emitted_crate(&fresh_dir, &emitted)
+    })?;
+    time_phase(&mut phases, "copy_hand_maintained_support", || {
+        copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
+    })?;
+    time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
+        patch_bootstrap_dag_collect(&fresh_dir.join("src"))
+    })?;
+    time_phase(&mut phases, "patch_cargo_toml_for_generated_crate", || {
+        patch_cargo_toml_for_generated_crate(&fresh_dir)
+    })?;
+    time_phase(&mut phases, "rustfmt_generated_crate", || {
+        rustfmt_generated_crate(&fresh_dir)
+    })?;
+    time_phase(&mut phases, "assert_output_set_matches_registry", || {
+        assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))
+    })?;
 
     if verify_only {
-        verify_stage0_matches(&stage0_src, &fresh_dir.join("src"))?;
+        let verify_result = time_phase(&mut phases, "verify_stage0_matches", || {
+            verify_stage0_matches(&stage0_src, &fresh_dir.join("src"))
+        });
+        if let Err(message) = verify_result {
+            let changed_generated_files =
+                changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
+            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+                path: &receipt_path,
+                workspace: &workspace,
+                manifest_dir: &manifest_dir,
+                verify_only,
+                status: "failed_stage0_stale",
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
+                emitted_file_count: emitted.len(),
+                phases,
+                elapsed_ms: elapsed_ms(run_started),
+                changed_generated_files,
+            })?;
+            let _ = fs::remove_dir_all(&fresh_dir);
+            return Err(message);
+        }
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: &receipt_path,
+            workspace: &workspace,
+            manifest_dir: &manifest_dir,
+            verify_only,
+            status: "completed",
+            generated_file_count: GENERATED_STAGE0_FILES.len(),
+            emitted_file_count: emitted.len(),
+            phases,
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files: Vec::new(),
+        })?;
         let _ = fs::remove_dir_all(&fresh_dir);
         println!("regen_stage0 --verify: committed stage0 matches fresh self-compile.");
         return Ok(());
     }
 
-    write_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
-    rustfmt_workspace(&manifest_dir)?;
+    let changed_generated_files = changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
+    time_phase(&mut phases, "write_registered_outputs", || {
+        write_registered_outputs(&fresh_dir.join("src"), &stage0_src)
+    })?;
+    time_phase(&mut phases, "rustfmt_workspace", || {
+        rustfmt_workspace(&manifest_dir)
+    })?;
+    write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+        path: &receipt_path,
+        workspace: &workspace,
+        manifest_dir: &manifest_dir,
+        verify_only,
+        status: "completed",
+        generated_file_count: GENERATED_STAGE0_FILES.len(),
+        emitted_file_count: emitted.len(),
+        phases,
+        elapsed_ms: elapsed_ms(run_started),
+        changed_generated_files,
+    })?;
     let _ = fs::remove_dir_all(&fresh_dir);
     println!(
         "regen_stage0: wrote {} generated stage0 files.",
@@ -233,6 +304,142 @@ fn workspace_root(manifest_dir: &Path) -> Result<PathBuf, String> {
                 manifest_dir.display()
             )
         })
+}
+
+fn time_phase<T, F>(phases: &mut Vec<BootstrapTimingPhase>, name: &str, f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String>,
+{
+    let started = Instant::now();
+    let result = f();
+    phases.push(BootstrapTimingPhase {
+        name: name.to_string(),
+        elapsed_ms: elapsed_ms(started),
+    });
+    result
+}
+
+fn elapsed_ms(started: Instant) -> u128 {
+    started.elapsed().as_millis()
+}
+
+#[derive(serde::Serialize)]
+struct BootstrapTimingReceipt {
+    schema: &'static str,
+    version: u32,
+    subject: &'static str,
+    mode: &'static str,
+    status: &'static str,
+    elapsed_ms: u128,
+    phases: Vec<BootstrapTimingPhase>,
+    generated_file_count: usize,
+    emitted_file_count: usize,
+    changed_generated_file_count: usize,
+    changed_generated_files: Vec<String>,
+    cargo_invalidation: CargoInvalidationReceipt,
+}
+
+#[derive(serde::Serialize)]
+struct BootstrapTimingPhase {
+    name: String,
+    elapsed_ms: u128,
+}
+
+#[derive(serde::Serialize)]
+struct CargoInvalidationReceipt {
+    strategy: &'static str,
+    inputs: Vec<CargoInvalidationInput>,
+}
+
+#[derive(serde::Serialize)]
+struct CargoInvalidationInput {
+    path: String,
+    content_hash: String,
+    len_bytes: u64,
+}
+
+struct BootstrapTimingReceiptInput<'a> {
+    path: &'a Path,
+    workspace: &'a Path,
+    manifest_dir: &'a Path,
+    verify_only: bool,
+    status: &'static str,
+    generated_file_count: usize,
+    emitted_file_count: usize,
+    phases: Vec<BootstrapTimingPhase>,
+    elapsed_ms: u128,
+    changed_generated_files: Vec<String>,
+}
+
+fn bootstrap_timing_receipt_path(workspace: &Path) -> PathBuf {
+    env::var_os(BOOTSTRAP_TIMING_RECEIPT_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace.join(DEFAULT_BOOTSTRAP_TIMING_RECEIPT))
+}
+
+fn write_bootstrap_timing_receipt(input: BootstrapTimingReceiptInput<'_>) -> Result<(), String> {
+    let receipt = BootstrapTimingReceipt {
+        schema: BOOTSTRAP_TIMING_RECEIPT_SCHEMA,
+        version: BOOTSTRAP_TIMING_RECEIPT_VERSION,
+        subject: "v2_regen_stage0",
+        mode: if input.verify_only { "verify" } else { "write" },
+        status: input.status,
+        elapsed_ms: input.elapsed_ms,
+        phases: input.phases,
+        generated_file_count: input.generated_file_count,
+        emitted_file_count: input.emitted_file_count,
+        changed_generated_file_count: input.changed_generated_files.len(),
+        changed_generated_files: input.changed_generated_files,
+        cargo_invalidation: cargo_invalidation_receipt(input.workspace, input.manifest_dir)?,
+    };
+    let body = serde_json::to_string_pretty(&receipt)
+        .map_err(|e| format!("serialize bootstrap timing receipt: {e}"))?;
+    if let Some(parent) = input.path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(input.path, format!("{body}\n"))
+        .map_err(|e| format!("write {}: {e}", input.path.display()))
+}
+
+fn cargo_invalidation_receipt(
+    workspace: &Path,
+    manifest_dir: &Path,
+) -> Result<CargoInvalidationReceipt, String> {
+    let paths = [
+        workspace.join("Cargo.toml"),
+        workspace.join("Cargo.lock"),
+        manifest_dir.join("Cargo.toml"),
+    ];
+    let mut inputs = Vec::new();
+    for path in paths {
+        inputs.push(cargo_invalidation_input(workspace, &path)?);
+    }
+    Ok(CargoInvalidationReceipt {
+        strategy: "content_hashes_for_workspace_manifest_lockfile_and_stage0_manifest",
+        inputs,
+    })
+}
+
+fn cargo_invalidation_input(
+    workspace: &Path,
+    path: &Path,
+) -> Result<CargoInvalidationInput, String> {
+    let bytes = fs::read(path)
+        .map_err(|e| format!("read cargo invalidation input {}: {e}", path.display()))?;
+    Ok(CargoInvalidationInput {
+        path: display_source_path(path, workspace),
+        content_hash: format!("fnv1a64:{:016x}", fnv1a64(&bytes)),
+        len_bytes: bytes.len() as u64,
+    })
+}
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -745,6 +952,25 @@ fn diff_hint(committed: &Path, fresh: &Path) -> String {
     }
 }
 
+fn changed_registered_outputs(
+    fresh_src: &Path,
+    committed_src: &Path,
+) -> Result<Vec<String>, String> {
+    let mut changed = Vec::new();
+    for file_name in GENERATED_STAGE0_FILES {
+        let fresh = fresh_src.join(file_name);
+        let committed = committed_src.join(file_name);
+        let fresh_text = fs::read_to_string(&fresh)
+            .map_err(|e| format!("read fresh {}: {e}", fresh.display()))?;
+        let committed_text = fs::read_to_string(&committed)
+            .map_err(|e| format!("read committed {}: {e}", committed.display()))?;
+        if fresh_text != committed_text {
+            changed.push((*file_name).to_string());
+        }
+    }
+    Ok(changed)
+}
+
 fn write_registered_outputs(fresh_src: &Path, committed_src: &Path) -> Result<(), String> {
     for file_name in GENERATED_STAGE0_FILES {
         let fresh = fresh_src.join(file_name);
@@ -820,6 +1046,102 @@ mod tests {
 
         let _ = fs::remove_dir_all(committed);
         let _ = fs::remove_dir_all(fresh);
+    }
+
+    #[test]
+    fn changed_registered_outputs_lists_only_mismatched_generated_files() {
+        let committed = temp_test_dir("committed");
+        let fresh = temp_test_dir("fresh");
+        seed_registered_files(&committed, "same\n");
+        seed_registered_files(&fresh, "same\n");
+        fs::write(fresh.join(GENERATED_STAGE0_FILES[0]), "changed\n")
+            .expect("write changed generated file");
+
+        let changed =
+            changed_registered_outputs(&fresh, &committed).expect("changed output receipt");
+        assert_eq!(changed, vec![GENERATED_STAGE0_FILES[0].to_string()]);
+
+        let _ = fs::remove_dir_all(committed);
+        let _ = fs::remove_dir_all(fresh);
+    }
+
+    #[test]
+    fn cargo_invalidation_receipt_hashes_workspace_and_stage0_manifests() {
+        let workspace = temp_test_dir("workspace");
+        let manifest_dir = workspace.join("src").join("v2").join("stage0");
+        fs::create_dir_all(&manifest_dir).expect("create manifest dir");
+        fs::write(workspace.join("Cargo.toml"), "[workspace]\n").expect("write workspace toml");
+        fs::write(workspace.join("Cargo.lock"), "# lock\n").expect("write cargo lock");
+        fs::write(
+            manifest_dir.join("Cargo.toml"),
+            "[package]\nname = \"v2\"\n",
+        )
+        .expect("write stage0 toml");
+
+        let receipt = cargo_invalidation_receipt(&workspace, &manifest_dir).expect("cargo receipt");
+        assert_eq!(
+            receipt.strategy,
+            "content_hashes_for_workspace_manifest_lockfile_and_stage0_manifest"
+        );
+        let paths: Vec<_> = receipt
+            .inputs
+            .iter()
+            .map(|input| input.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            vec!["Cargo.toml", "Cargo.lock", "src/v2/stage0/Cargo.toml"]
+        );
+        assert!(receipt
+            .inputs
+            .iter()
+            .all(|input| input.content_hash.starts_with("fnv1a64:") && input.len_bytes > 0));
+
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn bootstrap_timing_receipt_json_pins_v2_schema() {
+        let workspace = temp_test_dir("receipt-workspace");
+        let manifest_dir = workspace.join("src").join("v2").join("stage0");
+        let receipt_path = workspace.join("receipt.json");
+        fs::create_dir_all(&manifest_dir).expect("create manifest dir");
+        fs::write(workspace.join("Cargo.toml"), "[workspace]\n").expect("write workspace toml");
+        fs::write(workspace.join("Cargo.lock"), "# lock\n").expect("write cargo lock");
+        fs::write(manifest_dir.join("Cargo.toml"), "[package]\n").expect("write stage0 toml");
+
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: &receipt_path,
+            workspace: &workspace,
+            manifest_dir: &manifest_dir,
+            verify_only: true,
+            status: "completed",
+            generated_file_count: 2,
+            emitted_file_count: 3,
+            phases: vec![BootstrapTimingPhase {
+                name: "compile_stage0".to_string(),
+                elapsed_ms: 7,
+            }],
+            elapsed_ms: 9,
+            changed_generated_files: Vec::new(),
+        })
+        .expect("write receipt");
+
+        let body = fs::read_to_string(&receipt_path).expect("read receipt");
+        let json: serde_json::Value = serde_json::from_str(&body).expect("parse receipt");
+        assert_eq!(json["schema"], BOOTSTRAP_TIMING_RECEIPT_SCHEMA);
+        assert_eq!(json["version"], BOOTSTRAP_TIMING_RECEIPT_VERSION);
+        assert_eq!(json["subject"], "v2_regen_stage0");
+        assert_eq!(json["mode"], "verify");
+        assert_eq!(
+            json["cargo_invalidation"]["inputs"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+
+        let _ = fs::remove_dir_all(workspace);
     }
 
     fn seed_registered_files(dir: &Path, contents: &str) {
