@@ -12,7 +12,7 @@ import v4.compiler.eval {
 }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
   ManualAnchorAbsent,
@@ -24,12 +24,38 @@ import v4.std.verification {
 }
 import v4.test.claim.lens_ownership.resource_dependency {
   ownership_claim_tree,
-  ownership_resource_dependency_claim_passes,
-  ownership_root
+  ownership_resource_dependency_claim_passes
 }
 
 
 data lens_ownership_resource_dependency_pin: Symbol = lens_ownership_resource_dependency_pin
+data lens_ownership_claim_pass_symbol: Symbol = lens_ownership_claim_pass_symbol
+data lens_ownership_claim_fail_symbol: Symbol = lens_ownership_claim_fail_symbol
+
+
+fn ownership_claim_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: lens_ownership_claim_pass_symbol } },
+    children: []
+  }
+}
+
+
+fn ownership_claim_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: lens_ownership_claim_fail_symbol } },
+    children: []
+  }
+}
+
+
+fn ownership_claim_input(ok: Bool) -> Node {
+  if ok {
+    ownership_claim_pass_node()
+  } else {
+    ownership_claim_fail_node()
+  }
+}
 
 
 type LensOwnershipSubject {
@@ -40,10 +66,10 @@ type LensOwnershipSubject {
 
 
 data claim_lens_ownership_resource_dependency: TestClaim = EqualsClaim {
-  label: "lens_ownership resource dependency witness is rostered",
+  label: "lens_ownership resource dependency witness passes through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ownership_root,
-  rhs: ownership_root,
+  lhs: ownership_claim_input(ok: ownership_resource_dependency_claim_passes),
+  rhs: ownership_claim_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
