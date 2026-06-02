@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 70faff71022bef52bff07d47ebb9cc6e75d30b5dfb0d897e90fa94f02772a436
+// Source-SHA256(.github/workflows/ci.yml): c1006189aec0f7cdc61560033e7c63e01ba6825195f7a8547e2dd41037af83f1
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -289,17 +289,27 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           id: none,
           run: "bash scripts/v4-m1-rust-emit-probe.sh",
           shell: Bash,
-          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_CARGO_CHECK_JOBS_CEILING": "64", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
+          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit", "V4_M1_DAG_EMIT_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_M1_DAG_EMIT_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_M1_CARGO_CHECK_JOBS_CEILING": "64", "V4_M1_RUST_EMIT_PROBE_STRICT": "0" },
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: Some { value: 20 }
         }, RunStep {
+          name: Some { value: "v2 DAG emit parity receipt (required before bootstrap reuse)" },
+          id: none,
+          run: "cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
           name: Some { value: "v2 -> v4 bootstrap compile (fail-closed full)" },
           id: none,
           run: "bash scripts/v4-bootstrap-viability.sh",
           shell: Bash,
-          env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "900" },
+          env: { "V4_BOOTSTRAP_OUT": "${{ runner.temp }}/v4-bootstrap", "V4_BOOTSTRAP_LOG": "${{ runner.temp }}/v4-bootstrap.log", "V4_BOOTSTRAP_REUSE_LOG": "${{ runner.temp }}/v4-bootstrap.shared.log", "V4_BOOTSTRAP_TIMEOUT_SECS": "900" },
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
