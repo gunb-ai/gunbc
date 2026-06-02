@@ -171,9 +171,11 @@ import v4.std.effects {
 import v4.std.artifact {
   Artifact,
   ArtifactKind,
+  GeneratedArtifact,
   GeneratorId,
   GeneratorProvenance,
-  TestClaimArtifact
+  TestClaimArtifact,
+  test_claim_generated_artifact
 }
 
 
@@ -371,15 +373,14 @@ fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId {
 
 
 // F.2-P1: build a generator's provenance from its identity. The emitted artifact is a
-// TestClaimArtifact keyed by the same GeneratorId; no artifact law is re-declared here.
+// refined GeneratedArtifact keyed by the same GeneratorId — the refined type makes
+// non-generated ArtifactKinds unrepresentable (Branch H §H.5 guardrail, authored in
+// v4.std.artifact). TestClaimArtifact is statically admitted, so the total constructor
+// test_claim_generated_artifact stays Outcome-free; no artifact law is re-declared here.
 fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
   GeneratorProvenance {
     generator_id: id,
-    artifact: Artifact {
-      kind: TestClaimArtifact,
-      id: id,
-      file_path: testgen_lens_file_path,
-    },
+    artifact: test_claim_generated_artifact(id: id, file_path: testgen_lens_file_path),
   }
 }
 
@@ -1937,12 +1938,20 @@ fn artifact_kind_is_test_claim(k: ArtifactKind) -> Bool {
 }
 
 
+// F.2-P1: the GeneratedArtifact wraps a refined Artifact; reach the admitted base to
+// inspect its identity. The refined type already makes non-generated kinds unrepresentable,
+// so the kind check below is a belt-and-braces witness over the structural guarantee.
+fn generated_artifact_keyed_by(a: GeneratedArtifact, id: GeneratorId) -> Bool {
+  let base = refined_base(r: a.refined)
+  base.id == id && artifact_kind_is_test_claim(k: base.kind)
+}
+
+
 // F.2-P1 provenance integrity: a generator's identity must key its emitted artifact
-// (generator_id == artifact.id, artifact is a TestClaimArtifact), and it must carry
-// profile metadata. This is the structural property the close-criterion witness folds.
+// (generator_id == base artifact id, a generated kind), and it must carry profile
+// metadata. This is the structural property the close-criterion witness folds.
 fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
-  g.provenance.generator_id == g.provenance.artifact.id
-    && artifact_kind_is_test_claim(k: g.provenance.artifact.kind)
+  generated_artifact_keyed_by(a: g.provenance.artifact, id: g.provenance.generator_id)
     && g.profile_metadata.profile_ref == testgen_default_profile_ref
 }
 
