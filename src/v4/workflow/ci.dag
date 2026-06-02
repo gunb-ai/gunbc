@@ -1963,6 +1963,7 @@ data ci_projection_command_verdict_surface_edge: Symbol = ci_projection_command_
 data ci_projection_corpus_surface_run_roster_edge: Symbol = ci_projection_corpus_surface_run_roster_edge
 data ci_projection_corpus_surface_eval_report_edge: Symbol = ci_projection_corpus_surface_eval_report_edge
 data ci_projection_corpus_surface_verdict_tally_edge: Symbol = ci_projection_corpus_surface_verdict_tally_edge
+data ci_projection_corpus_surface_structural_witness_edge: Symbol = ci_projection_corpus_surface_structural_witness_edge
 data ci_projection_corpus_surface_gate_witness_edge: Symbol = ci_projection_corpus_surface_gate_witness_edge
 data ci_projection_declaration_module_edge: Symbol = ci_projection_declaration_module_edge
 data ci_projection_declaration_name_edge: Symbol = ci_projection_declaration_name_edge
@@ -2469,7 +2470,7 @@ fn ci_lens_ownership_family_verdict_surface_projection_node(
         target: ci_declaration_authority_projection_node(a: surface.verdict_tally)
       ),
       ci_named_edge(
-        name: ci_projection_command_selection_fn_edge,
+        name: ci_projection_corpus_surface_structural_witness_edge,
         target: ci_declaration_authority_projection_node(a: surface.structural_witness)
       ),
       ci_named_edge(

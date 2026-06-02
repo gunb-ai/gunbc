@@ -90,6 +90,7 @@ def main() -> None:
             "ci_lens_ownership_family_verdict_surface_authority",
             "surface == ci_lens_ownership_family_verdict_surface_authority()",
             "ci_lens_ownership_family_verdict_surface_projection_node",
+            "ci_projection_corpus_surface_structural_witness_edge",
             "lens_ownership_structural_witnesses_hold",
             "ci_lens_ownership_family_eval_command",
             "ci_upsert_lens_ownership_family_eval_execution_mk",
