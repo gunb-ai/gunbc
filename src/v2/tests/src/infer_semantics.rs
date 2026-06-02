@@ -682,16 +682,13 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        empty_type_env(),
-        m,
-        "keys".to_string(),
-    )
-    .lookup
-    .resolution
-    .as_ref()
-    .expect("keys must resolve on Map<String,Int>")
-    .clone();
+    let result =
+        v2_compiler_infer_lookup::lookup_structural_method(empty_type_env(), m, "keys".to_string())
+            .lookup
+            .resolution
+            .as_ref()
+            .expect("keys must resolve on Map<String,Int>")
+            .clone();
     assert_eq!(result.result_type.name, "List", "keys should return List");
     assert_eq!(
         result.result_type.children.len(),
