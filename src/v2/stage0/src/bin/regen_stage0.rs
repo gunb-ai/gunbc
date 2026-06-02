@@ -228,9 +228,27 @@ fn run() -> Result<(), String> {
     })?;
 
     if verify_only {
-        time_phase(&mut phases, "verify_stage0_matches", || {
+        let verify_result = time_phase(&mut phases, "verify_stage0_matches", || {
             verify_stage0_matches(&stage0_src, &fresh_dir.join("src"))
-        })?;
+        });
+        if let Err(message) = verify_result {
+            let changed_generated_files =
+                changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
+            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+                path: &receipt_path,
+                workspace: &workspace,
+                manifest_dir: &manifest_dir,
+                verify_only,
+                status: "failed_stage0_stale",
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
+                emitted_file_count: emitted.len(),
+                phases,
+                elapsed_ms: elapsed_ms(run_started),
+                changed_generated_files,
+            })?;
+            let _ = fs::remove_dir_all(&fresh_dir);
+            return Err(message);
+        }
         write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
             path: &receipt_path,
             workspace: &workspace,
