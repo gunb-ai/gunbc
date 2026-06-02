@@ -37,6 +37,15 @@
 //! byte-for-byte carrier structural-match, not a hand-Rust binding test; ROADMAP row **T-PB-B** /
 //! `pb_rust_tests_outside_residual_zero`). Dissolve-on: same A15 Shape-B/T-24 lane as above.
 //!
+//! **INVARIANTS P5 — checkable receipt for PR #4323 (F.11b source-authority receipt consumption):**
+//! feature `f11b-source-authority-ci-receipt`; consumer
+//! `v4_workflow_ci_source_authority_receipt_consumes_h72_claims`. SAME-PATH SG-0 expansion:
+//! stays inside this existing v4 CI smoke harness (+0 new hand-Rust test paths) and explicitly
+//! defers to ROADMAP.md § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+//! Dissolve-on: generated `.dag` TestClaim execution covers
+//! `claim_source_authority_contract_compiles` and `claim_bmin_canonical_dag_source_parse_print_law`
+//! through `SourceAuthorityReceiptEvalCommand` without this hand-Rust parse/string ratchet.
+//!
 //! **Dissolution:** remove when `.dag` TestClaim execution covers these claims without
 //! this hand-Rust parse harness (A15 Shape-B emitted `ci.yml` retires `v4_workflow_ci_bankruptcy_tier0_*`).
 
@@ -2245,11 +2254,23 @@ fn v4_workflow_ci_source_authority_receipt_consumes_h72_claims() {
     assert!(
         import_includes_name(
             &module,
-            &["v4", "test", "claim", "round_trip", "source_authority_contract"],
+            &[
+                "v4",
+                "test",
+                "claim",
+                "round_trip",
+                "source_authority_contract"
+            ],
             "claim_source_authority_contract_compiles"
         ) && import_includes_name(
             &module,
-            &["v4", "test", "claim", "round_trip", "source_authority_contract"],
+            &[
+                "v4",
+                "test",
+                "claim",
+                "round_trip",
+                "source_authority_contract"
+            ],
             "claim_bmin_canonical_dag_source_parse_print_law"
         ),
         "{CI_DAG_PATH}: F.11b must import H.7.2 source-authority claim declarations directly"
