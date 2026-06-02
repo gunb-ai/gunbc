@@ -1,0 +1,226 @@
+// src/v4/compiler/source_authority.dag
+// Scope: Branch H.7.2 source-authority contract for `.dag` source round trips.
+// Status: modeled shape contract over canonical source text; equality witnesses become executable
+// once ParseTree/ResolvedTree equality and a canonical `.dag` TargetModel row are substrate-backed.
+// JSON IR/debug artifacts are excluded.
+// Anchor: Branch H source-authority worksheet H.1-H.3/H.7.2.
+
+module v4.compiler.source_authority
+
+
+import v4.compiler.normalize { normalize }
+import v4.compiler.parse { parse }
+import v4.compiler.resolve { resolve, ResolvedTree }
+import v4.compiler.tokenize { tokenize }
+import v4.extdeps.languages.dag {
+  DagLanguageModel,
+  dag_language_model_wave1_modeled
+}
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  outcome_accepted,
+  port_locus
+}
+import v4.std.grammar { ParseTree }
+import v4.std.node { Node, Symbol }
+import v4.std.target_model { TargetModel }
+import v4.compiler.target_carriers { TargetSource }
+import v4.compiler.translate { target_serialize_source_from_model }
+import v4.std.text { String }
+import v4.std.witness { Holds, Violates, Witness }
+
+
+type DagSource = String
+
+type DagSourceAst {
+  tree: ParseTree
+}
+
+type DagSemanticIr {
+  tree: ResolvedTree
+}
+
+type SourceAstEqual {
+  original: DagSourceAst
+  reparsed: DagSourceAst
+}
+
+type SemanticIrEqual {
+  original: DagSemanticIr
+  reparsed: DagSemanticIr
+}
+
+type SourceAuthorityRoundTripLaw {
+  canonical_source: DagSource
+  source_law: SourceAstEqual
+  semantic_law: SemanticIrEqual
+}
+
+
+data source_authority_port: Symbol = source_authority_port
+data source_authority_ast_mismatch: Symbol = source_authority_ast_mismatch
+data source_authority_ir_mismatch: Symbol = source_authority_ir_mismatch
+
+
+fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: port_locus(port: source_authority_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn parse_dag_source_ast_with_model(source: DagSource, lm: DagLanguageModel) -> Outcome<DagSourceAst> {
+  bind_outcome(
+    o: tokenize(text: source, file: source_authority_port, rules: lm.lex),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          outcome_accepted(value: DagSourceAst { tree: parse_tree })
+        }
+      )
+    }
+  )
+}
+
+
+fn parse_dag_source_ast(source: DagSource) -> Outcome<DagSourceAst> {
+  parse_dag_source_ast_with_model(source: source, lm: dag_language_model_wave1_modeled())
+}
+
+
+fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: DagLanguageModel) -> Outcome<DagSemanticIr> {
+  bind_outcome(
+    o: normalize(parse_tree: ast.tree),
+    f: fn(normalized) {
+      bind_outcome(
+        o: resolve(tree: normalized, lm: lm),
+        f: fn(resolved) {
+          outcome_accepted(value: DagSemanticIr { tree: resolved })
+        }
+      )
+    }
+  )
+}
+
+
+fn source_ast_equal_witness(
+  original: DagSourceAst,
+  reparsed: DagSourceAst
+) -> Witness<SourceAstEqual> {
+  if original.tree == reparsed.tree {
+    Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
+  } else {
+    Violates {
+      diagnostic: source_authority_diagnostic(reason: source_authority_ast_mismatch)
+    }
+  }
+}
+
+
+fn semantic_ir_equal_witness(
+  original: DagSemanticIr,
+  reparsed: DagSemanticIr
+) -> Witness<SemanticIrEqual> {
+  if original.tree == reparsed.tree {
+    Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
+  } else {
+    Violates {
+      diagnostic: source_authority_diagnostic(reason: source_authority_ir_mismatch)
+    }
+  }
+}
+
+
+fn source_authority_law_from_parts(
+  original_ast: DagSourceAst,
+  canonical_source: DagSource,
+  reparsed_ast: DagSourceAst,
+  original_ir: DagSemanticIr,
+  reparsed_ir: DagSemanticIr
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+  let source_law = source_ast_equal_witness(original: original_ast, reparsed: reparsed_ast)
+  let semantic_law = semantic_ir_equal_witness(original: original_ir, reparsed: reparsed_ir)
+  match source_law {
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: source_law_value } =>
+      match semantic_law {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: semantic_law_value } =>
+          outcome_accepted(
+            value: Holds {
+              value: SourceAuthorityRoundTripLaw {
+                canonical_source: canonical_source,
+                source_law: source_law_value,
+                semantic_law: semantic_law_value
+              }
+            }
+          )
+      }
+  }
+}
+
+
+fn source_authority_round_trip_with_model(
+  source: DagSource,
+  canonical_source_target: TargetModel,
+  lm: DagLanguageModel
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+  bind_outcome(
+    o: parse_dag_source_ast_with_model(source: source, lm: lm),
+    f: fn(original_ast) {
+      bind_outcome(
+        o: semantic_ir_from_ast_with_model(ast: original_ast, lm: lm),
+        f: fn(original_ir) {
+          bind_outcome(
+            o: target_serialize_source_from_model(
+              target: canonical_source_target,
+              emitted: original_ir.tree
+            ),
+            f: fn(canonical_source) {
+              bind_outcome(
+                o: parse_dag_source_ast_with_model(source: canonical_source, lm: lm),
+                f: fn(reparsed_ast) {
+                  bind_outcome(
+                    o: semantic_ir_from_ast_with_model(ast: reparsed_ast, lm: lm),
+                    f: fn(reparsed_ir) {
+                      source_authority_law_from_parts(
+                        original_ast: original_ast,
+                        canonical_source: canonical_source,
+                        reparsed_ast: reparsed_ast,
+                        original_ir: original_ir,
+                        reparsed_ir: reparsed_ir
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+
+fn source_authority_round_trip(
+  source: DagSource,
+  canonical_source_target: TargetModel
+) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+  source_authority_round_trip_with_model(
+    source: source,
+    canonical_source_target: canonical_source_target,
+    lm: dag_language_model_wave1_modeled()
+  )
+}
