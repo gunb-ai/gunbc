@@ -40,7 +40,8 @@ import v4.std.diagnostic {
   node_locus
 }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Symbol }
+import v4.std.node { Node }
 import v4.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -67,8 +68,7 @@ import v4.std.effects {
   sample_delete_subject,
   sample_label_only_subject,
   sample_read_subject,
-  sample_upsert_subject,
-  sample_state
+  sample_upsert_subject
 }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 
