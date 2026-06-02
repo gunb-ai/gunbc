@@ -284,7 +284,7 @@ else
   py_check_log="$out/logs/python_check.log"
   set +e
   find "$out/python" -name '*.py' -print0 2>/dev/null \
-    | xargs -0 "$python_bin" -m py_compile 2>&1 | tee "$py_check_log"
+    | xargs -0 -r -n 1 "${timed[@]}" "$python_bin" -m py_compile 2>&1 | tee "$py_check_log"
   py_check_status=${PIPESTATUS[1]}
   set -e
   if [[ "$py_check_status" -eq 0 ]]; then
