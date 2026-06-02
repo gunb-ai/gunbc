@@ -47,6 +47,12 @@ import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth,
+  ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
@@ -55,6 +61,13 @@ import v4.std.model_core {
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
+}
+import v4.std.grounding {
+  empty_per_language_fact_bundle_registry,
+  insert_per_language_fact_bundle_entry,
+  PerLanguageFactBundleEntry,
+  PerLanguageFactBundleKey,
+  PerLanguageFactBundleRegistry
 }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
@@ -85,6 +98,7 @@ import v4.std.target_model {
   target_value_template_for_kind
 }
 import v4.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
+import v4.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
 import v4.std.witness { Holds, Violates }
 import v4.std.algebra {
   BooleanAlgebra,
@@ -1012,6 +1026,283 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
       right: go_primitive_bundles_from_bool_catalog()
     ),
     right: go_primitive_bundles_from_string_catalog()
+  )
+}
+
+fn go_per_language_fact_bundle_key(
+  subject: Node,
+  axis: ModelCorePrimitiveFactAxis
+) -> PerLanguageFactBundleKey {
+  PerLanguageFactBundleKey {
+    subject_carrier: subject,
+    target: go_mvp1_target_model(),
+    fact_axis: axis
+  }
+}
+
+fn go_per_language_fact_bundle_entry(
+  subject: Node,
+  axis: ModelCorePrimitiveFactAxis,
+  fact_value: Node
+) -> PerLanguageFactBundleEntry {
+  PerLanguageFactBundleEntry {
+    key: go_per_language_fact_bundle_key(subject: subject, axis: axis),
+    fact_value: fact_value
+  }
+}
+
+fn go_integer_per_language_fact_bundle_entries(
+  facts: GoIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => [
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSurfaceSpelling {},
+        fact_value: go_inhabitant_atom(id: surface_spelling)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisWidth {},
+        fact_value: go_signed_int_width_node(width: width)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSignedness {},
+        fact_value: go_int_kind_node(kind: Signed)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisOverflowDisposition {},
+        fact_value: go_overflow_node(
+          overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+        )
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisEncoding {},
+        fact_value: go_inhabitant_atom(id: encoding)
+      )
+    ]
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => [
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSurfaceSpelling {},
+        fact_value: go_inhabitant_atom(id: surface_spelling)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisWidth {},
+        fact_value: go_unsigned_int_width_node(width: width)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSignedness {},
+        fact_value: go_int_kind_node(kind: Unsigned)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisOverflowDisposition {},
+        fact_value: go_overflow_node(
+          overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+        )
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisEncoding {},
+        fact_value: go_inhabitant_atom(id: encoding)
+      )
+    ]
+  }
+}
+
+fn go_float_per_language_fact_bundle_entries(
+  facts: GoFloatPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisWidth {},
+      fact_value: go_float_width_node(width: facts.width)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.ieee754_binary)
+    )
+  ]
+}
+
+fn go_complex_per_language_fact_bundle_entries(
+  facts: GoComplexPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisWidth {},
+      fact_value: go_complex_width_node(width: facts.width)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.component_ieee754_binary)
+    )
+  ]
+}
+
+fn go_bool_per_language_fact_bundle_entries(
+  facts: GoBoolPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_bool_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_bool_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.encoding)
+    )
+  ]
+}
+
+fn go_string_per_language_fact_bundle_entries(
+  facts: GoStringPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_string_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_string_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.encoding)
+    )
+  ]
+}
+
+fn go_per_language_fact_bundle_entries_from_integer_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_integer_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_float_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_float_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_complex_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_complex_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_bool_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_bool_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_bool_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_string_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_string_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_g1_3_per_language_fact_bundle_entry_rows() -> List<PerLanguageFactBundleEntry> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: go_per_language_fact_bundle_entries_from_integer_catalog(),
+          right: go_per_language_fact_bundle_entries_from_float_catalog()
+        ),
+        right: go_per_language_fact_bundle_entries_from_complex_catalog()
+      ),
+      right: go_per_language_fact_bundle_entries_from_bool_catalog()
+    ),
+    right: go_per_language_fact_bundle_entries_from_string_catalog()
+  )
+}
+
+fn go_g1_3_per_language_fact_bundle_registry_step(
+  acc: Outcome<PerLanguageFactBundleRegistry>,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  bind_outcome(o: acc, f: fn(registry) {
+    insert_per_language_fact_bundle_entry(
+      registry: registry,
+      key: entry.key,
+      fact_value: entry.fact_value
+    )
+  })
+}
+
+fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  fold_list(
+    xs: go_g1_3_per_language_fact_bundle_entry_rows(),
+    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    cons: go_g1_3_per_language_fact_bundle_registry_step
   )
 }
 

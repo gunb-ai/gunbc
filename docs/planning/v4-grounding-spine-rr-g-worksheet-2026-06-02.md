@@ -53,7 +53,11 @@ Metric allowed only as secondary:
 
 | Row | Deliverable | Authority |
 |-----|-------------|-----------|
+<<<<<<< HEAD
 | G0.1 | `PerLanguageFactBundleKey` (`subject_carrier` + `target` + `ModelCorePrimitiveFactAxis`) + entry `fact_value`; registry `by_key: Map<PerLanguageFactBundleKey, Node>` is the single keyed fact authority and rejects duplicate axis rows before insertion | `v4.std.grounding` → `primitive_fact_bundle_for_subject` → `model_core` |
+=======
+| G0.1 | `PerLanguageFactBundleKey` (`subject_carrier` + `target` + `ModelCorePrimitiveFactAxis`) + entry `fact_value`; registry `by_key: Map<…, Node>` via fail-closed `insert_per_language_fact_bundle_entry` | `v4.std.grounding` registry entries stay distinct until a subject×target aggregation builder forms complete `model_core` bundles |
+>>>>>>> origin/main
 | G0.2 | `HollowAliasGovernanceBar` (governance; T-30 enforces) | `v4.std.grounding` → `v4.lens.fact_density` |
 | G0.3 | `GroundingEvidenceSchema` (Sg1/Sg1b/Sg2/Sg5 variants carry `source_carrier`) | `v4.std.grounding` → `v4.std.target_model` |
 | G0.4 | `PerTargetGroundingReceipt` (`EmitHostRunReceipt`; target via `host_run.target`) | `v4.std.grounding` → `v4.std.host_run` |
