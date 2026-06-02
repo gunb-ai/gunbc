@@ -1817,6 +1817,29 @@ fn sg8_nested_parametric_alias_with_opaque_inner_stays_unemitted() {
 }
 
 #[test]
+fn sg8_wildcard_reexported_enum_parent_specific_import_uses_defining_module() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_def\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy { E }\nfn f() -> E { A }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::{E}") || content.contains("use crate::sg8_def::E"),
+        "wildcard-reexported enum parent must import from defining module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_proxy::{E}") && !content.contains("use crate::sg8_proxy::E"),
+        "must not emit proxy module use for wildcard-reexported enum parent; got:\n{content}"
+    );
+}
+
+#[test]
 fn sg8_wildcard_import_through_proxy_reaches_defining_module_variant() {
     let files = &[
         ("def.dag", "module sg8_def\ntype E = A | B\n"),

@@ -2812,48 +2812,46 @@ pub fn is_import_graph_type_name(
     ) {
         true
     } else {
-        if is_enum_in_summaries(type_summaries.clone(), name.clone()) {
-            false
-        } else {
-            if match reexport_source_module_name(
+        if match reexport_source_module_name(
+            name.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+        ) {
+            Some(src) => type_name_is_rust_importable_in_module(
                 name.clone(),
-                import_module.clone(),
+                src.clone(),
                 typed_modules.clone(),
+                registry.clone(),
                 export_sets.clone(),
                 source_indices.clone(),
-            ) {
-                Some(src) => type_name_is_rust_importable_in_module(
-                    name.clone(),
-                    src.clone(),
-                    typed_modules.clone(),
-                    registry.clone(),
-                    export_sets.clone(),
-                    source_indices.clone(),
-                ),
-                None => false,
-            } {
-                true
+            ),
+            None => false,
+        } {
+            true
+        } else {
+            if is_enum_in_summaries(type_summaries.clone(), name.clone()) {
+                false
+            } else if is_known_variant(type_summaries.clone(), name.clone()) {
+                false
             } else {
-                if is_known_variant(type_summaries.clone(), name.clone()) {
-                    false
-                } else {
-                    match v2_rt::map_get(&export_sets, import_module.clone()) {
-                        Some(exported) => {
-                            if v2_rt::map_get(&exported, name.clone()) == Some(true) {
-                                type_name_is_rust_importable_in_module(
-                                    name.clone(),
-                                    import_module.clone(),
-                                    typed_modules.clone(),
-                                    registry.clone(),
-                                    export_sets.clone(),
-                                    source_indices.clone(),
-                                )
-                            } else {
-                                false
-                            }
+                match v2_rt::map_get(&export_sets, import_module.clone()) {
+                    Some(exported) => {
+                        if v2_rt::map_get(&exported, name.clone()) == Some(true) {
+                            type_name_is_rust_importable_in_module(
+                                name.clone(),
+                                import_module.clone(),
+                                typed_modules.clone(),
+                                registry.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                            )
+                        } else {
+                            false
                         }
-                        None => false,
                     }
+                    None => false,
                 }
             }
         }
