@@ -1,18 +1,29 @@
 // v2 type environment -- structural type bindings and lookup.
 module v2.compiler.infer_env
 
-import v2.std.core { Node, SourceSpan, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named }
+import v2.std.core {
+  Node, SourceSpan, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables,
+  intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named,
+  Connective, Conj, Disj, NoConnective,
+  InferredNode, Resolved, TypeVariable, CompilerError,
+  ErrorNode
+}
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
 // Types
 // =========================================================================
 
+type EnrichedKernelCacheEntry {
+  ty: Node
+  diagnostics: List<ErrorNode>
+}
+
 type LookupCache {
   authored_names: Map<String, String>
   child_by_name: Map<String, Map<String, Node>>
   scrutinee_by_name: Map<String, Node>
-  enriched_kernel: Map<String, Node>
+  enriched_kernel: Map<String, EnrichedKernelCacheEntry>
 }
 
 type TypeEnv {
@@ -38,10 +49,42 @@ fn span_cache_key(span: SourceSpan) -> String {
   concat(span.file, "\x1e", to_string(span.start), "\x1e", to_string(span.end))
 }
 
+fn connective_tag(c: Connective) -> String {
+  match c {
+    Conj => "Conj"
+    Disj => "Disj"
+    NoConnective => "NoConnective"
+  }
+}
+
+fn inferred_cache_key(inferred: InferredNode?) -> String {
+  match inferred {
+    None => "none"
+    Some { value: Resolved { node: _ } } => "Resolved"
+    Some { value: TypeVariable { id } } => concat("tv:", id)
+    Some { value: CompilerError { message: m } } => concat("err:", m)
+  }
+}
+
+fn type_shape_cache_key(node: Node) -> String {
+  let child_shapes = node.children |> map(c => type_shape_cache_key(node: c)) |> join("\x1e")
+  concat(
+    node.name, "\x1e",
+    connective_tag(c: node.connective), "\x1e",
+    inferred_cache_key(inferred: node.inferred), "\x1e",
+    child_shapes
+  )
+}
+
 fn node_cache_key(node: Node) -> String {
   match node.ident_span {
     Some { value: span } => span_cache_key(span: span)
-    None => concat("__node__:", node.name)
+    None =>
+      if node.span.start != 0 || node.span.end != 0 {
+        span_cache_key(span: node.span)
+      } else {
+        concat("__shape__:", type_shape_cache_key(node: node))
+      }
   }
 }
 
@@ -199,7 +242,7 @@ fn lookup_cache_get_scrutinee(env: TypeEnv, canonical: String) -> Node? {
   map_get(env.lookup_cache.scrutinee_by_name, canonical)
 }
 
-fn lookup_cache_put_enriched_kernel(env: TypeEnv, key: String, enriched: Node) -> TypeEnv {
+fn lookup_cache_put_enriched_kernel(env: TypeEnv, key: String, entry: EnrichedKernelCacheEntry) -> TypeEnv {
   if key == "" { env }
   else if map_get(env.lookup_cache.enriched_kernel, key) != none { env }
   else {
@@ -214,18 +257,18 @@ fn lookup_cache_put_enriched_kernel(env: TypeEnv, key: String, enriched: Node) -
         authored_names: env.lookup_cache.authored_names,
         child_by_name: env.lookup_cache.child_by_name,
         scrutinee_by_name: env.lookup_cache.scrutinee_by_name,
-        enriched_kernel: map_insert(env.lookup_cache.enriched_kernel, key, enriched)
+        enriched_kernel: map_insert(env.lookup_cache.enriched_kernel, key, entry)
       }
     }
   }
 }
 
-fn lookup_cache_get_enriched_kernel(env: TypeEnv, key: String) -> Node? {
+fn lookup_cache_get_enriched_kernel(env: TypeEnv, key: String) -> EnrichedKernelCacheEntry? {
   map_get(env.lookup_cache.enriched_kernel, key)
 }
 
 fn enriched_kernel_cache_key(name: String, base: Node) -> String {
-  concat(name, "\x1f", to_string(base.children |> count))
+  concat(name, "\x1f", type_shape_cache_key(node: base))
 }
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
