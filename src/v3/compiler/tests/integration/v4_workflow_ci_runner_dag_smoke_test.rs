@@ -45,6 +45,11 @@ const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 const CI_WORKFLOW_DAG: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const CI_WORKFLOW_DAG_PATH: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
+const SHARED_CLOSURE_WORKSHEET: &str = include_str!(
+    "../../../../../docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md"
+);
+const SHARED_CLOSURE_WORKSHEET_PATH: &str =
+    "docs/planning/v4-ci-rust-dag-shared-closure-worksheet-2026-06-01.md";
 const M1_RUST_EMIT_PROBE_SCRIPT: &str =
     include_str!("../../../../../.github/ci-floor/v4-m1-rust-emit-probe.sh");
 const M1_BINDING_TEST_FILTER: &str =
@@ -796,7 +801,9 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         CI_DAG.contains("feature:project-github-actions-landed")
             && CI_DAG.contains("consumer:v4.workflow.ci m1_ci_live_workflow_signal")
-            && CI_DAG.contains("bind src/v4/TASKS.md T-24"),
+            && CI_DAG.contains(
+                "bind ROADMAP.md T-PB-B + src/v4/test/claim/workflow/runner_pool_m1_probe.dag"
+            ),
         "{CI_DAG_PATH}: M1 live-workflow bridge must carry checkable P5 dissolution tags"
     );
     assert!(
@@ -977,6 +984,32 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     assert!(
         bootstrap_step.contains("V4_BOOTSTRAP_REUSE_LOG:"),
         "{CI_YML_PATH}: bootstrap step must validate the shared M1 DAG artifact instead of recompiling src/v4"
+    );
+}
+
+#[test]
+fn v4_ci_shared_closure_worksheet_is_ratified_against_live_authorities() {
+    assert!(
+        SHARED_CLOSURE_WORKSHEET.contains("**Status:** RATIFIED")
+            && SHARED_CLOSURE_WORKSHEET.contains("node://adhoc-197c65c6-8cd"),
+        "{SHARED_CLOSURE_WORKSHEET_PATH}: worksheet must be ratified by the active arbiter node"
+    );
+    assert!(
+        SHARED_CLOSURE_WORKSHEET.contains("ROADMAP.md` row T-PB-B")
+            && SHARED_CLOSURE_WORKSHEET.contains("pb_rust_tests_outside_residual_zero")
+            && SHARED_CLOSURE_WORKSHEET.contains("src/v4/test/claim/workflow/{ci_component_affected,affected_set_ci_runner,runner_pool_m1_probe}.dag"),
+        "{SHARED_CLOSURE_WORKSHEET_PATH}: P5 receipt must bind to checkable in-tree authorities"
+    );
+    assert!(
+        !SHARED_CLOSURE_WORKSHEET.contains("src/v4/TASKS.md"),
+        "{SHARED_CLOSURE_WORKSHEET_PATH}: ratification must not cite missing src/v4/TASKS.md"
+    );
+    assert!(
+        SHARED_CLOSURE_WORKSHEET.contains("## §4 Lane H Lens Dispositions")
+            && SHARED_CLOSURE_WORKSHEET.contains("TestgenSlotSelection")
+            && SHARED_CLOSURE_WORKSHEET.contains("Generator<TestgenConcept>")
+            && SHARED_CLOSURE_WORKSHEET.contains("target-arrow-domain-param-list-carrier"),
+        "{SHARED_CLOSURE_WORKSHEET_PATH}: Lane H/testgen §8 dispositions must be explicit"
     );
 }
 
