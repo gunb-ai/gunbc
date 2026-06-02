@@ -263,9 +263,7 @@ fn try_dispatch_emit_host_transport(
     work_dir_prefix: &str,
     run: HostTransportRun,
 ) -> Option<Result<Value, EvalError>> {
-    let Some(callee) = dag.declaration_opt(&callee_decl) else {
-        return None;
-    };
+    let callee = dag.declaration_opt(&callee_decl)?;
     if callee.name.as_deref() != Some(fn_name)
         || !callee.span.file.ends_with("v4/compiler/emit_host.dag")
     {
@@ -315,6 +313,7 @@ fn expect_string_operand(value: &Value) -> Result<&str, EvalError> {
     }
 }
 
+#[cfg(test)]
 fn emit_host_fixture_inputs(
     dag: &Dag,
     value: &Value,
@@ -333,14 +332,15 @@ fn emit_host_fixture_inputs(
     })
 }
 
-fn inputs_root_field<'a>(inputs: &'a Value) -> Result<&'a Value, EvalError> {
+fn inputs_root_field(inputs: &Value) -> Result<&Value, EvalError> {
     inputs_record_field(inputs, "root", "expected Inputs.root field")
 }
 
-fn inputs_expected_eval_root_field<'a>(
+#[cfg(test)]
+fn inputs_expected_eval_root_field(
     dag: &Dag,
-    inputs: &'a Value,
-) -> Result<&'a Value, EvalError> {
+    inputs: &Value,
+) -> Result<&Value, EvalError> {
     let optional = inputs_record_field(
         inputs,
         "expected_eval_root",
