@@ -6,22 +6,14 @@ use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::v2_rt;
 pub use crate::v2_std_core::{
-    authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
-    merge_intern_tables, source_text_at, InternTable, NewlineIndex, Node, SourceSpan,
+    authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
+    source_text_at, InternTable, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LookupCache {
-    pub authored_names: Rc<HashMap<String, String>>,
-    pub child_by_name: Rc<HashMap<String, Rc<HashMap<String, Rc<Node>>>>>,
-    pub scrutinee_by_name: Rc<HashMap<String, Rc<Node>>>,
-    pub enriched_kernel: Rc<HashMap<String, Rc<Node>>>,
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
@@ -31,160 +23,6 @@ pub struct TypeEnv {
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
-    pub lookup_cache: Rc<LookupCache>,
-}
-
-pub fn empty_lookup_cache() -> Rc<LookupCache> {
-    Rc::new(LookupCache {
-        authored_names: v2_rt::rc_empty_map::<String, String>(),
-        child_by_name: v2_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<Node>>>>(),
-        scrutinee_by_name: v2_rt::rc_empty_map::<String, Rc<Node>>(),
-        enriched_kernel: v2_rt::rc_empty_map::<String, Rc<Node>>(),
-    })
-}
-
-pub fn span_cache_key(span: Rc<SourceSpan>) -> String {
-    v2_rt::concat(
-        v2_rt::concat(
-            v2_rt::concat(
-                v2_rt::concat(span.file.clone(), "\\x1e".to_string()),
-                (span.start.clone()).to_string(),
-            ),
-            "\\x1e".to_string(),
-        ),
-        (span.end.clone()).to_string(),
-    )
-}
-
-pub fn node_cache_key(node: Rc<Node>) -> String {
-    match node.ident_span.clone() {
-        Some(span) => span_cache_key(span.clone()),
-        None => v2_rt::concat("__node__:".to_string(), node.name.clone()),
-    }
-}
-
-pub fn merge_lookup_caches(left: Rc<LookupCache>, right: Rc<LookupCache>) -> Rc<LookupCache> {
-    Rc::new(LookupCache {
-        authored_names: v2_rt::rc_map_merge(
-            left.authored_names.clone(),
-            right.authored_names.clone(),
-        ),
-        child_by_name: v2_rt::rc_map_merge(left.child_by_name.clone(), right.child_by_name.clone()),
-        scrutinee_by_name: v2_rt::rc_map_merge(
-            left.scrutinee_by_name.clone(),
-            right.scrutinee_by_name.clone(),
-        ),
-        enriched_kernel: v2_rt::rc_map_merge(
-            left.enriched_kernel.clone(),
-            right.enriched_kernel.clone(),
-        ),
-    })
-}
-
-pub fn lookup_cache_put_authored_name(
-    cache: Rc<LookupCache>,
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<LookupCache> {
-    match node.ident_span.clone() {
-        None => cache.clone(),
-        Some(span) => {
-            let key = span_cache_key(span.clone());
-            if (v2_rt::map_get(&cache.authored_names.clone(), key.clone()) != None) {
-                cache.clone()
-            } else {
-                Rc::new(LookupCache {
-                    authored_names: v2_rt::rc_map_insert(
-                        cache.authored_names.clone(),
-                        key.clone(),
-                        authored_name_at(source_indices, node.clone()),
-                    ),
-                    child_by_name: cache.child_by_name.clone(),
-                    scrutinee_by_name: cache.scrutinee_by_name.clone(),
-                    enriched_kernel: cache.enriched_kernel.clone(),
-                })
-            }
-        }
-    }
-}
-
-pub fn lookup_cache_index_children(
-    cache: Rc<LookupCache>,
-    parent: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<LookupCache> {
-    {
-        let parent_key = node_cache_key(parent.clone());
-        if (v2_rt::map_get(&cache.child_by_name.clone(), parent_key.clone()) != None) {
-            cache.clone()
-        } else {
-            {
-                let child_index = parent.children.clone().iter().cloned().fold(
-                    v2_rt::rc_empty_map::<String, Rc<Node>>(),
-                    |acc: Rc<HashMap<String, Rc<Node>>>, child: Rc<Node>| {
-                        let child_name = authored_name_at(source_indices.clone(), child.clone());
-                        if (child_name.clone().as_str() == "".to_string().as_str()) {
-                            acc.clone()
-                        } else {
-                            v2_rt::rc_map_insert(acc.clone(), child_name.clone(), child.clone())
-                        }
-                    },
-                );
-                Rc::new(LookupCache {
-                    authored_names: cache.authored_names.clone(),
-                    child_by_name: v2_rt::rc_map_insert(
-                        cache.child_by_name.clone(),
-                        parent_key.clone(),
-                        child_index,
-                    ),
-                    scrutinee_by_name: cache.scrutinee_by_name.clone(),
-                    enriched_kernel: cache.enriched_kernel.clone(),
-                })
-            }
-        }
-    }
-}
-
-pub fn warm_lookup_cache_for_node(
-    cache: Rc<LookupCache>,
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<LookupCache> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let cache =
-            lookup_cache_put_authored_name(cache.clone(), node.clone(), source_indices.clone());
-        let cache = if ((node.children.clone().len() as i64) > 0) {
-            lookup_cache_index_children(cache.clone(), node.clone(), source_indices.clone())
-        } else {
-            cache.clone()
-        };
-        node.children.clone().iter().cloned().fold(
-            cache.clone(),
-            |acc: Rc<LookupCache>, child: Rc<Node>| {
-                warm_lookup_cache_for_node(acc, child.clone(), source_indices.clone())
-            },
-        )
-    })
-}
-
-pub fn warm_lookup_cache(env: Rc<TypeEnv>, roots: Rc<Vec<Rc<Node>>>) -> Rc<TypeEnv> {
-    {
-        let cache = roots.iter().cloned().fold(
-            env.lookup_cache.clone(),
-            |acc: Rc<LookupCache>, root: Rc<Node>| {
-                warm_lookup_cache_for_node(acc, root.clone(), env.source_indices.clone())
-            },
-        );
-        Rc::new(TypeEnv {
-            bindings: env.bindings.clone(),
-            recursive_types: env.recursive_types.clone(),
-            recursive_type_set: env.recursive_type_set.clone(),
-            inductive_fields: env.inductive_fields.clone(),
-            source_indices: env.source_indices.clone(),
-            intern_table: env.intern_table.clone(),
-            lookup_cache: cache,
-        })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -223,125 +61,7 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    match node.ident_span.clone() {
-        None => "".to_string(),
-        Some(span) => {
-            let key = span_cache_key(span.clone());
-            match v2_rt::map_get(&env.lookup_cache.clone().authored_names.clone(), key) {
-                Some(cached) => cached.clone(),
-                None => authored_name_at(env.source_indices.clone(), node.clone()),
-            }
-        }
-    }
-}
-
-pub fn find_child_in_env(env: Rc<TypeEnv>, parent: Rc<Node>, name: String) -> Option<Rc<Node>> {
-    {
-        let parent_key = node_cache_key(parent.clone());
-        match v2_rt::map_get(&env.lookup_cache.clone().child_by_name.clone(), parent_key) {
-            Some(index) => v2_rt::map_get(&index, name),
-            None => find_child_named(parent.clone(), name, env.source_indices.clone()),
-        }
-    }
-}
-
-pub fn has_child_in_env(env: Rc<TypeEnv>, parent: Rc<Node>, name: String) -> bool {
-    match find_child_in_env(env, parent, name) {
-        Some(_) => true,
-        None => false,
-    }
-}
-
-pub fn lookup_cache_put_scrutinee(
-    env: Rc<TypeEnv>,
-    canonical: String,
-    resolved: Rc<Node>,
-) -> Rc<TypeEnv> {
-    if (canonical.clone().as_str() == "".to_string().as_str()) {
-        env.clone()
-    } else {
-        if (v2_rt::map_get(
-            &env.lookup_cache.clone().scrutinee_by_name.clone(),
-            canonical.clone(),
-        ) != None)
-        {
-            env.clone()
-        } else {
-            Rc::new(TypeEnv {
-                bindings: env.bindings.clone(),
-                recursive_types: env.recursive_types.clone(),
-                recursive_type_set: env.recursive_type_set.clone(),
-                inductive_fields: env.inductive_fields.clone(),
-                source_indices: env.source_indices.clone(),
-                intern_table: env.intern_table.clone(),
-                lookup_cache: Rc::new(LookupCache {
-                    authored_names: env.lookup_cache.clone().authored_names.clone(),
-                    child_by_name: env.lookup_cache.clone().child_by_name.clone(),
-                    scrutinee_by_name: v2_rt::rc_map_insert(
-                        env.lookup_cache.clone().scrutinee_by_name.clone(),
-                        canonical.clone(),
-                        resolved,
-                    ),
-                    enriched_kernel: env.lookup_cache.clone().enriched_kernel.clone(),
-                }),
-            })
-        }
-    }
-}
-
-pub fn lookup_cache_get_scrutinee(env: Rc<TypeEnv>, canonical: String) -> Option<Rc<Node>> {
-    v2_rt::map_get(
-        &env.lookup_cache.clone().scrutinee_by_name.clone(),
-        canonical,
-    )
-}
-
-pub fn lookup_cache_put_enriched_kernel(
-    env: Rc<TypeEnv>,
-    key: String,
-    enriched: Rc<Node>,
-) -> Rc<TypeEnv> {
-    if (key.clone().as_str() == "".to_string().as_str()) {
-        env.clone()
-    } else {
-        if (v2_rt::map_get(
-            &env.lookup_cache.clone().enriched_kernel.clone(),
-            key.clone(),
-        ) != None)
-        {
-            env.clone()
-        } else {
-            Rc::new(TypeEnv {
-                bindings: env.bindings.clone(),
-                recursive_types: env.recursive_types.clone(),
-                recursive_type_set: env.recursive_type_set.clone(),
-                inductive_fields: env.inductive_fields.clone(),
-                source_indices: env.source_indices.clone(),
-                intern_table: env.intern_table.clone(),
-                lookup_cache: Rc::new(LookupCache {
-                    authored_names: env.lookup_cache.clone().authored_names.clone(),
-                    child_by_name: env.lookup_cache.clone().child_by_name.clone(),
-                    scrutinee_by_name: env.lookup_cache.clone().scrutinee_by_name.clone(),
-                    enriched_kernel: v2_rt::rc_map_insert(
-                        env.lookup_cache.clone().enriched_kernel.clone(),
-                        key.clone(),
-                        enriched,
-                    ),
-                }),
-            })
-        }
-    }
-}
-
-pub fn lookup_cache_get_enriched_kernel(env: Rc<TypeEnv>, key: String) -> Option<Rc<Node>> {
-    v2_rt::map_get(&env.lookup_cache.clone().enriched_kernel.clone(), key)
-}
-
-pub fn enriched_kernel_cache_key(name: String, base: Rc<Node>) -> String {
-    v2_rt::concat(
-        v2_rt::concat(name, "\\x1f".to_string()),
-        (base.children.clone().len() as i64).to_string(),
-    )
+    authored_name_at(env.source_indices.clone(), node)
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
@@ -525,12 +245,6 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
             Some(first_env) => first_env.intern_table.clone(),
             None => empty_intern_table(),
         };
-        let merged_lookup_cache = envs.clone().iter().cloned().fold(
-            empty_lookup_cache(),
-            |acc: Rc<LookupCache>, env: Rc<TypeEnv>| {
-                merge_lookup_caches(acc, env.lookup_cache.clone())
-            },
-        );
         Rc::new(TypeEnv {
             bindings: merged_bindings,
             recursive_types: merged_recursive,
@@ -538,7 +252,6 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
             inductive_fields: merged_inductive_fields,
             source_indices: merged_source_indices,
             intern_table: merged_intern_table,
-            lookup_cache: merged_lookup_cache,
         })
     }
 }
