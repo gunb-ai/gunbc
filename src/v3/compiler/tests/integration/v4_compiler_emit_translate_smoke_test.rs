@@ -22,6 +22,21 @@
 //! LanguageModel / lex/grammar surface on `python.dag`. **PR #3840 (+0 census paths):**
 //! adds T-11 grammar-inverse compile-inferred TestClaim parse/import receipts for
 //! python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`).
+//! **PR #4297 (Branch C.1–C.5).** P5 / V3-HAND-RUST-GATE receipt (INVARIANTS §P5 Mechanism (b);
+//! `_internal/INVARIANTS_OPS.md`): **same-path SG-0 deferral under ROADMAP row T-PB-B /
+//! `pb_rust_tests_outside_residual_zero`** (ROADMAP.md:43,63 — "keeping same-path SG-0 expansions
+//! at +0 new paths until the matching claim runner executes those facts directly"). This edit is
+//! **assertion-only on an already-census-listed harness**: **+0 new census paths** (the
+//! `EXPECTED_HAND_AUTHORED_TEST` row for this file is unchanged), **no new or deleted hand-Rust
+//! test file**, and net Rust-test line count flat-to-down. The assertions were *retargeted*, not
+//! added: `v4_dag_language_model_declares_surface_emit_rows` now requires `dag.dag` to import the
+//! shared carrier + `concrete_syntax_token_to_node` (no longer spelling the wire-form
+//! `concrete_syntax_token_kind_*` Symbols inline), and `assert_imports_shared_token_kinds` →
+//! `assert_imports_shared_token_serializer` now requires the shared-serializer import
+//! (rust/java/typescript/swift/wasm). Both track the T-11 single-author serialization morphism.
+//! Dissolution trigger (= this file's existing trigger, unchanged): retires under T-PB-B when the
+//! `.dag` `TestClaim` / generated-runner replacement executes these facts directly (see the
+//! **Dissolution** note below).
 //! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
 //! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
 //!
@@ -291,7 +306,7 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
         ),
         "{RUST_LANGUAGE_PATH}: Rust TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, RUST_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, RUST_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "RustGrammarRelationRow"),
         "{RUST_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -392,7 +407,7 @@ fn v4_java_language_model_declares_t11_translation_rules() {
         ),
         "{JAVA_LANGUAGE_PATH}: Java TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, JAVA_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, JAVA_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "JavaGrammarRelationRow"),
         "{JAVA_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -758,7 +773,7 @@ fn v4_typescript_language_model_declares_t11_translation_rules() {
         ),
         "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, TYPESCRIPT_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, TYPESCRIPT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "TsGrammarRelationRow"),
         "{TYPESCRIPT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -780,7 +795,7 @@ fn v4_swift_language_model_declares_t11_translation_rules() {
         ),
         "{SWIFT_LANGUAGE_PATH}: Swift TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, SWIFT_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, SWIFT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "SwiftGrammarRelationRow"),
         "{SWIFT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -838,7 +853,7 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
         ),
         "{WASM_LANGUAGE_PATH}: Wasm TargetModel must consume the shared translation-rules edge"
     );
-    assert_imports_shared_token_kinds(&module, WASM_LANGUAGE_PATH);
+    assert_imports_shared_token_serializer(&module, WASM_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "WasmGrammarRelationRow"),
         "{WASM_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -924,29 +939,32 @@ fn v4_dag_language_model_declares_surface_emit_rows() {
         ),
         "{DAG_LANGUAGE_PATH}: emit rows must use the shared grammar-relation field symbols"
     );
+    // T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it
+    // through the single shared serializer, rather than re-spelling the wire-form field/kind
+    // Symbols inline. The carrier + serializer are the shared authority emit rows depend on.
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_field_kind"
+            "FixedToken"
         ),
-        "{DAG_LANGUAGE_PATH}: token rows must use the shared concrete-token field symbols"
+        "{DAG_LANGUAGE_PATH}: fixed-token rows must construct the shared ConcreteSyntaxToken carrier"
     );
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_fixed"
+            "BoundToken"
         ),
-        "{DAG_LANGUAGE_PATH}: fixed-token rows must use the shared token-kind identity"
+        "{DAG_LANGUAGE_PATH}: bound-token rows must construct the shared ConcreteSyntaxToken carrier"
     );
     assert!(
         import_includes_name(
             &module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_bound"
+            "concrete_syntax_token_to_node"
         ),
-        "{DAG_LANGUAGE_PATH}: bound-token rows must use the shared token-kind identity"
+        "{DAG_LANGUAGE_PATH}: token rows must serialize through the single shared token morphism"
     );
     assert!(
         surface_declares_fn(&module, "emit_fixed_token"),
@@ -1224,25 +1242,20 @@ fn import_includes_name(
     })
 }
 
-fn assert_imports_shared_token_kinds(
+fn assert_imports_shared_token_serializer(
     module: &v3_compiler::parse_surface::SurfaceModule,
     path: &str,
 ) {
+    // T-11: per-language `*_concrete_token_node` serialize through the single shared morphism
+    // `concrete_syntax_token_to_node` rather than hand-spelling the wire-form kind/field Symbols
+    // inline — so the Conj wire shape has exactly one author (INVARIANTS P2).
     assert!(
         import_includes_name(
             module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_fixed"
+            "concrete_syntax_token_to_node"
         ),
-        "{path}: fixed-token rows must use the shared token-kind identity"
-    );
-    assert!(
-        import_includes_name(
-            module,
-            &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_bound"
-        ),
-        "{path}: bound-token rows must use the shared token-kind identity"
+        "{path}: token serialization must project through the shared concrete_syntax_token_to_node morphism"
     );
 }
 
