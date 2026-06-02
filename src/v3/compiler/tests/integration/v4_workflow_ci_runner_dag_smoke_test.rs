@@ -1054,9 +1054,8 @@ fn v4_workflow_ci_bankruptcy_tier0_v3_bucket_includes_workspace_deps() {
 #[test]
 fn v4_workflow_ci_bankruptcy_tier0_discipline_off_required_ci_path() {
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor]")
-            || CI_YML.contains("needs: [affected, ci_floor]\n"),
-        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt plus `ci_floor`"
+        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]"),
+        "{CI_YML_PATH}: branch-protection `ci` aggregator must need live `affected` receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
     assert!(
         CI_YML.contains("needs.affected.result"),
@@ -1300,8 +1299,8 @@ fn v4_workflow_ci_wave1_safety_floor_ci_yml_shape() {
         "{CI_YML_PATH}: legacy parallel lanes dissolved"
     );
     assert!(
-        CI_YML.contains("needs: [affected, ci_floor]"),
-        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt plus `ci_floor`"
+        CI_YML.contains("needs: [affected, ci_floor, infra_isolation]"),
+        "{CI_YML_PATH}: `ci` aggregator must depend on live affected receipt, `ci_floor`, and the `infra_isolation` de-priv guard"
     );
     assert!(
         CI_YML.contains("  affected:") && !CI_YML.contains("  affected:\n    if: github.event.pull_request.draft != true\n    continue-on-error: true"),
