@@ -797,11 +797,17 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_compile.rs");
 
     // Emission gate fires on typed_diags (infer errors), not complexity
-    // diagnostics. Complexity gate is bypassed until CX lane rewrites the
-    // analyzer (variant-field → container-child descent model). Re-enable
+    // diagnostics. Complexity analysis is opt-in (analyze_complexity:
+    // false by default); when enabled, ComplexityUnknown is still
+    // non-blocking at emission/CLI (cx-design.md C6). Re-enable blocking
     // when CX-5 lands and violations reach 0.
     // Type errors block emission. Complexity violations are surfaced but
     // non-blocking (analyzer limitations ratchet down over time).
+    assert_live_contains(
+        &source,
+        "analyze_complexity: false",
+        "src/v2/compile.dag should default complexity analysis off",
+    );
     assert_live_contains(
         &source,
         "let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",

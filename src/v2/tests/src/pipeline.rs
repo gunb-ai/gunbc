@@ -284,57 +284,6 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
 }
 
 #[test]
-fn generic_fn_sig_preserves_applied_type_args() {
-    // Signature receipt: generic applied param types must render with type args
-    // and shared_types Rc wrap (same pattern as explicit_same_name_generic_args).
-    let source = "\
-module gen_applied_sig
-
-type NodeFold<S> {
-  seed: S
-}
-
-fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
-  fold
-}
-";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/gen_applied_sig.rs");
-    assert!(
-        content.contains("fn use_fold<S>(fold: Rc<NodeFold<S>>) -> Rc<NodeFold<S>>"),
-        "generic fn params and return must preserve applied type args with shared_types Rc; got:\n{content}"
-    );
-}
-
-#[test]
-fn nested_applied_generic_type_args_preserved_in_fn_sig() {
-    let source = "\
-module nested_applied_sig
-
-type Boxed<S> {
-  value: S
-}
-
-type Wrapper<S> {
-  inner: Boxed<S>
-}
-
-fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
-  w
-}
-";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/nested_applied_sig.rs");
-    assert!(
-        content
-            .contains("fn use_wrap<S>(w: Rc<Wrapper<Rc<Boxed<S>>>>) -> Rc<Wrapper<Rc<Boxed<S>>>>"),
-        "nested applied generic args (Wrapper<Boxed<S>>) must render through decl-type path; got:\n{content}"
-    );
-}
-
-#[test]
 fn generic_param_type_does_not_special_case_nodefold() {
     let source = "\
 module gen_param_no_fabrication
@@ -1304,6 +1253,834 @@ fn empty_import_block_emits_no_rust_import() {
 }
 
 #[test]
+fn generic_fn_sig_preserves_applied_type_args() {
+    let source = "\
+module gen_applied_sig
+
+type NodeFold<S> {
+  seed: S
+}
+
+fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
+  fold
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/gen_applied_sig.rs");
+    assert!(
+        content.contains("fn use_fold<S>(fold: Rc<NodeFold<S>>) -> Rc<NodeFold<S>>"),
+        "generic fn params and return must preserve applied type args with shared_types Rc; got:\n{content}"
+    );
+}
+
+#[test]
+fn nested_applied_generic_type_args_preserved_in_fn_sig() {
+    let source = "\
+module nested_applied_sig
+
+type Boxed<S> {
+  value: S
+}
+
+type Wrapper<S> {
+  inner: Boxed<S>
+}
+
+fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
+  w
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/nested_applied_sig.rs");
+    assert!(
+        content
+            .contains("fn use_wrap<S>(w: Rc<Wrapper<Rc<Boxed<S>>>>) -> Rc<Wrapper<Rc<Boxed<S>>>>"),
+        "nested applied generic args (Wrapper<Boxed<S>>) must render through decl-type path; got:\n{content}"
+    );
+}
+
+// SG-8 falsification probes (#4127 worksheet §4) — emit_imports + parametric type-alias emission.
+#[test]
+fn sg8_f1_type_import_skips_variant_parent_expansion() {
+    let files = &[
+        (
+            "enum_mod.dag",
+            "module sg8_enum\ntype GoScalarKind = Int | GraphLabel\n",
+        ),
+        (
+            "alias_mod.dag",
+            "module sg8_alias\ntype GraphLabel { value: Int }\n",
+        ),
+        (
+            "use_mod.dag",
+            "module sg8_f1\nimport sg8_alias { GraphLabel }\nfn f(x: GraphLabel) -> Int { x.value }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_f1.rs");
+    assert!(
+        !content.contains("GoScalarKind"),
+        "type import of GraphLabel must not expand variant parent GoScalarKind; got:\n{content}"
+    );
+    assert!(
+        content.contains("sg8_alias") && content.contains("GraphLabel"),
+        "expected direct GraphLabel import from alias module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_f2_target_source_import_no_carrier_kind_reexport() {
+    let files = &[
+        (
+            "pipeline.dag",
+            "module sg8_pipeline\ntype CarrierKind = Alpha | TargetSource\n",
+        ),
+        (
+            "carriers.dag",
+            "module sg8_carriers\ntype TargetSource = Int\n",
+        ),
+        (
+            "use_mod.dag",
+            "module sg8_f2\nimport sg8_carriers { TargetSource }\nfn g() -> TargetSource { 0 }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_f2.rs");
+    assert!(
+        !content.contains("sg8_carriers::CarrierKind")
+            && !content.contains("sg8_carriers::{CarrierKind"),
+        "TargetSource type import must not re-export CarrierKind from carriers; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_variant_import_uses_defining_module_not_import_site_for_parent() {
+    // Emitter probe: variant-only import must qualify via the enum's defining module.
+    // Resolve boundary is tested separately — variants are not re-exported through a
+    // module that only imported the parent enum type (see diagnostics.rs).
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_def { B }\nfn f() -> E { B }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
+        "variant import must use parent enum defining module; got:\n{content}"
+    );
+    assert!(
+        content.contains("sg8_def::{E}") || content.contains("use crate::sg8_def::E"),
+        "variant-only import must still import parent enum type for bare E references; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_variant_import_not_suppressed_by_type_homonym_in_other_module() {
+    let files = &[
+        ("enum_mod.dag", "module sg8_enum\ntype E = A | SharedName\n"),
+        ("alias_mod.dag", "module sg8_alias\ntype SharedName = Int\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_enum { SharedName }\nfn f() -> E { SharedName }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_enum::E::{SharedName}")
+            || content.contains("sg8_enum::E::SharedName"),
+        "variant import must use enum parent path despite type homonym elsewhere; got:\n{content}"
+    );
+    assert!(
+        content.contains("sg8_enum::{E}") || content.contains("use crate::sg8_enum::E"),
+        "variant-only import must import parent enum type for bare E references; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_variant_import_parent_scoped_to_declared_import_module() {
+    let files = &[
+        (
+            "enum_a.dag",
+            "module sg8_enum_a\ntype E = SharedVariant | A\n",
+        ),
+        (
+            "enum_b.dag",
+            "module sg8_enum_b\ntype F = SharedVariant | B\n",
+        ),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_enum_a { SharedVariant }\nfn f() -> E { SharedVariant }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_enum_a::E::{SharedVariant}")
+            || content.contains("sg8_enum_a::E::SharedVariant"),
+        "variant parent must come from declared import module, not global homonym; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_enum_b::F::{SharedVariant}")
+            && !content.contains("sg8_enum_b::F::SharedVariant"),
+        "must not pick homonym variant parent from other module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_homonymous_enum_name_variant_import_uses_declared_module() {
+    let files = &[
+        (
+            "mod_a.dag",
+            "module sg8_mod_a\ntype E = SharedVariant | A\n",
+        ),
+        (
+            "mod_b.dag",
+            "module sg8_mod_b\ntype E = SharedVariant | B\n",
+        ),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_mod_a { SharedVariant }\nfn f() -> E { SharedVariant }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_mod_a::E::{SharedVariant}")
+            || content.contains("sg8_mod_a::E::SharedVariant"),
+        "homonymous enum name must resolve parent via declared import module physical items; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_mod_b::E::{SharedVariant}")
+            && !content.contains("sg8_mod_b::E::SharedVariant"),
+        "must not route homonymous enum parent through global registry; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_reexported_variant_import_preserves_defining_module_parent_line() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_def { B }\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy { B }\nfn f() -> E { B }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
+        "re-exported variant import must preserve defining-module parent use line; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_reexported_variant_skips_proxy_local_enum_homonym() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        (
+            "proxy.dag",
+            "module sg8_proxy\ntype E = X | Y\nimport sg8_def { B }\n",
+        ),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy { B }\nfn f() -> E { B }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
+        "re-exported variant must use defining-module parent, not proxy local enum homonym; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_proxy::E::{B}") && !content.contains("sg8_proxy::E::B"),
+        "must not emit variant under proxy local homonym enum; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_kernel_type_import_does_not_emit_rust_use_line() {
+    let files = &[
+        ("types.dag", "module sg8_types\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_types { Int }\nfn f(x: Int) -> Int { x }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        !content.contains("use crate::sg8_types::{Int}")
+            && !content.contains("pub use crate::sg8_types::{Int}"),
+        "ambient kernel types must not emit module import lines; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_wildcard_import_multi_hop_proxy_chain_reaches_defining_module_variant() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        ("proxy1.dag", "module sg8_proxy1\nimport sg8_def\n"),
+        ("proxy2.dag", "module sg8_proxy2\nimport sg8_proxy1\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy2\nfn f() -> E { B }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
+        "multi-hop wildcard proxy chain must emit defining-module variant line; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_proxy1::E")
+            && !content.contains("sg8_proxy2::E")
+            && !content.contains("crate::sg8_proxy2::E"),
+        "must not stop at intermediate wildcard proxy; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_reexported_variant_specific_import_chain_reaches_defining_module() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        ("proxy1.dag", "module sg8_proxy1\nimport sg8_def { B }\n"),
+        ("proxy2.dag", "module sg8_proxy2\nimport sg8_proxy1 { B }\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy2 { B }\nfn f() -> E { B }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
+        "multi-hop specific-import re-export chain must resolve to defining module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_proxy1::E") && !content.contains("sg8_proxy2::E"),
+        "must not stop at intermediate proxy module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_reexported_variant_homonym_uses_proxy_import_source_not_global_enum() {
+    let files = &[
+        (
+            "def_a.dag",
+            "module sg8_def_a\ntype E = SharedVariant | A\n",
+        ),
+        (
+            "def_b.dag",
+            "module sg8_def_b\ntype F = SharedVariant | B\n",
+        ),
+        (
+            "proxy.dag",
+            "module sg8_proxy\nimport sg8_def_b { SharedVariant }\n",
+        ),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy { SharedVariant }\nfn f() -> F { SharedVariant }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def_b::F::{SharedVariant}")
+            || content.contains("sg8_def_b::F::SharedVariant"),
+        "re-exported homonym variant must follow proxy import source, not global enum scan; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_def_a::E::{SharedVariant}")
+            && !content.contains("sg8_def_a::E::SharedVariant"),
+        "must not pick homonym parent from unrelated defining module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_reexported_parametric_type_alias_emits_with_canonical_rhs_module() {
+    let files = &[
+        (
+            "carrier.dag",
+            "module sg8_carrier\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        (
+            "proxy.dag",
+            "module sg8_proxy\nimport sg8_carrier { SharedCarrier }\n",
+        ),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_proxy { SharedCarrier }\ntype AliasList<T> = SharedCarrier<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        content.contains("pub type AliasList<"),
+        "re-exported parametric alias must emit; got:\n{content}"
+    );
+    assert!(
+        content.contains("sg8_carrier::SharedCarrier<")
+            || content.contains("crate::sg8_carrier::SharedCarrier<"),
+        "re-exported alias RHS must qualify via canonical defining module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_reexported_parametric_alias_chain_reaches_defining_module() {
+    let files = &[
+        (
+            "carrier.dag",
+            "module sg8_carrier\ntype FreeMonoid<T> { value: T }\n",
+        ),
+        (
+            "list.dag",
+            "module sg8_list\nimport sg8_carrier { FreeMonoid }\ntype List<T> = FreeMonoid<T>\n",
+        ),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_list { List }\n"),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_proxy { List }\ntype Wrapper<T> = List<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        content.contains("pub type Wrapper<"),
+        "re-exported parametric alias chain must emit wrapper alias; got:\n{content}"
+    );
+    assert!(
+        content.contains("sg8_list::List<") || content.contains("crate::sg8_list::List<"),
+        "re-exported parametric alias chain must qualify immediate nominal RHS via defining/re-export source module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_carrier::FreeMonoid<")
+            && !content.contains("crate::sg8_carrier::FreeMonoid<"),
+        "alias RHS must preserve nominal shell List, not peel to underlying carrier; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_direct_type_import_uses_declared_import_module_not_registry_homonym() {
+    let files = &[
+        ("mod_a.dag", "module sg8_mod_a\ntype SharedType = Int\n"),
+        ("mod_b.dag", "module sg8_mod_b\ntype SharedType = String\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_mod_a { SharedType }\nfn f(x: SharedType) -> Int { x }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_mod_a::{SharedType}") || content.contains("use crate::sg8_mod_a::SharedType"),
+        "direct type import must anchor to declared import module, not registry homonym; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_mod_b::{SharedType}")
+            && !content.contains("use crate::sg8_mod_b::SharedType"),
+        "direct type import must not route through homonym defining module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_type_import_not_suppressed_by_global_variant_homonym() {
+    let files = &[
+        (
+            "types.dag",
+            "module sg8_types\ntype Shared { value: Int }\n",
+        ),
+        ("enum_mod.dag", "module sg8_enum\ntype E = Shared | Other\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_types { Shared }\nfn f(x: Shared) -> Int { x.value }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_types::{Shared}") || content.contains("use crate::sg8_types::Shared"),
+        "declared module physical type import must win over global variant homonym; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_enum::E::{Shared}") && !content.contains("sg8_enum::E::Shared"),
+        "must not classify physical type import as variant because name appears in unrelated enum; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_reexported_type_import_not_suppressed_by_global_variant_homonym() {
+    let files = &[
+        (
+            "types.dag",
+            "module sg8_types\ntype Shared { value: Int }\n",
+        ),
+        ("enum_mod.dag", "module sg8_enum\ntype E = Shared | Other\n"),
+        (
+            "proxy.dag",
+            "module sg8_proxy\nimport sg8_types { Shared }\n",
+        ),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy { Shared }\nfn f(x: Shared) -> Int { x.value }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_types::{Shared}") || content.contains("use crate::sg8_types::Shared"),
+        "re-exported type import must follow proxy export source, not global variant homonym; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_enum::E::{Shared}") && !content.contains("sg8_enum::E::Shared"),
+        "must not classify re-exported type import as variant because name appears in unrelated enum; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_parametric_alias_rhs_uses_declared_import_module_not_registry_homonym() {
+    let files = &[
+        (
+            "carrier_a.dag",
+            "module sg8_carrier_a\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        (
+            "carrier_b.dag",
+            "module sg8_carrier_b\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_carrier_a { SharedCarrier }\ntype AliasList<T> = SharedCarrier<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        content.contains("sg8_carrier_a::SharedCarrier<")
+            || content.contains("crate::sg8_carrier_a::SharedCarrier<"),
+        "parametric alias RHS must qualify via declared import module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_carrier_b::SharedCarrier<")
+            && !content.contains("crate::sg8_carrier_b::SharedCarrier<"),
+        "parametric alias RHS must not pick registry homonym module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_nested_parametric_alias_rhs_preserves_nominal_structure() {
+    let files = &[
+        ("inner.dag", "module sg8_inner\ntype Inner<T> { value: T }\n"),
+        (
+            "outer.dag",
+            "module sg8_outer\nimport sg8_inner { Inner }\ntype Outer<T> { inner: Inner<T> }\n",
+        ),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_outer { Outer }\nimport sg8_inner { Inner }\ntype Wrapper<T> = Outer<Inner<T>>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        content.contains("pub type Wrapper<"),
+        "nested parametric alias must emit; got:\n{content}"
+    );
+    assert!(
+        (content.contains("sg8_outer::Outer<") || content.contains("crate::sg8_outer::Outer<"))
+            && (content.contains("sg8_inner::Inner<") || content.contains("crate::sg8_inner::Inner<")),
+        "nested alias RHS must preserve nominal shells for both outer and inner bases; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_nested_parametric_alias_with_opaque_inner_stays_unemitted() {
+    let files = &[
+        ("inner.dag", "module sg8_inner\ntype OpaqueInner<T>\n"),
+        (
+            "outer.dag",
+            "module sg8_outer\ntype Outer<T> { value: T }\n",
+        ),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_outer { Outer }\nimport sg8_inner { OpaqueInner }\ntype Wrapper<T> = Outer<OpaqueInner<T>>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        !content.contains("pub type Wrapper<"),
+        "nested alias with unemitted opaque inner shell must stay silent; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_reexported_enum_parent_specific_import_uses_defining_module() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_def { E }\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy { E }\nfn f() -> E { A }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::{E}") || content.contains("use crate::sg8_def::E"),
+        "wildcard-reexported enum parent must import from defining module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_proxy::{E}") && !content.contains("use crate::sg8_proxy::E;"),
+        "must not emit proxy braced type import for re-exported enum parent; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_wildcard_import_through_proxy_reaches_defining_module_variant() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_def\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_proxy\nfn f() -> E { B }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
+        "wildcard import through proxy must emit defining-module variant line; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_proxy::E") && !content.contains("crate::sg8_proxy::E"),
+        "must not stop at proxy module for re-exported variant; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_wildcard_plus_specific_import_preserves_variant_parent_line() {
+    let files = &[
+        ("def.dag", "module sg8_def\ntype E = A | B\n"),
+        (
+            "use_mod.dag",
+            "module sg8_use\nimport sg8_def\nimport sg8_def { B }\nfn f() -> E { B }\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_use.rs");
+    assert!(
+        content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
+        "wildcard plus specific import must preserve variant-parent use line; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_parametric_alias_rhs_wildcard_import_uses_declared_module_not_registry_homonym() {
+    let files = &[
+        (
+            "carrier_a.dag",
+            "module sg8_carrier_a\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        (
+            "carrier_b.dag",
+            "module sg8_carrier_b\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_carrier_a\ntype AliasList<T> = SharedCarrier<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        content.contains("sg8_carrier_a::SharedCarrier<")
+            || content.contains("crate::sg8_carrier_a::SharedCarrier<"),
+        "wildcard import must anchor alias RHS to declared module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_carrier_b::SharedCarrier<")
+            && !content.contains("crate::sg8_carrier_b::SharedCarrier<"),
+        "wildcard import must not pick registry homonym module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_parametric_alias_rhs_multi_hop_wildcard_import_uses_defining_carrier_module() {
+    let files = &[
+        (
+            "carrier_a.dag",
+            "module sg8_carrier_a\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        (
+            "carrier_b.dag",
+            "module sg8_carrier_b\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        ("proxy.dag", "module sg8_proxy\nimport sg8_carrier_a\n"),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_proxy\ntype AliasList<T> = SharedCarrier<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        content.contains("sg8_carrier_a::SharedCarrier<")
+            || content.contains("crate::sg8_carrier_a::SharedCarrier<"),
+        "multi-hop wildcard import must anchor alias RHS to defining carrier module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("sg8_carrier_b::SharedCarrier<")
+            && !content.contains("crate::sg8_carrier_b::SharedCarrier<"),
+        "multi-hop wildcard import must not pick registry homonym module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_parametric_alias_to_imported_opaque_homonym_stays_unemitted() {
+    let files = &[
+        ("carrier_a.dag", "module sg8_carrier_a\ntype SharedCarrier<T>\n"),
+        (
+            "carrier_b.dag",
+            "module sg8_carrier_b\ntype SharedCarrier<T> { value: T }\n",
+        ),
+        (
+            "alias.dag",
+            "module sg8_alias_mod\nimport sg8_carrier_a { SharedCarrier }\ntype AliasList<T> = SharedCarrier<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_alias_mod.rs");
+    assert!(
+        !content.contains("pub type AliasList<"),
+        "imported opaque homonym must not emit via bare-name authority from other module; got:\n{content}"
+    );
+    assert!(
+        !content.contains("SharedCarrier"),
+        "opaque imported carrier must not emit Rust import or alias reference; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_opaque_parametric_type_decl_stays_unemitted() {
+    let source = "module sg8_opaque\ntype OpaqueCarrier<M>\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_opaque.rs");
+    assert!(
+        !content.contains("pub type OpaqueCarrier"),
+        "opaque parametric declaration must not emit pub type alias; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_self_referential_parametric_opaque_stays_unemitted() {
+    let source = "module sg8_self_opaque\ntype SelfOpaque<M>\n\nfn id(x: SelfOpaque<Int>) -> SelfOpaque<Int> { x }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_self_opaque.rs");
+    assert!(
+        !content.contains("pub type SelfOpaque<M> = SelfOpaque")
+            && !content.contains("pub type SelfOpaque<M> = SelfOpaque;"),
+        "self-referential opaque carrier must not emit invalid alias; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_parametric_alias_to_opaque_carrier_stays_unemitted() {
+    let files = &[
+        ("monoid.dag", "module sg8_monoid\ntype FreeMonoid<T>\n"),
+        (
+            "coll.dag",
+            "module sg8_coll\ntype List<T> = FreeMonoid<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_coll.rs");
+    assert!(
+        !content.contains("pub type List<"),
+        "alias to opaque unemitted carrier must not emit pub type; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_f3_parametric_list_alias_emits_pub_type() {
+    let files = &[
+        (
+            "monoid.dag",
+            "module sg8_monoid\ntype FreeMonoid<T> { value: T }\n",
+        ),
+        (
+            "coll.dag",
+            "module sg8_coll\ntype List<T> = FreeMonoid<T>\n",
+        ),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_coll.rs");
+    assert!(
+        content.contains("pub type List<"),
+        "parametric List alias must emit pub type List<…>; got:\n{content}"
+    );
+    assert!(
+        content.contains("sg8_monoid::FreeMonoid<")
+            || content.contains("crate::sg8_monoid::FreeMonoid<"),
+        "cross-module List alias RHS must qualify emitted FreeMonoid from defining module; got:\n{content}"
+    );
+}
+
+#[test]
+fn sg8_f4_parametric_type_alias_emits_pub_type() {
+    let source = "module sg8_f4\n\ntype Box<T> { value: T }\ntype Pair<T> = Box<T>\n\nfn wrap(x: Int) -> Pair<Int> {\n  Box { value: x }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/sg8_f4.rs");
+    assert!(
+        content.contains("pub type Pair<"),
+        "parametric type alias must emit pub type Pair<…>; got:\n{content}"
+    );
+    assert!(
+        content.contains("= Rc<Box<"),
+        "parametric alias RHS must preserve shared_types Rc authority; got:\n{content}"
+    );
+}
+
+#[test]
 fn map_index_emits_lookup_style_rust() {
     let source = "module test\nfn get(m: Map<String, Int>, k: String) -> Int {\n  m[k]\n}\n";
     let result = compile_dag(source);
@@ -1668,7 +2445,7 @@ fn countdown(n: Int) -> Int {
 // These tests exercise the TokenPosition dimension (CX-A) and the
 // lambda-iteration descent path (CX-C) added for parser/tree proofs.
 //
-// Note: The bootstrap pipeline skips complexity analysis (compile.dag §817).
+// Default compile pipeline skips complexity (analyze_complexity: false).
 // We call build_complexity_report directly to get real complexity results.
 
 fn compile_dag_with_complexity(
@@ -2091,10 +2868,11 @@ fn complexity_self_analysis_subset() {
         );
         return;
     }
-    // The complexity report is computed inside compile_sources but not printed
-    // (disabled in compile.dag for memory). This test validates the pipeline
-    // compiles cleanly; full complexity dump requires PERF-3 (memory budget).
-    eprintln!("complexity self-analysis requires PERF-3 (memory budget) to run inline");
+    // Complexity analysis is opt-in (analyze_complexity: false by default).
+    // This test validates the default pipeline compiles cleanly.
+    eprintln!(
+        "complexity self-analysis requires compile_sources_with_options(analyze_complexity: true)"
+    );
 }
 
 #[test]
@@ -3137,7 +3915,7 @@ fn cx_bound_metadata_field_is_not_descent_witness() {
 fn cx_forever_bound_produces_violation() {
     // SameArgumentCall → Forever → CostUnknown → violation (honest "I don't know")
     let source = "module cx_forever\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     let class = result
         .complexity
         .function_classes
@@ -3315,7 +4093,7 @@ fn cx_constant_absorption_in_linear_function() {
     // A function with constant work + a fold over a list should be O(|items|),
     // not O(1 + |items|) or O(1 + 1 + |items| + 1).
     let source = "module cx_absorb\n\nfn sum_items(items: List<Int>) -> Int {\n  let start = 0\n  items |> fold(init: start, f: (acc, x) => acc + x)\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -3335,7 +4113,7 @@ fn cx_pure_constant_function_is_o1() {
     // A function with only constant operations should be O(1).
     let source =
         "module cx_const\n\nfn add_three(a: Int, b: Int, c: Int) -> Int {\n  a + b + c\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -3354,7 +4132,7 @@ fn cx_pure_constant_function_is_o1() {
 fn cx_idempotent_addition_two_folds() {
     // Two folds over the same collection: O(|items| + |items|) = O(|items|)
     let source = "module cx_idem\n\nfn sum_and_count(items: List<Int>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = items |> fold(init: 0, f: (acc, x) => acc + 1)\n  s + c\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -3373,7 +4151,7 @@ fn cx_idempotent_addition_two_folds() {
 fn cx_idempotent_max_in_match() {
     // Match with equal-cost branches: O(max(|items|, |items|)) = O(|items|)
     let source = "module cx_max\n\nfn process(items: List<Int>, flag: Bool) -> Int {\n  if flag {\n    items |> fold(init: 0, f: (acc, x) => acc + x)\n  } else {\n    items |> fold(init: 0, f: (acc, x) => acc + 1)\n  }\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -3392,7 +4170,7 @@ fn cx_idempotent_max_in_match() {
 fn cx_multi_variable_legend() {
     // Function iterating over two different collections: O(n + m) where n = items, m = names
     let source = "module cx_legend\n\nfn process_both(items: List<Int>, names: List<String>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = names |> fold(init: 0, f: (acc, n) => acc + 1)\n  s + c\n}\n";
-    let result = compile_dag(source);
+    let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
     let class = result
         .complexity
@@ -10662,8 +11440,13 @@ fn dump_complexity_report() {
     collect_dag_sources(&ws, &ws.join("src/v2"), &mut all_sources);
 
     eprintln!("Compiling {} .dag files...", all_sources.len());
-    let result =
-        v2_compiler::v2_compiler_compile::compile_sources(Rc::new(all_sources), RenderTarget::Rust);
+    let result = v2_compiler::v2_compiler_compile::compile_sources_with_options(
+        Rc::new(all_sources),
+        RenderTarget::Rust,
+        v2_compiler::v2_compiler_compile::CompilePipelineOptions {
+            analyze_complexity: true,
+        },
+    );
 
     let cx = &result.complexity;
     eprintln!(

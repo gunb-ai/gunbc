@@ -124,6 +124,13 @@ import v4.test.claim.manual.dissolution_subsumption_reverification {
   claim_rust_language_model_emit_subsumption_reverifies
 }
 import v4.test.claim.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v4.test.claim.lens_parallelism.data_dependency {
+  claim_parallelism_data_dependency_run_test_claim_receipt
+}
+import v4.test.claim.lens_ownership.subject_roster {
+  lens_ownership_family_claim_ids,
+  lens_ownership_subject_rows
+}
 import v4.test.claim.lens_effect.effect_depends_on { claim_lens_effect_depends_on_runtime_verdict }
 import v4.test.claim.workflow.wave3_shadow_roster {
   ci_wave3_shadow_claim_roster,
@@ -153,6 +160,8 @@ type CiCommand
   | LeafModelGoVerifyCommand
   // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 + docs/planning/v4-p5-structural-bridge-replacement-worksheet-2026-05-30.md §1.4 — structural-slice CLOSED: shell bridge deleted; positive-Y `ci_upsert_testclaim_corpus_eval_*` sole structural authority; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set); ci_select_from_affected_set narrows roster to content_hash frontier (IRT-1); verdict_surface must name the T-22 manual CorpusEvalReport surface (`manual_corpus_node_subject_rows` -> `run_manual_testclaim_corpus_eval` -> `corpus_report_tally` -> `witness_manual_corpus_gate_closed`) plus `manual_testclaim_subject_roster_family_receipt` using declaration-qualified authorities so per-row TestClaimEvalSubject -> run_test_claim -> TestClaimRun verdict facts are projected, not replaced by host-owned strings. Forbidden: bypassing narrowing to run full corpus unconditionally or reporting corpus status outside the modeled TestClaimRun roster.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol, verdict_surface: TestClaimCorpusVerdictSurfaceAuthority }
+  // T-38B family receipt — lens_ownership subjects are rostered in `src/v4/test/claim/lens_ownership/subject_roster.dag` and evaluated by `workflow/lens_ownership_family_eval.dag` through run_test_claim.
+  | LensOwnershipFamilyEvalCommand { verdict_surface: LensOwnershipFamilyVerdictSurfaceAuthority }
   // 🟡 gated — feature:phase1-nat-semiring-rung-gate — bind https://github.com/gunb-ai/gunbc/pull/3946 §2.5 (Ladder/Fixture Manager spec, lands as docs/planning/v4-ladder-rung-specs-2026-05-30.md on merge) — dissolve-on-arrival: delete scripts/v4-phase1-nat-semiring-rung-gate.sh and the paired CI step when TestClaimRun verdicts evaluate phase1_nat_semiring_rung_0_to_2_roster (v4.test.claim.nat_semiring.rung_0_to_2_three_targets) and emit PROVEN rung0/rung1/rung2 receipts; until then the host transport carries the §2.4 verdict matrix. Authority: Ladder/Fixture Manager (PR #3938 §11.1 lane 2). Forbidden: repurposing M1RustEmitProbeCommand for fixture-scoped gates (corpus-wide diagnostic, not fixture×rung) or repurposing TestClaimCorpusEvalCommand (full-corpus T-38, narrows by affected-set not by fixture roster).
   | Phase1NatSemiringRungGateCommand
 
@@ -178,6 +187,14 @@ type TestClaimCorpusVerdictSurfaceAuthority {
   verdict_tally: TestClaimCorpusDeclarationAuthority
   gate_witness: TestClaimCorpusDeclarationAuthority
   family_receipt: TestClaimCorpusDeclarationAuthority
+}
+
+type LensOwnershipFamilyVerdictSurfaceAuthority {
+  subject_roster: TestClaimCorpusDeclarationAuthority
+  eval_report: TestClaimCorpusDeclarationAuthority
+  verdict_tally: TestClaimCorpusDeclarationAuthority
+  structural_witness: TestClaimCorpusDeclarationAuthority
+  gate_witness: TestClaimCorpusDeclarationAuthority
 }
 
 type CiGate {
@@ -541,12 +558,14 @@ data m1_rust_emit_probe_execution: Symbol = m1_rust_emit_probe_execution
 data leaf_model_go_verify_execution: Symbol = leaf_model_go_verify_execution
 data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set
 data testclaim_corpus_eval_execution: Symbol = testclaim_corpus_eval_execution
+data lens_ownership_family_eval_execution: Symbol = lens_ownership_family_eval_execution
 data phase1_nat_semiring_rung_gate_execution: Symbol = phase1_nat_semiring_rung_gate_execution
 data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
 data m1_rust_emit_probe_signal: Symbol = m1_rust_emit_probe_signal
 data leaf_model_go_verify_signal: Symbol = leaf_model_go_verify_signal
 data testclaim_corpus_eval_signal: Symbol = testclaim_corpus_eval_signal
+data lens_ownership_family_eval_signal: Symbol = lens_ownership_family_eval_signal
 data phase1_nat_semiring_rung_gate_signal: Symbol = phase1_nat_semiring_rung_gate_signal
 data ci_srv1_host: Symbol = ci_srv1_host
 data ci_srv2_host: Symbol = ci_srv2_host
@@ -740,6 +759,22 @@ fn ci_job_testclaim_corpus_eval_execution_mk() -> CiJob {
 
 data ci_job_testclaim_corpus_eval_execution_row: CiJob = ci_job_testclaim_corpus_eval_execution_mk()
 
+fn ci_lens_ownership_family_eval_command() -> CiCommand {
+  LensOwnershipFamilyEvalCommand {
+    verdict_surface: ci_lens_ownership_family_verdict_surface_authority()
+  }
+}
+
+fn ci_job_lens_ownership_family_eval_execution_mk() -> CiJob {
+  CiJob {
+    id: lens_ownership_family_eval_execution,
+    command: ci_lens_ownership_family_eval_command(),
+    needs: [v2_compile_src_v4, testclaim_corpus_eval_execution]
+  }
+}
+
+data ci_job_lens_ownership_family_eval_execution_row: CiJob = ci_job_lens_ownership_family_eval_execution_mk()
+
 fn ci_job_v2_bootstrap_smoke_execution_mk() -> CiJob {
   CiJob {
     id: v2_bootstrap_smoke_execution,
@@ -820,6 +855,7 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     },
     ci_job_leaf_model_go_verify_execution_row,
     ci_job_testclaim_corpus_eval_execution_row,
+    ci_job_lens_ownership_family_eval_execution_row,
     CiJob {
       id: phase1_nat_semiring_rung_gate_execution,
       command: Phase1NatSemiringRungGateCommand,
@@ -851,6 +887,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       id: testclaim_corpus_eval_signal,
       job: testclaim_corpus_eval_execution,
       run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    },
+    CiGate {
+      id: lens_ownership_family_eval_signal,
+      job: lens_ownership_family_eval_execution,
+      run_policy: RequiresJobAttempt { job: testclaim_corpus_eval_execution }
     },
     CiGate {
       id: phase1_nat_semiring_rung_gate_signal,
@@ -1070,10 +1111,41 @@ data ci_upsert_phase1_nat_semiring_rung_gate_execution: CiUpsertStepSymbol = ci_
 // Forbidden: adding/removing manual corpus rows without the matching claim id here.
 data ci_testclaim_corpus_eval_claim_ids: List<Symbol> = [
   claim_eval_mvp2_test_claim_route,
+  claim_parallelism_data_dependency_run_test_claim_receipt,
   claim_lens_effect_depends_on_runtime_verdict,
   claim_rust_language_model_emit_mechanical_reverification,
   claim_rust_language_model_emit_subsumption_reverifies
 ]
+
+data ci_lens_ownership_family_eval_claim_ids: List<Symbol> = lens_ownership_family_claim_ids
+
+data ci_upsert_lens_ownership_family_eval_file_set_inputs: List<UpsertInputRef> = [
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/lens_ownership/resource_dependency.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/lens_ownership/subject_roster.dag"),
+  ci_upsert_file_set_input(segment: "src/v4/test/claim/workflow/lens_ownership_family_eval.dag")
+]
+
+fn ci_upsert_lens_ownership_family_eval_claim_ref_inputs() -> List<UpsertInputRef> {
+  fold(ci_lens_ownership_family_eval_claim_ids, init: ci_empty_upsert_input_refs(), f: fn(acc, claim_id) {
+    list_snoc_item(xs: acc, item: ci_upsert_test_claim_ref_input(claim_id: claim_id))
+  })
+}
+
+fn ci_upsert_lens_ownership_family_eval_inputs_mk() -> List<UpsertInputRef> {
+  fold(ci_upsert_lens_ownership_family_eval_claim_ref_inputs(), init: ci_upsert_lens_ownership_family_eval_file_set_inputs, f: fn(acc, item) {
+    list_snoc_item(xs: acc, item: item)
+  })
+}
+
+data ci_upsert_lens_ownership_family_eval_inputs: List<UpsertInputRef> = ci_upsert_lens_ownership_family_eval_inputs_mk()
+
+data v4_test_claim_workflow_lens_ownership_family_eval: Symbol = v4_test_claim_workflow_lens_ownership_family_eval
+data v4_test_claim_lens_ownership_subject_roster: Symbol = v4_test_claim_lens_ownership_subject_roster
+data ci_lens_ownership_subject_roster_decl_name: Symbol = lens_ownership_subject_rows
+data run_lens_ownership_family_eval: Symbol = run_lens_ownership_family_eval
+data lens_ownership_family_report_tally: Symbol = lens_ownership_family_report_tally
+data lens_ownership_structural_witnesses_hold: Symbol = lens_ownership_structural_witnesses_hold
+data witness_lens_ownership_family_gate_closed: Symbol = witness_lens_ownership_family_gate_closed
 
 data v4_test_claim_manual_manual_corpus_roster: Symbol = v4_test_claim_manual_manual_corpus_roster
 data v4_test_claim_workflow_testclaim_corpus_runner: Symbol = v4_test_claim_workflow_testclaim_corpus_runner
@@ -1097,6 +1169,31 @@ fn ci_testclaim_corpus_declaration_authority(
   declaration_name: Symbol
 ) -> TestClaimCorpusDeclarationAuthority {
   TestClaimCorpusDeclarationAuthority { module_path: module_path, declaration_name: declaration_name }
+}
+
+fn ci_lens_ownership_family_verdict_surface_authority() -> LensOwnershipFamilyVerdictSurfaceAuthority {
+  LensOwnershipFamilyVerdictSurfaceAuthority {
+    subject_roster: ci_testclaim_corpus_declaration_authority(
+      module_path: v4_test_claim_lens_ownership_subject_roster,
+      declaration_name: ci_lens_ownership_subject_roster_decl_name
+    ),
+    eval_report: ci_testclaim_corpus_declaration_authority(
+      module_path: v4_test_claim_workflow_lens_ownership_family_eval,
+      declaration_name: run_lens_ownership_family_eval
+    ),
+    verdict_tally: ci_testclaim_corpus_declaration_authority(
+      module_path: v4_test_claim_workflow_lens_ownership_family_eval,
+      declaration_name: lens_ownership_family_report_tally
+    ),
+    structural_witness: ci_testclaim_corpus_declaration_authority(
+      module_path: v4_test_claim_workflow_lens_ownership_family_eval,
+      declaration_name: lens_ownership_structural_witnesses_hold
+    ),
+    gate_witness: ci_testclaim_corpus_declaration_authority(
+      module_path: v4_test_claim_workflow_lens_ownership_family_eval,
+      declaration_name: witness_lens_ownership_family_gate_closed
+    )
+  }
 }
 
 fn ci_testclaim_corpus_verdict_surface_authority() -> TestClaimCorpusVerdictSurfaceAuthority {
@@ -1178,6 +1275,22 @@ fn ci_upsert_testclaim_corpus_eval_execution_mk() -> CiUpsertStepSymbol {
 }
 
 data ci_upsert_testclaim_corpus_eval_execution: CiUpsertStepSymbol = ci_upsert_testclaim_corpus_eval_execution_mk()
+
+fn ci_upsert_lens_ownership_family_eval_execution_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_lens_ownership_family_eval_inputs
+  verify: ci_command_projection_node(
+    c: ci_lens_ownership_family_eval_command()
+  )
+  create: ci_job_projection_node(j: ci_job_lens_ownership_family_eval_execution_row)
+  resolve: ci_atom(sym: lens_ownership_family_eval_execution)
+  payload_type: ci_command_projection_node(
+    c: ci_lens_ownership_family_eval_command()
+  )
+  }
+}
+
+data ci_upsert_lens_ownership_family_eval_execution: CiUpsertStepSymbol = ci_upsert_lens_ownership_family_eval_execution_mk()
 
 // #4091 §1.2 four-compile collapse — lens-CI semantic v4 compile consumes v2_compile_src_v4's
 // resolved closure via UpstreamUpsert (appended to the per-lens output refs) and re-emits its
@@ -1347,6 +1460,34 @@ fn ci_upsert_testclaim_corpus_eval_signal_mk() -> CiUpsertStepSymbol {
 
 data ci_upsert_testclaim_corpus_eval_signal: CiUpsertStepSymbol = ci_upsert_testclaim_corpus_eval_signal_mk()
 
+data ci_upsert_lens_ownership_family_eval_signal_inputs: List<UpsertInputRef> = [
+  ci_upsert_upstream_job_input(job: lens_ownership_family_eval_execution)
+]
+
+fn ci_upsert_lens_ownership_family_eval_signal_mk() -> CiUpsertStepSymbol {
+  CiUpsertStepSymbol {
+  inputs: ci_upsert_lens_ownership_family_eval_signal_inputs
+  verify: ci_gate_projection_node(
+    g: CiGate {
+      id: lens_ownership_family_eval_signal,
+      job: lens_ownership_family_eval_execution,
+      run_policy: RequiresJobAttempt { job: testclaim_corpus_eval_execution }
+    }
+  )
+  create: ci_gate_projection_node(
+    g: CiGate {
+      id: lens_ownership_family_eval_signal,
+      job: lens_ownership_family_eval_execution,
+      run_policy: RequiresJobAttempt { job: testclaim_corpus_eval_execution }
+    }
+  )
+  resolve: ci_atom(sym: lens_ownership_family_eval_signal)
+  payload_type: ci_atom(sym: ci_cache_gate_policy_requires_job_tag)
+  }
+}
+
+data ci_upsert_lens_ownership_family_eval_signal: CiUpsertStepSymbol = ci_upsert_lens_ownership_family_eval_signal_mk()
+
 data ci_upsert_phase1_nat_semiring_rung_gate_signal_inputs: List<UpsertInputRef> = [
   ci_upsert_upstream_job_input(job: phase1_nat_semiring_rung_gate_execution)
 ]
@@ -1440,6 +1581,14 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
     inputs: ci_upsert_testclaim_corpus_eval_execution_inputs
   },
   CiUpsertStepRow {
+    step_id: JobStep {
+      job: lens_ownership_family_eval_execution,
+      step: lens_ownership_family_eval_execution
+    },
+    step: ci_upsert_lens_ownership_family_eval_execution,
+    inputs: ci_upsert_lens_ownership_family_eval_inputs
+  },
+  CiUpsertStepRow {
     step_id: JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution },
     step: ci_upsert_lens_ci_registry_execution,
     inputs: ci_upsert_lens_ci_registry_execution_inputs
@@ -1474,6 +1623,14 @@ data ci_upsert_steps: List<CiUpsertStepRow> = [
     },
     step: ci_upsert_testclaim_corpus_eval_signal,
     inputs: ci_upsert_testclaim_corpus_eval_signal_inputs
+  },
+  CiUpsertStepRow {
+    step_id: GateStep {
+      job: lens_ownership_family_eval_execution,
+      gate: lens_ownership_family_eval_signal
+    },
+    step: ci_upsert_lens_ownership_family_eval_signal,
+    inputs: ci_upsert_lens_ownership_family_eval_signal_inputs
   },
   CiUpsertStepRow {
     step_id: GateStep {
@@ -1514,11 +1671,19 @@ data ci_upsert_steps_bucket_a_slice_step_ids: List<CiStepId> = [
 data ci_upsert_steps_bucket_a_out_of_scope_step_ids: List<CiStepId> = [
   JobStep { job: lens_ci_registry_execution, step: lens_ci_registry_execution },
   JobStep { job: testclaim_corpus_eval_execution, step: testclaim_corpus_eval_execution },
+  JobStep {
+    job: lens_ownership_family_eval_execution,
+    step: lens_ownership_family_eval_execution
+  },
   GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
   GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
   GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
   GateStep { job: leaf_model_go_verify_execution, gate: leaf_model_go_verify_signal },
   GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
+  GateStep {
+    job: lens_ownership_family_eval_execution,
+    gate: lens_ownership_family_eval_signal
+  },
   GateStep {
     job: phase1_nat_semiring_rung_gate_execution,
     gate: phase1_nat_semiring_rung_gate_signal
@@ -1527,7 +1692,11 @@ data ci_upsert_steps_bucket_a_out_of_scope_step_ids: List<CiStepId> = [
 
 // W2.3 Bucket B — `FileSet` + `TestClaimRef` (`ci_testclaim_corpus_eval_claim_ids`; selection_fn = ci_select_from_affected_set).
 data ci_upsert_steps_bucket_b_slice_step_ids: List<CiStepId> = [
-  JobStep { job: testclaim_corpus_eval_execution, step: testclaim_corpus_eval_execution }
+  JobStep { job: testclaim_corpus_eval_execution, step: testclaim_corpus_eval_execution },
+  JobStep {
+    job: lens_ownership_family_eval_execution,
+    step: lens_ownership_family_eval_execution
+  }
 ]
 
 // W2.3 Bucket C slice — `LensOutputRef` over `lens_ci_required_lenses` (§2.3 partition table).
@@ -1538,11 +1707,19 @@ data ci_upsert_steps_bucket_c_slice_step_ids: List<CiStepId> = [
 // Deferred buckets B/E from bucket C at C landing — historical ledger (#4067).
 data ci_upsert_steps_bucket_c_out_of_scope_step_ids: List<CiStepId> = [
   JobStep { job: testclaim_corpus_eval_execution, step: testclaim_corpus_eval_execution },
+  JobStep {
+    job: lens_ownership_family_eval_execution,
+    step: lens_ownership_family_eval_execution
+  },
   GateStep { job: v2_compile_src_v4, gate: structural_v2_compile },
   GateStep { job: lens_ci_registry_execution, gate: lens_ci_registry_signal },
   GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
   GateStep { job: leaf_model_go_verify_execution, gate: leaf_model_go_verify_signal },
   GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
+  GateStep {
+    job: lens_ownership_family_eval_execution,
+    gate: lens_ownership_family_eval_signal
+  },
   GateStep {
     job: phase1_nat_semiring_rung_gate_execution,
     gate: phase1_nat_semiring_rung_gate_signal
@@ -1565,6 +1742,10 @@ data ci_upsert_steps_bucket_e_slice_step_ids: List<CiStepId> = [
   GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
   GateStep { job: leaf_model_go_verify_execution, gate: leaf_model_go_verify_signal },
   GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
+  GateStep {
+    job: lens_ownership_family_eval_execution,
+    gate: lens_ownership_family_eval_signal
+  },
   GateStep {
     job: phase1_nat_semiring_rung_gate_execution,
     gate: phase1_nat_semiring_rung_gate_signal
@@ -1589,6 +1770,10 @@ data ci_upsert_steps_buckets_a_b_c_out_of_scope_step_ids: List<CiStepId> = [
   GateStep { job: m1_rust_emit_probe_execution, gate: m1_rust_emit_probe_signal },
   GateStep { job: leaf_model_go_verify_execution, gate: leaf_model_go_verify_signal },
   GateStep { job: testclaim_corpus_eval_execution, gate: testclaim_corpus_eval_signal },
+  GateStep {
+    job: lens_ownership_family_eval_execution,
+    gate: lens_ownership_family_eval_signal
+  },
   GateStep {
     job: phase1_nat_semiring_rung_gate_execution,
     gate: phase1_nat_semiring_rung_gate_signal
@@ -1735,6 +1920,8 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     } =>
       (fn_name == ci_testclaim_corpus_selection_fn)
         && (surface == ci_testclaim_corpus_verdict_surface_authority())
+    LensOwnershipFamilyEvalCommand { verdict_surface: surface } =>
+      surface == ci_lens_ownership_family_verdict_surface_authority()
     Phase1NatSemiringRungGateCommand => true
   }
 }
@@ -1762,6 +1949,7 @@ data ci_cache_schedule_main_push_tag: Symbol = ci_cache_schedule_main_push_tag
 data ci_cache_schedule_nightly_tag: Symbol = ci_cache_schedule_nightly_tag
 data ci_cache_cmd_m1_probe_tag: Symbol = ci_cache_cmd_m1_probe_tag
 data ci_cache_cmd_leaf_model_go_verify_tag: Symbol = ci_cache_cmd_leaf_model_go_verify_tag
+data ci_cache_cmd_lens_ownership_family_eval_tag: Symbol = ci_cache_cmd_lens_ownership_family_eval_tag
 data ci_cache_cmd_phase1_nat_semiring_rung_gate_tag: Symbol = ci_cache_cmd_phase1_nat_semiring_rung_gate_tag
 data ci_cache_gate_policy_always_tag: Symbol = ci_cache_gate_policy_always_tag
 data ci_cache_gate_policy_requires_job_tag: Symbol = ci_cache_gate_policy_requires_job_tag
@@ -1824,6 +2012,7 @@ data ci_projection_command_verdict_surface_edge: Symbol = ci_projection_command_
 data ci_projection_corpus_surface_run_roster_edge: Symbol = ci_projection_corpus_surface_run_roster_edge
 data ci_projection_corpus_surface_eval_report_edge: Symbol = ci_projection_corpus_surface_eval_report_edge
 data ci_projection_corpus_surface_verdict_tally_edge: Symbol = ci_projection_corpus_surface_verdict_tally_edge
+data ci_projection_corpus_surface_structural_witness_edge: Symbol = ci_projection_corpus_surface_structural_witness_edge
 data ci_projection_corpus_surface_gate_witness_edge: Symbol = ci_projection_corpus_surface_gate_witness_edge
 data ci_projection_corpus_surface_family_receipt_edge: Symbol = ci_projection_corpus_surface_family_receipt_edge
 data ci_projection_declaration_module_edge: Symbol = ci_projection_declaration_module_edge
@@ -2241,6 +2430,20 @@ fn ci_command_projection_node(c: CiCommand) -> Node {
     V4T15SelfHostFixedPointCommand => ci_atom(sym: ci_cache_cmd_v4_t15_self_host_tag)
     M1RustEmitProbeCommand => ci_atom(sym: ci_cache_cmd_m1_probe_tag)
     LeafModelGoVerifyCommand => ci_atom(sym: ci_cache_cmd_leaf_model_go_verify_tag)
+    LensOwnershipFamilyEvalCommand { verdict_surface: surface } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_command_variant_edge,
+            target: ci_atom(sym: ci_cache_cmd_lens_ownership_family_eval_tag)
+          ),
+          ci_named_edge(
+            name: ci_projection_command_verdict_surface_edge,
+            target: ci_lens_ownership_family_verdict_surface_projection_node(surface: surface)
+          )
+        ]
+      }
     TestClaimCorpusEvalCommand {
       selection_fn: fn_name,
       verdict_surface: surface
@@ -2296,6 +2499,37 @@ fn ci_testclaim_corpus_verdict_surface_projection_node(
       ci_named_edge(
         name: ci_projection_corpus_surface_family_receipt_edge,
         target: ci_declaration_authority_projection_node(a: surface.family_receipt)
+      )
+    ]
+  }
+}
+
+
+fn ci_lens_ownership_family_verdict_surface_projection_node(
+  surface: LensOwnershipFamilyVerdictSurfaceAuthority
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ci_named_edge(
+        name: ci_projection_corpus_surface_run_roster_edge,
+        target: ci_declaration_authority_projection_node(a: surface.subject_roster)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_eval_report_edge,
+        target: ci_declaration_authority_projection_node(a: surface.eval_report)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_verdict_tally_edge,
+        target: ci_declaration_authority_projection_node(a: surface.verdict_tally)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_structural_witness_edge,
+        target: ci_declaration_authority_projection_node(a: surface.structural_witness)
+      ),
+      ci_named_edge(
+        name: ci_projection_corpus_surface_gate_witness_edge,
+        target: ci_declaration_authority_projection_node(a: surface.gate_witness)
       )
     ]
   }
@@ -2871,6 +3105,8 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     path == "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"
   } else if segment == "src/v4/test/claim/manual/**" {
     ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/manual/")
+  } else if segment == "src/v4/test/claim/**" {
+    ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/")
   } else if segment == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag" {
     path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
   } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval.dag" {
@@ -2923,7 +3159,7 @@ fn ci_upsert_input_ref_touches_git_diff(
       ci_upsert_file_set_input_touches_git_diff(selector: selector, git_diff: git_diff)
     TestClaimRef { claim_id: _ } =>
       ci_glob_segment_matches_any_changed_path(
-        segment: "src/v4/test/claim/manual/**",
+        segment: "src/v4/test/claim/**",
         paths: git_diff.changed_paths
       )
     LensOutputRef { lens: _, ports: _ } =>
@@ -4183,6 +4419,15 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         testclaim_corpus: true,
         workflow_policy: true,
         release_distribution: true
+      )
+    LensOwnershipFamilyEvalCommand { verdict_surface: _ } =>
+      ci_job_component_mask_row(
+        v2: false,
+        v3: false,
+        v4: true,
+        testclaim_corpus: true,
+        workflow_policy: true,
+        release_distribution: false
       )
     LintCommand => ci_component_affected_fail_closed()
     TestCommand => ci_component_affected_fail_closed()

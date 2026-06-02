@@ -1283,6 +1283,15 @@ pub mod evaluator {
                 ) {
                     return result;
                 }
+                if let Some(result) = crate::emit_host_eval::try_dispatch_emit_host(
+                    dag,
+                    callee_decl,
+                    &operands,
+                    state,
+                    strategy,
+                ) {
+                    return result;
+                }
                 let connective = &dag.declaration(callee_decl).connective;
                 if let TypeConnective::Arrow { body, .. } = connective {
                     let ArrowBody::UserDefined(bind_id) = body else {
