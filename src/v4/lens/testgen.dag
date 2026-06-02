@@ -169,7 +169,6 @@ import v4.std.effects {
 // only consumes them — no artifact law is duplicated here. profile_metadata stays a
 // testgen-local concept (GeneratorProfile below) and must not leak into artifact.dag.
 import v4.std.artifact {
-  Artifact,
   ArtifactKind,
   GeneratedArtifact,
   GeneratorId,
