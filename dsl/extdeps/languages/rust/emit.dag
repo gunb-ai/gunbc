@@ -23,15 +23,15 @@ data rust_keywords: Map<String, String> = {
 
 // -- Container type templates --------------------------------------------
 // {0} = element type, {1} = second type (maps).
-// Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::HashMap
+// Ref: im::Vector, im::OrdSet, std::option::Option, im::OrdMap
 // NOTE: Templates are BARE types. Rc-wrapping is applied by the rendering
 // layer (build_type_rendering + render_type) via rc_types, not baked into
 // templates. This prevents Rc decisions from being duplicated between
 // templates and the rc_types predicate.
 data rust_container_templates: Map<String, String> = {
-  "list": "Vec<\{0\}>", "set": "std::collections::BTreeSet<\{0\}>",
-  "optional": "Option<\{0\}>", "map": "HashMap<\{0\}, \{1\}>",
-  "free_monoid": "Vec<\{0\}>", "partial_function": "HashMap<\{0\}, \{1\}>",
+  "list": "Vector<\{0\}>", "set": "OrdSet<\{0\}>",
+  "optional": "Option<\{0\}>", "map": "OrdMap<\{0\}, \{1\}>",
+  "free_monoid": "Vector<\{0\}>", "partial_function": "OrdMap<\{0\}, \{1\}>",
   "boolean_algebra": "bool"
 }
 
@@ -53,13 +53,13 @@ type SimpleMethodSpec {
 data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",     template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },
   { method_name: "join",      template: "\{recv\}.join(&\{arg\})",                                                                    wraps_result: false },
-  { method_name: "split",     template: "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",                         wraps_result: true },
+  { method_name: "split",     template: "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vector<_>>()",                      wraps_result: true },
   { method_name: "last",      template: "\{recv\}.last().cloned()",                                                                    wraps_result: false },
   { method_name: "first",     template: "\{recv\}.first().cloned()",                                                                   wraps_result: false },
-  { method_name: "enumerate", template: "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",         wraps_result: true },
-  { method_name: "chars",     template: "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",                                      wraps_result: true },
-  { method_name: "skip",      template: "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true },
-  { method_name: "take",      template: "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true }
+  { method_name: "enumerate", template: "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vector<_>>()",      wraps_result: true },
+  { method_name: "chars",     template: "\{recv\}.chars().map(|c| c as i64).collect::<Vector<_>>()",                                   wraps_result: true },
+  { method_name: "skip",      template: "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vector<_>>()",                      wraps_result: true },
+  { method_name: "take",      template: "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vector<_>>()",                      wraps_result: true }
 ]
 
 // Derived: template map for LanguageSpec consumption (backend-neutral).
@@ -132,8 +132,8 @@ data rust_lambda_template: String = "|{0}| {1}"
 // {0} = message string
 data rust_error_expr_template: String = "panic!({0})"
 // {0} = comma-separated elements
-data rust_list_literal_empty: String = "Rc::new(vec![])"
-data rust_list_literal_template: String = "Rc::new(vec![{0}])"
+data rust_list_literal_empty: String = "Rc::new(Vector::new())"
+data rust_list_literal_template: String = "Rc::new(Vector::from(vec![{0}]))"
 // {0} = left expr, {1} = right expr
 data rust_null_coalesce_template: String = "{0}.unwrap_or_else(|| {1})"
 // {0} = error label
@@ -275,8 +275,8 @@ type HigherOrderMethodSpec {
 }
 
 data rust_higher_order_methods: List<HigherOrderMethodSpec> = [
-  { method_name: "filter", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ if \{body\} \{ __result.push(\{param\}); \} \} __result \}", fn_ref_template: "\{iter\}.filter(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true },
+  { method_name: "filter", inline_template: "\{ let mut __result = Vector::new(); for \{param\} in \{iter\} \{ if \{body\} \{ __result.push_back(\{param\}); \} \} __result \}", fn_ref_template: "\{iter\}.filter(\{arg\}).collect::<Vector<_>>()", wraps_in_sharing: true },
   { method_name: "any", inline_template: "\{ let mut __found = false; for \{param\} in \{iter\} \{ if \{body\} \{ __found = true; break; \} \} __found \}", fn_ref_template: "\{iter\}.any(\{arg\})", wraps_in_sharing: false },
   { method_name: "all", inline_template: "\{ let mut __all = true; for \{param\} in \{iter\} \{ if !(\{body\}) \{ __all = false; break; \} \} __all \}", fn_ref_template: "\{iter\}.all(\{arg\})", wraps_in_sharing: false },
-  { method_name: "flat_map", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ __result.extend(\{inner_iter\}); \} __result \}", fn_ref_template: "\{iter\}.flat_map(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true }
+  { method_name: "flat_map", inline_template: "\{ let mut __result = Vector::new(); for \{param\} in \{iter\} \{ __result.extend(\{inner_iter\}); \} __result \}", fn_ref_template: "\{iter\}.flat_map(\{arg\}).collect::<Vector<_>>()", wraps_in_sharing: true }
 ]

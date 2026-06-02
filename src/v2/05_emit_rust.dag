@@ -2288,8 +2288,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
 
 fn emit_prelude() -> String {
   let use_line = concat(
-    "use std::collections::BTreeSet;\n",
-    "use std::collections::HashMap;\n",
+    "use im::{OrdMap, OrdSet, Vector};\n",
     "use std::rc::Rc;\n",
     "use crate::v2_rt;")
   let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
@@ -2318,19 +2317,19 @@ fn emit_non_empty_wrappers() -> String {
   )
   let set_wrapper = concat(
     "#[derive(Debug, Clone, PartialEq)]\n",
-    "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n",
+    "pub struct NonEmptyBTreeSet<T: Ord>(OrdSet<T>);\n\n",
     "impl<T: Ord> NonEmptyBTreeSet<T> {\n",
-    "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n",
+    "    pub fn new(items: OrdSet<T>) -> Result<Self, &'static str> {\n",
     "        if items.is_empty() {\n",
     "            Err(\"NonEmptyBTreeSet requires at least one element\")\n",
     "        } else {\n",
     "            Ok(Self(items))\n",
     "        }\n",
     "    }\n\n",
-    "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {\n",
+    "    pub fn as_set(&self) -> &OrdSet<T> {\n",
     "        &self.0\n",
     "    }\n\n",
-    "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n",
+    "    pub fn into_set(self) -> OrdSet<T> {\n",
     "        self.0\n",
     "    }\n",
     "}"
@@ -4302,9 +4301,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if kv_type_str != "" {
           concat("v2_rt::rc_empty_map::<", kv_type_str, ">()")
         } else {
-          "Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
+          "v2_rt::rc_empty_map::<_, _>() /* BRIDGE: empty_map value type unresolved */"
         }
-      _ => "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
+      _ => "v2_rt::rc_empty_map::<_, _>() /* BRIDGE: empty_map return type unresolved */"
     }
   } else if func == "empty_set" {
     match inferred {
@@ -4321,7 +4320,7 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   // Runtime functions that return bare collections (map_keys, map_values)
   // need Rc wrapping so their result is Rc<Vec<_>>, matching List<T>.
   if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
-    concat("Rc::new(", call_str, ")")
+      concat("Rc::new(", call_str, ")")
   } else { call_str }
 }
 
@@ -4776,10 +4775,10 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
             if kv_type_str != "" {
               concat("v2_rt::rc_empty_map::<", kv_type_str, ">()")
             } else {
-              "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */"
+            "v2_rt::rc_empty_map::<_, _>() /* BRIDGE: fold empty_map value type unresolved */"
             }
           } else if init_func == "empty_map" {
-            "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */"
+            "v2_rt::rc_empty_map::<_, _>() /* BRIDGE: fold empty_map accumulator type unresolved */"
           } else if init_func == "empty_set" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             emit_rust_empty_set_expr(set_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
           } else if init_func == "empty_set" {
@@ -4826,9 +4825,9 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
   let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
   if elem_type_str == "_" {
-    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); Vector::from(__sorted) })")
   } else {
-    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); Vector::from(__sorted) })")
   }
 }
 
@@ -4868,10 +4867,10 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result })")
-          _ => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
+            concat("Rc::new({ let mut __result = Vector::new(); for ", p, " in ", iter_str, " { __result.push_back(", body_str, "); } __result })")
+          _ => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vector<_>>())")
         }
-      None => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
+      None => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vector<_>>())")
     }
   }
 }
@@ -7072,6 +7071,7 @@ fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
     emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
     emit_cargo_dep(name: "serde_json", version: "1", features: []),
     emit_cargo_dep(name: "stacker", version: "0.1", features: []),
+    emit_cargo_dep(name: "im", version: "15", features: ["serde"]),
     emit_cargo_dep(name: "clap", version: "4", features: ["derive"]),
     emit_cargo_dep(name: "lazy_static", version: "1", features: [])
   ]
