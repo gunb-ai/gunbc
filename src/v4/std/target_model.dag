@@ -55,7 +55,7 @@ import v4.std.node {
   content_hash,
   fold_node
 }
-import v4.std.node_query { find_named_child, node_positional_child_targets }
+import v4.std.node_query { find_named_child, node_labeled_child_edges, node_positional_child_targets }
 import v4.std.logic { Bool }
 import v4.std.text { Char, String }
 
@@ -1485,6 +1485,44 @@ data target_type_expr_field_close: Symbol = target_type_expr_field_close
 data target_type_expr_field_separator: Symbol = target_type_expr_field_separator
 data target_type_expr_field_field_label_separator: Symbol = target_type_expr_field_field_label_separator
 data target_type_expr_field_variant_separator: Symbol = target_type_expr_field_variant_separator
+data target_type_expr_field_param_ident_token: Symbol = target_type_expr_field_param_ident_token
+data target_type_expr_field_param_type_separator: Symbol = target_type_expr_field_param_type_separator
+data target_type_expr_field_param_list_separator: Symbol = target_type_expr_field_param_list_separator
+data target_type_expr_field_codomain: Symbol = target_type_expr_field_codomain
+
+// 🟢 coproduct dissolution — SG-2 emitted arrow wire encodes positional inputs+codomain vs labeled param slots+codomain (authority: target_type_expr_arrow_wire_shape on emitted node).
+type TargetTypeExprArrowWireShape
+  = TargetTypeExprArrowPositionalWire
+  | TargetTypeExprArrowLabeledWire
+
+fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowWireShape> {
+  let positional = node_positional_child_targets(node: node)
+  if is_empty(xs: positional) {
+    match find_named_child(root: node, name: target_type_expr_field_codomain) {
+      Accepted { value: _, diagnostics: d } =>
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d }
+      Rejected { diagnostics: _ } =>
+        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    }
+  } else {
+    if length(xs: positional) >= 2 {
+      match target_type_expr_fold_named_metadata_edges(node: node) {
+        NamedMetadataFoldOk { kind_seen: true, surface_seen: true, extra_named: 0 } =>
+          outcome_accepted(TargetTypeExprArrowPositionalWire)
+        _ =>
+          outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    } else {
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    }
+  }
+}
+
+// 🟢 coproduct dissolution — SG-2 labeled arrow parameter slot (label required; distinct from record TargetTypeExprFieldSlot).
+type TargetTypeExprArrowParamSlot {
+  label: Symbol
+  type_expr: Node
+}
 
 // SG-2 — atom type name: bound ident from source Atom identity via binding_spellings.
 type TargetAtomTypeShape {
@@ -1525,6 +1563,9 @@ type TargetFunctionTypeShape {
   open: Symbol
   close: Symbol
   arrow: Symbol
+  param_ident_token: Symbol
+  param_type_separator: Symbol
+  param_list_separator: Symbol
 }
 
 // 🟢 coproduct dissolution — SG-2 declared emitted type-expression wire authority (M6 product carrier; kind axis is TargetTypeExprKind).
@@ -1783,6 +1824,15 @@ fn target_type_expr_field_slot_edges(fields: List<TargetTypeExprFieldSlot>) -> L
   })
 }
 
+fn target_type_expr_arrow_param_slot_edges(params: List<TargetTypeExprArrowParamSlot>) -> List<Edge> {
+  fold(params, init: Empty, f: fn(acc, param) {
+    list_snoc_item(
+      xs: acc,
+      item: Edge { label: Named { name: param.label }, target: param.type_expr }
+    )
+  })
+}
+
 fn target_type_expr_variant_slot_edges(variants: List<TargetTypeExprVariantSlot>) -> List<Edge> {
   fold(variants, init: Empty, f: fn(acc, variant) {
     list_snoc_item(
@@ -1927,10 +1977,12 @@ fn target_type_expr_emitted_validate_positional_arity(
         outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
       }
     TargetTypeExprArrow =>
-      if length(xs: positional) >= 2 {
-        Accepted { value: true, diagnostics: None }
-      } else {
-        outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      match target_type_expr_arrow_wire_shape(node: node) {
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
+          Accepted { value: true, diagnostics: None }
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
+          outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     TargetTypeExprRecord =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
@@ -2027,6 +2079,22 @@ fn target_type_expr_emitted_validate_wire_shape(
         kind: kind,
         projection: projection
       )
+    TargetTypeExprArrow =>
+      match target_type_expr_arrow_wire_shape(node: node) {
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
+          target_type_expr_emitted_validate_labeled_wire(
+            node: node,
+            kind: kind,
+            projection: projection
+          )
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
+          target_type_expr_emitted_validate_positional_wire(
+            node: node,
+            kind: kind,
+            projection: projection
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
     _ =>
       target_type_expr_emitted_validate_positional_wire(
         node: node,
@@ -2125,6 +2193,86 @@ fn target_type_expr_arrow_emitted(
     surface: form.surface,
     children: list_append(left: inputs, right: Cons { head: output, tail: Empty })
   )
+}
+
+fn target_type_expr_arrow_emitted_named(
+  form: TargetFunctionTypeShape,
+  params: List<TargetTypeExprArrowParamSlot>,
+  output: Node
+) -> Node {
+  target_type_expr_wrapped_emitted_labeled(
+    kind: TargetTypeExprArrow,
+    surface: form.surface,
+    slot_edges: list_append(
+      left: target_type_expr_arrow_param_slot_edges(params: params),
+      right: Cons {
+        head: Edge {
+          label: Named { name: target_type_expr_field_codomain },
+          target: output
+        },
+        tail: Empty
+      }
+    )
+  )
+}
+
+fn target_type_expr_arrow_labeled_codomain(node: Node) -> Outcome<Node> {
+  match target_type_expr_arrow_wire_shape(node: node) {
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+      match find_named_child(root: node, name: target_type_expr_field_codomain) {
+        Accepted { value: child, diagnostics: dc } =>
+          Accepted {
+            value: child,
+            diagnostics: diagnostics_merge(outer: d, inner: dc)
+          }
+        Rejected { diagnostics: _ } =>
+          outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+      }
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<TargetTypeExprArrowParamSlot>> {
+  match target_type_expr_arrow_wire_shape(node: node) {
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+      bind_outcome(
+        o: target_type_expr_arrow_labeled_codomain(node: node),
+        f: fn(_codomain) {
+          if is_empty(xs: node_positional_child_targets(node: node)) {
+            Accepted {
+              value: fold(
+                xs: node_labeled_child_edges(node: node),
+                init: Empty,
+                f: fn(acc, e) {
+                  match e.label {
+                    Named { name: label } =>
+                      if label == target_type_expr_field_surface ||
+                        label == target_type_expr_field_kind ||
+                        label == target_type_expr_field_codomain {
+                        acc
+                      } else {
+                        list_snoc_item(
+                          xs: acc,
+                          item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
+                        )
+                      }
+                    Positional => acc
+                  }
+                }
+              ),
+              diagnostics: d
+            }
+          } else {
+            outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+          }
+        }
+      )
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
+      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }
 
 // ═══ SG-5 — TargetCollectionRealization (canonical home) ═══

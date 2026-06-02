@@ -1187,7 +1187,11 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 // emit_resolved passes through unchanged, and the clean path appends emit_diags
 // (concat is associative, so the diagnostic order is identical).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
+<<<<<<< HEAD
   emit_resolved(resolved: compile_to_resolved(sources: sources), target: target)
+=======
+  emit_resolved_for_target(resolved: compile_to_resolved(sources: sources), target: target)
+>>>>>>> origin/main
 }
 
 type ResolvedPipelineResult {
@@ -1282,6 +1286,39 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
         complexity: complexity,
         ownership: ownership,
         newline_indices: newline_indices
+      }
+    }
+  }
+}
+
+fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
+  match resolved.graph {
+    None =>
+      PipelineResult {
+        files: [],
+        diagnostics: resolved.diagnostics,
+        complexity: resolved.complexity,
+        ownership: resolved.ownership,
+        artifact_plan: empty_artifact_plan(),
+        newline_indices: resolved.newline_indices
+      }
+    Some { value: typed } => {
+      let artifact_plan = default_artifact_plan(
+        root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
+        target: target
+      )
+      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
+      let emit_files = emit_result.files
+      let emit_diags = emit_result.diagnostics
+      let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
+      PipelineResult {
+        files: final_files,
+        diagnostics: concat(resolved.diagnostics, emit_diags),
+        complexity: resolved.complexity,
+        ownership: resolved.ownership,
+        artifact_plan: artifact_plan,
+        newline_indices: resolved.newline_indices
       }
     }
   }

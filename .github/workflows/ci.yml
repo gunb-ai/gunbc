@@ -20,8 +20,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-# Wave 1 §11.7.1 safety floor — fmt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
-# Required on every non-draft PR: fmt, bootstrap viability, M1 rust emit, ci.dag structural receipt, no-new-shell.
+# Wave 1 §11.7.1 safety floor — fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag binding, no-new-shell)
+# Required on every non-draft PR: fmt, affected-set component receipt, bootstrap viability, M1 rust emit, ci.dag structural receipt, no-new-shell.
 jobs:
   fmt:
     if: github.event.pull_request.draft != true
@@ -66,10 +66,10 @@ jobs:
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
-  # Affected-set host transport — Wave 3 shadow only (Class C). continue-on-error: not a §11.7.1 gate.
+  # Affected-set component host transport — live fail-closed receipt.
+  # This promotes only GitDiffNameOnly -> CiComponentAffected. Node-frontier TestClaim selection stays shadow.
   affected:
     if: github.event.pull_request.draft != true
-    continue-on-error: true
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     outputs:
@@ -211,14 +211,19 @@ jobs:
         # containers): the host token pool pares actual concurrency below this ceiling — fill when idle,
         # pare under load. No static fallback: the probe fails closed if neither coupling is present.
         # See src/v4/workflow/ci.dag note.
+        V4_M1_DAG_EMIT_OUT: ${{ runner.temp }}/v4-bootstrap
+        V4_M1_DAG_EMIT_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
         V4_M1_CARGO_CHECK_JOBS_CEILING: "64"
         V4_M1_RUST_EMIT_PROBE_STRICT: "0"
       run: bash scripts/v4-m1-rust-emit-probe.sh
+    - name: v2 DAG emit parity receipt (required before bootstrap reuse)
+      run: cargo test -p v2-compiler-tests pipeline::dag_emit_from_resolved_matches_compile_sources_for_v4_slice -- --exact --quiet
     - name: v2 -> v4 bootstrap compile (fail-closed full)
       timeout-minutes: 35
       env:
         V4_BOOTSTRAP_OUT: ${{ runner.temp }}/v4-bootstrap
         V4_BOOTSTRAP_LOG: ${{ runner.temp }}/v4-bootstrap.log
+        V4_BOOTSTRAP_REUSE_LOG: ${{ runner.temp }}/v4-bootstrap.shared.log
         V4_BOOTSTRAP_TIMEOUT_SECS: '900'
       run: bash scripts/v4-bootstrap-viability.sh
     - name: M1 v4 workflow CI model/YAML binding smoke
@@ -233,18 +238,22 @@ jobs:
         bash scripts/check-ci-no-new-shell.sh
   ci:
     if: ${{ always() && github.event.pull_request.draft != true }}
-    needs: [ci_floor]
+    needs: [affected, ci_floor]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
     - name: Validate prerequisites (fail-closed under skipped/failed deps)
       run: |
         set -euo pipefail
+        if [[ "${{ needs.affected.result }}" != "success" ]]; then
+          echo "::error::affected job did not succeed (result=${{ needs.affected.result }}); ci aggregator fails closed."
+          exit 1
+        fi
         if [[ "${{ needs.ci_floor.result }}" != "success" ]]; then
           echo "::error::ci_floor job did not succeed (result=${{ needs.ci_floor.result }}); ci aggregator fails closed."
           exit 1
         fi
-        echo "ci aggregator: Wave 1 safety floor satisfied (five Class-A gates in ci_floor; affected is shadow-only)"
+        echo "ci aggregator: Wave 1 safety floor satisfied (affected receipt + five Class-A gates in ci_floor)"
     - name: ci receipt (section 11.7.1 floor)
       run: |
-        echo "::notice::Required CI: fmt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)"
+        echo "::notice::Required CI: fmt + affected receipt + ci_floor (M1, bootstrap, ci.dag structural receipt, no-new-shell)"

@@ -2439,7 +2439,11 @@ pub fn compile_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
+<<<<<<< HEAD
     emit_resolved(compile_to_resolved(sources), target)
+=======
+    emit_resolved_for_target(compile_to_resolved(sources), target)
+>>>>>>> origin/main
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2592,6 +2596,62 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                     newline_indices: newline_indices.clone(),
                 })
             }
+        }
+    }
+}
+
+pub fn emit_resolved_for_target(
+    resolved: Rc<ResolvedPipelineResult>,
+    target: RenderTarget,
+) -> Rc<PipelineResult> {
+    match resolved.graph.clone() {
+        None => Rc::new(PipelineResult {
+            files: Rc::new(vec![]),
+            diagnostics: resolved.diagnostics.clone(),
+            complexity: resolved.complexity.clone(),
+            ownership: resolved.ownership.clone(),
+            artifact_plan: empty_artifact_plan(),
+            newline_indices: resolved.newline_indices.clone(),
+        }),
+        Some(typed) => {
+            let artifact_plan = default_artifact_plan(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for m in typed.modules.clone().iter().cloned() {
+                        __result.push(authored_name_at(
+                            resolved.source_indices.clone(),
+                            m.module.clone(),
+                        ));
+                    }
+                    __result
+                }),
+                target,
+            );
+            let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
+            let emit_files = emit_result.files.clone();
+            let emit_diags = emit_result.diagnostics.clone();
+            let emit_errors = Rc::new({
+                let mut __result = Vec::new();
+                for d in emit_diags.clone().iter().cloned() {
+                    if is_error_diagnostic(d.diagnostic.clone()) {
+                        __result.push(d);
+                    }
+                }
+                __result
+            });
+            let final_files = if ((emit_errors.len() as i64) > 0) {
+                Rc::new(vec![])
+            } else {
+                emit_files
+            };
+            Rc::new(PipelineResult {
+                files: final_files,
+                diagnostics: v2_rt::concat(resolved.diagnostics.clone(), emit_diags.clone()),
+                complexity: resolved.complexity.clone(),
+                ownership: resolved.ownership.clone(),
+                artifact_plan: artifact_plan.clone(),
+                newline_indices: resolved.newline_indices.clone(),
+            })
         }
     }
 }
