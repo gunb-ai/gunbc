@@ -2292,6 +2292,7 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
+        let __t_parse = std::time::Instant::now();
         let acc = sources.iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
@@ -2322,6 +2323,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             },
         );
         let parse_results = acc.parse_results.clone();
+        eprintln!("[PROF] front_end: tokenize+parse fold = {:?} ({} files)", __t_parse.elapsed(), parse_results.len());
         let newline_indices = acc.newline_indices.clone();
         let intern_table = acc.intern_table.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
