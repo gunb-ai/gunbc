@@ -96,8 +96,12 @@ const INPROCESS_EQUIVALENCE_PATH: &str = "src/v4/test/claim/workflow/inprocess_e
 // F.12a recursive-flex THIN: a T-38 inspection receipt over `v4.workflow.ci` +
 // `v4.workflow.bootstrap`, scoped to the A.1.5a slice (#4313) ONLY — it imports/
 // inspects both workflow authorities (no edits) and conjoins (1) inprocess
-// equivalence holds, (2) the A.1.5a slice claim id is on the live ci.dag corpus
-// frontier, (3) the bootstrap fixed-point hash-pin projection holds. NOT the full
+// equivalence holds, (2a, fail-closed) every A.1.5a slice subject is in the live
+// corpus subject roster `manual_corpus_node_subject_rows` that ci.dag's
+// `TestClaimCorpusEvalCommand` evaluates, (2b, ci.dag structural consistency only)
+// ci.dag's claim-id frontier has one id per rostered subject (cardinality — NOT
+// per-id membership; the `TestClaim`->`Symbol` projection is intentionally absent in
+// F.12a), and (3) the bootstrap fixed-point hash-pin projection holds. NOT the full
 // self-host loop (F.12b). SG-0 delta 0 — same-path expansion in this v4 CI smoke
 // harness; `pb_rust_tests_outside_residual_zero`.
 const RECURSIVE_FLEX_INSPECTION_DAG: &str =
@@ -2260,14 +2264,18 @@ fn v4_workflow_ci_a15a_inprocess_equivalence_claim_modeled_and_wired() {
 }
 
 /// F.12a recursive-flex THIN (inspection receipt): the receipt must (a) tokenize/parse,
-/// (b) inspect BOTH v4 workflow authorities — importing `ci_testclaim_corpus_eval_claim_ids`
-/// from `v4.workflow.ci` and `bootstrap_plan_accepted_hash_pins_projectable_witness` from
-/// `v4.workflow.bootstrap` — alongside the A.1.5a `inprocess_equivalence_holds` law, and
-/// (c) conjoin all three into a single `witness_recursive_flex_inspection` Bool. The slice
-/// membership uses `contains` with an inline `fn(a, b) { a == b }` Symbol eq (no new std
-/// helper). It is import/inspect only: it must NOT declare a `data : TestClaimRun` co-authority
-/// row (RR-A §6) and is the THIN slice — the full self-host loop is F.12b, named as deferred.
-/// SG-0 delta 0 (same-path expansion; `pb_rust_tests_outside_residual_zero`).
+/// (b) prove the FAIL-CLOSED load-bearing fact — every A.1.5a slice subject is in the live
+/// corpus subject roster `manual_corpus_node_subject_rows` that ci.dag's TestClaimCorpusEval
+/// job evaluates (well-typed `TestClaimEvalSubject` membership, single authority via the same
+/// `subject_eval_mvp2_test_claim_route` binding) — and (c) conjoin it with the A.1.5a
+/// `inprocess_equivalence_holds` law, a ci.dag frontier↔roster CARDINALITY consistency check
+/// (NOT per-id membership; the `TestClaim`->`Symbol` projection is intentionally absent in
+/// F.12a, so the receipt advertises only what it proves — P2/P3), and the bootstrap
+/// fixed-point hash-pin witness, into a single `witness_recursive_flex_inspection` Bool.
+/// It is import/inspect only: it must NOT declare a `data : TestClaimRun` co-authority row
+/// (RR-A §6) and is the THIN slice — the full self-host loop is F.12b, named as deferred.
+/// SG-0 delta 0 (same-path expansion of this census-listed v4 CI smoke harness — see #4313
+/// A.1.5a, same shape; `pb_rust_tests_outside_residual_zero`; ROADMAP T-PB-B).
 #[test]
 fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
     let module = parse_module(
@@ -2335,7 +2343,7 @@ fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
     );
     for fn_name in &[
         "recursive_flex_slice_rostered",
-        "recursive_flex_ci_frontier_covers_roster",
+        "recursive_flex_ci_frontier_cardinality_matches_roster",
         "recursive_flex_inspection_holds",
     ] {
         assert!(
@@ -2349,12 +2357,13 @@ fn v4_workflow_ci_f12a_recursive_flex_inspection_receipt_modeled_and_wired() {
         "xs: inprocess_equivalence_slice",
         "item: subject",
         "xs: manual_corpus_node_subject_rows",
-        // ci.dag touch: frontier covers the roster by cardinality (well-typed Int equality).
+        // ci.dag touch: frontier↔roster CARDINALITY consistency only (well-typed Int equality);
+        // NOT per-id membership — that fail-closed fact is the roster check above.
         "length(xs: ci_testclaim_corpus_eval_claim_ids) == length(xs: manual_corpus_node_subject_rows)",
         // The receipt conjoins the facts.
         "inprocess_equivalence_holds()",
         "&& recursive_flex_slice_rostered()",
-        "&& recursive_flex_ci_frontier_covers_roster()",
+        "&& recursive_flex_ci_frontier_cardinality_matches_roster()",
         "&& bootstrap_plan_accepted_hash_pins_projectable_witness",
         "data witness_recursive_flex_inspection: Bool = recursive_flex_inspection_holds()",
     ] {
