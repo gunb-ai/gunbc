@@ -3,6 +3,9 @@
 #
 # Phase 1 leaf-model verification host runner — go.dag R1 (int surface spelling).
 # Authority: src/v4/lens/leaf_model_verification.dag + go_r1.dag claim wiring.
+#
+# Dissolve-on-arrival: delete when T-22 modeled `run_target_verification` owns
+# go build invocation and structured TestClaimRun verdicts replace this host bridge.
 
 set -euo pipefail
 
@@ -49,30 +52,29 @@ scratch="${RUNNER_TEMP:-/tmp}/v4-leaf-model-go-r1-${run_suffix}"
 rm -rf "$scratch"
 mkdir -p "$scratch"
 
-exercise_go_test() {
+exercise_go_build() {
   local label="$1"
   local source="$2"
-  local dir="${scratch}/${label}"
-  local diag_path="${scratch}/${label}.diag"
-  mkdir -p "$dir"
-  printf '%s' "$source" >"${dir}/main.go"
+  local src_path="${scratch}/${label}.go"
+  local stderr_path="${scratch}/${label}.stderr"
+  printf '%s' "$source" >"$src_path"
   set +e
-  (cd "$dir" && GO111MODULE=off go test ./...) >"$diag_path" 2>&1
+  GO111MODULE=off go build -o "${scratch}/${label}.out" "$src_path" 2>"$stderr_path"
   local status=$?
   set -e
   echo "$status" >"${scratch}/${label}.exit"
-  cat "$diag_path"
+  cat "$stderr_path"
 }
 
-happy_diag="$(exercise_go_test happy "$happy_source")"
+happy_stderr="$(exercise_go_build happy "$happy_source")"
 happy_status="$(cat "${scratch}/happy.exit")"
-falsification_diag="$(exercise_go_test falsification "$falsification_source")"
+falsification_stderr="$(exercise_go_build falsification "$falsification_source")"
 falsification_status="$(cat "${scratch}/falsification.exit")"
 
 happy_pass=false
 falsification_pass=false
 [[ "$happy_status" -eq 0 ]] && happy_pass=true
-[[ "$falsification_status" -ne 0 ]] && grep -qE 'undefined: i32' <<<"$falsification_diag" && falsification_pass=true
+[[ "$falsification_status" -ne 0 ]] && grep -qE 'undefined: i32|undefined type: i32' <<<"$falsification_stderr" && falsification_pass=true
 
 proven=false
 [[ "$happy_pass" == true && "$falsification_pass" == true ]] && proven=true
@@ -82,25 +84,25 @@ export V4_GO_R1_FALSIFICATION_STATUS="$falsification_status"
 export V4_GO_R1_HAPPY_PASS="$happy_pass"
 export V4_GO_R1_FALSIFICATION_PASS="$falsification_pass"
 export V4_GO_R1_PROVEN="$proven"
-export V4_GO_R1_FALSIFICATION_DIAG="$falsification_diag"
+export V4_GO_R1_FALSIFICATION_STDERR="$falsification_stderr"
 
 python3 - <<'PY'
 import json
 import os
 import re
 
-diag = os.environ.get("V4_GO_R1_FALSIFICATION_DIAG", "")
+stderr = os.environ.get("V4_GO_R1_FALSIFICATION_STDERR", "")
 print(json.dumps({
     "schema": "scripts/v4-leaf-model-go-r1-verify.sh::host_receipt_v1",
     "claim_id": "GoR1IntSurfaceSpelling",
     "happy": {
-        "go_test_exit": int(os.environ["V4_GO_R1_HAPPY_STATUS"]),
+        "go_build_exit": int(os.environ["V4_GO_R1_HAPPY_STATUS"]),
         "verdict": "Pass" if os.environ["V4_GO_R1_HAPPY_PASS"] == "true" else "Fail",
     },
     "falsification": {
-        "go_test_exit": int(os.environ["V4_GO_R1_FALSIFICATION_STATUS"]),
+        "go_build_exit": int(os.environ["V4_GO_R1_FALSIFICATION_STATUS"]),
         "expected_diagnostic": "undefined:i32",
-        "observed": bool(re.search(r"undefined: i32", diag)),
+        "undefined_type_observed": bool(re.search(r"undefined: i32|undefined type: i32", stderr)),
         "verdict": "Pass" if os.environ["V4_GO_R1_FALSIFICATION_PASS"] == "true" else "Fail",
     },
     "proven": os.environ["V4_GO_R1_PROVEN"] == "true",
@@ -108,8 +110,8 @@ print(json.dumps({
 PY
 
 if [[ "$proven" != true ]]; then
-  echo "error: leaf-model go R1 verification failed" >&2
+  echo "error: leaf-model Go R1 verification failed" >&2
   exit 1
 fi
 
-echo "leaf-model go R1 verification PROVEN"
+echo "leaf-model Go R1 verification PROVEN"
