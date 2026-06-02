@@ -491,7 +491,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             None => emit(
                 pos.clone(),
                 TokenShape::ShUnknown,
-                ch_text,
+                ch_text.clone(),
                 1,
                 source.file.clone(),
             ),

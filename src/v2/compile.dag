@@ -16,10 +16,10 @@ import v2.std.core {
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern,
   arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
-  LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, ShIdent, ShKeyword, ShDot, ShNewline,
+  LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
   NewlineIndex, build_newline_index,
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at,
-  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens, merge_intern_tables
+  InternTable, empty_intern_table, pre_intern_tokens, merge_intern_tables
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_with_table, ParseResult }
@@ -75,11 +75,6 @@ type FrontendAccum {
 type FrontendPrepared {
   tokens: List<Token>
   newline_index: NewlineIndex
-}
-
-type QualifiedNameScan {
-  name: String
-  tokens: List<Token>
 }
 
 // =========================================================================
@@ -1123,135 +1118,13 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
   )
 }
 
-fn frontend_token_is_name_segment(tok: Token) -> Bool {
-  match tok.shape {
-    ShIdent => true
-    ShKeyword => true
-    _ => false
-  }
-}
-
-fn frontend_token_is_newline(tok: Token) -> Bool {
-  match tok.shape {
-    ShNewline => true
-    _ => false
-  }
-}
-
-fn frontend_token_is_dot(tok: Token) -> Bool {
-  match tok.shape {
-    ShDot => true
-    _ => false
-  }
-}
-
-fn frontend_skip_newline_tokens(tokens: List<Token>) -> List<Token> {
-  match tokens |> first {
-    Some { value: t } =>
-      if frontend_token_is_newline(tok: t) {
-        let rest = tokens |> skip(1)
-        frontend_skip_newline_tokens(tokens: rest)
-      }
-      else { tokens }
-    None => tokens
-  }
-}
-
-fn frontend_scan_qualified_name(tokens: List<Token>) -> QualifiedNameScan? {
-  match tokens |> first {
-    Some { value: t } =>
-      if frontend_token_is_name_segment(tok: t) {
-        let rest = tokens |> skip(1)
-        frontend_scan_qualified_name_rest(tokens: rest, acc: t.text)
-      } else {
-        none
-      }
-    None => none
-  }
-}
-
-fn frontend_scan_qualified_name_rest(tokens: List<Token>, acc: String) -> QualifiedNameScan? {
-  match tokens |> first {
-    Some { value: dot } =>
-      if frontend_token_is_dot(tok: dot) {
-        let after_dot = tokens |> skip(1)
-        match after_dot |> first {
-          Some { value: segment } =>
-            if frontend_token_is_name_segment(tok: segment) {
-              let rest = after_dot |> skip(1)
-              frontend_scan_qualified_name_rest(tokens: rest, acc: concat(acc, ".", segment.text))
-            } else {
-              Some { value: QualifiedNameScan { name: acc, tokens: tokens } }
-            }
-          None => Some { value: QualifiedNameScan { name: acc, tokens: tokens } }
-        }
-      } else {
-        Some { value: QualifiedNameScan { name: acc, tokens: tokens } }
-      }
-    None => Some { value: QualifiedNameScan { name: acc, tokens: tokens } }
-  }
-}
-
-fn frontend_skip_to_after_newline(tokens: List<Token>) -> List<Token> {
-  match tokens |> first {
-    Some { value: t } =>
-      if frontend_token_is_newline(tok: t) { tokens |> skip(1) }
-      else {
-        let rest = tokens |> skip(1)
-        frontend_skip_to_after_newline(tokens: rest)
-      }
-    None => []
-  }
-}
-
-fn frontend_collect_import_names(tokens: List<Token>, acc: List<String>, module_name: String) -> List<String> {
-  let tokens = frontend_skip_newline_tokens(tokens: tokens)
-  match tokens |> first {
-    Some { value: t } =>
-      if t.text == "import" {
-        let after_import = tokens |> skip(1)
-        match frontend_scan_qualified_name(tokens: after_import) {
-          Some { value: q } =>
-            let after_line = frontend_skip_to_after_newline(tokens: q.tokens)
-            frontend_collect_import_names(tokens: after_line, acc: list_push(acc, q.name), module_name: module_name)
-          None => list_push(acc, module_name)
-        }
-      } else {
-        list_push(acc, module_name)
-      }
-    None => list_push(acc, module_name)
-  }
-}
-
-fn frontend_parser_intern_strings(tokens: List<Token>) -> List<String> {
-  let tokens = frontend_skip_newline_tokens(tokens: tokens)
-  match tokens |> first {
-    Some { value: t } =>
-      if t.text == "module" {
-        let after_module = tokens |> skip(1)
-        match frontend_scan_qualified_name(tokens: after_module) {
-          Some { value: q } => frontend_collect_import_names(tokens: q.tokens, acc: [], module_name: q.name)
-          None => []
-        }
-      } else {
-        []
-      }
-    None => []
-  }
-}
-
-fn frontend_preintern_source(tokens: List<Token>, table: InternTable) -> InternTable {
-  let table = pre_intern_tokens(tokens: tokens, table: table)
-  fold(frontend_parser_intern_strings(tokens: tokens), init: table, f: (t, s) => intern(table: t, s: s).table)
-}
-
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let prepared = sources |> map(s =>
     let tokens = tokenize(source: s.content, file: s.path)
     let si = build_newline_index(file: s.path, source: s.content)
     FrontendPrepared { tokens: tokens, newline_index: si }
   )
-  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => frontend_preintern_source(tokens: p.tokens, table: t))
+  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
   let parse_runs = prepared |> map(p =>
     parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: intern_table)
   )

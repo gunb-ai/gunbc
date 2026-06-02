@@ -51,6 +51,7 @@ use crate::v2_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v2_std_core::StringPart::*;
+use crate::v2_std_core::TokenShape::{ShDot, ShIdent, ShKeyword, ShNewline};
 use crate::v2_std_core::UnaryOpKind::*;
 use crate::v2_std_core::VarBindingKind::*;
 pub use crate::v2_std_core::{
@@ -60,21 +61,20 @@ pub use crate::v2_std_core::{
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
     field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at, intern,
-    is_error_diagnostic, lambda_param_names_at, make_error_node, module_imports, module_items,
-    no_span, param_node_default_value, param_node_name_at, param_node_span, param_node_type_expr,
-    pre_intern_tokens, record_lit_type_name_at, resource_use_name_at, resource_use_resource, BinOp,
-    CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternResult,
-    InternTable, LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
-    StringPart, TextFile, Token, TokenShape, UnaryOpKind, VarBindingKind,
+    is_error_diagnostic, lambda_param_names_at, make_error_node, merge_intern_tables,
+    module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
+    param_node_span, param_node_type_expr, pre_intern_tokens, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, BinOp, CallSemantics, Cardinality, CompileResult,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, InternResult, InternTable, LiteralValue,
+    MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, Token,
+    TokenShape, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFile {
@@ -113,36 +113,10 @@ pub struct FrontendPrepared {
     pub newline_index: Rc<NewlineIndex>,
 }
 
-#[derive(Clone)]
-struct FrontendSourceInput {
-    index: usize,
-    path: String,
-    content: String,
-}
-
-struct FrontendInternPlan {
-    index: usize,
-    path: String,
-    content: String,
-    tokens: ThreadOwnedRc<Rc<Vec<Rc<Token>>>>,
-}
-
-struct ParsedFrontendSource {
-    index: usize,
-    parse_result: ThreadOwnedRc<Rc<ParseResult>>,
-}
-
-struct ThreadOwnedRc<T>(T);
-
-// Stage0 parse trees are Rc graphs, but each worker constructs a whole graph
-// from owned strings and gives it back only after the worker has stopped using
-// it. The wrapper marks that ownership transfer boundary explicitly.
-unsafe impl<T> Send for ThreadOwnedRc<T> {}
-
-impl<T> ThreadOwnedRc<T> {
-    fn into_inner(self) -> T {
-        self.0
-    }
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct QualifiedNameScan {
+    pub name: String,
+    pub tokens: Rc<Vec<Rc<Token>>>,
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
@@ -2352,29 +2326,7 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
     )
 }
 
-fn frontend_worker_count(source_count: usize) -> usize {
-    const MAX_FRONTEND_WORKERS: usize = 128;
-    if source_count <= 1 {
-        return 1;
-    }
-    std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1)
-        .max(1)
-        .min(MAX_FRONTEND_WORKERS)
-        .min(source_count)
-}
-
-struct QualifiedNameScan {
-    name: String,
-    tokens: Rc<Vec<Rc<Token>>>,
-}
-
-fn frontend_skip_tokens(tokens: Rc<Vec<Rc<Token>>>, n: i64) -> Rc<Vec<Rc<Token>>> {
-    Rc::new(tokens.iter().cloned().skip(n as usize).collect::<Vec<_>>())
-}
-
-fn frontend_token_is_name_segment(tok: Rc<Token>) -> bool {
+pub fn frontend_token_is_name_segment(tok: Rc<Token>) -> bool {
     match tok.shape.clone() {
         TokenShape::ShIdent => true,
         TokenShape::ShKeyword => true,
@@ -2382,38 +2334,64 @@ fn frontend_token_is_name_segment(tok: Rc<Token>) -> bool {
     }
 }
 
-fn frontend_token_is_newline(tok: Rc<Token>) -> bool {
+pub fn frontend_token_is_newline(tok: Rc<Token>) -> bool {
     match tok.shape.clone() {
         TokenShape::ShNewline => true,
         _ => false,
     }
 }
 
-fn frontend_token_is_dot(tok: Rc<Token>) -> bool {
+pub fn frontend_token_is_dot(tok: Rc<Token>) -> bool {
     match tok.shape.clone() {
         TokenShape::ShDot => true,
         _ => false,
     }
 }
 
-fn frontend_skip_newline_tokens(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
-    match tokens.first().cloned() {
-        Some(t) => {
-            if frontend_token_is_newline(t) {
-                frontend_skip_newline_tokens(frontend_skip_tokens(tokens, 1))
-            } else {
-                tokens
+pub fn frontend_skip_newline_tokens(mut tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
+    loop {
+        match tokens.clone().first().cloned() {
+            Some(t) => {
+                if frontend_token_is_newline(t.clone()) {
+                    let rest = Rc::new(
+                        tokens
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    {
+                        let __tco_0 = rest;
+                        tokens = __tco_0;
+                        continue;
+                    }
+                } else {
+                    break tokens.clone();
+                }
+            }
+            None => {
+                break tokens.clone();
             }
         }
-        None => tokens,
     }
 }
 
-fn frontend_scan_qualified_name(tokens: Rc<Vec<Rc<Token>>>) -> Option<QualifiedNameScan> {
-    match tokens.first().cloned() {
+pub fn frontend_scan_qualified_name(tokens: Rc<Vec<Rc<Token>>>) -> Option<Rc<QualifiedNameScan>> {
+    match tokens.clone().first().cloned() {
         Some(t) => {
             if frontend_token_is_name_segment(t.clone()) {
-                frontend_scan_qualified_name_rest(frontend_skip_tokens(tokens, 1), t.text.clone())
+                {
+                    let rest = Rc::new(
+                        tokens
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    frontend_scan_qualified_name_rest(rest, t.text.clone())
+                }
             } else {
                 None
             }
@@ -2422,292 +2400,260 @@ fn frontend_scan_qualified_name(tokens: Rc<Vec<Rc<Token>>>) -> Option<QualifiedN
     }
 }
 
-fn frontend_scan_qualified_name_rest(
-    tokens: Rc<Vec<Rc<Token>>>,
-    acc: String,
-) -> Option<QualifiedNameScan> {
-    match tokens.first().cloned() {
-        Some(dot) => {
-            if frontend_token_is_dot(dot) {
-                let after_dot = frontend_skip_tokens(tokens.clone(), 1);
-                match after_dot.first().cloned() {
-                    Some(segment) => {
-                        if frontend_token_is_name_segment(segment.clone()) {
-                            frontend_scan_qualified_name_rest(
-                                frontend_skip_tokens(after_dot, 1),
-                                v2_rt::concat(
-                                    v2_rt::concat(acc, ".".to_string()),
-                                    segment.text.clone(),
-                                ),
-                            )
-                        } else {
-                            Some(QualifiedNameScan { name: acc, tokens })
+pub fn frontend_scan_qualified_name_rest(
+    mut tokens: Rc<Vec<Rc<Token>>>,
+    mut acc: String,
+) -> Option<Rc<QualifiedNameScan>> {
+    loop {
+        match tokens.clone().first().cloned() {
+            Some(dot) => {
+                if frontend_token_is_dot(dot.clone()) {
+                    let after_dot = Rc::new(
+                        tokens
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    match after_dot.clone().first().cloned() {
+                        Some(segment) => {
+                            if frontend_token_is_name_segment(segment.clone()) {
+                                let rest = Rc::new(
+                                    after_dot
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .skip(1 as usize)
+                                        .collect::<Vec<_>>(),
+                                );
+                                {
+                                    let __tco_0 = rest;
+                                    let __tco_1 = v2_rt::concat(
+                                        v2_rt::concat(acc, ".".to_string()),
+                                        segment.text.clone(),
+                                    );
+                                    tokens = __tco_0;
+                                    acc = __tco_1;
+                                    continue;
+                                }
+                            } else {
+                                break Some(Rc::new(QualifiedNameScan {
+                                    name: acc,
+                                    tokens: tokens.clone(),
+                                }));
+                            }
+                        }
+                        None => {
+                            break Some(Rc::new(QualifiedNameScan {
+                                name: acc,
+                                tokens: tokens.clone(),
+                            }));
                         }
                     }
-                    None => Some(QualifiedNameScan { name: acc, tokens }),
+                } else {
+                    break Some(Rc::new(QualifiedNameScan {
+                        name: acc,
+                        tokens: tokens.clone(),
+                    }));
                 }
-            } else {
-                Some(QualifiedNameScan { name: acc, tokens })
+            }
+            None => {
+                break Some(Rc::new(QualifiedNameScan {
+                    name: acc,
+                    tokens: tokens.clone(),
+                }));
             }
         }
-        None => Some(QualifiedNameScan { name: acc, tokens }),
     }
 }
 
-fn frontend_skip_to_after_newline(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
-    match tokens.first().cloned() {
-        Some(t) => {
-            if frontend_token_is_newline(t) {
-                frontend_skip_tokens(tokens, 1)
-            } else {
-                frontend_skip_to_after_newline(frontend_skip_tokens(tokens, 1))
+pub fn frontend_skip_to_after_newline(mut tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
+    loop {
+        match tokens.clone().first().cloned() {
+            Some(t) => {
+                if frontend_token_is_newline(t.clone()) {
+                    break Rc::new(
+                        tokens
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                } else {
+                    let rest = Rc::new(
+                        tokens
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    {
+                        let __tco_0 = rest;
+                        tokens = __tco_0;
+                        continue;
+                    }
+                }
+            }
+            None => {
+                break Rc::new(vec![]);
             }
         }
-        None => Rc::new(vec![]),
     }
 }
 
-fn frontend_collect_import_names(
-    tokens: Rc<Vec<Rc<Token>>>,
-    acc: Rc<Vec<String>>,
-    module_name: String,
+pub fn frontend_collect_import_names(
+    mut tokens: Rc<Vec<Rc<Token>>>,
+    mut acc: Rc<Vec<String>>,
+    mut module_name: String,
 ) -> Rc<Vec<String>> {
-    let tokens = frontend_skip_newline_tokens(tokens);
-    match tokens.first().cloned() {
-        Some(t) => {
-            if t.text.as_str() == "import" {
-                let after_import = frontend_skip_tokens(tokens, 1);
-                match frontend_scan_qualified_name(after_import) {
-                    Some(q) => frontend_collect_import_names(
-                        frontend_skip_to_after_newline(q.tokens),
-                        v2_rt::rc_list_push(acc, q.name),
-                        module_name,
-                    ),
-                    None => v2_rt::rc_list_push(acc, module_name),
+    loop {
+        tokens = frontend_skip_newline_tokens(tokens.clone());
+        match tokens.clone().first().cloned() {
+            Some(t) => {
+                if (t.text.clone().as_str() == "import".to_string().as_str()) {
+                    let after_import = Rc::new(
+                        tokens
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    match frontend_scan_qualified_name(after_import) {
+                        Some(q) => {
+                            let after_line = frontend_skip_to_after_newline(q.tokens.clone());
+                            {
+                                let __tco_0 = after_line;
+                                let __tco_1 = v2_rt::rc_list_push(acc, q.name.clone());
+                                tokens = __tco_0;
+                                acc = __tco_1;
+                                continue;
+                            }
+                        }
+                        None => {
+                            break v2_rt::rc_list_push(acc, module_name);
+                        }
+                    }
+                } else {
+                    break v2_rt::rc_list_push(acc, module_name);
                 }
-            } else {
-                v2_rt::rc_list_push(acc, module_name)
+            }
+            None => {
+                break v2_rt::rc_list_push(acc, module_name);
             }
         }
-        None => v2_rt::rc_list_push(acc, module_name),
     }
 }
 
-fn frontend_parser_intern_strings(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<String>> {
-    let tokens = frontend_skip_newline_tokens(tokens);
-    match tokens.first().cloned() {
-        Some(t) => {
-            if t.text.as_str() == "module" {
-                let after_module = frontend_skip_tokens(tokens, 1);
-                match frontend_scan_qualified_name(after_module) {
-                    Some(q) => frontend_collect_import_names(q.tokens, Rc::new(vec![]), q.name),
-                    None => Rc::new(vec![]),
+pub fn frontend_parser_intern_strings(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<String>> {
+    {
+        let tokens = frontend_skip_newline_tokens(tokens.clone());
+        match tokens.clone().first().cloned() {
+            Some(t) => {
+                if (t.text.clone().as_str() == "module".to_string().as_str()) {
+                    {
+                        let after_module = Rc::new(
+                            tokens
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(1 as usize)
+                                .collect::<Vec<_>>(),
+                        );
+                        match frontend_scan_qualified_name(after_module) {
+                            Some(q) => frontend_collect_import_names(
+                                q.tokens.clone(),
+                                Rc::new(vec![]),
+                                q.name.clone(),
+                            ),
+                            None => Rc::new(vec![]),
+                        }
+                    }
+                } else {
+                    Rc::new(vec![])
                 }
-            } else {
-                Rc::new(vec![])
             }
+            None => Rc::new(vec![]),
         }
-        None => Rc::new(vec![]),
     }
 }
 
-fn frontend_preintern_source(
+pub fn frontend_preintern_source(
     tokens: Rc<Vec<Rc<Token>>>,
     table: Rc<InternTable>,
 ) -> Rc<InternTable> {
-    let table = pre_intern_tokens(tokens.clone(), table);
-    frontend_parser_intern_strings(tokens)
-        .iter()
-        .cloned()
-        .fold(table, |t, s| intern(t, s).table.clone())
-}
-
-fn collect_frontend_intern_plans(sources: Rc<Vec<Rc<SourceFile>>>) -> Vec<FrontendInternPlan> {
-    let inputs = sources
-        .iter()
-        .enumerate()
-        .map(|(index, source)| FrontendSourceInput {
-            index,
-            path: source.path.clone(),
-            content: source.content.clone(),
-        })
-        .collect::<Vec<_>>();
-    let worker_count = frontend_worker_count(inputs.len());
-    if worker_count == 1 {
-        return inputs
-            .into_iter()
-            .map(|input| {
-                let tokens = tokenize(input.content.clone(), input.path.clone());
-                FrontendInternPlan {
-                    index: input.index,
-                    path: input.path,
-                    content: input.content,
-                    tokens: ThreadOwnedRc(tokens),
-                }
+    {
+        let table = pre_intern_tokens(tokens.clone(), table.clone());
+        frontend_parser_intern_strings(tokens.clone())
+            .iter()
+            .cloned()
+            .fold(table.clone(), |t: Rc<InternTable>, s: String| {
+                intern(t, s.clone()).table.clone()
             })
-            .collect();
     }
-
-    let queue = Arc::new(Mutex::new(VecDeque::from(inputs)));
-    let mut handles = Vec::new();
-    for _ in 0..worker_count {
-        let queue = Arc::clone(&queue);
-        handles.push(std::thread::spawn(move || {
-            let mut local = Vec::new();
-            loop {
-                let input = {
-                    let mut queue = queue.lock().expect("frontend intern queue poisoned");
-                    queue.pop_front()
-                };
-                match input {
-                    Some(input) => {
-                        let tokens = tokenize(input.content.clone(), input.path.clone());
-                        local.push(FrontendInternPlan {
-                            index: input.index,
-                            path: input.path,
-                            content: input.content,
-                            tokens: ThreadOwnedRc(tokens),
-                        });
-                    }
-                    None => break,
-                }
-            }
-            local
-        }));
-    }
-
-    let mut plans = Vec::with_capacity(sources.len());
-    for handle in handles {
-        plans.extend(handle.join().expect("frontend intern worker panicked"));
-    }
-    plans.sort_by_key(|plan| plan.index);
-    plans
-}
-
-fn build_frontend_intern_table(plans: &[FrontendInternPlan]) -> Rc<InternTable> {
-    plans.iter().fold(empty_intern_table(), |table, plan| {
-        frontend_preintern_source(plan.tokens.0.clone(), table)
-    })
-}
-
-fn intern_table_from_parts(
-    strings: Arc<Vec<String>>,
-    index: Arc<HashMap<String, i64>>,
-    next_id: i64,
-) -> Rc<InternTable> {
-    Rc::new(InternTable {
-        strings: Rc::new((*strings).clone()),
-        index: Rc::new((*index).clone()),
-        next_id,
-    })
-}
-
-fn parse_frontend_sources_parallel(
-    plans: &[FrontendInternPlan],
-    intern_table: Rc<InternTable>,
-) -> Vec<ParsedFrontendSource> {
-    let inputs = plans
-        .iter()
-        .map(|plan| FrontendSourceInput {
-            index: plan.index,
-            path: plan.path.clone(),
-            content: plan.content.clone(),
-        })
-        .collect::<Vec<_>>();
-    let worker_count = frontend_worker_count(inputs.len());
-    let strings = Arc::new((*intern_table.strings).clone());
-    let index = Arc::new((*intern_table.index).clone());
-    let next_id = intern_table.next_id;
-
-    if worker_count == 1 {
-        return inputs
-            .into_iter()
-            .map(|input| {
-                let tokens = tokenize(input.content.clone(), input.path.clone());
-                let si = build_newline_index(input.path.clone(), input.content.clone());
-                let parsed = parse_with_table(
-                    tokens,
-                    v2_rt::rc_map_insert(
-                        v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                        si.file.clone(),
-                        si,
-                    ),
-                    intern_table.clone(),
-                );
-                ParsedFrontendSource {
-                    index: input.index,
-                    parse_result: ThreadOwnedRc(parsed.result.clone()),
-                }
-            })
-            .collect();
-    }
-
-    let queue = Arc::new(Mutex::new(VecDeque::from(inputs)));
-    let mut handles = Vec::new();
-    for _ in 0..worker_count {
-        let queue = Arc::clone(&queue);
-        let strings = Arc::clone(&strings);
-        let index = Arc::clone(&index);
-        handles.push(std::thread::spawn(move || {
-            let intern_table = intern_table_from_parts(strings, index, next_id);
-            let mut local = Vec::new();
-            loop {
-                let input = {
-                    let mut queue = queue.lock().expect("frontend parse queue poisoned");
-                    queue.pop_front()
-                };
-                match input {
-                    Some(input) => {
-                        let tokens = tokenize(input.content.clone(), input.path.clone());
-                        let si = build_newline_index(input.path.clone(), input.content.clone());
-                        let parsed = parse_with_table(
-                            tokens,
-                            v2_rt::rc_map_insert(
-                                v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                                si.file.clone(),
-                                si,
-                            ),
-                            intern_table.clone(),
-                        );
-                        local.push(ParsedFrontendSource {
-                            index: input.index,
-                            parse_result: ThreadOwnedRc(parsed.result.clone()),
-                        });
-                    }
-                    None => break,
-                }
-            }
-            local
-        }));
-    }
-
-    let mut parsed = Vec::with_capacity(plans.len());
-    for handle in handles {
-        parsed.extend(handle.join().expect("frontend parse worker panicked"));
-    }
-    parsed.sort_by_key(|item| item.index);
-    parsed
 }
 
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
-        let intern_plans = collect_frontend_intern_plans(sources.clone());
-        let intern_table = build_frontend_intern_table(&intern_plans);
-        let parsed_sources = parse_frontend_sources_parallel(&intern_plans, intern_table.clone());
-        let parse_results = Rc::new({
+        let prepared = Rc::new({
             let mut __result = Vec::new();
-            for parsed in parsed_sources {
-                __result.push(parsed.parse_result.into_inner());
+            for s in sources.iter().cloned() {
+                __result.push({
+                    let tokens = tokenize(s.content.clone(), s.path.clone());
+                    let si = build_newline_index(s.path.clone(), s.content.clone());
+                    Rc::new(FrontendPrepared {
+                        tokens: tokens.clone(),
+                        newline_index: si.clone(),
+                    })
+                });
             }
             __result
         });
+        let intern_table = prepared.clone().iter().cloned().fold(
+            empty_intern_table(),
+            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| {
+                frontend_preintern_source(p.tokens.clone(), t)
+            },
+        );
+        let parse_runs = Rc::new({
+            let mut __result = Vec::new();
+            for p in prepared.clone().iter().cloned() {
+                __result.push(parse_with_table(
+                    p.tokens.clone(),
+                    v2_rt::rc_map_insert(
+                        v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                        p.newline_index.clone().file.clone(),
+                        p.newline_index.clone(),
+                    ),
+                    intern_table.clone(),
+                ));
+            }
+            __result
+        });
+        let parse_results = Rc::new({
+            let mut __result = Vec::new();
+            for r in parse_runs.clone().iter().cloned() {
+                __result.push(r.result.clone());
+            }
+            __result
+        });
+        let final_intern_table = merge_intern_tables(v2_rt::concat(
+            Rc::new(vec![intern_table.clone()]),
+            Rc::new({
+                let mut __result = Vec::new();
+                for r in parse_runs.clone().iter().cloned() {
+                    __result.push(r.intern_table.clone());
+                }
+                __result
+            }),
+        ));
         let newline_indices = Rc::new({
             let mut __result = Vec::new();
-            for source in sources.iter().cloned() {
-                __result.push(build_newline_index(
-                    source.path.clone(),
-                    source.content.clone(),
-                ));
+            for p in prepared.clone().iter().cloned() {
+                __result.push(p.newline_index.clone());
             }
             __result
         });
@@ -2727,7 +2673,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 graph: None,
                 diagnostics: parse_diagnostics,
                 newline_indices: newline_indices.clone(),
-                intern_table: intern_table,
+                intern_table: final_intern_table,
             })
         } else {
             {
@@ -2749,7 +2695,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     graph: Some(graph.clone()),
                     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
                     newline_indices: newline_indices.clone(),
-                    intern_table: intern_table,
+                    intern_table: final_intern_table,
                 })
             }
         }
