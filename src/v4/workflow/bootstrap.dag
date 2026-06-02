@@ -717,6 +717,13 @@ data v4_test_claim_workflow_testclaim_corpus_runner: Symbol = v4_test_claim_work
 // Modeled `gunbc run --source-root … --function run_manual_testclaim_corpus_eval` surface for
 // T-38 manual corpus eval at runtime. Host transport (A.3b step-3) invokes this entry via the
 // pinned stage0 binary — not a new shell script (project_no_new_shell).
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature:rr-a-bootstrap-evaluator-corpus-harness — consumer: v4.workflow.cli
+// GunbcTestCorpusHarnessRoute / v4.workflow.ci TestClaimCorpusEvalCommand — bind
+// docs/planning/v4-runtime-testclaim-rr-a-worksheet-2026-06-02.md §5.2 A.1 — dissolve-on-arrival:
+// delete when CI invokes `run_test_claim` at execution time via the bootstrap pin and A.3b
+// `HostVerdictSurfaceExecutionStatus` = RuntimeVerdicts is the sole terminal pass (RR-A §6);
+// forbidden: authoring-time verdict surface as terminal CI pass or an unwitnessed stage0 entry row.
 type BootstrapEvaluatorCorpusHarnessEntry {
   runtime_model: V4EvaluatorRuntime
   stage0_binary: Symbol

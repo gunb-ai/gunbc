@@ -77,6 +77,12 @@ fn gunbc_test_corpus_harness_route_name_of(_route: GunbcTestCorpusHarnessRoute) 
 
 // RR-A §5.2: bootstrap stage0 corpus harness — run entry lives on the modeled harness row,
 // not on `GunbcTestRoute.selection_fn` (that field mirrors `ci.dag` corpus narrowing only).
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature:rr-a-gunbc-test-corpus-harness-route — consumer: gunbc test manual-corpus harness
+// projection — bind RR-A §5.2 + bootstrap_manual_corpus_harness — dissolve-on-arrival: delete
+// when workflow/CI projection reads the harness substrate from `ci_pipeline` alone and this
+// separate CLI row is redundant; forbidden: storing the stage0 run entry on
+// `GunbcTestRoute.selection_fn` (P2 / INVARIANTS M2 single authority).
 type GunbcTestCorpusHarnessRoute {
   harness: BootstrapEvaluatorCorpusHarnessEntry
 }
