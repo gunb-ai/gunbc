@@ -1074,6 +1074,7 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
         "go_bool_per_language_fact_bundle_entries",
         "go_string_per_language_fact_bundle_entries",
         "go_g1_3_per_language_fact_bundle_entry_rows",
+        "go_g1_3_per_language_fact_bundle_registry_step",
         "go_g1_3_per_language_fact_bundle_registry",
     ] {
         assert!(
@@ -1095,6 +1096,7 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
         GO_LANGUAGE_DAG.contains("fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry>")
             && GO_LANGUAGE_DAG.contains("xs: go_g1_3_per_language_fact_bundle_entry_rows()")
             && GO_LANGUAGE_DAG.contains("empty: outcome_accepted(value: empty_per_language_fact_bundle_registry())")
+            && GO_LANGUAGE_DAG.contains("cons: go_g1_3_per_language_fact_bundle_registry_step")
             && GO_LANGUAGE_DAG.contains("insert_per_language_fact_bundle_entry("),
         "{GO_LANGUAGE_PATH}: canonical G.1.3 Go surface must fold rows through the fail-closed registry"
     );

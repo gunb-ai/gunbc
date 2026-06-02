@@ -1276,19 +1276,24 @@ fn go_g1_3_per_language_fact_bundle_entry_rows() -> List<PerLanguageFactBundleEn
   )
 }
 
+fn go_g1_3_per_language_fact_bundle_registry_step(
+  acc: Outcome<PerLanguageFactBundleRegistry>,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  bind_outcome(o: acc, f: fn(registry) {
+    insert_per_language_fact_bundle_entry(
+      registry: registry,
+      key: entry.key,
+      fact_value: entry.fact_value
+    )
+  })
+}
+
 fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
   fold_list(
     xs: go_g1_3_per_language_fact_bundle_entry_rows(),
     empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
-    cons: fn(acc, entry) {
-      bind_outcome(o: acc, f: fn(registry) {
-        insert_per_language_fact_bundle_entry(
-          registry: registry,
-          key: entry.key,
-          fact_value: entry.fact_value
-        )
-      })
-    }
+    cons: go_g1_3_per_language_fact_bundle_registry_step
   )
 }
 
