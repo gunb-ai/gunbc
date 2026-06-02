@@ -131,12 +131,8 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
         || path.starts_with("src/v4/test/v2_run_preflight/")
         || path == "src/v4/test/coercion_fold_int_rust_fixture.dag"
         || path.starts_with("fixtures/v4-mvp1/")
-        || path == "scripts/v4-mvp1-e2e-gate.sh"
-        || path == "scripts/v4-m1-rust-emit-probe.sh"
-        || path.starts_with("scripts/v4-mvp1")
-        || path.starts_with("scripts/v4-m1")
-        || path.starts_with("scripts/v4-phase1-nat-semiring")
-        || path.starts_with("scripts/v4-testclaim-")
+        || path == ".github/ci-floor/v4-m1-rust-emit-probe.sh"
+        || path.starts_with(".github/ci-floor/")
         || path.starts_with("dsl/std/")
         || path == "Cargo.toml"
         || path == "Cargo.lock"
@@ -151,15 +147,14 @@ pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
         || path == "src/v4/workflow/ci.dag"
         || path.starts_with("src/v4/workflow/ci/")
         || path.starts_with("tools/ci_affected_components")
-        || path.starts_with("scripts/check-workflow-path-regex-inventory")
-        || path.starts_with("scripts/workflow-path-regex-forbidden-substrings")
+        || path.starts_with(".github/ci-floor/")
 }
 
 pub fn ci_changed_path_affects_release_distribution(path: &str) -> bool {
     path == "src/v4/workflow/release.dag"
         || path == ".github/workflows/release.yml"
         || path == "install.sh"
-        || path == "scripts/release-target-triples.sh"
+        || path == "install/release-target-triples.sh"
         || path == "src/v4/install/install.dag"
 }
 
@@ -186,9 +181,11 @@ mod tests {
     #[test]
     fn v4_m1_probe_script_triggers_v4_bucket() {
         assert!(ci_changed_path_affects_v4(
-            "scripts/v4-m1-rust-emit-probe.sh"
+            ".github/ci-floor/v4-m1-rust-emit-probe.sh"
         ));
-        assert!(ci_changed_path_affects_v4("scripts/v4-mvp1-e2e-gate.sh"));
+        assert!(ci_changed_path_affects_workflow_policy(
+            ".github/ci-floor/v4-bootstrap-viability.sh"
+        ));
     }
 
     #[test]
@@ -302,7 +299,7 @@ mod tests {
         ]));
         assert!(!ci_release_distribution_only_from_changed_paths([
             "install.sh",
-            "scripts/v4-phase1-nat-semiring-rung-gate.sh",
+            ".github/ci-floor/v4-m1-rust-emit-probe.sh",
         ]));
         assert!(!ci_release_distribution_only_from_changed_paths([
             "install.sh",
@@ -324,7 +321,7 @@ mod tests {
         ));
         assert!(ci_changed_path_affects_release_distribution("install.sh"));
         assert!(ci_changed_path_affects_release_distribution(
-            "scripts/release-target-triples.sh"
+            "install/release-target-triples.sh"
         ));
         assert!(ci_changed_path_affects_release_distribution(
             "src/v4/install/install.dag"
