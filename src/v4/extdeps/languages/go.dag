@@ -47,6 +47,12 @@ import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth,
+  ModelCorePrimitiveFactAxis,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
@@ -1023,7 +1029,10 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn go_per_language_fact_bundle_key(subject: Node, axis: Symbol) -> PerLanguageFactBundleKey {
+fn go_per_language_fact_bundle_key(
+  subject: Node,
+  axis: ModelCorePrimitiveFactAxis
+) -> PerLanguageFactBundleKey {
   PerLanguageFactBundleKey {
     subject_carrier: subject,
     target: go_mvp1_target_model(),
@@ -1033,7 +1042,7 @@ fn go_per_language_fact_bundle_key(subject: Node, axis: Symbol) -> PerLanguageFa
 
 fn go_per_language_fact_bundle_entry(
   subject: Node,
-  axis: Symbol,
+  axis: ModelCorePrimitiveFactAxis,
   fact_value: Node
 ) -> PerLanguageFactBundleEntry {
   PerLanguageFactBundleEntry {
@@ -1054,29 +1063,29 @@ fn go_integer_per_language_fact_bundle_entries(
     } => [
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_surface_spelling,
+        axis: ModelCoreFactAxisSurfaceSpelling {},
         fact_value: go_inhabitant_atom(id: surface_spelling)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_width,
+        axis: ModelCoreFactAxisWidth {},
         fact_value: go_signed_int_width_node(width: width)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_signedness,
+        axis: ModelCoreFactAxisSignedness {},
         fact_value: go_int_kind_node(kind: Signed)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_overflow_disposition,
+        axis: ModelCoreFactAxisOverflowDisposition {},
         fact_value: go_overflow_node(
           overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
         )
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_encoding,
+        axis: ModelCoreFactAxisEncoding {},
         fact_value: go_inhabitant_atom(id: encoding)
       )
     ]
@@ -1088,29 +1097,29 @@ fn go_integer_per_language_fact_bundle_entries(
     } => [
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_surface_spelling,
+        axis: ModelCoreFactAxisSurfaceSpelling {},
         fact_value: go_inhabitant_atom(id: surface_spelling)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_width,
+        axis: ModelCoreFactAxisWidth {},
         fact_value: go_unsigned_int_width_node(width: width)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_signedness,
+        axis: ModelCoreFactAxisSignedness {},
         fact_value: go_int_kind_node(kind: Unsigned)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_overflow_disposition,
+        axis: ModelCoreFactAxisOverflowDisposition {},
         fact_value: go_overflow_node(
           overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
         )
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: primitive_fact_axis_encoding,
+        axis: ModelCoreFactAxisEncoding {},
         fact_value: go_inhabitant_atom(id: encoding)
       )
     ]
@@ -1123,17 +1132,17 @@ fn go_float_per_language_fact_bundle_entries(
   [
     go_per_language_fact_bundle_entry(
       subject: go_float_facts_node(facts: facts),
-      axis: primitive_fact_axis_surface_spelling,
+      axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: go_inhabitant_atom(id: facts.surface_spelling)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_float_facts_node(facts: facts),
-      axis: primitive_fact_axis_width,
+      axis: ModelCoreFactAxisWidth {},
       fact_value: go_float_width_node(width: facts.width)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_float_facts_node(facts: facts),
-      axis: primitive_fact_axis_encoding,
+      axis: ModelCoreFactAxisEncoding {},
       fact_value: go_inhabitant_atom(id: facts.ieee754_binary)
     )
   ]
@@ -1145,17 +1154,17 @@ fn go_complex_per_language_fact_bundle_entries(
   [
     go_per_language_fact_bundle_entry(
       subject: go_complex_facts_node(facts: facts),
-      axis: primitive_fact_axis_surface_spelling,
+      axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: go_inhabitant_atom(id: facts.surface_spelling)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_complex_facts_node(facts: facts),
-      axis: primitive_fact_axis_width,
+      axis: ModelCoreFactAxisWidth {},
       fact_value: go_complex_width_node(width: facts.width)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_complex_facts_node(facts: facts),
-      axis: primitive_fact_axis_encoding,
+      axis: ModelCoreFactAxisEncoding {},
       fact_value: go_inhabitant_atom(id: facts.component_ieee754_binary)
     )
   ]
@@ -1167,12 +1176,12 @@ fn go_bool_per_language_fact_bundle_entries(
   [
     go_per_language_fact_bundle_entry(
       subject: go_bool_facts_node(facts: facts),
-      axis: primitive_fact_axis_surface_spelling,
+      axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: go_inhabitant_atom(id: facts.surface_spelling)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_bool_facts_node(facts: facts),
-      axis: primitive_fact_axis_encoding,
+      axis: ModelCoreFactAxisEncoding {},
       fact_value: go_inhabitant_atom(id: facts.encoding)
     )
   ]
@@ -1184,12 +1193,12 @@ fn go_string_per_language_fact_bundle_entries(
   [
     go_per_language_fact_bundle_entry(
       subject: go_string_facts_node(facts: facts),
-      axis: primitive_fact_axis_surface_spelling,
+      axis: ModelCoreFactAxisSurfaceSpelling {},
       fact_value: go_inhabitant_atom(id: facts.surface_spelling)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_string_facts_node(facts: facts),
-      axis: primitive_fact_axis_encoding,
+      axis: ModelCoreFactAxisEncoding {},
       fact_value: go_inhabitant_atom(id: facts.encoding)
     )
   ]

@@ -1085,12 +1085,12 @@ fn v4_go_language_model_declares_g1_3_fact_bundle_entries() {
     assert!(
         GO_LANGUAGE_DAG.contains("subject_carrier: subject")
             && GO_LANGUAGE_DAG.contains("target: go_mvp1_target_model()")
-            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_surface_spelling")
-            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_width")
-            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_signedness")
-            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_overflow_disposition")
-            && GO_LANGUAGE_DAG.contains("axis: primitive_fact_axis_encoding"),
-        "{GO_LANGUAGE_PATH}: G.1.3 entries must trace existing Go primitive facts to canonical G.0 axes"
+            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisSurfaceSpelling {}")
+            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisWidth {}")
+            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisSignedness {}")
+            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisOverflowDisposition {}")
+            && GO_LANGUAGE_DAG.contains("axis: ModelCoreFactAxisEncoding {}"),
+        "{GO_LANGUAGE_PATH}: G.1.3 entries must trace existing Go primitive facts to closed G.0 model_core axes"
     );
     assert!(
         GO_LANGUAGE_DAG.contains("fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry>")

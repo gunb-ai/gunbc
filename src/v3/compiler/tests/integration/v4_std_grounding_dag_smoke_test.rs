@@ -148,7 +148,7 @@ fn v4_std_grounding_key_indexes_target_and_fact_axis() {
     assert_eq!(
         type_record_field_names(&module, "PerLanguageFactBundleKey"),
         vec!["subject_carrier", "target", "fact_axis"],
-        "registry key must use TargetModel + canonical fact_axis Symbol (P2)"
+        "registry key must use TargetModel + ModelCorePrimitiveFactAxis (P2)"
     );
 }
 
@@ -204,12 +204,21 @@ fn v4_std_grounding_registry_keyed_map_authority() {
 #[test]
 fn v4_std_grounding_registry_entries_do_not_project_incomplete_primitive_bundles() {
     assert!(
+        GROUNDING_DAG.contains("fact_axis: ModelCorePrimitiveFactAxis"),
+        "illegal fact axes unrepresentable via model_core closed coproduct (P2)"
+    );
+    assert!(
+        GROUNDING_DAG.contains("model_core_primitive_fact_axis_symbol"),
+        "registry key can project the closed axis to model_core Symbol authority when an aggregation builder lands"
+    );
+    assert!(
         !GROUNDING_DAG.contains("fn primitive_fact_bundle_for_entry(")
-            && !GROUNDING_DAG.contains("-> Outcome<PrimitiveFactBundle>"),
+            && !GROUNDING_DAG.contains("-> PrimitiveFactBundle"),
         "single fact-axis registry entries must not project directly to complete PrimitiveFactBundle carriers"
     );
     assert!(
-        GROUNDING_DAG.contains("fn witness_canonical_primitive_fact_axis("),
-        "canonical fact_axis witness remains available for a future subject×target aggregation builder"
+        GROUNDING_DAG.contains("feature:B-LOOKUP-1")
+            && GROUNDING_DAG.contains("match map_get(registry.by_key, key)"),
+        "registry insert uses documented bootstrap map_get bridge until Witness dispatch"
     );
 }
