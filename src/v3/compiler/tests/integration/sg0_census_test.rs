@@ -966,6 +966,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
+    // T-38B: lens_idempotency subject roster + run_test_claim + family receipt (eval_mvp2 wedge).
+    // **P5 receipt (INVARIANTS.md §P5 Mechanism (b) — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (table row at ROADMAP.md:57); M1(2.7)
+    // tokenize/parse ratchet on `src/v4/test/claim/lens_idempotency/*` until cross-module
+    // v4 `compile_to_dag` import merge lands (peer `v4_lens_edit_locus_dag_smoke_test`
+    // posture). Lane: T-38B TestClaimRun structural receipts; dissolves when substrate
+    // eval executes the roster without this hand-Rust parse smoke.
+    "src/v3/compiler/tests/integration/v4_lens_idempotency_claim_dag_smoke_test.rs",
     // L1.4 IdenticalVariantPayload sub-signature (`src/v4/lens/identical_variant_payload.dag`);
     // shared `coverage_defect_carrier_clone`; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_identical_variant_payload_dag_smoke_test.rs",
