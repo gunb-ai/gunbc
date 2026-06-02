@@ -1,7 +1,7 @@
 // Non-authoritative interim typed Actions carrier for .github/workflows/ci.yml.
 // `.github/workflows/ci.yml` remains the hand-edited workflow authority until the T-24 CI model
 // emits it; this static carrier is only the YamlStatic input consumed by `gunbc.ci`.
-// Source-SHA256(.github/workflows/ci.yml): 55512a228095d4125057914a86604aa8b30f9fd611dd76fceecd266a8f787c6d
+// Source-SHA256(.github/workflows/ci.yml): 4668e6e6f12839da036dc716ca0b7422b03bce21d36f419d8beab021e4990a94
 // Dissolve-on: T-24 `src/v4/workflow/ci.dag` projection emits the Actions workflow and deletes
 // this static carrier.
 
@@ -194,6 +194,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Emit Wave 3 shadow selection receipt (Class C, non-blocking)" },
+          id: none,
+          run: "cargo run -p ci_affected_components --bin emit-ci-wave3-shadow-receipt -- \"${{ github.event_name }}\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: true,
           timeout_minutes: none
         }],
       needs: [],

@@ -2,7 +2,10 @@
 //!
 //! Modeled authority: `src/v4/workflow/ci.dag` (`CiSelectionReceipt`, `ci_selection_receipt_shadow_from_git_diff`).
 //! Populated claim/testgen rows await bootstrap eval (`node://adhoc-331899f9-19a`); this transport emits an
-//! honest queued receipt on every PR without fabricating `affected_set_from_diff`.
+//! honest queued receipt — `component_affected` live-populated from the PR git diff, claim/testgen
+//! partitions empty — without fabricating `affected_set_from_diff`. Wired as a non-blocking
+//! (Class C) step in the `affected` job (`.github/workflows/ci.yml`), mirrored in the pinned carrier
+//! `dsl/gunbc/ci_github_actions_workflow.dag`.
 
 use std::io;
 
