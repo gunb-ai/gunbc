@@ -62,29 +62,29 @@ fn main() -> ExitCode {
     // (`git_diff_transport`) so the gate output and the receipt it shadows cannot drift.
     let (flags, git_read_failed, git_read_detail) =
         match git_read_changed_paths_for_event(event_name.as_str()) {
-        GitChangedPathsRead::Ok { range, paths } => {
-            eprintln!("Changed files in {range}:");
-            if paths.is_empty() {
-                eprintln!("  (none detected)");
-            } else {
-                for path in &paths {
-                    eprintln!("  {path}");
+            GitChangedPathsRead::Ok { range, paths } => {
+                eprintln!("Changed files in {range}:");
+                if paths.is_empty() {
+                    eprintln!("  (none detected)");
+                } else {
+                    for path in &paths {
+                        eprintln!("  {path}");
+                    }
                 }
+                eprintln!();
+                (
+                    ci_component_affected_from_changed_paths(paths.iter().map(String::as_str)),
+                    false,
+                    String::new(),
+                )
             }
-            eprintln!();
-            (
-                ci_component_affected_from_changed_paths(paths.iter().map(String::as_str)),
-                false,
-                String::new(),
-            )
-        }
-        GitChangedPathsRead::FailClosed { range, detail } => {
-            eprintln!("Changed files in {range}: (read failed — fail-closed superset)");
-            eprintln!("  {detail}");
-            eprintln!();
-            (ci_component_affected_fail_closed(), true, detail)
-        }
-    };
+            GitChangedPathsRead::FailClosed { range, detail } => {
+                eprintln!("Changed files in {range}: (read failed — fail-closed superset)");
+                eprintln!("  {detail}");
+                eprintln!();
+                (ci_component_affected_fail_closed(), true, detail)
+            }
+        };
 
     eprintln!(
         "v2 affected: {}",
