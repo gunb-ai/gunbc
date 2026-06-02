@@ -44,9 +44,12 @@ is therefore currently unmeasurable — it would be a guess. This receipt makes 
 
 ## v1 limitations (explicit, not silent)
 
-- `estimated_full_run_minutes` defaults to **unset (0.0)**. The operator supplies the real
-  `ci_floor` p50 baseline (ping silent-crane-669). We deliberately do not invent a constant — an
-  overstated baseline would manufacture phantom savings in the aggregate.
+- `estimated_full_run_minutes` is wired in the CI step to a **provisional `15`** — the recent
+  `ci_floor` p50 on self-hosted arm64 (~13–15m, runs this session; CI Manager 2026-06-02). This is
+  explicitly provisional and should be revised once a 20+ PR sample exists. The bin still defaults to
+  unset (0.0) when the flag is omitted, so a missing baseline never manufactures phantom savings.
+  Because `actual_run_minutes` is not yet populated (see below), `saved_minutes` stays 0 in v1 even
+  with the baseline set.
 - `wall_clock_by_job` / `actual_run_minutes` are emitted empty/zero in v1. The `affected` job runs
   early, before job timings exist; populating them needs a follow-up final-aggregator job that reads
   GHA job timings via the API. `--job-timings <json>` and `--actual-run-minutes` flags already exist
