@@ -486,11 +486,17 @@ type StrictEnvBinding
   = NoStrictEnvBinding
   | StrictEnvBinding { var: String, value: String }
 
+// Host shell transport for live-workflow bridge carriers. Demoted gates use `NoShellScript`
+// (not a fabricated path string) when the step is modeled in ci.dag but absent from ci.yml.
+type CiWorkflowHostScript
+  = ShellScript { path: String }
+  | NoShellScript
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
 type CiLiveWorkflowStepSignal {
   binding_smoke_step_name: String
   step_name: String
-  script_path: String
+  host_script: CiWorkflowHostScript
   // GitHub Actions step transport policy. `false` means the script step itself
   // must execute successfully; it does not imply rustc residuals fail the gate.
   non_blocking: Bool
@@ -638,7 +644,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   step: CiLiveWorkflowStepSignal {
     binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
     step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
-    script_path: ".github/ci-floor/v4-m1-rust-emit-probe.sh"
+    host_script: ShellScript { path: ".github/ci-floor/v4-m1-rust-emit-probe.sh" }
     non_blocking: false
     timeout_minutes: 20
     strict_env_binding: StrictEnvBinding { var: "V4_M1_RUST_EMIT_PROBE_STRICT", value: "0" }
@@ -738,7 +744,7 @@ data ci_job_leaf_model_go_verify_execution_row: CiJob = ci_job_leaf_model_go_ver
 data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
   binding_smoke_step_name: ""
   step_name: "phase1/nat_semiring rungs 0-2 gate (dag rust python go)"
-  script_path: "_dissolved/v4-phase1-nat-semiring-rung-gate.sh"
+  host_script: NoShellScript
   non_blocking: true
   timeout_minutes: 20
   strict_env_binding: StrictEnvBinding { var: "V4_PHASE1_NAT_SEMIRING_STRICT", value: "1" }
@@ -748,7 +754,7 @@ data phase1_nat_semiring_rung_gate_ci_live_workflow_signal: CiLiveWorkflowStepSi
 data testclaim_corpus_eval_ci_live_workflow_signal: CiLiveWorkflowStepSignal = {
   binding_smoke_step_name: ""
   step_name: "T-22 TestClaim corpus eval (modeled CiUpsertStep - structural)"
-  script_path: "_dissolved/v4-testclaim-corpus-eval.sh"
+  host_script: NoShellScript
   non_blocking: false
   timeout_minutes: 15
   strict_env_binding: NoStrictEnvBinding

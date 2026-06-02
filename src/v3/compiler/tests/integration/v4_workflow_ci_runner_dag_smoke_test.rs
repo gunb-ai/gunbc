@@ -505,6 +505,16 @@ fn strict_env_binding(expr: &SurfaceExpr) -> Option<(&str, &str)> {
     }
 }
 
+fn host_script_shell_path(expr: &SurfaceExpr) -> Option<&str> {
+    match expr {
+        SurfaceExpr::Var { name, .. } if name == "NoShellScript" => None,
+        SurfaceExpr::VariantRecord { target, fields, .. } if target == "ShellScript" => {
+            Some(expr_string(record_field_from_fields(fields, "path")))
+        }
+        other => panic!("expected host script expr, got {other:?}"),
+    }
+}
+
 /// True when `job_id` is a deleted bankruptcy legacy *workflow job* block (not `affected` outputs).
 fn ci_yml_has_deleted_legacy_top_level_job(workflow_yml: &str, job_id: &str) -> bool {
     // Legacy jobs used `if:` before `needs:` / `runs-on:` (see main pre-bankruptcy ci.yml).
@@ -718,7 +728,8 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let binding_smoke_step_name =
         expr_string(record_body_field(live_step, "binding_smoke_step_name"));
     let step_name = expr_string(record_body_field(live_step, "step_name"));
-    let script_path = expr_string(record_body_field(live_step, "script_path"));
+    let script_path = host_script_shell_path(record_body_field(live_step, "host_script"))
+        .expect("{CI_DAG_PATH}: M1 probe must model ShellScript host transport");
     let non_blocking = expr_bool(record_body_field(live_step, "non_blocking"));
     let timeout_minutes = expr_int(record_body_field(live_step, "timeout_minutes"));
     let (strict_env_var, strict_env_value) =
@@ -953,7 +964,6 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
     );
     let live_signal = data_body(&module, "testclaim_corpus_eval_ci_live_workflow_signal");
     let step_name = expr_string(record_body_field(live_signal, "step_name"));
-    let script_path = expr_string(record_body_field(live_signal, "script_path"));
     let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
     let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
     assert!(
@@ -961,8 +971,8 @@ fn v4_workflow_ci_testclaim_corpus_eval_modeled_and_bound_to_ci_yml() {
         "{CI_YML_PATH}: Wave 1 §11.7.1 — `{step_name}` demoted from required path (modeled in ci.dag; Class C)"
     );
     assert!(
-        CI_DAG.contains(&format!("script_path: \"{script_path}\"")),
-        "{CI_DAG_PATH}: T-22 corpus eval host transport remains modeled as `{script_path}`"
+        host_script_shell_path(record_body_field(live_signal, "host_script")).is_none(),
+        "{CI_DAG_PATH}: demoted corpus eval must use NoShellScript, not a fabricated path"
     );
     let _ = (non_blocking, timeout_minutes);
     assert!(
