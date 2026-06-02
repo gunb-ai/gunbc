@@ -163,14 +163,12 @@ fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> ScrutineeResolveResult 
       Some { value: key } =>
         match lookup_cache_get_scrutinee(env: env, key: key) {
           Some { value: cached } =>
-            let node = if normed.return_cardinality == CardOptional {
-              with_optional_cardinality(n: cached)
-            } else { with_required_cardinality(n: cached) }
+            let is_optional = normed.return_cardinality == CardOptional
+            let node = if is_optional { with_optional_cardinality(n: cached) } else { cached }
             ScrutineeResolveResult { node: node, env: env }
           None =>
             let resolved = resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
-            let stored = with_required_cardinality(n: resolved)
-            let env = lookup_cache_put_scrutinee(env: env, key: key, resolved: stored)
+            let env = lookup_cache_put_scrutinee(env: env, key: key, resolved: resolved)
             ScrutineeResolveResult { node: resolved, env: env }
         }
     }
