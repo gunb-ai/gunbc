@@ -3660,6 +3660,24 @@ fn ci_wave3_shadow_testclaim_selection_rows(affected: AffectedSet) -> List<CiTes
 
 // F.2-P2 / F.2.6 — testgen shadow selection (profile-gated; NOT fail-closed on affected-set).
 // Scheduler `Rejected` must propagate as `Outcome::Rejected` (P3) — never `Empty` slots.
+fn ci_test_claim_emits_generator(claim: TestClaim, generator: Generator<TestgenConcept>) -> Bool {
+  generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim)) == generator.provenance.generator_id
+}
+
+
+fn ci_wave3_shadow_testgen_generator_matches_selected_claim(
+  g: Generator<TestgenConcept>,
+  selected_claims: List<TestClaim>
+) -> Bool {
+  count_where(
+    xs: selected_claims,
+    predicate: fn(claim) {
+      ci_test_claim_emits_generator(claim: claim, generator: g)
+    }
+  ) != 0
+}
+
+
 fn ci_wave3_shadow_testgen_slots_selected_from_roster(
   affected: AffectedSet,
   profile_ref: Symbol,
@@ -3673,13 +3691,10 @@ fn ci_wave3_shadow_testgen_slots_selected_from_roster(
       xs: roster,
       predicate: fn(g) {
         generator_matches_profile(g: g, profile_ref: profile_ref)
-          && count_where(
-            xs: selected_claims,
-            predicate: fn(claim) {
-              generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim))
-                == g.provenance.generator_id
-            }
-          ) != 0
+          && ci_wave3_shadow_testgen_generator_matches_selected_claim(
+            g: g,
+            selected_claims: selected_claims
+          )
       }
     )
   }
