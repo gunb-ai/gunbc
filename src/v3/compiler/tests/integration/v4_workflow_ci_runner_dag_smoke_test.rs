@@ -2469,8 +2469,13 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         "ci_digest_empty_node_list_tag",
         "ci_extent_whole_file_tag",
         "ci_extent_byte_range_tag",
+        "ci_locus_textual_tag",
+        "ci_locus_node_tag",
+        "ci_locus_port_tag",
         "byte_offset_cache_key_projection_node(i: start)",
         "byte_offset_cache_key_projection_node(i: end)",
+        "bag_hash_digest(",
+        "xs: map(xs, diagnostic => ci_diagnostic_digest(diagnostic: diagnostic))",
         "canonical_hash_of_connective(c: connective)",
         "canonical_hash_of_behavior(b: behavior)",
         "ci_no_correction_user_input_boundary_tag",
@@ -2536,6 +2541,9 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         "WholeFile => ci_symbol_digest(sym: ci_projection_char_offset_authority_edge)",
         "content_hash(n: ci_char_projection_node(c: start))",
         "content_hash(n: ci_char_projection_node(c: end))",
+        "NodeLocus { anchor } => content_hash(n: anchor.at)",
+        "PortLocus { anchor } => ci_symbol_digest(sym: anchor.at)",
+        "fn ci_diagnostics_list_digest(xs: List<Diagnostic>) -> Hash {\n  fold_list(",
     ] {
         assert!(
             !CI_DAG.contains(overloaded_seed),

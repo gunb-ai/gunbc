@@ -132,6 +132,7 @@ import v4.std.node {
   ByteOffsetCacheIneligible,
   byte_offset_cache_key,
   byte_offset_cache_key_projection_node,
+  bag_hash_digest,
   canonical_hash_of_behavior,
   canonical_hash_of_connective,
   canonical_tag_byte_limb_out_of_range
@@ -3736,6 +3737,9 @@ data ci_no_correction_ambiguous_intent_tag: Symbol = ci_no_correction_ambiguous_
 data ci_no_correction_external_contract_unknown_tag: Symbol = ci_no_correction_external_contract_unknown_tag
 data ci_extent_whole_file_tag: Symbol = ci_extent_whole_file_tag
 data ci_extent_byte_range_tag: Symbol = ci_extent_byte_range_tag
+data ci_locus_textual_tag: Symbol = ci_locus_textual_tag
+data ci_locus_node_tag: Symbol = ci_locus_node_tag
+data ci_locus_port_tag: Symbol = ci_locus_port_tag
 data ci_dependency_kind_contains_tag: Symbol = ci_dependency_kind_contains_tag
 data ci_dependency_kind_binds_to_tag: Symbol = ci_dependency_kind_binds_to_tag
 data ci_dependency_kind_type_depends_on_tag: Symbol = ci_dependency_kind_type_depends_on_tag
@@ -3991,9 +3995,21 @@ fn ci_extent_digest(extent: Extent) -> Hash {
 fn ci_locus_digest(locus: Locus) -> Hash {
   match locus {
     Textual { file, extent } =>
-      combine_hash(a: ci_symbol_digest(sym: file), b: ci_extent_digest(extent: extent))
-    NodeLocus { anchor } => content_hash(n: anchor.at)
-    PortLocus { anchor } => ci_symbol_digest(sym: anchor.at)
+      ci_hash_list_digest(xs: [
+        ci_symbol_digest(sym: ci_locus_textual_tag),
+        ci_symbol_digest(sym: file),
+        ci_extent_digest(extent: extent)
+      ])
+    NodeLocus { anchor } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_locus_node_tag),
+        b: content_hash(n: anchor.at)
+      )
+    PortLocus { anchor } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_locus_port_tag),
+        b: ci_symbol_digest(sym: anchor.at)
+      )
   }
 }
 
@@ -4027,12 +4043,9 @@ fn ci_diagnostic_digest(diagnostic: Diagnostic) -> Hash {
 
 
 fn ci_diagnostics_list_digest(xs: List<Diagnostic>) -> Hash {
-  fold_list(
-    xs: xs,
+  bag_hash_digest(
     empty: ci_symbol_digest(sym: ci_digest_empty_diagnostics_list_tag),
-    cons: fn(acc, diagnostic) {
-      combine_hash(a: acc, b: ci_diagnostic_digest(diagnostic: diagnostic))
-    }
+    xs: map(xs, diagnostic => ci_diagnostic_digest(diagnostic: diagnostic))
   )
 }
 
