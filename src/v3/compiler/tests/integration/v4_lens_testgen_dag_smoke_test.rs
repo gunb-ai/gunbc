@@ -148,14 +148,16 @@ fn v4_lens_testgen_dag_input_surface_claims_are_testclaim_data() {
     );
 }
 
-// F.2-P1 hand-Rust receipt (INVARIANTS.md §P5 Dispatch-Discipline mechanism (b),
-// same-path expansion): the two tests below reuse this file's existing
+// F.2-P1 / F.2-P2 hand-Rust receipt (INVARIANTS.md §P5 Dispatch-Discipline mechanism (b),
+// same-path expansion): the three tests below (`generator_carries_provenance…`,
+// `generator_provenance_claim…`, `shadow_ci_receipt_claim…`) reuse this file's existing
 // EXPECTED_HAND_AUTHORED_TEST census entry (+0 SG-0 paths) — same pattern PR #4265
 // used for the lens_effect roster and the witness_validity corpus already in this file.
 // These are bounded parse/structural ratchets, NOT permanent host-Rust. Dissolution
 // trigger: they retire when M2 cross-module name resolution / the T-22 runner evaluates
-// `lens_testgen/generator_provenance.dag`'s `EqualsClaim` end-to-end (real .dag TestClaim
-// coverage), at which point the string/field pins here are redundant and removed.
+// `lens_testgen/generator_provenance.dag` and `lens_testgen/shadow_ci_receipt.dag`
+// `EqualsClaim` witnesses end-to-end (real .dag TestClaim coverage), at which point
+// the string/field pins here are redundant and removed.
 #[test]
 fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
     // F.2-P1: Generator<C> gains a provenance bundle (GeneratorProvenance, authored in

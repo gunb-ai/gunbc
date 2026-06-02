@@ -103,7 +103,8 @@ import v4.std.diagnostic {
   Accepted,
   Rejected,
   None,
-  diagnostics_singleton
+  diagnostics_singleton,
+  diagnostics_merge
 }
 import v4.std.algebra {
   any,
@@ -3796,7 +3797,7 @@ fn ci_wave3_shadow_testgen_selection_rows_outcome(
               profile_ref: profile_ref,
               roster: roster
             ),
-            diagnostics: d_sched
+            diagnostics: diagnostics_merge(outer: d_sched, inner: d_run)
           }
       }
   }
