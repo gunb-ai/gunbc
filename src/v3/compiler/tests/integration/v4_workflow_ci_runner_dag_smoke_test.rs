@@ -1778,7 +1778,7 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         parse_module(TESTCLAIM_CORPUS_RUNNER_DAG, TESTCLAIM_CORPUS_RUNNER_PATH);
     let manual_roster_module = parse_module(MANUAL_CORPUS_ROSTER_DAG, MANUAL_CORPUS_ROSTER_PATH);
     assert!(
-        imports_name(
+        import_includes_name(
             &corpus_runner_module,
             &["v4", "test", "claim", "manual", "manual_corpus_roster"],
             "manual_corpus_node_subject_rows"
