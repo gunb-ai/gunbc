@@ -992,6 +992,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
+    // G.1.4: parse-surface ratchet on `typescript.dag` PerLanguageFactBundleRegistry
+    // population (wave-2b primitive fact axes via insert_per_language_fact_bundle_entry).
+    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_extdeps_typescript_g14_grounding_smoke_test.rs`.
+    // Explicit deferral: ROADMAP.md § "Nine lanes" row **T-PB-B** / `pb_rust_tests_outside_residual_zero`
+    // (ROADMAP.md:62); dissolves when `.dag` TestClaim coverage asserts G.1.4 registry rows directly.
+    "src/v3/compiler/tests/integration/v4_extdeps_typescript_g14_grounding_smoke_test.rs",
     // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
     // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
