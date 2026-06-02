@@ -136,6 +136,15 @@ fn v4_source_authority_contract_uses_source_and_serializer_authorities() {
         "{SOURCE_AUTHORITY_PATH}: Bmin.5 must model deterministic canonical source serialization"
     );
     assert!(
+        SOURCE_AUTHORITY_DAG.contains(
+            "type CanonicalDagSourceEmissionLaw {\n  canonical_source: DagSource"
+        ) && SOURCE_AUTHORITY_DAG.contains("type DeterministicDagSourceSerializerLaw {}")
+            && SOURCE_AUTHORITY_DAG.contains(
+                "type NormalizedDagSourceParsePrintLaw {\n  normalized_source_law: NormalizedSourceAstEqual"
+            ),
+        "{SOURCE_AUTHORITY_PATH}: canonical source must have one owner; subordinate law carriers must not duplicate it"
+    );
+    assert!(
         !SOURCE_AUTHORITY_DAG.contains("type SourceAuthorityRoundTripReceipt"),
         "{SOURCE_AUTHORITY_PATH}: receipt carrier must not duplicate forgeable law fields"
     );
