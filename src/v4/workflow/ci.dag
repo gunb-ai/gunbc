@@ -3804,10 +3804,10 @@ fn ci_selection_receipt_lookup(
   key: Hash,
   store: List<CiSelectionReceiptStoreRow>
 ) -> CiSelectionReceiptLookup {
-  fold_list(
-    xs: store,
-    empty: CiSelectionReceiptMissing { key: key },
-    cons: fn(acc, row) {
+  fold(
+    store,
+    init: CiSelectionReceiptMissing { key: key },
+    f: fn(acc, row) {
       match acc {
         CiSelectionReceiptFound { receipt: _ } => acc
         CiSelectionReceiptMissing { key: missing_key } =>
@@ -4558,17 +4558,14 @@ data ci_wave3_shadow_fixture_receipt_ok: Bool = ci_wave3_shadow_fixture_fail_clo
 
 data witness_ci_wave3_shadow_testgen_receipts_ok: Bool = ci_wave3_shadow_testgen_run_receipt_holds() && ci_testgen_selected_receipt_holds(affected: ci_wave3_shadow_fail_closed_affected, profile_ref: testgen_default_profile_ref) && ci_wave3_shadow_fixture_testgen_not_fail_closed_holds() && ci_wave3_shadow_fixture_testgen_slots_populated_holds()
 
-data ci_selection_receipt_shadow_fixture_storage_key: Hash =
-  ci_selection_receipt_storage_key(receipt: ci_selection_receipt_shadow_fixture_receipt)
+data ci_selection_receipt_shadow_fixture_storage_key: Hash = ci_selection_receipt_storage_key(receipt: ci_selection_receipt_shadow_fixture_receipt)
 
-data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow> =
-  ci_selection_receipt_persist(
+data ci_selection_receipt_shadow_fixture_store: List<CiSelectionReceiptStoreRow> = ci_selection_receipt_persist(
     receipt: ci_selection_receipt_shadow_fixture_receipt,
     store: []
   )
 
-data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup =
-  ci_selection_receipt_lookup(
+data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup = ci_selection_receipt_lookup(
     key: ci_selection_receipt_shadow_fixture_storage_key,
     store: ci_selection_receipt_shadow_fixture_store
   )
@@ -4584,8 +4581,7 @@ fn ci_selection_receipt_shadow_fixture_persistence_lookup_holds() -> Bool {
   }
 }
 
-data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool =
-  ci_selection_receipt_shadow_fixture_persistence_lookup_holds()
+data ci_selection_receipt_shadow_fixture_persistence_lookup_ok: Bool = ci_selection_receipt_shadow_fixture_persistence_lookup_holds()
 
 data ci_selection_receipt_shadow_generatable_ok: Bool = ci_selection_receipt_shadow_fixture_well_formed_ok && ci_selection_receipt_shadow_fixture_v2_compile_carved_out_ok && ci_selection_receipt_shadow_fixture_m1_probe_run_ok
 

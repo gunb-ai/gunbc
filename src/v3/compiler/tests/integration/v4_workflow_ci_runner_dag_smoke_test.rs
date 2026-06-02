@@ -2460,7 +2460,7 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         "receipt: ci_selection_receipt_shadow_fixture_receipt",
         "data ci_selection_receipt_shadow_fixture_lookup: CiSelectionReceiptLookup",
         "ci_selection_receipt_lookup(",
-        "empty: CiSelectionReceiptMissing { key: key }",
+        "init: CiSelectionReceiptMissing { key: key }",
         "if row.key == missing_key",
         "CiSelectionReceiptFound { receipt: row.receipt }",
         "CiSelectionReceiptMissing { key: _ } => false",
