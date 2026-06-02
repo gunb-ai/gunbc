@@ -89,8 +89,7 @@ const MVP1_PYTHON_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_python_add_t
 const MVP1_GO_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_go_add_translate.dag");
 const MVP1_GO_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_go_add_translate.dag";
-const GO_WAVE2A_CLAIM_DAG: &str =
-    include_str!("../../../../v4/test/claim/parse/go_wave2a.dag");
+const GO_WAVE2A_CLAIM_DAG: &str = include_str!("../../../../v4/test/claim/parse/go_wave2a.dag");
 const GO_WAVE2A_CLAIM_PATH: &str = "src/v4/test/claim/parse/go_wave2a.dag";
 const MVP1_CPP_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_cpp_add_translate.dag");
