@@ -30,6 +30,11 @@
 //! **Go L1 (+0 paths, release-minimum):** `go_l1_nat_semiring_rung2` compiler-slice substrate
 //! claim parse surface + `scripts/v4-phase1-nat-semiring-go-compiler-slice-gate.sh` (structured
 //! JSON receipt; chained from rung gate after R2-go-compile). SG-0 + INVARIANTS §P5(b) in PR body.
+//! **PR #4285 Go L1 strict setup (+0 SG-0 paths):** same-path assertion-list expansion pins
+//! `V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT=1` fail-closed setup behavior when `go` /
+//! `gofmt` are absent. Explicit P5 deferral remains ROADMAP T-PB-B /
+//! `pb_rust_tests_outside_residual_zero`; retire this host-process setup probe when `.dag`
+//! `TestClaim` execution or a generated harness owns strict child-gate toolchain setup receipts.
 //! **PR #4222 L1 fixture coverage (+0 SG-0 paths):** same-path assertion-list expansion pins
 //! `rung_l1_python_runtime.dag` coverage + six per-law Python runtime claim rows. Explicit P5
 //! deferral remains T-PB-B / T-22: retire this host parse-surface probe when `.dag` TestClaim
@@ -704,6 +709,61 @@ fn v4_nat_semiring_rung_l1_go_compiler_slice_dag_tokenizes_and_parses_claim_row(
             && NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_DAG
                 .contains("target: phase1_l1_go_compiler_slice_subject_slice_binding"),
         "{NAT_SEMIRING_RUNG_L1_GO_COMPILER_SLICE_PATH}: CompilesClaim must reference structural slice binding"
+    );
+}
+
+#[test]
+fn v4_nat_semiring_l1_go_compiler_slice_strict_missing_go_fails_closed() {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .expect("canonical repo root");
+    let tmp = std::env::temp_dir().join(format!(
+        "v4_go_l1_strict_missing_toolchain_{}",
+        std::process::id()
+    ));
+    let fake_bin = tmp.join("bin");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&fake_bin).expect("create fake bin");
+
+    for tool in ["python3", "rustc"] {
+        let path = fake_bin.join(tool);
+        let mut file = std::fs::File::create(&path).expect("create fake host tool");
+        file.write_all(b"#!/bin/sh\nexit 0\n")
+            .expect("write fake host tool");
+        let mut perms = std::fs::metadata(&path)
+            .expect("fake tool metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).expect("chmod fake host tool");
+    }
+
+    let output = std::process::Command::new("/bin/bash")
+        .arg("scripts/v4-phase1-nat-semiring-rung-gate.sh")
+        .current_dir(&repo_root)
+        .env("PATH", &fake_bin)
+        .env("V2_COMPILER", "/bin/true")
+        .env("V4_PHASE1_NAT_SEMIRING_STRICT", "0")
+        .env("V4_PHASE1_NAT_SEMIRING_GO_COMPILER_SLICE_STRICT", "1")
+        .output()
+        .expect("run nat_semiring rung gate");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Go L1 strict setup must fail closed when go/gofmt are unavailable; stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("required host toolchain(s) missing")
+            && stderr.contains("go")
+            && stderr.contains("gofmt"),
+        "expected missing go/gofmt setup diagnostic; stdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }
 
