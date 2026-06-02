@@ -38,8 +38,8 @@ const V4_STD_MACHINE_AUTHORITY: &str = "src/v4/std/machine.dag";
 /// `String` authority (`host_run` `BuildLog.lines: List<String>`).
 const V4_STD_TEXT_AUTHORITY: &str = "src/v4/std/text.dag";
 
-/// Canonical substrate authority for `run_emit_host_*` rows (see `src/v4/compiler/emit_host.dag`).
-const EMIT_HOST_DAG_AUTHORITY_SUFFIX: &str = "emit_host.dag";
+/// Canonical substrate authority path for `run_emit_host_*` rows (see `src/v4/compiler/emit_host.dag`).
+const EMIT_HOST_DAG_AUTHORITY_PATH: &str = "src/v4/compiler/emit_host.dag";
 
 /// Eval-time dispatch for `run_emit_host_rust` (substrate `emit_host.dag` only).
 pub fn try_dispatch_emit_host_rust(
@@ -195,8 +195,8 @@ fn is_run_emit_host_decl(dag: &Dag, callee_decl: DeclarationId, name: &str) -> b
     };
     if callee.name.as_deref() != Some(name) {
         return false;
-    };
-    if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_SUFFIX) {
+    }
+    if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_PATH) {
         return false;
     }
     let TypeConnective::Arrow { inputs, body, .. } = &callee.connective else {
@@ -210,7 +210,7 @@ fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
         .iter()
         .find(|decl| {
             decl.name.as_deref() == Some(name)
-                && decl.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_SUFFIX)
+                && decl.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_PATH)
         })
         .map(|decl| decl.id)
         .ok_or(EvalError::BadTransformOperands {
@@ -218,10 +218,11 @@ fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
         })
 }
 
-/// Eval-time dispatch for substrate `run_emit_host_python` only.
+/// Eval-time dispatch chain for remaining substrate `run_emit_host_*` rows.
 ///
-/// `run_emit_host_rust` / `run_emit_host_go` are dispatched separately in `lib.rs`
-/// (substrate eval via `emit_host_receipt_from_source`).
+/// Rust and Go use dedicated entrypoints in `lib.rs` (`emit_host_receipt_from_source`);
+/// this wrapper keeps python on the same extension point if additional rows later share
+/// the hand-reify transport path.
 pub fn try_dispatch_emit_host(
     dag: &Dag,
     callee_decl: DeclarationId,
@@ -268,7 +269,7 @@ fn try_dispatch_emit_host_transport(
 ) -> Option<Result<Value, EvalError>> {
     let callee = dag.declaration_opt(&callee_decl)?;
     if callee.name.as_deref() != Some(fn_name)
-        || !callee.span.file.ends_with("v4/compiler/emit_host.dag")
+        || !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_PATH)
     {
         return None;
     }
@@ -751,14 +752,9 @@ fn list_from_values(
     Ok(list)
 }
 
-fn bool_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
-    let bool_ty = dag
-        .declaration_by_name("Bool")
-        .ok_or(EvalError::BadTransformOperands {
-            reason: "Bool type not found",
-        })?
-        .id;
-    list_instantiation_for_element(dag, bool_ty)
+fn bit_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
+    let bit_ty = v4_carrier_decl_id(dag, V4_STD_MACHINE_AUTHORITY, "Bit")?;
+    list_instantiation_for_element(dag, bit_ty)
 }
 
 fn byte_list_ty(dag: &Dag) -> Result<DeclarationId, EvalError> {
@@ -775,7 +771,7 @@ fn byte_value(dag: &Dag, byte: u8) -> Result<Value, EvalError> {
     let bits: Vec<Value> = (0..8)
         .map(|shift| Value::LiteralValue(LiteralBits::Bool((byte >> (7 - shift)) & 1 != 0)))
         .collect();
-    let bits_list = list_from_values(dag, bool_list_ty(dag)?, bits)?;
+    let bits_list = list_from_values(dag, bit_list_ty(dag)?, bits)?;
     Ok(Value::RecordValue(vec![NamedField {
         label: "bits".to_string(),
         value: bits_list,
@@ -1338,7 +1334,12 @@ mod tests {
     /// exercising the same `v4_carrier_*` lookup paths used by python eval dispatch reification.
     fn dag_with_hermetic_v4_emit_host_carriers() -> Dag {
         let mut dag = Dag::new();
-        let bool_ty = dag.declaration_by_name("Bool").expect("bootstrap Bool").id;
+        let bit_ty = push_named_decl(
+            &mut dag,
+            "Bit",
+            TypeConnective::Atom(AtomPayload::TypeParam("Bit".to_string())),
+            V4_MACHINE_PATH,
+        );
         let symbol_ty = push_named_decl(
             &mut dag,
             "Symbol",
@@ -1473,7 +1474,7 @@ mod tests {
             })
             .expect("Diagnostic stub")
             .id;
-        for elem in [bool_ty, byte_ty, string_ty, diagnostic_ty] {
+        for elem in [bit_ty, byte_ty, string_ty, diagnostic_ty] {
             push_list_instantiation(&mut dag, list_template, elem, V4_COLLECTION_PATH);
             wire_free_monoid_variant_constructors(&mut dag, free_monoid, elem, V4_ALGEBRA_PATH);
         }
