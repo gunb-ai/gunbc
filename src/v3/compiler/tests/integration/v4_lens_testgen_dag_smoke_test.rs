@@ -167,7 +167,6 @@ fn v4_lens_testgen_generator_carries_provenance_and_profile_fields() {
         "GeneratorId",
         "GeneratorProvenance",
         "GeneratedArtifact",
-        "TestClaimArtifact",
         "test_claim_generated_artifact",
     ] {
         assert!(

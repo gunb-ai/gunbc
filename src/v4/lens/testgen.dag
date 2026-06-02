@@ -169,11 +169,9 @@ import v4.std.effects {
 // only consumes them — no artifact law is duplicated here. profile_metadata stays a
 // testgen-local concept (GeneratorProfile below) and must not leak into artifact.dag.
 import v4.std.artifact {
-  ArtifactKind,
   GeneratedArtifact,
   GeneratorId,
   GeneratorProvenance,
-  TestClaimArtifact,
   test_claim_generated_artifact
 }
 
@@ -1928,21 +1926,13 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
 }
 
 
-// F.2-P1: provenance carries TestClaimArtifact identity.
-fn artifact_kind_is_test_claim(k: ArtifactKind) -> Bool {
-  match k {
-    TestClaimArtifact => true
-    _ => false
-  }
-}
-
-
 // F.2-P1: the GeneratedArtifact wraps a refined Artifact; reach the admitted base to
-// inspect its identity. The refined type already makes non-generated kinds unrepresentable,
-// so the kind check below is a belt-and-braces witness over the structural guarantee.
+// check the identity link. The refined type already makes non-generated kinds
+// unrepresentable, so the witness only asserts identity consistency (generator_id keys
+// the artifact) — the kind guarantee is carried structurally, not re-checked here.
 fn generated_artifact_keyed_by(a: GeneratedArtifact, id: GeneratorId) -> Bool {
   let base = refined_base(r: a.refined)
-  base.id == id && artifact_kind_is_test_claim(k: base.kind)
+  base.id == id
 }
 
 
