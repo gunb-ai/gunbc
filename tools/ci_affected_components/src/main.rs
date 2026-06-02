@@ -25,7 +25,12 @@ fn usage() -> ! {
     std::process::exit(2);
 }
 
-fn write_github_output(path: &str, flags: CiComponentAffected) -> io::Result<()> {
+fn write_github_output(
+    path: &str,
+    flags: CiComponentAffected,
+    git_read_failed: bool,
+    git_read_detail: &str,
+) -> io::Result<()> {
     let mut file = fs::OpenOptions::new().append(true).open(path)?;
     writeln!(file, "v2={}", flags.v2)?;
     writeln!(file, "v3={}", flags.v3)?;
@@ -38,6 +43,10 @@ fn write_github_output(path: &str, flags: CiComponentAffected) -> io::Result<()>
         "release_distribution_only={}",
         flags.release_distribution_only
     )?;
+    writeln!(file, "git_diff_read_failed={git_read_failed}")?;
+    writeln!(file, "git_diff_read_detail<<GUNBC_GIT_READ_DETAIL")?;
+    writeln!(file, "{git_read_detail}")?;
+    writeln!(file, "GUNBC_GIT_READ_DETAIL")?;
     Ok(())
 }
 
@@ -51,7 +60,8 @@ fn main() -> ExitCode {
 
     // Single git-diff transport authority shared with the Wave 3 shadow receipt emitter
     // (`git_diff_transport`) so the gate output and the receipt it shadows cannot drift.
-    let flags = match git_read_changed_paths_for_event(event_name.as_str()) {
+    let (flags, git_read_failed, git_read_detail) =
+        match git_read_changed_paths_for_event(event_name.as_str()) {
         GitChangedPathsRead::Ok { range, paths } => {
             eprintln!("Changed files in {range}:");
             if paths.is_empty() {
@@ -62,13 +72,17 @@ fn main() -> ExitCode {
                 }
             }
             eprintln!();
-            ci_component_affected_from_changed_paths(paths.iter().map(String::as_str))
+            (
+                ci_component_affected_from_changed_paths(paths.iter().map(String::as_str)),
+                false,
+                String::new(),
+            )
         }
         GitChangedPathsRead::FailClosed { range, detail } => {
             eprintln!("Changed files in {range}: (read failed — fail-closed superset)");
             eprintln!("  {detail}");
             eprintln!();
-            ci_component_affected_fail_closed()
+            (ci_component_affected_fail_closed(), true, detail)
         }
     };
 
@@ -121,7 +135,7 @@ fn main() -> ExitCode {
         }
     );
 
-    if let Err(e) = write_github_output(&output_file, flags) {
+    if let Err(e) = write_github_output(&output_file, flags, git_read_failed, &git_read_detail) {
         eprintln!("error: write {output_file}: {e}");
         return ExitCode::from(1);
     }
