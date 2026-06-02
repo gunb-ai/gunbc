@@ -158,4 +158,13 @@ fn v4_source_authority_claim_imports_contract_entrypoint() {
         ),
         "{CLAIM_PATH}: claim must import source_authority_round_trip"
     );
+    assert!(
+        CLAIM_DAG.contains("source_authority_round_trip_boundary_holds()"),
+        "{CLAIM_PATH}: claim input must structurally depend on the source-authority boundary"
+    );
+    assert!(
+        CLAIM_DAG.contains("Accepted { value: witness, diagnostics: _ }")
+            && CLAIM_DAG.contains("Holds { value: _: SourceAuthorityRoundTripLaw }"),
+        "{CLAIM_PATH}: claim must project the round-trip witness to pass/fail claim input"
+    );
 }
