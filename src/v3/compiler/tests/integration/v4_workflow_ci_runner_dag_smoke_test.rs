@@ -629,12 +629,18 @@ fn ci_yml_job_block<'a>(workflow_yml: &'a str, job_id: &str) -> &'a str {
     &workflow_yml[start..end]
 }
 
-/// Live receipt: job header must not declare shadow `continue-on-error` (GitHub default is fail-closed).
-fn ci_yml_job_header_omits_continue_on_error(job_block: &str) -> bool {
-    let header = job_block.split("\n    steps:").next().unwrap_or(job_block);
-    !header
-        .lines()
-        .any(|line| line.starts_with("    continue-on-error:"))
+/// True for a workflow job field line (4-space indent), not nested step rows (6+ spaces).
+fn ci_yml_line_is_job_level_field(line: &str) -> bool {
+    line.strip_prefix("    ")
+        .is_some_and(|rest| !rest.starts_with(' '))
+}
+
+/// Live receipt: sliced job must not declare job-level `continue-on-error` anywhere (keys are order-insensitive).
+fn ci_yml_job_level_omits_continue_on_error(job_block: &str) -> bool {
+    !job_block.lines().any(|line| {
+        ci_yml_line_is_job_level_field(line)
+            && line.trim_start().starts_with("continue-on-error:")
+    })
 }
 
 fn surface_declares_test_claim_data(
@@ -1548,8 +1554,8 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     );
     let affected_yml = ci_yml_job_block(CI_YML, "affected");
     assert!(
-        ci_yml_job_header_omits_continue_on_error(affected_yml),
-        "{CI_YML_PATH}: component `affected` receipt must be live (no job-level continue-on-error shadow flag)"
+        ci_yml_job_level_omits_continue_on_error(affected_yml),
+        "{CI_YML_PATH}: component `affected` receipt must be live (no job-level continue-on-error anywhere in job block)"
     );
     assert!(
         !CI_WORKFLOW_DAG.contains("id: \"ci_integration\"")
