@@ -102,16 +102,13 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate Witness at Map.lookup
 // above); v2 emit projects lookup as Option — bridge here only; forbidden: ad hoc map_get outside
 // v4.std.collection.
-// Projects Map.lookup → Outcome<Optional<V>>: Present on Holds; Absent only when Violates carries
-// map_key_absent. Other Violates: outcome_rejected (P3) — never collapsed to Absent.
+// Projects Map.lookup → Outcome<Optional<V>>. Bootstrap (B-LOOKUP-1): v2 emit projects lookup as
+// Option — bridge Some→Present, None→Absent here only. Substrate Witness dispatch (map_key_absent
+// vs other Violates → outcome_rejected, P3) is dissolve-on when bootstrap emits Witness at lookup.
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   match m.lookup(key) {
-    Holds { value: v } => outcome_accepted(value: Present { value: v })
-    Violates { diagnostic: d } =>
-      match d.reason == map_key_absent {
-        true => outcome_accepted(value: Absent)
-        false => outcome_rejected(d: d)
-      }
+    Some { value: v } => outcome_accepted(value: Present { value: v })
+    None => outcome_accepted(value: Absent)
   }
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
