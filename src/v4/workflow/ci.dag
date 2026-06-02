@@ -2818,13 +2818,8 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/manual/")
   } else if segment == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag" {
     path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
-<<<<<<< HEAD
   } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval.dag" {
     path == "src/v4/test/claim/workflow/manual_corpus_eval.dag"
-  } else if segment == "scripts/v4-testclaim-*" {
-    ci_repo_path_has_prefix(path: path, prefix: "scripts/v4-testclaim-")
-=======
->>>>>>> 58bf21933f (WIP: CI hygiene: delete scripts/ + unused non-substrate code (operator 2026-0)
   } else {
     false
   }

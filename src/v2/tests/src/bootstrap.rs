@@ -994,7 +994,7 @@ fn ci_freshness() {
     if let Err(ref diff) = pass1.freshness {
         panic!(
             "Stage0 is STALE — does not match self-compile output.\n\
-             Run ./scripts/regenerate-stage0.sh to update.\n\
+             Run `make bootstrap-check` (or `cargo run -p gunbc-codegen --bin gunbc-bootstrap`) to update.\n\
              Diff:\n{}",
             diff
         );

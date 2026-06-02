@@ -1466,15 +1466,6 @@ fn v4_workflow_ci_wave1_generated_workflow_dag_matches_ci_yml_shape() {
     );
 }
 
-#[test]
-fn v4_workflow_ci_wave1_no_new_shell_ratchet_wired() {
-    let ratchet_step = workflow_step_block(CI_YML, "no-new-shell ratchet (required CI path)");
-    assert!(
-        ratchet_step.contains("check-ci-no-new-shell.sh"),
-        "{CI_YML_PATH}: gate 5 must invoke no-new-shell ratchet"
-    );
-}
-
 // P5(b) receipt: `docs/planning/ci-required-surface-cut-2026-06-01.md` § P5(b) `v4_workflow_ci_wave3_*`
 // (SG-0 delta 0; ROADMAP T-PB-B; live emit deferred `node://adhoc-331899f9-19a`).
 
