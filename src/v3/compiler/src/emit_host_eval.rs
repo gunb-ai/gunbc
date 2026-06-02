@@ -4,7 +4,9 @@
 //! `emit_host_receipt_from_source` / [`evaluator::eval_callable_declaration`] (substrate eval).
 //!
 //! **Python row (`run_emit_host_python`):** runs the runner and hand-reifies `v4.std.host_run`
-//! carriers on this hook (substrate fn body stays `transport_not_wired`). Go remains unwired.
+//! carriers on this hook (substrate fn body stays `transport_not_wired`).
+//!
+//! **Go row (`run_emit_host_go`):** same substrate eval pattern as rust (`emit_host_receipt_from_source`).
 //!
 //! **P5:** SG-0 census in `sg0_census_test.rs` (T-PB-B); dissolution when substrate owns all rows.
 
@@ -106,13 +108,91 @@ pub fn try_dispatch_emit_host_rust(
     )
 }
 
+/// Eval-time dispatch for `run_emit_host_go` (substrate `emit_host.dag` only).
+pub fn try_dispatch_emit_host_go(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    operands: &[Value],
+    state: &mut EvalStateStack<Value>,
+    strategy: &EvalStrategy,
+) -> Option<Result<Value, EvalError>> {
+    if !is_run_emit_host_go_decl(dag, callee_decl) {
+        return None;
+    }
+    if operands.len() != 3 {
+        return Some(Err(EvalError::TransformArityMismatch {
+            expected: 3,
+            got: operands.len(),
+        }));
+    }
+
+    let source = match expect_string_operand(&operands[1]) {
+        Ok(source) => source,
+        Err(err) => return Some(Err(err)),
+    };
+    let inputs = match emit_host_transport_inputs(dag, &operands[2], state, strategy) {
+        Ok(inputs) => inputs,
+        Err(err) => return Some(Err(err)),
+    };
+    let work_dir = emit_host_runner::unique_work_dir("gunbc_eval_emit_host_go");
+    let receipt = match emit_host_runner::run_emit_host_go(source, &inputs, &work_dir) {
+        Ok(receipt) => receipt,
+        Err(setup) => return Some(run_emit_host_setup_rejected(dag, &setup)),
+    };
+    let callee = match find_fn_decl(dag, "emit_host_receipt_from_source") {
+        Ok(id) => id,
+        Err(err) => return Some(Err(err)),
+    };
+    let exit = match host_exit_value(dag, &receipt.exit) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stdout = match byte_string_value(dag, &receipt.stdout_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let stderr = match byte_string_value(dag, &receipt.stderr_bytes) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    let build_log = match build_log_value(dag, &receipt.build_log.lines) {
+        Ok(v) => v,
+        Err(err) => return Some(Err(err)),
+    };
+    Some(
+        crate::evaluator::eval_callable_declaration(
+            dag,
+            callee,
+            vec![
+                operands[0].clone(),
+                Value::LiteralValue(LiteralBits::String(receipt.source_text)),
+                exit,
+                stdout,
+                stderr,
+                build_log,
+            ],
+            state,
+            strategy,
+        )
+        .and_then(|value| accepted_variant(dag, value)),
+    )
+}
+
 fn is_run_emit_host_rust_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_rust")
+}
+
+fn is_run_emit_host_go_decl(dag: &Dag, callee_decl: DeclarationId) -> bool {
+    is_run_emit_host_decl(dag, callee_decl, "run_emit_host_go")
+}
+
+fn is_run_emit_host_decl(dag: &Dag, callee_decl: DeclarationId, name: &str) -> bool {
     let Some(callee) = dag.declaration_opt(&callee_decl) else {
         return false;
     };
-    if callee.name.as_deref() != Some("run_emit_host_rust") {
+    if callee.name.as_deref() != Some(name) {
         return false;
-    }
+    };
     if !callee.span.file.ends_with(EMIT_HOST_DAG_AUTHORITY_SUFFIX) {
         return false;
     }
@@ -135,10 +215,10 @@ fn find_fn_decl(dag: &Dag, name: &str) -> Result<DeclarationId, EvalError> {
         })
 }
 
-/// Eval-time dispatch for substrate `run_emit_host_python` / future `run_emit_host_go`.
+/// Eval-time dispatch for substrate `run_emit_host_python` only.
 ///
-/// `run_emit_host_rust` is dispatched separately in `lib.rs` (needs eval state for
-/// `emit_host_receipt_from_source`). Keep this chain ordered when adding go.
+/// `run_emit_host_rust` / `run_emit_host_go` are dispatched separately in `lib.rs`
+/// (substrate eval via `emit_host_receipt_from_source`).
 pub fn try_dispatch_emit_host(
     dag: &Dag,
     callee_decl: DeclarationId,
