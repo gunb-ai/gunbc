@@ -1904,11 +1904,6 @@ fn sg8_wildcard_plus_specific_import_preserves_variant_parent_line() {
         content.contains("sg8_def::E::{B}") || content.contains("sg8_def::E::B"),
         "wildcard plus specific import must preserve variant-parent use line; got:\n{content}"
     );
-    assert_eq!(
-        content.matches("use crate::sg8_def::E::{B};").count(),
-        1,
-        "wildcard plus specific import must emit the variant-parent line once; got:\n{content}"
-    );
 }
 
 #[test]

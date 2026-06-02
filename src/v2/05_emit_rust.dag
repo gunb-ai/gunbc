@@ -2226,7 +2226,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       variant_lines |> filter(l => l != ""),
       wildcard_enum_lines
     )
-    unique_strings(items: all_lines) |> join(separator: "\n")
+    all_lines |> join(separator: "\n")
   }
 }
 

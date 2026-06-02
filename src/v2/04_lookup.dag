@@ -163,10 +163,11 @@ fn substitute_generic_field_slots(n: Node, slot_bindings: Map<String, Node>, sou
 
 fn instantiate_generic_record_for_lookup(env: TypeEnv, n: Node) -> Node? {
   let normed = normalize_access_type_node(n: n)
-  if normed.connective == NoConnective && normed.children |> count > 0 {
+  let type_arg_count = normed.children |> count
+  if normed.connective == NoConnective && type_arg_count > 0 {
     match lookup_type_for(env: env, node: normed) {
       Some { value: decl } =>
-        if decl.params |> count == normed.children |> count && decl.connective != NoConnective {
+        if (decl.params |> count) == type_arg_count && decl.connective != NoConnective {
           let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
             let idx = pair.first
             let slot_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
