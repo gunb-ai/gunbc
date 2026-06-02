@@ -32,6 +32,11 @@ pub const TRANSPORT_ENVELOPE: &str = "gunbc/ci-wave3-shadow-emit/v1";
 pub const RECEIPT_AUTHORITY: &str = "v4.workflow.ci.CiSelectionReceipt";
 pub const EMIT_STEP_NAME: &str = "emit-ci-wave3-shadow-receipt";
 
+/// Model-declared `Symbol` for the shadow fail-closed `AffectedSetReason.reason`
+/// (`src/v4/workflow/ci.dag`: `data ci_selection_shadow_reason: Symbol`). Single authority —
+/// do NOT substitute host-invented lifecycle strings here (P1 grounded-Symbol discipline).
+pub const SHADOW_REASON: &str = "ci_selection_shadow_reason";
+
 pub fn build_queued_shadow_receipt(event_name: &str, git_read: GitChangedPathsRead) -> Value {
     let (git_diff_range, changed_paths, component_affected, git_diff_read_failed) = match git_read {
         GitChangedPathsRead::Ok { range, paths } => {
@@ -61,15 +66,19 @@ pub fn build_queued_shadow_receipt(event_name: &str, git_read: GitChangedPathsRe
 
 /// Faithful serialization of the modeled `CiSelectionReceipt` in its honest queued/shadow form.
 /// Field names and coproduct tags mirror `src/v4/workflow/ci.dag` exactly (single authority, P2).
-fn ci_selection_receipt_to_json(flags: CiComponentAffected, affected_reason: &str) -> Value {
+/// The shadow fail-closed `AffectedSet` is the modeled `ci_selection_receipt_shadow_fail_closed_affected`
+/// (`src/v4/workflow/ci.dag`) — the `reason` is the model-declared `Symbol` `ci_selection_shadow_reason`,
+/// NOT a host-invented lifecycle string (transport status stays in the envelope; P1/P2).
+fn ci_selection_receipt_to_json(flags: CiComponentAffected) -> Value {
     json!({
         // `pr: ChangeSet { changes: List<Change> }` — empty: host cannot resolve `Change.subject: Node`.
         "pr": { "changes": [] },
         // `affected: AffectedSet` — fail-closed coproduct (never computed without Dag eval; P3).
+        // Mirrors modeled `ci_selection_receipt_shadow_fail_closed_affected`.
         "affected": {
             "AffectedSetFailClosed": {
                 "changes": { "changes": [] },
-                "evidence": { "AffectedSetReason": { "reason": affected_reason } }
+                "evidence": { "AffectedSetReason": { "reason": SHADOW_REASON } }
             }
         },
         // `mode: CiSelectionMode` — nullary `Shadow` variant.
@@ -140,9 +149,10 @@ mod tests {
         assert_eq!(r["decisions"], json!([]));
         assert_eq!(r["testclaim_decisions"], json!([]));
         assert_eq!(r["testgen_slots"], json!([]));
+        // Model-declared Symbol, NOT a host-invented lifecycle string (P1/P2).
         assert_eq!(
             r["affected"]["AffectedSetFailClosed"]["evidence"]["AffectedSetReason"]["reason"],
-            "queued_pending_live_eval"
+            SHADOW_REASON
         );
         assert_eq!(r["component_affected_comparison"]["v4"], true);
         // No invented parallel-genus fields on the receipt.
@@ -159,11 +169,13 @@ mod tests {
                 detail: "git diff exited 1".to_string(),
             },
         );
+        // The git-read-failure fact stays in the envelope, NOT in the modeled receipt.
         assert_eq!(receipt["git_diff_read_failed"], true);
         let r = &receipt["ci_selection_receipt"];
+        // Receipt reason is the model-declared Symbol regardless of read outcome.
         assert_eq!(
             r["affected"]["AffectedSetFailClosed"]["evidence"]["AffectedSetReason"]["reason"],
-            "git_diff_read_failed"
+            SHADOW_REASON
         );
         // Fail-closed component superset (all flags true).
         assert_eq!(r["component_affected_comparison"]["v2"], true);
