@@ -2875,6 +2875,8 @@ fn ci_glob_segment_matches_changed_path(segment: GlobSegment, path: RepoPath) ->
     path == "src/v3/compiler/tests/boundary/v4_leaf_model_go_r1_r2_r3_external_test.rs"
   } else if segment == "src/v4/test/claim/manual/**" {
     ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/manual/")
+  } else if segment == "src/v4/test/claim/**" {
+    ci_repo_path_has_prefix(path: path, prefix: "src/v4/test/claim/")
   } else if segment == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag" {
     path == "src/v4/test/claim/workflow/testclaim_corpus_runner.dag"
   } else if segment == "src/v4/test/claim/workflow/manual_corpus_eval.dag" {
@@ -2927,7 +2929,7 @@ fn ci_upsert_input_ref_touches_git_diff(
       ci_upsert_file_set_input_touches_git_diff(selector: selector, git_diff: git_diff)
     TestClaimRef { claim_id: _ } =>
       ci_glob_segment_matches_any_changed_path(
-        segment: "src/v4/test/claim/manual/**",
+        segment: "src/v4/test/claim/**",
         paths: git_diff.changed_paths
       )
     LensOutputRef { lens: _, ports: _ } =>
