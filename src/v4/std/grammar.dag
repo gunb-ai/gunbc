@@ -101,12 +101,6 @@ type WellFormedFormalGrammar {
 }
 
 
-type LexCoversFormalTerminal {
-  terminal: FormalTerminal
-  token_class: Symbol
-}
-
-
 type GrammarTerminalLexCoverage {
   lex: LexRules
   grammar: WellFormedFormalGrammar
@@ -182,9 +176,7 @@ type ParseGrammar
   | ModeledGrammar { root: GrammarRoot }
 
 
-// Operational probe bridge for today's parser. Dissolve-on: GrammarSchemaProbeBinding
-// consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the
-// well-formed formal grammar authority.
+// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — bind TASKS.md T-6/T-7 — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
 type GrammarSchema {
   lex: LexRules
   grammar: ParseGrammar
