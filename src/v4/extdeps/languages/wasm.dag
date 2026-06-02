@@ -76,14 +76,9 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -696,40 +691,8 @@ fn wasm_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
 }
 
 fn wasm_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  match token {
-    FixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          wasm_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: wasm_inhabitant_atom(id: concrete_syntax_token_kind_fixed)
-          ),
-          wasm_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: wasm_inhabitant_atom(id: c)
-          )
-        ]
-      }
-    BoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          wasm_named_edge(
-            name: concrete_syntax_token_field_kind,
-            target: wasm_inhabitant_atom(id: concrete_syntax_token_kind_bound)
-          ),
-          wasm_named_edge(
-            name: concrete_syntax_token_field_class,
-            target: wasm_inhabitant_atom(id: c)
-          ),
-          wasm_named_edge(
-            name: concrete_syntax_token_field_binding,
-            target: wasm_inhabitant_atom(id: b)
-          )
-        ]
-      }
-  }
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
 fn wasm_mvp1_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {

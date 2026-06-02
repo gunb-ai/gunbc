@@ -1227,25 +1227,20 @@ fn import_includes_name(
     })
 }
 
-fn assert_imports_shared_token_kinds(
+fn assert_imports_shared_token_serializer(
     module: &v3_compiler::parse_surface::SurfaceModule,
     path: &str,
 ) {
+    // T-11: per-language `*_concrete_token_node` serialize through the single shared morphism
+    // `concrete_syntax_token_to_node` rather than hand-spelling the wire-form kind/field Symbols
+    // inline — so the Conj wire shape has exactly one author (INVARIANTS P2).
     assert!(
         import_includes_name(
             module,
             &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_fixed"
+            "concrete_syntax_token_to_node"
         ),
-        "{path}: fixed-token rows must use the shared token-kind identity"
-    );
-    assert!(
-        import_includes_name(
-            module,
-            &["v4", "std", "target_model"],
-            "concrete_syntax_token_kind_bound"
-        ),
-        "{path}: bound-token rows must use the shared token-kind identity"
+        "{path}: token serialization must project through the shared concrete_syntax_token_to_node morphism"
     );
 }
 

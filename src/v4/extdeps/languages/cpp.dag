@@ -28,7 +28,7 @@ import v4.std.lexing {
   ModeledLexRules,
   TokenRule
 }
-import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken }
+import v4.std.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_to_node }
 import v4.std.target_model { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
@@ -63,11 +63,6 @@ import v4.std.model_core {
 import v4.std.witness { Holds, Violates }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
-  concrete_syntax_token_kind_bound,
-  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -1081,25 +1076,8 @@ fn cpp_concrete_token_class(token: ConcreteSyntaxToken) -> Symbol {
 }
 
 fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  match token {
-    FixedToken { token_class: c } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: concrete_syntax_token_kind_fixed)),
-          cpp_named_edge(name: concrete_syntax_token_field_class, target: cpp_atom(id: c))
-        ]
-      }
-    BoundToken { token_class: c, binding: b } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: concrete_syntax_token_kind_bound)),
-          cpp_named_edge(name: concrete_syntax_token_field_class, target: cpp_atom(id: c)),
-          cpp_named_edge(name: concrete_syntax_token_field_binding, target: cpp_atom(id: b))
-        ]
-      }
-  }
+  // T-11: serialize through the single shared morphism (no parallel wire authority).
+  concrete_syntax_token_to_node(token: token)
 }
 
 fn cpp_positional_token_edge(token: ConcreteSyntaxToken) -> Edge {
