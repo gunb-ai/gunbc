@@ -10,8 +10,9 @@
 Migration class:        A-T38-RUNTIME-ENGINE + A2-CORPUS-FAMILIES + A3B-CI-RECEIPT
 Representative failure:  T-38 structural bridge (#4115) closed, but CI still treats
                          authoring-time `run_test_claim` const folds as pass authority;
-                         `scripts/v4-testclaim-corpus-eval.sh` is named in ci.dag / runner
-                         marks but absent on main; 30/31 A.2 families lack full T-38B
+                         `.dag` marks still name `scripts/v4-testclaim-corpus-eval.sh` but
+                         the path was deleted on main (#4252); host transport must be
+                         re-landed as harness invoke; 30/31 A.2 families lack full T-38B
                          (subject_roster + family_receipt); Wave-3 shadow roster conflated
                          with runtime verdict lane.
 Immediate local patch:   Extend grep/substring checks; add more `data run_*: TestClaimRun`
@@ -62,7 +63,7 @@ Metric allowed only as secondary:
 | **A.1** | T-38 runtime engine — `run_test_claim` at execution time via bootstrap `v4_evaluator_runtime_wave1` pin | **YELLOW** — eval primitives landed; harness entry + CI invoke missing | A.1.5a (Class 2 child) + Compiler Spine bootstrap entry |
 | **A.1.5a** | In-process `TestClaimRun` equivalence claim (compile-time vs harness path) | **NOT STARTED** — dispatch after this worksheet | Class 2 child `adhoc-*` |
 | **A.2** | 31 corpus families under `src/v4/test/claim/*/` (excl. `workflow/` orchestration) — continuous T-38B activation | **YELLOW** — 1 full (`lens_idempotency`); `manual` wedge (4 rows); 5 partial `run_test_claim`; 22 scaffold (+2 in flight) | Per-family PRs; lens_* in flight (#4264, #4266, #4289) |
-| **A.3b** | CI host JSON receipt schema (`execution_status`, `CorpusEvalReport`, gate Bool) | **RED** — schema named in #4143 F1; `scripts/v4-testclaim-corpus-eval.sh` **absent on main** | Lands with A.1 harness PR |
+| **A.3b** | CI host JSON receipt schema (`execution_status`, `CorpusEvalReport`, gate Bool) | **RED** — #4143 F1; script path **deleted on main** (#4252); re-land thin harness transport + runtime receipt (not “script already exists”) | With A.1 harness PR |
 
 ### 1.1 Layering vs adjacent worksheets
 
@@ -75,19 +76,30 @@ Metric allowed only as secondary:
 
 ---
 
-## §2 A.2 corpus family readiness (HEAD survey 2026-06-02)
+## §2 A.2 corpus family readiness (landed-tree survey)
 
-**31** immediate child directories under `src/v4/test/claim/` when `workflow/` is excluded (`workflow/` holds `testclaim_corpus_runner.dag`, `manual_corpus_eval.dag`, `wave3_shadow_roster.dag` — orchestration, not an A.2 family). Census: `find src/v4/test/claim -mindepth 1 -maxdepth 1 -type d ! -name workflow | wc -l` → 31. Tier sum: 1 + 1 + 5 + 22 + 2 (in flight) = 31.
+**Scope:** `origin/main` landed tree only (merge-base `0cae0103c5` at worksheet authoring). In-flight PR lanes (#4264, #4266, #4289, #4259, #4260) are **not** counted as landed tiers.
 
-| Tier | Count | Families | Evidence |
-| ---- | ----- | -------- | -------- |
-| **ACTIVE (T-38B complete)** | 1 | `lens_idempotency` | Sole `family_receipt.dag` on tree; `subject_roster.dag` + `run_test_claim` rows |
-| **ACTIVE (manual wedge)** | 1 | `manual` | `manual_corpus_roster.dag` (4 subjects); runner + eval gate; PR #4259 lane |
-| **PARTIAL (`run_test_claim` only)** | 5 | `branch_dispatch`, `generated`, `lens_effect`, `loop_linear_bound`, `nat_semiring` | Per-file claims; no `family_receipt.dag` |
-| **SCAFFOLD** | 22 | remaining (excl. in-flight) | Claims compile; no roster/receipt pattern |
-| **IN FLIGHT (orphaned neat-wolf subtree)** | 2 | `lens_ownership`, `lens_parallelism` | #4264 MERGEABLE; #4266 CONFLICTING; #4289 follow-up — counted inside scaffold tier until PRs land |
+**Verification receipt** (re-run before dispatch):
 
-**testgen** (`lens_testgen/`) — ACTIVE per PM (#4260); profile-gated, not F.5 mandatory.
+```bash
+git ls-tree origin/main scripts/v4-testclaim-corpus-eval.sh   # → empty (deleted #4252)
+find src/v4/test/claim -mindepth 1 -maxdepth 1 -type d ! -name workflow | wc -l   # → 31
+find src/v4/test/claim -name family_receipt.dag    # → lens_idempotency/family_receipt.dag only
+find src/v4/test/claim -name subject_roster.dag     # → lens_idempotency/subject_roster.dag only
+```
+
+`workflow/` (`testclaim_corpus_runner.dag`, `manual_corpus_eval.dag`, `wave3_shadow_roster.dag`) is orchestration, not an A.2 family. Tier sum: 1 + 1 + 5 + 22 + 2 (in flight) = 31.
+
+| Tier | Count | Families | Landed evidence |
+| ---- | ----- | -------- | --------------- |
+| **ACTIVE (T-38B complete)** | 1 | `lens_idempotency` | Only tree paths with `family_receipt.dag` + `subject_roster.dag` |
+| **ACTIVE (manual wedge)** | 1 | `manual` | `manual_corpus_roster.dag` (4 subjects); no per-family `family_receipt.dag` |
+| **PARTIAL (`run_test_claim` only)** | 5 | `branch_dispatch`, `generated`, `lens_effect`, `loop_linear_bound`, `nat_semiring` | `.dag` files call `run_test_claim`; no family receipt module |
+| **SCAFFOLD (landed)** | 22 | remaining excl. in-flight | Claims compile; no roster/receipt pattern |
+| **IN FLIGHT (not landed)** | 2 | `lens_ownership`, `lens_parallelism` | #4264 / #4266 / #4289 — external until merged |
+
+**External lane (not a landed T-38B tier):** `lens_testgen/` — PM charter #4260; profile-gated; no `family_receipt.dag` on `origin/main`.
 
 **Forbidden for A.2 close:** treating Wave-3 `wave3_shadow_generated_runtime_value_rows` pre-built runs as CI runtime authority.
 
@@ -107,7 +119,7 @@ Metric allowed only as secondary:
 
 | Gap | Receipt to close |
 | --- | ---------------- |
-| No `scripts/v4-testclaim-corpus-eval.sh` on main | R2 — thin invoke only; no host-owned `gunbc compile` loop |
+| Host transport missing on main (script deleted #4252; `.dag` marks stale-name path) | R2 — **re-land** `scripts/v4-testclaim-corpus-eval.sh` as thin bootstrap harness invoke; no host-owned `gunbc compile` loop |
 | No bootstrap harness entry calling `run_manual_testclaim_corpus_eval` at runtime | R1 — `self_host_fixed_point` or staged evaluator binary |
 | `witness_manual_corpus_gate_closed` is compile-time const | R3 — Bool from runtime-produced report |
 | Authoring-time `run_test_claim` in runner body | R4 — subjects from roster; runs from harness eval |
@@ -121,13 +133,13 @@ Metric allowed only as secondary:
 | ID | Probe | Receipt |
 | -- | ----- | ------- |
 | R1 | CI JSON `execution_status` = `runtime_verdicts` (not `authoring_time_verdict_surface`) | Host receipt + CI step log |
-| R2 | `scripts/v4-testclaim-corpus-eval.sh` exists; invokes harness; no sole-pass grep of witness | Script in PR diff |
+| R2 | Re-landed `scripts/v4-testclaim-corpus-eval.sh` invokes bootstrap harness; no sole-pass grep of `witness_manual_corpus_gate_closed` | Script in impl PR + `git ls-tree` shows blob on main |
 | R3 | `manual_corpus_gate(report)` evaluated on **runtime** report | Receipt Bool + fail-closed on any Fail |
 | R4 | Subjects use `evaluator_pin == v4_evaluator_runtime_id` | `.dag` grep or TestClaim row |
 | R5 | A.2 family: new `family_receipt.dag` fails if `structural_witness` not derived from claim authority (#4264 lesson) | PR review + CI |
 | R6 | Wave-3 shadow receipts not used as T-38 runtime pass | ci.dag / host script separation |
 | R7 | A.1.5a equivalence: harness path matches in-process `run_test_claim` on fixed slice | Hermetic test in implementation PR |
-| R8 | Dissolution marks amended on `testclaim_corpus_runner.dag` L4, `manual_corpus_eval.dag` L7–10, `ci.dag` L154–155 (`TestClaimCorpusEvalCommand` gated marks; not L145–146 `IgnoredTestCommand`/`LensCiCommand`) | Mark names runtime-slice trigger |
+| R8 | Dissolution marks amended: `rg -n 'feature:t38-testclaim-corpus-eval' src/v4/test/claim/workflow/{testclaim_corpus_runner,manual_corpus_eval}.dag` and `src/v4/workflow/ci.dag` — on `CiCommand`, the mark must sit on the comment line immediately above `\| TestClaimCorpusEvalCommand` (not `Phase1NatSemiringRungGateCommand` / `feature:phase1-nat-semiring-rung-gate`) | Symbol-anchored grep receipt (line numbers drift) |
 
 ---
 
@@ -136,7 +148,7 @@ Metric allowed only as secondary:
 ```text
 1. RR-A merged (this doc) — manager dispatches A.1.5a + harness child.
 2. Compiler Spine: bootstrap binary entry → invokes run_manual_testclaim_corpus_eval.
-3. Runtime/TestClaim: add v4-testclaim-corpus-eval.sh (invoke-only); A.3b JSON receipt.
+3. Runtime/TestClaim: re-land scripts/v4-testclaim-corpus-eval.sh (harness invoke-only; #4252 deleted prior blob); A.3b JSON receipt.
 4. A.1.5a equivalence claim lands (gates harness correctness).
 5. A.2: land lens_* in-flight PRs; continuous family PRs for remaining 22 scaffolds.
 6. F.5 mandatory lens ratchet → silent-crane CI after A.2 families activate (§6.7 handoff).
@@ -171,7 +183,7 @@ Metric allowed only as secondary:
 
 - [x] Single-authority: runtime `run_test_claim` via bootstrap evaluator pin (not M1 emit-Rust path (i))
 - [x] Distinct from P5 Layer 2 (#4115) and Wave-3 shadow roster
-- [x] Spot-fix forbidden: const-run pass, missing script, grep-only witness
+- [x] Spot-fix forbidden: const-run pass, grep-only witness; host transport re-land (#4252), not “convert existing script”
 - [x] A.2 family tier survey accepted (31 families; `workflow/` orchestration excluded)
 - [x] Falsification R1–R8 accepted
 - [x] Landing order §5 + lane split accepted
