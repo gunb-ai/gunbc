@@ -404,7 +404,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
-    "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
+    // **P5 receipt (F.14 / T-PB-B):** `m2_emit_multi_field_struct_variant_test.rs` retired;
+    // `tests/dag/boundary_emit_gates.template.dag` + `boundary_emit_gates` bin are authority
+    // (`t_pb_b_1_dag_runner_test::boundary_emit_gates_suite_passes_through_runner`).
     // Phase 1 leaf-model go R1/R2a/R2b/R3-external: boundary Go toolchain exercise for
     // R1 int surface spelling, R2a int algebra ops, R2b int64 overflow wrap, R3-external
     // Symbol-as-string projection until T-22 modeled `run_target_verification` owns target

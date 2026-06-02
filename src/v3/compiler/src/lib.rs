@@ -4170,6 +4170,7 @@ pub mod emit_host_eval;
 pub mod emit_rust_roundtrip_fixtures;
 pub mod gunbc_ci;
 pub mod post_emit_verifier;
+pub mod boundary_emit_gates;
 pub mod r1c_e_gates;
 pub mod test_runner;
 pub mod wall_clock_ratchet_manifest;

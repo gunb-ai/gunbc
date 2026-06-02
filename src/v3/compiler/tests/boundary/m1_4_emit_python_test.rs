@@ -204,14 +204,13 @@ type Holder { value: Result<Int, DivError> }\n",
 
 #[test]
 fn emit_python_checked_division_roundtrips_ok_and_errors() {
-    assert_eq!(
-        python_stdout("let x = 6 / 2\n", "python_div_ok.v3"),
-        "('Ok', 3)"
-    );
-    assert_eq!(
-        python_stdout("let x = 6 / 0\n", "python_div_zero.v3"),
-        "('Err', <DivError.DivideByZero: 0>)"
-    );
+    // Single source of truth: `boundary_emit_gates::check_python_checked_division_roundtrips`
+    // is also the `boundary_emit_gates python-checked-division-roundtrip` subcommand invoked by
+    // `tests/dag/boundary_emit_gates.template.dag` (F.14 / T-PB-B). Do not duplicate assertions.
+    if let Err(detail) = v3_compiler::boundary_emit_gates::check_python_checked_division_roundtrips()
+    {
+        panic!("emit_python_checked_division_roundtrips_ok_and_errors: {detail}");
+    }
 }
 
 #[test]
