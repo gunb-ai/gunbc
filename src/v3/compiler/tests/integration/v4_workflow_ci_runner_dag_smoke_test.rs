@@ -2460,6 +2460,17 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         "ci_change_set_digest(changes: receipt.pr)",
         "ci_affected_set_digest(affected: receipt.affected)",
         "ci_component_affected_digest(component: receipt.component_affected_comparison)",
+        "ci_digest_empty_change_set_tag",
+        "ci_digest_empty_affected_dependency_list_tag",
+        "ci_digest_empty_diagnostics_list_tag",
+        "ci_digest_empty_affected_exclusion_list_tag",
+        "ci_digest_empty_dependency_kind_list_tag",
+        "ci_digest_empty_step_selection_list_tag",
+        "ci_digest_empty_testclaim_selection_list_tag",
+        "ci_digest_empty_testgen_slot_selection_list_tag",
+        "ci_no_correction_user_input_boundary_tag",
+        "ci_no_correction_ambiguous_intent_tag",
+        "ci_no_correction_external_contract_unknown_tag",
         "ci_upsert_input_ref_list_projection_node(refs: row.inputs_consulted)",
         "ci_affected_dependency_list_digest(xs: row.affected_intersection)",
         "ci_symbol_digest(sym: row.reason)",
@@ -2499,6 +2510,23 @@ fn v4_workflow_ci_selection_receipt_persistence_lookup_modeled() {
         !CI_DAG.contains("if row.key == missing_key"),
         "{CI_DAG_PATH}: F.11c lookup must recompute receipt keys instead of trusting store row keys"
     );
+    for overloaded_seed in [
+        "empty: ci_symbol_digest(sym: ci_change_kind_node_changed_tag)",
+        "empty: ci_symbol_digest(sym: ci_affected_set_produced_tag)",
+        "empty: ci_symbol_digest(sym: ci_affected_set_diagnostics_tag)",
+        "empty: ci_symbol_digest(sym: ci_dependency_kind_contains_tag)",
+        "empty: ci_symbol_digest(sym: ci_selection_decision_run_tag)",
+        "empty: ci_symbol_digest(sym: ci_projection_command_claim_ids_edge)",
+        "empty: ci_symbol_digest(sym: ci_selection_testgen_slot_tag)",
+        "UserInputBoundary => ci_symbol_digest(sym: ci_receipt_inputs_fail_closed_reason)",
+        "AmbiguousIntent => ci_symbol_digest(sym: ci_workflow_receipt_unexpected_verdict)",
+        "ExternalContractUnknown => ci_symbol_digest(sym: ci_selection_shadow_reason)",
+    ] {
+        assert!(
+            !CI_DAG.contains(overloaded_seed),
+            "{CI_DAG_PATH}: F.11c receipt digest must not overload `{overloaded_seed}`"
+        );
+    }
     assert!(
         !CI_DAG.contains("let decisions_match = length(xs: receipt.decisions)")
             && !CI_DAG.contains("let testclaims_match = length(xs: receipt.testclaim_decisions)")
